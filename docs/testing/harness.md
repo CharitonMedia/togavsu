@@ -2,6 +2,24 @@
 
 The product is not in this tree. The harness checks the acceptance map, the synthetic-data rules, the Doc Tender corpus, and the evidence gate.
 
+## Provision a clean test environment
+
+The harness needs Python 3.10 or newer, Pillow, the Tesseract executable with English recognition data, and the DejaVu Sans font. Pillow is pinned in `tests/requirements-dev.txt`; OCR and fonts are system tools. Tests fail rather than skip when they are missing. These are synthetic test dependencies, not a claim of product acceptance.
+
+On an Ubuntu cloud VM or GitHub-hosted Linux runner:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-venv tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
+python3 -m venv /tmp/togavsu-qa-venv
+. /tmp/togavsu-qa-venv/bin/activate
+python -m pip install -r tests/requirements-dev.txt
+python -m unittest discover -s tests -p 'test_*.py'
+python -m tests.harness
+```
+
+`.github/workflows/qa-bootstrap.yml` reproduces these steps in a fresh environment and runs the full harness plus OCR checks. It does not install the application or accept any product criterion. On another OS, install the equivalent Tesseract tools and use the documented font locations in the corpus generator before running the same Python commands.
+
 ## Commands
 
 From the repo root:
