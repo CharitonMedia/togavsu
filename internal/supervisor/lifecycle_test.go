@@ -381,6 +381,158 @@ func TestCleanupDropRetriesWithoutAnotherRestore(t *testing.T) {
 	}
 }
 
+func TestCommittedCatalogMissIsNotDowngraded(t *testing.T) {
+	cat := &scriptCatalog{err: errors.New("catalog down")}
+	var order []string
+	journal := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	if err := journal.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-commit", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseApplied,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true, SwapCommitted: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ops := &Operations{
+		Gate: &Gate{}, Journal: journal, Catalog: cat,
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}},
+	}
+	if err := ops.Recover(context.Background()); err == nil {
+		t.Fatal("unreadable catalog finished the restore")
+	}
+	got, ok, err := journal.Latest("restore-commit")
+	if err != nil || !ok || got.Phase != phaseApplied || got.Database == nil || !got.Database.SwapCommitted || got.Record.Status == "failed" {
+		t.Fatalf("committed outcome was downgraded: %+v %v %v", got, ok, err)
+	}
+	if containsStep(order, "restart:core-1") {
+		t.Fatalf("writers restarted while the catalog was down: %v", order)
+	}
+	cat.err = nil
+	cat.present = map[string]bool{"origdb": true}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = journal.Latest("restore-commit")
+	if err != nil || !ok || got.Record.Status != "completed" || got.Phase != phaseCompleted || !got.Database.SwapCommitted {
+		t.Fatalf("recovered %+v %v %v", got, ok, err)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped after the catalog showed only the configured database: %v", order)
+	}
+}
+
+func TestCrashAfterReplacedDropStillCompletes(t *testing.T) {
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true}}
+	var order []string
+	applied := 0
+	journal := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	if err := journal.Put(journalRecord{
+		Record:  RestoreRecord{ID: "restore-dropped", BackupID: "backup", Status: "running", Error: "cleanup_pending", Cleanup: "pending", Started: time.Now().UTC()},
+		Phase:   phaseApplied,
+		Cleanup: "pending",
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true, SwapCommitted: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ops := &Operations{
+		Gate: &Gate{}, Journal: journal, Catalog: cat,
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}},
+		ApplyDump: func(context.Context, io.Reader) error {
+			applied++
+			return nil
+		},
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 || len(cat.drops) != 0 || !cat.present["origdb"] {
+		t.Fatalf("recovery reapplied or dropped the live database: applied %d drops %v present %v", applied, cat.drops, cat.present)
+	}
+	got, ok, err := journal.Latest("restore-dropped")
+	if err != nil || !ok || got.Record.Status != "completed" || got.Record.Cleanup != "" || got.Phase != phaseCompleted {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped: %v", order)
+	}
+}
+
+func TestCommitRecordPrecedesReplacedDrop(t *testing.T) {
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true, "origdb_replaced_abcd": true}}
+	journal := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	rec := journalRecord{
+		Record: RestoreRecord{ID: "restore-undurable", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseSwapIntended,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true},
+	}
+	if err := journal.Put(rec); err != nil {
+		t.Fatal(err)
+	}
+	journal.failPhase = phaseApplied
+	journal.failRemaining = 1
+	ops := &Operations{
+		Gate: &Gate{}, Journal: journal, Catalog: cat,
+		Runtime: &scriptRuntime{order: &[]string{}, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}},
+	}
+	if _, err := ops.finishCommittedUnjournaled(rec.Record, nil, errCommitUnjournaled); err == nil {
+		t.Fatal("missing commit record was ignored")
+	}
+	if len(cat.drops) != 0 || !cat.present["origdb_replaced_abcd"] {
+		t.Fatalf("replaced database was deleted before the commit record: drops %v present %v", cat.drops, cat.present)
+	}
+	got, ok, err := journal.Latest("restore-undurable")
+	if err != nil || !ok || got.Database == nil || got.Database.SwapCommitted || got.Record.Status == "completed" {
+		t.Fatalf("journal claims a commit that was not stored: %+v %v %v", got, ok, err)
+	}
+}
+
+func TestMaintenanceIgnoresReplacedCore(t *testing.T) {
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true, "origdb_replaced_abcd": true}, failDrop: 1}
+	journal := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	if err := journal.Put(journalRecord{
+		Record:  RestoreRecord{ID: "restore-maint", BackupID: "backup", Status: "completed", Error: "cleanup_pending", Cleanup: "pending", Started: time.Now().UTC(), Finished: time.Now().UTC()},
+		Phase:   phaseCompleted,
+		Cleanup: "pending",
+		Containers: []containerIntent{{
+			ID: "core-old", Prior: "running", StopIntended: true, Observed: "running",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true, SwapCommitted: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: nil, inspectErr: map[string]error{"core-old": ErrNotFound}}
+	ops := &Operations{Gate: &Gate{}, Journal: journal, Catalog: cat, Runtime: rt}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := journal.Latest("restore-maint")
+	if err != nil || !ok || got.Record.Status != "completed" || got.Record.Cleanup != "pending" {
+		t.Fatalf("missing core reopened the restore: %+v %v %v", got, ok, err)
+	}
+	if err := ops.blockUnresolved(); err != nil {
+		t.Fatalf("maintenance blocked admission: %v", err)
+	}
+	if len(cat.drops) != 1 {
+		t.Fatalf("cleanup was skipped because the old core was gone: %v", cat.drops)
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err = journal.Latest("restore-maint")
+	if err != nil || !ok || got.Record.Status != "completed" || got.Record.Cleanup != "" || cat.present["origdb_replaced_abcd"] {
+		t.Fatalf("second maintenance %+v present %v %v %v", got, cat.present, ok, err)
+	}
+}
+
 func TestCleanupPendingPollIsStableAfterRestart(t *testing.T) {
 	store := testStore(t)
 	dir := t.TempDir()

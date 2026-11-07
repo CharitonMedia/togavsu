@@ -362,6 +362,101 @@ func TestLiveRouteIsPersistedBeforeEitherCoreIsRetired(t *testing.T) {
 	}
 }
 
+func TestLostMigrationReplyStaysPendingUntilTheNameIsRemoved(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	rt := &scriptRuntime{order: &order, failInspect: 1, failRemove: 1, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	mig := &lostMigration{rt: rt}
+	up.Migrator = mig
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	if _, err := ops.Update(context.Background(), true); err == nil {
+		t.Fatal("lost migration reply succeeded")
+	}
+	pending, err := journal.Incomplete()
+	if err != nil || len(pending) != 1 || pending[0].MigrationName == "" || pending[0].terminal() || pending[0].Cleanup != "migration" {
+		t.Fatalf("lost migration was terminal: %+v %v", pending, err)
+	}
+	name := pending[0].MigrationName
+	if countStep(order, "name:"+name) != 1 || containsStep(order, "remove:"+name) {
+		t.Fatalf("name was removed or created twice before it could be seen: %v", order)
+	}
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("retry %+v %v %v", got, err, order)
+	}
+	if countStep(order, "name:"+name) != 1 || !containsStep(order, "remove:"+name) {
+		t.Fatalf("migration name was not reconciled once: %v", order)
+	}
+}
+
+func TestMigrationIntendedCrashRemovesByName(t *testing.T) {
+	var order []string
+	name := "togavsu-migrate-crash"
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Name: "core"}}}
+	rt.started = []ContainerInfo{{ID: "mig-" + name, Name: name, State: "exited"}}
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	if err := journal.Put(updateIntent{
+		ID: "op", Status: "running", Phase: "migration_intended", MigrationName: name,
+		CurrentID: "old", CurrentName: "core",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	up := &Updater{Runtime: rt, Journal: journal, Proxy: &scriptProxy{order: &order, live: strPtr("core:8080")}}
+	if err := up.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "remove:"+name) {
+		t.Fatalf("crash recovery did not remove the migration name: %v", order)
+	}
+	got, ok, err := journal.Latest("op")
+	if err != nil || !ok || !got.terminal() || got.Status != "failed" {
+		t.Fatalf("left the intent running after the name was gone: %+v %v %v", got, ok, err)
+	}
+	rt.failInspect = 1
+	if err := journal.Put(updateIntent{
+		ID: "op-2", Status: "running", Phase: "migration_intended", MigrationName: "togavsu-migrate-unseen",
+		CurrentID: "old", CurrentName: "core",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rt.started = append(rt.started, ContainerInfo{ID: "mig-unseen", Name: "togavsu-migrate-unseen"})
+	if err := up.Recover(context.Background()); err == nil {
+		t.Fatal("unreadable migration name was finalized")
+	}
+	held, ok, err := journal.Latest("op-2")
+	if err != nil || !ok || held.terminal() || held.Cleanup != "migration" {
+		t.Fatalf("unreadable name was not kept pending: %+v %v %v", held, ok, err)
+	}
+}
+
+type lostMigration struct {
+	rt *scriptRuntime
+	n  int
+}
+
+func (m *lostMigration) Apply(context.Context, string) (bool, error) {
+	return false, errors.New("lost create reply")
+}
+
+func (m *lostMigration) RunMigration(_ context.Context, _, name string, before func(phase, id string) error) (migrationStatus, error) {
+	if before != nil {
+		if err := before("migration_intended", ""); err != nil {
+			return migrationStatus{Name: name}, err
+		}
+	}
+	m.n++
+	if m.n > 1 {
+		return migrationStatus{Known: true, Name: name}, nil
+	}
+	m.rt.started = append(m.rt.started, ContainerInfo{ID: "mig-" + name, Name: name, State: "exited"})
+	m.rt.add("name:" + name)
+	return migrationStatus{Name: name}, errors.New("lost create reply")
+}
+
 func TestLostCreateInspectFailureStaysPendingUntilTheNameIsRemoved(t *testing.T) {
 	var order []string
 	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")

@@ -209,7 +209,9 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
-		if rolled.Mode == "cleanup_unreconciled" {
+		if cerr := u.confirmMigrationGone(opID, st); cerr != nil {
+			_ = u.keepPending(opID, "migration", "migration_intended")
+		} else if rolled.Mode == "cleanup_unreconciled" {
 			_ = u.keepPending(opID, "migration", "migration_cleanup")
 		} else {
 			_ = u.finalize(opID, "failed", "failed")
@@ -737,6 +739,38 @@ func (u *Updater) persistObservedRoute(live string) error {
 // confirmCandidateGone removes a container that may exist because its
 // unique name was stored before create. A nil create reply is not proof
 // the container is absent. An inspect error leaves the attempt pending.
+func (u *Updater) confirmMigrationGone(opID string, st migrationStatus) error {
+	id, name := st.ID, st.Name
+	if u != nil && u.Journal != nil && opID != "" {
+		rec, ok, err := u.Journal.Latest(opID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if id == "" {
+				id = rec.MigrationID
+			}
+			if name == "" {
+				name = rec.MigrationName
+			}
+			if id == "" && name == "" && strings.HasPrefix(rec.Phase, "migration") {
+				return errors.New("migration name was not observed")
+			}
+		}
+	}
+	target := id
+	if target == "" {
+		target = name
+	}
+	if target == "" {
+		return nil
+	}
+	if u == nil || u.Runtime == nil {
+		return errors.New("migration was not observed")
+	}
+	return confirmAbsent(target, u.Runtime)
+}
+
 func (u *Updater) confirmCandidateGone(opID string, info ContainerInfo) error {
 	id, name := info.ID, info.Name
 	if u != nil && u.Journal != nil && opID != "" {
@@ -830,18 +864,27 @@ func (u *Updater) Recover(ctx context.Context) error {
 }
 
 func (u *Updater) reconcileUpdate(ctx context.Context, item updateIntent) error {
-	if item.Cleanup == "migration" || item.Phase == "migration_unknown" || item.Phase == "migration_starting" || item.Phase == "migration_created" {
+	if item.Cleanup == "migration" || item.Phase == "migration_unknown" || item.Phase == "migration_starting" || item.Phase == "migration_created" || item.Phase == "migration_intended" {
 		id := item.MigrationID
 		if id == "" {
 			id = item.MigrationName
 		}
-		if id != "" {
-			if err := confirmAbsent(id, u.Runtime); err != nil {
-				return err
-			}
+		if id == "" {
+			item.Status = "running"
+			item.Cleanup = "migration"
+			item.Phase = "migration_intended"
+			_ = u.Journal.Put(item)
+			return errors.New("migration name was not observed")
+		}
+		if err := confirmAbsent(id, u.Runtime); err != nil {
+			item.Status = "running"
+			item.Cleanup = "migration"
+			item.Phase = "migration_intended"
+			_ = u.Journal.Put(item)
+			return err
 		}
 		item.Cleanup = ""
-		if item.Cleanup == "" && item.NextID == "" && item.NextName == "" {
+		if item.NextID == "" && item.NextName == "" {
 			item.Status = "failed"
 			item.Phase = "failed"
 			item.MigrationRan = "unknown"

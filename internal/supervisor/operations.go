@@ -581,6 +581,13 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), startErr)
 	}
 	cleared, derr := o.retryReplacedDrop(rec)
+	if !cleared {
+		if db := o.databaseOf(rec.ID); db == nil || !db.SwapCommitted {
+			if derr != nil {
+				return o.keepPending(rec, phaseSwapIntended, "commit_unjournaled", derr)
+			}
+		}
+	}
 	rec.Status = "completed"
 	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
@@ -627,9 +634,10 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 }
 
 // retryReplacedDrop removes only the replaced database after the catalog
-// shows the swap committed. An unreadable or ambiguous catalog drops nothing.
-// Absence, including a lost drop acknowledgment, completes cleanup. The
-// configured database is never renamed back.
+// shows the swap committed. The commit is persisted before that delete. An
+// unreadable or ambiguous catalog drops nothing. Absence, including a lost
+// drop acknowledgment, completes cleanup. The configured database is never
+// renamed back.
 func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
 	db := o.databaseOf(rec.ID)
 	if db == nil || !db.SwapIntended || db.SwapRolledBack || db.Replaced == "" || db.Replaced == db.Configured {
@@ -641,6 +649,26 @@ func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
 	st, observed := o.observeSwap(rec)
 	if !observed || !st.configured || st.fresh {
 		return false, errSwapUnobserved
+	}
+	if !db.SwapCommitted {
+		if _, err := o.persist(rec, phaseApplied, func(cur *journalRecord) {
+			if cur.Database == nil {
+				copied := *db
+				cur.Database = &copied
+			}
+			cur.Database.Configured = db.Configured
+			cur.Database.Fresh = db.Fresh
+			cur.Database.Replaced = db.Replaced
+			cur.Database.SwapIntended = true
+			cur.Database.SwapCommitted = true
+			cur.Database.SwapRolledBack = false
+		}); err != nil {
+			return false, err
+		}
+		db = o.databaseOf(rec.ID)
+		if db == nil || !db.SwapCommitted {
+			return false, errors.New("commit was not recorded")
+		}
 	}
 	if !st.replaced {
 		return true, nil
@@ -718,7 +746,19 @@ func (o *Operations) observeSwap(rec RestoreRecord) (swapNames, bool) {
 	return swapNames{configured: st[db.Configured], fresh: st[db.Fresh], replaced: st[db.Replaced]}, true
 }
 
+func phaseForgetsCommit(phase string) bool {
+	switch phase {
+	case phaseAccepted, phaseRunning, phaseStopping, phaseWritersStopped, phaseApplying, phaseSwapIntended, phaseRestarting, phaseRolledBack:
+		return true
+	default:
+		return false
+	}
+}
+
 func (o *Operations) finishUncertain(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	if db := o.databaseOf(rec.ID); db != nil && db.SwapCommitted && !db.SwapRolledBack {
+		return o.finishCommittedUncertain(rec, stopped, cause)
+	}
 	decision, observed := o.classifyDatabase(rec)
 	switch decision {
 	case decisionCleanup:
@@ -934,15 +974,56 @@ func (o *Operations) recoverLocked(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// recoverMaintenance retries only the replaced-database drop. A failed drop
-// leaves cleanup pending and does not fail startup. Writer recovery that is
-// still unsafe does.
+// recoverMaintenance retries only the replaced-database drop. The core that
+// was current during the restore may already have been replaced, so this
+// path does not inspect those container ids. A failed drop leaves cleanup
+// pending and does not fail startup or turn the restore back into running.
 func (o *Operations) recoverMaintenance(item journalRecord) error {
-	saved, err := o.finishCleanup(item.Record, nil, ErrRestoreCleanup)
-	if saved.Status == "running" {
-		return err
-	}
+	_, _ = o.finishMaintenance(item.Record, ErrRestoreCleanup)
 	return nil
+}
+
+func (o *Operations) finishMaintenance(rec RestoreRecord, err error) (RestoreRecord, error) {
+	cleared, _ := o.retryReplacedDrop(rec)
+	rec.Status = "completed"
+	rec.Recovery = ""
+	rec.Finished = o.now().UTC()
+	if cleared {
+		rec.Error = ""
+		rec.Cleanup = ""
+	} else {
+		rec.Error = "cleanup_pending"
+		rec.Cleanup = "pending"
+	}
+	saved, perr := o.persist(rec, phaseCompleted, nil)
+	if perr != nil {
+		return rec, perr
+	}
+	if !cleared {
+		if err == nil {
+			err = ErrRestoreCleanup
+		}
+		return saved, err
+	}
+	return saved, nil
+}
+
+func (o *Operations) finishCommittedUncertain(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	st, observed := o.observeSwap(rec)
+	if !observed {
+		return o.keepPending(rec, phaseApplied, "catalog_unobserved", cause)
+	}
+	if st.configured && !st.fresh && st.replaced {
+		return o.finishCleanup(rec, stopped, ErrRestoreCleanup)
+	}
+	if st.configured && !st.fresh && !st.replaced {
+		return o.finishApplied(rec, stopped, nil)
+	}
+	reason := "catalog_ambiguous"
+	if !st.configured {
+		reason = "configured_database_absent"
+	}
+	return o.keepPending(rec, phaseApplied, reason, cause)
 }
 
 func (o *Operations) recoverUpdates(ctx context.Context) error {
@@ -957,6 +1038,9 @@ func (o *Operations) recoverUpdates(ctx context.Context) error {
 
 func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 	rec := item.Record
+	if item.Database != nil && item.Database.SwapCommitted && !item.Database.SwapRolledBack {
+		return o.recoverCommitted(item)
+	}
 	if item.Database != nil && item.Database.SwapRolledBack {
 		o.dropRolledBackFresh(item)
 		saved, err := o.closeStopped(rec, nil, errors.New("restore rolled back before the database rename committed"), "rolled_back")
@@ -1050,6 +1134,53 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 			return err
 		}
 	}
+	return o.recoverOneTail(rec)
+}
+
+func (o *Operations) recoverCommitted(item journalRecord) error {
+	rec := item.Record
+	st, observed := o.observeSwap(rec)
+	if !observed {
+		_, err := o.keepPending(rec, phaseApplied, "catalog_unobserved", errSwapUnobserved)
+		return err
+	}
+	if !st.configured || st.fresh {
+		reason := "catalog_ambiguous"
+		cause := errSwapUnobserved
+		if !st.configured {
+			reason = "configured_database_absent"
+			cause = errConfiguredDatabaseAbsent
+		}
+		_, err := o.keepPending(rec, phaseApplied, reason, cause)
+		return err
+	}
+	if st.replaced {
+		saved, err := o.finishCleanup(rec, nil, ErrRestoreCleanup)
+		if saved.Status == "running" {
+			return err
+		}
+		if err != nil && !errors.Is(err, ErrRestoreCleanup) {
+			return err
+		}
+		return nil
+	}
+	if err := o.restoreWriters(rec, nil); err != nil {
+		_, perr := o.keepPending(rec, phaseApplied, writerRecoveryReason(err), err)
+		return errors.Join(err, perr)
+	}
+	rec.Status = "completed"
+	rec.Recovery = ""
+	rec.Cleanup = ""
+	rec.Error = ""
+	rec.Finished = o.now().UTC()
+	if _, err := o.persist(rec, phaseCompleted, nil); err != nil {
+		_, perr := o.keepPending(rec, phaseApplied, "journal_unpersisted", err)
+		return errors.Join(err, perr)
+	}
+	return nil
+}
+
+func (o *Operations) recoverOneTail(rec RestoreRecord) error {
 	saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted after writers stopped and before the database rename"), "restarted_writers")
 	if saved.Status == "running" {
 		return err
@@ -1290,8 +1421,11 @@ func (o *Operations) databaseOf(id string) *databaseIntent {
 
 func (o *Operations) persist(rec RestoreRecord, phase string, mutate func(*journalRecord)) (RestoreRecord, error) {
 	cur := journalRecord{Record: rec, Phase: phase}
+	var prev journalRecord
+	var ok bool
 	if o.Journal != nil {
-		prev, ok, err := o.Journal.Latest(rec.ID)
+		var err error
+		prev, ok, err = o.Journal.Latest(rec.ID)
 		if err != nil {
 			return rec, err
 		}
@@ -1314,6 +1448,19 @@ func (o *Operations) persist(rec RestoreRecord, phase string, mutate func(*journ
 	}
 	if cur.Cleanup == "" {
 		cur.Record.Cleanup = cur.Cleanup
+	}
+	// A durable commit outranks a later catalog miss. Do not persist a phase
+	// or database flag that forgets it.
+	if ok && prev.Database != nil && prev.Database.SwapCommitted && !prev.Database.SwapRolledBack {
+		if cur.Database == nil {
+			copied := *prev.Database
+			cur.Database = &copied
+		}
+		cur.Database.SwapCommitted = true
+		cur.Database.SwapRolledBack = false
+		if phaseForgetsCommit(cur.Phase) {
+			cur.Phase = phaseApplied
+		}
 	}
 	rec = cur.Record
 	if o.Journal != nil {

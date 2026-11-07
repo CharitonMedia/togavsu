@@ -475,7 +475,11 @@ func (m DockerMigrator) RunMigration(ctx context.Context, image, name string, be
 	}
 	id, err := m.createOrFind(ctx, image, name)
 	if err != nil {
-		return migrationStatus{Name: name}, err
+		pending, cerr := m.finishMigrationContainer(name)
+		if pending || cerr != nil {
+			return migrationStatus{Name: name, CleanupPending: true}, errors.Join(err, cerr)
+		}
+		return migrationStatus{Name: name}, errors.Join(err, cerr)
 	}
 	if err := before("migration_created", id); err != nil {
 		pending, cerr := m.finishMigrationContainer(id)
