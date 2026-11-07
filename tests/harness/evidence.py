@@ -85,6 +85,7 @@ def docker_desktop_ok(attestation: dict | None) -> bool:
         and attestation.get("host") == "docker_desktop"
         and attestation.get("outcome") == "passed"
         and attestation.get("mocked") is not True
+        and not _uses_double(attestation)
         and attestation.get("exit_code") == 0
         and _nonempty(attestation.get("command"))
         and _nonempty(attestation.get("observation"))

@@ -50,6 +50,17 @@ class InventoryTests(unittest.TestCase):
         self.assertIn("categorizing_model_with_openai_key", omitted_prd_defaults(self.prd, dropped_ai))
         dropped_check = [item for item in DEFAULTS if item["key"] != "labeling_check_model_without_secondary"]
         self.assertIn("labeling_check_model_without_secondary", omitted_prd_defaults(self.prd, dropped_check))
+        for key in (
+            "ocr_check_model_with_secondary",
+            "ocr_check_model_without_secondary",
+            "photo_description_grouping_check_model_with_secondary",
+            "photo_description_grouping_check_model_without_secondary",
+            "transcription_check_model_with_secondary",
+            "transcription_check_model_without_secondary",
+        ):
+            self.assertIn(key, {item["key"] for item in setting_defaults()})
+            dropped_task = [item for item in DEFAULTS if item["key"] != key]
+            self.assertIn(key, omitted_prd_defaults(self.prd, dropped_task))
 
     def test_ac029_change_and_reset_cover_every_setting(self):
         criterion = next(item for item in build_matrix() if item["id"] == "AC-029")

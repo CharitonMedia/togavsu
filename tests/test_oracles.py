@@ -124,6 +124,21 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(free, [date(2026, 10, 2), date(2026, 10, 3)])
         half = free_days(start, start, [{"date": start, "kind": "court date", "part": "morning"}], half_days=True)
         self.assertEqual(half, [(start, "afternoon")])
+        morning_block = free_days(start, start, [{"date": start, "kind": "block", "part": "morning"}], half_days=True)
+        afternoon_block = free_days(start, start, [{"date": start, "kind": "block", "part": "afternoon"}], half_days=True)
+        full_block = free_days(start, start, [{"date": start, "kind": "block", "all_day": True}], half_days=True)
+        unnamed_block = free_days(start, start, [{"date": start, "kind": "block"}], half_days=True)
+        both_halves = free_days(start, start, [
+            {"date": start, "kind": "block", "part": "morning"},
+            {"date": start, "kind": "block", "part": "afternoon"},
+        ], half_days=True)
+        half_off = free_days(start, start, [{"date": start, "kind": "block", "part": "morning"}], half_days=False)
+        self.assertEqual(morning_block, [(start, "afternoon")])
+        self.assertEqual(afternoon_block, [(start, "morning")])
+        self.assertEqual(full_block, [])
+        self.assertEqual(unnamed_block, [])
+        self.assertEqual(both_halves, [])
+        self.assertEqual(half_off, [])
 
     def test_env_scanner_and_debt_markers(self):
         files = {

@@ -54,9 +54,20 @@ class CatalogTests(unittest.TestCase):
         self.assertIn("qa", walls["responsible_domains"])
         self.assertIn("release", walls["responsible_domains"])
         perf = next(item for item in self.matrix if item["id"] == "AC-017")
-        self.assertEqual(perf["implementing_domains"], [])
+        integration = [
+            "integrate-practice",
+            "integrate-finance",
+            "integrate-documents",
+            "integrate-extensions",
+        ]
+        self.assertEqual(perf["implementing_domains"], integration)
+        for task_id in integration:
+            self.assertIn(task_id, perf["responsible_domains"])
         self.assertIn("contracts", perf["pending_dependencies"])
         self.assertIn("platform", perf["pending_dependencies"])
+        for item in self.matrix:
+            for task_id in integration:
+                self.assertIn(task_id, item["implementing_domains"], item["id"])
 
 
 if __name__ == "__main__":

@@ -229,6 +229,54 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(report["accepted_count"], 0)
         self.assertFalse(report["app_complete"])
 
+    def test_canonical_exit_code_and_polarity_are_required(self):
+        attestation = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": 0,
+            "observation": "first-run form",
+        }
+        broken = copy.deepcopy(self.matrix)
+        for criterion in broken:
+            for case in criterion["positive"] + criterion["failure"]:
+                if case["id"] == "AC-002-P1":
+                    case["expected_exit_code"] = 1
+        evidence = self._filled()
+        evidence["AC-002-P1"]["exit_code"] = 1
+        evidence["AC-002-P1"]["outcome"] = "passed"
+        report = summarize(broken, evidence, attestation, self.standins)
+        self.assertTrue(any("AC-002-P1" in error and "expected_exit_code" in error for error in report["inventory_errors"]))
+        self.assertNotIn("AC-002", report["accepted"])
+        self.assertFalse(report["app_complete"])
+        flipped = copy.deepcopy(self.matrix)
+        for criterion in flipped:
+            for case in criterion["positive"]:
+                if case["id"] == "AC-002-P1":
+                    case["polarity"] = "failure"
+        report = summarize(flipped, self._filled(), attestation, self.standins)
+        self.assertTrue(any("AC-002-P1" in error and "polarity" in error for error in report["inventory_errors"]))
+        self.assertFalse(report["app_complete"])
+
+    def test_clean_install_doubles_do_not_complete_the_app(self):
+        evidence = self._filled()
+        base = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": 0,
+            "observation": "first-run form on a clean Docker Desktop install",
+        }
+        for field, value in (("doubles", True), ("backend_mode", "mock")):
+            attestation = dict(base)
+            attestation[field] = value
+            self.assertFalse(docker_desktop_ok(attestation), field)
+            report = summarize(self.matrix, evidence, attestation, self.standins)
+            self.assertEqual(report["accepted_count"], 52)
+            self.assertFalse(report["app_complete"])
+
     def test_ac040_doubles_are_not_acceptance(self):
         case = self._case("AC-040-P1")
         self.assertTrue(case["rejects_doubles"])

@@ -238,8 +238,12 @@ def free_days(start: date, end: date, events: list[dict], half_days: bool = Fals
         day = event["date"]
         kind = event.get("kind")
         if event.get("all_day") or kind in {"court date", "block"}:
-            if half_days and not event.get("all_day") and kind != "block":
-                halves.setdefault(day, set()).add(event.get("part") or "full")
+            part = event.get("part")
+            partial = part in {"morning", "afternoon"}
+            if half_days and not event.get("all_day") and partial:
+                halves.setdefault(day, set()).add(part)
+            elif half_days and not event.get("all_day") and kind == "court date":
+                halves.setdefault(day, set()).add(part or "full")
             else:
                 busy.add(day)
     result = []

@@ -669,7 +669,7 @@ SPECS = {
         "recheck_phases": [],
         "extra_dependencies": ["contracts", "platform"],
         "legacy_failures": [],
-        "note": "The seed is 50 users, 20,000 matters, and 1,000,000 time entries. p95 for pages and for the API must be under 300 ms. A smaller seed cannot pass.",
+        "note": "The seed is 50 users, 20,000 matters, and 1,000,000 time entries. p95 for pages and for the API must be under 300 ms. A smaller seed cannot pass. integrate-practice, integrate-finance, integrate-documents, and integrate-extensions own this criterion with release. contracts supplies the seed and platform supplies the stack.",
         "positive": [
             _c("P1", 7, "performance", "p95 under 300 ms on the full seed",
                "Synthetic seed of at least 50 users, 20,000 matters, and 1,000,000 time entries.",
@@ -1047,9 +1047,11 @@ SPECS = {
                 "Both list the same free days."],
                _EVIDENCE),
             _c("P3", 4, "integration", "Half-day mode",
-               "One morning court date and an otherwise empty day.",
+               "Separate days: a morning court date, a morning-only block, an afternoon-only block, and a full-day block.",
                "Request available dates with half days on.",
-               ["That day is listed as the afternoon only."],
+               ["The morning court date and the morning-only block are listed as the afternoon only.",
+                "The afternoon-only block is listed as the morning only.",
+                "The full-day block is absent."],
                _EVIDENCE),
         ],
         "failure": [

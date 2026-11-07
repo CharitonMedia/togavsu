@@ -10,58 +10,58 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 
 | ID | Full phase | Recheck | Implementing domains | Cases | Status |
 | --- | --- | --- | --- | --- | --- |
-| AC-001 | 1 | 7 | contracts, platform, identity | 3 | pending |
-| AC-002 | 7 | none | api | 5 | pending |
-| AC-003 | 6 | 7 | identity, practice | 8 | pending |
-| AC-004 | 7 | none | identity, billing, trust | 9 | pending |
-| AC-005 | 3 | 7 | trust | 4 | pending |
-| AC-006 | 3 | 7 | trust | 4 | pending |
-| AC-007 | 3 | 7 | trust | 4 | pending |
-| AC-008 | 3 | 7 | billing | 4 | pending |
-| AC-009 | 3 | 7 | practice, billing | 5 | pending |
-| AC-010 | 5 | 7 | ui | 5 | pending |
-| AC-011 | 6 | 7 | calendar, ui | 5 | pending |
-| AC-012 | 6 | 7 | modules | 4 | pending |
-| AC-013 | 6 | 7 | modules | 3 | pending |
-| AC-014 | 6 | 7 | modules | 4 | pending |
-| AC-015 | 6 | 7 | marketplace | 5 | pending |
-| AC-016 | 7 | none | platform | 3 | pending |
-| AC-017 | 7 | none | (release gate) | 3 | pending |
-| AC-018 | 7 | none | platform, identity | 6 | pending |
-| AC-019 | 6 | 7 | ui | 6 | pending |
-| AC-020 | 5 | 7 | practice, ui | 6 | pending |
-| AC-021 | 5 | 7 | trust, ui | 4 | pending |
-| AC-022 | 7 | none | ui | 4 | pending |
-| AC-023 | 3 | 7 | practice | 4 | pending |
-| AC-024 | 5 | 7 | identity, practice | 5 | pending |
-| AC-025 | 5 | 7 | practice | 5 | pending |
-| AC-026 | 3 | 7 | billing, trust | 3 | pending |
-| AC-027 | 4 | 7 | calendar | 5 | pending |
-| AC-028 | 6 | 7 | ui, modules | 6 | pending |
-| AC-029 | 5 | 7 | contracts, ui | 347 | pending |
-| AC-030 | 7 | none | contracts | 4 | pending |
-| AC-031 | 6 | 7 | modules | 3 | pending |
-| AC-032 | 7 | none | ui | 6 | pending |
-| AC-033 | 6 | 7 | modules | 5 | pending |
-| AC-034 | 7 | none | (release gate) | 3 | pending |
-| AC-035 | 1 | 7 | contracts | 5 | pending |
-| AC-036 | 6 | 7 | modules | 6 | pending |
-| AC-037 | 6 | 7 | modules | 6 | pending |
-| AC-038 | 6 | 7 | modules | 4 | pending |
-| AC-039 | 4 | 7 | files | 4 | pending |
-| AC-040 | 7 | none | files | 4 | pending |
-| AC-041 | 4 | 7 | editor | 7 | pending |
-| AC-042 | 4 | 7 | editor | 4 | pending |
-| AC-043 | 6 | 7 | doc-tender | 7 | pending |
-| AC-044 | 4 | 7 | doc-tender | 3 | pending |
-| AC-045 | 4 | 7 | doc-tender | 4 | pending |
-| AC-046 | 4 | 7 | doc-tender | 4 | pending |
-| AC-047 | 4 | 7 | doc-tender | 4 | pending |
-| AC-048 | 4 | 7 | doc-tender | 4 | pending |
-| AC-049 | 4 | 7 | doc-tender | 5 | pending |
-| AC-050 | 7 | none | files, doc-tender | 5 | pending |
-| AC-051 | 5 | 7 | doc-tender | 4 | pending |
-| AC-052 | 5 | 7 | doc-tender | 3 | pending |
+| AC-001 | 1 | 7 | contracts, platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-002 | 7 | none | api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-003 | 6 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 8 | pending |
+| AC-004 | 7 | none | identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 9 | pending |
+| AC-005 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-006 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-007 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-008 | 3 | 7 | integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-009 | 3 | 7 | practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-010 | 5 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
+| AC-011 | 6 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
+| AC-012 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
+| AC-013 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 3 | pending |
+| AC-014 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
+| AC-015 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions | 5 | pending |
+| AC-016 | 7 | none | platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-017 | 7 | none | integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-018 | 7 | none | platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 6 | pending |
+| AC-019 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
+| AC-020 | 5 | 7 | practice, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
+| AC-021 | 5 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, ui, integrate-extensions | 4 | pending |
+| AC-022 | 7 | none | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 4 | pending |
+| AC-023 | 3 | 7 | practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-024 | 5 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-025 | 5 | 7 | practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-026 | 3 | 7 | integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-027 | 4 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-028 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions | 6 | pending |
+| AC-029 | 5 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 371 | pending |
+| AC-030 | 7 | none | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-031 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 3 | pending |
+| AC-032 | 7 | none | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
+| AC-033 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 5 | pending |
+| AC-034 | 7 | none | integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-035 | 1 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-036 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
+| AC-037 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
+| AC-038 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
+| AC-039 | 4 | 7 | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-040 | 7 | none | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-041 | 4 | 7 | integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions | 7 | pending |
+| AC-042 | 4 | 7 | integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions | 4 | pending |
+| AC-043 | 6 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 7 | pending |
+| AC-044 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 3 | pending |
+| AC-045 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 4 | pending |
+| AC-046 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 4 | pending |
+| AC-047 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 4 | pending |
+| AC-048 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 4 | pending |
+| AC-049 | 4 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 5 | pending |
+| AC-050 | 7 | none | integrate-practice, files, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 5 | pending |
+| AC-051 | 5 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 4 | pending |
+| AC-052 | 5 | 7 | integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions | 3 | pending |
 
 ## Criteria
 
@@ -72,9 +72,9 @@ A fresh install reaches the first-run setup (firm name, first admin, two-factor)
 Phases in scope: 1, 7.
 Full behavior phase: 1.
 Recheck phases: 7.
-Responsible domains: contracts, platform, qa, identity, release.
-Implementing domains: contracts, platform, identity.
-Pending dependencies: contracts, platform, identity.
+Responsible domains: contracts, platform, qa, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: contracts, platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: contracts, platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -127,9 +127,9 @@ Every core feature is reachable through /api/v1 and through /mcp, and the OpenAP
 Phases in scope: 1, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: api, qa, release.
-Implementing domains: api.
-Pending dependencies: api, contracts, platform, identity, practice, billing, trust, calendar, files, editor, doc-tender, ui, modules, marketplace.
+Responsible domains: api, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, contracts, platform, identity, practice, billing, trust, calendar, files, editor, doc-tender, ui, modules, marketplace.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -206,9 +206,9 @@ A staff user can't see a walled matter anywhere: list, search, widget, report or
 Phases in scope: 1, 2, 3, 5, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, identity, practice, release.
-Implementing domains: identity, practice.
-Pending dependencies: identity, practice, billing, trust, ui, files, modules.
+Responsible domains: qa, identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, billing, trust, ui, files, modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -321,9 +321,9 @@ An accountant can read billing and trust and can't write anything.
 Phases in scope: 1, 2, 3, 4, 5, 6, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, identity, billing, trust, release.
-Implementing domains: identity, billing, trust.
-Pending dependencies: identity, billing, trust, files, ui, modules, calendar, editor, doc-tender.
+Responsible domains: qa, identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions, files, ui, modules, calendar, editor, doc-tender.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -448,9 +448,9 @@ A trust withdrawal that takes a client below zero posts, raises a flag, and send
 Phases in scope: 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, trust, release.
-Implementing domains: trust.
-Pending dependencies: trust.
+Responsible domains: qa, integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -515,9 +515,9 @@ Trust ledger entries can't be edited or deleted through any path; reversals work
 Phases in scope: 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, trust, release.
-Implementing domains: trust.
-Pending dependencies: trust.
+Responsible domains: qa, integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -582,9 +582,9 @@ Reconciliation shows a zero difference on seeded data and the right difference w
 Phases in scope: 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, trust, release.
-Implementing domains: trust.
-Pending dependencies: trust.
+Responsible domains: qa, integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -649,9 +649,9 @@ Invoices draft from unbilled time, approve, send by system mail, accept payment,
 Phases in scope: 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, billing, release.
-Implementing domains: billing.
-Pending dependencies: billing.
+Responsible domains: qa, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -716,9 +716,9 @@ A matter with an unpaid invoice or a leftover trust balance closes after a warni
 Phases in scope: 2, 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, practice, billing, release.
-Implementing domains: practice, billing.
-Pending dependencies: practice, billing.
+Responsible domains: qa, practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -795,9 +795,9 @@ Home-screen layouts save per user; a user saves a named layout and marks it defa
 Phases in scope: 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, ui, release.
-Implementing domains: ui.
-Pending dependencies: ui.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -874,9 +874,9 @@ Clicking the upcoming deadlines widget opens the deadlines page with the same da
 Phases in scope: 4, 5, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, calendar, ui, release.
-Implementing domains: calendar, ui.
-Pending dependencies: calendar, ui, modules.
+Responsible domains: qa, integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions, modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -953,9 +953,9 @@ The sample module installs from a local file, asks for its permissions, shows it
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1020,9 +1020,9 @@ An unsigned or tampered module is refused.
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1075,9 +1075,9 @@ A module switched in for calendar takes over calendar screens and API; switching
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules, calendar.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, calendar.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1142,9 +1142,9 @@ A flagged module shows the warning on its listing and alerts installed firms by 
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, marketplace, release.
-Implementing domains: marketplace.
-Pending dependencies: marketplace.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1221,9 +1221,9 @@ An overnight update swaps the core with no failed requests during a load test; a
 Phases in scope: 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: platform, qa, release.
-Implementing domains: platform.
-Pending dependencies: platform.
+Responsible domains: platform, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1276,13 +1276,13 @@ p95 page and API response under 300 ms on seed data of 50 users, 20,000 matters 
 Phases in scope: 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, release.
-Implementing domains: none before release.
-Pending dependencies: contracts, platform.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, integrate-extensions, contracts, platform.
 Legacy Doc Tender failures: none.
 Status: pending.
 
-The seed is 50 users, 20,000 matters, and 1,000,000 time entries. p95 for pages and for the API must be under 300 ms. A smaller seed cannot pass.
+The seed is 50 users, 20,000 matters, and 1,000,000 time entries. p95 for pages and for the API must be under 300 ms. A smaller seed cannot pass. integrate-practice, integrate-finance, integrate-documents, and integrate-extensions own this criterion with release. contracts supplies the seed and platform supplies the stack.
 
 ### Positive
 
@@ -1331,9 +1331,9 @@ Audit log records every write with actor and source. A backup downloads to the a
 Phases in scope: 1, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: platform, qa, identity, release.
-Implementing domains: platform, identity.
-Pending dependencies: platform, identity.
+Responsible domains: platform, qa, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1422,9 +1422,9 @@ The sidebar shows only the entries a user's role and installed modules allow, wi
 Phases in scope: 5, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, ui, release.
-Implementing domains: ui.
-Pending dependencies: ui, modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1513,9 +1513,9 @@ Search finds a matter by number, a person by phone and an invoice by number in e
 Phases in scope: 2, 3, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, practice, ui, release.
-Implementing domains: practice, ui.
-Pending dependencies: practice, ui, billing.
+Responsible domains: qa, practice, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: practice, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: practice, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, billing.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1604,9 +1604,9 @@ A new trust flag raises the responsible attorney's notification count; Mark all 
 Phases in scope: 3, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, trust, ui, release.
-Implementing domains: trust, ui.
-Pending dependencies: trust, ui.
+Responsible domains: qa, integrate-practice, trust, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, trust, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, trust, integrate-finance, integrate-documents, ui, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1671,9 +1671,9 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 Phases in scope: 5, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, ui, release.
-Implementing domains: ui.
-Pending dependencies: ui.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1738,9 +1738,9 @@ Reopening a closed matter requires a reason, restores its earlier status and sho
 Phases in scope: 2, 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, practice, release.
-Implementing domains: practice.
-Pending dependencies: practice, billing.
+Responsible domains: qa, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, billing.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1805,9 +1805,9 @@ The edit history card shows every change to a matter with old and new values; at
 Phases in scope: 1, 2, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, identity, practice, release.
-Implementing domains: identity, practice.
-Pending dependencies: identity, practice, ui.
+Responsible domains: qa, identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, ui.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1884,9 +1884,9 @@ A custom field limited to one practice area shows only on that area's matters, s
 Phases in scope: 2, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, practice, release.
-Implementing domains: practice.
-Pending dependencies: practice, ui.
+Responsible domains: qa, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, ui.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1963,9 +1963,9 @@ A flat-fee matter with the fee in trust shows Ready to apply; applying it posts 
 Phases in scope: 3, 7.
 Full behavior phase: 3.
 Recheck phases: 7.
-Responsible domains: qa, billing, trust, release.
-Implementing domains: billing, trust.
-Pending dependencies: billing, trust.
+Responsible domains: qa, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -2018,9 +2018,9 @@ Available dates lists only days with no court date, block or all-day event betwe
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, calendar, release.
-Implementing domains: calendar.
-Pending dependencies: calendar.
+Responsible domains: qa, integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -2056,11 +2056,11 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
-Arrange: One morning court date and an otherwise empty day.
+Arrange: Separate days: a morning court date, a morning-only block, an afternoon-only block, and a full-day block.
 
 Action: Request available dates with half days on.
 
-Expect: That day is listed as the afternoon only.
+Expect: The morning court date and the morning-only block are listed as the afternoon only.; The afternoon-only block is listed as the morning only.; The full-day block is absent.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -2097,9 +2097,9 @@ An Appearance change shows on the next page load with no restart; a module's AI 
 Phases in scope: 1, 5, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, ui, modules, release.
-Implementing domains: ui, modules.
-Pending dependencies: ui, modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -2188,9 +2188,9 @@ Every default named in this PRD is a setting on its admin page tab with that def
 Phases in scope: 1, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: contracts, qa, ui, release.
-Implementing domains: contracts, ui.
-Pending dependencies: contracts, ui.
+Responsible domains: contracts, qa, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -3839,6 +3839,150 @@ Arrange: categorizing_check_model_without_secondary on the AI and inference tab 
 Action: Press Reset to default on categorizing_check_model_without_secondary and issue the next request.
 
 Expect: categorizing_check_model_without_secondary is back to its inventoried default: primary provider's other tier.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-ocr_check_model_with_secondary Change ocr_check_model_with_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting ocr_check_model_with_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change ocr_check_model_with_secondary on its admin tab and issue the next request.
+
+Expect: The new value of ocr_check_model_with_secondary is in effect.; The audit row for ocr_check_model_with_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-ocr_check_model_with_secondary Reset ocr_check_model_with_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_with_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on ocr_check_model_with_secondary and issue the next request.
+
+Expect: ocr_check_model_with_secondary is back to its inventoried default: secondary provider's model for OCR.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-ocr_check_model_without_secondary Change ocr_check_model_without_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting ocr_check_model_without_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change ocr_check_model_without_secondary on its admin tab and issue the next request.
+
+Expect: The new value of ocr_check_model_without_secondary is in effect.; The audit row for ocr_check_model_without_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-ocr_check_model_without_secondary Reset ocr_check_model_without_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_without_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on ocr_check_model_without_secondary and issue the next request.
+
+Expect: ocr_check_model_without_secondary is back to its inventoried default: primary provider's other tier for OCR.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-photo_description_grouping_check_model_with_secondary Change photo_description_grouping_check_model_with_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting photo_description_grouping_check_model_with_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change photo_description_grouping_check_model_with_secondary on its admin tab and issue the next request.
+
+Expect: The new value of photo_description_grouping_check_model_with_secondary is in effect.; The audit row for photo_description_grouping_check_model_with_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-photo_description_grouping_check_model_with_secondary Reset photo_description_grouping_check_model_with_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_with_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on photo_description_grouping_check_model_with_secondary and issue the next request.
+
+Expect: photo_description_grouping_check_model_with_secondary is back to its inventoried default: secondary provider's model for photo description and grouping.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-photo_description_grouping_check_model_without_secondary Change photo_description_grouping_check_model_without_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting photo_description_grouping_check_model_without_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change photo_description_grouping_check_model_without_secondary on its admin tab and issue the next request.
+
+Expect: The new value of photo_description_grouping_check_model_without_secondary is in effect.; The audit row for photo_description_grouping_check_model_without_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-photo_description_grouping_check_model_without_secondary Reset photo_description_grouping_check_model_without_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_without_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on photo_description_grouping_check_model_without_secondary and issue the next request.
+
+Expect: photo_description_grouping_check_model_without_secondary is back to its inventoried default: primary provider's other tier for photo description and grouping.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-transcription_check_model_with_secondary Change transcription_check_model_with_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting transcription_check_model_with_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change transcription_check_model_with_secondary on its admin tab and issue the next request.
+
+Expect: The new value of transcription_check_model_with_secondary is in effect.; The audit row for transcription_check_model_with_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-transcription_check_model_with_secondary Reset transcription_check_model_with_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_with_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on transcription_check_model_with_secondary and issue the next request.
+
+Expect: transcription_check_model_with_secondary is back to its inventoried default: secondary provider's model for transcription.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P2-transcription_check_model_without_secondary Change transcription_check_model_without_secondary applies on the next request
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Record the process start time. Setting transcription_check_model_without_secondary on the AI and inference tab starts at its inventoried default.
+
+Action: Change transcription_check_model_without_secondary on its admin tab and issue the next request.
+
+Expect: The new value of transcription_check_model_without_secondary is in effect.; The audit row for transcription_check_model_without_secondary has the old value and the new value.; The process start time is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-P3-transcription_check_model_without_secondary Reset transcription_check_model_without_secondary to its default
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_without_secondary on the AI and inference tab has been changed away from its inventoried default.
+
+Action: Press Reset to default on transcription_check_model_without_secondary and issue the next request.
+
+Expect: transcription_check_model_without_secondary is back to its inventoried default: primary provider's other tier for transcription.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -5920,6 +6064,150 @@ Expect: A value of categorizing_check_model_without_secondary other than primary
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
+#### AC-029-F2-ocr_check_model_with_secondary Change to ocr_check_model_with_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_with_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: ocr_check_model_with_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-ocr_check_model_with_secondary Reset leaves ocr_check_model_with_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_with_secondary was changed away from its inventoried default.
+
+Action: Reset ocr_check_model_with_secondary and read it.
+
+Expect: A value of ocr_check_model_with_secondary other than secondary provider's model for OCR fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F2-ocr_check_model_without_secondary Change to ocr_check_model_without_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_without_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: ocr_check_model_without_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-ocr_check_model_without_secondary Reset leaves ocr_check_model_without_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: ocr_check_model_without_secondary was changed away from its inventoried default.
+
+Action: Reset ocr_check_model_without_secondary and read it.
+
+Expect: A value of ocr_check_model_without_secondary other than primary provider's other tier for OCR fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F2-photo_description_grouping_check_model_with_secondary Change to photo_description_grouping_check_model_with_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_with_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: photo_description_grouping_check_model_with_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-photo_description_grouping_check_model_with_secondary Reset leaves photo_description_grouping_check_model_with_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_with_secondary was changed away from its inventoried default.
+
+Action: Reset photo_description_grouping_check_model_with_secondary and read it.
+
+Expect: A value of photo_description_grouping_check_model_with_secondary other than secondary provider's model for photo description and grouping fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F2-photo_description_grouping_check_model_without_secondary Change to photo_description_grouping_check_model_without_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_without_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: photo_description_grouping_check_model_without_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-photo_description_grouping_check_model_without_secondary Reset leaves photo_description_grouping_check_model_without_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: photo_description_grouping_check_model_without_secondary was changed away from its inventoried default.
+
+Action: Reset photo_description_grouping_check_model_without_secondary and read it.
+
+Expect: A value of photo_description_grouping_check_model_without_secondary other than primary provider's other tier for photo description and grouping fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F2-transcription_check_model_with_secondary Change to transcription_check_model_with_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_with_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: transcription_check_model_with_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-transcription_check_model_with_secondary Reset leaves transcription_check_model_with_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_with_secondary was changed away from its inventoried default.
+
+Action: Reset transcription_check_model_with_secondary and read it.
+
+Expect: A value of transcription_check_model_with_secondary other than secondary provider's model for transcription fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F2-transcription_check_model_without_secondary Change to transcription_check_model_without_secondary requires a restart
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_without_secondary on the AI and inference tab was changed.
+
+Action: Issue the next request without a restart.
+
+Expect: transcription_check_model_without_secondary still at its previous value fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-029-F3-transcription_check_model_without_secondary Reset leaves transcription_check_model_without_secondary changed
+
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: transcription_check_model_without_secondary was changed away from its inventoried default.
+
+Action: Reset transcription_check_model_without_secondary and read it.
+
+Expect: A value of transcription_check_model_without_secondary other than primary provider's other tier for transcription fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
 #### AC-029-F2-high_tier_categories Change to high_tier_categories requires a restart
 
 Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
@@ -6371,9 +6659,9 @@ A CI check fails the build when core code reads an environment variable outside 
 Phases in scope: 1, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: contracts, qa, release.
-Implementing domains: contracts.
-Pending dependencies: contracts, platform.
+Responsible domains: contracts, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, platform.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6438,9 +6726,9 @@ With the primary AI provider unreachable, a module's AI call falls back to the s
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6493,9 +6781,9 @@ Every screen and every admin tab has a guide topic, opened from its ? icon, that
 Phases in scope: 5, 6, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, ui, release.
-Implementing domains: ui.
-Pending dependencies: ui, modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions, modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6584,9 +6872,9 @@ The sample module's guide appears in the help center under its own heading and i
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6663,9 +6951,9 @@ Every phase report gives the explicit simplification review result and the debt 
 Phases in scope: 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, release.
-Implementing domains: none before release.
-Pending dependencies: release.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6718,9 +7006,9 @@ Every record in section 5 exists after a fresh install, and the seed data fills 
 Phases in scope: 1, 7.
 Full behavior phase: 1.
 Recheck phases: 7.
-Responsible domains: contracts, qa, release.
-Implementing domains: contracts.
-Pending dependencies: contracts.
+Responsible domains: contracts, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6797,9 +7085,9 @@ The sample module's migration creates matter\_targets in its own schema, linked 
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6888,9 +7176,9 @@ A module package whose migration creates its own contacts table, writes outside 
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -6979,9 +7267,9 @@ Uninstall with Delete data drops the schema only after a backup and the typed co
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, modules, release.
-Implementing domains: modules.
-Pending dependencies: modules.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7046,9 +7334,9 @@ A 1 GB upload over a connection that drops resumes and its SHA-256 matches; a fi
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, files, release.
-Implementing domains: files.
-Pending dependencies: files.
+Responsible domains: qa, integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7113,9 +7401,9 @@ Moving all files from local disk to S3-compatible storage and then to Dropbox ke
 Phases in scope: 4, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, files, release.
-Implementing domains: files.
-Pending dependencies: files, platform.
+Responsible domains: qa, integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions, platform.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7180,9 +7468,9 @@ A DOCX opens in the editor, saves as a new version and opens in Word with no rep
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, editor, release.
-Implementing domains: editor.
-Pending dependencies: editor.
+Responsible domains: qa, integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7283,9 +7571,9 @@ An editor run fills a document's merge fields and saves a new version; a run tha
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, editor, release.
-Implementing domains: editor.
-Pending dependencies: editor.
+Responsible domains: qa, integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7350,9 +7638,9 @@ A staff upload, a client upload, a file written by the sample module and a drop-
 Phases in scope: 4, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender, modules.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, modules.
 Legacy Doc Tender failures: old_doc.
 Status: pending.
 
@@ -7453,9 +7741,9 @@ A 120-page PDF with scanned pages processes page by page, and a failure injected
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: scanned_pdf_page_49.
 Status: pending.
 
@@ -7508,9 +7796,9 @@ Eight photos of a three-page letter and a five-page lease, uploaded together, co
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: merged_then_split.
 Status: pending.
 
@@ -7575,9 +7863,9 @@ An audio file and a video come out with Markdown transcripts with timestamps, an
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7642,9 +7930,9 @@ A file on a closed matter makes no model call, and reopening the matter processe
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender, practice.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, practice.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7709,9 +7997,9 @@ A password-protected PDF, a damaged file and a low-confidence label each land in
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: password_pdf.
 Status: pending.
 
@@ -7776,9 +8064,9 @@ A name, category or matter a person set is never changed by a later reprocess; r
 Phases in scope: 4, 7.
 Full behavior phase: 4.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7855,9 +8143,9 @@ The Markdown copy has the original's base name with .md, follows the original's 
 Phases in scope: 4, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: qa, files, doc-tender, release.
-Implementing domains: files, doc-tender.
-Pending dependencies: files, doc-tender, platform.
+Responsible domains: qa, integrate-practice, files, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, files, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, files, integrate-finance, doc-tender, integrate-documents, integrate-extensions, platform.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7934,9 +8222,9 @@ A naming pattern edited on the Doc Tender tab names the next file, and a pattern
 Phases in scope: 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -8001,9 +8289,9 @@ With test keys set, the AI call log shows gpt-6.1-sol for labeling, and the AI t
 Phases in scope: 4, 5, 7.
 Full behavior phase: 5.
 Recheck phases: 7.
-Responsible domains: qa, doc-tender, release.
-Implementing domains: doc-tender.
-Pending dependencies: doc-tender.
+Responsible domains: qa, integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions, release.
+Implementing domains: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
+Pending dependencies: integrate-practice, integrate-finance, doc-tender, integrate-documents, integrate-extensions.
 Legacy Doc Tender failures: none.
 Status: pending.
 

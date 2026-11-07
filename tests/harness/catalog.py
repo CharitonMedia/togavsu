@@ -99,11 +99,19 @@ def inventory_errors(matrix: list[dict]) -> list[str]:
         if item.get("requirement") != expected["requirement"]:
             errors.append(f"{item['id']} requirement does not match the canonical inventory")
         for polarity in ("positive", "failure"):
-            got = [case.get("id") for case in item.get(polarity) or []]
-            want = [case["id"] for case in expected[polarity]]
+            got_cases = item.get(polarity) or []
+            want_cases = expected[polarity]
+            got = [case.get("id") for case in got_cases]
+            want = [case["id"] for case in want_cases]
             seen_cases.extend(got)
             if got != want:
                 errors.append(f"{item['id']} {polarity} cases do not match the canonical inventory")
+                continue
+            for got_case, want_case in zip(got_cases, want_cases):
+                if got_case.get("polarity") != want_case.get("polarity"):
+                    errors.append(f"{got_case.get('id')} polarity does not match the canonical inventory")
+                if got_case.get("expected_exit_code") != want_case.get("expected_exit_code"):
+                    errors.append(f"{got_case.get('id')} expected_exit_code does not match the canonical inventory")
     if len(seen_cases) != len(set(seen_cases)):
         errors.append("duplicate case ids")
     return errors

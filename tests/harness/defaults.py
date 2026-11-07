@@ -80,6 +80,12 @@ DEFAULTS = (
     {"key": "categorizing_check_model_with_secondary", "value": "secondary provider's model for categorizing", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task"},
     {"key": "labeling_check_model_without_secondary", "value": "primary provider's other tier", "tab": "AI and inference", "setting": True, "anchor": "or to the primary provider's other tier when there's no secondary"},
     {"key": "categorizing_check_model_without_secondary", "value": "primary provider's other tier", "tab": "AI and inference", "setting": True, "anchor": "or to the primary provider's other tier when there's no secondary"},
+    {"key": "ocr_check_model_with_secondary", "value": "secondary provider's model for OCR", "tab": "AI and inference", "setting": True, "anchor": "OCR, photo description and grouping, transcription, labeling and categorizing"},
+    {"key": "ocr_check_model_without_secondary", "value": "primary provider's other tier for OCR", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task, or to the primary provider's other tier when there's no secondary."},
+    {"key": "photo_description_grouping_check_model_with_secondary", "value": "secondary provider's model for photo description and grouping", "tab": "AI and inference", "setting": True, "anchor": "OCR, photo description and grouping, transcription, labeling and categorizing"},
+    {"key": "photo_description_grouping_check_model_without_secondary", "value": "primary provider's other tier for photo description and grouping", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task, or to the primary provider's other tier when there's no secondary."},
+    {"key": "transcription_check_model_with_secondary", "value": "secondary provider's model for transcription", "tab": "AI and inference", "setting": True, "anchor": "OCR, photo description and grouping, transcription, labeling and categorizing"},
+    {"key": "transcription_check_model_without_secondary", "value": "primary provider's other tier for transcription", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task, or to the primary provider's other tier when there's no secondary."},
     {"key": "high_tier_categories", "value": "court_filing, court_notice, discovery, agency_notice, police_criminal, estate_planning, contracts_agreements", "tab": "Doc Tender", "setting": True, "anchor": "default `court_filing`, `court_notice`, `discovery`, `agency_notice`, `police_criminal`, `estate_planning`, `contracts_agreements`"},
     {"key": "trust_ledger_append_only", "value": "fixed", "tab": "", "setting": False, "anchor": "the trust ledger is append-only"},
     {"key": "audit_kept_forever", "value": "fixed", "tab": "", "setting": False, "anchor": "the audit log is kept forever"},
@@ -119,6 +125,12 @@ CONDITIONAL_AI_KEYS = (
     "categorizing_check_model_with_secondary",
     "labeling_check_model_without_secondary",
     "categorizing_check_model_without_secondary",
+    "ocr_check_model_with_secondary",
+    "ocr_check_model_without_secondary",
+    "photo_description_grouping_check_model_with_secondary",
+    "photo_description_grouping_check_model_without_secondary",
+    "transcription_check_model_with_secondary",
+    "transcription_check_model_without_secondary",
 )
 
 DEFAULTS = DEFAULTS + tuple(

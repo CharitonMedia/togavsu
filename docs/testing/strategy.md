@@ -32,7 +32,7 @@ AC-017 needs at least 50 users, 20,000 matters, and 1,000,000 time entries. A p9
 
 ## Who runs what
 
-Domains come from `docs/build/tasks.json`. `qa` and `release` are on every criterion. Implementing domains are the other tasks that list the id. Pending dependencies add the tasks whose code the case calls when those tasks do not list the id. AC-017 depends on `contracts` for the seed generator and `platform` for the running stack. No feature task lists AC-017.
+Domains come from `docs/build/tasks.json`. `qa` and `release` are on every criterion. Implementing domains are the other tasks that list the id, including integrate-practice, integrate-finance, integrate-documents, and integrate-extensions. Pending dependencies add the tasks whose code the case calls when those tasks do not list the id. AC-017 depends on `contracts` for the seed generator and `platform` for the running stack. No feature task lists AC-017.
 
 This branch does not edit workflows or shared packages. `scripts/check_setup.py` remains a metadata check. It does not run this harness. Platform's product CI should call the unittest command below once that workflow exists. Until it does, the command is run in the agent VM.
 
