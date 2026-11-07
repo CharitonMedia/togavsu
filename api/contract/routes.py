@@ -2841,14 +2841,27 @@ def _doc_tender(api: Contract) -> None:
         "/api/v1/doc-tender/jobs/{job_id}/retry",
         operation_id="retryDocTenderJob",
         summary="Retry a Doc Tender job",
-        description="Queues another attempt. A passing step is not redone. A person-locked name, category, matter, or grouping is left alone.",
+        description=(
+            "Queues another attempt and emits doc_tender.retry_scheduled. "
+            "A passing step is not redone. A person-locked name, category, matter, or grouping is left alone. "
+            "doc_tender.published is emitted only by the later transaction that stores checked results. "
+            "A retry that is accepted and then fails emits no doc_tender.published."
+        ),
         tag="Doc Tender",
         features=["doc-tender"],
         roles=ATTORNEY,
         scopes=["doc_tender:write"],
         response="DocTenderJob",
-        events=["doc_tender.published"],
-        extra_access=FILE_WALL,
+        events=["doc_tender.retry_scheduled"],
+        extra_access={
+            **FILE_WALL,
+            "doc_tender_retry": {
+                "on_accept": "doc_tender.retry_scheduled",
+                "on_later_failure": [],
+                "published_event": "doc_tender.published",
+                "published_on": "checked_results_transaction",
+            },
+        },
     )
     api.resource(
         collection="/api/v1/doc-tender/exceptions",

@@ -34,6 +34,7 @@ from contract.policy import (
     is_core_file_download,
     include_views_decision,
     background_grant_issuance,
+    doc_tender_events,
     inherited_history_rows,
     mcp_credential_rejection,
     payment_effect_decision,
@@ -735,6 +736,15 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(operation["x-togavsu-access"]["access_inherits"], "file")
         self.assertIn("doc_tender:read", operation["x-togavsu-access"]["scopes"])
         self.assertEqual(_schema_name(operation["responses"]["200"]), "DocTenderResult")
+        retry = _operation(self.spec, "retryDocTenderJob")
+        self.assertEqual(retry["x-togavsu-events"], ["doc_tender.retry_scheduled"])
+        self.assertNotIn("doc_tender.published", retry["x-togavsu-events"])
+        self.assertEqual(doc_tender_events(retry, "retry_accepted"), ["doc_tender.retry_scheduled"])
+        self.assertEqual(doc_tender_events(retry, "attempt_failed"), [])
+        self.assertNotIn("doc_tender.published", doc_tender_events(retry, "attempt_failed"))
+        self.assertEqual(doc_tender_events(retry, "results_published"), ["doc_tender.published"])
+        self.assertEqual(committed_events(retry, committed=True), ["doc_tender.retry_scheduled"])
+        self.assertEqual(committed_events(retry, committed=False), [])
 
     def test_profile_edit_rejects_admin_fields(self):
         from jsonschema import Draft202012Validator
@@ -2326,6 +2336,24 @@ class ContractTest(unittest.TestCase):
                 {**event, "type": "payment.processor_authorized", "record_type": "payment"},
             )
         )
+        secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"
+        for label, scope, event_type, grant_field, grant in (
+            ("task", "files:read", "file.version_created", "task_authorization", {"module_id": "owner-mod", "file_id": secret, "version_id": secret}),
+            ("processor", "payments:write", "payment.processor_authorized", "processor_authorization", {"module_id": "owner-mod", "payment_id": secret, "amount_cents": 1500}),
+            ("background", "files:write", "file.background_authorized", "background_file_authorization", {"module_id": "owner-mod", "matter_id": secret, "upload_ids": []}),
+        ):
+            owner = {"installed": True, "registered": True, "module_id": "owner-mod", "approved_scopes": [scope], "subscriptions": [event_type], "on_wall": True, "attorney_only": False}
+            other = {**owner, "module_id": "other-mod"}
+            sample = {**event, "type": event_type, "record_type": "file", grant_field: grant}
+            delivered_grant = webhook_envelope(owner, sample)
+            self.assertIsNotNone(delivered_grant, label)
+            self.assertEqual(delivered_grant[grant_field]["module_id"], "owner-mod", label)
+            denied_grant = webhook_envelope(other, sample)
+            self.assertIsNone(denied_grant, label)
+            self.assertNotIn(secret, str(denied_grant), label)
+            unknown = webhook_envelope(owner, {**sample, "capability": {"module_id": "owner-mod", "token": "hidden-token"}})
+            self.assertIsNone(unknown, label)
+            self.assertIsNone(webhook_envelope(owner, {**sample, grant_field: {"file_id": secret}}), label)
 
     def test_every_emitted_event_uses_its_resource_read_scope(self):
         emitted = sorted({event for _method, _path, operation in _ops(self.spec) for event in operation.get("x-togavsu-events") or []})
@@ -2522,6 +2550,88 @@ class ContractTest(unittest.TestCase):
             [hidden],
         )
         self.assertEqual(narrowed["rows"], [])
+        stamp = "2026-11-07T18:00:00Z"
+        actor = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        normal_event = {
+            "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+            "created_at": stamp,
+            "created_by": actor,
+            "actor_kind": "staff",
+            "action": "matter.created",
+            "record_type": "matter",
+            "record_id": matter,
+            "matter_id": matter,
+            "summary": "Smith opened",
+            "client_visible": True,
+        }
+        redacted_event = {**normal_event, "id": "018f1a00-7b3c-7d4e-8a11-222222222222", "summary": {"redacted": True}}
+        event_page = {"data": [normal_event, redacted_event], "page": {"limit": 50, "next_cursor": None}}
+        for operation_id in ("listEvents", "listMatterTimeline"):
+            response = _operation(self.spec, operation_id)["responses"]["200"]["content"]["application/json"]["schema"]
+            _schema_validator(self.spec, response).validate(event_page)
+        audit_row = {
+            "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+            "at": stamp,
+            "actor_kind": "staff",
+            "source": "ui",
+            "entity_type": "matter",
+            "entity_id": matter,
+            "kind": "update",
+            "old_value": "prospect",
+            "new_value": {"redacted": True},
+            "reason": {"redacted": True},
+        }
+        audit_page = {"data": [audit_row, {**audit_row, "id": "018f1a00-7b3c-7d4e-8a11-222222222222", "old_value": {"redacted": True}, "new_value": "open", "reason": "status"}], "page": {"limit": 50, "next_cursor": None}}
+        for operation_id in ("listAuditLog", "historyMatter"):
+            response = _operation(self.spec, operation_id)["responses"]["200"]["content"]["application/json"]["schema"]
+            _schema_validator(self.spec, response).validate(audit_page)
+        file_history = {
+            "data": [
+                {"at": stamp, "actor_kind": "staff", "kind": "field_edit", "old_value": {"redacted": True}, "new_value": "motion.pdf"},
+                {"at": stamp, "actor_kind": "staff", "kind": "version_save", "old_value": "draft.pdf", "new_value": "motion.pdf"},
+            ],
+            "page": {"limit": 50, "next_cursor": None},
+        }
+        _schema_validator(self.spec, _operation(self.spec, "historyFile")["responses"]["200"]["content"]["application/json"]["schema"]).validate(file_history)
+        webhook_page = {
+            "data": [
+                {
+                    "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+                    "type": "matter.created",
+                    "occurred_at": stamp,
+                    "actor_kind": "staff",
+                    "record_type": "matter",
+                    "record_id": matter,
+                    "matter_id": matter,
+                    "summary": "Smith opened",
+                    "task_authorization": None,
+                    "processor_authorization": None,
+                    "background_file_authorization": None,
+                },
+                {
+                    "id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                    "type": "matter.created",
+                    "occurred_at": stamp,
+                    "actor_kind": "staff",
+                    "record_type": "matter",
+                    "record_id": matter,
+                    "summary": {"redacted": True},
+                },
+            ],
+            "page": {"limit": 50, "next_cursor": None},
+        }
+        _schema_validator(self.spec, _operation(self.spec, "listWebhookDeliveries")["responses"]["200"]["content"]["application/json"]["schema"]).validate(webhook_page)
+        result = {
+            "file_id": matter,
+            "file_version_id": actor,
+            "summary": {"redacted": True},
+            "name_parts": {"what_it_is": "motion"},
+            "fields": [],
+        }
+        _component_validator(self.spec, "DocTenderResult").validate(result)
+        _component_validator(self.spec, "DocTenderResult").validate({**result, "summary": "A motion"})
+        _component_validator(self.spec, "RedactedText").validate({"redacted": True})
 
     def test_background_file_publication_grant(self):
         policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["background_file_publication"]

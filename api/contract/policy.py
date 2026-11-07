@@ -1179,6 +1179,10 @@ def publish_event_scopes(spec: dict) -> None:
             if event.startswith("custom_field."):
                 continue
             buckets.setdefault(event, []).append(derived)
+        rule = operation["x-togavsu-access"].get("doc_tender_retry")
+        published_event = (rule or {}).get("published_event")
+        if published_event and published_event not in events:
+            buckets.setdefault(published_event, []).append(derived)
     registry: dict[str, list[str]] = {}
     for event, groups in buckets.items():
         registry[event] = _event_scope_choice(event, groups)
@@ -1208,6 +1212,36 @@ def _event_scope_choice(event: str, groups: list[set[str]]) -> list[str]:
     return []
 
 
+_GRANT_FIELDS = ("task_authorization", "processor_authorization", "background_file_authorization")
+
+
+def _capability_bound(module: dict, event: dict) -> bool:
+    """A grant-bearing webhook is serialized only for the module named on that grant."""
+    recipient = module.get("module_id")
+    for key, value in event.items():
+        grant_like = key in _GRANT_FIELDS or key in {"capability", "grant"} or key.endswith("_authorization")
+        if not grant_like or value is None:
+            continue
+        if key not in _GRANT_FIELDS or not isinstance(value, dict) or value.get("module_id") != recipient:
+            return False
+    return True
+
+
+def doc_tender_events(operation: dict, phase: str) -> list[str]:
+    """Retry scheduling and a later failed attempt do not emit doc_tender.published."""
+    rule = operation["x-togavsu-access"].get("doc_tender_retry")
+    if not rule:
+        return []
+    scheduled = [event for event in operation.get("x-togavsu-events") or [] if event != rule["published_event"]]
+    if phase == "retry_accepted":
+        return scheduled
+    if phase == "attempt_failed":
+        return []
+    if phase == "results_published":
+        return [rule["published_event"]]
+    return []
+
+
 def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:
     """Fail closed. An unmapped restricted event does not fall back to events:read."""
     if event_type.startswith("custom_field."):
@@ -1220,6 +1254,8 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
     if not module.get("installed") or not module.get("registered"):
         return None
     if event.get("type") not in module.get("subscriptions", []):
+        return None
+    if not _capability_bound(module, event):
         return None
     needed = event_read_scopes(event["type"], event.get("record_type"))
     approved = set(module.get("approved_scopes") or [])

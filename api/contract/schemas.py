@@ -164,6 +164,14 @@ def _enum(values: list[str], description: str = "") -> dict:
     return schema
 
 
+def _readable_text(description: str = "") -> dict:
+    """Plain string or the shared attorney-only marker. Write schemas stay plain strings."""
+    return {
+        "description": description or 'Plain text, or {"redacted": true} when the caller cannot read an attorney-only value.',
+        "anyOf": [{"type": "string"}, _ref("RedactedText")],
+    }
+
+
 def _arr(items: dict, description: str = "") -> dict:
     schema: dict = {"type": "array", "items": items}
     if description:
@@ -238,6 +246,11 @@ _FONTS = ["Lora", "Merriweather", "Libre Baskerville", "Source Serif", "Inter", 
 
 SCHEMAS = _register(
     {
+        "RedactedText": _obj(
+            {"redacted": {"const": True}},
+            ["redacted"],
+            "Attorney-only text withheld from this caller. Events, webhooks, file summaries, and history rows use this same object.",
+        ),
         "Uuid": _uuid(),
         "Role": _ROLE,
         "Problem": _obj(
@@ -1232,7 +1245,7 @@ SCHEMAS = _register(
                 "source": {"type": "string"},
                 "arrived_as": {"type": "string", "description": "Name the file arrived with. Kept for audit and page order. Not the display name."},
                 "locked_fields": _arr(_enum(["name", "category", "matter", "grouping"])),
-                "summary": {"type": "string", "description": "Hover summary from the published Doc Tender result. Omitted when that result does not exist yet."},
+                "summary": _readable_text("Hover summary from the published Doc Tender result. Omitted when that result does not exist yet. Attorney-only text is {\"redacted\": true}."),
                 "current_version_id": _null(_uuid()),
                 "trashed_at": _null(_dt()),
                 "trashed_by": _null(_uuid()),
@@ -1404,8 +1417,8 @@ SCHEMAS = _register(
                 "actor_kind": _enum(["staff", "client", "agent", "module", "system"]),
                 "kind": _enum(["field_edit", "version_save"]),
                 "field": {"type": "string"},
-                "old_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
-                "new_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
+                "old_value": _readable_text("Previous value. Attorney-only text is {\"redacted\": true}."),
+                "new_value": _readable_text("New value. Attorney-only text is {\"redacted\": true}."),
                 "version_id": _null(_uuid("Set when kind is version_save.")),
             },
             ["at", "actor_kind", "kind"],
@@ -1606,7 +1619,7 @@ SCHEMAS = _register(
             {
                 "file_id": _uuid(),
                 "file_version_id": _uuid(),
-                "summary": {"type": "string"},
+                "summary": _readable_text(),
                 "name_parts": _obj(
                     {"what_it_is": {"type": "string"}, "doc_date": _null(_date())},
                     ["what_it_is"],
@@ -1883,7 +1896,7 @@ SCHEMAS = _register(
                 "record_type": {"type": "string"},
                 "record_id": _uuid(),
                 "target_path": {"type": "string"},
-                "excerpt": {"type": "string"},
+                "excerpt": _readable_text("Matching text. Attorney-only text is {\"redacted\": true}."),
             },
             ["title", "subtitle", "record_type", "record_id", "target_path"],
         ),
@@ -1972,9 +1985,9 @@ SCHEMAS = _register(
                 "entity_type": {"type": "string"},
                 "entity_id": {"type": "string"},
                 "field": {"type": "string"},
-                "old_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
-                "new_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
-                "reason": {"type": "string"},
+                "old_value": _readable_text("Previous value. Attorney-only text is {\"redacted\": true}."),
+                "new_value": _readable_text("New value. Attorney-only text is {\"redacted\": true}."),
+                "reason": _readable_text("Why the row changed. Attorney-only text is {\"redacted\": true}."),
                 "kind": _enum(["create", "update", "delete"]),
             },
             ["id", "at", "actor_kind", "source", "entity_type", "entity_id", "kind"],
@@ -1988,7 +2001,7 @@ SCHEMAS = _register(
                 "record_type": {"type": "string"},
                 "record_id": {"type": "string"},
                 "matter_id": _null(_uuid()),
-                "summary": {"type": "string"},
+                "summary": _readable_text(),
                 "client_visible": {"type": "boolean"},
             },
             ["actor_kind", "action", "record_type", "record_id", "summary", "client_visible"],
@@ -2043,18 +2056,7 @@ SCHEMAS = _register(
                 "record_type": {"type": "string"},
                 "record_id": {"type": "string"},
                 "matter_id": _null(_uuid()),
-                "summary": {
-                    "description": "Plain summary, or {\"redacted\": true} when the text is attorney-only. Null is not a summary.",
-                    "anyOf": [
-                        {"type": "string"},
-                        {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "required": ["redacted"],
-                            "properties": {"redacted": {"const": True}},
-                        },
-                    ],
-                },
+                "summary": _readable_text("Plain summary, or {\"redacted\": true} when the text is attorney-only. Null is not a summary."),
                 "task_authorization": _null(_ref("TaskAuthorization")),
                 "processor_authorization": _null(_ref("ProcessorAuthorization")),
                 "background_file_authorization": _null(_ref("BackgroundFileAuthorization")),

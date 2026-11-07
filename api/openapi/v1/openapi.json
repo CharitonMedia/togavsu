@@ -42608,7 +42608,7 @@
       "post": {
         "operationId": "retryDocTenderJob",
         "summary": "Retry a Doc Tender job",
-        "description": "Queues another attempt. A passing step is not redone. A person-locked name, category, matter, or grouping is left alone.",
+        "description": "Queues another attempt and emits doc_tender.retry_scheduled. A passing step is not redone. A person-locked name, category, matter, or grouping is left alone. doc_tender.published is emitted only by the later transaction that stores checked results. A retry that is accepted and then fails emits no doc_tender.published.",
         "tags": [
           "Doc Tender"
         ],
@@ -42701,12 +42701,18 @@
               "result": "not_found"
             }
           ],
+          "doc_tender_retry": {
+            "on_accept": "doc_tender.retry_scheduled",
+            "on_later_failure": [],
+            "published_event": "doc_tender.published",
+            "published_on": "checked_results_transaction"
+          },
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
         },
         "x-togavsu-events": [
-          "doc_tender.published"
+          "doc_tender.retry_scheduled"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -58290,6 +58296,19 @@
       }
     },
     "schemas": {
+      "RedactedText": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "redacted": {
+            "const": true
+          }
+        },
+        "required": [
+          "redacted"
+        ],
+        "description": "Attorney-only text withheld from this caller. Events, webhooks, file summaries, and history rows use this same object."
+      },
       "Uuid": {
         "type": "string",
         "format": "uuid",
@@ -63681,8 +63700,15 @@
             }
           },
           "summary": {
-            "type": "string",
-            "description": "Hover summary from the published Doc Tender result. Omitted when that result does not exist yet."
+            "description": "Hover summary from the published Doc Tender result. Omitted when that result does not exist yet. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "current_version_id": {
             "anyOf": [
@@ -64463,10 +64489,26 @@
             "type": "string"
           },
           "old_value": {
-            "description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."
+            "description": "Previous value. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "new_value": {
-            "description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."
+            "description": "New value. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "version_id": {
             "anyOf": [
@@ -65417,7 +65459,15 @@
             "description": "UUIDv7."
           },
           "summary": {
-            "type": "string"
+            "description": "Plain text, or {\"redacted\": true} when the caller cannot read an attorney-only value.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "name_parts": {
             "type": "object",
@@ -66867,7 +66917,15 @@
             "type": "string"
           },
           "excerpt": {
-            "type": "string"
+            "description": "Matching text. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           }
         },
         "required": [
@@ -67309,13 +67367,37 @@
             "type": "string"
           },
           "old_value": {
-            "description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."
+            "description": "Previous value. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "new_value": {
-            "description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."
+            "description": "New value. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "reason": {
-            "type": "string"
+            "description": "Why the row changed. Attorney-only text is {\"redacted\": true}.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "kind": {
             "type": "string",
@@ -67400,7 +67482,15 @@
             ]
           },
           "summary": {
-            "type": "string"
+            "description": "Plain text, or {\"redacted\": true} when the caller cannot read an attorney-only value.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/RedactedText"
+              }
+            ]
           },
           "client_visible": {
             "type": "boolean"
@@ -67601,16 +67691,7 @@
                 "type": "string"
               },
               {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "redacted"
-                ],
-                "properties": {
-                  "redacted": {
-                    "const": true
-                  }
-                }
+                "$ref": "#/components/schemas/RedactedText"
               }
             ]
           },
@@ -74057,6 +74138,9 @@
     ],
     "storage_move.confirmed": [
       "files:read"
+    ],
+    "doc_tender.retry_scheduled": [
+      "doc_tender:read"
     ],
     "doc_tender.published": [
       "doc_tender:read"
