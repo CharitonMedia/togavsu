@@ -55,6 +55,11 @@ def atomic(path, obj):
         out.flush()
         os.fsync(out.fileno())
     os.replace(temp, path)
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
 
 
 def latest_checks(checks):
@@ -487,6 +492,10 @@ class Controller:
         # Final metadata refresh follows product-check enforcement and observation.
         fresh = self.remote.gh("pulls/" + str(number))
         current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
+        if (fresh.get("base", {}).get("ref") != "main"
+                or fresh.get("head", {}).get("ref") != record["expected_branch"]):
+            self.halt(task, record, "PR was retargeted or its pinned branch changed during final refresh")
+            return False
         if fresh["head"]["sha"] != head or current_main != main:
             return False
         try:

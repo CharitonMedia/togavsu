@@ -2,13 +2,16 @@ import copy
 import datetime as dt
 import io
 import json
+import os
+import stat
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, atomic, extract_review, latest_checks, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -407,6 +410,21 @@ class ControllerTests(unittest.TestCase):
         bindings = self.remote.protection["required_status_checks"]["checks"]
         self.assertIn({"context": "Core tests", "app_id": APP_ID}, bindings)
 
+    def test_retarget_during_final_refresh_never_merges_or_completes(self):
+        original, gets = self.remote.gh, []
+        def gh(path, **kwargs):
+            value = original(path, **kwargs)
+            if path == "pulls/7":
+                gets.append(path)
+                if len(gets) == 2:
+                    value["base"]["ref"] = "another-branch"
+            return value
+        self.remote.gh = gh
+        self.process()
+        self.assertNotIn("completed", self.record)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.assertIn("retargeted", self.record["halted"])
+
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True
         self.remote.pr["merge_commit_sha"] = NEW
@@ -451,6 +469,21 @@ class ControllerTests(unittest.TestCase):
 
 
 class ReviewDataTests(unittest.TestCase):
+    def test_state_durability_orders_file_sync_replace_then_directory_sync(self):
+        events = []
+        sync, replace = os.fsync, os.replace
+        def fsync(fd):
+            events.append("directory-sync" if stat.S_ISDIR(os.fstat(fd).st_mode) else "file-sync")
+            sync(fd)
+        def rename(a,b):
+            events.append("replace")
+            replace(a,b)
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "state.json"
+            with patch("build_controller.os.fsync",side_effect=fsync), patch("build_controller.os.replace",side_effect=rename):
+                atomic(target,{"agent_id":"durable"})
+            self.assertEqual(json.loads(target.read_text())["agent_id"],"durable")
+        self.assertEqual(events,["file-sync","replace","directory-sync"])
     def test_non_string_verdict_types_are_rejected(self):
         r = FakeRemote()
         for value in [[], {}]:
