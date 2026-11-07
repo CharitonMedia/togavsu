@@ -313,6 +313,11 @@ func (s *SFTPDestination) output(ctx context.Context, commands string) (string, 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		// A deadline or dropped connection kills the client. That exit is not
+		// the server's answer, so the context cause stays on the error.
+		if cerr := ctx.Err(); cerr != nil {
+			return "", fmt.Errorf("sftp: %w: %v: %s", cerr, err, strings.TrimSpace(stderr.String()))
+		}
 		return "", fmt.Errorf("sftp: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil

@@ -746,6 +746,7 @@ const (
 	receiptPending   = "pending"
 	receiptUncertain = "uncertain"
 	receiptRejected  = "rejected"
+	receiptObserved  = "observed"
 )
 
 // maxChecksumSidecar is the most a checksum sidecar may contain. A SHA-256
@@ -769,6 +770,9 @@ type OwnedObject struct {
 	Created       time.Time `json:"created"`
 	State         string    `json:"state,omitempty"`
 	UncertainAt   time.Time `json:"uncertain_at,omitempty"`
+	// Digest is the archive checksum recorded with the intent. Recovery can
+	// validate a copy after local retention has removed the metadata file.
+	Digest string `json:"digest,omitempty"`
 }
 
 // PruneDestination deletes owned archives older than retention. It does not
@@ -783,7 +787,7 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 		if dest.ID() != "" && obj.DestinationID != "" && obj.DestinationID != dest.ID() {
 			continue
 		}
-		if obj.State == receiptUncertain || obj.State == receiptPending || obj.State == receiptRejected || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
+		if obj.State == receiptUncertain || obj.State == receiptPending || obj.State == receiptRejected || obj.State == receiptObserved || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
 			continue
 		}
 		when := obj.Created

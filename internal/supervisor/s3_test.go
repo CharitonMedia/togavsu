@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -859,6 +860,8 @@ func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 		syscall.EPIPE,
 		context.DeadlineExceeded,
 		os.ErrDeadlineExceeded,
+		exec.Command("false").Run(),
+		fmt.Errorf("sftp: %w: %v", context.DeadlineExceeded, exec.Command("false").Run()),
 	} {
 		if !ambiguousRemote(err) {
 			t.Fatalf("%v was treated as a definite failure", err)

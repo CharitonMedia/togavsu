@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -1444,6 +1445,246 @@ func receiptState(owned []OwnedObject, name, state string) bool {
 		}
 	}
 	return false
+}
+
+func TestPendingGetForbiddenDoesNotRejectTheUpload(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	d := &scriptDest{id: "share", objects: map[string][]byte{"other-firm.tgbk": []byte("keep")}, denyRead: true}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain {
+		t.Fatalf("GET 403 rejected an unknown put: %+v %v", owned, err)
+	}
+	d.denyRead = false
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 1 || owned[0].State != receiptUncertain {
+		t.Fatalf("GET 404 erased an unobserved put: %+v %v", owned, err)
+	}
+	d.objects[name] = raw
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || receiptState(owned, name, receiptUncertain) || receiptState(owned, name, receiptPending) {
+		t.Fatalf("late object was not settled: %+v %v", owned, err)
+	}
+	if _, ok := d.objects[name]; ok {
+		t.Fatal("late archive remained")
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatalf("other firm %q", d.objects["other-firm.tgbk"])
+	}
+}
+
+func TestSFTPExitLeavesTheUploadUncertain(t *testing.T) {
+	exitErr := exec.Command("false").Run()
+	if exitErr == nil || ambiguousRemote(exitErr) == false {
+		t.Fatalf("client exit was a rejection: %v", exitErr)
+	}
+	dir := t.TempDir()
+	script := filepath.Join(dir, "sleep-sftp")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	err := (&SFTPDestination{
+		Command: script,
+		Spec: DestinationSpec{
+			User: "backup", Host: "example", Port: 22,
+			IdentityFile: filepath.Join(dir, "id"), KnownHosts: filepath.Join(dir, "known"),
+		},
+	}).batch(context.Background(), "put /tmp/a /tmp/b")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("killed sftp lost the context cause: %v", err)
+	}
+	if !ambiguousRemote(err) {
+		t.Fatal("killed sftp was classified as a rejected write")
+	}
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	d := &scriptDest{id: "share", objects: map[string][]byte{"other-firm.tgbk": []byte("keep")}, archivePut: exitErr}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	copied, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(copied.DestinationErrors) != 1 {
+		t.Fatalf("%+v %v", copied.DestinationErrors, err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain || owned[0].Name != copied.ID+".tgbk" {
+		t.Fatalf("sftp exit rejected the upload: %+v %v", owned, err)
+	}
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || owned[0].State != receiptUncertain {
+		t.Fatalf("missing read cleared the sftp upload: %+v %v", owned, err)
+	}
+	d.objects[copied.ID+".tgbk"] = raw
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := d.objects[copied.ID+".tgbk"]; ok {
+		t.Fatal("late sftp object remained")
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatal("other firm touched")
+	}
+	_ = name
+}
+
+func TestObservedCleanupFinishesWhenReceiptRemovalFailed(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	d := &scriptDest{id: "share", objects: map[string][]byte{name: raw, "other-firm.tgbk": []byte("keep")}}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptUncertain, Digest: meta.SHA256}); err != nil {
+		t.Fatal(err)
+	}
+	s.failReceiptRemove = func() error { return errors.New("disk") }
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptObserved {
+		t.Fatalf("delete was not recorded before receipt removal: %+v %v", owned, err)
+	}
+	if _, ok := d.objects[name]; ok {
+		t.Fatal("observed object was not deleted")
+	}
+	s.failReceiptRemove = nil
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("restart left the observed tombstone: %+v %v", owned, err)
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatal("other firm touched")
+	}
+}
+
+func TestRetentionKeepsLocalFilesUntilRemoteRecoverySettles(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored BackupMeta
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	stored.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := os.WriteFile(filepath.Join(s.Dir, meta.ID+".json"), append(mustJSON(stored), '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	side := meta.ID + ".sha256"
+	d := &scriptDest{id: "share", objects: map[string][]byte{name: archive, "other-firm.tgbk": []byte("keep")}}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	receipts := s.receiptBook()
+	for _, n := range []string{name, side} {
+		if err := receipts.Add(OwnedObject{DestinationID: "share", Name: n, Created: stored.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	if _, err := s.Prune(context.Background(), 24*time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{".tgbk", ".sha256", ".json"} {
+		if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+suffix)); err != nil {
+			t.Fatalf("retention removed %s while remote recovery was open: %v", suffix, err)
+		}
+	}
+	os.Remove(filepath.Join(s.Dir, meta.ID+".sha256"))
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := restarted.receiptBook().List("share")
+	if err != nil || !receiptState(owned, name, receiptPending) || !receiptState(owned, side, receiptUncertain) {
+		t.Fatalf("unobserved sidecar was settled by a missing read: %+v %v", owned, err)
+	}
+	d.objects[side] = []byte(meta.SHA256)
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = restarted.receiptBook().List("share")
+	if err != nil || !receiptState(owned, name, "") || !receiptState(owned, side, "") {
+		t.Fatalf("recovery did not settle after the sidecar appeared: %+v %v", owned, err)
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatal("other firm touched")
+	}
+	if err := restarted.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.DeleteDestination("share"); err != nil {
+		t.Fatal(err)
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatal("other firm removed with the destination")
+	}
 }
 
 func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) {
