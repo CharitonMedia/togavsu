@@ -2,7 +2,7 @@
 
 Two files are structural stand-ins and are not acceptance evidence:
 the old .doc header, and the PDF that only looks encrypted.
-The 120-page scanned PDF and the eight page photos are real fixture bytes.
+The eight photo pages paint LETTER or LEASE and PAGE n OF m in the pixels.
 """
 
 from __future__ import annotations
@@ -34,14 +34,110 @@ def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
+# 5x7 glyphs. A page is readable only when these pixels are on it.
+_FONT = {
+    " ": ["00000"] * 7,
+    "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+    "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+    "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+    "3": ["11111", "00010", "00100", "00010", "00001", "10001", "01110"],
+    "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+    "5": ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+    "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+    "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+    "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+    "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+    "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "B": ["11110", "10001", "10001", "11110", "10001", "10001", "11110"],
+    "C": ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
+    "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+    "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+    "G": ["01110", "10001", "10000", "10111", "10001", "10001", "01111"],
+    "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "I": ["01110", "00100", "00100", "00100", "00100", "00100", "01110"],
+    "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+    "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+    "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+    "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+    "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+}
+
+
+def _png_rows(width: int, height: int, rows: list[bytes]) -> bytes:
     def chunk(tag: bytes, data: bytes) -> bytes:
         return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-    row = bytes(rgb) * width
-    raw = b"".join(b"\x00" + row for _ in range(height))
+    raw = b"".join(b"\x00" + row for row in rows)
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def render_page_png(lines: list[str], scale: int = 3) -> bytes:
+    """Paint uppercase text into a PNG. Solid color is not a page."""
+    char_w = 5 * scale + scale
+    char_h = 7 * scale
+    line_gap = scale * 2
+    margin = scale * 2
+    width = margin * 2 + max(len(line) for line in lines) * char_w
+    height = margin * 2 + len(lines) * char_h + (len(lines) - 1) * line_gap
+    paper = bytes((245, 240, 230))
+    ink = bytes((20, 20, 20))
+    rows = [bytearray(paper * width) for _ in range(height)]
+    for line_index, line in enumerate(lines):
+        y0 = margin + line_index * (char_h + line_gap)
+        for char_index, char in enumerate(line):
+            x0 = margin + char_index * char_w
+            for gy, bits in enumerate(_FONT.get(char, _FONT[" "])):
+                for gx, bit in enumerate(bits):
+                    if bit != "1":
+                        continue
+                    for sy in range(scale):
+                        for sx in range(scale):
+                            px = x0 + gx * scale + sx
+                            py = y0 + gy * scale + sy
+                            rows[py][px * 3:px * 3 + 3] = ink
+    return _png_rows(width, height, [bytes(row) for row in rows])
+
+
+def png_color_count(payload: bytes) -> int:
+    pos = 8
+    width = height = 0
+    idat = b""
+    while pos + 8 <= len(payload):
+        length = struct.unpack(">I", payload[pos:pos + 4])[0]
+        tag = payload[pos + 4:pos + 8]
+        data = payload[pos + 8:pos + 8 + length]
+        if tag == b"IHDR":
+            width, height = struct.unpack(">II", data[:8])
+        elif tag == b"IDAT":
+            idat += data
+        elif tag == b"IEND":
+            break
+        pos += 12 + length
+    raw = zlib.decompress(idat)
+    colors = set()
+    stride = 1 + width * 3
+    for y in range(height):
+        row = raw[y * stride + 1:(y + 1) * stride]
+        for x in range(0, len(row), 3):
+            colors.add(row[x:x + 3])
+            if len(colors) > 1:
+                return len(colors)
+    return len(colors)
+
+
+PHOTO_PAGES = (
+    {"page": 1, "group": "letter", "lines": ["LETTER", "PAGE 1 OF 3"]},
+    {"page": 2, "group": "letter", "lines": ["LETTER", "PAGE 2 OF 3"]},
+    {"page": 3, "group": "letter", "lines": ["LETTER", "PAGE 3 OF 3"]},
+    {"page": 4, "group": "lease", "lines": ["LEASE", "PAGE 1 OF 5"]},
+    {"page": 5, "group": "lease", "lines": ["LEASE", "PAGE 2 OF 5"]},
+    {"page": 6, "group": "lease", "lines": ["LEASE", "PAGE 3 OF 5"]},
+    {"page": 7, "group": "lease", "lines": ["LEASE", "PAGE 4 OF 5"]},
+    {"page": 8, "group": "lease", "lines": ["LEASE", "PAGE 5 OF 5"]},
+)
 
 
 def _pdf(labels: list[str], mode: str, encrypt_standin: bool = False) -> bytes:
@@ -246,28 +342,19 @@ def build_files() -> tuple[dict, dict[str, bytes]]:
         note="120 image-only pages. A product run injects the failure at page 49 and resumes there.",
     )
     pages = []
-    colors = (
-        (180, 40, 40),
-        (180, 90, 40),
-        (180, 140, 40),
-        (40, 80, 180),
-        (40, 110, 180),
-        (40, 140, 180),
-        (40, 170, 180),
-        (30, 30, 140),
-    )
-    for index, color in enumerate(colors, start=1):
-        group = "letter" if index <= 3 else "lease"
-        path = f"legacy/merged-then-split/page-{index:02d}.png"
-        pages.append({"path": path, "page": index, "group": group, "color": list(color)})
+    for spec in PHOTO_PAGES:
+        path = f"legacy/merged-then-split/page-{spec['page']:02d}.png"
+        pages.append({"path": path, "page": spec["page"], "group": spec["group"], "lines": list(spec["lines"])})
         add(
             path,
-            _png(32, 48, color),
+            render_page_png(spec["lines"]),
             legacy_id="merged_then_split",
             acceptance_evidence=True,
             product_ready=True,
-            page=index,
-            group=group,
+            page=spec["page"],
+            group=spec["group"],
+            lines=list(spec["lines"]),
+            page_label=" ".join(spec["lines"]),
         )
     add(
         "legacy/merged-then-split/bad-merge.pdf",

@@ -18,7 +18,7 @@ def main(argv: list[str]) -> int:
     matrix = build_matrix()
     errors = integrity_errors(matrix, load_acceptance(), load_tasks())
     manifest, _files = build_files()
-    report = summarize(matrix, standins=frozenset())
+    report = summarize(matrix)
     print(f"task: {report['task']}")
     print(f"criteria: {report['criteria']}")
     print(f"pending: {report['pending_count']}")

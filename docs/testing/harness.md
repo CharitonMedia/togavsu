@@ -18,7 +18,7 @@ Result of the check on this branch:
 
 ```text
 python3 -m unittest discover -s tests -p 'test_*.py'
-Ran 39 tests
+Ran 46 tests
 OK
 
 python3 -m tests.harness
@@ -56,7 +56,7 @@ Run both commands again after a change and replace this block with the new outpu
 }
 ```
 
-`kind` is one of `command`, `http`, `sql`, `file_hash`, `log`, or `clean_install`. A positive case needs `outcome` `passed`. A failure case needs `outcome` `rejected`, meaning the test observed the refusal. `file_hash` must not be the SHA-256 of `legacy/old.doc` or `legacy/password.pdf`.
+`kind` is one of `command`, `http`, `sql`, `file_hash`, `log`, or `clean_install`. `command` and `observation` must be non-empty. `exit_code` must equal the case's expected exit code. A positive case needs `outcome` `passed`. A failure case needs `outcome` `rejected`, meaning the test observed the refusal. `file_hash` must not be the SHA-256 of `legacy/old.doc` or `legacy/password.pdf`. `summarize` loads that denylist itself. AC-040-P1 also refuses `doubles: true`.
 
 The Docker Desktop attestation is separate:
 

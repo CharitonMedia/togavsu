@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import tempfile
 
-from harness.corpus import LEGACY_IDS, build_files, pdf_page_numbers, write_corpus
+from harness.corpus import LEGACY_IDS, PHOTO_PAGES, build_files, pdf_page_numbers, png_color_count, render_page_png, write_corpus
 from harness.policy import byte_errors, contact_errors
 
 
@@ -37,8 +37,22 @@ class CorpusTests(unittest.TestCase):
         self.assertNotEqual([3, 5], self.manifest["wrong_split_pages"])
         photos = [item for item in self.manifest["files"] if item["path"].endswith(".png")]
         self.assertEqual(len(photos), 8)
+        self.assertEqual([item["lines"] for item in PHOTO_PAGES], [item["lines"] for item in photos])
         for item in photos:
-            self.assertTrue(self.files[item["path"]].startswith(b"\x89PNG\r\n\x1a\n"))
+            payload = self.files[item["path"]]
+            label = " ".join(item["lines"])
+            self.assertTrue(payload.startswith(b"\x89PNG\r\n\x1a\n"))
+            self.assertEqual(payload, render_page_png(item["lines"]))
+            self.assertGreater(png_color_count(payload), 1)
+            self.assertTrue(item["product_ready"])
+            self.assertTrue(item["acceptance_evidence"])
+            if item["group"] == "letter":
+                self.assertIn("LETTER", label)
+                self.assertIn("OF 3", label)
+            else:
+                self.assertIn("LEASE", label)
+                self.assertIn("OF 5", label)
+            self.assertIn(f"PAGE {item['page'] if item['page'] <= 3 else item['page'] - 3}", label)
 
     def test_old_doc_and_password_pdf_are_standins(self):
         old = next(item for item in self.manifest["files"] if item["legacy_id"] == "old_doc")

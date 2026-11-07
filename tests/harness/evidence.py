@@ -19,15 +19,31 @@ REFUSED_KINDS = frozenset({
 })
 
 
-def decide(case: dict, evidence: dict | None, standins: frozenset[str]) -> dict:
+def _nonempty(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def decide(case: dict, evidence: dict | None, standins: frozenset[str], denylist_ok: bool = True) -> dict:
     if not evidence:
         return {"status": "pending", "accepted": False, "reason": "no product evidence"}
+    if not denylist_ok:
+        return {
+            "status": "refused",
+            "accepted": False,
+            "reason": "structural stand-in denylist is unavailable",
+        }
     kind = evidence.get("kind")
     if evidence.get("mocked") is True or kind in REFUSED_KINDS or kind not in ALLOWED_KINDS:
         return {
             "status": "refused",
             "accepted": False,
             "reason": "mocks, skips, oracle passes, and scaffold output are not acceptance",
+        }
+    if case.get("rejects_doubles") and _uses_double(evidence):
+        return {
+            "status": "refused",
+            "accepted": False,
+            "reason": "in-process doubles are not acceptance",
         }
     hashes = []
     if evidence.get("file_hash"):
@@ -39,11 +55,19 @@ def decide(case: dict, evidence: dict | None, standins: frozenset[str]) -> dict:
             "accepted": False,
             "reason": "a structural stand-in hash is not product evidence",
         }
-    if "command" not in evidence or "observation" not in evidence or not isinstance(evidence.get("exit_code"), int):
+    exit_code = evidence.get("exit_code")
+    if not _nonempty(evidence.get("command")) or not _nonempty(evidence.get("observation")) or not isinstance(exit_code, int):
         return {
             "status": "refused",
             "accepted": False,
-            "reason": "evidence needs a command, an integer exit code, and an observation",
+            "reason": "evidence needs a non-empty command, a non-empty observation, and an integer exit code",
+        }
+    expected_exit = case.get("expected_exit_code", 0)
+    if exit_code != expected_exit:
+        return {
+            "status": "failed",
+            "accepted": False,
+            "reason": f"exit_code {exit_code} does not match expected {expected_exit}",
         }
     polarity = case["polarity"]
     outcome = evidence.get("outcome")
@@ -54,6 +78,11 @@ def decide(case: dict, evidence: dict | None, standins: frozenset[str]) -> dict:
     return {"status": "passed", "accepted": True, "reason": "evidence accepted for this case"}
 
 
+def _uses_double(evidence: dict) -> bool:
+    mode = str(evidence.get("backend_mode", "")).lower()
+    return evidence.get("doubles") is True or mode in {"double", "mock", "fake", "test_double"}
+
+
 def docker_desktop_ok(attestation: dict | None) -> bool:
     if not attestation:
         return False
@@ -62,15 +91,28 @@ def docker_desktop_ok(attestation: dict | None) -> bool:
         and attestation.get("host") == "docker_desktop"
         and attestation.get("outcome") == "passed"
         and attestation.get("mocked") is not True
-        and isinstance(attestation.get("exit_code"), int)
-        and bool(attestation.get("command"))
-        and bool(attestation.get("observation"))
+        and attestation.get("exit_code") == 0
+        and _nonempty(attestation.get("command"))
+        and _nonempty(attestation.get("observation"))
     )
+
+
+def _load_standins(standins: frozenset[str] | None) -> tuple[frozenset[str], bool]:
+    """None loads the corpus denylist. An empty denylist fails closed."""
+    if standins is None:
+        try:
+            from .corpus import standin_hashes
+            standins = standin_hashes()
+        except Exception:
+            return frozenset(), False
+    if not standins:
+        return frozenset(), False
+    return standins, True
 
 
 def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestation: dict | None = None, standins: frozenset[str] | None = None) -> dict:
     evidence_by_case = evidence_by_case or {}
-    standins = standins if standins is not None else frozenset()
+    standins, denylist_ok = _load_standins(standins)
     accepted = []
     pending = []
     failed = []
@@ -78,7 +120,7 @@ def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestat
     for criterion in matrix:
         case_decisions = []
         for case in criterion["positive"] + criterion["failure"]:
-            decision = decide(case, evidence_by_case.get(case["id"]), standins)
+            decision = decide(case, evidence_by_case.get(case["id"]), standins, denylist_ok=denylist_ok)
             case_decisions.append(decision)
             case_results.append({"id": case["id"], **decision})
         if case_decisions and all(item["accepted"] for item in case_decisions):

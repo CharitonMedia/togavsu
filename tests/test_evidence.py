@@ -4,7 +4,7 @@ import unittest
 
 from harness.catalog import build_matrix
 from harness.corpus import build_files, standin_hashes
-from harness.evidence import decide, summarize
+from harness.evidence import decide, docker_desktop_ok, summarize
 
 
 def _evidence(outcome, kind="command", file_hash=None, mocked=False):
@@ -62,24 +62,22 @@ class EvidenceTests(unittest.TestCase):
         self.assertFalse(report["app_complete"])
         self.assertEqual(report["product_acceptance"], "pending")
 
-    def test_full_evidence_without_docker_desktop_is_not_app_complete(self):
+    def _filled(self):
         evidence = {}
         for criterion in self.matrix:
-            for case in criterion["positive"]:
-                evidence[case["id"]] = _evidence("passed")
-            for case in criterion["failure"]:
-                evidence[case["id"]] = _evidence("rejected")
-        report = summarize(self.matrix, evidence, attestation=None, standins=self.standins)
+            for case in criterion["positive"] + criterion["failure"]:
+                outcome = "passed" if case["polarity"] == "positive" else "rejected"
+                item = _evidence(outcome)
+                item["exit_code"] = case["expected_exit_code"]
+                evidence[case["id"]] = item
+        return evidence
+
+    def test_full_evidence_without_docker_desktop_is_not_app_complete(self):
+        report = summarize(self.matrix, self._filled(), attestation=None, standins=self.standins)
         self.assertEqual(report["accepted_count"], 52)
         self.assertFalse(report["app_complete"])
 
     def test_app_complete_needs_docker_desktop_and_every_case(self):
-        evidence = {}
-        for criterion in self.matrix:
-            for case in criterion["positive"]:
-                evidence[case["id"]] = _evidence("passed")
-            for case in criterion["failure"]:
-                evidence[case["id"]] = _evidence("rejected")
         attestation = {
             "kind": "clean_install",
             "host": "docker_desktop",
@@ -88,12 +86,115 @@ class EvidenceTests(unittest.TestCase):
             "exit_code": 0,
             "observation": "first-run form on a clean Docker Desktop install",
         }
+        evidence = self._filled()
         report = summarize(self.matrix, evidence, attestation, self.standins)
         self.assertTrue(report["app_complete"])
         evidence[self.case["id"]] = _evidence("passed", kind="mock")
         refused = summarize(self.matrix, evidence, attestation, self.standins)
         self.assertFalse(refused["app_complete"])
         self.assertLess(refused["accepted_count"], 52)
+
+    def test_nonzero_exit_does_not_pass_a_successful_command(self):
+        case = self._case("AC-002-P1")
+        bad = _evidence("passed")
+        bad["exit_code"] = 1
+        decision = decide(case, bad, self.standins)
+        self.assertFalse(decision["accepted"])
+        self.assertEqual(decision["status"], "failed")
+        self.assertIn("exit_code 1", decision["reason"])
+        good = _evidence("passed")
+        good["exit_code"] = case["expected_exit_code"]
+        self.assertTrue(decide(case, good, self.standins)["accepted"])
+
+    def test_exit_code_follows_the_case_not_the_polarity(self):
+        failing_build = self._case("AC-030-P1")
+        self.assertEqual(failing_build["expected_exit_code"], 1)
+        zero = _evidence("passed")
+        zero["exit_code"] = 0
+        self.assertFalse(decide(failing_build, zero, self.standins)["accepted"])
+        one = _evidence("passed")
+        one["exit_code"] = 1
+        self.assertTrue(decide(failing_build, one, self.standins)["accepted"])
+        validator = self._case("AC-002-F1")
+        self.assertEqual(validator["expected_exit_code"], 1)
+        quiet = _evidence("rejected")
+        quiet["exit_code"] = 0
+        self.assertFalse(decide(validator, quiet, self.standins)["accepted"])
+        loud = _evidence("rejected")
+        loud["exit_code"] = 1
+        self.assertTrue(decide(validator, loud, self.standins)["accepted"])
+
+    def test_empty_command_and_observation_are_refused(self):
+        for field, value in (("command", ""), ("command", "   "), ("observation", ""), ("observation", "\n")):
+            item = _evidence("passed")
+            item[field] = value
+            decision = decide(self.case, item, self.standins)
+            self.assertEqual(decision["status"], "refused", field)
+            self.assertFalse(decision["accepted"])
+
+    def test_failed_compose_does_not_complete_the_app(self):
+        evidence = self._filled()
+        attestation = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": 1,
+            "observation": "compose failed",
+        }
+        self.assertFalse(docker_desktop_ok(attestation))
+        report = summarize(self.matrix, evidence, attestation, self.standins)
+        self.assertEqual(report["accepted_count"], 52)
+        self.assertFalse(report["app_complete"])
+        blank = dict(attestation)
+        blank["exit_code"] = 0
+        blank["observation"] = "  "
+        self.assertFalse(docker_desktop_ok(blank))
+
+    def test_summarize_loads_the_denylist_when_omitted(self):
+        standin = next(item for item in self.manifest["files"] if item["legacy_id"] == "old_doc")
+        password = next(item for item in self.manifest["files"] if item["legacy_id"] == "password_pdf")
+        evidence = {
+            self.case["id"]: _evidence("passed", file_hash=standin["sha256"]),
+            self.failure["id"]: _evidence("rejected", file_hash=password["sha256"]),
+        }
+        report = summarize(self.matrix, evidence)
+        by_id = {item["id"]: item for item in report["cases"]}
+        self.assertEqual(by_id[self.case["id"]]["status"], "refused")
+        self.assertEqual(by_id[self.failure["id"]]["status"], "refused")
+        self.assertFalse(report["app_complete"])
+        self.assertEqual(report["accepted_count"], 0)
+
+    def test_empty_denylist_fails_closed(self):
+        evidence = {self.case["id"]: _evidence("passed")}
+        report = summarize(self.matrix, evidence, standins=frozenset())
+        decision = next(item for item in report["cases"] if item["id"] == self.case["id"])
+        self.assertEqual(decision["status"], "refused")
+        self.assertIn("unavailable", decision["reason"])
+        self.assertFalse(report["app_complete"])
+
+    def test_ac040_doubles_are_not_acceptance(self):
+        case = self._case("AC-040-P1")
+        self.assertTrue(case["rejects_doubles"])
+        self.assertNotIn("test double", case["arrange"].lower())
+        item = _evidence("passed")
+        item["doubles"] = True
+        decision = decide(case, item, self.standins)
+        self.assertEqual(decision["status"], "refused")
+        self.assertIn("double", decision["reason"])
+        item = _evidence("passed")
+        item["backend_mode"] = "test_double"
+        self.assertFalse(decide(case, item, self.standins)["accepted"])
+        live = _evidence("passed")
+        live["exit_code"] = case["expected_exit_code"]
+        self.assertTrue(decide(case, live, self.standins)["accepted"])
+
+    def _case(self, case_id):
+        for criterion in self.matrix:
+            for case in criterion["positive"] + criterion["failure"]:
+                if case["id"] == case_id:
+                    return case
+        raise AssertionError(case_id)
 
 
 if __name__ == "__main__":

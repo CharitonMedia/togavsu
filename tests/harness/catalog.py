@@ -40,6 +40,8 @@ def _case(ac_id: str, polarity: str, raw: dict) -> dict:
     case["criterion"] = ac_id
     case["polarity"] = polarity
     case.pop("suffix")
+    if case.get("expected_exit_code") is None:
+        case["expected_exit_code"] = 0
     return case
 
 
@@ -107,6 +109,8 @@ def integrity_errors(matrix: list[dict], acceptance: list[dict], tasks: list[dic
                 errors.append(f"{case['id']} phase is outside the criterion")
             if case["kind"] not in CASE_KINDS:
                 errors.append(f"{case['id']} has an unknown kind")
+            if not isinstance(case.get("expected_exit_code"), int):
+                errors.append(f"{case['id']} has no expected exit code")
             for field in ("title", "arrange", "action"):
                 if not str(case.get(field, "")).strip():
                     errors.append(f"{case['id']} has an empty {field}")

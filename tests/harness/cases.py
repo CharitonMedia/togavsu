@@ -7,8 +7,8 @@ copy them, so a wording change here cannot soften a criterion.
 from __future__ import annotations
 
 
-def _c(suffix, phase, kind, title, arrange, action, expect, evidence):
-    return {
+def _c(suffix, phase, kind, title, arrange, action, expect, evidence, expected_exit_code=None, rejects_doubles=False):
+    case = {
         "suffix": suffix,
         "phase": phase,
         "kind": kind,
@@ -20,6 +20,11 @@ def _c(suffix, phase, kind, title, arrange, action, expect, evidence):
         "status": "pending",
         "mocks_accepted": False,
     }
+    if expected_exit_code is not None:
+        case["expected_exit_code"] = expected_exit_code
+    if rejects_doubles:
+        case["rejects_doubles"] = True
+    return case
 
 
 _EVIDENCE = "Command, integer exit code, and the observation named above. A mock, a skip, an oracle pass, or a structural stand-in hash is refused."
@@ -78,7 +83,8 @@ SPECS = {
                "A copy of the spec with a broken schema.",
                "Run the same validator.",
                ["The validator exits non-zero."],
-               _EVIDENCE),
+               _EVIDENCE,
+               expected_exit_code=1),
             _c("F2", 7, "e2e", "Feature missing on one surface",
                "Synthetic firm.",
                "Compare the core feature list to /api/v1 and /mcp.",
@@ -1124,7 +1130,8 @@ SPECS = {
                 "The bootstrap env read does not.",
                 "The unknown tunable fails the build.",
                 "The registered tunable does not."],
-               "Product CI log. The harness scanner in tests/harness/oracles.py is the rule, and its own unit test is not this evidence."),
+               "Product CI log. The harness scanner in tests/harness/oracles.py is the rule, and its own unit test is not this evidence.",
+               expected_exit_code=1),
             _c("P2", 7, "integration", "Release build passes the check",
                "The release tag's source tree.",
                "Run the same CI check.",
@@ -1136,12 +1143,14 @@ SPECS = {
                "A core Go file outside internal/bootstrap that calls os.Getenv.",
                "Run the CI check.",
                ["The build fails."],
-               _EVIDENCE),
+               _EVIDENCE,
+               expected_exit_code=1),
             _c("F2", 7, "integration", "Release build fails the check",
                "A release candidate that reads an env var outside bootstrap.",
                "Run the CI check.",
-               ["A green release with that read fails the criterion."],
-               _EVIDENCE),
+               ["The CI check exits non-zero. A green release with that read fails the criterion."],
+               _EVIDENCE,
+               expected_exit_code=1),
         ],
     },
     "AC-031": {
@@ -1201,7 +1210,8 @@ SPECS = {
                "Fixture route with no guide id.",
                "Run the guide CI check.",
                ["The build has to fail."],
-               _EVIDENCE),
+               _EVIDENCE,
+               expected_exit_code=1),
             _c("F2", 7, "e2e", "A role tutorial is missing",
                "/help for the four staff roles.",
                "Open each tutorial.",
@@ -1478,15 +1488,17 @@ SPECS = {
         "recheck_phases": [],
         "extra_dependencies": ["platform"],
         "legacy_failures": [],
-        "note": "Move local disk to S3-compatible storage, then to Dropbox. Files stay readable, every SHA-256 is checked, and old copies go only after the admin confirms. A changed byte fails the read and emails admins. Restore brings back every backend.",
+        "note": "Move local disk to S3-compatible storage, then to Dropbox. Files stay readable, every SHA-256 is checked, and old copies go only after the admin confirms. A changed byte fails the read and emails admins. Restore brings back every backend. AC-040-P1 needs disposable synthetic endpoints. In-process doubles are not acceptance, including when the adapter calls into the double.",
         "positive": [
             _c("P1", 4, "e2e", "Move across backends and delete only after confirm",
-               "Synthetic files on local disk. S3-compatible backend and Dropbox backend, both test doubles with real adapter calls.",
-               "Move all files to S3-compatible storage, read them during the move, then move them to Dropbox.",
+               "Synthetic files on local disk. A disposable S3-compatible endpoint and a disposable Dropbox endpoint, started for this run, holding only synthetic objects.",
+               "Move all files to the S3-compatible endpoint, read them during the move, then move them to the Dropbox endpoint.",
                ["Every file is readable during both moves.",
                 "Every version SHA-256 matches on the new backend.",
-                "Old copies remain until the admin confirms, then they are deleted."],
-               _EVIDENCE),
+                "Old copies remain until the admin confirms, then they are deleted.",
+                "The evidence names both live endpoints."],
+               _EVIDENCE + " An in-process double is refused.",
+               rejects_doubles=True),
             _c("P2", 7, "e2e", "Restore returns files from every backend",
                "Backup taken while files sit on more than one backend.",
                "Restore it.",
@@ -1673,10 +1685,10 @@ SPECS = {
         "recheck_phases": [7],
         "extra_dependencies": [],
         "legacy_failures": ["merged_then_split"],
-        "note": "Eight photos: a three-page letter and a five-page lease. The pass is two PDFs and two Markdown copies, pages in order. The corpus bad-merge and bad-split files are the old wrong outputs, not a pass.",
+        "note": "Eight photos: a three-page letter and a five-page lease. Each photo paints LETTER or LEASE and PAGE n OF m. The pass is two PDFs and two Markdown copies, pages in order. The corpus bad-merge and bad-split files are the old wrong outputs, not a pass.",
         "positive": [
             _c("P1", 4, "e2e", "Eight photos become two documents in order",
-               "legacy/merged-then-split/page-01.png through page-08.png uploaded together. Quiet time elapsed.",
+               "legacy/merged-then-split/page-01.png through page-08.png uploaded together. Pages 1-3 read LETTER PAGE n OF 3. Pages 4-8 read LEASE PAGE n OF 5. Quiet time elapsed.",
                "Run grouping.",
                ["Two PDFs and two Markdown copies.",
                 "The letter PDF has pages 1, 2, 3 in that order.",

@@ -67,10 +67,11 @@ def render_markdown(matrix: list[dict]) -> str:
 def _case_lines(case: dict) -> list[str]:
     expect = "; ".join(case["expect"])
     evidence = "; ".join(case["evidence"])
+    doubles = " In-process doubles are refused." if case.get("rejects_doubles") else ""
     return [
         f"#### {case['id']} {case['title']}",
         "",
-        f"Phase {case['phase']}. Kind: {case['kind']}. Status: {case['status']}.",
+        f"Phase {case['phase']}. Kind: {case['kind']}. Status: {case['status']}. Expected exit code: {case['expected_exit_code']}.{doubles}",
         "",
         f"Arrange: {case['arrange']}",
         "",

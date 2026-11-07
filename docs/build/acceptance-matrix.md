@@ -84,7 +84,7 @@ Phase 1 is one Compose up to the first-run form. Phase 7 runs that same check on
 
 #### AC-001-P1 First-run setup in one Compose up
 
-Phase 1. Kind: e2e. Status: pending.
+Phase 1. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Empty synthetic volume. No hand-edited env file and no client data.
 
@@ -98,7 +98,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-001-F1 Setup that needs a hand edit
 
-Phase 1. Kind: e2e. Status: pending.
+Phase 1. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: A stack whose documented start step edits a config file or env file by hand.
 
@@ -110,7 +110,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-001-F2 First admin without two-factor
 
-Phase 1. Kind: e2e. Status: pending.
+Phase 1. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic firm name and admin account.
 
@@ -139,7 +139,7 @@ Phase 1 checks that the published OpenAPI 3.1 document validates. The whole sent
 
 #### AC-002-P1 OpenAPI document validates
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: The api task's OpenAPI 3.1 document, synthetic server not required.
 
@@ -151,7 +151,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-002-P2 Every core feature on both surfaces
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic firm with one row for each core feature.
 
@@ -165,7 +165,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-002-F1 Invalid OpenAPI fails the validator
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 1.
 
 Arrange: A copy of the spec with a broken schema.
 
@@ -177,7 +177,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-002-F2 Feature missing on one surface
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic firm.
 
@@ -189,7 +189,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-002-F3 UI handler with no API
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic firm.
 
@@ -218,7 +218,7 @@ A wall names the users who keep the matter. Everyone else loses it, including an
 
 #### AC-003-P1 Walled matter absent from the API
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic matter walled to one attorney. Staff user is not named.
 
@@ -230,7 +230,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-P2 Walled matter absent from the matter list
 
-Phase 2. Kind: security. Status: pending.
+Phase 2. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Same wall and staff user.
 
@@ -242,7 +242,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-P3 Walled matter absent from billing and trust reports
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Walled matter with a synthetic invoice and trust balance.
 
@@ -254,7 +254,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-P4 Walled matter absent from search and widgets
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Same wall. Staff user.
 
@@ -266,7 +266,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-P5 Walled matter absent from module include rows
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module row pointing at the walled matter. Staff user outside the wall.
 
@@ -280,7 +280,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-F1 Any of the five surfaces leaks the matter
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Staff user outside the wall.
 
@@ -292,7 +292,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-F2 Unnamed admin still loses the matter
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Wall names one attorney. Admin user is not on it.
 
@@ -304,7 +304,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-003-F3 Module row leaks a walled matter
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Staff user outside the wall.
 
@@ -333,7 +333,7 @@ Accountant reads are invoices, payments, trust ledgers, reconciliations, billing
 
 #### AC-004-P1 Accountant reads billing and trust
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic invoices, payments, trust ledger, reconciliation, and billing report.
 
@@ -345,7 +345,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-P2 Accountant reads a receipt and an invoice PDF
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: One receipt file and one invoice PDF on a synthetic matter.
 
@@ -359,7 +359,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F1 Access policy denies an accountant write
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Accountant principal.
 
@@ -371,7 +371,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F2 Accountant cannot read notes
 
-Phase 2. Kind: security. Status: pending.
+Phase 2. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic note.
 
@@ -383,7 +383,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F3 Accountant writes to billing or trust
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic invoice and trust ledger.
 
@@ -395,7 +395,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F4 Accountant reads a file that is not a receipt or invoice PDF
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic correspondence file.
 
@@ -407,7 +407,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F5 Accountant UI post is denied
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Accountant session.
 
@@ -419,7 +419,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F6 Accountant module token cannot write
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Token scoped as the accountant.
 
@@ -431,7 +431,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-004-F7 Accountant MCP write is denied
 
-Phase 7. Kind: security. Status: pending.
+Phase 7. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Accountant bearer token.
 
@@ -460,7 +460,7 @@ A below-zero withdrawal posts. It raises a flag and emails every admin and the r
 
 #### AC-005-P1 Below-zero withdrawal posts, flags, and emails
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic client balance 100 cents. Withdrawal 250 cents. Two admins and one responsible attorney.
 
@@ -474,7 +474,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-005-F1 Blocked below-zero withdrawal
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Same balances.
 
@@ -486,7 +486,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-005-F2 Email misses an admin or the attorney
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Two admins and one responsible attorney.
 
@@ -498,7 +498,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-005-F3 No flag after a negative balance
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Withdrawal that crosses zero.
 
@@ -527,7 +527,7 @@ No path may edit or delete a ledger row. A reversal is a new row. The original r
 
 #### AC-006-P1 Reversal appends and leaves the original
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: One posted synthetic deposit.
 
@@ -541,7 +541,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-006-F1 API edit or delete
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Posted ledger row.
 
@@ -553,7 +553,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-006-F2 MCP edit or delete
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Posted ledger row.
 
@@ -565,7 +565,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-006-F3 UI edit or delete
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Posted ledger row.
 
@@ -594,7 +594,7 @@ Seeded books tie out to the cent. An off statement shows that same cent differen
 
 #### AC-007-P1 Seeded reconciliation ties
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic ledger whose client balances sum to the account total. Statement uses that total.
 
@@ -606,7 +606,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-007-P2 Off statement shows the difference
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Same books. Statement is 125 cents higher.
 
@@ -620,7 +620,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-007-F1 Nonzero books shown as zero
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Statement off by 125 cents.
 
@@ -632,7 +632,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-007-F2 Wrong cents or wrong sign
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Statement 125 cents lower than the ledger.
 
@@ -661,7 +661,7 @@ Draft from unbilled time, attorney approves, system mail sends, payment applies,
 
 #### AC-008-P1 Draft, approve, send, pay, void
 
-Phase 3. Kind: e2e. Status: pending.
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic unbilled time on an open matter. System mail catches the message.
 
@@ -675,7 +675,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-008-F1 Void leaves time billed
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Approved synthetic invoice.
 
@@ -687,7 +687,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-008-F2 Send skips system mail
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Approved invoice.
 
@@ -699,7 +699,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-008-F3 Staff approves an invoice
 
-Phase 3. Kind: security. Status: pending.
+Phase 3. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Draft invoice. Staff user.
 
@@ -728,7 +728,7 @@ Unpaid invoices and leftover trust warn. Neither one blocks the close.
 
 #### AC-009-P1 Close records a warning acknowledgement
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic open matter.
 
@@ -740,7 +740,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-009-P2 Unpaid invoice warns and still closes
 
-Phase 3. Kind: e2e. Status: pending.
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Open matter with an unpaid synthetic invoice.
 
@@ -752,7 +752,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-009-P3 Leftover trust warns and still closes
 
-Phase 3. Kind: e2e. Status: pending.
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Open matter with a nonzero synthetic trust balance and no invoice.
 
@@ -766,7 +766,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-009-F1 Close blocked by an unpaid invoice or trust balance
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Matter with an unpaid invoice, and a second matter with leftover trust.
 
@@ -778,7 +778,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-009-F2 Close with no warning
 
-Phase 3. Kind: e2e. Status: pending.
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Unpaid invoice.
 
@@ -807,7 +807,7 @@ Ten saved layouts is the cap. Reset offers the user's default first and restores
 
 #### AC-010-P1 Named default survives reset
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic user with a custom grid.
 
@@ -819,7 +819,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-010-P2 Role default stays available
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin-set role default and a different user default.
 
@@ -833,7 +833,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-010-F1 Eleventh saved layout
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: User who already has 10 saved layouts.
 
@@ -845,7 +845,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-010-F2 Another user's layout
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Two synthetic users.
 
@@ -857,7 +857,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-010-F3 Restore that moves a widget
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Saved layout with known coordinates.
 
@@ -886,7 +886,7 @@ The deadlines widget keeps its date range. A walled matter is not reachable from
 
 #### AC-011-P1 Deadline record opens
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic deadline inside a date range.
 
@@ -898,7 +898,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-011-P2 Widget keeps the date range and opens one deadline
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Upcoming-deadlines widget filtered to a known range. One deadline in range.
 
@@ -910,7 +910,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-011-P3 Sample widget opens its manifest tab
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed sample module whose widget names one of its tabs.
 
@@ -924,7 +924,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-011-F1 Staff click on a walled deadline
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Deadline on a matter the staff user cannot see.
 
@@ -936,7 +936,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-011-F2 Widget with no click-through target
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Module manifest whose widget omits the target.
 
@@ -965,7 +965,7 @@ Matter Clock installs from a local file, shows its permission prompt, widget, an
 
 #### AC-012-P1 Install, event, uninstall, no restart
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Signed sample module package on local disk. Record the core process start time.
 
@@ -979,7 +979,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-012-F1 Install restarts the core
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Sample package.
 
@@ -991,7 +991,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-012-F2 Install with no permission prompt
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Package that requests scopes.
 
@@ -1003,7 +1003,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-012-F3 Event delivered after uninstall
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Module just uninstalled.
 
@@ -1032,7 +1032,7 @@ Unsigned and tampered packages are refused before a container starts. A trusted 
 
 #### AC-013-P1 Trusted local signature installs
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Sample package signed by a key the admin marked trusted.
 
@@ -1046,7 +1046,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-013-F1 Unsigned package
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Sample package with the signature removed.
 
@@ -1058,7 +1058,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-013-F2 Tampered package
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Signed package with one byte changed after signing.
 
@@ -1087,7 +1087,7 @@ Switching calendar to a module moves screens and API to that module and leaves c
 
 #### AC-014-P1 Module takes calendar screens and API
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic module that replaces calendar. Core calendar rows already exist.
 
@@ -1099,7 +1099,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-014-P2 Switching back restores the core
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Calendar currently served by the module.
 
@@ -1113,7 +1113,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-014-F1 Core write while the module is selected
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Module selected for calendar.
 
@@ -1125,7 +1125,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-014-F2 Module receives calendar calls after switch back
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Calendar switched back to the core.
 
@@ -1154,7 +1154,7 @@ A flag warns. It does not remove the listing. A pull blocks marketplace install 
 
 #### AC-015-P1 Flagged listing shows the warning
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic marketplace listing flagged with a short note.
 
@@ -1166,7 +1166,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-015-P2 Installed firms are alerted
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Two synthetic firms with the module installed. The listing is flagged.
 
@@ -1178,7 +1178,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-015-P3 Pulled module still installs from a local file
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Pulled module package on disk, signed with a trusted local key.
 
@@ -1192,7 +1192,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-015-F1 Marketplace install of a pulled module
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Pulled listing.
 
@@ -1204,7 +1204,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-015-F2 Flag hides the listing
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Flagged listing that was not pulled.
 
@@ -1233,7 +1233,7 @@ The load test runs during a signed swap. A bad signature or a failed health chec
 
 #### AC-016-P1 Signed swap under load drops no requests
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic stack on the old signed image. Load against page and API routes.
 
@@ -1247,7 +1247,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-016-F1 Bad signature
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Running signed version. Candidate image with a bad signature.
 
@@ -1259,7 +1259,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-016-F2 Failed health check
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Candidate whose signature is valid and whose health check fails after migration.
 
@@ -1288,7 +1288,7 @@ The seed is 50 users, 20,000 matters, and 1,000,000 time entries. p95 for pages 
 
 #### AC-017-P1 p95 under 300 ms on the full seed
 
-Phase 7. Kind: performance. Status: pending.
+Phase 7. Kind: performance. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic seed of at least 50 users, 20,000 matters, and 1,000,000 time entries.
 
@@ -1302,7 +1302,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-017-F1 p95 at 300 ms or more
 
-Phase 7. Kind: performance. Status: pending.
+Phase 7. Kind: performance. Status: pending. Expected exit code: 0.
 
 Arrange: Full seed.
 
@@ -1314,7 +1314,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-017-F2 Smaller seed
 
-Phase 7. Kind: performance. Status: pending.
+Phase 7. Kind: performance. Status: pending. Expected exit code: 0.
 
 Arrange: Seed below any one of the three counts. p95 under 300 ms.
 
@@ -1343,7 +1343,7 @@ Phase 1 is the audit row on every write. Phase 7 is download, the S3-compatible 
 
 #### AC-018-P1 Every write has actor and source
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic writes from the UI, from an API token, and from a module id.
 
@@ -1355,7 +1355,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-018-P2 Backup download and both copies
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin session. S3-compatible destination and a network path, both synthetic.
 
@@ -1367,7 +1367,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-018-P3 Restore matches record counts
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Backup of a known synthetic database.
 
@@ -1381,7 +1381,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-018-F1 Write with no audit row
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: One synthetic write.
 
@@ -1393,7 +1393,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-018-F2 Restore count mismatch
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Backup with known counts.
 
@@ -1405,7 +1405,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-018-F3 Destination copy missing
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: S3-compatible destination and a network path configured.
 
@@ -1434,7 +1434,7 @@ Sidebar entries follow the role and the installed modules. Counts are live. Coll
 
 #### AC-019-P1 Role entries and live counts
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic staff user and an admin. Known matter and draft-invoice counts.
 
@@ -1446,7 +1446,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-019-P2 Collapse follows the user
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: User collapses a subgroup and the sidebar.
 
@@ -1458,7 +1458,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-019-P3 Installed module entry
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module installed with a sidebar entry.
 
@@ -1472,7 +1472,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-019-F1 Staff sees an admin entry
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Staff user.
 
@@ -1484,7 +1484,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-019-F2 Count includes a walled matter
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Staff user outside a wall. One active matter behind the wall.
 
@@ -1496,7 +1496,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-019-F3 Module entry without the module
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module not installed.
 
@@ -1525,7 +1525,7 @@ Matter number, E.164 phone, and invoice number hit their own scope and All. A wa
 
 #### AC-020-P1 Matter number in the matters scope
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic matter 2026-0001.
 
@@ -1537,7 +1537,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-020-P2 Phone in the people scope
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic person with phone +15555550100.
 
@@ -1549,7 +1549,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-020-P3 Invoice number in the invoices scope
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic invoice with a known number.
 
@@ -1561,7 +1561,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-020-P4 All scope returns each hit
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The same matter, person, and invoice.
 
@@ -1575,7 +1575,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-020-F1 Walled matter, person, and invoice
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Staff user outside the wall. The matter, a party phone, and an invoice sit on that matter.
 
@@ -1587,7 +1587,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-020-F2 Staff search returns an attorney-only value
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Contact with an encrypted SSN. Staff user.
 
@@ -1616,7 +1616,7 @@ The new trust flag raises the responsible attorney's unread count. Mark all read
 
 #### AC-021-P1 Flag names the responsible attorney
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic trust flag on a matter with a responsible attorney.
 
@@ -1628,7 +1628,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-021-P2 Count goes up, then Mark all read clears it
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Responsible attorney with a known unread count.
 
@@ -1642,7 +1642,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-021-F1 Another attorney's count moves
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Two attorneys. The flag belongs to one matter.
 
@@ -1654,7 +1654,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-021-F2 Mark all read leaves the flag unread
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Attorney with the new flag notification.
 
@@ -1683,7 +1683,7 @@ HTML and the firm's help items are phase 5. The PDF has to be the guide for the 
 
 #### AC-022-P1 HTML guide and a firm help item
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Staff session. Admin adds a synthetic help item from the dashboard.
 
@@ -1695,7 +1695,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-022-P2 PDF guide for the running version
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Running image version recorded.
 
@@ -1709,7 +1709,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-022-F1 Client user on /help/guide
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Client session.
 
@@ -1721,7 +1721,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-022-F2 Guide from another version
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Running version known.
 
@@ -1750,7 +1750,7 @@ Reopen needs a reason, returns the pre-close status, and shows on the timeline. 
 
 #### AC-023-P1 Reopen restores the earlier status
 
-Phase 2. Kind: e2e. Status: pending.
+Phase 2. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Matter that was open, then closed. Synthetic reason.
 
@@ -1762,7 +1762,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-023-P2 Zero-fee matter stays out of AR aging
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic zero-fee matter with the marker, and one ordinary unpaid invoice on another matter.
 
@@ -1776,7 +1776,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-023-F1 Reopen with a blank reason
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Closed matter.
 
@@ -1788,7 +1788,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-023-F2 Zero-fee matter in AR aging
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Zero-fee matter.
 
@@ -1817,7 +1817,7 @@ The history card shows every matter change with old and new values. Staff see at
 
 #### AC-024-P1 History has old and new values
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic matter. Change a plain field twice.
 
@@ -1829,7 +1829,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-024-P2 Edit history card shows those rows
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Same matter.
 
@@ -1843,7 +1843,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-024-F1 Staff service read of an attorney-only value
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Matter change that touches a conflict reason.
 
@@ -1855,7 +1855,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-024-F2 Staff card shows the secret
 
-Phase 5. Kind: security. Status: pending.
+Phase 5. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Same history.
 
@@ -1867,7 +1867,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-024-F3 A change missing from the card
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Known set of matter changes.
 
@@ -1896,7 +1896,7 @@ A custom field limited to one practice area shows only there, saves from the UI 
 
 #### AC-025-P1 API save and practice-area limit
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Field limited to the synthetic probate area. One probate matter and one criminal matter.
 
@@ -1908,7 +1908,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-025-P2 UI save
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Same field and probate matter.
 
@@ -1920,7 +1920,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-025-P3 CSV export includes the field
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Probate matter with the value set.
 
@@ -1934,7 +1934,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-025-F1 Field appears on the wrong practice area
 
-Phase 2. Kind: integration. Status: pending.
+Phase 2. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Criminal matter.
 
@@ -1946,7 +1946,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-025-F2 CSV omits the field
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Saved value on the right practice area.
 
@@ -1975,7 +1975,7 @@ Flat fee sitting in trust shows Ready to apply. Apply posts the trust transfer a
 
 #### AC-026-P1 Ready to apply, then Collected
 
-Phase 3. Kind: e2e. Status: pending.
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Flat-fee matter whose full fee is in trust for that client.
 
@@ -1989,7 +1989,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-026-F1 Collected without the trust transfer
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Ready row.
 
@@ -2001,7 +2001,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-026-F2 Hourly matter shows Ready to apply
 
-Phase 3. Kind: integration. Status: pending.
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Hourly matter with unbilled time and trust funds.
 
@@ -2030,7 +2030,7 @@ List days with no court date, block, or all-day event, in pleading form and lett
 
 #### AC-027-P1 Busy days drop out
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A date range with one court date, one block, one all-day event, and one one-hour client meeting.
 
@@ -2042,7 +2042,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-027-P2 Pleading form and letter form
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The same free days. Synthetic matter caption.
 
@@ -2054,7 +2054,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-027-P3 Half-day mode
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: One morning court date and an otherwise empty day.
 
@@ -2068,7 +2068,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-027-F1 Listing changes the calendar
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Known calendar row count.
 
@@ -2080,7 +2080,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-027-F2 A blocked day is listed
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A block on a date inside the range.
 
@@ -2109,7 +2109,7 @@ Status: pending.
 
 #### AC-028-P1 llms.txt without sign-in holds no firm records
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Seeded synthetic matter and contact. No session cookie.
 
@@ -2121,7 +2121,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-028-P2 Appearance change on the next load
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Record the core process start time. Change one appearance setting.
 
@@ -2133,7 +2133,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-028-P3 Module AI call uses the settings key
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: AI settings hold a synthetic test key. Sample module asks for a call.
 
@@ -2147,7 +2147,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-028-F1 llms.txt contains a seeded record
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Seeded matter number 2026-0001.
 
@@ -2159,7 +2159,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-028-F2 Module can see the key
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic test key.
 
@@ -2171,7 +2171,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-028-F3 Appearance change needs a restart
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Changed appearance setting.
 
@@ -2200,7 +2200,7 @@ The harness inventory in tests/harness/defaults.py is the list of named defaults
 
 #### AC-029-P1 Registry holds every named default
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Fresh database.
 
@@ -2212,7 +2212,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-P2 Change applies on the next request
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Record the process start time. Pick one inventoried setting.
 
@@ -2224,7 +2224,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-P3 Reset to default
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: A setting changed away from its default.
 
@@ -2238,7 +2238,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-F1 A named default is missing
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Registry dump.
 
@@ -2250,7 +2250,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-F2 Change requires a restart
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Changed setting.
 
@@ -2262,7 +2262,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-F3 Reset leaves the changed value
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Changed setting.
 
@@ -2274,7 +2274,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-029-F4 A fixed rule is exposed as a switch
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Admin settings page.
 
@@ -2303,7 +2303,7 @@ The product CI fails a core env read outside bootstrap and a tunable that is not
 
 #### AC-030-P1 Checker flags the bad fixture and allows bootstrap
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 1.
 
 Arrange: Temp tree: os.Getenv in internal/billing, os.Getenv in internal/bootstrap, settings.Get of an unknown key, settings.Get of a registered key.
 
@@ -2315,7 +2315,7 @@ Evidence: Product CI log. The harness scanner in tests/harness/oracles.py is the
 
 #### AC-030-P2 Release build passes the check
 
-Phase 7. Kind: integration. Status: pending.
+Phase 7. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: The release tag's source tree.
 
@@ -2329,7 +2329,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-030-F1 Core env read outside bootstrap
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 1.
 
 Arrange: A core Go file outside internal/bootstrap that calls os.Getenv.
 
@@ -2341,13 +2341,13 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-030-F2 Release build fails the check
 
-Phase 7. Kind: integration. Status: pending.
+Phase 7. Kind: integration. Status: pending. Expected exit code: 1.
 
 Arrange: A release candidate that reads an env var outside bootstrap.
 
 Action: Run the CI check.
 
-Expect: A green release with that read fails the criterion.
+Expect: The CI check exits non-zero. A green release with that read fails the criterion.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -2370,7 +2370,7 @@ When the primary provider does not answer, the call uses the secondary. The call
 
 #### AC-031-P1 Fallback logs both providers
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Primary provider unreachable. Secondary answers. Module AI call.
 
@@ -2384,7 +2384,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-031-F1 Log shows only the secondary
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Primary unreachable.
 
@@ -2396,7 +2396,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-031-F2 No secondary attempt
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Primary unreachable. Secondary configured.
 
@@ -2425,7 +2425,7 @@ Every screen and every admin tab has a ? topic that says what it does and where 
 
 #### AC-032-P1 Screens and admin tabs open a topic
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Route table and admin tabs for the phase 5 UI.
 
@@ -2437,7 +2437,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-032-P2 Module screen has a topic
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed sample module widget and tab.
 
@@ -2449,7 +2449,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-032-P3 Role tutorials from /help
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Staff session for each of admin, attorney, staff, and accountant.
 
@@ -2463,7 +2463,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-032-F1 CI passes a screen with no topic
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 1.
 
 Arrange: Fixture route with no guide id.
 
@@ -2475,7 +2475,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-032-F2 A role tutorial is missing
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: /help for the four staff roles.
 
@@ -2487,7 +2487,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-032-F3 Topic omits where the screen lives
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: A screen whose topic has no menu path.
 
@@ -2516,7 +2516,7 @@ The sample guide shows under its own heading, in search, and from the widget ? i
 
 #### AC-033-P1 Guide appears on install
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module not installed. Record the core start time.
 
@@ -2528,7 +2528,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-033-P2 Update refreshes the guide
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed sample guide with known body text.
 
@@ -2540,7 +2540,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-033-P3 Uninstall removes the guide
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed sample guide.
 
@@ -2554,7 +2554,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-033-F1 Guide still searchable after uninstall
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Just uninstalled.
 
@@ -2566,7 +2566,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-033-F2 Stale guide after update
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Updated package with new text.
 
@@ -2595,7 +2595,7 @@ Every phase report includes the simplification net line count and the debt ledge
 
 #### AC-034-P1 Seven phase reports and the ledger
 
-Phase 7. Kind: integration. Status: pending.
+Phase 7. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Released tree with docs/build/reports/phase-1.md through phase-7.md and PONYTAIL-DEBT.md.
 
@@ -2609,7 +2609,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-034-F1 Report missing the ledger count
 
-Phase 7. Kind: integration. Status: pending.
+Phase 7. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A phase report with a line count and no debt ledger count.
 
@@ -2621,7 +2621,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-034-F2 Marker with no upgrade trigger
 
-Phase 7. Kind: integration. Status: pending.
+Phase 7. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: PONYTAIL-DEBT.md with a ponytail line that has no trigger.
 
@@ -2650,7 +2650,7 @@ The record list is tests/harness/records.py. Records added after section 5 do no
 
 #### AC-035-P1 Every section 5 record exists
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Fresh install, no seed.
 
@@ -2662,7 +2662,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-035-P2 Seed fills each record
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Fresh install plus the synthetic seed.
 
@@ -2676,7 +2676,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-035-F1 Missing section 5 record
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Fresh schema.
 
@@ -2688,7 +2688,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-035-F2 Seed leaves a record empty
 
-Phase 1. Kind: integration. Status: pending.
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Seed run.
 
@@ -2700,7 +2700,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-035-F3 Seed row fails the synthetic policy
 
-Phase 1. Kind: security. Status: pending.
+Phase 1. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: A seeded contact.
 
@@ -2729,7 +2729,7 @@ matter_targets lives in the sample module schema and points at matters. include=
 
 #### AC-036-P1 Migration creates matter_targets
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module package.
 
@@ -2741,7 +2741,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-036-P2 Matter screen include= shows the target
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic matter with a target row. User who can see the matter.
 
@@ -2753,7 +2753,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-036-P3 Second module reads the view after approval
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Second module whose install requests the published view scope.
 
@@ -2767,7 +2767,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-036-F1 Module login reads core contacts
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Sample module database login.
 
@@ -2779,7 +2779,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-036-F2 Staff outside the wall gets module rows
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Target row on a walled matter. Staff user not named.
 
@@ -2791,7 +2791,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-036-F3 Second module reads the view before approval
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Scope not approved.
 
@@ -2820,7 +2820,7 @@ A migration that creates a contacts table, writes outside its schema, or adds a 
 
 #### AC-037-P1 Legal migration installs
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Package whose only migration creates matter_targets in its own schema.
 
@@ -2834,7 +2834,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-037-F1 Migration creates a contacts table
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Package migration with CREATE TABLE contacts.
 
@@ -2846,7 +2846,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-037-F2 Migration writes outside its schema
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Migration with a statement aimed at the core schema.
 
@@ -2858,7 +2858,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-037-F3 Migration adds a trigger
 
-Phase 6. Kind: security. Status: pending.
+Phase 6. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Migration with CREATE TRIGGER.
 
@@ -2870,7 +2870,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-037-F4 Changed migration that already ran
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Installed module. The applied migration file's checksum changes.
 
@@ -2882,7 +2882,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-037-F5 Failing migration rolls back
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Update whose new migration fails.
 
@@ -2911,7 +2911,7 @@ Delete data drops the schema only after a backup and the typed confirmation. A c
 
 #### AC-038-P1 Delete data after backup and typed confirmation
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed sample module with a schema. Admin types the confirmation.
 
@@ -2925,7 +2925,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-038-F1 Delete data with no backup
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Installed module. Backup step suppressed.
 
@@ -2937,7 +2937,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-038-F2 Wrong typed confirmation
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Backup available. Confirmation text does not match.
 
@@ -2949,7 +2949,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-038-F3 Hard delete of a referenced core record
 
-Phase 6. Kind: integration. Status: pending.
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: matter_targets row pointing at a matter.
 
@@ -2978,7 +2978,7 @@ A 1 GB upload resumes after a dropped connection and the SHA-256 matches. A wall
 
 #### AC-039-P1 Resumed 1 GB upload matches SHA-256
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic 1 GB payload with a known SHA-256. Connection drops mid-upload.
 
@@ -2990,7 +2990,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-039-P2 Save adds a version and the old bytes stay
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: File with version 1 bytes recorded.
 
@@ -3004,7 +3004,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-039-F1 Walled file is visible outside the wall
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: File on a walled matter. Staff user not named.
 
@@ -3016,7 +3016,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-039-F2 A version's bytes change
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Stored version hash.
 
@@ -3039,25 +3039,25 @@ Pending dependencies: files, platform.
 Legacy Doc Tender failures: none.
 Status: pending.
 
-Move local disk to S3-compatible storage, then to Dropbox. Files stay readable, every SHA-256 is checked, and old copies go only after the admin confirms. A changed byte fails the read and emails admins. Restore brings back every backend.
+Move local disk to S3-compatible storage, then to Dropbox. Files stay readable, every SHA-256 is checked, and old copies go only after the admin confirms. A changed byte fails the read and emails admins. Restore brings back every backend. AC-040-P1 needs disposable synthetic endpoints. In-process doubles are not acceptance, including when the adapter calls into the double.
 
 ### Positive
 
 #### AC-040-P1 Move across backends and delete only after confirm
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0. In-process doubles are refused.
 
-Arrange: Synthetic files on local disk. S3-compatible backend and Dropbox backend, both test doubles with real adapter calls.
+Arrange: Synthetic files on local disk. A disposable S3-compatible endpoint and a disposable Dropbox endpoint, started for this run, holding only synthetic objects.
 
-Action: Move all files to S3-compatible storage, read them during the move, then move them to Dropbox.
+Action: Move all files to the S3-compatible endpoint, read them during the move, then move them to the Dropbox endpoint.
 
-Expect: Every file is readable during both moves.; Every version SHA-256 matches on the new backend.; Old copies remain until the admin confirms, then they are deleted.
+Expect: Every file is readable during both moves.; Every version SHA-256 matches on the new backend.; Old copies remain until the admin confirms, then they are deleted.; The evidence names both live endpoints.
 
-Evidence: Command, integer exit code, and the observation named above. A mock, a skip, an oracle pass, or a structural stand-in hash is refused.
+Evidence: Command, integer exit code, and the observation named above. A mock, a skip, an oracle pass, or a structural stand-in hash is refused. An in-process double is refused.
 
 #### AC-040-P2 Restore returns files from every backend
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Backup taken while files sit on more than one backend.
 
@@ -3071,7 +3071,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-040-F1 Changed byte on a backend
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: One stored object with a flipped byte.
 
@@ -3083,7 +3083,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-040-F2 Old copies deleted before confirm
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Move checked out, admin has not confirmed.
 
@@ -3112,7 +3112,7 @@ LawCraft commit 770a8fab12392485c0c2789fb254da7d9296df4d. A DOCX round-trips thr
 
 #### AC-041-P1 DOCX saves a version and opens in Word
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic DOCX on a matter.
 
@@ -3124,7 +3124,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-P2 Lock shows, then frees at 5 minutes
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: User A holds the edit lock and closes without saving. User B opens the file.
 
@@ -3136,7 +3136,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-P3 New Pleading fills the caption
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic matter with court, county, case number, and parties.
 
@@ -3148,7 +3148,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-P4 Document editor tab shows the pinned commit
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin session.
 
@@ -3162,7 +3162,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-F1 Lock still held after 5 minutes
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Editor closed without a save and without a renewal.
 
@@ -3174,7 +3174,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-F2 Wrong commit on the tab
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Document editor tab.
 
@@ -3186,7 +3186,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-041-F3 Word repair prompt
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Version saved by the editor.
 
@@ -3215,7 +3215,7 @@ An editor run fills merge fields into a new version. A command that reads a loca
 
 #### AC-042-P1 Merge fields save a new version
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic DOCX with merge fields and a matter that supplies the values.
 
@@ -3227,7 +3227,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-042-P2 PDF conversion links to the source
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic source file.
 
@@ -3241,7 +3241,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-042-F1 Run that reads a local file
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Editor-run command whose parameter reads a local path.
 
@@ -3253,7 +3253,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-042-F2 Conversion overwrites the source
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Source hash recorded.
 
@@ -3282,7 +3282,7 @@ Staff upload, client upload, drop folder, and a sample-module file each finish w
 
 #### AC-043-P1 Three arrival paths finish within 10 minutes
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus files sources/staff-upload.txt, sources/client-upload.txt, and sources/drop/2026-0001/dropped.txt on an open matter.
 
@@ -3294,7 +3294,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-P2 Sample module file is processed the same way
 
-Phase 6. Kind: e2e. Status: pending.
+Phase 6. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus file sources/module/matter-clock.txt written through the sample module.
 
@@ -3306,7 +3306,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-P3 Legacy .doc converts and checks counts
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A .doc that wordcraft-cli opens. Do not use the corpus OLE stand-in hash.
 
@@ -3320,7 +3320,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-F1 Job waits for a nightly batch
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A file that arrived now.
 
@@ -3332,7 +3332,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-F2 Arrival name is the displayed name
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Processed staff upload.
 
@@ -3344,7 +3344,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-F3 High-tier category published on disagreement
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Label model says court_filing. Check model says correspondence.
 
@@ -3356,7 +3356,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-043-F4 Stand-in .doc offered as the conversion
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus legacy/old.doc.
 
@@ -3385,7 +3385,7 @@ Corpus file legacy/scanned-120.pdf has 120 image-only pages. The product injects
 
 #### AC-044-P1 120 scanned pages are stored as they finish
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: legacy/scanned-120.pdf on an open synthetic matter.
 
@@ -3399,7 +3399,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-044-F1 Resume starts at page 1
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Failure injected after page 48 has passed its check.
 
@@ -3411,7 +3411,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-044-F2 Pages 1 through 48 are redone
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Same injected failure.
 
@@ -3434,15 +3434,15 @@ Pending dependencies: doc-tender.
 Legacy Doc Tender failures: merged_then_split.
 Status: pending.
 
-Eight photos: a three-page letter and a five-page lease. The pass is two PDFs and two Markdown copies, pages in order. The corpus bad-merge and bad-split files are the old wrong outputs, not a pass.
+Eight photos: a three-page letter and a five-page lease. Each photo paints LETTER or LEASE and PAGE n OF m. The pass is two PDFs and two Markdown copies, pages in order. The corpus bad-merge and bad-split files are the old wrong outputs, not a pass.
 
 ### Positive
 
 #### AC-045-P1 Eight photos become two documents in order
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
-Arrange: legacy/merged-then-split/page-01.png through page-08.png uploaded together. Quiet time elapsed.
+Arrange: legacy/merged-then-split/page-01.png through page-08.png uploaded together. Pages 1-3 read LETTER PAGE n OF 3. Pages 4-8 read LEASE PAGE n OF 5. Quiet time elapsed.
 
 Action: Run grouping.
 
@@ -3454,7 +3454,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-045-F1 One merged PDF of eight pages
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The eight photos.
 
@@ -3466,7 +3466,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-045-F2 Split at four and four
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The eight photos.
 
@@ -3478,7 +3478,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-045-F3 Pages out of order
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The eight photos.
 
@@ -3507,7 +3507,7 @@ Audio gets a Markdown transcript with timestamps and no unexplained gap over 30 
 
 #### AC-046-P1 Audio transcript covers the recording
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus audio/tone.wav, duration 1000 ms, plus a longer synthetic recording used to test the 30 second gap rule.
 
@@ -3519,7 +3519,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-046-P2 Video report includes the picture
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus video/frames.avi, three solid frames.
 
@@ -3533,7 +3533,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-046-F1 Unexplained gap over 30 seconds
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Synthetic audio with a silent gap over 30 seconds and no explanation in the transcript.
 
@@ -3545,7 +3545,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-046-F2 Video report has no on-screen track
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Processed video.
 
@@ -3574,7 +3574,7 @@ A file on a closed matter makes no model call and is listed as Not processed (ma
 
 #### AC-047-P1 Closed matter spends nothing
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Closed synthetic matter. New file. AI call log row count recorded.
 
@@ -3586,7 +3586,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-047-P2 Reopen processes the file
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The same file, matter reopened with a reason.
 
@@ -3600,7 +3600,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-047-F1 Model call while the matter is closed
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Closed matter.
 
@@ -3612,7 +3612,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-047-F2 Reopen leaves the file unprocessed
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Matter reopened.
 
@@ -3641,7 +3641,7 @@ Password-protected, damaged, and low-confidence files go to the review queue, em
 
 #### AC-048-P1 Three exceptions stay available
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: A PDF the library reports as encrypted, corpus exceptions/damaged.pdf, and a label at 890 thousandths.
 
@@ -3655,7 +3655,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-048-F1 An exception is hidden or not downloadable
 
-Phase 4. Kind: e2e. Status: pending.
+Phase 4. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: The three files above.
 
@@ -3667,7 +3667,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-048-F2 Threshold boundary
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: One result at 900 thousandths and one at 899.
 
@@ -3679,7 +3679,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-048-F3 Stand-in password PDF used as evidence
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: Corpus legacy/password.pdf.
 
@@ -3708,7 +3708,7 @@ A person-set name, category, or matter stays put on reprocess. Grouping is locke
 
 #### AC-049-P1 Locked name, category, and matter survive
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: File whose name, category, and matter were set by a person.
 
@@ -3720,7 +3720,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-049-P2 Reprocess adds a Markdown version
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Existing Markdown version hash recorded.
 
@@ -3734,7 +3734,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-049-F1 Reprocess changes a locked field
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Person-set name.
 
@@ -3746,7 +3746,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-049-F2 Reprocess overwrites the Markdown version
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Old Markdown hash.
 
@@ -3758,7 +3758,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-049-F3 Reprocess changes a locked grouping
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Person-set photo grouping.
 
@@ -3787,7 +3787,7 @@ The Markdown copy uses the original base name plus .md. It follows the original'
 
 #### AC-050-P1 Markdown name and wall
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Processed file example-2026-0001-motion-to-withdraw-2026-10-15.txt on a walled matter.
 
@@ -3799,7 +3799,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-050-P2 Files search matches the Markdown
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: A phrase that exists only in the Markdown body.
 
@@ -3811,7 +3811,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-050-P3 Backup contains the Markdown
 
-Phase 7. Kind: e2e. Status: pending.
+Phase 7. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Backup after processing.
 
@@ -3825,7 +3825,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-050-F1 Outside user reads the Markdown
 
-Phase 4. Kind: security. Status: pending.
+Phase 4. Kind: security. Status: pending. Expected exit code: 0.
 
 Arrange: User outside the wall.
 
@@ -3837,7 +3837,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-050-F2 Search matches only the arrival name
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Arrival name that is not the pattern name. Phrase in the Markdown.
 
@@ -3866,7 +3866,7 @@ The Doc Tender tab edits the pattern and the categories. A status token is refus
 
 #### AC-051-P1 Edited pattern names the next file
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin sets <clientlast>-<matter#>-<what-it-is>-<received-date>.<ext> on the Doc Tender tab.
 
@@ -3878,7 +3878,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-051-P2 Added category is used
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin adds a synthetic category on the Doc Tender tab and maps a folder.
 
@@ -3892,7 +3892,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-051-F1 Status token is refused
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Saved pattern recorded. Admin submits a pattern containing <status>.
 
@@ -3904,7 +3904,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-051-F2 Status synonyms are refused
 
-Phase 5. Kind: integration. Status: pending.
+Phase 5. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Patterns containing <draft>, <file-status>, and <received>.
 
@@ -3933,7 +3933,7 @@ With test keys set, the labeling call log shows gpt-6.1-sol. The AI tab offers n
 
 #### AC-052-P1 Labeling log shows gpt-6.1-sol
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: OpenAI test key set. Synthetic file that reaches labeling.
 
@@ -3947,7 +3947,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-052-F1 AI tab offers a local endpoint for labeling
 
-Phase 5. Kind: e2e. Status: pending.
+Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
 
 Arrange: Admin on the AI tab.
 
@@ -3959,7 +3959,7 @@ Evidence: Command, integer exit code, and the observation named above. A mock, a
 
 #### AC-052-F2 Labeling log shows another model
 
-Phase 4. Kind: integration. Status: pending.
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
 
 Arrange: Test keys set.
 
