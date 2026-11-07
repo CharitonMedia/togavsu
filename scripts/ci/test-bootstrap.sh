@@ -110,4 +110,38 @@ length, domain, secret, keyhex = open(sys.argv[1]).read().split()
 if length != "32" or domain != "localhost" or int(secret) < 16 or keyhex != "11"*32:
     sys.exit("adapter result %s %s %s %s" % (length, domain, secret, keyhex))
 ' "$result"
+
+lowkey=$(python3 -c 'print("abcdef"*10 + "abcd")')
+# bootstrap leaves this file root-owned and group-readable. Rewrite the bytes
+# without changing that ownership, so uid 65532 can still open it.
+sudo python3 -c '
+import os, sys
+path, text = sys.argv[1], sys.argv[2]
+st = os.stat(path)
+open(path, "w").write(text + "\n")
+os.chown(path, st.st_uid, st.st_gid)
+os.chmod(path, st.st_mode & 0o777)
+' "$hexwork/appsecrets/field_key" "$lowkey"
+lowbefore=$(sudo python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
+rm -f "$result"
+sudo python3 -c '
+import os, sys
+os.setgroups([])
+os.setgid(65532)
+os.setuid(65532)
+os.environ["TOGAVSU_SECRETS_DIR"] = sys.argv[1]
+os.environ["CORE_BIN"] = sys.argv[2]
+os.environ["RESULT"] = sys.argv[3]
+os.environ["TOGAVSU_DOMAIN"] = "localhost"
+os.execv("/bin/sh", ["sh", sys.argv[4]])
+' "$hexwork/appsecrets" "$hexwork/core-stub" "$result" "$hexwork/entrypoint.sh"
+sudo python3 -c '
+import sys
+want = sys.argv[2]
+length, domain, secret, keyhex = open(sys.argv[1]).read().split()
+if length != "32" or domain != "localhost" or int(secret) < 16 or keyhex != want:
+    sys.exit("lowercase adapter result %s %s %s %s" % (length, domain, secret, keyhex))
+' "$result" "$lowkey"
+lowafter=$(sudo python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$hexwork/appsecrets/field_key")
+test "$lowbefore" = "$lowafter"
 echo "bootstrap secrets check passed"

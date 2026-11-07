@@ -19,8 +19,12 @@ import (
 )
 
 func TestPostgres17Swap(t *testing.T) {
-	if os.Getenv("TOGAVSU_SWAP_CHILD") == "1" {
+	switch os.Getenv("TOGAVSU_SWAP_CHILD") {
+	case "1":
 		runSwapCommitChild()
+		return
+	case "rollback":
+		runSwapRollbackChild()
 		return
 	}
 	admin := postgres17Admin(t)
@@ -253,8 +257,195 @@ func TestPostgres17Swap(t *testing.T) {
 			t.Fatalf("writers stayed stopped after the committed outcome: %v", order)
 		}
 		got, ok, err := ops.LookupRestore("restore-crash")
-		if err != nil || !ok || got.Status == "running" {
+		if err != nil || !ok || got.Status != "completed" || got.Cleanup != "pending" || got.Error != "cleanup_pending" {
 			t.Fatalf("outcome %+v %v %v", got, ok, err)
+		}
+	})
+
+	t.Run("rolled-back outcome is durable before the loaded name is dropped", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		dir := t.TempDir()
+		journalPath := filepath.Join(dir, "restore-journal.jsonl")
+		ready := filepath.Join(dir, "ready")
+		cmd := exec.Command(os.Args[0], "-test.run=TestPostgres17Swap", "-test.count=1")
+		cmd.Env = append(os.Environ(),
+			"TOGAVSU_SWAP_CHILD=rollback",
+			"TOGAVSU_SWAP_ADMIN="+admin,
+			"TOGAVSU_SWAP_PSQL="+psql,
+			"TOGAVSU_SWAP_ORIG="+orig,
+			"TOGAVSU_SWAP_FRESH="+fresh,
+			"TOGAVSU_SWAP_REPLACED="+replaced,
+			"TOGAVSU_SWAP_JOURNAL="+journalPath,
+			"TOGAVSU_SWAP_READY="+ready,
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			if _, err := os.Stat(ready); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				_ = cmd.Process.Kill()
+				t.Fatal("child did not record the rolled-back swap")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+			t.Fatal(err)
+		}
+		_ = cmd.Wait()
+		if note(t, psql, admin, orig) != "old" || note(t, psql, admin, fresh) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("rollback was not intact when the journal record became durable")
+		}
+		recorded, ok, err := OpenJournal(journalPath).Latest("restore-rollback")
+		if err != nil || !ok || !recorded.Database.SwapRolledBack {
+			t.Fatalf("journal %+v %v %v", recorded, ok, err)
+		}
+		dropDatabaseIfExists(psql, admin, fresh)
+		if databaseExists(t, psql, admin, fresh) {
+			t.Fatal("loaded database still exists")
+		}
+		var order []string
+		rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		ops.Journal = OpenJournal(journalPath)
+		if err := ops.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if note(t, psql, admin, orig) != "old" {
+			t.Fatal("recovery replaced the configured database after a recorded rollback")
+		}
+		if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+			t.Fatalf("writers stayed stopped after the rolled-back outcome: %v", order)
+		}
+		got, ok, err := ops.LookupRestore("restore-rollback")
+		if err != nil || !ok || got.Status != "failed" || got.Recovery != "rolled_back" || got.Status == "running" {
+			t.Fatalf("outcome %+v %v %v", got, ok, err)
+		}
+	})
+
+	t.Run("journal failure after commit keeps the previous database", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		dir := t.TempDir()
+		j := OpenJournal(filepath.Join(dir, "restore-journal.jsonl"))
+		if err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-unjournaled", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: orig, Fresh: fresh, Replaced: replaced, SwapIntended: true},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		j.failRemaining = 1
+		hookCtx := WithSwapCommitted(ctx, func(configured, freshName, replacedName string) error {
+			return j.Put(journalRecord{
+				Record: RestoreRecord{ID: "restore-unjournaled", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+				Phase:  phaseApplied,
+				Containers: []containerIntent{{
+					ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+				}},
+				Database: &databaseIntent{
+					Configured: configured, Fresh: freshName, Replaced: replacedName,
+					SwapIntended: true, SwapCommitted: true,
+				},
+			})
+		})
+		err := swapDatabase(hookCtx, psql, admin, orig, fresh, hexSuffixOf(orig))
+		if !errors.Is(err, errCommitUnjournaled) {
+			t.Fatalf("got %v", err)
+		}
+		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" || databaseExists(t, psql, admin, fresh) {
+			t.Fatal("committed pair was dropped or rolled back after the journal failed")
+		}
+		var order []string
+		rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+		box := OpenOutbox(filepath.Join(dir, "outbox"))
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		ops.Journal = j
+		ops.Outbox = box
+		if err := ops.Recover(ctx); err != nil && !errors.Is(err, ErrRestoreCleanup) {
+			t.Fatal(err)
+		}
+		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
+			t.Fatal("recovery changed the committed databases")
+		}
+		if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+			t.Fatalf("order %v", order)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-unjournaled")
+		if lerr != nil || !ok || got.Status != "completed" || got.Cleanup != "pending" || got.Status == "failed" {
+			t.Fatalf("%+v %v %v", got, ok, lerr)
+		}
+		notes := noticeBody(t, box)
+		if strings.Contains(notes, "Existing data was left in place") || !strings.Contains(notes, "The restored database is live") {
+			t.Fatalf("notice %q", notes)
+		}
+	})
+
+	t.Run("rollback journal failure keeps the loaded database", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		dir := t.TempDir()
+		j := OpenJournal(filepath.Join(dir, "restore-journal.jsonl"))
+		if err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-rollback-miss", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: orig, Fresh: fresh, Replaced: replaced, SwapIntended: true},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		j.failRemaining = 1
+		hookCtx := WithSwapRolledBack(ctx, func(configured, freshName, replacedName string) error {
+			return j.Put(journalRecord{
+				Record: RestoreRecord{ID: "restore-rollback-miss", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+				Phase:  phaseRolledBack,
+				Containers: []containerIntent{{
+					ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+				}},
+				Database: &databaseIntent{
+					Configured: configured, Fresh: freshName, Replaced: replacedName,
+					SwapIntended: true, SwapRolledBack: true,
+				},
+			})
+		})
+		bin := writeSwapWrapper(t, psql, "fail-between", orig, fresh, replaced)
+		err := swapDatabase(hookCtx, bin, admin, orig, fresh, hexSuffixOf(orig))
+		if !errors.Is(err, errRollbackUnjournaled) {
+			t.Fatalf("got %v", err)
+		}
+		if note(t, psql, admin, orig) != "old" || note(t, psql, admin, fresh) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("loaded database was removed before the rollback was recorded")
+		}
+		var order []string
+		rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+		box := OpenOutbox(filepath.Join(dir, "outbox"))
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		ops.Journal = j
+		ops.Outbox = box
+		if err := ops.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if note(t, psql, admin, orig) != "old" || note(t, psql, admin, fresh) != "new" {
+			t.Fatal("recovery changed the rolled-back databases")
+		}
+		if !containsStep(order, "restart:core-1") {
+			t.Fatalf("order %v", order)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-rollback-miss")
+		if lerr != nil || !ok || got.Status != "failed" || got.Recovery != "catalog_old_intact" {
+			t.Fatalf("%+v %v %v", got, ok, lerr)
+		}
+		notes := noticeBody(t, box)
+		if !strings.Contains(notes, "Existing data was left in place") || !strings.Contains(notes, "loaded database is still present") || strings.Contains(notes, "The restored database is live") {
+			t.Fatalf("notice %q", notes)
 		}
 	})
 }
@@ -285,6 +476,65 @@ func runSwapCommitChild() {
 		return nil
 	})
 	_ = swapDatabase(ctx, os.Getenv("TOGAVSU_SWAP_PSQL"), os.Getenv("TOGAVSU_SWAP_ADMIN"), os.Getenv("TOGAVSU_SWAP_ORIG"), os.Getenv("TOGAVSU_SWAP_FRESH"), hexSuffixOf(os.Getenv("TOGAVSU_SWAP_ORIG")))
+	os.Exit(0)
+}
+
+func runSwapRollbackChild() {
+	j := OpenJournal(os.Getenv("TOGAVSU_SWAP_JOURNAL"))
+	ctx := WithSwapRolledBack(context.Background(), func(configured, fresh, replaced string) error {
+		err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-rollback", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseRolledBack,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{
+				Configured: configured, Fresh: fresh, Replaced: replaced,
+				SwapIntended: true, SwapRolledBack: true,
+			},
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if err := os.WriteFile(os.Getenv("TOGAVSU_SWAP_READY"), []byte("ok"), 0o600); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(3)
+		}
+		time.Sleep(time.Minute)
+		return nil
+	})
+	orig := os.Getenv("TOGAVSU_SWAP_ORIG")
+	fresh := os.Getenv("TOGAVSU_SWAP_FRESH")
+	replaced := os.Getenv("TOGAVSU_SWAP_REPLACED")
+	psql := os.Getenv("TOGAVSU_SWAP_PSQL")
+	admin := os.Getenv("TOGAVSU_SWAP_ADMIN")
+	bin := filepath.Join(filepath.Dir(os.Getenv("TOGAVSU_SWAP_JOURNAL")), "psql-rollback")
+	script := fmt.Sprintf("#!/bin/sh\nREAL=%q\nORIG=%q\nFRESH=%q\nREPLACED=%q\n", psql, orig, fresh, replaced) + `cmd=
+prev=
+dbname=
+for arg in "$@"; do
+  if [ "$prev" = "--command" ]; then cmd=$arg; fi
+  if [ "$prev" = "--dbname" ]; then dbname=$arg; fi
+  prev=$arg
+done
+case "$cmd" in
+  BEGIN*)
+    "$REAL" --set ON_ERROR_STOP=1 --dbname "$dbname" --command "BEGIN; ALTER DATABASE $ORIG RENAME TO $REPLACED; ALTER DATABASE $FRESH RENAME TO $REPLACED; COMMIT;"
+    exit $?
+    ;;
+esac
+exec "$REAL" "$@"
+`
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(4)
+	}
+	err := swapDatabase(ctx, bin, admin, orig, fresh, hexSuffixOf(orig))
+	if errors.Is(err, errRollbackUnjournaled) || errors.Is(err, errCommitUnjournaled) || errors.Is(err, ErrRestoreCleanup) || errors.Is(err, errSwapUnobserved) || errors.Is(err, errConfiguredDatabaseAbsent) {
+		os.Exit(0)
+	}
+	_ = dropDatabase(context.Background(), psql, admin, fresh)
 	os.Exit(0)
 }
 

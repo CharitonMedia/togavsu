@@ -118,7 +118,7 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 		// The fresh name still holds the loaded copy when the swap did not
 		// commit. After a commit, or when the catalog could not be read, leave
 		// that database alone so a cleanup drop cannot remove the only copy.
-		if errors.Is(err, ErrRestoreCleanup) || errors.Is(err, errSwapUnobserved) || errors.Is(err, errConfiguredDatabaseAbsent) {
+		if errors.Is(err, ErrRestoreCleanup) || errors.Is(err, errSwapUnobserved) || errors.Is(err, errConfiguredDatabaseAbsent) || errors.Is(err, errCommitUnjournaled) || errors.Is(err, errRollbackUnjournaled) {
 			dropFresh = false
 		}
 		return err
@@ -136,6 +136,17 @@ var errSwapUnobserved = errors.New("database catalog was not observed before res
 // not be restored before cores would restart.
 var errConfiguredDatabaseAbsent = errors.New("configured database is absent")
 
+// errCommitUnjournaled means the rename pair is committed and the previous
+// database is still present, but that outcome was not fsynced. Callers must
+// not describe the old data as unchanged and must not drop the previous name.
+var errCommitUnjournaled = errors.New("committed restore was not recorded")
+
+// errRollbackUnjournaled means the rename rolled back and the loaded database
+// is still present, but that outcome was not fsynced. Callers must not drop
+// the loaded name: it is the only catalog fact that distinguishes a rollback
+// from a committed swap whose previous name was already removed.
+var errRollbackUnjournaled = errors.New("rolled-back restore was not recorded")
+
 const swapRecoveryTimeout = 30 * time.Second
 
 type swapHookFunc func(configured, fresh, replaced string) error
@@ -143,6 +154,8 @@ type swapHookFunc func(configured, fresh, replaced string) error
 type swapHookKey struct{}
 
 type swapCommitKey struct{}
+
+type swapRollbackKey struct{}
 
 // WithSwapHook attaches a function that runs after the fresh database is
 // loaded and before the rename transaction starts. The hook must return only
@@ -187,6 +200,32 @@ func recordSwapCommitted(ctx context.Context, configured, fresh, replaced string
 	return nil
 }
 
+// WithSwapRolledBack attaches a function that runs after the catalog shows
+// the rename rolled back and before the loaded database may be dropped. The
+// hook must return only after that outcome is fsynced. A hook error leaves
+// the loaded database in place.
+func WithSwapRolledBack(ctx context.Context, hook func(configured, fresh, replaced string) error) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, swapRollbackKey{}, swapHookFunc(hook))
+}
+
+func swapRolledBack(ctx context.Context) swapHookFunc {
+	if ctx == nil {
+		return nil
+	}
+	hook, _ := ctx.Value(swapRollbackKey{}).(swapHookFunc)
+	return hook
+}
+
+func recordSwapRolledBack(ctx context.Context, configured, fresh, replaced string) error {
+	if hook := swapRolledBack(ctx); hook != nil {
+		return hook(configured, fresh, replaced)
+	}
+	return nil
+}
+
 func recoveryContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), swapRecoveryTimeout)
 }
@@ -196,6 +235,21 @@ func recoveryContext() (context.Context, context.CancelFunc) {
 type PostgresCatalog struct {
 	Bin      string
 	AdminURL string
+}
+
+func (p PostgresCatalog) Drop(ctx context.Context, name string) error {
+	if p.AdminURL == "" {
+		return errSwapUnobserved
+	}
+	if !ident(name) {
+		return fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	_, _ = psqlLines(ctx, bin, p.AdminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+name+"' AND pid <> pg_backend_pid()")
+	return dropDatabase(ctx, bin, p.AdminURL, name)
 }
 
 func (p PostgresCatalog) Observe(ctx context.Context, configured, fresh, replaced string) (map[string]bool, error) {
@@ -237,7 +291,7 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, txnErr)
 	}
 	if err := recordSwapCommitted(ctx, orig, fresh, replaced); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errCommitUnjournaled, err)
 	}
 	dropErr := psqlExec(ctx, bin, adminURL, "DROP DATABASE "+replaced)
 	if dropErr != nil {
@@ -263,7 +317,7 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 			return nil
 		case st[orig] && !st[fresh] && st[replaced]:
 			if err := recordSwapCommitted(hookCtx, orig, fresh, replaced); err != nil {
-				return err
+				return fmt.Errorf("%w: %v", errCommitUnjournaled, err)
 			}
 			if err := dropDatabase(ctx, bin, adminURL, replaced); err != nil {
 				last = err
@@ -273,7 +327,12 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 		case st[orig] && st[fresh] && !st[replaced]:
 			// Nothing from the pair is visible. The transaction rolled back
 			// or never started. The configured name still has its writes.
+			// A failed step records that rollback before any caller deletes
+			// the loaded database. A nil step keeps the previous result.
 			if stepErr != nil {
+				if err := recordSwapRolledBack(hookCtx, orig, fresh, replaced); err != nil {
+					return fmt.Errorf("%w: %v", errRollbackUnjournaled, err)
+				}
 				return stepErr
 			}
 			return nil

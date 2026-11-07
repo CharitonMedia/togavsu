@@ -22,6 +22,7 @@ const (
 	phaseWritersStopped = "writers_stopped"
 	phaseApplying       = "applying"
 	phaseSwapIntended   = "swap_intended"
+	phaseRolledBack     = "rolled_back"
 	phaseApplied        = "applied"
 	phaseRestarting     = "restarting"
 	phaseCompleted      = "completed"
@@ -49,11 +50,12 @@ type containerIntent struct {
 }
 
 type databaseIntent struct {
-	Configured    string `json:"configured"`
-	Fresh         string `json:"fresh"`
-	Replaced      string `json:"replaced"`
-	SwapIntended  bool   `json:"swap_intended"`
-	SwapCommitted bool   `json:"swap_committed,omitempty"`
+	Configured     string `json:"configured"`
+	Fresh          string `json:"fresh"`
+	Replaced       string `json:"replaced"`
+	SwapIntended   bool   `json:"swap_intended"`
+	SwapCommitted  bool   `json:"swap_committed,omitempty"`
+	SwapRolledBack bool   `json:"swap_rolled_back,omitempty"`
 }
 
 func (r journalRecord) terminal() bool {
@@ -72,8 +74,10 @@ type Journal struct {
 	mu   sync.Mutex
 	now  func() time.Time
 	// failRemaining, when set by tests, fails that many later Put calls
-	// before they write. Zero means every Put is attempted.
+	// before they write. Zero means every Put is attempted. failPhase
+	// limits those failures to one phase; empty matches every phase.
 	failRemaining int
+	failPhase     string
 }
 
 func OpenJournal(path string) *Journal {
@@ -94,7 +98,7 @@ func (j *Journal) Put(rec journalRecord) error {
 	line = append(line, '\n')
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.failRemaining > 0 {
+	if j.failRemaining > 0 && (j.failPhase == "" || rec.Phase == j.failPhase) {
 		j.failRemaining--
 		return errors.New("journal persist failed")
 	}

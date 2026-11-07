@@ -27,7 +27,7 @@ printf '%s\n' "$out" | grep -q "bootstrap configuration accepted"
 printf '%s\n' "$out" | grep -q "HTTP service and migrations are not started"
 
 # An existing hex key must export the same 32 bytes and must not be rewritten.
-python3 -c 'import sys; open(sys.argv[1], "w").write("11"*32 + "\n")' "$work/appsecrets/field_key"
+python3 -c 'import sys; open(sys.argv[1], "w").write(("abcdef"*10 + "abcd") + "\n")' "$work/appsecrets/field_key"
 before=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$work/appsecrets/field_key")
 out=$("$docker" run --rm --user 65532:65532 \
   -e TOGAVSU_DOMAIN=firm.example \

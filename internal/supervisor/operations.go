@@ -441,6 +441,21 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 				cur.Database.Replaced = replaced
 				cur.Database.SwapIntended = true
 				cur.Database.SwapCommitted = true
+				cur.Database.SwapRolledBack = false
+			})
+			return herr
+		})
+		ctx = WithSwapRolledBack(ctx, func(configured, fresh, replaced string) error {
+			_, herr := o.persist(o.current(rec.ID, rec), phaseRolledBack, func(cur *journalRecord) {
+				if cur.Database == nil {
+					cur.Database = &databaseIntent{Configured: configured, Fresh: fresh, Replaced: replaced}
+				}
+				cur.Database.Configured = configured
+				cur.Database.Fresh = fresh
+				cur.Database.Replaced = replaced
+				cur.Database.SwapIntended = true
+				cur.Database.SwapCommitted = false
+				cur.Database.SwapRolledBack = true
 			})
 			return herr
 		})
@@ -454,6 +469,12 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 	}
 	err = o.Store.Restore(opCtx, rec.BackupID, "", apply)
 	rec = o.current(rec.ID, rec)
+	if errors.Is(err, errCommitUnjournaled) {
+		return o.finishCommittedUnjournaled(rec, stopped, err)
+	}
+	if errors.Is(err, errRollbackUnjournaled) {
+		return o.finishRollbackUnjournaled(rec, stopped, err)
+	}
 	if errors.Is(err, errSwapUnobserved) || errors.Is(err, errConfiguredDatabaseAbsent) {
 		return o.finishUncertain(rec, stopped, err)
 	}
@@ -500,13 +521,71 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
 	if o.Outbox != nil {
-		_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", "The restored database is live. The previous database could not be dropped. "+Scrub(err.Error()))
+		body := "The restored database is live. The previous database could not be dropped. "
+		if errors.Is(err, errCommitUnjournaled) {
+			body = "The restored database is live. The commit was not recorded, so the previous database was left in place. "
+		}
+		_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", body+Scrub(err.Error()))
 	}
 	saved, perr := o.persist(rec, phaseCompleted, nil)
 	if perr != nil {
 		return o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
 	}
 	return saved, err
+}
+
+// finishCommittedUnjournaled keeps a committed rename out of the ordinary
+// unchanged-data failure. The previous database is not dropped. Writers
+// restart only when the catalog shows the restored name is live.
+func (o *Operations) finishCommittedUnjournaled(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	st, observed := o.observeSwap(rec)
+	switch {
+	case observed && st.configured && st.replaced && !st.fresh:
+		return o.finishCleanup(rec, stopped, cause)
+	case observed && st.configured && !st.replaced && !st.fresh:
+		return o.finishApplied(rec, stopped, cause)
+	default:
+		reason := "commit_unjournaled"
+		if observed {
+			reason = "catalog_ambiguous"
+		} else if o.Catalog != nil {
+			reason = "catalog_unobserved"
+		}
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The restore commit was not recorded. Writers were not restarted and neither recovery database was deleted. "+Scrub(cause.Error()))
+		}
+		return o.keepPending(rec, phaseSwapIntended, reason, cause)
+	}
+}
+
+// finishRollbackUnjournaled leaves the loaded database in place. The
+// configured data is unchanged, and the poll says so without deleting the
+// name that proves the rollback.
+func (o *Operations) finishRollbackUnjournaled(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	if o.Outbox != nil {
+		_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. The loaded database was kept because the rollback was not recorded. "+Scrub(cause.Error()))
+	}
+	return o.closeStopped(rec, stopped, cause, "rollback_unjournaled")
+}
+
+type swapNames struct {
+	configured bool
+	fresh      bool
+	replaced   bool
+}
+
+func (o *Operations) observeSwap(rec RestoreRecord) (swapNames, bool) {
+	db := o.databaseOf(rec.ID)
+	if db == nil || o.Catalog == nil {
+		return swapNames{}, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	st, err := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
+	if err != nil || st == nil {
+		return swapNames{}, false
+	}
+	return swapNames{configured: st[db.Configured], fresh: st[db.Fresh], replaced: st[db.Replaced]}, true
 }
 
 func (o *Operations) finishUncertain(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
@@ -689,6 +768,14 @@ func (o *Operations) Recover(ctx context.Context) error {
 
 func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 	rec := item.Record
+	if item.Database != nil && item.Database.SwapRolledBack {
+		o.dropRolledBackFresh(item)
+		saved, err := o.closeStopped(rec, nil, errors.New("restore rolled back before the database rename committed"), "rolled_back")
+		if saved.Status == "running" {
+			return err
+		}
+		return nil
+	}
 	if item.Phase == phaseApplied || rec.Cleanup == "pending" || rec.Error == "cleanup_pending" {
 		if err := o.restoreWriters(rec, nil); err != nil {
 			_, perr := o.keepPending(rec, phaseApplied, writerRecoveryReason(err), err)
@@ -705,6 +792,20 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 				return err
 			}
 			return nil
+		}
+		if item.Database != nil && item.Database.SwapCommitted {
+			st, observed := o.observeSwap(rec)
+			if !observed {
+				_, perr := o.keepPending(rec, phaseApplied, "catalog_unobserved", errSwapUnobserved)
+				return perr
+			}
+			if st.replaced {
+				_, err := o.finishCleanup(rec, nil, ErrRestoreCleanup)
+				if err != nil && !errors.Is(err, ErrRestoreCleanup) {
+					return err
+				}
+				return nil
+			}
 		}
 		rec.Status = "completed"
 		rec.Recovery = ""
@@ -740,6 +841,9 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 			}
 			return nil
 		case decisionOldIntact:
+			if o.Outbox != nil {
+				_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. The loaded database is still present.")
+			}
 			saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted before the database rename committed"), "catalog_old_intact")
 			if saved.Status == "running" {
 				return err
@@ -792,6 +896,29 @@ func (o *Operations) keepPending(rec RestoreRecord, phase, recovery string, caus
 		return rec, errors.Join(cause, err)
 	}
 	return saved, cause
+}
+
+// dropRolledBackFresh removes the loaded database only after the journal
+// already says the rename rolled back. A drop error does not block writer
+// recovery: the configured database still holds the previous data.
+func (o *Operations) dropRolledBackFresh(item journalRecord) {
+	db := item.Database
+	if db == nil || db.Fresh == "" || db.Fresh == db.Configured || o.Catalog == nil {
+		return
+	}
+	cleaner, ok := o.Catalog.(interface {
+		Drop(context.Context, string) error
+	})
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	st, err := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
+	if err != nil || st == nil || !st[db.Fresh] {
+		return
+	}
+	_ = cleaner.Drop(ctx, db.Fresh)
 }
 
 func (o *Operations) blockUnresolved() error {

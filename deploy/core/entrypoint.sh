@@ -29,7 +29,9 @@ key_text=$(read_trim "$secrets/field_key")
 raw=$(mktemp)
 trap 'rm -f "$raw"' EXIT
 if printf '%s' "$key_text" | grep -Eq '^[0-9a-fA-F]{64}$'; then
-  printf '%s' "$key_text" | basenc --base16 -d > "$raw"
+  # GNU basenc --base16 rejects lowercase a-f. Earlier installers wrote that
+  # form with od -tx1. The file itself is left unchanged.
+  printf '%s' "$key_text" | tr '[:lower:]' '[:upper:]' | basenc --base16 -d > "$raw"
 else
   printf '%s' "$key_text" | base64 -d > "$raw"
 fi

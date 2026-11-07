@@ -1093,3 +1093,249 @@ func (c catalogHold) Observe(context.Context, string, string, string) (map[strin
 	<-c.release
 	return nil, errors.New("unread")
 }
+
+func TestCommitUnjournaledDoesNotClaimUnchangedData(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newOps := func(path string, cat *scriptCatalog, rt *scriptRuntime, box *Outbox) *Operations {
+		return &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal:    OpenJournal(path),
+			Catalog:    cat,
+			Outbox:     box,
+			Passphrase: func() (string, error) { return store.Passphrase, nil },
+			Runtime:    rt,
+		}
+	}
+	psqlOK := func(t *testing.T, log string) string {
+		t.Helper()
+		bin := filepath.Join(t.TempDir(), "psql")
+		script := "#!/bin/sh\ncmd=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\nprintf '%s\\n' \"$cmd\" >> " + log + "\nexit 0\n"
+		if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return bin
+	}
+	t.Run("previous database stays and the poll says the restore is live", func(t *testing.T) {
+		var order []string
+		dir := t.TempDir()
+		log := filepath.Join(dir, "psql.log")
+		box := OpenOutbox(filepath.Join(dir, "outbox"))
+		cat := &scriptCatalog{present: map[string]bool{"origdb": true, "origdb_replaced_abcd": true}}
+		ops := newOps(filepath.Join(dir, "restore-journal.jsonl"), cat, &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}}, box)
+		ops.Journal.failPhase = phaseApplied
+		ops.Journal.failRemaining = 1
+		bin := psqlOK(t, log)
+		ops.ApplyRestore = func(ctx context.Context, _ RestorePayload) error {
+			return swapDatabase(ctx, bin, "postgres://example/postgres", "origdb", "freshdb", "abcd")
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if !errors.Is(err, errCommitUnjournaled) && !errors.Is(err, ErrRestoreCleanup) {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		if rec.Status == "failed" || rec.Cleanup != "pending" || rec.Error != "cleanup_pending" {
+			t.Fatalf("%+v", rec)
+		}
+		raw, readErr := os.ReadFile(log)
+		if readErr != nil || strings.Contains(string(raw), "DROP DATABASE") {
+			t.Fatalf("previous name was dropped: %v %s", readErr, raw)
+		}
+		notes := noticeBody(t, box)
+		if strings.Contains(notes, "Existing data was left in place") || !strings.Contains(notes, "The restored database is live") || !strings.Contains(notes, "commit was not recorded") {
+			t.Fatalf("notice %q", notes)
+		}
+		if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+			t.Fatalf("order %v", order)
+		}
+	})
+	t.Run("unreadable catalog stays pending and does not restart", func(t *testing.T) {
+		var order []string
+		dir := t.TempDir()
+		box := OpenOutbox(filepath.Join(dir, "outbox"))
+		cat := &scriptCatalog{err: errors.New("catalog down")}
+		ops := newOps(filepath.Join(dir, "restore-journal.jsonl"), cat, &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}}, box)
+		ops.Journal.failPhase = phaseApplied
+		ops.Journal.failRemaining = 1
+		bin := psqlOK(t, filepath.Join(dir, "psql.log"))
+		ops.ApplyRestore = func(ctx context.Context, _ RestorePayload) error {
+			return swapDatabase(ctx, bin, "postgres://example/postgres", "origdb", "freshdb", "abcd")
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if !errors.Is(err, errCommitUnjournaled) || rec.Status == "failed" || rec.Status == "completed" || rec.Recovery != "catalog_unobserved" {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		if containsStep(order, "restart:core-1") || containsStep(order, "health") {
+			t.Fatalf("restarted against an unreadable catalog: %v", order)
+		}
+		notes := noticeBody(t, box)
+		if strings.Contains(notes, "Existing data was left in place") || !strings.Contains(notes, "commit was not recorded") || !strings.Contains(notes, "Writers were not restarted") {
+			t.Fatalf("notice %q", notes)
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+			t.Fatalf("admission while the commit is unjournaled: %v", err)
+		}
+	})
+}
+
+func TestRollbackUnjournaledKeepsTheLoadedDatabase(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	dir := t.TempDir()
+	log := filepath.Join(dir, "psql.log")
+	bin := filepath.Join(dir, "psql")
+	script := `#!/bin/sh
+cmd=
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--command" ]; then cmd=$arg; fi
+  prev=$arg
+done
+printf '%s\n' "$cmd" >> "` + log + `"
+case "$cmd" in
+  BEGIN*) echo refused >&2; exit 1 ;;
+  "SELECT datname"*) printf 'origdb\nfreshdb\n' ;;
+esac
+exit 0
+`
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	box := OpenOutbox(filepath.Join(dir, "outbox"))
+	ops := &Operations{
+		Store: store, Gate: &Gate{}, Now: store.Now,
+		Journal:    OpenJournal(filepath.Join(dir, "restore-journal.jsonl")),
+		Outbox:     box,
+		Passphrase: func() (string, error) { return store.Passphrase, nil },
+		Runtime:    &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+	}
+	ops.Journal.failPhase = phaseRolledBack
+	ops.Journal.failRemaining = 1
+	ops.ApplyRestore = func(ctx context.Context, _ RestorePayload) error {
+		return swapDatabase(ctx, bin, "postgres://example/postgres", "origdb", "freshdb", "abcd")
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if !errors.Is(err, errRollbackUnjournaled) || rec.Status != "failed" || rec.Recovery != "rollback_unjournaled" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	raw, readErr := os.ReadFile(log)
+	if readErr != nil || strings.Contains(string(raw), "DROP DATABASE") {
+		t.Fatalf("loaded database was dropped: %v %s", readErr, raw)
+	}
+	notes := noticeBody(t, box)
+	if !strings.Contains(notes, "Existing data was left in place") || !strings.Contains(notes, "loaded database was kept") || strings.Contains(notes, "The restored database is live") {
+		t.Fatalf("notice %q", notes)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped after a confirmed unchanged database: %v", order)
+	}
+}
+
+func TestRolledBackRecordRestartsAfterTheLoadedNameIsGone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+	j := OpenJournal(path)
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-rb-gone", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseRolledBack,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+			SwapIntended: true, SwapRolledBack: true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+	ops := &Operations{
+		Gate:    &Gate{},
+		Journal: j,
+		Runtime: rt,
+		Catalog: &scriptCatalog{present: map[string]bool{"origdb": true}},
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+		t.Fatalf("order %v", order)
+	}
+	got, ok, err := ops.LookupRestore("restore-rb-gone")
+	if err != nil || !ok || got.Status != "failed" || got.Recovery != "rolled_back" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
+func TestRolledBackRecordRestartsWhenOnlyTheConfiguredNameRemains(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "restore-journal.jsonl")
+	j := OpenJournal(path)
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-rb", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseRolledBack,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+			SwapIntended: true, SwapRolledBack: true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+	cat := &dropCatalog{present: map[string]bool{"origdb": true, "freshdb": true}}
+	ops := &Operations{Gate: &Gate{}, Journal: j, Runtime: rt, Catalog: cat}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+		t.Fatalf("order %v", order)
+	}
+	got, ok, err := ops.LookupRestore("restore-rb")
+	if err != nil || !ok || got.Status != "failed" || got.Recovery != "rolled_back" || got.Status == "running" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+	if len(cat.dropped) != 1 || cat.dropped[0] != "freshdb" || cat.present["origdb"] != true {
+		t.Fatalf("dropped %v present %v", cat.dropped, cat.present)
+	}
+}
+
+type dropCatalog struct {
+	present map[string]bool
+	dropped []string
+}
+
+func (d *dropCatalog) Observe(context.Context, string, string, string) (map[string]bool, error) {
+	return d.present, nil
+}
+
+func (d *dropCatalog) Drop(_ context.Context, name string) error {
+	d.dropped = append(d.dropped, name)
+	delete(d.present, name)
+	return nil
+}
+
+func noticeBody(t *testing.T, box *Outbox) string {
+	t.Helper()
+	notes, err := box.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, note := range notes {
+		b.WriteString(note.Subject)
+		b.WriteByte('\n')
+		b.WriteString(note.Body)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
