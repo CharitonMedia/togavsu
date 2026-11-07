@@ -102,6 +102,21 @@ def build_marketplace() -> dict:
                         "notice": {"type": "string"},
                     },
                 },
+                "SignedPackage": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["listing_id", "version", "immutable", "manifest", "digest", "signature", "key_id"],
+                    "properties": {
+                        "listing_id": {"type": "string", "minLength": 1},
+                        "version": {"type": "string", "minLength": 1, "description": "The requested version. The marketplace does not substitute a later one."},
+                        "immutable": {"const": True},
+                        "manifest": {"type": "object", "description": "Signed module manifest. The core parses it only after the digest and signature verify."},
+                        "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+                        "signature": {"type": "string", "minLength": 1},
+                        "key_id": {"type": "string", "minLength": 1, "description": "Publisher key the core must already trust. A URL is not a signer."},
+                    },
+                    "description": "One immutable signed package. The core verifies the digest, signature, and key before any migration or process starts. This response is not an instruction to fetch or execute a URL.",
+                },
                 "Alert": {
                     "type": "object",
                     "additionalProperties": False,
@@ -160,6 +175,31 @@ def build_marketplace() -> dict:
         "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/Listing"}}},
     }
     add("get", "/v1/listings/{listing_id}", "getListing", "One listing, including a flag note when flagged.", auth=False, response="Listing")
+    add(
+        "get",
+        "/v1/listings/{listing_id}/versions/{version}/package",
+        "getListingPackage",
+        (
+            "Signed package for one listing version. The core asks with the listing id and that version. "
+            "Missing listing or version is not_found. A pulled listing or a yanked version is yanked and returns no bytes. "
+            "A digest mismatch, an invalid signature, or an untrusted key_id is a verification failure and returns no bytes. "
+            "A network failure is unavailable. The body is the manifest, digest, signature, and key id. "
+            "It is not a URL, and the core does not run it until those checks pass."
+        ),
+        auth=True,
+        response="SignedPackage",
+    )
+    package = spec["paths"]["/v1/listings/{listing_id}/versions/{version}/package"]["get"]
+    package["x-togavsu-verification"] = {
+        "before_execution": ["digest", "signature", "trusted_key", "immutable_version"],
+        "missing": "not_found",
+        "yanked_or_pulled": "yanked",
+        "digest_mismatch": "digest_mismatch",
+        "signature_invalid": "signature_invalid",
+        "untrusted_key": "untrusted_key",
+        "network_failure": "unavailable",
+        "artifact_url_is_install": False,
+    }
     add("get", "/v1/alerts", "listAlerts", "Flags and pulls for module ids the core asks about.", auth=True, response="Alert")
     spec["paths"]["/v1/alerts"]["get"]["parameters"] = [
         {"name": "module_id", "in": "query", "required": False, "schema": {"type": "string"}},

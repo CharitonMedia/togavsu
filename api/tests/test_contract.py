@@ -64,6 +64,8 @@ from contract.policy import (
     background_grant_issuance,
     doc_tender_events,
     inherited_history_rows,
+    marketplace_package,
+    matter_page,
     mcp_credential_rejection,
     mcp_tool_dispatch,
     payment_effect_decision,
@@ -708,18 +710,48 @@ class ContractTest(unittest.TestCase):
             access = _operation(self.spec, operation_id)["x-togavsu-access"]
             self.assertTrue(access["matter_wall"], operation_id)
             self.assertFalse(access.get("admin_bypasses_wall", False), operation_id)
+        matter_a = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"
+        matter_b = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb"
         contributions = [
-            {"badge": "active_matters", "count": 3, "matter_walled": True, "required_scopes": ["matters:read"]},
+            {"badge": "active_matters", "count": 3, "matter_walled": True, "matter_id": matter_a, "required_scopes": ["matters:read"]},
             {"badge": "active_matters", "count": 2, "matter_walled": False, "required_scopes": ["matters:read"]},
-            {"badge": "draft_invoices", "count": 4, "matter_walled": True, "required_scopes": ["invoices:read"]},
+            {"badge": "draft_invoices", "count": 4, "matter_walled": True, "matter_id": matter_b, "required_scopes": ["invoices:read"]},
             {"badge": "draft_invoices", "count": 1, "matter_walled": False, "required_scopes": ["invoices:read"]},
         ]
         off_wall_admin = authorized_badge_counts(nav, {"role": "admin", "on_wall": False, "scopes": ["matters:read", "invoices:read"]}, contributions)
         self.assertEqual(off_wall_admin["badges"], {"active_matters": 2, "draft_invoices": 1})
-        on_wall_admin = authorized_badge_counts(nav, {"role": "admin", "on_wall": True, "scopes": ["matters:read", "invoices:read"]}, contributions)
+        both = {"role": "admin", "matter_membership": {matter_a: True, matter_b: True}, "scopes": ["matters:read", "invoices:read"]}
+        on_wall_admin = authorized_badge_counts(nav, both, contributions)
         self.assertEqual(on_wall_admin["badges"], {"active_matters": 5, "draft_invoices": 5})
-        staff = authorized_badge_counts(nav, {"role": "staff", "on_wall": True, "scopes": ["matters:read"]}, contributions)
+        staff = authorized_badge_counts(nav, {"role": "staff", "matter_membership": {matter_a: True}, "scopes": ["matters:read"]}, contributions)
         self.assertEqual(staff["badges"], {"active_matters": 5})
+        self.assertEqual(nav["x-togavsu-access"]["badge_counts"]["membership"], "per_matter_id")
+        mixed_caller = {"role": "admin", "matter_membership": {matter_a: True, matter_b: False}, "scopes": ["matters:read", "invoices:read"]}
+        mixed_badges = authorized_badge_counts(nav, mixed_caller, contributions)
+        self.assertEqual(mixed_badges["badges"], {"active_matters": 5, "draft_invoices": 1})
+        self.assertNotEqual(mixed_badges["badges"].get("draft_invoices"), 5)
+        lone_flag = authorized_badge_counts(nav, {"role": "admin", "on_wall": True, "scopes": ["matters:read", "invoices:read"]}, contributions)
+        self.assertEqual(lone_flag["badges"], {"active_matters": 2, "draft_invoices": 1})
+        history = _operation(self.spec, "listEvents")
+        rows = [
+            {"id": "a", "matter_id": matter_a, "matter_walled": True, "summary": "allowed matter", "required_scopes": ["events:read"]},
+            {"id": "b", "matter_id": matter_b, "matter_walled": True, "summary": "denied matter", "required_scopes": ["events:read"]},
+            {"id": "firm", "matter_walled": False, "summary": "firm", "required_scopes": ["events:read"]},
+        ]
+        caller = {"role": "admin", "matter_membership": {matter_a: True, matter_b: False}, "scopes": ["events:read"]}
+        kept = inherited_history_rows(history, caller, rows)
+        self.assertEqual([row["id"] for row in kept["rows"]], ["a", "firm"])
+        self.assertNotIn("denied matter", str(kept))
+        page = matter_page(caller, rows, 1)
+        self.assertEqual([row["id"] for row in page["data"]], ["a"])
+        self.assertEqual(page["total"], 2)
+        self.assertEqual(page["next_cursor"], "more")
+        self.assertNotIn(matter_b, str(page))
+        self.assertNotIn("denied matter", str(page))
+        revoked = {**caller, "matter_membership": {matter_a: False, matter_b: False}}
+        self.assertEqual([row["id"] for row in inherited_history_rows(history, revoked, rows)["rows"]], ["firm"])
+        self.assertEqual([row["id"] for row in matter_page(revoked, rows, 10)["data"]], ["firm"])
+        self.assertIsNone(matter_page(revoked, rows, 10)["next_cursor"])
 
     def test_first_admin_enrolls_totp_before_a_session(self):
         setup = self.spec["paths"]["/api/v1/setup"]["post"]
@@ -3554,7 +3586,7 @@ class ContractTest(unittest.TestCase):
             ("conflict", {**subscriber, "approved_scopes": ["conflicts:read"], "subscriptions": ["conflict_review.decided"]}, {"id": event["id"], "type": "conflict_review.decided", "occurred_at": event["occurred_at"], "record_type": "conflict_review", "record_id": "018f1a00-7b3c-7d4e-8a11-999999999999", "matter_id": event["matter_id"], "summary": "attorney reason", "attorney_only_record": True}),
         ):
             self.assertIsNone(webhook_envelope(module, sample), label)
-        on_wall = webhook_envelope({**subscriber, "on_wall": True}, {**event, "matter_walled": True})
+        on_wall = webhook_envelope({**subscriber, "on_wall": True, "matter_id": event["matter_id"]}, {**event, "matter_walled": True})
         self.assertEqual(on_wall["record_id"], event["record_id"])
         redacted = webhook_envelope(subscriber, {**event, "summary_attorney_only": True, "summary": "secret reason"})
         self.assertEqual(redacted["summary"], {"redacted": True})
@@ -3873,9 +3905,11 @@ class ContractTest(unittest.TestCase):
             10,
         )
         self.assertEqual([row["id"] for row in admin_off["data"]], ["own-firm"])
+        notice_matter = "018f1a00-7b3c-7d4e-8a11-cccccccccccccccc"
+        walled = {**walled, "matter_id": notice_matter}
         on_wall = notification_page(
             _operation(self.spec, "listNotification"),
-            {"role": "staff", "user_id": caller, "caller_user_id": caller, "on_wall": True},
+            {"role": "staff", "user_id": caller, "caller_user_id": caller, "matter_id": notice_matter, "on_wall": True},
             [walled, firm],
             10,
         )
@@ -3901,6 +3935,7 @@ class ContractTest(unittest.TestCase):
             self.assertFalse(rule["admin_bypasses_wall"], operation["operationId"])
             self.assertEqual(rule["scopes_from"], "underlying_record", operation["operationId"])
             self.assertEqual(rule["attorney_only_values"], "redacted", operation["operationId"])
+            self.assertEqual(rule["membership"], "per_matter_id", operation["operationId"])
             covered.append(operation["operationId"])
         for operation_id in (
             "listAuditLog",
@@ -4345,7 +4380,61 @@ class ContractTest(unittest.TestCase):
         self.assertIn("/v1/operator/listings/{listing_id}/flag", paths)
         self.assertIn("/v1/operator/listings/{listing_id}/pull", paths)
         self.assertIn("/v1/alerts", paths)
+        self.assertIn("/v1/listings/{listing_id}/versions/{version}/package", paths)
+        package = paths["/v1/listings/{listing_id}/versions/{version}/package"]["get"]
+        self.assertEqual(package["responses"]["200"]["content"]["application/json"]["schema"]["$ref"], "#/components/schemas/SignedPackage")
+        signed = self.market["components"]["schemas"]["SignedPackage"]
+        self.assertEqual(signed["additionalProperties"], False)
+        self.assertNotIn("url", signed["properties"])
+        self.assertEqual(package["x-togavsu-verification"]["artifact_url_is_install"], False)
+        self.assertEqual(self.market["components"]["schemas"]["Listing"]["additionalProperties"], False)
+        self.assertNotIn("url", self.market["components"]["schemas"]["Listing"]["properties"])
         self.assertEqual(self.market["servers"][0]["url"], "https://marketplace.example.invalid")
+        catalog = {
+            "trusted_key_ids": ["key-1"],
+            "listings": {
+                "matter-clock": {
+                    "pulled": False,
+                    "yanked_versions": ["0.0.9"],
+                    "versions": [
+                        {
+                            "version": "0.1.0",
+                            "manifest": {"id": "matter-clock", "version": "0.1.0"},
+                            "digest": "sha256:" + ("ab" * 32),
+                            "signature": "sig",
+                            "key_id": "key-1",
+                        }
+                    ],
+                }
+            },
+        }
+        verified = marketplace_package(catalog, {"listing_id": "matter-clock", "version": "0.1.0"})
+        self.assertEqual(verified["result"], "verified")
+        self.assertFalse(verified["package"]["execute"])
+        self.assertEqual(verified["package"]["version"], "0.1.0")
+        self.assertNotIn("url", verified["package"])
+        for label, patch, expected in (
+            ("missing", {"listing_id": "missing", "version": "0.1.0"}, "not_found"),
+            ("version", {"listing_id": "matter-clock", "version": "9.9.9"}, "not_found"),
+            ("yanked", {"listing_id": "matter-clock", "version": "0.0.9"}, "yanked"),
+            ("digest", {"listing_id": "matter-clock", "version": "0.1.0", "digest": "sha256:" + ("cd" * 32)}, "digest_mismatch"),
+            ("network", {"listing_id": "matter-clock", "version": "0.1.0", "network_error": True}, "unavailable"),
+        ):
+            self.assertEqual(marketplace_package(catalog, patch)["result"], expected, label)
+            self.assertIsNone(marketplace_package(catalog, patch)["package"], label)
+        bad_signature = {"version": "0.1.0", "digest": catalog["listings"]["matter-clock"]["versions"][0]["digest"], "signature": "nope", "key_id": "key-1", "signature_ok": False, "manifest": {}}
+        self.assertEqual(
+            marketplace_package({"trusted_key_ids": ["key-1"], "listings": {"matter-clock": {"versions": [bad_signature]}}}, {"listing_id": "matter-clock", "version": "0.1.0"})["result"],
+            "signature_invalid",
+        )
+        bad_key = {**bad_signature, "signature_ok": True, "key_id": "unknown"}
+        self.assertEqual(
+            marketplace_package({"trusted_key_ids": ["key-1"], "listings": {"matter-clock": {"versions": [bad_key]}}}, {"listing_id": "matter-clock", "version": "0.1.0"})["result"],
+            "untrusted_key",
+        )
+        pulled = marketplace_package({"trusted_key_ids": ["key-1"], "listings": {"matter-clock": {"pulled": True, "versions": catalog["listings"]["matter-clock"]["versions"]}}}, {"listing_id": "matter-clock", "version": "0.1.0"})
+        self.assertEqual(pulled["result"], "yanked")
+        self.assertIsNone(pulled["package"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

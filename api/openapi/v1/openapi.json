@@ -5635,7 +5635,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -9659,7 +9660,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -10679,7 +10681,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -13707,7 +13710,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -21585,7 +21589,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -23342,7 +23347,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -24250,7 +24256,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           },
           "client_fields": [
             "at",
@@ -27761,7 +27768,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -27925,7 +27933,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28069,7 +28078,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28224,7 +28234,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28379,7 +28390,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28521,7 +28533,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28672,7 +28685,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28836,7 +28850,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -28978,7 +28993,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -29141,7 +29157,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -38034,7 +38051,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -45460,7 +45478,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -45567,6 +45586,7 @@
             "source": "viewer_authorized_records",
             "filter_before": "count",
             "off_wall": "excluded",
+            "membership": "per_matter_id",
             "attorney_only": "excluded"
           }
         },
@@ -46661,7 +46681,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -46802,7 +46823,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -46944,7 +46966,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47085,7 +47108,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47226,7 +47250,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47367,7 +47392,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47509,7 +47535,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47651,7 +47678,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47793,7 +47821,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -47934,7 +47963,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -48075,7 +48105,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -48213,7 +48244,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -52108,7 +52140,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           },
           "page_size_setting": "activity.page_size"
         },
@@ -52610,7 +52643,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -52740,7 +52774,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],
@@ -54079,7 +54114,8 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
-            "scopes_from": "underlying_record"
+            "scopes_from": "underlying_record",
+            "membership": "per_matter_id"
           }
         },
         "x-togavsu-events": [],

@@ -3215,6 +3215,7 @@ def _shell(api: Contract) -> None:
                 "source": "viewer_authorized_records",
                 "filter_before": "count",
                 "off_wall": "excluded",
+                "membership": "per_matter_id",
                 "attorney_only": "excluded",
             },
         },

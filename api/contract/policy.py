@@ -1229,6 +1229,32 @@ def ensure_mutation_events(spec: dict) -> None:
         raise RuntimeError("writes without events: " + ", ".join(sorted(missing)))
 
 
+def matter_visible(caller: dict, row: dict, *, single_record: bool = False) -> bool:
+    """Membership is the matter id. One on_wall flag does not open every walled row."""
+    if not row.get("matter_walled"):
+        return True
+    matter_id = row.get("matter_id")
+    membership = caller.get("matter_membership")
+    if isinstance(membership, dict):
+        return bool(matter_id) and membership.get(matter_id) is True
+    if matter_id and caller.get("matter_id") == matter_id:
+        return bool(caller.get("on_wall"))
+    if single_record and not matter_id:
+        return bool(caller.get("on_wall"))
+    return False
+
+
+def matter_page(caller: dict, rows: list[dict], limit: int) -> dict:
+    """Keep rows the viewer can see. The cursor does not name a hidden matter."""
+    visible = [row for row in rows if matter_visible(caller, row)]
+    page = visible[:limit]
+    return {
+        "data": [{key: value for key, value in row.items() if key != "matter_walled"} for row in page],
+        "total": len(visible),
+        "next_cursor": None if len(visible) <= limit else "more",
+    }
+
+
 def authorized_badge_counts(operation: dict, caller: dict, rows: list[dict]) -> dict:
     """Sum sidebar badges from records the viewer can read. Filter before the count."""
     access = operation["x-togavsu-access"]
@@ -1236,7 +1262,7 @@ def authorized_badge_counts(operation: dict, caller: dict, rows: list[dict]) -> 
         return {"result": "forbidden", "badges": {}}
     totals: dict[str, int] = {}
     for row in rows:
-        if row.get("matter_walled") and not caller.get("on_wall"):
+        if not matter_visible(caller, row):
             continue
         if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin"):
             continue
@@ -1382,6 +1408,7 @@ def publish_inherited_history(spec: dict) -> None:
         "unreadable_row": "omitted",
         "attorney_only_values": "redacted",
         "scopes_from": "underlying_record",
+        "membership": "per_matter_id",
     }
     for method, _path, operation in iter_operations(spec):
         if method != "get":
@@ -1400,7 +1427,7 @@ def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> d
         return {"result": "forbidden", "rows": []}
     visible = []
     for row in rows:
-        if row.get("matter_walled") and not caller.get("on_wall"):
+        if not matter_visible(caller, row):
             continue
         needed = list(row.get("required_scopes") or [])
         if any(scope not in set(caller.get("scopes") or []) for scope in needed):
@@ -1604,7 +1631,7 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
     approved = set(module.get("approved_scopes") or [])
     if not needed or approved.isdisjoint(needed):
         return None
-    if event.get("matter_walled") and not module.get("on_wall"):
+    if not matter_visible(module, event):
         return None
     attorney_only_record = (
         event.get("attorney_only")
@@ -1912,7 +1939,7 @@ def notification_recipient_decision(operation: dict, call: dict) -> str:
         return "not_found"
     if call.get("recipient_user_id") not in (None, call.get("caller_user_id")):
         return "not_found"
-    if call.get("matter_walled") and not call.get("on_wall"):
+    if not matter_visible(call, call, single_record=True):
         return "not_found"
     if call.get("attorney_only") and call.get("role") not in ("attorney", "admin"):
         return "not_found"
@@ -1927,6 +1954,8 @@ def notification_page(operation: dict, caller: dict, rows: list[dict], limit: in
     for row in rows:
         if row.get("user_id") != caller.get("user_id"):
             continue
+        if not matter_visible(caller, row):
+            continue
         visible = notification_recipient_decision(
             operation,
             {
@@ -1934,8 +1963,7 @@ def notification_page(operation: dict, caller: dict, rows: list[dict], limit: in
                 "owner": "self",
                 "caller_user_id": caller.get("user_id"),
                 "recipient_user_id": row.get("user_id"),
-                "matter_walled": row.get("matter_walled"),
-                "on_wall": caller.get("on_wall"),
+                "matter_walled": False,
                 "attorney_only": row.get("attorney_only"),
             },
         )
@@ -2019,7 +2047,10 @@ def _caller_can_open(caller: dict, roles: list, scopes: list) -> bool:
 
 
 def _matter_filter_hidden(filters: dict, caller: dict) -> bool:
-    return bool(filters.get("matter_id")) and bool(caller.get("matter_walled")) and not caller.get("on_wall")
+    matter_id = filters.get("matter_id")
+    if not matter_id:
+        return False
+    return not matter_visible(caller, {"matter_walled": True, "matter_id": matter_id}, single_record=True)
 
 
 def open_widget_target(module_id: str, target: dict, caller: dict) -> dict:
@@ -2559,7 +2590,7 @@ def include_views_decision(operation: dict, call: dict) -> str:
         return "forbidden"
     if call.get("role") not in access.get("roles", []):
         return "forbidden"
-    if access.get("matter_wall") and call.get("matter_walled") and not call.get("on_wall"):
+    if access.get("matter_wall") and not matter_visible(call, call, single_record=True):
         return "not_found"
     if _hides_attorney_only_record(access) and call.get("role") not in ("attorney", "admin"):
         return "not_found"
@@ -2595,7 +2626,7 @@ def project_record(operation: dict, caller: dict, record: dict) -> dict:
     hidden = {"result": "not_found", "record": None, "redacted_fields": []}
     if caller.get("role") not in access.get("roles", []):
         return {"result": "forbidden", "record": None, "redacted_fields": []}
-    if access.get("matter_wall") and (record.get("matter_walled") or caller.get("matter_walled")) and not caller.get("on_wall"):
+    if access.get("matter_wall") and not matter_visible(caller, {**record, "matter_walled": record.get("matter_walled") or caller.get("matter_walled"), "matter_id": record.get("matter_id") or caller.get("matter_id")}, single_record=True):
         return hidden
     record_hidden = record.get("attorney_only") is True and (
         access.get("attorney_only_files") == "not_found" or _hides_attorney_only_record(access)
@@ -2868,6 +2899,41 @@ def publish_page_sizes(spec: dict) -> None:
                 "The admin can change that setting, and its registry range is the allowed page size."
             )
             operation["x-togavsu-access"]["page_size_setting"] = setting["key"]
+
+
+def marketplace_package(catalog: dict, call: dict) -> dict:
+    """A listing id and version resolve to one signed package. Nothing here is executed."""
+    empty = {"package": None}
+    if call.get("network_error"):
+        return {"result": "unavailable", **empty}
+    listing = (catalog.get("listings") or {}).get(call.get("listing_id"))
+    if not listing:
+        return {"result": "not_found", **empty}
+    version = call.get("version")
+    if listing.get("pulled") or version in set(listing.get("yanked_versions") or []):
+        return {"result": "yanked", **empty}
+    artifact = next((item for item in listing.get("versions") or [] if item.get("version") == version), None)
+    if not artifact:
+        return {"result": "not_found", **empty}
+    if artifact.get("digest_ok") is False or (call.get("digest") and call.get("digest") != artifact.get("digest")):
+        return {"result": "digest_mismatch", **empty}
+    if artifact.get("signature_ok") is False:
+        return {"result": "signature_invalid", **empty}
+    if artifact.get("key_id") not in set(catalog.get("trusted_key_ids") or []):
+        return {"result": "untrusted_key", **empty}
+    return {
+        "result": "verified",
+        "package": {
+            "listing_id": call["listing_id"],
+            "version": version,
+            "immutable": True,
+            "manifest": artifact.get("manifest"),
+            "digest": artifact.get("digest"),
+            "signature": artifact.get("signature"),
+            "key_id": artifact.get("key_id"),
+            "execute": False,
+        },
+    }
 
 
 def bulk_invoice_apply(store: dict, operation: dict, call: dict) -> dict:
