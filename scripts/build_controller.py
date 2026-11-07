@@ -35,6 +35,10 @@ PROTECTED = {
 }
 
 
+class ReviewPending(Exception):
+    pass
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -71,7 +75,7 @@ def validate_review(report, context, pr, main, expected_task=None):
         raise ValueError("Review belongs to another PR")
     if report.get("reviewed_head") != context["head"] or report.get("reviewed_base") != main:
         raise ValueError("Stale review verdict")
-    if report.get("verdict") not in {"pass", "fail"} or not isinstance(report.get("findings"), list):
+    if not isinstance(report.get("verdict"), str) or report["verdict"] not in {"pass", "fail"} or not isinstance(report.get("findings"), list):
         raise ValueError("Malformed verdict")
     if not isinstance(report.get("summary"), str) or not report["summary"].strip():
         raise ValueError("Missing review summary")
@@ -131,8 +135,10 @@ class Remote:
                 or provenance.get("event") != "pull_request"
                 or provenance.get("head_sha") != check["head_sha"]):
             raise ValueError("Check did not originate from the protected Codex workflow at this head")
+        if provenance.get("status") != "completed":
+            raise ReviewPending("Workflow attempt is still queued or running")
         artifacts = self.gh("actions/runs/" + run + "/artifacts?per_page=100")
-        expected = "codex-review-" + check["head_sha"]
+        expected = "codex-review-" + check["head_sha"] + "-attempt-" + str(provenance["run_attempt"])
         found = [a for a in artifacts["artifacts"] if a["name"] == expected and not a["expired"]]
         if len(found) != 1:
             raise ValueError("Review artifact unavailable")
@@ -193,7 +199,7 @@ class Controller:
         for task, old in json.loads(path.read_text()).items():
             if task not in self.tasks:
                 self.tasks[task] = {"agent_id": old["agent_id"], "starting_sha": old.get("starting_sha"),
-                    "repair_count": old.get("repair_cycle", 0), "submitted": True}
+                    "repair_count": old.get("repair_cycle", 0), "submitted": bool(old.get("submitted", False))}
                 branches = old.get("git", {}).get("branches", [])
                 if len(branches) == 1:
                     self.tasks[task]["expected_branch"] = branches[0]["branch"]
@@ -388,6 +394,9 @@ class Controller:
         try:
             report, context = self.remote.review(codex)
             validate_review(report, context, pr, main, task)
+        except ReviewPending:
+            record["waiting"] = "Codex workflow attempt queued or running"
+            return False
         except (ValueError, KeyError, zipfile.BadZipFile) as error:
             # Stale base can result from a workflow event predating branch refresh. Rerun once.
             key = head + ":" + main
@@ -570,6 +579,13 @@ class Controller:
             else:
                 try:
                     snapshots[task] = self.remote.agent(record)
+                except urllib.error.HTTPError as error:
+                    if error.code == 404:
+                        self.halt(task, record, "Previously submitted Cursor agent no longer exists; not recreating blindly")
+                    else:
+                        self.occupied += 1
+                        record["last_error"] = "Cursor observation HTTP " + str(error.code)
+                    continue
                 except Exception as error:
                     self.occupied += 1  # Unknown occupancy must reserve capacity, not create another job.
                     record["last_error"] = type(error).__name__ + ": agent observation unavailable"

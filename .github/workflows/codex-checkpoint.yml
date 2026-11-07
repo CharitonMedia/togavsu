@@ -75,7 +75,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: codex-review-${{ github.event.pull_request.head.sha }}
+          name: codex-review-${{ github.event.pull_request.head.sha }}-attempt-${{ github.run_attempt }}
           path: |
             review-context.json
             ${{ runner.temp }}/codex-review-output/review-result.json

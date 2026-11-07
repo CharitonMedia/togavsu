@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, APP_ID, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, ReviewPending, APP_ID, extract_review, latest_checks, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -316,6 +317,32 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.controller.validate_evidence(spec, evidence, HEAD)
 
+    def test_unconfirmed_legacy_launch_404_reuses_its_id(self):
+        self.controller.tasks.clear()
+        (Path(self.temp.name) / "agents.json").write_text(json.dumps({"one": {"agent_id": "bc-existing", "starting_sha": BASE, "submitted": False}}))
+        def absent(record):
+            raise urllib.error.HTTPError("test", 404, "missing", {}, None)
+        self.remote.agent = absent
+        self.controller.tick()
+        launches = [c for c in self.remote.calls if c[1] == "/agents"]
+        self.assertEqual(launches[0][2]["agentId"], "bc-existing")
+        self.assertTrue(self.controller.tasks["one"]["submitted"])
+
+    def test_malformed_verdict_uses_one_retry_then_stops(self):
+        self.remote.report["verdict"] = []
+        self.process()
+        self.process()
+        self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/rerun")]), 1)
+        self.assertTrue(self.record["halted"])
+
+    def test_queued_rerun_does_not_consume_another_retry_or_halt(self):
+        def pending(check):
+            raise ReviewPending()
+        self.remote.review = pending
+        self.process()
+        self.assertNotIn("halted", self.record)
+        self.assertNotIn("infra_retried", self.record)
+
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True
         self.remote.pr["merge_commit_sha"] = NEW
@@ -360,6 +387,33 @@ class ControllerTests(unittest.TestCase):
 
 
 class ReviewDataTests(unittest.TestCase):
+    def test_non_string_verdict_types_are_rejected(self):
+        r = FakeRemote()
+        for value in [[], {}]:
+            report = dict(r.report, verdict=value)
+            with self.assertRaises(ValueError):
+                validate_review(report, r.context, r.pr, BASE)
+
+    def test_retry_selects_attempt_two_artifact_over_existing_attempt_one(self):
+        r = FakeRemote()
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("review-result.json", json.dumps(r.report))
+            archive.writestr("review-context.json", json.dumps(r.context))
+        remote, fetched = Remote(), []
+        def gh(path, **kwargs):
+            fetched.append(path)
+            if path == "actions/runs/123":
+                return {"path": ".github/workflows/codex-checkpoint.yml", "head_sha": HEAD, "event": "pull_request", "status": "completed", "run_attempt": 2}
+            if path.endswith("/artifacts?per_page=100"):
+                return {"artifacts": [{"name": "codex-review-" + HEAD + "-attempt-" + str(n), "id": n, "expired": False} for n in [1,2]]}
+            if path == "actions/artifacts/2/zip":
+                return output.getvalue()
+            raise AssertionError(path)
+        remote.gh = gh
+        report, context = remote.review(check("Codex checkpoint"))
+        self.assertEqual(report["verdict"], "pass")
+        self.assertIn("actions/artifacts/2/zip", fetched)
     def test_null_review_or_context_is_rejected(self):
         r = FakeRemote()
         for report, context in [(None,r.context),(r.report,None)]:
