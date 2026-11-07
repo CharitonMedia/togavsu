@@ -77,7 +77,7 @@ Failures use `application/problem+json`:
 
 ## Lists, writes, bulk
 
-Lists take `cursor` and `limit`. A general list uses `api.page_size` (starting value 50) and `api.max_page_size` (starting value 200). The effective default is the smaller of those two, and a requested size above the cap is refused. The next request uses an admin change. The activities feed uses `activity.page_size` (100, maximum 500). Notes use `notes.page_size` (25, maximum 200). They return:
+Lists take `cursor` and `limit`. The published general maximum is the registry ceiling for `api.max_page_size`, 10000, on both the OpenAPI document and the MCP tool. The active cap is the current `api.max_page_size`, starting at 200. A limit inside the published maximum but above the active cap is refused. The default is `api.page_size`, starting at 50, and cannot exceed the active cap. The next request uses an admin change. The activities feed uses `activity.page_size` (starting value 100, registry maximum 500). Notes use `notes.page_size` (starting value 25, registry maximum 200). They return:
 
 ```json
 { "data": [], "page": { "limit": 50, "next_cursor": null } }

@@ -3100,10 +3100,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "user_id",
@@ -3380,10 +3380,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "include",
@@ -3990,10 +3990,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -4771,10 +4771,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -5557,10 +5557,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -5921,10 +5921,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -6609,10 +6609,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -7297,10 +7297,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -7985,10 +7985,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -8814,10 +8814,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -9629,10 +9629,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -10534,10 +10534,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "include",
@@ -10698,10 +10698,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -10882,10 +10882,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -11887,10 +11887,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -12701,10 +12701,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -13601,10 +13601,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -14195,10 +14195,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -14558,7 +14558,7 @@
               "maximum": 200,
               "default": 25
             },
-            "description": "Page size. The default is notes.page_size (starting value 25). The maximum is 200. The next request uses an admin change, and the size cannot exceed that setting's maximum."
+            "description": "Page size. The default is notes.page_size (starting value 25). The published maximum is that setting's registry ceiling, 200. The next request uses an admin change, and the size cannot exceed that ceiling."
           },
           {
             "name": "q",
@@ -15508,10 +15508,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -16397,10 +16397,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -16800,10 +16800,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -17270,10 +17270,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -17740,10 +17740,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -18210,10 +18210,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -18680,10 +18680,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -19150,10 +19150,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -19620,10 +19620,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -20090,10 +20090,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "record_type",
@@ -21469,10 +21469,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -22144,10 +22144,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -22507,10 +22507,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -23277,10 +23277,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -23943,10 +23943,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -24306,10 +24306,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -24880,10 +24880,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -26801,10 +26801,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -30494,10 +30494,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -31064,10 +31064,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -32075,10 +32075,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -32244,10 +32244,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "status",
@@ -32681,10 +32681,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -33507,10 +33507,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "trust_account_id",
@@ -34062,10 +34062,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -34990,10 +34990,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -35910,10 +35910,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -36682,10 +36682,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -38958,10 +38958,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -39328,10 +39328,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -39544,10 +39544,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -40467,10 +40467,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "kind",
@@ -41597,10 +41597,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -42780,10 +42780,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -43265,10 +43265,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -43907,10 +43907,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -44540,10 +44540,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -45050,10 +45050,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -45507,10 +45507,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "status",
@@ -46102,10 +46102,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -47113,10 +47113,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "read",
@@ -47955,10 +47955,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -50400,10 +50400,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -51204,10 +51204,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -51566,10 +51566,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -52156,10 +52156,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "section_id",
@@ -52755,10 +52755,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -53350,10 +53350,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -53915,7 +53915,7 @@
               "maximum": 500,
               "default": 100
             },
-            "description": "Page size. The default is activity.page_size (starting value 100). The maximum is 500. The next request uses an admin change, and the size cannot exceed that setting's maximum."
+            "description": "Page size. The default is activity.page_size (starting value 100). The published maximum is that setting's registry ceiling, 500. The next request uses an admin change, and the size cannot exceed that ceiling."
           },
           {
             "name": "actor_kind",
@@ -54462,10 +54462,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "entity_type",
@@ -54679,10 +54679,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -54847,10 +54847,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -55511,10 +55511,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -56029,10 +56029,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "from_time",
@@ -56463,10 +56463,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -56883,10 +56883,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -57397,10 +57397,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -58066,10 +58066,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -58521,10 +58521,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -58760,10 +58760,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -60236,10 +60236,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -60467,10 +60467,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -60685,10 +60685,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -61243,10 +61243,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
+              "maximum": 10000,
               "default": 50
             },
-            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
+            "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -79803,10 +79803,10 @@
       "files:read"
     ],
     "file_upload.created": [
-      "files:read"
+      "files:write"
     ],
     "file_upload.staged": [
-      "files:read"
+      "files:write"
     ],
     "folder.created": [
       "files:read"
@@ -79836,13 +79836,13 @@
       "files:read"
     ],
     "storage_backend.created": [
-      "files:read"
+      "files:write"
     ],
     "storage_backend.updated": [
-      "files:read"
+      "files:write"
     ],
     "storage_backend.tested": [
-      "files:read"
+      "files:write"
     ],
     "storage_move.started": [
       "files:read"

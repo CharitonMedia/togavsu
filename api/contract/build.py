@@ -283,6 +283,9 @@ def render_mcp(spec: dict) -> dict:
                 "scopes": operation["x-togavsu-access"]["scopes"],
                 "roles": operation["x-togavsu-access"]["roles"],
             }
+            limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
+            if limit and isinstance(limit.get("schema"), dict):
+                tool["limit"] = dict(limit["schema"])
             if "transfer" in mcp:
                 tool["transfer"] = mcp["transfer"]
             payment_status = operation["x-togavsu-access"].get("payment_status")

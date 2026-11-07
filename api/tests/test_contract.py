@@ -504,7 +504,9 @@ class ContractTest(unittest.TestCase):
             else:
                 self.assertEqual(named, "api.page_size", operation["operationId"])
                 self.assertEqual(schema.get("default"), 50, path)
-                self.assertEqual(schema.get("maximum"), 200, path)
+                self.assertEqual(schema.get("maximum"), 10000, path)
+                self.assertIn("10000", limit["description"], path)
+                self.assertIn("200", limit["description"], path)
             self.assertEqual(page_size_decision(operation, None)["limit"], schema["default"], operation["operationId"])
             self.assertEqual(page_size_decision(operation, schema["maximum"] + 1)["result"], "validation_failed", operation["operationId"])
         events = _operation(self.spec, "listEvents")
@@ -521,6 +523,18 @@ class ContractTest(unittest.TestCase):
         squeezed = page_size_decision(_operation(self.spec, "listMatter"), None, {"api.page_size": 300, "api.max_page_size": 200})
         self.assertEqual(squeezed["limit"], 200)
         self.assertEqual(notes["x-togavsu-access"]["page_size_setting"], "notes.page_size")
+        raised = page_size_decision(_operation(self.spec, "listMatter"), 300, {"api.max_page_size": 500})
+        self.assertEqual(raised["result"], "allowed")
+        self.assertEqual(raised["limit"], 300)
+        matter_limit = next(parameter["schema"] for parameter in _operation(self.spec, "listMatter")["parameters"] if parameter.get("name") == "limit")
+        self.assertGreaterEqual(matter_limit["maximum"], 300)
+        self.assertEqual(page_size_decision(_operation(self.spec, "listMatter"), 300, {"api.max_page_size": 100})["result"], "validation_failed")
+        self.assertEqual(page_size_decision(events, 300)["result"], "allowed")
+        self.assertEqual(page_size_decision(notes, 201)["result"], "validation_failed")
+        tools = {tool["name"]: tool for tool in render_mcp(self.spec)["tools"]}
+        self.assertEqual(tools["listMatter"]["limit"]["maximum"], 10000)
+        self.assertEqual(tools["listEvents"]["limit"]["maximum"], 500)
+        self.assertEqual(tools["listNote"]["limit"]["maximum"], 200)
 
     def test_trust_ledger_is_append_only(self):
         collection = self.spec["paths"]["/api/v1/trust-ledger"]
@@ -4045,8 +4059,8 @@ class ContractTest(unittest.TestCase):
             ("session.ended", "sessions:read"),
             ("ical_feed.created", "calendar:read"),
             ("ical_feed.revoked", "calendar:read"),
-            ("file_upload.created", "files:read"),
-            ("file_upload.staged", "files:read"),
+            ("file_upload.created", "files:write"),
+            ("file_upload.staged", "files:write"),
         ):
             sample = event_for(event_type, self_id, asserted=other_id)
             own = webhook_envelope(subscriber(event_type, self_id, "staff", [scope]), sample)
@@ -4277,6 +4291,19 @@ class ContractTest(unittest.TestCase):
         owners = self.spec["x-togavsu-event-owners"]
         self.assertEqual(owners["file_upload.created"]["owner_form"], "tagged")
         self.assertEqual(owners["file_upload.staged"]["owner_form"], "tagged")
+        upload = _operation(self.spec, "getFileUpload")
+        self.assertEqual(upload["x-togavsu-access"]["scopes"], ["files:write"])
+        self.assertEqual(event_read_scopes("file_upload.created"), ["files:write"])
+        self.assertEqual(event_read_scopes("file_upload.staged"), ["files:write"])
+        self.assertEqual(next(tool["scopes"] for tool in render_mcp(self.spec)["tools"] if tool["name"] == "getFileUpload"), ["files:write"])
+        write_gets = [
+            operation["operationId"]
+            for method, _path, operation in _ops(self.spec)
+            if method == "get" and any(scope.endswith(":write") for scope in operation["x-togavsu-access"]["scopes"])
+        ]
+        self.assertEqual(write_gets, ["getFileUpload", "listStorageBackend", "getStorageBackend"])
+        for event_type in ("storage_backend.created", "storage_backend.updated", "storage_backend.tested"):
+            self.assertEqual(event_read_scopes(event_type), ["files:write"], event_type)
         secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
         matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
         summary = "module staged the upload"
@@ -4296,7 +4323,7 @@ class ContractTest(unittest.TestCase):
             "installed": True,
             "registered": True,
             "module_id": "drop-folder",
-            "approved_scopes": ["files:read"],
+            "approved_scopes": ["files:write"],
             "subscriptions": ["file_upload.staged"],
             "on_wall": True,
             "matter_id": matter,
@@ -4312,6 +4339,7 @@ class ContractTest(unittest.TestCase):
             ("revoked-grant", {**owner, "grant_revoked": True}),
             ("off-wall", {**owner, "on_wall": False, "matter_membership": {matter: False}}),
             ("wrong-scope", {**owner, "approved_scopes": ["matters:read"]}),
+            ("read-only", {**owner, "approved_scopes": ["files:read"]}),
         ):
             denied = webhook_envelope(module, event)
             self.assertIsNone(denied, label)
@@ -4319,9 +4347,12 @@ class ContractTest(unittest.TestCase):
             self.assertNotIn(summary, str(denied), label)
         history = _operation(self.spec, "listWebhookDeliveries")
         row = {**event, "required_scopes": ["files:read"], "action": "file_upload.staged"}
-        own_page = inherited_history_rows(history, {"module_id": "drop-folder", "role": "staff", "scopes": ["webhooks:read", "files:read"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        own_page = inherited_history_rows(history, {"module_id": "drop-folder", "role": "staff", "scopes": ["webhooks:read", "files:write"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        read_only_page = inherited_history_rows(history, {"module_id": "drop-folder", "role": "staff", "scopes": ["webhooks:read", "files:read"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        self.assertEqual(read_only_page["rows"], [])
+        self.assertNotIn(secret, str(read_only_page["rows"]))
         self.assertEqual([item["record_id"] for item in own_page["rows"]], [secret])
-        other_page = inherited_history_rows(history, {"module_id": "other-mod", "principal_user_id": "018f1a00-7b3c-7d4e-8a11-999999999999", "role": "admin", "scopes": ["webhooks:read", "files:read"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        other_page = inherited_history_rows(history, {"module_id": "other-mod", "principal_user_id": "018f1a00-7b3c-7d4e-8a11-999999999999", "role": "admin", "scopes": ["webhooks:read", "files:write"], "matter_membership": {matter: True}, "on_wall": True}, [row])
         self.assertEqual(other_page["rows"], [])
         self.assertNotIn(secret, str(other_page["rows"]))
 
@@ -4362,8 +4393,10 @@ class ContractTest(unittest.TestCase):
             "balance_cents": events[1]["balance_cents"],
             "scope": "account",
             "status": "open",
+            "source": {"trust_entry_id": entry, "matter_id": matter, "matter_walled": False, "client_id": client, "trust_account_id": account},
         }
-        _component_validator(self.spec, "TrustFlag").validate(flag)
+        flag_body = {key: value for key, value in flag.items() if key != "source"}
+        _component_validator(self.spec, "TrustFlag").validate(flag_body)
         posted = {
             "entry": {
                 "id": entry,
@@ -4378,7 +4411,7 @@ class ContractTest(unittest.TestCase):
                 "description": "Account shortfall",
             },
             "balances": {"matter_cents": 90, "client_cents": 90, "account_cents": -5},
-            "flags": [flag],
+            "flags": [flag_body],
         }
         _component_validator(self.spec, "TrustPostResult").validate(posted)
         accounts = [
@@ -4394,6 +4427,40 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(rows["total"], 1)
         self.assertNotIn(other, str(rows["rows"]))
         self.assertEqual(trust_flag_rows({**caller, "token_scopes": ["trust:withdraw"]}, [flag], accounts)["result"], "scope_denied")
+        hidden_matter = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        hidden_entry = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa8"
+        client_flag = {
+            "id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9",
+            "scope": "client",
+            "client_id": client,
+            "trust_entry_id": hidden_entry,
+            "balance_cents": -10,
+            "status": "open",
+            "matter_walled": False,
+            "source": {"trust_entry_id": hidden_entry, "matter_id": hidden_matter, "matter_walled": True, "client_id": client},
+        }
+        for role in ("staff", "admin"):
+            denied_flags = trust_flag_rows(
+                {"role": role, "token_scopes": ["trust:read"], "firm_id": "firm-1", "matter_membership": {hidden_matter: False}, "on_wall": True},
+                [client_flag],
+                accounts,
+                {"cursor": client_flag["id"]},
+            )
+            self.assertEqual(denied_flags["rows"], [], role)
+            self.assertEqual(denied_flags["total"], 0, role)
+            self.assertIsNone(denied_flags["next_cursor"], role)
+            self.assertNotIn(client_flag["id"], str(denied_flags), role)
+            self.assertNotIn(hidden_entry, str(denied_flags), role)
+        visible_flags = trust_flag_rows(
+            {"role": "staff", "token_scopes": ["trust:read"], "firm_id": "firm-1", "matter_membership": {hidden_matter: True}, "on_wall": True},
+            [client_flag],
+            accounts,
+        )
+        self.assertEqual([row["id"] for row in visible_flags["rows"]], [client_flag["id"]])
+        self.assertEqual(visible_flags["rows"][0]["trust_entry_id"], hidden_entry)
+        unknown = trust_flag_rows(caller, [{**client_flag, "source": None, "matter_id": matter, "matter_walled": False}], accounts)
+        self.assertEqual(unknown["rows"], [])
+        self.assertNotIn(client_flag["id"], str(unknown))
 
     def test_history_inherits_the_underlying_record(self):
         covered = []
@@ -5009,6 +5076,24 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(client_only[1]["balance_scope"], "client")
         self.assertEqual(client_only[1]["balance_cents"], -5)
+        account_a = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00011"
+        account_b = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00012"
+        matter_a = "018f1a00-7b3c-7d4e-8a11-333333333341"
+        matter_b = "018f1a00-7b3c-7d4e-8a11-333333333342"
+        mixed_accounts = trust_ledger_events(
+            bulk,
+            [
+                {"amount_cents": -30, "matter_id": matter_a, "client_id": client, "trust_account_id": account_a, "trust_entry_id": entry_a, "opening": {"matter_cents": 100, "client_cents": 50, "account_cents": 100}},
+                {"amount_cents": -30, "matter_id": matter_b, "client_id": client, "trust_account_id": account_b, "trust_entry_id": entry_b, "opening": {"matter_cents": 80, "client_cents": 50, "account_cents": 80}},
+            ],
+            committed=True,
+        )
+        self.assertEqual([event["type"] for event in mixed_accounts], ["trust.entry_posted", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(mixed_accounts[2]["balance_scope"], "client")
+        self.assertEqual(mixed_accounts[2]["balance_cents"], -10)
+        self.assertEqual(mixed_accounts[2]["client_id"], client)
+        self.assertGreaterEqual(mixed_accounts[0]["balance_cents"], 0)
+        self.assertGreaterEqual(mixed_accounts[1]["balance_cents"], 0)
         debit = trust_debit_decision(
             {
                 "role": "attorney",

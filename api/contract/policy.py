@@ -544,6 +544,7 @@ def finalize(spec: dict) -> None:
     publish_inherited_history(spec)
     publish_event_scopes(spec)
     publish_owner_read_scopes(spec)
+    align_event_scopes_to_gets(spec)
     publish_trust_flags(spec)
     publish_matter_effect_order(spec)
     publish_invoice_item_privileges(spec)
@@ -1437,20 +1438,19 @@ def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, 
         client_id = item.get("client_id")
         account_id = item.get("trust_account_id")
         matter_key = (account_id, client_id, matter_id)
-        client_key = (account_id, client_id)
         account_key = (account_id,)
         if matter_key not in matter_bal:
             matter_bal[matter_key] = _balance_value(opening.get("matter_cents"))
-        if client_key not in client_bal:
-            client_bal[client_key] = _balance_value(opening.get("client_cents", opening.get("matter_cents")))
+        if client_id not in client_bal:
+            client_bal[client_id] = _balance_value(opening.get("client_cents"))
         if account_key not in account_bal:
-            account_bal[account_key] = _balance_value(opening.get("account_cents", opening.get("matter_cents")))
+            account_bal[account_key] = _balance_value(opening.get("account_cents"))
         matter_bal[matter_key] += amount
-        client_bal[client_key] += amount
+        client_bal[client_id] += amount
         account_bal[account_key] += amount
         balances = {
             "matter": matter_bal[matter_key],
-            "client": client_bal[client_key],
+            "client": client_bal[client_id],
             "account": account_bal[account_key],
         }
         scope = next((name for name in ("matter", "client", "account") if balances[name] < 0), None)
@@ -1634,7 +1634,9 @@ def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> d
             continue
         if not matter_visible(caller, row):
             continue
-        needed = list(row.get("required_scopes") or [])
+        event_name = _event_name(row)
+        published = event_read_scopes(event_name) if event_name else []
+        needed = list(published) if published else list(row.get("required_scopes") or [])
         if any(scope not in set(caller.get("scopes") or []) for scope in needed):
             continue
         copied = {
@@ -1739,6 +1741,34 @@ def publish_owner_read_scopes(spec: dict) -> None:
     for event, rule in spec.get("x-togavsu-event-owners", {}).items():
         if not registry.get(event):
             registry[event] = list(family_scopes.get(rule["family"]) or [])
+    _EVENT_SCOPE_REGISTRY.clear()
+    _EVENT_SCOPE_REGISTRY.update(registry)
+
+
+def align_event_scopes_to_gets(spec: dict) -> None:
+    """When the collection GET requires a write scope, its events keep that scope instead of a normalized read."""
+    gets: dict[str, list[str]] = {}
+    emitted: dict[str, set[str]] = {}
+    for method, path, operation in iter_operations(spec):
+        parts = [part for part in path.split("/") if part]
+        if len(parts) < 3 or parts[0] != "api" or parts[1] != "v1":
+            continue
+        collection = parts[2]
+        if method == "get":
+            scopes = list(operation["x-togavsu-access"].get("scopes") or [])
+            if scopes and ("{" in path or collection not in gets):
+                gets[collection] = scopes
+        for event in operation.get("x-togavsu-events") or []:
+            emitted.setdefault(event, set()).add(collection)
+    registry = spec["x-togavsu-event-scopes"]
+    for event, collections in emitted.items():
+        for collection in collections:
+            scopes = gets.get(collection)
+            if not scopes:
+                continue
+            if any(_domain_read(scope) not in (None, scope) for scope in scopes):
+                registry[event] = sorted(set(scopes))
+                break
     _EVENT_SCOPE_REGISTRY.clear()
     _EVENT_SCOPE_REGISTRY.update(registry)
 
@@ -3415,11 +3445,11 @@ def invoice_draft_decision(operation: dict, call: dict, matters: list[dict]) -> 
 
 
 def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query: dict | None = None) -> dict:
-    """Account flags stay on a current authorized account at this firm. Other scopes keep the matter wall."""
+    """Every scope is authorized from the source ledger entry before a row, count, or cursor is returned."""
     if caller.get("role") not in {"admin", "attorney", "staff", "accountant"}:
-        return {"result": "forbidden", "rows": [], "total": 0}
+        return {"result": "forbidden", "rows": [], "total": 0, "next_cursor": None}
     if "trust:read" not in set(caller.get("token_scopes") or caller.get("scopes") or []):
-        return {"result": "scope_denied", "rows": [], "total": 0}
+        return {"result": "scope_denied", "rows": [], "total": 0, "next_cursor": None}
     query = query or {}
     current = {
         row.get("id"): row
@@ -3427,8 +3457,31 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
         if row.get("active") is True and row.get("authorized") is True and row.get("firm_id") == caller.get("firm_id")
     }
     visible = []
+    hidden: set[str] = set()
+
+    def conceal(flag: dict, source: dict | None = None) -> None:
+        for value in (flag.get("id"), flag.get("trust_entry_id"), (source or {}).get("trust_entry_id")):
+            if isinstance(value, str):
+                hidden.add(value)
+
     for flag in flags:
+        source = flag.get("source") if isinstance(flag.get("source"), dict) else None
+        entry_id = (source or {}).get("trust_entry_id")
+        matter_id = (source or {}).get("matter_id")
+        if not isinstance(entry_id, str) or not entry_id or not isinstance(matter_id, str) or not matter_id:
+            conceal(flag, source)
+            continue
+        if not matter_visible(caller, {"matter_id": matter_id, "matter_walled": source.get("matter_walled", True)}):
+            conceal(flag, source)
+            continue
         scope = flag.get("scope")
+        if scope == "account":
+            if current.get(flag.get("trust_account_id")) is None:
+                conceal(flag, source)
+                continue
+        elif scope not in {"matter", "client"}:
+            conceal(flag, source)
+            continue
         if query.get("flag_scope") not in (None, scope):
             continue
         if query.get("matter_id") not in (None, flag.get("matter_id")):
@@ -3437,17 +3490,13 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
             continue
         if query.get("status") not in (None, flag.get("status")):
             continue
-        if scope == "account":
-            account = current.get(flag.get("trust_account_id"))
-            if account is None:
-                continue
-        elif scope == "matter":
-            if not matter_visible(caller, flag):
-                continue
-        elif scope != "client":
-            continue
-        visible.append({key: value for key, value in flag.items() if key != "matter_walled"})
-    return {"result": "allowed", "rows": visible, "total": len(visible)}
+        projected = {key: value for key, value in flag.items() if key not in {"source", "matter_walled"}}
+        projected["trust_entry_id"] = entry_id
+        visible.append(projected)
+    cursor = query.get("cursor")
+    if not isinstance(cursor, str) or cursor in hidden:
+        cursor = None
+    return {"result": "allowed", "rows": visible, "total": len(visible), "next_cursor": cursor}
 
 
 def invoice_reconciliation_error(item: dict) -> str | None:
@@ -3605,8 +3654,20 @@ def page_limit(current: dict | None = None, *, override: str | None = None) -> d
         setting = registry[override]
         specific_cap = setting["maximum"]
         specific = min(_setting_value(override, current), specific_cap)
-        return {"default": specific, "minimum": setting["minimum"], "maximum": specific_cap, "setting": override}
-    return {"default": default, "minimum": minimum, "maximum": cap, "setting": "api.page_size"}
+        return {
+            "default": specific,
+            "minimum": setting["minimum"],
+            "maximum": specific_cap,
+            "schema_maximum": specific_cap,
+            "setting": override,
+        }
+    return {
+        "default": default,
+        "minimum": minimum,
+        "maximum": cap,
+        "schema_maximum": registry["api.max_page_size"]["maximum"],
+        "setting": "api.page_size",
+    }
 
 
 def page_size_decision(operation: dict, requested, current: dict | None = None) -> dict:
@@ -3635,19 +3696,21 @@ def publish_page_sizes(spec: dict) -> None:
             parameter["schema"] = {
                 "type": "integer",
                 "minimum": bounds["minimum"],
-                "maximum": bounds["maximum"],
+                "maximum": bounds["schema_maximum"],
                 "default": bounds["default"],
             }
             if override:
                 parameter["description"] = (
                     f"Page size. The default is {override} (starting value {bounds['default']}). "
-                    f"The maximum is {bounds['maximum']}. The next request uses an admin change, and the size cannot exceed that setting's maximum."
+                    f"The published maximum is that setting's registry ceiling, {bounds['schema_maximum']}. "
+                    "The next request uses an admin change, and the size cannot exceed that ceiling."
                 )
                 operation["x-togavsu-access"]["page_size_setting"] = override
             else:
                 parameter["description"] = (
-                    "Page size. The default is api.page_size and the maximum is api.max_page_size. "
-                    "The effective default is the smaller of the two. The next request uses an admin change."
+                    "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. "
+                    "The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. "
+                    "The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
                 )
                 operation["x-togavsu-access"]["page_size_setting"] = "api.page_size"
                 operation["x-togavsu-access"]["page_size_cap_setting"] = "api.max_page_size"
