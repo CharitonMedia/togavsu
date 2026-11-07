@@ -394,6 +394,10 @@ func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
 			errs = append(errs, spec.ID+": "+Scrub(err.Error()))
 			continue
 		}
+		if err := s.reconcileDestination(ctx, dest); err != nil {
+			errs = append(errs, dest.ID()+": "+Scrub(err.Error()))
+			continue
+		}
 		if err := s.copyOne(ctx, dest, meta); err != nil {
 			errs = append(errs, dest.ID()+": "+Scrub(err.Error()))
 		}
@@ -403,36 +407,167 @@ func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
 
 func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) error {
 	name := meta.ID + ".tgbk"
-	f, err := os.Open(filepath.Join(s.Dir, name))
+	path, err := s.contained(meta.ID, ".tgbk")
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
+	receipts := s.receiptBook()
+	if receipts == nil {
+		return fmt.Errorf("receipt: %w", ErrBadRequest)
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptPending}); err != nil {
 		return err
 	}
-	if receipts := s.receiptBook(); receipts != nil {
-		if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
+	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
+		if uncertainRemote(err, dest.ID(), name) {
 			return err
 		}
+		if s.dropRemote(ctx, dest, name) {
+			_ = receipts.Remove(dest.ID(), name)
+		}
+		return err
 	}
 	rc, err := dest.Get(ctx, name)
 	if err != nil {
+		if uncertainRemote(err, dest.ID(), name) {
+			return err
+		}
+		if s.dropRemote(ctx, dest, name) {
+			_ = receipts.Remove(dest.ID(), name)
+		}
 		return err
 	}
-	defer rc.Close()
 	got, err := sha256Hex(rc)
+	closeErr := rc.Close()
+	if errors.Is(err, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) {
+		return uncertainJoin(err, closeErr)
+	}
+	if err != nil {
+		if s.dropRemote(ctx, dest, name) {
+			_ = receipts.Remove(dest.ID(), name)
+		}
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if got != meta.SHA256 {
+		if s.dropRemote(ctx, dest, name) {
+			_ = receipts.Remove(dest.ID(), name)
+		}
+		return ErrChecksum
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
+		return err
+	}
+	sidePath, err := s.contained(meta.ID, ".sha256")
 	if err != nil {
 		return err
 	}
-	if got != meta.SHA256 {
-		return ErrChecksum
-	}
-	side, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".sha256"))
+	side, err := os.ReadFile(sidePath)
 	if err != nil {
 		return err
 	}
 	return dest.Put(ctx, meta.ID+".sha256", bytes.NewReader(side), "")
+}
+
+func uncertainJoin(a, b error) error {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+func uncertainRemote(err error, destID, name string) bool {
+	return errors.Is(err, ErrRemoteUncertain) || remoteBusy(remoteKey(destID, name))
+}
+
+// dropRemote removes one owned name and its partial sibling. It reports
+// false when the deletion itself is still running or failed.
+func (s *Store) dropRemote(ctx context.Context, dest Destination, name string) bool {
+	if err := dest.Delete(ctx, name); err != nil {
+		return false
+	}
+	partial, ok := dest.(interface {
+		RemovePartial(context.Context, string) error
+	})
+	if !ok {
+		return true
+	}
+	return partial.RemovePartial(ctx, name) == nil
+}
+
+// reconcileDestination resolves pending receipts for this destination only.
+// An in-flight filesystem worker is left alone. Other names are not listed
+// and are not deleted.
+func (s *Store) reconcileDestination(ctx context.Context, dest Destination) error {
+	receipts := s.receiptBook()
+	if receipts == nil || dest == nil {
+		return nil
+	}
+	owned, err := receipts.List(dest.ID())
+	if err != nil {
+		return err
+	}
+	for _, obj := range owned {
+		if obj.State != receiptPending {
+			continue
+		}
+		if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts *ReceiptBook, obj OwnedObject) error {
+	if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+		return nil
+	}
+	if !strings.HasSuffix(obj.Name, ".tgbk") {
+		return nil
+	}
+	id := strings.TrimSuffix(obj.Name, ".tgbk")
+	localSHA := ""
+	if meta, err := s.lookup(id); err == nil {
+		localSHA = meta.SHA256
+	}
+	rc, err := dest.Get(ctx, obj.Name)
+	if errors.Is(err, ErrRemoteUncertain) {
+		return nil
+	}
+	if errors.Is(err, ErrNotFound) {
+		if s.dropRemote(ctx, dest, obj.Name) {
+			return receipts.Remove(dest.ID(), obj.Name)
+		}
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	got, hashErr := sha256Hex(rc)
+	closeErr := rc.Close()
+	if errors.Is(hashErr, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) {
+		return nil
+	}
+	if hashErr != nil || closeErr != nil {
+		return nil
+	}
+	if localSHA != "" && got == localSHA {
+		return receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: obj.Name, Created: obj.Created})
+	}
+	if localSHA == "" {
+		return nil
+	}
+	if s.dropRemote(ctx, dest, obj.Name) {
+		return receipts.Remove(dest.ID(), obj.Name)
+	}
+	return nil
 }
 
 // Open verifies the sidecar checksum and returns the encrypted bytes.
@@ -660,6 +795,9 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 		if err != nil {
 			return n, err
 		}
+		if err := s.reconcileDestination(ctx, dest); err != nil {
+			return n, err
+		}
 		var owned []OwnedObject
 		if receipts := s.receiptBook(); receipts != nil {
 			owned, err = receipts.List(spec.ID)
@@ -667,7 +805,14 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 				return n, err
 			}
 		}
-		deleted, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now(), owned)
+		var stable []OwnedObject
+		for _, obj := range owned {
+			if obj.State == receiptPending && remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+				continue
+			}
+			stable = append(stable, obj)
+		}
+		deleted, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now(), stable)
 		if receipts := s.receiptBook(); receipts != nil {
 			for _, name := range deleted {
 				_ = receipts.Remove(spec.ID, name)

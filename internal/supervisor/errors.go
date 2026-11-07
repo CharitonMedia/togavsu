@@ -1,6 +1,9 @@
 package supervisor
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrPassphraseRequired       = errors.New("backup passphrase is not set")
@@ -20,15 +23,19 @@ var (
 	ErrHealth                   = errors.New("health check failed")
 	ErrArchive                  = errors.New("backup archive is invalid")
 	ErrDestination              = errors.New("backup destination failed")
-	ErrPreserveWrites           = errors.New("pre-update snapshot was kept so later commits stay in place")
-	ErrRestoreCleanup           = errors.New("restored database is live and the previous database was not dropped")
-	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
-	ErrCleanupUnreconciled      = errors.New("aborted update container was not stopped and removed")
-	ErrMigrationUnknown         = errors.New("migration outcome is unknown")
-	ErrProxyUnknown             = errors.New("caddy upstream is not one managed container")
-	ErrShuttingDown             = errors.New("supervisor is shutting down")
-	ErrRecoveryRequired         = errors.New("a restore is waiting for recovery")
-	ErrFileRestoreUnsupported   = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
+	// ErrRemoteUncertain means the wait for a destination ended while the
+	// remote work may still be running. A blocked filesystem call is not
+	// cancelled; the operation stays tracked until that call returns.
+	ErrRemoteUncertain        = fmt.Errorf("%w: remote operation outcome is uncertain", ErrDestination)
+	ErrPreserveWrites         = errors.New("pre-update snapshot was kept so later commits stay in place")
+	ErrRestoreCleanup         = errors.New("restored database is live and the previous database was not dropped")
+	ErrProxyUnreconciled      = errors.New("caddy kept the new upstream and it could not be rolled back")
+	ErrCleanupUnreconciled    = errors.New("aborted update container was not stopped and removed")
+	ErrMigrationUnknown       = errors.New("migration outcome is unknown")
+	ErrProxyUnknown           = errors.New("caddy upstream is not one managed container")
+	ErrShuttingDown           = errors.New("supervisor is shutting down")
+	ErrRecoveryRequired       = errors.New("a restore is waiting for recovery")
+	ErrFileRestoreUnsupported = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become

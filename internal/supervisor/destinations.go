@@ -5,20 +5,22 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
 
-// destinationIOTimeout bounds one destination read or write. A nightly
-// backup otherwise uses the supervisor's lifetime context and would hold
-// the operation gate until process shutdown.
-const destinationIOTimeout = 2 * time.Minute
+// destinationIOTimeout bounds how long a caller waits for one destination
+// operation. Shortening it does not cancel a filesystem syscall the
+// operating system is blocked in. Tests replace the variable.
+var destinationIOTimeout = 2 * time.Minute
 
 func destinationContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
@@ -27,22 +29,92 @@ func destinationContext(ctx context.Context) (context.Context, context.CancelFun
 	return context.WithTimeout(ctx, destinationIOTimeout)
 }
 
-func copyContext(ctx context.Context, dst io.Writer, src io.Reader) error {
-	if ctx == nil {
-		_, err := io.Copy(dst, src)
+// remoteOp is one destination filesystem operation. The goroutine runs
+// until the syscall returns. A caller that stops waiting leaves the entry
+// registered so the operation stays tracked.
+type remoteOp struct {
+	done      chan struct{}
+	err       error
+	abandoned atomic.Bool
+}
+
+var remoteOps sync.Map
+
+func remoteKey(destID, name string) string {
+	return destID + "\x00" + name
+}
+
+// trackFS waits up to ctx for fn. On deadline it returns ErrRemoteUncertain
+// and keeps fn registered. fn is not asked to stop.
+func trackFS(key string, ctx context.Context, fn func() error) error {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	errc := make(chan error, 1)
+	op := &remoteOp{done: make(chan struct{})}
+	stored := false
+	for attempt := 0; attempt < 2; attempt++ {
+		existing, loaded := remoteOps.LoadOrStore(key, op)
+		if !loaded {
+			stored = true
+			break
+		}
+		prev := existing.(*remoteOp)
+		select {
+		case <-prev.done:
+			remoteOps.CompareAndDelete(key, prev)
+		default:
+			return fmt.Errorf("%w: a destination operation for this object is already running", ErrRemoteUncertain)
+		}
+	}
+	if !stored {
+		return fmt.Errorf("%w: a destination operation for this object is already running", ErrRemoteUncertain)
+	}
 	go func() {
-		_, err := io.Copy(dst, src)
-		errc <- err
+		op.err = fn()
+		close(op.done)
+		if op.abandoned.Load() {
+			remoteOps.CompareAndDelete(key, op)
+		}
 	}()
 	select {
+	case <-op.done:
+		remoteOps.CompareAndDelete(key, op)
+		return op.err
 	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errc:
-		return err
+		op.abandoned.Store(true)
+		select {
+		case <-op.done:
+			remoteOps.CompareAndDelete(key, op)
+			return op.err
+		default:
+			return fmt.Errorf("%w: filesystem call still running after the wait ended: %v", ErrRemoteUncertain, ctx.Err())
+		}
 	}
+}
+
+// remoteBusy reports whether a tracked filesystem operation for key has not
+// finished. A finished operation is dropped from the registry.
+func remoteBusy(key string) bool {
+	value, ok := remoteOps.Load(key)
+	if !ok {
+		return false
+	}
+	op := value.(*remoteOp)
+	select {
+	case <-op.done:
+		remoteOps.CompareAndDelete(key, op)
+		return false
+	default:
+		return true
+	}
+}
+
+func dupFile(f *os.File) (*os.File, error) {
+	fd, err := syscall.Dup(int(f.Fd()))
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), f.Name()), nil
 }
 
 // Destination copies an encrypted archive off the local volume.
@@ -274,8 +346,11 @@ func OpenDestination(spec DestinationSpec) (Destination, error) {
 }
 
 // PathDestination copies archives onto a local or mounted network path.
+// stall, when set, runs inside the tracked filesystem worker. Tests use it
+// to hold a syscall without blocking the caller past destinationIOTimeout.
 type PathDestination struct {
-	Spec DestinationSpec
+	Spec  DestinationSpec
+	stall func(step string)
 }
 
 func (p *PathDestination) ID() string   { return p.Spec.ID }
@@ -289,13 +364,35 @@ func (p *PathDestination) dir() string {
 }
 
 func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha string) error {
-	ctx, cancel := destinationContext(ctx)
-	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := safeName(name); err != nil {
 		return err
+	}
+	src := r
+	var srcClose func() error
+	if f, ok := r.(*os.File); ok {
+		dup, err := dupFile(f)
+		if err != nil {
+			return err
+		}
+		src = dup
+		srcClose = dup.Close
+	}
+	wait, cancel := destinationContext(ctx)
+	defer cancel()
+	return trackFS(remoteKey(p.ID(), name), wait, func() error {
+		if srcClose != nil {
+			defer srcClose()
+		}
+		return p.putFile(name, src, sha)
+	})
+}
+
+func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
+	if p.stall != nil {
+		p.stall("write")
 	}
 	if err := os.MkdirAll(p.dir(), 0o700); err != nil {
 		return err
@@ -306,26 +403,45 @@ func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha
 	if err != nil {
 		return err
 	}
-	if err := copyContext(ctx, f, r); err != nil {
-		f.Close()
-		os.Remove(tmp)
-		return err
+	_, copyErr := io.Copy(f, r)
+	closeErr := f.Close()
+	if copyErr != nil {
+		p.removeTemp(tmp)
+		return copyErr
 	}
-	if err := f.Close(); err != nil {
-		return err
+	if closeErr != nil {
+		p.removeTemp(tmp)
+		return closeErr
+	}
+	if p.stall != nil {
+		p.stall("hash")
 	}
 	if sha != "" {
 		got, err := hashFile(tmp)
 		if err != nil {
-			os.Remove(tmp)
+			p.removeTemp(tmp)
 			return err
 		}
 		if got != sha {
-			os.Remove(tmp)
+			p.removeTemp(tmp)
 			return ErrChecksum
 		}
 	}
-	return os.Rename(tmp, target)
+	if p.stall != nil {
+		p.stall("rename")
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		p.removeTemp(tmp)
+		return err
+	}
+	return nil
+}
+
+func (p *PathDestination) removeTemp(tmp string) {
+	if p.stall != nil {
+		p.stall("remove")
+	}
+	_ = os.Remove(tmp)
 }
 
 func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -335,14 +451,76 @@ func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 	if err := safeName(name); err != nil {
 		return nil, err
 	}
-	f, err := os.Open(filepath.Join(p.dir(), name))
+	wait, cancel := destinationContext(ctx)
+	var opened *os.File
+	var box struct {
+		mu        sync.Mutex
+		f         *os.File
+		abandoned bool
+	}
+	err := trackFS(remoteKey(p.ID(), "open\x00"+name), wait, func() error {
+		if p.stall != nil {
+			p.stall("open")
+		}
+		f, err := os.Open(filepath.Join(p.dir(), name))
+		if err != nil {
+			return err
+		}
+		box.mu.Lock()
+		left := box.abandoned
+		if !left {
+			box.f = f
+		}
+		box.mu.Unlock()
+		if left {
+			if p.stall != nil {
+				p.stall("close")
+			}
+			return f.Close()
+		}
+		return nil
+	})
+	if errors.Is(err, ErrRemoteUncertain) {
+		box.mu.Lock()
+		box.abandoned = true
+		leaked := box.f
+		box.mu.Unlock()
+		if leaked != nil {
+			go p.closeTracked(leaked, name)
+		}
+		cancel()
+		return nil, err
+	}
 	if err != nil {
+		cancel()
 		if os.IsNotExist(err) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	return f, nil
+	opened = box.f
+	return &pathRead{
+		f:        opened,
+		parent:   ctx,
+		cancel:   cancel,
+		readKey:  remoteKey(p.ID(), "read\x00"+name),
+		closeKey: remoteKey(p.ID(), "close\x00"+name),
+		stall:    p.stall,
+	}, nil
+}
+
+func (p *PathDestination) closeTracked(f *os.File, name string) {
+	_ = trackFS(remoteKey(p.ID(), "close\x00"+name), context.Background(), func() error {
+		if p.stall != nil {
+			p.stall("close")
+		}
+		return f.Close()
+	})
+}
+
+// RemovePartial deletes the in-progress sibling of an owned archive name.
+func (p *PathDestination) RemovePartial(ctx context.Context, name string) error {
+	return p.Delete(ctx, name+".partial")
 }
 
 func (p *PathDestination) Delete(ctx context.Context, name string) error {
@@ -352,30 +530,145 @@ func (p *PathDestination) Delete(ctx context.Context, name string) error {
 	if err := safeName(name); err != nil {
 		return err
 	}
-	err := os.Remove(filepath.Join(p.dir(), name))
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
+	wait, cancel := destinationContext(ctx)
+	defer cancel()
+	return trackFS(remoteKey(p.ID(), "delete\x00"+name), wait, func() error {
+		if p.stall != nil {
+			p.stall("remove")
+		}
+		err := os.Remove(filepath.Join(p.dir(), name))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	})
 }
 
-func (p *PathDestination) List(context.Context) ([]RemoteObject, error) {
-	entries, err := os.ReadDir(p.dir())
-	if os.IsNotExist(err) {
-		return nil, nil
+func (p *PathDestination) List(ctx context.Context) ([]RemoteObject, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+	wait, cancel := destinationContext(ctx)
+	defer cancel()
+	var out []RemoteObject
+	err := trackFS(remoteKey(p.ID(), "list"), wait, func() error {
+		if p.stall != nil {
+			p.stall("list")
+		}
+		entries, err := os.ReadDir(p.dir())
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		for _, ent := range entries {
+			info, err := ent.Info()
+			if err != nil {
+				return err
+			}
+			out = append(out, RemoteObject{Name: ent.Name(), Created: info.ModTime()})
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	var out []RemoteObject
-	for _, ent := range entries {
-		info, err := ent.Info()
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, RemoteObject{Name: ent.Name(), Created: info.ModTime()})
-	}
 	return out, nil
+}
+
+// pathRead bounds each read and close. A timed-out read leaves that syscall
+// registered. Close does not start a second syscall on a file the read is
+// still using; the read worker closes it when the syscall returns.
+type pathRead struct {
+	f         *os.File
+	parent    context.Context
+	cancel    context.CancelFunc
+	readKey   string
+	closeKey  string
+	stall     func(string)
+	mu        sync.Mutex
+	abandoned bool
+	closed    bool
+}
+
+func (r *pathRead) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return 0, io.EOF
+	}
+	r.mu.Unlock()
+	if remoteBusy(r.readKey) {
+		return 0, fmt.Errorf("%w: a destination operation for this object is already running", ErrRemoteUncertain)
+	}
+	wait, cancel := destinationContext(r.parent)
+	defer cancel()
+	// The worker must not write into p after Read has returned. owned stays
+	// reachable from the tracked operation until the syscall returns.
+	owned := make([]byte, len(p))
+	var n int
+	var rerr error
+	err := trackFS(r.readKey, wait, func() error {
+		if r.stall != nil {
+			r.stall("read")
+		}
+		n, rerr = r.f.Read(owned)
+		r.mu.Lock()
+		if r.abandoned && !r.closed {
+			cerr := r.f.Close()
+			r.closed = true
+			if rerr == nil {
+				rerr = cerr
+			}
+		}
+		r.mu.Unlock()
+		if rerr == io.EOF {
+			return nil
+		}
+		return rerr
+	})
+	if errors.Is(err, ErrRemoteUncertain) {
+		return 0, err
+	}
+	if n > 0 {
+		copy(p, owned[:n])
+	}
+	if err != nil {
+		return n, err
+	}
+	return n, rerr
+}
+
+func (r *pathRead) Close() error {
+	if r.cancel != nil {
+		defer r.cancel()
+	}
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil
+	}
+	if remoteBusy(r.readKey) {
+		r.abandoned = true
+		r.mu.Unlock()
+		return fmt.Errorf("%w: read still running; the read operation closes the file when the syscall returns", ErrRemoteUncertain)
+	}
+	r.mu.Unlock()
+	wait, cancel := destinationContext(r.parent)
+	defer cancel()
+	return trackFS(r.closeKey, wait, func() error {
+		if r.stall != nil {
+			r.stall("close")
+		}
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.closed {
+			return nil
+		}
+		r.closed = true
+		return r.f.Close()
+	})
 }
 
 func (p *PathDestination) Test(ctx context.Context) error {
@@ -418,12 +711,17 @@ func roundTripTest(ctx context.Context, dest Destination) error {
 	return nil
 }
 
+// receiptPending is an ownership record written before bytes can reach the
+// destination. An empty state is a confirmed copy. Older receipts omit it.
+const receiptPending = "pending"
+
 // OwnedObject is one archive this installation stored on a destination.
 // Retention deletes these names only. A matching suffix is not ownership.
 type OwnedObject struct {
 	DestinationID string    `json:"destination_id"`
 	Name          string    `json:"name"`
 	Created       time.Time `json:"created"`
+	State         string    `json:"state,omitempty"`
 }
 
 // PruneDestination deletes owned archives older than retention. It does not

@@ -783,6 +783,383 @@ func TestCountsFromDumpIgnoreLaterText(t *testing.T) {
 	}
 }
 
+func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+
+	s := testStore(t)
+	root := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	releaseCh := make(chan struct{})
+	started := make(chan struct{})
+	var startOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
+	t.Cleanup(release)
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, stall: func(step string) {
+			if step == "hash" {
+				startOnce.Do(func() { close(started) })
+				<-releaseCh
+			}
+		}}, nil
+	}
+	ops := &Operations{Store: s, Gate: &Gate{}, Passphrase: func() (string, error) { return s.Passphrase, nil }}
+	type result struct {
+		meta BackupMeta
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		meta, err := ops.CreateBackup(context.Background(), reasonManual)
+		done <- result{meta, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("path hash did not start")
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptPending {
+		t.Fatalf("ownership before the upload finished: %+v %v", owned, err)
+	}
+	again := &PathDestination{Spec: spec}
+	err = again.Put(context.Background(), owned[0].Name, bytes.NewReader([]byte("x")), "")
+	if !errors.Is(err, ErrRemoteUncertain) || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("second put = %v", err)
+	}
+	partial := filepath.Join(root, spec.Namespace, owned[0].Name+".partial")
+	if _, err := os.Stat(partial); err != nil {
+		t.Fatalf("partial archive: %v", err)
+	}
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if len(got.meta.DestinationErrors) != 1 || !strings.Contains(got.meta.DestinationErrors[0], "still running") || strings.Contains(got.meta.DestinationErrors[0], "cancel") {
+			t.Fatalf("errors = %v", got.meta.DestinationErrors)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("backup stayed blocked on path destination io")
+	}
+	releaseGate, ok := ops.Gate.Try()
+	if !ok {
+		t.Fatal("operation gate stayed held after the wait ended")
+	}
+	releaseGate()
+	if !remoteBusy(remoteKey("share", owned[0].Name)) {
+		t.Fatal("filesystem operation was dropped while the syscall was still running")
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for remoteBusy(remoteKey("share", owned[0].Name)) {
+		if time.Now().After(deadline) {
+			t.Fatal("path worker did not finish after the syscall returned")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	dest, err := OpenDestination(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != "" {
+		t.Fatalf("receipt after the upload finished: %+v %v", owned, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace, owned[0].Name)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStalledPathReadStaysTrackedUntilTheSyscallReturns(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	root := t.TempDir()
+	dest := &PathDestination{Spec: DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"}}
+	body := []byte("synthetic-archive")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	releaseCh := make(chan struct{})
+	started := make(chan struct{})
+	var startOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
+	t.Cleanup(release)
+	dest.stall = func(step string) {
+		if step == "read" {
+			startOnce.Do(func() { close(started) })
+			<-releaseCh
+		}
+	}
+	rc, err := dest.Get(context.Background(), "owned.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errc := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(io.Discard, rc)
+		errc <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("read did not start")
+	}
+	select {
+	case err := <-errc:
+		if !errors.Is(err, ErrRemoteUncertain) || !strings.Contains(err.Error(), "still running") || strings.Contains(err.Error(), "cancel") {
+			t.Fatalf("read = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("read wait did not end")
+	}
+	if !remoteBusy(remoteKey("share", "read\x00owned.tgbk")) {
+		t.Fatal("stalled read was dropped")
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for remoteBusy(remoteKey("share", "read\x00owned.tgbk")) {
+		if time.Now().After(deadline) {
+			t.Fatal("read worker did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := rc.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStalledPathRestoreRestartsWriters(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	releaseCh := make(chan struct{})
+	started := make(chan struct{})
+	var startOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
+	t.Cleanup(release)
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: spec, stall: func(step string) {
+			if step == "hash" {
+				startOnce.Do(func() { close(started) })
+				<-releaseCh
+			}
+		}}, nil
+	}
+	var order []string
+	ops := &Operations{
+		Store: s, Gate: &Gate{}, Now: s.Now,
+		Runtime:    &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		Passphrase: func() (string, error) { return s.Passphrase, nil },
+		ApplyDump: func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		},
+	}
+	type result struct {
+		rec RestoreRecord
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		done <- result{rec, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("safety backup did not reach the path destination")
+	}
+	select {
+	case got := <-done:
+		if got.err != nil || got.rec.Status != "completed" {
+			t.Fatalf("%+v %v order %v", got.rec, got.err, order)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("restore left the cores stopped on path destination io")
+	}
+	if !containsStep(order, "stop:core-1") || !containsStep(order, "restart:core-1") {
+		t.Fatalf("order %v", order)
+	}
+	releaseGate, ok := ops.Gate.Try()
+	if !ok {
+		t.Fatal("gate stayed held")
+	}
+	releaseGate()
+	release()
+}
+
+func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "share")
+	ns := "nsowned01"
+	dir := filepath.Join(root, ns)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	otherDir := filepath.Join(root, "other-installation")
+	if err := os.MkdirAll(otherDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	otherFile := filepath.Join(otherDir, "other.tgbk")
+	if err := os.WriteFile(otherFile, []byte("other-firm"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(dir, "foreign.tgbk")
+	if err := os.WriteFile(foreign, []byte("not-ours"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: ns, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipts := s.receiptBook()
+	dest, err := OpenDestination(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	partial := filepath.Join(dir, name+".partial")
+	if err := os.WriteFile(partial, []byte("partial-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(partial); !os.IsNotExist(err) {
+		t.Fatalf("partial remained: %v", err)
+	}
+	if _, err := os.Stat(otherFile); err != nil {
+		t.Fatalf("other installation removed: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("unreceipted object removed: %v", err)
+	}
+	if owned, err := receipts.List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("pending receipt remained: %+v %v", owned, err)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(s.Dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := receipts.List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != "" {
+		t.Fatalf("lost ack was not confirmed: %+v %v", owned, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, name), []byte("not-the-archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+		t.Fatalf("mismatched upload remained: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("unreceipted object removed: %v", err)
+	}
+	if owned, err := receipts.List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("mismatched receipt remained: %+v %v", owned, err)
+	}
+}
+
+func TestReceiptWriteFailureDoesNotUpload(t *testing.T) {
+	s := testStore(t)
+	root := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptPath := filepath.Join(s.Dir, "destination-receipts.json")
+	if err := os.Mkdir(receiptPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s.receipts = &ReceiptBook{Path: receiptPath}
+	var puts int
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		base, err := OpenDestination(got)
+		if err != nil {
+			return nil, err
+		}
+		return putCount{Destination: base, puts: &puts}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if puts != 0 {
+		t.Fatalf("uploaded without a receipt: %d", puts)
+	}
+	if len(meta.DestinationErrors) != 1 {
+		t.Fatalf("errors = %v", meta.DestinationErrors)
+	}
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace)); !os.IsNotExist(err) {
+		t.Fatalf("destination directory was created: %v", err)
+	}
+}
+
+type putCount struct {
+	Destination
+	puts *int
+}
+
+func (p putCount) Put(ctx context.Context, name string, r io.Reader, sha string) error {
+	*p.puts++
+	return p.Destination.Put(ctx, name, r, sha)
+}
+
 func tarWithName(t *testing.T, name string) io.Reader {
 	t.Helper()
 	var buf bytes.Buffer
