@@ -170,3 +170,42 @@ func moduleRoot(t *testing.T) string {
 		dir = parent
 	}
 }
+
+// AC-030 checks the core; a nested or similarly named core directory must
+// not inherit the separate supervisor executable's module boundary.
+func TestModuleSupervisorBoundary(t *testing.T) {
+	cases := []struct {
+		path string
+		bad  bool
+	}{
+		{"cmd/supervisor/config.go", false},
+		{"internal/supervisor/config.go", false},
+		{"internal/supervisor/nested/config.go", false},
+		{"internal/practice/internal/supervisor/config.go", true},
+		{"other/cmd/supervisor/config.go", true},
+		{"cmd/supervisor-extra/config.go", true},
+		{"internal/supervisor-extra/config.go", true},
+		{"cmd/core/config.go", true},
+		{"internal/practice/config.go", true},
+	}
+	const source = "package sample\nimport \"os\"\nfunc config() string { return os.Getenv(\"EXTRA_CONFIG\") }\n"
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, filepath.FromSlash(tc.path))
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := settings.CheckModule(root); (err != nil) != tc.bad {
+				t.Fatalf("CheckModule error = %v; want violation %v", err, tc.bad)
+			}
+			// Explicit single-file scanning remains available for every package.
+			if len(settings.ScanSource(path, source)) == 0 {
+				t.Fatal("direct source scan lost environment violation")
+			}
+		})
+	}
+}
