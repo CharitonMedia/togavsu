@@ -15,7 +15,7 @@ Run `python3 scripts/cursor_agents.py launch bootstrap` with CURSOR_API_KEY avai
 5. Module runtime and marketplace separate after their dependencies pass.
 6. Release integrates all seven original PRD phases, signed images, updates, backups and clean Docker Desktop acceptance.
 
-Later tasks in tasks.json are assignments, not claims of completion. The lead explicitly launches ready waves; the launcher rejects tasks whose dependencies lack a verified completion record in .build-state/completed.json. Record dependency completion only after accepted PRs and phase evidence.
+Later tasks in tasks.json are assignments, not claims of completion. The persistent controller launches ready assignments after protected dependency merges. Integration assignments must additionally supply their passing phase report and all named product CI jobs. The manual launcher remains a recovery tool; do not run it alongside the controller.
 
 ## PR checkpoint
 Open a small PR using the template with task ID, PRD sections, acceptance IDs, test commands/results and pending checks. Include screenshots and console checks for every changed page. Do not label scaffolding as shipped functionality.
@@ -40,3 +40,6 @@ Keys remain in the control environment or GitHub Secrets. Do not copy local cred
 
 ## Repository enforcement
 The source repository is public as required by the PRD. Main requires pull requests, current-base Setup checks and Codex checkpoint success, resolved conversations, and protection for admins; force pushes and branch deletion are disabled. The native Codex app is not required for the Actions-based checkpoint.
+
+## Automatic integration lead
+See [AUTOMATION.md](AUTOMATION.md). The persistent controller dispatches corrections, refreshes branches, verifies exact-revision Codex artifacts and all checks, merges through GitHub protection and launches ready assignments. Dedicated cloud integration tasks wire the accepted packages into a running product and test phase behavior. A bounded merge is not full acceptance.
