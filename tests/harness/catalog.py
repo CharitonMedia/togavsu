@@ -77,6 +77,38 @@ def build_matrix(root: Path | None = None) -> list[dict]:
     return matrix
 
 
+def inventory_errors(matrix: list[dict]) -> list[str]:
+    """Compare a matrix to the canonical case inventory. Fail closed on drift."""
+    try:
+        canonical = build_matrix()
+    except Exception as exc:
+        return [f"canonical inventory unavailable: {exc}"]
+    errors = []
+    submitted_ids = [item.get("id") for item in matrix]
+    canonical_ids = [item["id"] for item in canonical]
+    if len(submitted_ids) != len(set(submitted_ids)):
+        errors.append("duplicate criterion ids")
+    if submitted_ids != canonical_ids:
+        errors.append("criterion ids do not match the canonical inventory")
+    canon_by_id = {item["id"]: item for item in canonical}
+    seen_cases = []
+    for item in matrix:
+        expected = canon_by_id.get(item.get("id"))
+        if expected is None:
+            continue
+        if item.get("requirement") != expected["requirement"]:
+            errors.append(f"{item['id']} requirement does not match the canonical inventory")
+        for polarity in ("positive", "failure"):
+            got = [case.get("id") for case in item.get(polarity) or []]
+            want = [case["id"] for case in expected[polarity]]
+            seen_cases.extend(got)
+            if got != want:
+                errors.append(f"{item['id']} {polarity} cases do not match the canonical inventory")
+    if len(seen_cases) != len(set(seen_cases)):
+        errors.append("duplicate case ids")
+    return errors
+
+
 def integrity_errors(matrix: list[dict], acceptance: list[dict], tasks: list[dict]) -> list[str]:
     errors = []
     ids = [item["id"] for item in acceptance]

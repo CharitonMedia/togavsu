@@ -26,7 +26,7 @@ People in fixtures use `example.com`, `example.net`, or `example.org`. Phones us
 
 AC-035 is the section 5 record list in `tests/harness/records.py`. The fresh install has to create each one, and the seed has to put at least one synthetic row in each. Records added after section 5 (`home_layouts`, `notifications`, `help_sections`, `help_items`, `custom_field_definitions`, `custom_field_values`, `fee_items`, `matter_markers`, `notification_preferences`) do not fill AC-035.
 
-AC-029 is the named-default inventory in `tests/harness/defaults.py`. Each anchor is a phrase in `togavsu-core-prd.md`. Fixed rules stay fixed: append-only trust, forever audit retention, the below-zero flag, service-layer permission checks, and encryption that is always on for S3-compatible storage and Dropbox.
+AC-029 is the named-default inventory in `tests/harness/defaults.py`. Each anchor is a phrase in `togavsu-core-prd.md`. The inventory includes every section 8.21 category with its description, folder, and tier, plus the conditional labeling, categorizing, and check-model defaults from section 8.7. Change, audit, and reset are separate cases for each resettable default. Fixed rules stay fixed: append-only trust, forever audit retention, the below-zero flag, service-layer permission checks, encryption that is always on for S3-compatible storage and Dropbox, and no local endpoint for labeling or categorizing.
 
 AC-017 needs at least 50 users, 20,000 matters, and 1,000,000 time entries. A p95 of 300 ms fails. A shorter seed cannot pass.
 
@@ -47,7 +47,7 @@ The 120-page scanned PDF is a real image-only PDF. The eight photo pages paint L
 
 ## Storage move
 
-AC-040-P1 moves files through a disposable S3-compatible endpoint and a disposable Dropbox endpoint that hold only synthetic objects. In-process doubles, including an adapter that calls a double, are not that evidence. The files package may still unit-test adapters with doubles. Those results stay in that package and cannot be submitted for AC-040. The harness refuses evidence flagged `doubles` or `backend_mode` of double, mock, fake, or test_double.
+AC-040-P1 moves files through a disposable S3-compatible endpoint and a disposable Dropbox endpoint that hold only synthetic objects. In-process doubles, including an adapter that calls a double, are not that evidence. The files package may still unit-test adapters with doubles. Those results stay in that package. The harness refuses `doubles` or a `backend_mode` of double, mock, fake, or test_double on every acceptance case, not only AC-040. `summarize` also checks the submitted matrix against the canonical case inventory before it accepts anything. A matrix with a missing failure case or a duplicate case id cannot be completed.
 
 ## Security checks the cases already require
 

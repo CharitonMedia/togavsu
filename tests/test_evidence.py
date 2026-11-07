@@ -1,5 +1,6 @@
 """Product evidence rules. Mocks and stand-ins do not accept a criterion."""
 
+import copy
 import unittest
 
 from harness.catalog import build_matrix
@@ -171,6 +172,61 @@ class EvidenceTests(unittest.TestCase):
         decision = next(item for item in report["cases"] if item["id"] == self.case["id"])
         self.assertEqual(decision["status"], "refused")
         self.assertIn("unavailable", decision["reason"])
+        self.assertFalse(report["app_complete"])
+
+    def test_declared_doubles_are_refused_for_trust_and_access(self):
+        for case_id, field, value in (
+            ("AC-005-P1", "doubles", True),
+            ("AC-003-P1", "backend_mode", "mock"),
+        ):
+            case = self._case(case_id)
+            self.assertFalse(case.get("rejects_doubles"))
+            item = _evidence("passed")
+            item["exit_code"] = case["expected_exit_code"]
+            item[field] = value
+            decision = decide(case, item, self.standins)
+            self.assertEqual(decision["status"], "refused", case_id)
+            self.assertFalse(decision["accepted"])
+            self.assertIn("double", decision["reason"])
+
+    def test_missing_failure_cases_cannot_accept_the_matrix(self):
+        stripped = copy.deepcopy(self.matrix)
+        for item in stripped:
+            item["failure"] = []
+        evidence = {}
+        for item in stripped:
+            for case in item["positive"]:
+                outcome = "passed" if case["polarity"] == "positive" else "rejected"
+                row = _evidence(outcome)
+                row["exit_code"] = case["expected_exit_code"]
+                evidence[case["id"]] = row
+        attestation = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": 0,
+            "observation": "first-run form",
+        }
+        report = summarize(stripped, evidence, attestation, self.standins)
+        self.assertTrue(report["inventory_errors"])
+        self.assertEqual(report["accepted"], [])
+        self.assertFalse(report["app_complete"])
+
+    def test_duplicate_case_ids_cannot_complete_the_app(self):
+        broken = copy.deepcopy(self.matrix)
+        broken[0]["positive"].append(dict(broken[0]["positive"][0]))
+        attestation = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": 0,
+            "observation": "first-run form",
+        }
+        report = summarize(broken, self._filled(), attestation, self.standins)
+        self.assertTrue(any("duplicate" in error for error in report["inventory_errors"]))
+        self.assertEqual(report["accepted_count"], 0)
         self.assertFalse(report["app_complete"])
 
     def test_ac040_doubles_are_not_acceptance(self):

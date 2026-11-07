@@ -6,6 +6,8 @@ copy them, so a wording change here cannot soften a criterion.
 
 from __future__ import annotations
 
+from .defaults import setting_defaults
+
 
 def _c(suffix, phase, kind, title, arrange, action, expect, evidence, expected_exit_code=None, rejects_doubles=False):
     case = {
@@ -27,7 +29,49 @@ def _c(suffix, phase, kind, title, arrange, action, expect, evidence, expected_e
     return case
 
 
-_EVIDENCE = "Command, integer exit code, and the observation named above. A mock, a skip, an oracle pass, or a structural stand-in hash is refused."
+_EVIDENCE = "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+
+
+def _per_setting_cases():
+    positive = []
+    failure = []
+    for item in setting_defaults():
+        key = item["key"]
+        value = item["value"]
+        tab = item["tab"]
+        positive.append(_c(
+            f"P2-{key}", 5, "e2e", f"Change {key} applies on the next request",
+            f"Record the process start time. Setting {key} on the {tab} tab starts at its inventoried default.",
+            f"Change {key} on its admin tab and issue the next request.",
+            [
+                f"The new value of {key} is in effect.",
+                f"The audit row for {key} has the old value and the new value.",
+                "The process start time is unchanged.",
+            ],
+            _EVIDENCE,
+        ))
+        positive.append(_c(
+            f"P3-{key}", 5, "e2e", f"Reset {key} to its default",
+            f"{key} on the {tab} tab has been changed away from its inventoried default.",
+            f"Press Reset to default on {key} and issue the next request.",
+            [f"{key} is back to its inventoried default: {value}."],
+            _EVIDENCE,
+        ))
+        failure.append(_c(
+            f"F2-{key}", 5, "e2e", f"Change to {key} requires a restart",
+            f"{key} on the {tab} tab was changed.",
+            "Issue the next request without a restart.",
+            [f"{key} still at its previous value fails the criterion."],
+            _EVIDENCE,
+        ))
+        failure.append(_c(
+            f"F3-{key}", 5, "e2e", f"Reset leaves {key} changed",
+            f"{key} was changed away from its inventoried default.",
+            f"Reset {key} and read it.",
+            [f"A value of {key} other than {value} fails the criterion."],
+            _EVIDENCE,
+        ))
+    return positive, failure
 
 SPECS = {
     "AC-001": {
@@ -1072,41 +1116,19 @@ SPECS = {
         "recheck_phases": [7],
         "extra_dependencies": ["ui"],
         "legacy_failures": [],
-        "note": "The harness inventory in tests/harness/defaults.py is the list of named defaults. Phase 1 checks the registry. Phase 5 checks the admin tab, the next request, the audit row, and Reset to default. Fixed rules are not switches.",
+        "note": "The harness inventory in tests/harness/defaults.py is the list of named defaults, including every Doc Tender category and the conditional labeling, categorizing, and check-model defaults. Phase 1 checks the registry. Phase 5 changes, audits, and resets each resettable default on its own. One working setting does not cover the rest. Fixed rules are not switches.",
         "positive": [
             _c("P1", 1, "integration", "Registry holds every named default",
                "Fresh database.",
-               "Compare the settings registry to tests/harness/defaults.py entries whose setting flag is true.",
+               "Compare the settings registry to tests/harness/defaults.py entries whose setting flag is true, including each category row and each conditional AI default.",
                ["Each key is present on its tab with the inventoried default."],
-               _EVIDENCE),
-            _c("P2", 5, "e2e", "Change applies on the next request",
-               "Record the process start time. Pick one inventoried setting.",
-               "Change it on its admin tab and issue the next request.",
-               ["The new value is in effect.",
-                "The audit row has the old value and the new value.",
-                "The process start time is unchanged."],
-               _EVIDENCE),
-            _c("P3", 5, "e2e", "Reset to default",
-               "A setting changed away from its default.",
-               "Press Reset to default and issue the next request.",
-               ["The value is the inventoried default again."],
                _EVIDENCE),
         ],
         "failure": [
             _c("F1", 1, "integration", "A named default is missing",
                "Registry dump.",
-               "Diff it against the inventory.",
+               "Diff it against the inventory, including categories and conditional labeling, categorizing, and check-model defaults.",
                ["Any missing key or wrong default fails the criterion."],
-               _EVIDENCE),
-            _c("F2", 5, "e2e", "Change requires a restart",
-               "Changed setting.",
-               "Issue the next request without a restart.",
-               ["The old value still in effect fails the criterion."],
-               _EVIDENCE),
-            _c("F3", 5, "e2e", "Reset leaves the changed value",
-               "Changed setting.",
-               "Reset and read it.",
-               ["A value other than the inventoried default fails the criterion."],
                _EVIDENCE),
             _c("F4", 5, "integration", "A fixed rule is exposed as a switch",
                "Admin settings page.",
@@ -1954,3 +1976,7 @@ SPECS = {
         ],
     },
 }
+
+_setting_positive, _setting_failure = _per_setting_cases()
+SPECS["AC-029"]["positive"].extend(_setting_positive)
+SPECS["AC-029"]["failure"][1:1] = _setting_failure

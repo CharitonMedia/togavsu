@@ -7,6 +7,8 @@ Fixed rules are listed so a later build cannot turn them into optional switches.
 
 from __future__ import annotations
 
+import re
+
 # setting True: the admin tab must show this default and Reset to default.
 # setting False: a fixed rule. It is not a switch.
 DEFAULTS = (
@@ -70,12 +72,64 @@ DEFAULTS = (
     {"key": "webhook_retries", "value": "8 over 24 hours", "tab": "Agents and API", "setting": True, "anchor": "default 8 over 24 hours"},
     {"key": "ai_timeout", "value": "30 seconds", "tab": "AI and inference", "setting": True, "anchor": "default 30 seconds"},
     {"key": "labeling_model", "value": "gpt-6.1-sol", "tab": "AI and inference", "setting": True, "anchor": "default to gpt-6.1-sol"},
+    {"key": "labeling_model_with_openai_key", "value": "gpt-6.1-sol when an OpenAI key is set", "tab": "AI and inference", "setting": True, "anchor": "Labeling and categorizing default to gpt-6.1-sol on OpenAI once an OpenAI key is set"},
+    {"key": "categorizing_model_with_openai_key", "value": "gpt-6.1-sol when an OpenAI key is set", "tab": "AI and inference", "setting": True, "anchor": "Labeling and categorizing default to gpt-6.1-sol on OpenAI once an OpenAI key is set"},
+    {"key": "labeling_model_without_openai_key", "value": "primary provider's strong model", "tab": "AI and inference", "setting": True, "anchor": "to the primary provider's strong model otherwise"},
+    {"key": "categorizing_model_without_openai_key", "value": "primary provider's strong model", "tab": "AI and inference", "setting": True, "anchor": "to the primary provider's strong model otherwise"},
+    {"key": "labeling_check_model_with_secondary", "value": "secondary provider's model for labeling", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task"},
+    {"key": "categorizing_check_model_with_secondary", "value": "secondary provider's model for categorizing", "tab": "AI and inference", "setting": True, "anchor": "Each check model defaults to the secondary provider's model for that task"},
+    {"key": "labeling_check_model_without_secondary", "value": "primary provider's other tier", "tab": "AI and inference", "setting": True, "anchor": "or to the primary provider's other tier when there's no secondary"},
+    {"key": "categorizing_check_model_without_secondary", "value": "primary provider's other tier", "tab": "AI and inference", "setting": True, "anchor": "or to the primary provider's other tier when there's no secondary"},
     {"key": "high_tier_categories", "value": "court_filing, court_notice, discovery, agency_notice, police_criminal, estate_planning, contracts_agreements", "tab": "Doc Tender", "setting": True, "anchor": "default `court_filing`, `court_notice`, `discovery`, `agency_notice`, `police_criminal`, `estate_planning`, `contracts_agreements`"},
     {"key": "trust_ledger_append_only", "value": "fixed", "tab": "", "setting": False, "anchor": "the trust ledger is append-only"},
     {"key": "audit_kept_forever", "value": "fixed", "tab": "", "setting": False, "anchor": "the audit log is kept forever"},
     {"key": "below_zero_always_flags", "value": "fixed", "tab": "", "setting": False, "anchor": "a below-zero trust entry always flags"},
     {"key": "service_layer_permissions", "value": "fixed", "tab": "", "setting": False, "anchor": "permissions are checked in the service layer"},
     {"key": "s3_and_dropbox_encryption_always_on", "value": "fixed on", "tab": "Files and storage", "setting": False, "anchor": "always on for S3-compatible and Dropbox"},
+    {"key": "labeling_categorizing_no_local_endpoint", "value": "fixed off", "tab": "AI and inference", "setting": False, "anchor": "they never run on a local endpoint"},
+)
+
+# name, covers, folder, tier. Covers text is the PRD table cell.
+DOC_CATEGORIES = (
+    ("court_filing", "Pleading, motion, petition, order, judgment, exhibit, or a party's notice of hearing", "Pleadings", "high"),
+    ("court_notice", "Clerk or e-filing notice: filing confirmation, Case.net page, hearing notice or link", "Pleadings", "high"),
+    ("discovery", "Interrogatories, requests for production or admission, responses, depositions", "Discovery", "high"),
+    ("correspondence", "Letter or email to or from the client, counsel or a third party, including plea offers", "Correspondence", "standard"),
+    ("agency_notice", "Letter from a government agency, such as child support, IRS, DOR, Children's Division or MSPD", "Correspondence", "high"),
+    ("estate_planning", "The will, trust, power of attorney, directive or beneficiary deed itself", "Client documents", "high"),
+    ("property_title", "Deed, deed of trust, mortgage release, secured note, survey, title", "Client documents", "standard"),
+    ("financial_record", "Bank or tax record, pay stub, statement, invoice, income and expense or asset and debt form", "Client documents", "standard"),
+    ("personal_record", "ID, birth, death or dissolution certificate, driving record, completion certificate", "Client documents", "standard"),
+    ("medical_insurance", "Medical record or evaluation, health or vision insurance document", "Client documents", "standard"),
+    ("contracts_agreements", "Contract between parties, prenup, articles, bylaws or operating agreement", "Client documents", "high"),
+    ("police_criminal", "Police report, probable cause statement, citation, bodycam report, restitution", "Evidence", "high"),
+    ("evidence_media", "Photo, video, screenshot, text messages or call log, including phone message exports", "Evidence", "standard"),
+    ("call_meeting", "Recording, transcript or notes of a phone call, voicemail or meeting", "Notes", "standard"),
+    ("engagement_intake", "This firm's fee agreement, invoice, intake or consultation notes, MSPD forms", "Billing", "standard"),
+    ("firm_work_product", "This firm's memo, research, hearing or trial prep, case notes", "Notes", "standard"),
+    ("reference", "Article, statute, template, logo or blank form; not about a client matter", "Notes", "standard"),
+)
+
+CONDITIONAL_AI_KEYS = (
+    "labeling_model_with_openai_key",
+    "categorizing_model_with_openai_key",
+    "labeling_model_without_openai_key",
+    "categorizing_model_without_openai_key",
+    "labeling_check_model_with_secondary",
+    "categorizing_check_model_with_secondary",
+    "labeling_check_model_without_secondary",
+    "categorizing_check_model_without_secondary",
+)
+
+DEFAULTS = DEFAULTS + tuple(
+    {
+        "key": f"doc_category_{name}",
+        "value": f"{name}: {covers}; folder {folder}; tier {tier}",
+        "tab": "Doc Tender",
+        "setting": True,
+        "anchor": covers,
+    }
+    for name, covers, folder, tier in DOC_CATEGORIES
 )
 
 
@@ -88,4 +142,49 @@ def missing_anchors(prd: str) -> list[str]:
     for item in DEFAULTS:
         if item["anchor"] not in prd:
             missing.append(item["key"])
+    return missing
+
+
+def prd_category_rows(prd: str) -> list[dict]:
+    start = prd.index("| Category | Covers | Folder |")
+    rest = prd[start:].split("**Markdown copy:**", 1)[0]
+    rows = []
+    for line in rest.splitlines():
+        if not line.startswith("| `"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        rows.append({
+            "name": cells[0].strip("`").strip(),
+            "covers": cells[1].strip(),
+            "folder": cells[2].strip(),
+        })
+    return rows
+
+
+def prd_high_tier(prd: str) -> list[str]:
+    marker = "High-tier categories (default "
+    start = prd.index(marker) + len(marker)
+    end = prd.index(")", start)
+    return re.findall(r"`([a-z0-9_]+)`", prd[start:end])
+
+
+def omitted_prd_defaults(prd: str, inventory=None) -> list[str]:
+    """Names from the PRD category table and section 8.7 that the inventory lacks."""
+    inventory = DEFAULTS if inventory is None else inventory
+    by_key = {item["key"]: item for item in inventory}
+    missing = []
+    high = set(prd_high_tier(prd))
+    for row in prd_category_rows(prd):
+        key = f"doc_category_{row['name']}"
+        item = by_key.get(key)
+        if item is None:
+            missing.append(key)
+            continue
+        value = item.get("value", "")
+        tier = "high" if row["name"] in high else "standard"
+        if row["covers"] not in value or f"folder {row['folder']}" not in value or f"tier {tier}" not in value:
+            missing.append(f"{key} description, folder, or tier")
+    for key in CONDITIONAL_AI_KEYS:
+        if key not in by_key:
+            missing.append(key)
     return missing

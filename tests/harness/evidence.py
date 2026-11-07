@@ -33,17 +33,11 @@ def decide(case: dict, evidence: dict | None, standins: frozenset[str], denylist
             "reason": "structural stand-in denylist is unavailable",
         }
     kind = evidence.get("kind")
-    if evidence.get("mocked") is True or kind in REFUSED_KINDS or kind not in ALLOWED_KINDS:
+    if evidence.get("mocked") is True or kind in REFUSED_KINDS or kind not in ALLOWED_KINDS or _uses_double(evidence):
         return {
             "status": "refused",
             "accepted": False,
-            "reason": "mocks, skips, oracle passes, and scaffold output are not acceptance",
-        }
-    if case.get("rejects_doubles") and _uses_double(evidence):
-        return {
-            "status": "refused",
-            "accepted": False,
-            "reason": "in-process doubles are not acceptance",
+            "reason": "mocks, doubles, skips, oracle passes, and scaffold output are not acceptance",
         }
     hashes = []
     if evidence.get("file_hash"):
@@ -110,8 +104,32 @@ def _load_standins(standins: frozenset[str] | None) -> tuple[frozenset[str], boo
     return standins, True
 
 
+def _blocked(matrix: list[dict], errors: list[str]) -> dict:
+    pending_ids = [item.get("id") for item in matrix]
+    return {
+        "task": "qa",
+        "criteria": len(matrix),
+        "accepted": [],
+        "pending": pending_ids,
+        "failed": [],
+        "accepted_count": 0,
+        "pending_count": len(pending_ids),
+        "app_complete": False,
+        "product_acceptance": "pending",
+        "inventory_errors": errors,
+        "cases": [],
+    }
+
+
 def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestation: dict | None = None, standins: frozenset[str] | None = None) -> dict:
     evidence_by_case = evidence_by_case or {}
+    try:
+        from .catalog import inventory_errors
+        errors = inventory_errors(matrix)
+    except Exception as exc:
+        errors = [f"canonical inventory unavailable: {exc}"]
+    if errors:
+        return _blocked(matrix, errors)
     standins, denylist_ok = _load_standins(standins)
     accepted = []
     pending = []
@@ -141,5 +159,6 @@ def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestat
         "pending_count": len(pending),
         "app_complete": app_complete,
         "product_acceptance": "pending" if not app_complete else "claimed",
+        "inventory_errors": [],
         "cases": case_results,
     }
