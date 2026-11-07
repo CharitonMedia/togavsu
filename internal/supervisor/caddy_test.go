@@ -2,8 +2,11 @@ package supervisor
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -63,7 +66,7 @@ func TestCaddyConsecutiveSwitchesPreserveAdmin(t *testing.T) {
 	httpPort := freePort(t)
 	httpsPort := freePort(t)
 	dir := t.TempDir()
-	initial := caddyConfig("core:8080", "127.0.0.1:"+admin, "127.0.0.1:"+httpPort, "127.0.0.1:"+httpsPort)
+	initial := caddyConfig("core:8080", "127.0.0.1:"+admin, "127.0.0.1:"+httpPort, "127.0.0.1:"+httpsPort, "localhost")
 	raw, err := json.Marshal(initial)
 	if err != nil {
 		t.Fatal(err)
@@ -132,6 +135,157 @@ func TestCaddyConsecutiveSwitchesPreserveAdmin(t *testing.T) {
 	}
 }
 
+func TestHTTPSHandshakeBeforeAndAfterSwitch(t *testing.T) {
+	bin := caddyBinary(t)
+	domain := "firm.example"
+	admin := freePort(t)
+	httpPort := freePort(t)
+	httpsPort := freePort(t)
+	dir := t.TempDir()
+	data := filepath.Join(dir, "caddy-data")
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initial := caddyConfig("core:8080", "127.0.0.1:"+admin, "127.0.0.1:"+httpPort, "127.0.0.1:"+httpsPort, domain)
+	raw, err := json.Marshal(initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(dir, "caddy.json")
+	if err := os.WriteFile(cfgPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin, "run", "--config", cfgPath)
+	cmd.Env = append(os.Environ(), "XDG_DATA_HOME="+data, "HOME="+filepath.Join(dir, "home"))
+	var logs strings.Builder
+	cmd.Stdout = &logs
+	cmd.Stderr = &logs
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+	adminURL := "http://127.0.0.1:" + admin
+	waitHTTP(t, adminURL+"/config/", &logs)
+	checkApplicationHTTP(t, "http://127.0.0.1:"+httpPort, &logs)
+	pool := trustCaddyRoot(t, data, &logs)
+	checkHTTPS(t, httpsPort, domain, pool, &logs)
+	proxy := &CaddyProxy{
+		AdminURL:     adminURL,
+		AdminListen:  "127.0.0.1:" + admin,
+		HTTPListen:   "127.0.0.1:" + httpPort,
+		HTTPSListen:  "127.0.0.1:" + httpsPort,
+		UpstreamFile: filepath.Join(dir, "upstream"),
+		Domain:       domain,
+	}
+	if err := proxy.Switch(context.Background(), "core-next:8080"); err != nil {
+		t.Fatalf("switch: %v\n%s", err, logs.String())
+	}
+	checkHTTPS(t, httpsPort, domain, pool, &logs)
+	res, err := http.Get(adminURL + "/config/apps/http/servers/https/routes/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if !strings.Contains(string(body), "core-next:8080") || !strings.Contains(string(body), domain) {
+		t.Fatalf("switched https config %s", body)
+	}
+}
+
+func waitHTTP(t *testing.T, url string, logs *strings.Builder) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var err error
+	for {
+		var res *http.Response
+		res, err = http.Get(url)
+		if err == nil {
+			res.Body.Close()
+			if res.StatusCode == http.StatusOK {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("caddy admin did not start: %v\n%s", err, logs.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func trustCaddyRoot(t *testing.T, data string, logs *strings.Builder) *x509.CertPool {
+	t.Helper()
+	path := filepath.Join(data, "caddy", "pki", "authorities", "local", "root.crt")
+	deadline := time.Now().Add(15 * time.Second)
+	var raw []byte
+	var err error
+	for {
+		raw, err = os.ReadFile(path)
+		if err == nil && len(raw) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("local CA %s: %v\n%s", path, err, logs.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(raw) {
+		t.Fatal("local CA was not a certificate")
+	}
+	return pool
+}
+
+func checkHTTPS(t *testing.T, port, domain string, pool *x509.CertPool, logs *strings.Builder) {
+	t.Helper()
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{
+			RootCAs:    pool,
+			ServerName: domain,
+		}},
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	var err error
+	for {
+		req, reqErr := http.NewRequest(http.MethodGet, "https://"+domain+"/ready", nil)
+		if reqErr != nil {
+			t.Fatal(reqErr)
+		}
+		client.Transport = &http.Transport{
+			DialTLSContext: func(context.Context, string, string) (net.Conn, error) {
+				return tls.Dial("tcp", "127.0.0.1:"+port, &tls.Config{RootCAs: pool, ServerName: domain})
+			},
+		}
+		var res *http.Response
+		res, err = client.Do(req)
+		if err == nil {
+			body, _ := io.ReadAll(res.Body)
+			res.Body.Close()
+			if res.StatusCode == http.StatusOK && string(body) == "ok" && res.TLS != nil && len(res.TLS.PeerCertificates) > 0 {
+				names := res.TLS.PeerCertificates[0].DNSNames
+				found := false
+				for _, name := range names {
+					if name == domain {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("certificate names %v\n%s", names, logs.String())
+				}
+				return
+			}
+			err = fmt.Errorf("status %d body %q", res.StatusCode, body)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("https handshake: %v\n%s", err, logs.String())
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func TestSwitchRollsBackAppliedLoadWhenResponseIsLost(t *testing.T) {
 	var mu sync.Mutex
 	var live []byte
@@ -143,7 +297,7 @@ func TestSwitchRollsBackAppliedLoadWhenResponseIsLost(t *testing.T) {
 			body := append([]byte(nil), live...)
 			mu.Unlock()
 			if len(body) == 0 {
-				raw, _ := json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443"))
+				raw, _ := json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443", "localhost"))
 				body = raw
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -257,7 +411,7 @@ func loadServer(t *testing.T, rejectRollback bool) (func() string, *httptest.Ser
 			raw := append([]byte(nil), body...)
 			mu.Unlock()
 			if len(raw) == 0 {
-				raw, _ = json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443"))
+				raw, _ = json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443", "localhost"))
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write(raw)

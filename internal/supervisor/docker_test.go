@@ -199,6 +199,41 @@ func TestStartIsIdempotentWhenDockerSaysAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestMigratorPullsBeforeCreate(t *testing.T) {
+	var order []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/images/create", func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "pull")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{\"status\":\"Status: downloaded\"}\n"))
+	})
+	mux.HandleFunc("/v1.43/containers/create", func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "create")
+		if len(order) == 0 || order[0] != "pull" {
+			t.Fatal("create ran before pull")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"Id": "mig"})
+	})
+	mux.HandleFunc("/v1.43/containers/mig/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.43/containers/mig/wait", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]int{"StatusCode": 0})
+	})
+	mux.HandleFunc("/v1.43/containers/mig/logs", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("migrated=false"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	ran, err := (DockerMigrator{Docker: &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}}).Apply(context.Background(), testReleaseImage)
+	if err != nil || ran {
+		t.Fatalf("ran %v err %v order %v", ran, err, order)
+	}
+	if len(order) < 2 || order[0] != "pull" || order[1] != "create" {
+		t.Fatalf("order %v", order)
+	}
+}
+
 func TestMigratorUnconfigured(t *testing.T) {
 	_, err := (DockerMigrator{}).Apply(context.Background(), "image")
 	code, _ := PublicCode(err)

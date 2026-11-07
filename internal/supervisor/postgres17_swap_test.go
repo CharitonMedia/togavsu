@@ -13,11 +13,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
 
 func TestPostgres17Swap(t *testing.T) {
+	if os.Getenv("TOGAVSU_SWAP_CHILD") == "1" {
+		runSwapCommitChild()
+		return
+	}
 	admin := postgres17Admin(t)
 	psql := os.Getenv("TOGAVSU_PSQL")
 	if psql == "" {
@@ -194,6 +199,93 @@ func TestPostgres17Swap(t *testing.T) {
 			t.Fatalf("%+v", got)
 		}
 	})
+
+	t.Run("committed outcome is durable before the old name is dropped", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		dir := t.TempDir()
+		journalPath := filepath.Join(dir, "restore-journal.jsonl")
+		ready := filepath.Join(dir, "ready")
+		cmd := exec.Command(os.Args[0], "-test.run=TestPostgres17Swap", "-test.count=1")
+		cmd.Env = append(os.Environ(),
+			"TOGAVSU_SWAP_CHILD=1",
+			"TOGAVSU_SWAP_ADMIN="+admin,
+			"TOGAVSU_SWAP_PSQL="+psql,
+			"TOGAVSU_SWAP_ORIG="+orig,
+			"TOGAVSU_SWAP_FRESH="+fresh,
+			"TOGAVSU_SWAP_REPLACED="+replaced,
+			"TOGAVSU_SWAP_JOURNAL="+journalPath,
+			"TOGAVSU_SWAP_READY="+ready,
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(20 * time.Second)
+		for {
+			if _, err := os.Stat(ready); err == nil {
+				break
+			}
+			if time.Now().After(deadline) {
+				_ = cmd.Process.Kill()
+				t.Fatal("child did not record the committed swap")
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+			t.Fatal(err)
+		}
+		_ = cmd.Wait()
+		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
+			t.Fatal("rename pair was not committed, or the old database was already dropped")
+		}
+		var order []string
+		rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		ops.Journal = OpenJournal(journalPath)
+		if err := ops.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
+			t.Fatal("recovery rolled back the committed database")
+		}
+		if !containsStep(order, "restart:core-1") {
+			t.Fatalf("writers stayed stopped after the committed outcome: %v", order)
+		}
+		got, ok, err := ops.LookupRestore("restore-crash")
+		if err != nil || !ok || got.Status == "running" {
+			t.Fatalf("outcome %+v %v %v", got, ok, err)
+		}
+	})
+}
+
+func runSwapCommitChild() {
+	j := OpenJournal(os.Getenv("TOGAVSU_SWAP_JOURNAL"))
+	ctx := WithSwapCommitted(context.Background(), func(configured, fresh, replaced string) error {
+		err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-crash", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseApplied,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{
+				Configured: configured, Fresh: fresh, Replaced: replaced,
+				SwapIntended: true, SwapCommitted: true,
+			},
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		if err := os.WriteFile(os.Getenv("TOGAVSU_SWAP_READY"), []byte("ok"), 0o600); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(3)
+		}
+		time.Sleep(time.Minute)
+		return nil
+	})
+	_ = swapDatabase(ctx, os.Getenv("TOGAVSU_SWAP_PSQL"), os.Getenv("TOGAVSU_SWAP_ADMIN"), os.Getenv("TOGAVSU_SWAP_ORIG"), os.Getenv("TOGAVSU_SWAP_FRESH"), hexSuffixOf(os.Getenv("TOGAVSU_SWAP_ORIG")))
+	os.Exit(0)
 }
 
 func postgres17Admin(t *testing.T) string {

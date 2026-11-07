@@ -12,18 +12,19 @@ import (
 const testReleaseImage = "ghcr.io/charitonmedia/togavsu-core@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 type scriptRuntime struct {
-	order       *[]string
-	cores       []ContainerInfo
-	health      error
-	stopID      string
-	failStart   string
-	used        map[string]bool
-	stopHook    func()
-	states      map[string]string
-	inspectErr  map[string]error
-	loseStop    map[string]bool
-	cancelStops bool
-	onList      func()
+	order        *[]string
+	cores        []ContainerInfo
+	health       error
+	stopID       string
+	failStart    string
+	used         map[string]bool
+	stopHook     func()
+	states       map[string]string
+	inspectErr   map[string]error
+	inspectAllow int
+	loseStop     map[string]bool
+	cancelStops  bool
+	onList       func()
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -56,7 +57,9 @@ func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
 
 func (r *scriptRuntime) Inspect(_ context.Context, id string) (ContainerInfo, error) {
 	r.add("inspect:" + id)
-	if err := r.inspectErr[id]; err != nil {
+	if r.inspectAllow > 0 {
+		r.inspectAllow--
+	} else if err := r.inspectErr[id]; err != nil {
 		return ContainerInfo{}, err
 	}
 	state := "running"
@@ -104,14 +107,14 @@ func (r *scriptRuntime) WaitHealthy(context.Context, string, time.Duration) erro
 }
 func (r *scriptRuntime) Stop(ctx context.Context, id string) error {
 	r.add("stop:" + id)
-	if r.stopHook != nil {
-		r.stopHook()
-	}
 	if r.states == nil {
 		r.states = map[string]string{}
 	}
+	r.states[id] = "exited"
+	if r.stopHook != nil {
+		r.stopHook()
+	}
 	if r.loseStop[id] || id == r.stopID || r.cancelStops {
-		r.states[id] = "exited"
 		if r.loseStop[id] {
 			return errors.New("lost stop reply")
 		}
@@ -120,7 +123,6 @@ func (r *scriptRuntime) Stop(ctx context.Context, id string) error {
 		}
 		return errors.New("stop failed")
 	}
-	r.states[id] = "exited"
 	return nil
 }
 func (r *scriptRuntime) Remove(_ context.Context, id string) error {

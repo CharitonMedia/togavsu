@@ -41,6 +41,7 @@ services:
       - "443:443"
     environment:
       CORE_UPSTREAM: core:8080
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/caddy/entrypoint.sh:/entrypoint.sh:ro

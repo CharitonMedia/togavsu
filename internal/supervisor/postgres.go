@@ -142,6 +142,8 @@ type swapHookFunc func(configured, fresh, replaced string) error
 
 type swapHookKey struct{}
 
+type swapCommitKey struct{}
+
 // WithSwapHook attaches a function that runs after the fresh database is
 // loaded and before the rename transaction starts. The hook must return only
 // after its own durable record is fsynced.
@@ -158,6 +160,31 @@ func swapHook(ctx context.Context) swapHookFunc {
 	}
 	hook, _ := ctx.Value(swapHookKey{}).(swapHookFunc)
 	return hook
+}
+
+// WithSwapCommitted attaches a function that runs after the rename pair is
+// visible and before the previous database is dropped. The hook must return
+// only after that outcome is fsynced. A hook error leaves the old name in place.
+func WithSwapCommitted(ctx context.Context, hook func(configured, fresh, replaced string) error) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, swapCommitKey{}, swapHookFunc(hook))
+}
+
+func swapCommitted(ctx context.Context) swapHookFunc {
+	if ctx == nil {
+		return nil
+	}
+	hook, _ := ctx.Value(swapCommitKey{}).(swapHookFunc)
+	return hook
+}
+
+func recordSwapCommitted(ctx context.Context, configured, fresh, replaced string) error {
+	if hook := swapCommitted(ctx); hook != nil {
+		return hook(configured, fresh, replaced)
+	}
+	return nil
 }
 
 func recoveryContext() (context.Context, context.CancelFunc) {
@@ -207,16 +234,19 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 	txn := "BEGIN; ALTER DATABASE " + orig + " RENAME TO " + replaced + "; ALTER DATABASE " + fresh + " RENAME TO " + orig + "; COMMIT;"
 	txnErr := psqlExec(ctx, bin, adminURL, txn)
 	if txnErr != nil {
-		return reconcileSwap(bin, adminURL, orig, fresh, replaced, txnErr)
+		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, txnErr)
+	}
+	if err := recordSwapCommitted(ctx, orig, fresh, replaced); err != nil {
+		return err
 	}
 	dropErr := psqlExec(ctx, bin, adminURL, "DROP DATABASE "+replaced)
 	if dropErr != nil {
-		return reconcileSwap(bin, adminURL, orig, fresh, replaced, dropErr)
+		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, dropErr)
 	}
-	return reconcileSwap(bin, adminURL, orig, fresh, replaced, nil)
+	return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, nil)
 }
 
-func reconcileSwap(bin, adminURL, orig, fresh, replaced string, stepErr error) error {
+func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced string, stepErr error) error {
 	ctx, cancel := recoveryContext()
 	defer cancel()
 	last := stepErr
@@ -232,6 +262,9 @@ func reconcileSwap(bin, adminURL, orig, fresh, replaced string, stepErr error) e
 			// when the final acknowledgment was lost.
 			return nil
 		case st[orig] && !st[fresh] && st[replaced]:
+			if err := recordSwapCommitted(hookCtx, orig, fresh, replaced); err != nil {
+				return err
+			}
 			if err := dropDatabase(ctx, bin, adminURL, replaced); err != nil {
 				last = err
 				continue

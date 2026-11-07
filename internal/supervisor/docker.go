@@ -365,6 +365,9 @@ func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
 	if m.Docker == nil || m.Docker.Client == nil {
 		return false, ErrMigratorUnconfigured
 	}
+	if err := m.Docker.Pull(ctx, image); err != nil {
+		return false, err
+	}
 	env := append([]string{}, m.Docker.coreEnv()...)
 	body := map[string]any{
 		"Image": image,

@@ -23,6 +23,7 @@ type CaddyProxy struct {
 	HTTPListen   string
 	HTTPSListen  string
 	UpstreamFile string
+	Domain       string
 	HTTP         *http.Client
 }
 
@@ -73,7 +74,7 @@ func (c *CaddyProxy) reconcile(ctx context.Context, upstream, prevUpstream strin
 }
 
 func (c *CaddyProxy) post(ctx context.Context, upstream string) error {
-	body, err := json.Marshal(caddyConfig(upstream, c.adminListen(), c.httpListen(), c.httpsListen()))
+	body, err := json.Marshal(caddyConfig(upstream, c.adminListen(), c.httpListen(), c.httpsListen(), c.domain()))
 	if err != nil {
 		return err
 	}
@@ -191,8 +192,23 @@ func (c *CaddyProxy) httpsListen() string {
 	return ":443"
 }
 
-func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[string]any {
+func (c *CaddyProxy) domain() string {
+	if c != nil && c.Domain != "" {
+		return c.Domain
+	}
+	if d := strings.TrimSpace(os.Getenv("TOGAVSU_DOMAIN")); d != "" {
+		return d
+	}
+	return "localhost"
+}
+
+func caddyConfig(upstream, adminListen, httpListen, httpsListen, domain string) map[string]any {
+	if domain == "" {
+		domain = "localhost"
+	}
+	hostMatch := map[string]any{"host": []string{domain}}
 	proxy := map[string]any{
+		"match": []any{hostMatch},
 		"handle": []any{map[string]any{
 			"handler":   "reverse_proxy",
 			"upstreams": []any{map[string]any{"dial": upstream}},
@@ -200,6 +216,14 @@ func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[stri
 	}
 	ready := map[string]any{
 		"match": []any{map[string]any{"path": []string{"/ready"}}},
+		"handle": []any{map[string]any{
+			"handler":     "static_response",
+			"status_code": 200,
+			"body":        "ok",
+		}},
+	}
+	httpsReady := map[string]any{
+		"match": []any{map[string]any{"host": []string{domain}, "path": []string{"/ready"}}},
 		"handle": []any{map[string]any{
 			"handler":     "static_response",
 			"status_code": 200,
@@ -228,14 +252,18 @@ func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[stri
 					},
 					"https": map[string]any{
 						"listen": []string{httpsListen},
-						"routes": []any{ready, proxy},
+						"routes": []any{httpsReady, proxy},
+						// The HTTP server already redirects. Automatic redirects
+						// would bind port 80 beside the configured HTTP listener.
+						"automatic_https": map[string]any{"disable_redirects": true},
 					},
 				},
 			},
 			"tls": map[string]any{
 				"automation": map[string]any{
 					"policies": []any{map[string]any{
-						"issuers": []any{map[string]any{"module": "internal"}},
+						"subjects": []string{domain},
+						"issuers":  []any{map[string]any{"module": "internal"}},
 					}},
 				},
 			},

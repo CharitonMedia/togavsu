@@ -153,17 +153,6 @@ func TestModuleClean(t *testing.T) {
 	}
 }
 
-func TestSupervisorProcessStaysOutsideCoreSettingsCheck(t *testing.T) {
-	msgs := settings.ScanSource("internal/supervisor/example.go", "package supervisor\nconst mode = 0o600\n")
-	if len(msgs) == 0 {
-		t.Fatal("direct scan stopped flagging a supervisor literal")
-	}
-	root := moduleRoot(t)
-	if err := settings.CheckModule(root); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

@@ -144,6 +144,9 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 		return UpdateResult{}, ErrBusy
 	}
 	defer release()
+	if err := o.blockUnresolved(); err != nil {
+		return UpdateResult{}, err
+	}
 	if o.Updater == nil {
 		return UpdateResult{}, ErrReleaseIndexUnconfigured
 	}
@@ -317,16 +320,9 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 		release()
 		return RestoreRecord{}, nil, ErrShuttingDown
 	}
-	if o.Journal != nil {
-		pending, err := o.Journal.Incomplete()
-		if err != nil {
-			release()
-			return RestoreRecord{}, nil, err
-		}
-		if len(pending) > 0 {
-			release()
-			return RestoreRecord{}, nil, ErrRecoveryRequired
-		}
+	if err := o.blockUnresolved(); err != nil {
+		release()
+		return RestoreRecord{}, nil, err
 	}
 	pass, err := o.snapshotPass()
 	if err != nil {
@@ -435,6 +431,19 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 			})
 			return herr
 		})
+		ctx = WithSwapCommitted(ctx, func(configured, fresh, replaced string) error {
+			_, herr := o.persist(o.current(rec.ID, rec), phaseApplied, func(cur *journalRecord) {
+				if cur.Database == nil {
+					cur.Database = &databaseIntent{Configured: configured, Fresh: fresh, Replaced: replaced}
+				}
+				cur.Database.Configured = configured
+				cur.Database.Fresh = fresh
+				cur.Database.Replaced = replaced
+				cur.Database.SwapIntended = true
+				cur.Database.SwapCommitted = true
+			})
+			return herr
+		})
 		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, nil); perr != nil {
 			return perr
 		}
@@ -469,7 +478,7 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
 		}
-		return o.keepPending(rec, phaseApplied, "restart_failed", errors.Join(persistErr, startErr))
+		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), errors.Join(persistErr, startErr))
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -485,7 +494,7 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 	rec.Error = "cleanup_pending"
 	rec.Cleanup = "pending"
 	if startErr := o.restoreWriters(rec, stopped); startErr != nil {
-		return o.keepPending(rec, phaseApplied, "restart_failed", startErr)
+		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), startErr)
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -682,7 +691,7 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 	rec := item.Record
 	if item.Phase == phaseApplied || rec.Cleanup == "pending" || rec.Error == "cleanup_pending" {
 		if err := o.restoreWriters(rec, nil); err != nil {
-			_, perr := o.keepPending(rec, phaseApplied, "restart_failed", err)
+			_, perr := o.keepPending(rec, phaseApplied, writerRecoveryReason(err), err)
 			return errors.Join(err, perr)
 		}
 		if o.leftUnobserved(ctx, item) {
@@ -759,7 +768,7 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 // healthy again. A restart or journal failure leaves the same job pending.
 func (o *Operations) closeStopped(rec RestoreRecord, stopped []ContainerInfo, cause error, recovery string) (RestoreRecord, error) {
 	if err := o.restoreWriters(rec, stopped); err != nil {
-		return o.keepPending(rec, phaseWritersStopped, "restart_failed", errors.Join(cause, err))
+		return o.keepPending(rec, phaseWritersStopped, writerRecoveryReason(err), errors.Join(cause, err))
 	}
 	if recovery != "" {
 		rec.Recovery = recovery
@@ -785,6 +794,20 @@ func (o *Operations) keepPending(rec RestoreRecord, phase, recovery string, caus
 	return saved, cause
 }
 
+func (o *Operations) blockUnresolved() error {
+	if o == nil || o.Journal == nil {
+		return nil
+	}
+	pending, err := o.Journal.Incomplete()
+	if err != nil {
+		return err
+	}
+	if len(pending) > 0 {
+		return ErrRecoveryRequired
+	}
+	return nil
+}
+
 func (o *Operations) stopIntended(id string) bool {
 	item, ok := o.journalItem(id)
 	return ok && stopWasIntended(item)
@@ -801,15 +824,56 @@ func (o *Operations) journalItem(id string) (journalRecord, bool) {
 	return got, true
 }
 
-// restoreWriters starts every container this restore stopped, and only those.
+// restoreWriters reconciles every container this restore stopped. An inspect
+// error is not treated as stopped or healthy, and a container that is already
+// running still has to pass its health check before the job can finish.
 func (o *Operations) restoreWriters(rec RestoreRecord, fallback []ContainerInfo) error {
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
 	item, ok := o.journalItem(rec.ID)
 	if ok && stopWasIntended(item) {
-		return o.restart(ctx, o.confirmedStopped(ctx, item))
+		return o.reconcileWriters(ctx, item)
 	}
 	return o.restart(ctx, fallback)
+}
+
+func (o *Operations) reconcileWriters(ctx context.Context, item journalRecord) error {
+	if o.Runtime == nil {
+		return errors.New("inspect runtime: unknown")
+	}
+	var errs []error
+	for _, c := range item.Containers {
+		if c.Prior != "running" || !c.StopIntended {
+			continue
+		}
+		info, err := o.Runtime.Inspect(ctx, c.ID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("inspect %s: %w", c.ID, err))
+			continue
+		}
+		if info.State == "" && !info.Running {
+			errs = append(errs, fmt.Errorf("inspect %s: unknown state", c.ID))
+			continue
+		}
+		if !info.Running && info.State != "running" {
+			if err := o.Runtime.Start(ctx, c.ID); err != nil {
+				errs = append(errs, fmt.Errorf("start %s: %w", c.ID, err))
+				continue
+			}
+		}
+		if err := o.Runtime.WaitHealthy(ctx, c.ID, time.Minute); err != nil {
+			errs = append(errs, fmt.Errorf("health %s: %w", c.ID, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func writerRecoveryReason(err error) string {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "inspect") || strings.Contains(msg, "unknown") {
+		return "container_unobserved"
+	}
+	return "restart_failed"
 }
 
 func stopWasIntended(item journalRecord) bool {
@@ -819,27 +883,6 @@ func stopWasIntended(item journalRecord) bool {
 		}
 	}
 	return false
-}
-
-func (o *Operations) confirmedStopped(ctx context.Context, item journalRecord) []ContainerInfo {
-	if o.Runtime == nil {
-		return nil
-	}
-	var out []ContainerInfo
-	for _, c := range item.Containers {
-		if c.Prior != "running" || !c.StopIntended {
-			continue
-		}
-		info, err := o.Runtime.Inspect(ctx, c.ID)
-		if err != nil {
-			continue
-		}
-		if info.Running || info.State == "running" {
-			continue
-		}
-		out = append(out, ContainerInfo{ID: c.ID, Name: c.Name, State: info.State})
-	}
-	return out
 }
 
 func (o *Operations) leftUnobserved(ctx context.Context, item journalRecord) bool {

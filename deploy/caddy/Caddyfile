@@ -12,7 +12,8 @@ http:// {
 	}
 }
 
-https:// {
+https://{$TOGAVSU_DOMAIN:localhost} {
+	tls internal
 	handle /ready {
 		respond "ok" 200
 	}

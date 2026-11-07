@@ -4,7 +4,14 @@
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
-trap 'sudo rm -rf "$work"' EXIT
+hexwork=
+cleanup() {
+  sudo rm -rf "$work"
+  if [ -n "${hexwork:-}" ]; then
+    sudo rm -rf "$hexwork"
+  fi
+}
+trap cleanup EXIT
 mkdir -p "$work/pgsecrets" "$work/appsecrets"
 sed "s#/pgsecrets#$work/pgsecrets#g; s#/appsecrets#$work/appsecrets#g" \
   "$root/deploy/bootstrap/bootstrap-secrets.sh" > "$work/bootstrap.sh"
@@ -78,6 +85,11 @@ open(os.environ["RESULT"], "w").write("%d %s %d %s\n" % (
 PY
 EOF
 chmod 755 "$hexwork/core-stub"
+# Copy the adapter into this temp tree. GitHub checkout parents under
+# /home/runner/work are not traversable by uid 65532.
+cp "$root/deploy/core/entrypoint.sh" "$hexwork/entrypoint.sh"
+cmp -s "$root/deploy/core/entrypoint.sh" "$hexwork/entrypoint.sh"
+chmod 755 "$hexwork/entrypoint.sh"
 mkdir -p "$hexwork/out"
 chmod 777 "$hexwork/out"
 result="$hexwork/out/result"
@@ -91,12 +103,11 @@ os.environ["CORE_BIN"] = sys.argv[2]
 os.environ["RESULT"] = sys.argv[3]
 os.environ["TOGAVSU_DOMAIN"] = "localhost"
 os.execv("/bin/sh", ["sh", sys.argv[4]])
-' "$hexwork/appsecrets" "$hexwork/core-stub" "$result" "$root/deploy/core/entrypoint.sh"
+' "$hexwork/appsecrets" "$hexwork/core-stub" "$result" "$hexwork/entrypoint.sh"
 sudo python3 -c '
 import sys
 length, domain, secret, keyhex = open(sys.argv[1]).read().split()
 if length != "32" or domain != "localhost" or int(secret) < 16 or keyhex != "11"*32:
     sys.exit("adapter result %s %s %s %s" % (length, domain, secret, keyhex))
 ' "$result"
-sudo rm -rf "$hexwork"
 echo "bootstrap secrets check passed"

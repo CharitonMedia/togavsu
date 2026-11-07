@@ -839,6 +839,157 @@ func TestStoppedWritersStayRecoverable(t *testing.T) {
 	})
 }
 
+func TestUnreadableOrUnhealthyWritersStayPending(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newOps := func(path string, rt *scriptRuntime) *Operations {
+		return &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal:    OpenJournal(path),
+			Passphrase: func() (string, error) { return store.Passphrase, nil },
+			ApplyDump: func(_ context.Context, r io.Reader) error {
+				_, err := io.Copy(io.Discard, r)
+				return err
+			},
+			Runtime: rt,
+		}
+	}
+	t.Run("inspect fails after stop", func(t *testing.T) {
+		var order []string
+		path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+		rt := &scriptRuntime{
+			order: &order, cores: []ContainerInfo{{ID: "core-1"}, {ID: "idle", State: "exited"}},
+			inspectErr:   map[string]error{"core-1": errors.New("engine down")},
+			inspectAllow: 1,
+		}
+		ops := newOps(path, rt)
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err == nil || rec.Status == "completed" || rec.Status == "failed" || rec.Recovery != "container_unobserved" {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		if containsStep(order, "restart:core-1") || containsStep(order, "health") {
+			t.Fatalf("treated an unreadable container as stopped or healthy: %v", order)
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+			t.Fatalf("admission while unobserved: %v", err)
+		}
+		persisted, ok, err := OpenJournal(path).Latest(rec.ID)
+		if err != nil || !ok || persisted.Record.Status != "running" {
+			t.Fatalf("journal did not keep the job pending: %+v %v %v", persisted, ok, err)
+		}
+		rt.inspectErr = nil
+		rt.states["core-1"] = "exited"
+		next := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+		if err := next.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(order, "restart:core-1") || !containsStep(order, "health") || containsStep(order, "restart:idle") {
+			t.Fatalf("order %v", order)
+		}
+		got, ok, err := next.LookupRestore(rec.ID)
+		if err != nil || !ok || got.ID != rec.ID || got.Status != "completed" {
+			t.Fatalf("%+v %v %v", got, ok, err)
+		}
+	})
+	t.Run("already running but unhealthy", func(t *testing.T) {
+		var order []string
+		path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}}
+		ops := newOps(path, rt)
+		rt.stopHook = func() {
+			rt.states["core-1"] = "running"
+			rt.health = errors.New("unhealthy")
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err == nil || rec.Status == "completed" || rec.Status == "failed" || rec.Recovery != "restart_failed" {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		if containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+			t.Fatalf("running container was restarted or not health-checked: %v", order)
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+			t.Fatalf("admission while unhealthy: %v", err)
+		}
+		rt.health = nil
+		next := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+		if err := next.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, err := next.LookupRestore(rec.ID)
+		if err != nil || !ok || got.Status != "failed" || got.ID != rec.ID {
+			t.Fatalf("%+v %v %v", got, ok, err)
+		}
+	})
+}
+
+func TestUpdateBlockedWhileRestoreIsPending(t *testing.T) {
+	dir := t.TempDir()
+	journal := OpenJournal(filepath.Join(dir, "restore-journal.jsonl"))
+	if err := journal.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-pending", BackupID: "backup", Status: "running", Started: time.Now().UTC(), Recovery: "restart_failed"},
+		Phase:  phaseApplied,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "running",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	ops := &Operations{
+		Gate: &Gate{}, Journal: journal,
+		Updater: &Updater{},
+		Runtime: &scriptRuntime{order: &order},
+	}
+	if _, err := ops.Update(context.Background(), true); !errors.Is(err, ErrRecoveryRequired) {
+		t.Fatalf("update while recovery is pending: %v", err)
+	}
+	if len(order) != 0 {
+		t.Fatalf("update touched the runtime: %v", order)
+	}
+	if _, err := ops.Restore(context.Background(), "backup"); !errors.Is(err, ErrRecoveryRequired) {
+		t.Fatalf("restore while recovery is pending: %v", err)
+	}
+}
+
+func TestAppliedOutcomeRestartsWhenOnlyTheConfiguredNameRemains(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "restore-journal.jsonl")
+	j := OpenJournal(path)
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-applied", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseApplied,
+		Containers: []containerIntent{
+			{ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited"},
+			{ID: "idle", Prior: "exited"},
+		},
+		Database: &databaseIntent{
+			Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+			SwapIntended: true, SwapCommitted: true,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true}}
+	ops := &Operations{
+		Gate: &Gate{}, Journal: OpenJournal(path), Catalog: cat,
+		Runtime: &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited", "idle": "exited"}},
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") || containsStep(order, "restart:idle") {
+		t.Fatalf("order %v", order)
+	}
+	got, ok, err := ops.LookupRestore("restore-applied")
+	if err != nil || !ok || got.Status != "completed" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
 func TestRecoverHoldsAdmission(t *testing.T) {
 	dir := t.TempDir()
 	journal := OpenJournal(filepath.Join(dir, "j.jsonl"))

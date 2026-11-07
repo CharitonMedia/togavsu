@@ -26,8 +26,7 @@ var durationNames = map[string]bool{
 // or places an unproven numeric configuration literal outside the settings registry.
 // It is a conservative source heuristic, not acceptance of AC-030. Arithmetic and the
 // enumerated fixed-site functions are allowed. A number that is not today's default is
-// still reported. cmd/supervisor and internal/supervisor are a separate process with
-// its own environment contract; ScanSource still reports those files when called directly.
+// still reported.
 func CheckModule(root string) error {
 	var msgs []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -37,9 +36,6 @@ func CheckModule(root string) error {
 		if d.IsDir() {
 			switch d.Name() {
 			case ".git", "vendor", "testdata":
-				return filepath.SkipDir
-			}
-			if supervisorProcess(path) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -647,12 +643,6 @@ func packagePath(name string, aliases map[string]string) string {
 
 func envAllowed(path string) bool {
 	return strings.HasSuffix(filepath.ToSlash(filepath.Dir(path)), "internal/bootstrap")
-}
-
-// supervisorProcess is the platform supervisor, not the core that AC-030 covers.
-func supervisorProcess(path string) bool {
-	slash := filepath.ToSlash(path)
-	return strings.HasSuffix(slash, "cmd/supervisor") || strings.HasSuffix(slash, "internal/supervisor")
 }
 
 // defaultFile is only the registry and domain default declarations, plus tests.

@@ -49,10 +49,11 @@ type containerIntent struct {
 }
 
 type databaseIntent struct {
-	Configured   string `json:"configured"`
-	Fresh        string `json:"fresh"`
-	Replaced     string `json:"replaced"`
-	SwapIntended bool   `json:"swap_intended"`
+	Configured    string `json:"configured"`
+	Fresh         string `json:"fresh"`
+	Replaced      string `json:"replaced"`
+	SwapIntended  bool   `json:"swap_intended"`
+	SwapCommitted bool   `json:"swap_committed,omitempty"`
 }
 
 func (r journalRecord) terminal() bool {
