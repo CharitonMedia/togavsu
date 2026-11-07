@@ -1900,10 +1900,16 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(replayed["result"], "original_result")
         self.assertEqual(replayed["payment"]["id"], next(iter(store["payments"].values()))["id"])
         self.assertEqual(len(store["payments"]), 1)
-        self.assertEqual(
-            callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1", "status": "completed"}),
-            "original_result",
+        status_conflict = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "createPayment"),
+            {**base, "operation": "createPayment", "idempotency_key": "pay-1", "status": "completed"},
         )
+        self.assertEqual(status_conflict["result"], "idempotency_conflict")
+        self.assertIsNone(status_conflict["payment"])
+        self.assertEqual(len(store["ledger"]), 0)
+        self.assertEqual(next(iter(store["payments"].values()))["status"], "pending")
         self.assertEqual(len(store["payments"]), 1)
         bound = grant["payment_id"]
         self.assertEqual(
@@ -1944,6 +1950,7 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(after_status["result"], "original_result")
         self.assertEqual(after_status["payment"]["id"], bound)
         self.assertEqual(after_status["payment"]["status"], "completed")
+        self.assertEqual(after_status["payment"]["accepted_request"]["status"], "pending")
         self.assertEqual(len(store["ledger"]), 0)
         method_edit = processor_apply(
             store,
@@ -1996,10 +2003,29 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(
             callback(
                 "updatePaymentStatus",
-                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed"},
+                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "idempotency_key": "trust-done"},
             ),
             "allowed",
         )
+        self.assertEqual(len(store["ledger"]), 1)
+        status_key = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "failed", "idempotency_key": "trust-done"},
+        )
+        self.assertEqual(status_key["result"], "idempotency_conflict")
+        self.assertIsNone(status_key["payment"])
+        self.assertEqual(len(store["ledger"]), 1)
+        second_key = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "idempotency_key": "trust-done-2"},
+        )
+        self.assertEqual(second_key["result"], "original_result")
+        self.assertEqual(second_key["payment"]["id"], trust_payment)
+        self.assertFalse(second_key["ledger_inserted"])
         self.assertEqual(len(store["ledger"]), 1)
         self.assertEqual(store["ledger"][0]["trust_account_id"], trust_account)
         self.assertEqual(

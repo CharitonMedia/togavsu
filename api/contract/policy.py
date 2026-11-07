@@ -774,8 +774,13 @@ _PROCESSOR_REQUEST_FIELDS = (
 
 
 def _normalized_processor_request(call: dict) -> dict:
-    """Accepted create request. Current payment status is not part of it."""
-    return {name: call.get(name) for name in _PROCESSOR_REQUEST_FIELDS}
+    """Immutable request snapshot. Create status defaults to pending and stays the original request, not the payment's later status."""
+    request = {name: call.get(name) for name in _PROCESSOR_REQUEST_FIELDS}
+    if call.get("operation") == "updatePaymentStatus":
+        request["status"] = call.get("status")
+    else:
+        request["status"] = call.get("status") or "pending"
+    return request
 
 
 def _same_processor_body(payment: dict, call: dict) -> bool:
@@ -785,7 +790,7 @@ def _same_processor_body(payment: dict, call: dict) -> bool:
 
 def _processor_body(call: dict) -> tuple:
     request = _normalized_processor_request(call)
-    return tuple((name, request[name]) for name in _PROCESSOR_REQUEST_FIELDS)
+    return tuple(sorted(request.items()))
 
 
 def _idempotency_scope(call: dict, init_id: str | None, key: str) -> tuple:
