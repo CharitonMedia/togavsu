@@ -50,7 +50,7 @@ upgrade path: generate OpenAPI from the Go router and fail CI when it differs fr
 trigger: the core serves GET /api/v1/openapi.json
 ```
 
-`PONYTAIL-DEBT.md` is outside this task's paths. The lead can append that entry. The ledger in the repo still says no implementation debt.
+`PONYTAIL-DEBT.md` is outside this task's paths and was not edited. The accepted main ledger has 6 entries. This task proposes 1 additional entry for the integration lead to reconcile into that ledger.
 
 ## Pending dependencies
 
