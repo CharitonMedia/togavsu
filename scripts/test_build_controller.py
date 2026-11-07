@@ -500,8 +500,10 @@ class ReviewDataTests(unittest.TestCase):
         remote, fetched = Remote(), []
         def gh(path, **kwargs):
             fetched.append(path)
+            if path == "actions/jobs/456":
+                return {"id":456,"run_id":123,"check_run_url":"https://api.github.com/repos/CharitonMedia/togavsu/check-runs/1","head_sha":HEAD,"name":"Codex checkpoint","status":"completed","conclusion":"success"}
             if path == "actions/runs/123":
-                return {"path": ".github/workflows/codex-checkpoint.yml", "head_sha": HEAD, "event": "pull_request", "status": "completed", "run_attempt": 2}
+                return {"path": ".github/workflows/codex-checkpoint.yml", "head_sha": HEAD, "event": "pull_request", "status": "completed", "conclusion":"success", "run_attempt": 2}
             if path.endswith("/artifacts?per_page=100"):
                 return {"artifacts": [{"name": "codex-review-" + HEAD + "-attempt-" + str(n), "id": n, "expired": False} for n in [1,2]]}
             if path == "actions/artifacts/2/zip":
@@ -511,6 +513,46 @@ class ReviewDataTests(unittest.TestCase):
         report, context = remote.review(check("Codex checkpoint"))
         self.assertEqual(report["verdict"], "pass")
         self.assertIn("actions/artifacts/2/zip", fetched)
+
+    def test_forged_check_copying_real_url_cannot_hide_newer_genuine_failure(self):
+        remote = Remote()
+        genuine_pass = check("Codex checkpoint","success",1)
+        genuine_pass["details_url"]="https://github.com/CharitonMedia/togavsu/actions/runs/101/job/201"
+        genuine_fail = check("Codex checkpoint","failure",2)
+        genuine_fail["details_url"]="https://github.com/CharitonMedia/togavsu/actions/runs/102/job/202"
+        forged = dict(genuine_pass,id=3)
+        def gh(path, **kwargs):
+            if path.startswith("commits/"):
+                return {"check_runs":[genuine_pass,genuine_fail,forged]}
+            if path.startswith("actions/jobs/"):
+                job=int(path.rsplit("/",1)[1]); ident=job-200
+                return {"id":job,"run_id":job-100,"check_run_url":"https://api.github.com/repos/CharitonMedia/togavsu/check-runs/"+str(ident),"head_sha":HEAD,"name":"Codex checkpoint","status":"completed","conclusion":"failure" if ident==2 else "success"}
+            if path.startswith("actions/runs/"):
+                return {"path":".github/workflows/codex-checkpoint.yml","event":"pull_request","head_sha":HEAD}
+            raise AssertionError(path)
+        remote.gh=gh
+        selected=remote.checks(HEAD)["Codex checkpoint"]
+        self.assertEqual(selected["id"],2)
+        self.assertEqual(selected["conclusion"],"failure")
+        with self.assertRaises(ValueError):
+            remote.review(forged)
+
+    def test_forged_product_check_cannot_override_native_job_outcome(self):
+        remote = Remote()
+        real = check("Core tests", "failure", 1)
+        forged = dict(real,id=2,conclusion="success")
+        def gh(path, **kwargs):
+            if path.startswith("commits/"):
+                return {"check_runs":[real,forged]}
+            if path == "actions/jobs/456":
+                return {"id":456,"run_id":123,"check_run_url":"https://api.github.com/repos/CharitonMedia/togavsu/check-runs/1","head_sha":HEAD,"name":"Core tests","status":"completed","conclusion":"failure"}
+            if path == "actions/runs/123":
+                return {"path":".github/workflows/product-ci.yml","event":"pull_request","head_sha":HEAD,"status":"completed","conclusion":"failure"}
+            raise AssertionError(path)
+        remote.gh=gh
+        selected=remote.checks(HEAD)["Core tests"]
+        self.assertEqual(selected["id"],1)
+        self.assertEqual(selected["conclusion"],"failure")
     def test_null_review_or_context_is_rejected(self):
         r = FakeRemote()
         for report, context in [(None,r.context),(r.report,None)]:

@@ -25,6 +25,10 @@ REPO = "CharitonMedia/togavsu"
 ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "ACTIVE"}
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
+CHECK_WORKFLOWS = {"Codex checkpoint": ".github/workflows/codex-checkpoint.yml",
+                   "Setup checks": ".github/workflows/setup-checks.yml"}
+for _name in ("Core tests", "API contract tests", "QA harness tests", "Supervisor tests", "Backup integration", "Supervisor image", "Full acceptance"):
+    CHECK_WORKFLOWS[_name] = ".github/workflows/product-ci.yml"
 PROTECTED = {
     "AGENTS.md", "togavsu-core-prd.md", ".cursor/rules/togavsu.mdc",
     ".github/workflows/codex-checkpoint.yml", ".github/workflows/setup-checks.yml",
@@ -140,6 +144,8 @@ class Remote:
                 "git": run.get("git", {}), "updated_at": run.get("updatedAt", agent.get("updatedAt"))}
 
     def review(self, check):
+        if not self.authentic_checkpoint(check):
+            raise ValueError("Checkpoint is not the protected workflow's actual check run")
         match = re.search(r"/actions/runs/(\d+)/", check.get("details_url", ""))
         if not match:
             raise ValueError("Review check has no workflow run")
@@ -151,6 +157,8 @@ class Remote:
             raise ValueError("Check did not originate from the protected Codex workflow at this head")
         if provenance.get("status") != "completed":
             raise ReviewPending("Workflow attempt is still queued or running")
+        if provenance.get("conclusion") != check.get("conclusion"):
+            raise ValueError("Check result contradicts the protected workflow result")
         artifacts = self.gh("actions/runs/" + run + "/artifacts?per_page=100")
         expected = "codex-review-" + check["head_sha"] + "-attempt-" + str(provenance["run_attempt"])
         found = [a for a in artifacts["artifacts"] if a["name"] == expected and not a["expired"]]
@@ -164,8 +172,43 @@ class Remote:
             rows = self.gh("commits/" + head + "/check-runs?per_page=100&page=" + str(page))["check_runs"]
             checks.extend(rows)
             if len(rows) < 100:
-                return latest_checks(checks)
+                native = [self.native_check(c) for c in checks]
+                return latest_checks([c for c in native if c is not None])
             page += 1
+
+    def authentic_checkpoint(self, check):
+        return check.get("name") == "Codex checkpoint" and self.native_check(check) is not None
+
+    def native_check(self, check):
+        if check.get("app", {}).get("id") != APP_ID:
+            return None
+        match = re.fullmatch(r"https://github.com/CharitonMedia/togavsu/actions/runs/(\d+)/job/(\d+)", check.get("details_url", ""))
+        if not match:
+            return None
+        run_id, job_id = map(int, match.groups())
+        try:
+            job = self.gh("actions/jobs/" + str(job_id))
+            run = self.gh("actions/runs/" + str(run_id))
+        except RuntimeError as error:
+            if "HTTP 404" in str(error):
+                return None
+            raise
+        identity = (job.get("id") == job_id and job.get("run_id") == run_id
+                and job.get("check_run_url") == "https://api.github.com/repos/" + REPO + "/check-runs/" + str(check["id"])
+                and job.get("head_sha") == check.get("head_sha") and job.get("name") == check.get("name")
+                and run.get("head_sha") == check.get("head_sha"))
+        if not identity or run.get("path") != CHECK_WORKFLOWS.get(check["name"], run.get("path")):
+            return None
+        if check["name"] == "Codex checkpoint" and run.get("event") != "pull_request":
+            return None
+        if job.get("status") not in {"queued", "in_progress", "completed", "waiting", "pending", "requested"}:
+            return None
+        native = dict(check, status=job["status"], conclusion=job.get("conclusion"))
+        if run.get("status") and run["status"] != "completed" and native["status"] == "completed":
+            native.update(status="in_progress", conclusion=None)
+        if run.get("status") == "completed" and run.get("conclusion") != "success" and native["conclusion"] == "success":
+            native["conclusion"] = run.get("conclusion")  # Never let a synthetic success mask a failed genuine workflow.
+        return native
 
     def changed_files(self, number):
         files, page = [], 1
