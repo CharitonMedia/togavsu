@@ -165,6 +165,7 @@ class Controller:
         self.state = json.loads(path.read_text()) if path.exists() else {"tasks": {}, "events": [], "tick": 0}
         self.tasks = self.state["tasks"]
         self.actions = []
+        self.occupied = 0
 
     def save(self):
         if not self.dry:
@@ -202,6 +203,8 @@ class Controller:
     def followup(self, task, record, snapshot, key, prompt, repair=True):
         # Persist intent BEFORE non-idempotent POST; ambiguous replies never cause a replay.
         if key in record.get("delivered", []):
+            if snapshot.get("run_id") == record.get("last_dispatched_run") and snapshot.get("status") == "FINISHED":
+                self.halt(task, record, "Correction finished without changing the failing revision; no-progress stop")
             return
         if record.get("intent"):
             self.halt(task, record, "Unreconciled delivery intent; refusing duplicate agent prompt")
@@ -212,6 +215,10 @@ class Controller:
         if not repair and record.get("sync_count", 0) >= 3:
             self.halt(task, record, "Three integration conflict attempts exhausted")
             return
+        if self.occupied >= self.plan["max_implementation_agents"]:
+            record["waiting"] = "Correction queued: all Cursor worker slots occupied"
+            return
+        self.occupied += 1  # Reserve before POST, including uncertain delivery outcomes.
         if self.dry:
             self.effect("followup " + task + " " + key, lambda: None)
             return
@@ -381,10 +388,7 @@ class Controller:
             try:
                 data = self.remote.gh("contents/" + spec["report_path"] + "?ref=" + head)
                 evidence = json.loads(base64.b64decode(data["content"]))
-                if evidence.get("task_id") != task or evidence.get("status") != "pass" or not evidence.get("tests"):
-                    raise ValueError("Integrated acceptance report absent or not passing")
-                if any(t.get("exit_code") != 0 or not t.get("command") for t in evidence["tests"]):
-                    raise ValueError("Integrated acceptance report contains failed or empty test evidence")
+                self.validate_evidence(spec, evidence, head)
             except (ValueError, KeyError, TypeError, RuntimeError) as error:
                 if isinstance(error, RuntimeError) and "HTTP 404" not in str(error):
                     raise  # Transient control failures are not implementation defects.
@@ -419,8 +423,53 @@ class Controller:
         self.save()
         return True
 
+    def validate_evidence(self, spec, evidence, head):
+        if evidence.get("task_id") != spec["id"] or evidence.get("status") != "pass":
+            raise ValueError("Integration report absent or not passing")
+        tests = evidence.get("tests")
+        if not isinstance(tests, list) or not tests or any(
+                not isinstance(t, dict) or type(t.get("exit_code")) is not int or t["exit_code"] != 0
+                or not isinstance(t.get("command"), str) or not t["command"].strip() for t in tests):
+            raise ValueError("Missing or failed actual test commands")
+        passed, pending = evidence.get("passed_acceptance_ids"), evidence.get("pending_acceptance_ids")
+        if not isinstance(passed, list) or not isinstance(pending, list) or any(
+                not isinstance(x, str) for x in passed + pending):
+            raise ValueError("Acceptance inventory missing")
+        if (len(set(passed)) != len(passed) or len(set(pending)) != len(pending)
+                or set(passed) & set(pending) or set(passed) | set(pending) != set(spec["acceptance_ids"])):
+            raise ValueError("Acceptance inventory is incomplete, overlapping or unknown")
+        if spec.get("full_acceptance") and (pending or set(passed) != set(spec["acceptance_ids"])):
+            raise ValueError("Full release acceptance still pending")
+        required_cases = spec.get("phase_acceptance", {})
+        cases = evidence.get("phase_cases")
+        if not required_cases or not isinstance(cases, list) or len(cases) != len(required_cases):
+            raise ValueError("Assigned phase case coverage missing")
+        seen = set()
+        for case in cases:
+            key = case.get("id")
+            if key not in required_cases or key in seen:
+                raise ValueError("Unknown or duplicate phase case")
+            seen.add(key)
+            if (case.get("status") != "pass" or type(case.get("exit_code")) is not int or case["exit_code"] != 0
+                    or not isinstance(case.get("command"), str) or not case["command"].strip()
+                    or set(case.get("acceptance_ids", [])) != set(required_cases[key])):
+                raise ValueError("Phase case not passed with its assigned acceptance mapping")
+        tested = evidence.get("tested_revision", "")
+        if not isinstance(tested, str) or not re.fullmatch(r"[0-9a-f]{40}", tested):
+            raise ValueError("Tested code revision missing")
+        if tested != head:
+            comparison = self.remote.gh("compare/" + tested + "..." + head)
+            files = comparison.get("files", [])
+            if ("files" not in comparison or comparison.get("status") not in {"ahead", "identical"} or comparison.get("behind_by") != 0
+                    or len(files) >= 300 or any(not f["filename"].startswith("docs/build/reports/")
+                    or (f.get("previous_filename") and not f["previous_filename"].startswith("docs/build/reports/")) for f in files)):
+                raise ValueError("Tested revision is stale: code changed after the tests")
+
     def launch(self, spec, main):
         task = spec["id"]
+        if self.occupied >= self.plan["max_implementation_agents"]:
+            return
+        self.occupied += 1
         record = self.tasks.setdefault(task, {"agent_id": "bc-" + str(uuid.uuid4()), "starting_sha": main, "repair_count": 0})
         self.save()
         prompt = ("Implement Togavsu assignment " + task + ". Read AGENTS.md, the full togavsu-core-prd.md, "
@@ -458,19 +507,40 @@ class Controller:
         specs = {t["id"]: t for t in self.plan["tasks"]}
         self.state["tick"] += 1
         self.state["last_tick"] = now()
-        active = 0
+        snapshots = {}
+        # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
         for task, record in list(self.tasks.items()):
             if task not in specs or record.get("completed"):
                 continue
             if not record.get("submitted"):
-                continue
+                try:
+                    snapshots[task] = self.remote.agent(record)
+                    record["submitted"] = True  # Reconcile an uncertain idempotent create.
+                    record.pop("launch_uncertain", None)
+                except urllib.error.HTTPError as error:
+                    if error.code == 404:
+                        record.pop("launch_uncertain", None)
+                        continue
+                    record["launch_uncertain"] = True
+                    self.occupied += 1
+                    continue
+                except Exception:
+                    record["launch_uncertain"] = True
+                    self.occupied += 1
+                    continue
+            else:
+                try:
+                    snapshots[task] = self.remote.agent(record)
+                except Exception as error:
+                    self.occupied += 1  # Unknown occupancy must reserve capacity, not create another job.
+                    record["last_error"] = type(error).__name__ + ": agent observation unavailable"
+                    continue
+            snapshot = snapshots[task]
+            if snapshot["status"] in ACTIVE or record.get("intent"):
+                self.occupied += 1
+        for task, snapshot in snapshots.items():
+            record = self.tasks[task]
             try:
-                snapshot = self.remote.agent(record)
-                if snapshot["status"] in ACTIVE:
-                    active += 1
-                elif record.get("intent"):
-                    # Pending delivery consumes a slot until its outcome has been reconciled.
-                    active += 1
                 if self.process(specs[task], record, snapshot, main):
                     # Main changed: avoid acting against stale base on other PRs this tick.
                     self.state["last_result"] = "Merged " + task + "; re-evaluate next tick"
@@ -481,21 +551,16 @@ class Controller:
                 record["last_error"] = type(error).__name__ + ": " + str(error)[:1800]
                 self.event(task, "Control error; no bypass: " + record["last_error"])
             self.save()
-        # Recompute active slots after followups, which can have started new runs.
-        dispatched = sum(1 for r in self.tasks.values() if r.get("last_dispatched_run") and
-                         r.get("agent_status") not in ACTIVE and not r.get("completed") and not r.get("halted"))
-        active += dispatched
         for task, spec in specs.items():
-            if active >= self.plan["max_implementation_agents"]:
+            if self.occupied >= self.plan["max_implementation_agents"]:
                 break
             record = self.tasks.get(task, {})
-            if record.get("submitted") or record.get("halted"):
+            if record.get("submitted") or record.get("halted") or record.get("launch_uncertain"):
                 continue
             if not all(self.tasks.get(dep, {}).get("completed") for dep in spec["depends_on"]):
                 continue
             try:
                 self.launch(spec, main)
-                active += 1
             except Exception as error:
                 self.event(task, "Launch not confirmed; durable agent ID retained: " + type(error).__name__)
                 self.save()

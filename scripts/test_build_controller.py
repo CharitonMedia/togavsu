@@ -233,6 +233,65 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(self.posts())
         self.assertFalse((Path(self.temp.name) / "controller.json").exists())
 
+    def test_full_pool_defers_finished_workers_correction_even_when_observed_first(self):
+        self.failed_review()
+        for i in range(4):
+            task = "active-" + str(i)
+            self.controller.plan["tasks"].append({"id": task, "depends_on": []})
+            self.controller.tasks[task] = {"agent_id": task, "submitted": True}
+        original = self.remote.agent
+        self.remote.agent = lambda r: original(r) if r["agent_id"] == "bc-one" else {"status": "RUNNING", "run_id": "active", "git": {}}
+        self.controller.tick()
+        self.assertFalse(self.posts())
+        self.assertIn("slots occupied", self.record["waiting"])
+
+    def test_finished_correction_with_unchanged_failed_head_stops_explicitly(self):
+        self.failed_review()
+        self.process()
+        self.remote.run_id = "run-new"
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertIn("no-progress", self.record["halted"])
+
+    def evidence_fixture(self):
+        spec = dict(SPEC, acceptance_ids=["AC-001", "AC-002"], phase_acceptance={"setup": ["AC-001"]})
+        evidence = {"task_id": "one", "status": "pass", "tested_revision": HEAD,
+                    "tests": [{"command": "go test ./...", "exit_code": 0}],
+                    "passed_acceptance_ids": ["AC-001"], "pending_acceptance_ids": ["AC-002"],
+                    "phase_cases": [{"id": "setup", "acceptance_ids": ["AC-001"], "status": "pass", "command": "test first run", "exit_code": 0}]}
+        return spec, evidence
+
+    def test_complete_phase_evidence_is_accepted(self):
+        spec, evidence = self.evidence_fixture()
+        self.controller.validate_evidence(spec, evidence, HEAD)
+
+    def test_incomplete_phase_evidence_is_rejected(self):
+        spec, evidence = self.evidence_fixture()
+        for key in ["tested_revision", "passed_acceptance_ids", "pending_acceptance_ids", "phase_cases"]:
+            broken = copy.deepcopy(evidence)
+            del broken[key]
+            with self.assertRaises(ValueError):
+                self.controller.validate_evidence(spec, broken, HEAD)
+
+    def test_code_changes_after_tested_revision_are_rejected(self):
+        spec, evidence = self.evidence_fixture()
+        evidence["tested_revision"] = BASE
+        self.remote.gh = lambda *a, **k: {"status": "ahead", "behind_by": 0, "files": [{"filename": "internal/changed.go"}]}
+        with self.assertRaises(ValueError):
+            self.controller.validate_evidence(spec, evidence, HEAD)
+
+    def test_report_only_commit_after_tested_code_is_allowed(self):
+        spec, evidence = self.evidence_fixture()
+        evidence["tested_revision"] = BASE
+        self.remote.gh = lambda *a, **k: {"status": "ahead", "behind_by": 0, "files": [{"filename": "docs/build/reports/one.json"}]}
+        self.controller.validate_evidence(spec, evidence, HEAD)
+
+    def test_full_release_cannot_keep_pending_acceptance(self):
+        spec, evidence = self.evidence_fixture()
+        spec["full_acceptance"] = True
+        with self.assertRaises(ValueError):
+            self.controller.validate_evidence(spec, evidence, HEAD)
+
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True
         self.remote.pr["merge_commit_sha"] = NEW
