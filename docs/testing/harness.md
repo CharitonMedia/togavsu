@@ -18,7 +18,7 @@ python -m unittest discover -s tests -p 'test_*.py'
 python -m tests.harness
 ```
 
-`.github/workflows/qa-bootstrap.yml` reproduces these steps in a fresh environment and runs the full harness plus OCR checks. It does not install the application or accept any product criterion. On another OS, install the equivalent Tesseract tools and use the documented font locations in the corpus generator before running the same Python commands.
+The separately reviewed integration-lead workflow `.github/workflows/qa-bootstrap.yml` reproduces these steps in a fresh environment and runs the full harness plus OCR checks. It does not install the application or accept any product criterion. On another OS, install the equivalent Tesseract tools and use the documented font locations in the corpus generator before running the same Python commands.
 
 ## Commands
 
@@ -111,3 +111,5 @@ Limitation: this gate checks the shape and the binding. It does not execute the 
 ## Adding a case
 
 Add it under the criterion in `tests/harness/cases.py`. Keep the requirement sentence in `docs/build/acceptance.json`. Set `phase` to the phase where that observation can be true. The full behavior phase has to equal the latest case phase. If that phase is before 7, list 7 as a recheck. Run the unittest command and `--write`.
+
+Canonical validation compares the complete case definition, including expected assertions and procedure. Keeping a case ID while replacing its expectations or action refuses the submitted matrix before any evidence can accept a criterion.

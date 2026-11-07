@@ -108,6 +108,8 @@ def inventory_errors(matrix: list[dict]) -> list[str]:
                 errors.append(f"{item['id']} {polarity} cases do not match the canonical inventory")
                 continue
             for got_case, want_case in zip(got_cases, want_cases):
+                if got_case != want_case:
+                    errors.append(f"{got_case.get('id')} case definition does not match the canonical inventory")
                 if got_case.get("polarity") != want_case.get("polarity"):
                     errors.append(f"{got_case.get('id')} polarity does not match the canonical inventory")
                 got_exit = got_case.get("expected_exit_code")

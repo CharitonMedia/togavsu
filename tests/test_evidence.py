@@ -144,6 +144,26 @@ class EvidenceTests(unittest.TestCase):
         self.assertFalse(refused["app_complete"])
         self.assertLess(refused["accepted_count"], 52)
 
+    def test_weakened_expectations_cannot_accept_the_product(self):
+        changed = copy.deepcopy(self.matrix)
+        evidence = {}
+        for criterion in changed:
+            for case in criterion["positive"] + criterion["failure"]:
+                case["expect"] = ["A trivial assertion passes"]
+                evidence[case["id"]] = _bound(case)
+        report = summarize(changed, evidence, _install(), self.standins)
+        self.assertFalse(report["app_complete"])
+        self.assertEqual(report["accepted_count"], 0)
+        self.assertTrue(any("case definition" in error for error in report["inventory_errors"]))
+
+    def test_changed_case_procedure_is_not_canonical(self):
+        changed = copy.deepcopy(self.matrix)
+        changed[0]["positive"][0]["action"] = "Run an unrelated successful command"
+        report = summarize(changed, self._bound_matrix(), _install(), self.standins)
+        self.assertFalse(report["app_complete"])
+        self.assertEqual(report["accepted_count"], 0)
+        self.assertTrue(report["inventory_errors"])
+
     def test_nonzero_exit_does_not_pass_a_successful_command(self):
         case = self._case("AC-002-P1")
         bad = _bound(case)
