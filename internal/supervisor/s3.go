@@ -258,7 +258,7 @@ func (s *S3Destination) do(ctx context.Context, method, key string, query url.Va
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 4096))
 		res.Body.Close()
-		return nil, fmt.Errorf("s3 %s: %s", res.Status, Scrub(string(msg)))
+		return nil, &remoteStatusError{Status: res.StatusCode, Detail: Scrub(string(msg))}
 	}
 	return res, nil
 }

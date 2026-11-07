@@ -11,9 +11,11 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -467,6 +469,13 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	}
 	rc, err := dest.Get(ctx, name)
 	if err != nil {
+		if ambiguousRemote(err) || (errors.Is(err, ErrRemoteUncertain) && !remoteBusy(remoteKey(dest.ID(), name))) {
+			_ = s.markUncertain(receipts, dest.ID(), name, meta.CreatedAt)
+			if errors.Is(err, ErrRemoteUncertain) {
+				return err
+			}
+			return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
+		}
 		if uncertainRemote(err, dest.ID(), name) {
 			return err
 		}
@@ -477,7 +486,8 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	}
 	got, err := sha256Hex(rc)
 	closeErr := rc.Close()
-	if errors.Is(err, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) {
+	if errors.Is(err, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) || ambiguousRemote(err) || ambiguousRemote(closeErr) {
+		_ = s.markUncertain(receipts, dest.ID(), name, meta.CreatedAt)
 		return uncertainJoin(err, closeErr)
 	}
 	if err != nil {
@@ -495,7 +505,11 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 		}
 		return ErrChecksum
 	}
-	if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
+	// The archive acknowledgment is not a completed copy. The checksum
+	// sidecar is its own mutation and needs its own receipt before the bytes
+	// can be sent. Neither receipt is complete until both puts have returned.
+	sideName := meta.ID + ".sha256"
+	if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: sideName, Created: meta.CreatedAt, State: receiptPending}); err != nil {
 		return err
 	}
 	sidePath, err := s.contained(meta.ID, ".sha256")
@@ -506,7 +520,26 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err != nil {
 		return err
 	}
-	return dest.Put(ctx, meta.ID+".sha256", bytes.NewReader(side), "")
+	if err := dest.Put(ctx, sideName, bytes.NewReader(side), ""); err != nil {
+		if ambiguousRemote(err) || (errors.Is(err, ErrRemoteUncertain) && !remoteBusy(remoteKey(dest.ID(), sideName))) {
+			_ = s.markUncertain(receipts, dest.ID(), sideName, meta.CreatedAt)
+			if errors.Is(err, ErrRemoteUncertain) {
+				return err
+			}
+			return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
+		}
+		if uncertainRemote(err, dest.ID(), sideName) {
+			return err
+		}
+		if s.dropRemote(ctx, dest, sideName) {
+			_ = receipts.Remove(dest.ID(), sideName)
+		}
+		return err
+	}
+	if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
+		return err
+	}
+	return receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: sideName, Created: meta.CreatedAt})
 }
 
 func uncertainJoin(a, b error) error {
@@ -520,28 +553,60 @@ func uncertainRemote(err error, destID, name string) bool {
 	return errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) || remoteBusy(remoteKey(destID, name))
 }
 
-// ambiguousRemote reports a mutating request whose response was lost. The
-// parent context can still be live. A definite HTTP status is not ambiguous.
+// remoteStatusError is a completed remote response with an explicit status.
+// The server answered, so the mutation was not a lost response.
+type remoteStatusError struct {
+	Status int
+	Detail string
+}
+
+func (e *remoteStatusError) Error() string {
+	if e == nil {
+		return "remote status"
+	}
+	if e.Detail == "" {
+		return fmt.Sprintf("remote status %d", e.Status)
+	}
+	return fmt.Sprintf("remote status %d: %s", e.Status, e.Detail)
+}
+
+// ambiguousRemote reports a mutating request whose response was lost.
+// EOF, a wrapped EOF, an unexpected EOF, a reset, a broken pipe, and a
+// timeout are lost responses even when the parent context is still live.
+// A definite failure requires explicit evidence: a known sentinel, an HTTP
+// status, a finished command, or a local path error. Wording inside an
+// error string is not that evidence.
 func ambiguousRemote(err error) bool {
 	if err == nil || errors.Is(err, ErrRemoteUncertain) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBadRequest) || errors.Is(err, ErrChecksum) {
 		return false
 	}
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	var status *remoteStatusError
+	if errors.As(err, &status) {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, os.ErrDeadlineExceeded) {
 		return true
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
-	msg := strings.ToLower(err.Error())
-	switch {
-	case strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"),
-		strings.Contains(msg, "connection reset"), strings.Contains(msg, "broken pipe"),
-		strings.Contains(msg, "unexpected eof"):
-		return true
-	default:
+	var pathErr *os.PathError
+	if errors.As(err, &pathErr) {
 		return false
 	}
+	var linkErr *os.LinkError
+	if errors.As(err, &linkErr) {
+		return false
+	}
+	return true
 }
 
 // markUncertain records when the acknowledgment was lost. Created stays the
@@ -580,11 +645,18 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 	if err != nil {
 		return err
 	}
-	for _, obj := range owned {
-		switch obj.State {
-		case receiptPending, receiptUncertain:
-			if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
-				return err
+	// Sidecars first so an archive is not marked complete while its checksum
+	// mutation is still unsettled.
+	for _, pass := range []string{".sha256", ".tgbk"} {
+		for _, obj := range owned {
+			if !strings.HasSuffix(obj.Name, pass) {
+				continue
+			}
+			switch obj.State {
+			case receiptPending, receiptUncertain:
+				if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -595,59 +667,97 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
 		return nil
 	}
-	if !strings.HasSuffix(obj.Name, ".tgbk") {
+	archive := strings.HasSuffix(obj.Name, ".tgbk")
+	sidecar := strings.HasSuffix(obj.Name, ".sha256")
+	if !archive && !sidecar {
 		return nil
 	}
-	id := strings.TrimSuffix(obj.Name, ".tgbk")
+	id := strings.TrimSuffix(strings.TrimSuffix(obj.Name, ".tgbk"), ".sha256")
 	localSHA := ""
 	deleting := false
 	if meta, err := s.lookup(id); err == nil {
 		localSHA = meta.SHA256
 		deleting = meta.Deleting
 	}
-	if obj.State == receiptUncertain {
+	// A crash leaves remoteBusy false while the server may still publish.
+	// Absence is not completion and is not permission to forget the intent.
+	if obj.State == receiptUncertain || (obj.State == receiptPending && deleting) {
+		if obj.State == receiptPending {
+			_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
+		}
 		return s.reconcileUncertain(ctx, dest, receipts, obj)
 	}
-	if deleting {
-		if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
-			return nil
-		}
-		if err := s.removeOwnedRemote(ctx, dest, obj.Name); err != nil {
-			return nil
-		}
-		return receipts.Remove(dest.ID(), obj.Name)
-	}
 	rc, err := dest.Get(ctx, obj.Name)
-	if errors.Is(err, ErrRemoteUncertain) {
+	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) {
+		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
 		return nil
 	}
 	if errors.Is(err, ErrNotFound) {
-		if s.dropRemote(ctx, dest, obj.Name) {
-			return receipts.Remove(dest.ID(), obj.Name)
-		}
+		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
 		return nil
 	}
 	if err != nil {
+		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
 		return nil
 	}
-	got, hashErr := sha256Hex(rc)
+	body, hashErr := io.ReadAll(rc)
 	closeErr := rc.Close()
-	if errors.Is(hashErr, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) {
+	if errors.Is(hashErr, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) || ambiguousRemote(hashErr) || ambiguousRemote(closeErr) {
+		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
 		return nil
 	}
 	if hashErr != nil || closeErr != nil {
 		return nil
 	}
-	if localSHA != "" && got == localSHA {
+	if sidecar {
+		sidePath, err := s.contained(id, ".sha256")
+		if err != nil {
+			return nil
+		}
+		local, err := os.ReadFile(sidePath)
+		if err != nil {
+			return nil
+		}
+		if bytes.Equal(bytes.TrimSpace(body), bytes.TrimSpace(local)) {
+			return receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: obj.Name, Created: obj.Created})
+		}
+	}
+	got := hex.EncodeToString(sha256Sum(body))
+	if archive && localSHA != "" && got == localSHA && !s.sidecarUnsettled(receipts, dest.ID(), id) {
 		return receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: obj.Name, Created: obj.Created})
 	}
-	if localSHA == "" {
+	if archive && localSHA != "" && got == localSHA {
 		return nil
 	}
-	if s.dropRemote(ctx, dest, obj.Name) {
+	if localSHA == "" && archive {
+		return nil
+	}
+	if s.dropRemote(ctx, dest, obj.Name) && confirmNameAbsent(ctx, dest, obj.Name) == nil {
 		return receipts.Remove(dest.ID(), obj.Name)
 	}
 	return nil
+}
+
+func sha256Sum(body []byte) []byte {
+	sum := sha256.Sum256(body)
+	return sum[:]
+}
+
+// sidecarUnsettled reports a checksum mutation that has not been acknowledged.
+// A missing sidecar receipt means that mutation was never started.
+func (s *Store) sidecarUnsettled(receipts *ReceiptBook, destID, id string) bool {
+	if receipts == nil {
+		return false
+	}
+	owned, err := receipts.List(destID)
+	if err != nil {
+		return true
+	}
+	obj, ok := matchingReceipt(owned, destID, id+".sha256")
+	if !ok {
+		return false
+	}
+	return obj.State == receiptPending || obj.State == receiptUncertain
 }
 
 // reconcileUncertain keeps the tombstone until the late object is actually
@@ -808,7 +918,7 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 		return err
 	}
 	var failed []string
-	name := id + ".tgbk"
+	names := []string{id + ".tgbk", id + ".sha256"}
 	receipts := s.receiptBook()
 	for _, spec := range specs {
 		var owned []OwnedObject
@@ -819,12 +929,13 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 				return rerr
 			}
 		}
-		obj, ok := matchingReceipt(owned, spec.ID, name)
-		if !ok {
-			continue
+		var matched []OwnedObject
+		for _, name := range names {
+			if obj, ok := matchingReceipt(owned, spec.ID, name); ok {
+				matched = append(matched, obj)
+			}
 		}
-		if remoteBusy(remoteKey(spec.ID, name)) {
-			failed = append(failed, spec.ID+": filesystem call still running")
+		if len(matched) == 0 {
 			continue
 		}
 		dest, err := s.openDest(spec)
@@ -832,26 +943,54 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 			failed = append(failed, spec.ID+": "+err.Error())
 			continue
 		}
-		if obj.State == receiptUncertain {
-			done, uerr := s.observedUncertainCleanup(ctx, dest, name)
+		blocked := false
+		for _, obj := range matched {
+			if remoteBusy(remoteKey(spec.ID, obj.Name)) {
+				failed = append(failed, spec.ID+": filesystem call still running")
+				blocked = true
+				continue
+			}
+			if obj.State != receiptPending && obj.State != receiptUncertain {
+				continue
+			}
+			// Pending after the worker is gone is the same unknown as a lost ack.
+			if obj.State == receiptPending {
+				_ = s.markUncertain(receipts, spec.ID, obj.Name, obj.Created)
+			}
+			done, uerr := s.observedUncertainCleanup(ctx, dest, obj.Name)
 			if uerr != nil || !done {
 				if uerr == nil {
 					uerr = fmt.Errorf("%w: upload outcome is still uncertain", ErrRemoteUncertain)
 				}
 				failed = append(failed, spec.ID+": "+uerr.Error())
+				blocked = true
+				continue
+			}
+			if receipts != nil {
+				_ = receipts.Remove(spec.ID, obj.Name)
+			}
+		}
+		if blocked {
+			continue
+		}
+		if receipts != nil {
+			owned, err = receipts.List(spec.ID)
+			if err != nil {
+				return err
+			}
+		}
+		for _, name := range names {
+			obj, ok := matchingReceipt(owned, spec.ID, name)
+			if !ok || obj.State == receiptPending || obj.State == receiptUncertain {
+				continue
+			}
+			if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
+				failed = append(failed, spec.ID+": "+err.Error())
 				continue
 			}
 			if receipts != nil {
 				_ = receipts.Remove(spec.ID, name)
 			}
-			continue
-		}
-		if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
-			failed = append(failed, spec.ID+": "+err.Error())
-			continue
-		}
-		if receipts != nil {
-			_ = receipts.Remove(spec.ID, name)
 		}
 	}
 	if len(failed) > 0 {
@@ -871,9 +1010,13 @@ func (s *Store) removeOwnedRemote(ctx context.Context, dest Destination, name st
 	if err := dest.Delete(ctx, name); err != nil {
 		return err
 	}
-	side := strings.TrimSuffix(name, ".tgbk") + ".sha256"
-	if err := dest.Delete(ctx, side); err != nil {
-		return err
+	if strings.HasSuffix(name, ".tgbk") {
+		side := strings.TrimSuffix(name, ".tgbk") + ".sha256"
+		if !s.sidecarTracked(dest.ID(), side) {
+			if err := dest.Delete(ctx, side); err != nil {
+				return err
+			}
+		}
 	}
 	if partial, ok := dest.(interface {
 		RemovePartial(context.Context, string) error
@@ -886,6 +1029,19 @@ func (s *Store) removeOwnedRemote(ctx context.Context, dest Destination, name st
 		}
 	}
 	return confirmNameAbsent(ctx, dest, name)
+}
+
+func (s *Store) sidecarTracked(destID, name string) bool {
+	receipts := s.receiptBook()
+	if receipts == nil {
+		return false
+	}
+	owned, err := receipts.List(destID)
+	if err != nil {
+		return true
+	}
+	_, ok := matchingReceipt(owned, destID, name)
+	return ok
 }
 
 func confirmNameAbsent(ctx context.Context, dest Destination, name string) error {
@@ -996,23 +1152,30 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 			return n, err
 		}
 		var owned []OwnedObject
-		if receipts := s.receiptBook(); receipts != nil {
-			owned, err = receipts.List(spec.ID)
+		book := s.receiptBook()
+		if book != nil {
+			owned, err = book.List(spec.ID)
 			if err != nil {
 				return n, err
 			}
 		}
 		var stable []OwnedObject
 		for _, obj := range owned {
-			if obj.State == receiptPending && remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+			if obj.State == receiptPending || obj.State == receiptUncertain {
+				continue
+			}
+			if strings.HasSuffix(obj.Name, ".tgbk") && s.sidecarUnsettled(book, dest.ID(), strings.TrimSuffix(obj.Name, ".tgbk")) {
 				continue
 			}
 			stable = append(stable, obj)
 		}
 		deleted, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now(), stable)
-		if receipts := s.receiptBook(); receipts != nil {
+		if book != nil {
 			for _, name := range deleted {
-				_ = receipts.Remove(spec.ID, name)
+				_ = book.Remove(spec.ID, name)
+				if strings.HasSuffix(name, ".tgbk") {
+					_ = book.Remove(spec.ID, strings.TrimSuffix(name, ".tgbk")+".sha256")
+				}
 			}
 		}
 		removed := len(deleted)
@@ -1178,12 +1341,24 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 }
 
 func compareCounts(want, got map[string]int64) error {
-	if len(want) != len(got) {
-		return fmt.Errorf("%w: %d Manifest tables, %d restored", ErrChecksum, len(want), len(got))
+	if want == nil {
+		want = map[string]int64{}
+	}
+	if got == nil {
+		got = map[string]int64{}
 	}
 	for table, n := range want {
-		if got[table] != n {
-			return fmt.Errorf("%w: %s Manifest %d restored %d", ErrChecksum, table, n, got[table])
+		gotN, ok := got[table]
+		if !ok {
+			return fmt.Errorf("%w: %s missing from restored counts", ErrChecksum, table)
+		}
+		if gotN != n {
+			return fmt.Errorf("%w: %s Manifest %d restored %d", ErrChecksum, table, n, gotN)
+		}
+	}
+	for table := range got {
+		if _, ok := want[table]; !ok {
+			return fmt.Errorf("%w: unexpected restored table %s", ErrChecksum, table)
 		}
 	}
 	return nil

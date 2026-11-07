@@ -772,6 +772,27 @@ func (w *failAfterWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func TestCompareCountsRequiresTheSameTables(t *testing.T) {
+	if err := compareCounts(map[string]int64{"core.users": 0}, map[string]int64{"core.users": 0}); err != nil {
+		t.Fatalf("empty table that exists: %v", err)
+	}
+	if err := compareCounts(map[string]int64{}, map[string]int64{}); err != nil {
+		t.Fatalf("no tables: %v", err)
+	}
+	if err := compareCounts(map[string]int64{"core.users": 0}, map[string]int64{"core.matters": 0}); err == nil || !errors.Is(err, ErrChecksum) {
+		t.Fatalf("different zero-row tables: %v", err)
+	}
+	if err := compareCounts(map[string]int64{"core.users": 0, "core.matters": 1}, map[string]int64{"core.users": 0, "core.notes": 1}); err == nil || !errors.Is(err, ErrChecksum) {
+		t.Fatalf("same length, different names: %v", err)
+	}
+	if err := compareCounts(map[string]int64{"core.users": 0}, map[string]int64{"core.users": 0, "core.matters": 0}); err == nil || !errors.Is(err, ErrChecksum) {
+		t.Fatalf("extra empty table: %v", err)
+	}
+	if err := compareCounts(map[string]int64{"core.users": 2}, map[string]int64{"core.users": 1}); err == nil || !errors.Is(err, ErrChecksum) {
+		t.Fatalf("count mismatch: %v", err)
+	}
+}
+
 func TestCountsFromDumpIgnoreLaterText(t *testing.T) {
 	sql := "INSERT INTO core.synthetic_items VALUES (9);\nCOPY core.synthetic_items (id) FROM stdin;\n1\n2\n\\.\n"
 	counts, err := countsFromDump(strings.NewReader(sql))
@@ -1060,17 +1081,18 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 	if err := s.reconcileDestination(context.Background(), dest); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(partial); !os.IsNotExist(err) {
-		t.Fatalf("partial remained: %v", err)
-	}
 	if _, err := os.Stat(otherFile); err != nil {
 		t.Fatalf("other installation removed: %v", err)
 	}
 	if _, err := os.Stat(foreign); err != nil {
 		t.Fatalf("unreceipted object removed: %v", err)
 	}
-	if owned, err := receipts.List("share"); err != nil || len(owned) != 0 {
-		t.Fatalf("pending receipt remained: %+v %v", owned, err)
+	owned, err := receipts.List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain || owned[0].Name != name {
+		t.Fatalf("missing object erased a crash-recovered upload: %+v %v", owned, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+		t.Fatalf("reconcile published an archive that was not there: %v", err)
 	}
 
 	raw, err := os.ReadFile(filepath.Join(s.Dir, name))
@@ -1086,7 +1108,7 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 	if err := s.reconcileDestination(context.Background(), dest); err != nil {
 		t.Fatal(err)
 	}
-	owned, err := receipts.List("share")
+	owned, err = receipts.List("share")
 	if err != nil || len(owned) != 1 || owned[0].State != "" {
 		t.Fatalf("lost ack was not confirmed: %+v %v", owned, err)
 	}

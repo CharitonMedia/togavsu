@@ -1741,6 +1741,40 @@ func TestRestoreQuiescesRestartingAndRejectsUnknown(t *testing.T) {
 	})
 }
 
+func TestZeroRowCountMismatchDoesNotReplaceDatabase(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "sql.log")
+	script := filepath.Join(dir, "psql")
+	body := "#!/bin/sh\n" +
+		"sql=\nprev=\n" +
+		"for arg in \"$@\"; do\n" +
+		"  printf '%s\\n' \"$arg\" >> " + logPath + "\n" +
+		"  if [ \"$prev\" = \"--command\" ]; then sql=$arg; fi\n" +
+		"  prev=$arg\n" +
+		"done\n" +
+		"case \"$sql\" in\n" +
+		"  *\"ALTER DATABASE \"*|*'RENAME TO '*) echo replaced >> " + logPath + "; exit 0 ;;\n" +
+		"  \"CREATE DATABASE \"*|\"DROP DATABASE \"*) exit 0 ;;\n" +
+		"  *pg_class*) echo core.matters ;;\n" +
+		"  \"SELECT count(*)\"*) echo 0 ;;\n" +
+		"esac\n" +
+		"exit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := RestoreIntoCleanDatabase(context.Background(), script, "postgres://togavsu@127.0.0.1/postgres", "postgres://togavsu@127.0.0.1/togavsu", strings.NewReader("SELECT 1;\n"), map[string]int64{"core.users": 0})
+	if !errors.Is(err, ErrChecksum) {
+		t.Fatalf("mismatch: %v", err)
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "replaced") || strings.Contains(string(raw), "ALTER DATABASE") {
+		t.Fatalf("database was replaced:\n%s", raw)
+	}
+}
+
 func TestStalledPostgresCleanupStillRestartsWriters(t *testing.T) {
 	old := cleanupIOTimeout
 	cleanupIOTimeout = 200 * time.Millisecond

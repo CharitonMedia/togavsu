@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -752,4 +754,403 @@ func wireSigV4OK(r *http.Request, secret string) bool {
 		return false
 	}
 	return auth[i+len(mark):] == want
+}
+
+func TestLostNetworkResponsesStayUncertain(t *testing.T) {
+	for _, err := range []error{
+		io.EOF,
+		fmt.Errorf("http: %w", io.EOF),
+		io.ErrUnexpectedEOF,
+		fmt.Errorf("read: %w", io.ErrUnexpectedEOF),
+		syscall.ECONNRESET,
+		fmt.Errorf("reset: %w", syscall.ECONNRESET),
+		syscall.EPIPE,
+		context.DeadlineExceeded,
+		os.ErrDeadlineExceeded,
+	} {
+		if !ambiguousRemote(err) {
+			t.Fatalf("%v was treated as a definite failure", err)
+		}
+	}
+	for _, err := range []error{
+		ErrNotFound,
+		ErrBadRequest,
+		ErrChecksum,
+		&remoteStatusError{Status: http.StatusForbidden, Detail: "denied"},
+		&os.PathError{Op: "open", Path: "archive", Err: os.ErrPermission},
+	} {
+		if ambiguousRemote(err) {
+			t.Fatalf("%v was treated as a lost response", err)
+		}
+	}
+	if !ambiguousRemote(errors.New("timeout")) {
+		t.Fatal("a bare timeout string was treated as reliable evidence")
+	}
+}
+
+func TestRestartedPendingPutSurvivesMissingGet(t *testing.T) {
+	var mu sync.Mutex
+	stored := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+	var puts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			puts++
+			stored[r.URL.Path] = body
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			mu.Lock()
+			body, ok := stored[r.URL.Path]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(body)
+		case http.MethodDelete:
+			mu.Lock()
+			delete(stored, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 {
+		t.Fatal(err)
+	}
+	name := meta.ID + ".tgbk"
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: name, Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	open := func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{Spec: spec, HTTP: srv.Client(), Now: s.Now}, nil
+	}
+	s.OpenDestination = open
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: open}
+	dest, err := restarted.openDest(specs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := restarted.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain {
+		t.Fatalf("restart erased a pending upload after NotFound: %+v %v", owned, err)
+	}
+	if err := restarted.Delete(context.Background(), meta.ID); err == nil {
+		t.Fatal("delete succeeded while the upload was still unpublished")
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, name)); err != nil {
+		t.Fatalf("local archive removed: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	late := "/backups/" + specs[0].Namespace + "/" + name
+	mu.Lock()
+	stored[late] = raw
+	count := puts
+	keep := string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if count != 0 || keep != "keep" {
+		t.Fatalf("puts %d other %q", count, keep)
+	}
+	if err := restarted.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	_, left := stored[late]
+	keep = string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if left || keep != "keep" {
+		t.Fatalf("late object left=%v other=%q", left, keep)
+	}
+	if owned, err = restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("tombstone remained after the late object was removed: %+v %v", owned, err)
+	}
+}
+
+func TestHTTPCloseEOFKeepsOwnershipUntilDelayedPublish(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 2 * time.Second
+	t.Cleanup(func() { destinationIOTimeout = old })
+	var mu sync.Mutex
+	stored := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+	var puts int
+	hold := make(chan struct{})
+	gotBody := make(chan struct{})
+	var once sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(hold) }) }
+	t.Cleanup(release)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			mu.Lock()
+			body, ok := stored[r.URL.Path]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(body)
+			return
+		}
+		if r.Method == http.MethodDelete {
+			mu.Lock()
+			delete(stored, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		puts++
+		mu.Unlock()
+		once.Do(func() { close(gotBody) })
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(io.Discard, buf)
+		conn.Close()
+		go func() {
+			<-hold
+			mu.Lock()
+			stored[r.URL.Path] = body
+			mu.Unlock()
+		}()
+	}))
+	defer srv.Close()
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{Spec: spec, HTTP: srv.Client(), Now: s.Now}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gotBody:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upload did not start")
+	}
+	if len(meta.DestinationErrors) != 1 || !strings.Contains(meta.DestinationErrors[0], "uncertain") {
+		t.Fatalf("eof was definite: %+v", meta.DestinationErrors)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain || !strings.HasSuffix(owned[0].Name, ".tgbk") {
+		t.Fatalf("ownership %+v %v", owned, err)
+	}
+	if err := s.Delete(context.Background(), meta.ID); err == nil {
+		t.Fatal("delete succeeded before the closed upload published")
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		n := len(stored)
+		mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("delayed publish did not land")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	specs, err := restarted.Book.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := restarted.openDest(specs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	left := len(stored)
+	count := puts
+	keep := string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if left != 1 || count != 1 || keep != "keep" {
+		t.Fatalf("stored %d puts %d other %q", left, count, keep)
+	}
+}
+
+func TestSidecarLostAckBlocksDeleteUntilLatePublish(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	var mu sync.Mutex
+	stored := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+	var archivePuts, sidePuts int
+	hold := make(chan struct{})
+	gotSide := make(chan struct{})
+	var once sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(hold) }) }
+	t.Cleanup(release)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			mu.Lock()
+			body, ok := stored[r.URL.Path]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(body)
+			return
+		case http.MethodDelete:
+			mu.Lock()
+			delete(stored, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodPut {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		if strings.HasSuffix(r.URL.Path, ".sha256") {
+			mu.Lock()
+			sidePuts++
+			mu.Unlock()
+			once.Do(func() { close(gotSide) })
+			<-hold
+			mu.Lock()
+			stored[r.URL.Path] = body
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		mu.Lock()
+		archivePuts++
+		stored[r.URL.Path] = body
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{Spec: spec, HTTP: &http.Client{Timeout: destinationIOTimeout}, Now: s.Now}, nil
+	}
+	done := make(chan BackupMeta, 1)
+	go func() {
+		meta, err := s.Create(context.Background(), reasonManual)
+		if err != nil {
+			t.Errorf("create: %v", err)
+		}
+		done <- meta
+	}()
+	select {
+	case <-gotSide:
+	case <-time.After(3 * time.Second):
+		t.Fatal("sidecar upload did not start")
+	}
+	meta := <-done
+	if len(meta.DestinationErrors) != 1 {
+		t.Fatalf("errors = %v", meta.DestinationErrors)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 2 {
+		t.Fatalf("receipts %+v %v", owned, err)
+	}
+	var sideUncertain, archivePending bool
+	for _, obj := range owned {
+		if strings.HasSuffix(obj.Name, ".sha256") && obj.State == receiptUncertain {
+			sideUncertain = true
+		}
+		if strings.HasSuffix(obj.Name, ".tgbk") && obj.State == receiptPending {
+			archivePending = true
+		}
+	}
+	if !sideUncertain || !archivePending {
+		t.Fatalf("archive completed before the sidecar ack: %+v", owned)
+	}
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	specs, err := restarted.Book.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := restarted.openDest(specs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = restarted.receiptBook().List("share")
+	if err != nil || len(owned) != 2 {
+		t.Fatalf("restart dropped a sidecar tombstone: %+v %v", owned, err)
+	}
+	if err := restarted.Delete(context.Background(), meta.ID); err == nil {
+		t.Fatal("delete succeeded while the sidecar could still publish")
+	}
+	release()
+	time.Sleep(50 * time.Millisecond)
+	if err := restarted.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	var sideLeft bool
+	for path := range stored {
+		if strings.HasSuffix(path, ".sha256") {
+			sideLeft = true
+		}
+	}
+	keep := string(stored["/backups/other-firm/keep"])
+	a, side := archivePuts, sidePuts
+	mu.Unlock()
+	if sideLeft || keep != "keep" || a != 1 || side != 1 {
+		t.Fatalf("sidecar left=%v archivePuts=%d sidePuts=%d other=%q", sideLeft, a, side, keep)
+	}
 }

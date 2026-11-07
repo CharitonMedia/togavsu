@@ -778,7 +778,7 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 		if dest.ID() != "" && obj.DestinationID != "" && obj.DestinationID != dest.ID() {
 			continue
 		}
-		if obj.State == receiptUncertain || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
+		if obj.State == receiptUncertain || obj.State == receiptPending || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
 			continue
 		}
 		when := obj.Created
