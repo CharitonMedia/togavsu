@@ -261,10 +261,14 @@ def _platform(api: Contract) -> None:
         operation_id="postMcp",
         summary="MCP transport",
         description=(
-            "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools. "
+            "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools and need no credential. "
             "tools/call runs one OpenAPI operation: params.name is the operationId, and params.arguments "
             "carries path parameters, query parameters, idempotency_key, and body. "
-            "Authorization is the bearer token or the session cookie, the same check as the HTTP operation. "
+            "Authorization is decided from that operation before any effect. "
+            "A public operation, including first-run setup, login, and TOTP enrollment, is reachable with no session and no bearer. "
+            "Every other tool requires the same session cookie or bearer as its HTTP operation. "
+            "An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. "
+            "Arguments must not carry Authorization, Host, or roles. "
             "A tool error uses the problem body and sets the JSON-RPC error data to that problem."
         ),
         tag="Platform",
@@ -275,8 +279,14 @@ def _platform(api: Contract) -> None:
         response="JsonRpcResponse",
         writes=False,
         mcp="transport",
-        extra_access={"client": "own"},
+        extra_access={
+            "client": "own",
+            "tool_authorization": "underlying_http_operation",
+            "anonymous_when": "target_operation_security_empty",
+        },
     )
+    mcp_transport = api.spec["paths"]["/mcp"]["post"]
+    mcp_transport["security"] = [{"sessionCookie": []}, {"bearerAuth": []}, {}]
     api.add(
         "get",
         "/api/v1/setup",
@@ -1479,8 +1489,12 @@ def _billing(api: Contract) -> None:
         operation_id="bulkInvoice",
         summary="Create invoices in one batch",
         description=(
-            "Importer write for invoice records. Validates every item, reconciles integer cents, and checks each matter wall "
-            "before any row is written. One validation, reconciliation, role, or wall failure rejects the whole batch and writes nothing. "
+            "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. "
+            "sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. "
+            "Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. "
+            "One item the caller cannot perform rejects the whole batch before any row is written. "
+            "Validates every item, reconciles integer cents, and checks each matter wall. "
+            "One validation, reconciliation, role, scope, or wall failure writes nothing. "
             "A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. "
             "A different body with that key is idempotency_conflict and writes nothing. "
             "A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. "
@@ -1494,7 +1508,7 @@ def _billing(api: Contract) -> None:
         response_schema=_batch_result("Invoice"),
         success="201",
         events=["invoice.created"],
-        error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict"],
+        error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict", "forbidden", "scope_denied"],
         replaceable="time",
         extra_access={
             **WALL,

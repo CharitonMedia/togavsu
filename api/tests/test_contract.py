@@ -37,6 +37,7 @@ from contract.policy import (
     is_core_file_download,
     confirm_totp_reset,
     bulk_invoice_apply,
+    bulk_privilege_expansions,
     external_effect_decision,
     include_views_decision,
     operation_names_matter,
@@ -62,6 +63,7 @@ from contract.policy import (
     doc_tender_events,
     inherited_history_rows,
     mcp_credential_rejection,
+    mcp_tool_dispatch,
     payment_effect_decision,
     payment_reversal_decision,
     processor_apply,
@@ -405,6 +407,49 @@ class ContractTest(unittest.TestCase):
                 schemes = operation["security"]
                 self.assertIn({"sessionCookie": []}, schemes, operation["operationId"])
                 self.assertIn({"bearerAuth": []}, schemes, operation["operationId"])
+        transport = _operation(self.spec, "postMcp")
+        self.assertIn({}, transport["security"])
+        self.assertEqual(transport["x-togavsu-access"]["tool_authorization"], "underlying_http_operation")
+
+    def test_mcp_public_bootstrap_tools_need_no_credential(self):
+        anonymous = {"arguments": {}}
+        for tool in ("createSetup", "startTotpEnrollment", "confirmTotpEnrollment", "login"):
+            decision = mcp_tool_dispatch(self.spec, {**anonymous, "tool": tool})
+            self.assertEqual(decision["result"], "allowed", tool)
+            self.assertTrue(decision["effects"], tool)
+            self.assertTrue(decision["public"], tool)
+        protected = mcp_tool_dispatch(self.spec, {**anonymous, "tool": "listMatter"})
+        self.assertEqual(protected["result"], "unauthenticated")
+        self.assertFalse(protected["effects"])
+        opened = mcp_tool_dispatch(self.spec, {"tool": "listMatter", "arguments": {}, "authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True})
+        self.assertEqual(opened["result"], "allowed")
+        self.assertTrue(opened["effects"])
+        self.assertFalse(opened["public"])
+        wrong = mcp_tool_dispatch(self.spec, {"tool": "createSetup", "arguments": {}, "authorization": "Bearer nope", "authorization_scheme": "Bearer", "credential_valid": False})
+        self.assertEqual(wrong["result"], "unauthenticated")
+        self.assertFalse(wrong["effects"])
+        both = mcp_tool_dispatch(
+            self.spec,
+            {"tool": "login", "arguments": {}, "authorization": "Bearer secret", "cookie": "session", "authorization_scheme": "Bearer", "credential_valid": True},
+        )
+        self.assertEqual(both["result"], "ambiguous_auth")
+        self.assertFalse(both["effects"])
+        spoofed = mcp_tool_dispatch(self.spec, {"tool": "createSetup", "arguments": {"Authorization": "Bearer stolen"}})
+        self.assertEqual(spoofed["result"], "forbidden")
+        self.assertFalse(spoofed["effects"])
+        planted = mcp_tool_dispatch(self.spec, {"tool": "listMatter", "arguments": {"roles": ["admin"]}})
+        self.assertEqual(planted["result"], "forbidden")
+        self.assertFalse(planted["effects"])
+        listed = mcp_tool_dispatch(self.spec, {"method": "tools/list", "arguments": {}})
+        self.assertEqual(listed["result"], "allowed")
+        self.assertFalse(listed["effects"])
+        grant = _operation(self.spec, "issueFilePublicationGrant")
+        self.assertEqual(grant["x-togavsu-access"]["authorization_category"], "service_principal_issuance")
+        self.assertEqual(grant["x-togavsu-access"]["module_delegation"], "service_principal")
+        self.assertEqual(mcp_tool_dispatch(self.spec, {"tool": "issueFilePublicationGrant", "arguments": {}})["result"], "unauthenticated")
+        payment = _operation(self.spec, "createPayment")
+        self.assertEqual(payment["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive")
+        self.assertEqual(mcp_tool_dispatch(self.spec, {"tool": "createPayment", "arguments": {}})["result"], "unauthenticated")
 
     def test_writes_accept_idempotency_keys(self):
         for method, path, operation in _ops(self.spec):
@@ -1505,15 +1550,15 @@ class ContractTest(unittest.TestCase):
             "matter_id": matter,
             "number": "2026-0001",
             "issued_on": "2026-11-01",
-            "status": "sent",
+            "status": "draft",
             "lines": [{"kind": "flat_fee", "description": "Fee", "amount_cents": 10000}],
             "subtotal_cents": 10000,
             "adjustment_cents": -500,
             "interest_cents": 0,
             "total_cents": 9500,
-            "amount_paid_cents": 2000,
-            "write_off_cents": 500,
-            "balance_due_cents": 7000,
+            "amount_paid_cents": 0,
+            "write_off_cents": 0,
+            "balance_due_cents": 9500,
             "internal_notes": "staff only",
         }
         invoice_write = _component_validator(self.spec, "InvoiceWrite")
@@ -1554,6 +1599,39 @@ class ContractTest(unittest.TestCase):
             self.assertEqual(denied["result"], "forbidden", role)
             self.assertFalse(denied["written"], role)
         self.assertEqual(len(store["invoices"]), 1)
+        sent = {**item, "number": "2026-0004", "status": "sent"}
+        paid = {**item, "number": "2026-0005", "status": "paid", "amount_paid_cents": 9500, "balance_due_cents": 0}
+        voided = {**item, "number": "2026-0006", "status": "void"}
+        written_off = {**item, "number": "2026-0007", "write_off_cents": 500, "balance_due_cents": 9000}
+        for label, extra in (("sent", sent), ("paid", paid), ("void", voided), ("write-off", written_off)):
+            denied = bulk_invoice_apply(store, operation, {**staff, "idempotency_key": label, "items": [extra]})
+            self.assertEqual(denied["result"], "forbidden", label)
+            self.assertFalse(denied["written"], label)
+            self.assertEqual(denied["events"], [], label)
+        mixed = bulk_invoice_apply(store, operation, {**staff, "idempotency_key": "mixed", "items": [item, sent]})
+        self.assertEqual(mixed["result"], "forbidden")
+        self.assertFalse(mixed["written"])
+        self.assertEqual(len(store["invoices"]), 1)
+        self.assertEqual(store["events"], ["invoice.created"])
+        privileged = {"role": "attorney", "token_scopes": ["invoices:write", "invoices:send", "payments:write"], "matter_walled": True, "on_wall": True}
+        for label, extra in (("sent", sent), ("paid", paid), ("void", voided), ("write-off", written_off)):
+            allowed = bulk_invoice_apply(store, operation, {**privileged, "idempotency_key": "attorney-" + label, "items": [extra]})
+            self.assertEqual(allowed["result"], "allowed", label)
+            self.assertEqual(allowed["events"], ["invoice.created"], label)
+        self.assertEqual(len(store["invoices"]), 5)
+        missing_send = bulk_invoice_apply(
+            store,
+            operation,
+            {"role": "attorney", "token_scopes": ["invoices:write"], "matter_walled": True, "on_wall": True, "idempotency_key": "no-send", "items": [sent]},
+        )
+        self.assertEqual(missing_send["result"], "scope_denied")
+        self.assertFalse(missing_send["written"])
+        self.assertEqual(len(store["invoices"]), 5)
+        self.assertEqual(bulk_privilege_expansions(self.spec), [])
+        for key, rule in operation["x-togavsu-access"]["item_privileges"].items():
+            individual = _operation(self.spec, rule["operation"])
+            self.assertEqual(rule["roles"], individual["x-togavsu-access"]["roles"], key)
+            self.assertEqual(rule["scopes"], individual["x-togavsu-access"]["scopes"], key)
 
     def test_expense_and_payment_includes(self):
         for operation_id, schema_name in (

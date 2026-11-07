@@ -521,6 +521,7 @@ def finalize(spec: dict) -> None:
     publish_inherited_history(spec)
     publish_event_scopes(spec)
     publish_matter_effect_order(spec)
+    publish_invoice_item_privileges(spec)
 
 
 def _denied(result: str) -> dict:
@@ -1091,6 +1092,35 @@ def mcp_credential_rejection(arguments: dict) -> str | None:
     if any(str(name).lower() in {"authorization", "host"} for name in headers):
         return "forbidden"
     return None
+
+
+def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
+    """Authorize tools/call from the target operation's security before that tool runs."""
+    denied = {"effects": False, "public": False}
+    arguments = call.get("arguments") or {}
+    if mcp_credential_rejection(arguments):
+        return {"result": "forbidden", **denied}
+    method = call.get("method") or "tools/call"
+    if method in {"initialize", "tools/list"}:
+        return {"result": "allowed", "effects": False, "public": True}
+    operation = next((candidate for _method, _path, candidate in iter_operations(spec) if candidate["operationId"] == call.get("tool")), None)
+    if operation is None or operation["x-togavsu-mcp"].get("parity") != "required":
+        return {"result": "not_found", **denied}
+    public = operation.get("security") == []
+    presented_bearer = bool(call.get("authorization"))
+    presented_cookie = bool(call.get("cookie"))
+    scheme = call.get("authorization_scheme")
+    if presented_bearer and scheme not in (None, "Bearer", "bearer"):
+        return {"result": "unauthenticated", **denied, "public": public}
+    if presented_bearer and presented_cookie:
+        return {"result": "ambiguous_auth", **denied, "public": public}
+    if (presented_bearer or presented_cookie) and not call.get("credential_valid"):
+        return {"result": "unauthenticated", **denied, "public": public}
+    if public:
+        return {"result": "allowed", "effects": True, "public": True}
+    if not presented_bearer and not presented_cookie:
+        return {"result": "unauthenticated", **denied}
+    return {"result": "allowed", "effects": True, "public": False}
 
 
 def published_version_events(operation: dict, *, committed: bool, version_count: int = 0) -> list[str]:
@@ -2695,6 +2725,79 @@ def _invoice_off_wall(item: dict, call: dict) -> bool:
     return not on_wall
 
 
+def publish_invoice_item_privileges(spec: dict) -> None:
+    """Copy each invoice effect from the individual operation. The bulk call cannot widen it."""
+    mapping = {
+        "draft": "createInvoiceDrafts",
+        "sent": "sendInvoice",
+        "viewed": "sendInvoice",
+        "paid": "sendInvoice",
+        "void": "voidInvoice",
+        "write_off": "writeOffInvoice",
+        "amount_paid": "createPayment",
+    }
+    privileges = {}
+    for key, operation_id in mapping.items():
+        access = operation_by_id(spec, operation_id)["x-togavsu-access"]
+        privileges[key] = {"operation": operation_id, "roles": list(access["roles"]), "scopes": list(access["scopes"])}
+    operation_by_id(spec, "bulkInvoice")["x-togavsu-access"]["item_privileges"] = privileges
+
+
+def bulk_privilege_expansions(spec: dict) -> list[str]:
+    """Bulk roles or scopes that exceed the individual write. Empty means the bulk is no wider."""
+    found = []
+    paired = {"bulkTrustEntry": "postTrustEntry", "bulkInvoice": "createInvoiceDrafts", "bulkFile": "publishFile", "bulkEvent": "createEvent"}
+    for _method, _path, operation in iter_operations(spec):
+        name = operation["operationId"]
+        if not name.startswith("bulk"):
+            continue
+        if name == "bulkCustomFieldValue":
+            continue
+        individual_name = paired.get(name, "create" + name[len("bulk") :])
+        individual = next((candidate for _method, _path, candidate in iter_operations(spec) if candidate["operationId"] == individual_name), None)
+        if individual is None:
+            found.append(name)
+            continue
+        bulk_access = operation["x-togavsu-access"]
+        individual_access = individual["x-togavsu-access"]
+        if set(bulk_access.get("roles") or []) - set(individual_access.get("roles") or []):
+            found.append(name + " roles")
+        if set(individual_access.get("scopes") or []) - set(bulk_access.get("scopes") or []):
+            found.append(name + " scopes")
+    return found
+
+
+def _privilege_denial(rule: dict, call: dict) -> str | None:
+    if call.get("role") not in rule["roles"]:
+        return "forbidden"
+    if any(scope not in set(call.get("token_scopes") or []) for scope in rule["scopes"]):
+        return "scope_denied"
+    return None
+
+
+def _invoice_item_denial(access: dict, item: dict, call: dict) -> str | None:
+    privileges = access.get("item_privileges") or {}
+    rule = privileges.get(item.get("status"))
+    if not rule:
+        return "validation_failed"
+    denial = _privilege_denial(rule, call)
+    if denial:
+        return denial
+    write_off = _exact_cents(item.get("write_off_cents"))
+    paid = _exact_cents(item.get("amount_paid_cents"))
+    if write_off is None or paid is None:
+        return "validation_failed"
+    if write_off > 0:
+        denial = _privilege_denial(privileges["write_off"], call)
+        if denial:
+            return denial
+    if paid > 0:
+        denial = _privilege_denial(privileges["amount_paid"], call)
+        if denial:
+            return denial
+    return None
+
+
 def project_invoice_for_role(operation: dict, role: str, invoice: dict) -> dict:
     if role != "client":
         return dict(invoice)
@@ -2715,6 +2818,13 @@ def bulk_invoice_apply(store: dict, operation: dict, call: dict) -> dict:
         return {"result": "scope_denied", **quiet}
     items = call.get("items")
     if not isinstance(items, list) or not items or len(items) > int(call.get("batch_max") or 500):
+        return {"result": "validation_failed", **quiet}
+    denials = [_invoice_item_denial(access, item, call) for item in items]
+    if any(denial == "forbidden" for denial in denials):
+        return {"result": "forbidden", **quiet}
+    if any(denial == "scope_denied" for denial in denials):
+        return {"result": "scope_denied", **quiet}
+    if any(denial == "validation_failed" for denial in denials):
         return {"result": "validation_failed", **quiet}
     for item in items:
         if _invoice_off_wall(item, call):
