@@ -1809,15 +1809,31 @@ SCHEMAS = _register(
             ["name", "scopes", "revoked"],
             "Token metadata. The secret is returned only from create.",
         ),
-        "ApiTokenWrite": _obj(
-            {
-                "name": {"type": "string", "minLength": 1},
-                "owner_user_id": _null(_uuid()),
-                "scopes": _arr({"type": "string"}),
-            },
-            ["name", "scopes"],
-            "Issues a token. A non-admin may issue a token only for themselves, and only with scopes their role already has.",
-        ),
+        "ApiTokenWrite": {
+            "description": (
+                "An admin issues a token bound to one user or one module. "
+                "Requested scopes must be within the issuing credential and within that owner's role or approved module permissions. "
+                "A bearer cannot gain scopes it does not already hold."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "name": {"type": "string", "minLength": 1},
+                        "owner_user_id": _uuid("The user this token acts as."),
+                        "scopes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                    },
+                    ["name", "owner_user_id", "scopes"],
+                ),
+                _obj(
+                    {
+                        "name": {"type": "string", "minLength": 1},
+                        "module_id": {"type": "string", "minLength": 1},
+                        "scopes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                    },
+                    ["name", "module_id", "scopes"],
+                ),
+            ],
+        },
         "ApiTokenCreated": _obj({"token": _ref("ApiToken"), "secret": {"type": "string"}}, ["token", "secret"]),
         "Setting": _obj(
             {

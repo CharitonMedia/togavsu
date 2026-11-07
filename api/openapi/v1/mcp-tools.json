@@ -1076,11 +1076,7 @@
         "tokens:write"
       ],
       "roles": [
-        "admin",
-        "attorney",
-        "staff",
-        "accountant",
-        "client"
+        "admin"
       ],
       "transfer": {
         "shape": "path_query_body",

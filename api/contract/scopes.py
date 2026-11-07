@@ -10,7 +10,7 @@ SCOPES = {
     "sessions:read": "List sessions.",
     "sessions:write": "End a session.",
     "tokens:read": "List API token metadata.",
-    "tokens:write": "Issue or revoke an API token.",
+    "tokens:write": "An admin issues an API token. The owner or an admin revokes one.",
     "users:read": "Read users.",
     "users:write": "Create or change users.",
     "contacts:read": "Read contacts and their channels.",

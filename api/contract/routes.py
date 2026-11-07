@@ -102,8 +102,21 @@ TOKEN_OWNERSHIP = {
         {"action": "read", "role": "staff", "owner": "self", "result": "allowed"},
         {"action": "read", "role": "admin", "owner": "other_user", "result": "allowed"},
         {"action": "revoke", "role": "staff", "owner": "other_user", "result": "not_found"},
-        {"action": "create", "role": "client", "owner": "other_user", "result": "forbidden"},
+        {"action": "revoke", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "revoke", "role": "client", "owner": "self", "result": "allowed"},
+        {"action": "revoke", "role": "admin", "owner": "other_user", "result": "allowed"},
+        {"action": "create", "role": "client", "owner": "self", "result": "forbidden"},
+        {"action": "create", "role": "staff", "owner": "self", "result": "forbidden"},
+        {"action": "create", "role": "accountant", "owner": "self", "result": "forbidden"},
+        {"action": "create", "role": "admin", "owner": "named_user", "result": "allowed"},
     ],
+}
+TOKEN_ISSUANCE = {
+    "issuance": "admin_only",
+    "owner_binding": "user_or_module",
+    "scope_bound": "caller_effective_and_owner",
+    "bearer_amplification": False,
+    "module_delegation": False,
 }
 SESSION_OWNERSHIP = {
     "client": "own",
@@ -724,22 +737,27 @@ def _identity(api: Contract) -> None:
         "/api/v1/api-tokens",
         operation_id="createApiToken",
         summary="Issue an API token",
-        description="The secret is in this response only. A user token is limited to that user's roles. A module token is limited to approved permissions.",
+        description=(
+            "An admin issues the secret once, from the admin dashboard. "
+            "The token is bound to one user or one module. "
+            "Requested scopes must already be in the issuing credential and in that owner's role or approved module permissions. "
+            "A bearer cannot obtain a scope it does not hold. Staff, accountants, and clients cannot issue tokens."
+        ),
         tag="Identity",
         features=["api-tokens"],
-        roles=ANY,
+        roles=ADMIN,
         scopes=["tokens:write"],
         body="ApiTokenWrite",
         response="ApiTokenCreated",
         success="201",
-        extra_access=TOKEN_OWNERSHIP,
+        extra_access={**TOKEN_OWNERSHIP, **TOKEN_ISSUANCE},
     )
     api.add(
         "delete",
         "/api/v1/api-tokens/{token_id}",
         operation_id="revokeApiToken",
         summary="Revoke an API token",
-        description="A revoked token fails closed on the next call.",
+        description="The owner or an admin revokes. Another user's token is not_found. A revoked token fails closed on the next call.",
         tag="Identity",
         features=["api-tokens"],
         roles=ANY,

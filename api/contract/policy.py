@@ -1347,6 +1347,16 @@ def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> d
     return {"result": "allowed", "rows": visible}
 
 
+REQUIRED_BACKGROUND_EVENTS = {
+    "matter.created": ["matters:read"],
+    "time_entry.updated": ["time:read"],
+    "trust.flag_raised": ["trust:read"],
+    "file.version_created": ["files:read"],
+    "doc_tender.published": ["doc_tender:read"],
+    "doc_tender.exception_opened": ["doc_tender:read"],
+}
+
+
 def publish_event_scopes(spec: dict) -> None:
     """Map every emitted event to the read scope of the resource that emits it. Unknown events stay unmapped."""
     buckets: dict[str, list[set[str]]] = {}
@@ -1370,6 +1380,20 @@ def publish_event_scopes(spec: dict) -> None:
     registry: dict[str, list[str]] = {}
     for event, groups in buckets.items():
         registry[event] = _event_scope_choice(event, groups)
+    for event, scopes in REQUIRED_BACKGROUND_EVENTS.items():
+        current = registry.get(event) or []
+        if current != scopes:
+            registry[event] = list(scopes)
+    spec["x-togavsu-background-events"] = {
+        event: {
+            "scopes": list(scopes),
+            "matter_wall": True,
+            "attorney_only": "redacted",
+            "recipient": "subscribed_module",
+            "unknown_event": "fail_closed",
+        }
+        for event, scopes in REQUIRED_BACKGROUND_EVENTS.items()
+    }
     spec["x-togavsu-event-scopes"] = registry
     _EVENT_SCOPE_REGISTRY.clear()
     _EVENT_SCOPE_REGISTRY.update(registry)
@@ -1424,6 +1448,43 @@ def doc_tender_events(operation: dict, phase: str) -> list[str]:
     if phase == "results_published":
         return [rule["published_event"]]
     return []
+
+
+def issue_api_token(operation: dict, call: dict) -> dict:
+    """Only an admin issues a token, and the new scopes cannot exceed the issuing credential or the owner."""
+    denied = {"result": "forbidden", "token": None, "secret": None}
+    access = operation["x-togavsu-access"]
+    if access.get("issuance") != "admin_only" or access.get("bearer_amplification"):
+        return denied
+    if call.get("caller_module_id") or call.get("role") not in access.get("roles", []):
+        return denied
+    requested = list(call.get("scopes") or [])
+    if not requested:
+        return {"result": "validation_failed", "token": None, "secret": None}
+    effective = set(call.get("token_scopes") or []) if call.get("credential") == "bearer" else set(call.get("caller_scopes") or [])
+    if any(scope not in effective for scope in requested):
+        return {"result": "scope_denied", "token": None, "secret": None}
+    owner = call.get("owner_user_id")
+    module_id = call.get("module_id")
+    if bool(owner) == bool(module_id):
+        return {"result": "validation_failed", "token": None, "secret": None}
+    if owner:
+        if any(scope not in set(call.get("owner_role_scopes") or []) for scope in requested):
+            return {"result": "scope_denied", "token": None, "secret": None}
+    else:
+        if any(scope not in set(call.get("module_approved_scopes") or []) for scope in requested):
+            return {"result": "scope_denied", "token": None, "secret": None}
+    return {
+        "result": "allowed",
+        "token": {
+            "name": call.get("name"),
+            "owner_user_id": owner,
+            "module_id": module_id,
+            "scopes": requested,
+            "revoked": False,
+        },
+        "secret": "issued-once",
+    }
 
 
 def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:

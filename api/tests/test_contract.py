@@ -36,6 +36,7 @@ from contract.policy import (
     file_download_decision,
     is_core_file_download,
     include_views_decision,
+    issue_api_token,
     notification_page,
     notification_recipient_decision,
     decide_module_permissions,
@@ -1920,6 +1921,96 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(cases[("read", "client", "other_user")], "not_found")
         self.assertEqual(cases[("read", "staff", "other_user")], "not_found")
         self.assertEqual(cases[("read", "admin", "other_user")], "allowed")
+        self.assertEqual(cases[("revoke", "staff", "self")], "allowed")
+        self.assertEqual(cases[("revoke", "client", "self")], "allowed")
+        self.assertEqual(cases[("create", "staff", "self")], "forbidden")
+        self.assertEqual(cases[("create", "accountant", "self")], "forbidden")
+        self.assertEqual(cases[("create", "client", "self")], "forbidden")
+        create = _operation(self.spec, "createApiToken")
+        self.assertEqual(create["x-togavsu-access"]["roles"], ["admin"])
+        self.assertEqual(create["x-togavsu-access"]["issuance"], "admin_only")
+        self.assertFalse(create["x-togavsu-access"]["bearer_amplification"])
+        self.assertNotEqual(create["x-togavsu-access"].get("module_delegation"), "delegated_viewer")
+        write = self.spec["components"]["schemas"]["ApiTokenWrite"]
+        self.assertIn("oneOf", write)
+        staff_owner = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        issued = issue_api_token(
+            create,
+            {
+                "role": "admin",
+                "credential": "session",
+                "caller_scopes": ["tokens:write", "matters:read", "trust:read"],
+                "name": "staff-matters",
+                "owner_user_id": staff_owner,
+                "scopes": ["matters:read"],
+                "owner_role_scopes": ["matters:read", "profile:read"],
+            },
+        )
+        self.assertEqual(issued["result"], "allowed")
+        self.assertEqual(issued["token"]["owner_user_id"], staff_owner)
+        self.assertEqual(issued["token"]["scopes"], ["matters:read"])
+        self.assertEqual(issued["secret"], "issued-once")
+        for role in ("staff", "accountant", "client"):
+            denied = issue_api_token(create, {"role": role, "credential": "session", "caller_scopes": ["tokens:write"], "owner_user_id": staff_owner, "scopes": ["profile:read"], "owner_role_scopes": ["profile:read"]})
+            self.assertEqual(denied["result"], "forbidden", role)
+            self.assertIsNone(denied["token"], role)
+            self.assertIsNone(denied["secret"], role)
+        amplified = issue_api_token(
+            create,
+            {
+                "role": "admin",
+                "credential": "bearer",
+                "token_scopes": ["tokens:write"],
+                "owner_user_id": staff_owner,
+                "scopes": ["trust:read"],
+                "owner_role_scopes": ["trust:read", "tokens:write"],
+            },
+        )
+        self.assertEqual(amplified["result"], "scope_denied")
+        self.assertIsNone(amplified["secret"])
+        beyond_owner = issue_api_token(
+            create,
+            {
+                "role": "admin",
+                "credential": "session",
+                "caller_scopes": ["tokens:write", "trust:withdraw"],
+                "owner_user_id": staff_owner,
+                "scopes": ["trust:withdraw"],
+                "owner_role_scopes": ["matters:read"],
+            },
+        )
+        self.assertEqual(beyond_owner["result"], "scope_denied")
+        delegated = issue_api_token(
+            create,
+            {
+                "role": "admin",
+                "viewer_role": "admin",
+                "caller_module_id": "clock",
+                "module_scopes": ["tokens:write", "trust:withdraw"],
+                "credential": "bearer",
+                "token_scopes": ["tokens:write", "trust:withdraw"],
+                "module_id": "clock",
+                "scopes": ["trust:withdraw"],
+                "module_approved_scopes": ["trust:withdraw"],
+            },
+        )
+        self.assertEqual(delegated["result"], "forbidden")
+        self.assertIsNone(delegated["token"])
+        unbound = issue_api_token(create, {"role": "admin", "credential": "session", "caller_scopes": ["tokens:write"], "scopes": ["tokens:write"]})
+        self.assertEqual(unbound["result"], "validation_failed")
+        module_token = issue_api_token(
+            create,
+            {
+                "role": "admin",
+                "credential": "session",
+                "caller_scopes": ["tokens:write", "files:write"],
+                "name": "importer",
+                "module_id": "importer",
+                "scopes": ["files:write", "matters:read"],
+                "module_approved_scopes": ["files:write"],
+            },
+        )
+        self.assertEqual(module_token["result"], "scope_denied")
 
     def test_trust_adjustment_credit_and_debit(self):
         from jsonschema import Draft202012Validator
@@ -3022,6 +3113,21 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(published["calendar_event.created"], ["calendar:read"])
         self.assertEqual(published["trust_account.created"], ["trust:read"])
         self.assertEqual(published["doc_tender.published"], ["doc_tender:read"])
+        self.assertEqual(published["doc_tender.exception_opened"], ["doc_tender:read"])
+        background = self.spec["x-togavsu-background-events"]
+        for event_type, scopes in (
+            ("matter.created", ["matters:read"]),
+            ("time_entry.updated", ["time:read"]),
+            ("trust.flag_raised", ["trust:read"]),
+            ("file.version_created", ["files:read"]),
+            ("doc_tender.published", ["doc_tender:read"]),
+            ("doc_tender.exception_opened", ["doc_tender:read"]),
+        ):
+            self.assertEqual(published[event_type], scopes, event_type)
+            self.assertEqual(background[event_type]["scopes"], scopes, event_type)
+            self.assertTrue(background[event_type]["matter_wall"], event_type)
+            self.assertEqual(background[event_type]["attorney_only"], "redacted", event_type)
+        self.assertNotIn("doc_tender.exception_opened", {event for _method, _path, operation in _ops(self.spec) for event in operation.get("x-togavsu-events") or []})
         self.assertNotIn("events:read", published["calendar_event.created"])
         self.assertNotIn("not.a.real.event", published)
         base = {
@@ -3066,6 +3172,17 @@ class ContractTest(unittest.TestCase):
         unknown = {**base, "type": "not.a.real.event", "record_type": "matter"}
         self.assertEqual(event_read_scopes("not.a.real.event"), [])
         self.assertIsNone(webhook_envelope({**events_only, "subscriptions": ["not.a.real.event"], "approved_scopes": catalog + ["events:read"]}, unknown))
+        opened = {**base, "type": "doc_tender.exception_opened", "record_type": "file", "summary": "low confidence"}
+        subscriber = {"installed": True, "registered": True, "module_id": "tender", "approved_scopes": ["doc_tender:read"], "subscriptions": ["doc_tender.exception_opened"], "on_wall": True, "attorney_only": False}
+        delivered_exception = webhook_envelope(subscriber, opened)
+        self.assertIsNotNone(delivered_exception)
+        self.assertEqual(delivered_exception["type"], "doc_tender.exception_opened")
+        self.assertIsNone(webhook_envelope({**subscriber, "approved_scopes": ["events:read"]}, opened))
+        self.assertIsNone(webhook_envelope({**subscriber, "on_wall": False}, {**opened, "matter_walled": True}))
+        self.assertIsNone(webhook_envelope(subscriber, {**opened, "attorney_only": True}))
+        redacted_exception = webhook_envelope({**subscriber, "attorney_only": True}, {**opened, "summary_attorney_only": True, "attorney_only": True})
+        self.assertEqual(redacted_exception["summary"], {"redacted": True})
+        self.assertEqual(event_read_scopes("not.a.real.event"), [])
         self.assertEqual(event_read_scopes("custom_field.updated", None), [])
         self.assertEqual(event_read_scopes("custom_field.updated", "time_entry"), ["time:read"])
 

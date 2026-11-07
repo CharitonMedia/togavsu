@@ -42,7 +42,7 @@ It does not claim the handlers or the MCP server are implemented.
 | users | `PATCH` | `/api/v1/users/{user_id}` | `updateUser` | required:updateUser | admin | users:write |
 | users | `POST` | `/api/v1/users/{user_id}/deactivate` | `deactivateUser` | required:deactivateUser | admin | users:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens` | `listApiToken` | required:listApiToken | admin, attorney, staff, accountant, client | tokens:read |
-| api-tokens | `POST` | `/api/v1/api-tokens` | `createApiToken` | required:createApiToken | admin, attorney, staff, accountant, client | tokens:write |
+| api-tokens | `POST` | `/api/v1/api-tokens` | `createApiToken` | required:createApiToken | admin | tokens:write |
 | api-tokens, profile | `GET` | `/api/v1/api-tokens/{token_id}` | `getApiToken` | required:getApiToken | admin, attorney, staff, accountant, client | tokens:read |
 | api-tokens | `DELETE` | `/api/v1/api-tokens/{token_id}` | `revokeApiToken` | required:revokeApiToken | admin, attorney, staff, accountant, client | tokens:write |
 | contacts | `GET` | `/api/v1/contacts` | `listContact` | required:listContact | admin, attorney, staff | contacts:read |

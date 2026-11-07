@@ -3951,10 +3951,46 @@
               "result": "not_found"
             },
             {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
               "action": "create",
               "role": "client",
-              "owner": "other_user",
+              "owner": "self",
               "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "accountant",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "named_user",
+              "result": "allowed"
             }
           ]
         },
@@ -3989,7 +4025,7 @@
       "post": {
         "operationId": "createApiToken",
         "summary": "Issue an API token",
-        "description": "The secret is in this response only. A user token is limited to that user's roles. A module token is limited to approved permissions.",
+        "description": "An admin issues the secret once, from the admin dashboard. The token is bound to one user or one module. Requested scopes must already be in the issuing credential and in that owner's role or approved module permissions. A bearer cannot obtain a scope it does not hold. Staff, accountants, and clients cannot issue tokens.",
         "tags": [
           "Identity"
         ],
@@ -4044,11 +4080,7 @@
         ],
         "x-togavsu-access": {
           "roles": [
-            "admin",
-            "attorney",
-            "staff",
-            "accountant",
-            "client"
+            "admin"
           ],
           "scopes": [
             "tokens:write"
@@ -4096,12 +4128,53 @@
               "result": "not_found"
             },
             {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
               "action": "create",
               "role": "client",
-              "owner": "other_user",
+              "owner": "self",
               "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "accountant",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "named_user",
+              "result": "allowed"
             }
           ],
+          "issuance": "admin_only",
+          "owner_binding": "user_or_module",
+          "scope_bound": "caller_effective_and_owner",
+          "bearer_amplification": false,
+          "module_delegation": false,
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -4261,10 +4334,46 @@
               "result": "not_found"
             },
             {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
               "action": "create",
               "role": "client",
-              "owner": "other_user",
+              "owner": "self",
               "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "accountant",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "named_user",
+              "result": "allowed"
             }
           ]
         },
@@ -4299,7 +4408,7 @@
       "delete": {
         "operationId": "revokeApiToken",
         "summary": "Revoke an API token",
-        "description": "A revoked token fails closed on the next call.",
+        "description": "The owner or an admin revokes. Another user's token is not_found. A revoked token fails closed on the next call.",
         "tags": [
           "Identity"
         ],
@@ -4408,10 +4517,46 @@
               "result": "not_found"
             },
             {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
               "action": "create",
               "role": "client",
-              "owner": "other_user",
+              "owner": "self",
               "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "accountant",
+              "owner": "self",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "named_user",
+              "result": "allowed"
             }
           ],
           "events_on": "commit",
@@ -66809,37 +66954,64 @@
         "description": "Token metadata. The secret is returned only from create."
       },
       "ApiTokenWrite": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "owner_user_id": {
-            "anyOf": [
-              {
+        "description": "An admin issues a token bound to one user or one module. Requested scopes must be within the issuing credential and within that owner's role or approved module permissions. A bearer cannot gain scopes it does not already hold.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner_user_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "UUIDv7."
+                "description": "The user this token acts as."
               },
-              {
-                "type": "null"
+              "scopes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
+            },
+            "required": [
+              "name",
+              "owner_user_id",
+              "scopes"
             ]
           },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "module_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scopes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "name",
+              "module_id",
+              "scopes"
+            ]
           }
-        },
-        "required": [
-          "name",
-          "scopes"
-        ],
-        "description": "Issues a token. A non-admin may issue a token only for themselves, and only with scopes their role already has."
+        ]
       },
       "ApiTokenCreated": {
         "type": "object",
@@ -74244,33 +74416,64 @@
         "description": "Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange. Patch: every field is optional."
       },
       "ApiTokenWritePatch": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "owner_user_id": {
-            "anyOf": [
-              {
+        "description": "An admin issues a token bound to one user or one module. Requested scopes must be within the issuing credential and within that owner's role or approved module permissions. A bearer cannot gain scopes it does not already hold. Patch: every field is optional.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "owner_user_id": {
                 "type": "string",
                 "format": "uuid",
-                "description": "UUIDv7."
+                "description": "The user this token acts as."
               },
-              {
-                "type": "null"
+              "scopes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
+            },
+            "required": [
+              "name",
+              "owner_user_id",
+              "scopes"
             ]
           },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "module_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scopes": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "name",
+              "module_id",
+              "scopes"
+            ]
           }
-        },
-        "description": "Issues a token. A non-admin may issue a token only for themselves, and only with scopes their role already has. Patch: every field is optional."
+        ]
       },
       "HomeLayoutWritePatch": {
         "type": "object",
@@ -75393,6 +75596,62 @@
       }
     ]
   },
+  "x-togavsu-background-events": {
+    "matter.created": {
+      "scopes": [
+        "matters:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    },
+    "time_entry.updated": {
+      "scopes": [
+        "time:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    },
+    "trust.flag_raised": {
+      "scopes": [
+        "trust:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    },
+    "file.version_created": {
+      "scopes": [
+        "files:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    },
+    "doc_tender.published": {
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    },
+    "doc_tender.exception_opened": {
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "matter_wall": true,
+      "attorney_only": "redacted",
+      "recipient": "subscribed_module",
+      "unknown_event": "fail_closed"
+    }
+  },
   "x-togavsu-event-scopes": {
     "user.created": [
       "users:read"
@@ -75790,6 +76049,9 @@
     ],
     "domain.switched": [
       "modules:read"
+    ],
+    "doc_tender.exception_opened": [
+      "doc_tender:read"
     ]
   },
   "x-togavsu-settings": [
@@ -77485,7 +77747,7 @@
     },
     {
       "scope": "tokens:write",
-      "description": "Issue or revoke an API token."
+      "description": "An admin issues an API token. The owner or an admin revokes one."
     },
     {
       "scope": "trust:read",
