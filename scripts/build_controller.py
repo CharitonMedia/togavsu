@@ -122,6 +122,11 @@ class Remote:
         if not match:
             raise ValueError("Review check has no workflow run")
         run = match.group(1)
+        provenance = self.gh("actions/runs/" + run)
+        if (provenance.get("path") != ".github/workflows/codex-checkpoint.yml"
+                or provenance.get("event") != "pull_request"
+                or provenance.get("head_sha") != check["head_sha"]):
+            raise ValueError("Check did not originate from the protected Codex workflow at this head")
         artifacts = self.gh("actions/runs/" + run + "/artifacts?per_page=100")
         expected = "codex-review-" + check["head_sha"]
         found = [a for a in artifacts["artifacts"] if a["name"] == expected and not a["expired"]]

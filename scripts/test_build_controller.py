@@ -7,7 +7,7 @@ import tempfile
 import unittest
 import zipfile
 
-from build_controller import Controller, APP_ID, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, APP_ID, extract_review, latest_checks, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -280,6 +280,12 @@ class ReviewDataTests(unittest.TestCase):
             z.writestr("review-context.json", "{}")
         with self.assertRaises(ValueError):
             extract_review(output.getvalue())
+
+    def test_same_named_job_from_another_workflow_cannot_impersonate_codex(self):
+        remote = Remote()
+        remote.gh = lambda *a, **k: {"path": ".github/workflows/product-ci.yml", "event": "pull_request", "head_sha": HEAD}
+        with self.assertRaises(ValueError):
+            remote.review(check("Codex checkpoint"))
 
 
 if __name__ == "__main__":
