@@ -122,7 +122,7 @@ func violations(path string, fset *token.FileSet, n ast.Node, ancestors []ast.No
 				out = append(out, fmt.Sprintf("%s:%d: tunable %q belongs in the settings registry", pos.Filename, pos.Line, val))
 			}
 		}
-		if lit.Kind == token.INT && hardCodedNumber(lit, ancestors) {
+		if lit.Kind == token.INT && hardCodedNumber(path, lit, ancestors) {
 			pos := fset.Position(lit.Pos())
 			out = append(out, fmt.Sprintf("%s:%d: tunable number %s belongs in the settings registry", pos.Filename, pos.Line, lit.Value))
 		}
@@ -130,35 +130,52 @@ func violations(path string, fset *token.FileSet, n ast.Node, ancestors []ast.No
 	return out
 }
 
-func hardCodedNumber(lit *ast.BasicLit, ancestors []ast.Node) bool {
-	if !standaloneNumber(ancestors) {
+func hardCodedNumber(path string, lit *ast.BasicLit, ancestors []ast.Node) bool {
+	if !tunableContext(ancestors) {
 		return false
 	}
 	n, err := strconv.ParseInt(lit.Value, 0, 64)
-	if err != nil {
+	if err != nil || excludedNumber(path, n, lit, ancestors) {
 		return false
 	}
 	_, ok := numericDefaults()[n]
 	return ok
 }
 
-// standaloneNumber is true when the literal is the value in ordinary code:
-// a declaration, assignment, composite literal, return, call argument, send, index, or slice bound.
-// Parentheses and unary operators are transparent. Arithmetic operands are not, so a cents scale
-// or a bit shift is not treated as a copy of a registry default.
-func standaloneNumber(ancestors []ast.Node) bool {
+// tunableContext is a use that copies a setting into ordinary code: a const or var,
+// an assignment, a composite field, a return or call, or either side of a comparison.
+// Parentheses and unary plus are transparent. Arithmetic, shifts, and a leading minus
+// are fixed calculations, so a cents scale or a bit width is not a tunable.
+func tunableContext(ancestors []ast.Node) bool {
 	for i := len(ancestors) - 1; i >= 0; i-- {
-		switch ancestors[i].(type) {
-		case *ast.ParenExpr, *ast.UnaryExpr:
+		switch n := ancestors[i].(type) {
+		case *ast.ParenExpr:
 			continue
+		case *ast.UnaryExpr:
+			if n.Op == token.ADD {
+				continue
+			}
+			return false
+		case *ast.BinaryExpr:
+			return comparisonOp(n.Op)
 		case *ast.ValueSpec, *ast.AssignStmt, *ast.KeyValueExpr, *ast.ReturnStmt,
-			*ast.CallExpr, *ast.CompositeLit, *ast.SendStmt, *ast.IndexExpr, *ast.SliceExpr:
+			*ast.CallExpr, *ast.CompositeLit, *ast.SendStmt, *ast.IndexExpr, *ast.SliceExpr,
+			*ast.CaseClause:
 			return true
 		default:
 			return false
 		}
 	}
 	return false
+}
+
+func comparisonOp(op token.Token) bool {
+	switch op {
+	case token.EQL, token.NEQ, token.LSS, token.LEQ, token.GTR, token.GEQ:
+		return true
+	default:
+		return false
+	}
 }
 
 func numericDefaults() map[int64]string {
@@ -168,12 +185,149 @@ func numericDefaults() map[int64]string {
 			continue
 		}
 		n, err := strconv.ParseInt(def.Default, 10, 64)
-		if err != nil || n < 25 {
+		if err != nil {
 			continue
 		}
-		out[n] = def.Key
+		if _, exists := out[n]; !exists {
+			out[n] = def.Key
+		}
 	}
 	return out
+}
+
+// excludedNumber lists literals that equal a registry default but are a fixed rule.
+// The match is the file plus the value. A sibling file is still checked.
+// ponytail: each entry is one file. Ceiling: that file does not gain a real tunable literal.
+// Upgrade trigger: a setting is hardcoded in one of these files. Drop that file's entry.
+func excludedNumber(path string, n int64, lit ast.Expr, ancestors []ast.Node) bool {
+	slash := filepath.ToSlash(path)
+	switch {
+	case n == 0 && zeroValueUse(ancestors):
+		// A comparison, return, call, or index of 0 is Go's zero value, not the markup default.
+		// const markup = 0 and Filter{Limit: 0} stay visible to the check.
+		return true
+	case strconvSpec(lit, ancestors):
+		// ParseInt's base and bit size are not activity.page_size or any other setting.
+		return true
+	case strings.HasSuffix(slash, "internal/settings/check.go"):
+		// This file lists the defaults it matches, so those integers are the rule, not a bypass.
+		return true
+	case strings.HasSuffix(slash, "internal/domain/id.go"):
+		// Every integer here is a UUID byte index, bit width, or variant check.
+		return true
+	case strings.HasSuffix(slash, "internal/domain/money.go"):
+		// 2 is the cent fraction width. 8 is the MinInt64 fractional boundary. 1 is the positive sign.
+		// 100 stays legal only as arithmetic; a bare 100 in this file is still reported.
+		return n == 1 || n == 2 || n == 8
+	case strings.HasSuffix(slash, "internal/db/seed.go"):
+		// Synthetic rows use clock fields and sample counts. They are not live limits.
+		return true
+	case strings.HasSuffix(slash, "internal/db/goose_store.go"):
+		// Version 0 is the ledger baseline, not a percent default.
+		return n == 0
+	case strings.HasSuffix(slash, "internal/db/migrate.go"):
+		// The scan index starts at 0. Versions and placeholder numbers start at 1.
+		return n == 0 || n == 1
+	case strings.HasSuffix(slash, "internal/settings/registry.go"):
+		// Confidence is a fraction from 0 to 1. That 1 is not the reminder-day default.
+		return n == 1 && comparisonUse(ancestors)
+	case strings.HasSuffix(slash, "internal/bootstrap/config.go"):
+		// RunFrom returns process status 2. Success status 0 is the zero-value rule above.
+		return n == 2 && returnUse(ancestors)
+	default:
+		return false
+	}
+}
+
+// strconvSpec reports a base or bit-size argument of strconv.ParseInt, ParseUint, or ParseFloat.
+func strconvSpec(lit ast.Expr, ancestors []ast.Node) bool {
+	for _, parent := range ancestors {
+		call, ok := parent.(*ast.CallExpr)
+		if !ok || len(call.Args) < 2 {
+			continue
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		name, ok := sel.X.(*ast.Ident)
+		if !ok || name.Name != "strconv" {
+			continue
+		}
+		switch sel.Sel.Name {
+		case "ParseInt", "ParseUint":
+			if exprIs(call.Args[1], lit) || len(call.Args) > 2 && exprIs(call.Args[2], lit) {
+				return true
+			}
+		case "ParseFloat":
+			if exprIs(call.Args[1], lit) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func exprIs(expr, lit ast.Expr) bool {
+	for {
+		if expr == lit {
+			return true
+		}
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			return false
+		}
+		expr = paren.X
+	}
+}
+
+func comparisonUse(ancestors []ast.Node) bool {
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		switch n := ancestors[i].(type) {
+		case *ast.ParenExpr:
+			continue
+		case *ast.BinaryExpr:
+			return comparisonOp(n.Op)
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func zeroValueUse(ancestors []ast.Node) bool {
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		switch n := ancestors[i].(type) {
+		case *ast.ParenExpr:
+			continue
+		case *ast.UnaryExpr:
+			if n.Op == token.ADD {
+				continue
+			}
+			return false
+		case *ast.BinaryExpr:
+			return comparisonOp(n.Op)
+		case *ast.ReturnStmt, *ast.CallExpr, *ast.IndexExpr, *ast.SliceExpr:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func returnUse(ancestors []ast.Node) bool {
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		switch ancestors[i].(type) {
+		case *ast.ParenExpr:
+			continue
+		case *ast.ReturnStmt:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func importAliases(file *ast.File) map[string]string {

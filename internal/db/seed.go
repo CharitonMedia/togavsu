@@ -109,9 +109,7 @@ func insertSynthetic(ctx context.Context, tx *sql.Tx, dialect string) error {
 	audit, ev, court := id(), id(), id()
 	job, unit, result, exc, call, move := id(), id(), id(), id(), id(), id()
 	addr, emailID, phoneID, ctag := id(), id(), id(), id()
-	// ponytail: 100 percent complete. Written as a product because 100 is also activity.page_size.
-	// Ceiling: one synthetic row. Upgrade trigger: seed progress is loaded from the registry.
-	progressDone := 10 * 10
+	progressDone := 100 // synthetic move is complete, as a percent
 
 	adminRoles, err := domain.MarshalRoles([]domain.Role{domain.RoleAdmin, domain.RoleAttorney})
 	if err != nil {

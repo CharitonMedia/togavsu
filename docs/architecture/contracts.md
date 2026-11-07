@@ -24,7 +24,7 @@ Read and write tunables through `settings.Registry`. `Set` and `Reset` take a `d
 
 The only environment variables are `TOGAVSU_DATABASE_URL`, `TOGAVSU_ENCRYPTION_KEY` (standard base64 of 32 bytes), `TOGAVSU_DOMAIN`, and `TOGAVSU_SUPERVISOR_SECRET`. `internal/bootstrap` is the only package that may call `os.Getenv`.
 
-`settings.CheckModule` is the AC-030 check. Product CI should run `go test ./internal/settings/`.
+`settings.CheckModule` is the AC-030 check. It flags every registered integer default, including values below 25, in a declaration, assignment, composite field, return, call, or either side of a comparison. Arithmetic, shifts, and a leading minus are not treated as tunables. Fixed rules that reuse one of those integers are named in `excludedNumber`; a sibling file is still checked. Product CI should run `go test ./internal/settings/`.
 
 Fixed rules are not settings: the trust ledger stays append-only, the audit log is kept, a below-zero trust entry is never blocked, and permission checks stay in the service layer.
 

@@ -53,6 +53,91 @@ func TestScanSource(t *testing.T) {
 	}
 }
 
+func TestAC030Fixtures(t *testing.T) {
+	root := moduleRoot(t)
+	dir := filepath.Join(root, "internal", "settings", "testdata", "ac030")
+	negative := []struct {
+		file   string
+		number string
+	}{
+		{"layouts.go", "10"},
+		{"filter.go", "8"},
+		{"lockout.go", "5"},
+		{"lockout.go", "8"},
+		{"calls.go", "6"},
+		{"calls.go", "10"},
+		{"calls.go", "15"},
+	}
+	for _, tc := range negative {
+		src := readFixture(t, filepath.Join(dir, tc.file))
+		msgs := settings.ScanSource(filepath.Join("internal", "practice", tc.file), src)
+		joined := strings.Join(msgs, "\n")
+		if !strings.Contains(joined, "tunable number "+tc.number) {
+			t.Errorf("%s: expected tunable number %s, got %s", tc.file, tc.number, joined)
+		}
+	}
+	for _, file := range []string{"scale.go", "not_default.go"} {
+		src := readFixture(t, filepath.Join(dir, file))
+		msgs := settings.ScanSource(filepath.Join("internal", "practice", file), src)
+		if len(msgs) != 0 {
+			t.Errorf("%s: %s", file, strings.Join(msgs, "; "))
+		}
+	}
+}
+
+func TestFixedNumberExclusions(t *testing.T) {
+	clean := []struct {
+		path string
+		src  string
+	}{
+		{"internal/db/migrate.go", "package db\nfunc f(version int) bool { return version < 1 }\n"},
+		{"internal/bootstrap/config.go", "package bootstrap\nfunc f() int { return 2 }\n"},
+		{"internal/domain/money.go", "package domain\nfunc f(frac int) bool { return frac > 8 || frac == 8 }\n"},
+		{"internal/domain/id.go", "package domain\nfunc f(dec []byte) bool { return dec[8]>>6 != 2 }\n"},
+		{"internal/db/goose_store.go", "package db\nvar baseline = struct{ Version int }{Version: 0}\n"},
+		{"internal/db/seed.go", "package db\nconst maxSavedLayouts = 10\n"},
+		{"internal/db/ranges.go", "package db\nvar bands = []struct{ Min int }{{Min: 100}}\n"},
+		{"internal/settings/registry.go", "package settings\nfunc f(n float64) bool { return n > 1 }\n"},
+		{"internal/settings/registry.go", "package settings\nimport \"strconv\"\nfunc f(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }\n"},
+	}
+	for _, tc := range clean {
+		if msgs := settings.ScanSource(tc.path, tc.src); len(msgs) != 0 {
+			t.Errorf("%s should be a fixed constant: %s", tc.path, strings.Join(msgs, "; "))
+		}
+	}
+	flagged := []struct {
+		path string
+		src  string
+		num  string
+	}{
+		{"internal/practice/version.go", "package practice\nfunc f(version int) bool { return version < 1 }\n", "1"},
+		{"internal/db/migrate.go", "package db\nconst maxSavedLayouts = 10\n", "10"},
+		{"internal/bootstrap/config.go", "package bootstrap\nconst maxRuns = 2\n", "2"},
+		{"internal/billing/limit.go", "package billing\nfunc f(frac int) bool { return frac > 8 }\n", "8"},
+		{"internal/practice/uuid.go", "package practice\nfunc f(dec []byte) bool { return dec[8]>>6 != 2 }\n", "2"},
+		{"internal/db/seed_extra.go", "package db\nconst maxSavedLayouts = 10\n", "10"},
+		{"internal/domain/money.go", "package domain\nconst notesPage = 25\n", "25"},
+		{"internal/settings/check_extra.go", "package settings\nconst maxSavedLayouts = 10\n", "10"},
+		{"internal/settings/registry.go", "package settings\nconst maxSavedLayouts = 10\n", "10"},
+		{"internal/practice/markup.go", "package practice\nconst markup = 0\n", "0"},
+	}
+	for _, tc := range flagged {
+		joined := strings.Join(settings.ScanSource(tc.path, tc.src), "\n")
+		if !strings.Contains(joined, "tunable number "+tc.num) {
+			t.Errorf("%s: expected tunable number %s, got %s", tc.path, tc.num, joined)
+		}
+	}
+}
+
+func readFixture(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestModuleClean(t *testing.T) {
 	root := moduleRoot(t)
 	if err := settings.CheckModule(root); err != nil {
