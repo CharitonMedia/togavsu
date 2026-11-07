@@ -24,6 +24,8 @@ var (
 	ErrRestoreCleanup           = errors.New("restored database is live and the previous database was not dropped")
 	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
 	ErrCleanupUnreconciled      = errors.New("aborted update container was not stopped and removed")
+	ErrMigrationUnknown         = errors.New("migration outcome is unknown")
+	ErrProxyUnknown             = errors.New("caddy upstream is not one managed container")
 	ErrShuttingDown             = errors.New("supervisor is shutting down")
 	ErrRecoveryRequired         = errors.New("a restore is waiting for recovery")
 	ErrFileRestoreUnsupported   = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
@@ -71,6 +73,10 @@ func PublicCode(err error) (code string, status int) {
 		return "proxy_unreconciled", 409
 	case errors.Is(err, ErrCleanupUnreconciled):
 		return "cleanup_unreconciled", 409
+	case errors.Is(err, ErrMigrationUnknown):
+		return "migration_unknown", 409
+	case errors.Is(err, ErrProxyUnknown):
+		return "proxy_unknown", 409
 	default:
 		return "internal", 500
 	}

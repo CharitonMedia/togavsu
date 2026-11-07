@@ -31,6 +31,9 @@ func (s *SFTPDestination) Put(ctx context.Context, name string, r io.Reader, sha
 	if err := safeName(name); err != nil {
 		return err
 	}
+	if err := s.ensureNamespace(ctx); err != nil {
+		return err
+	}
 	tmp, err := os.CreateTemp("", "togavsu-sftp-*")
 	if err != nil {
 		return err
@@ -162,6 +165,40 @@ func (s *SFTPDestination) remote(name string) (string, error) {
 		return "", err
 	}
 	return quoteSFTP(root + "/" + name)
+}
+
+func (s *SFTPDestination) ensureNamespace(ctx context.Context) error {
+	if s.Spec.Namespace == "" {
+		return nil
+	}
+	root, err := s.remoteRoot()
+	if err != nil {
+		return err
+	}
+	quoted, err := quoteSFTP(root)
+	if err != nil {
+		return err
+	}
+	if _, err := s.output(ctx, "ls -1 "+quoted); err == nil {
+		return nil
+	} else if !remoteObjectAbsent(err) {
+		return err
+	}
+	base := strings.TrimSuffix(root, "/"+s.Spec.Namespace)
+	baseQuoted, err := quoteSFTP(base)
+	if err != nil {
+		return err
+	}
+	if _, err := s.output(ctx, "ls -1 "+baseQuoted); err != nil {
+		return err
+	}
+	if err := s.batch(ctx, "mkdir "+quoted); err != nil && !remoteObjectAbsent(err) && !strings.Contains(strings.ToLower(err.Error()), "failure") {
+		return err
+	}
+	if _, err := s.output(ctx, "ls -1 "+quoted); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *SFTPDestination) remoteRoot() (string, error) {

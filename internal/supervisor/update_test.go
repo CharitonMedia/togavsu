@@ -31,6 +31,7 @@ type scriptRuntime struct {
 	trackStarted bool
 	started      []ContainerInfo
 	removed      map[string]bool
+	loseCreate   bool
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -39,9 +40,6 @@ func (r *scriptRuntime) add(step string) {
 
 func (r *scriptRuntime) ListCores(context.Context) ([]ContainerInfo, error) {
 	r.add("list")
-	if !r.trackStarted {
-		return r.cores, nil
-	}
 	var out []ContainerInfo
 	for _, core := range r.started {
 		if !r.removed[core.ID] {
@@ -76,6 +74,17 @@ func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
 }
 
 func (r *scriptRuntime) Inspect(_ context.Context, id string) (ContainerInfo, error) {
+	if r.removed[id] {
+		return ContainerInfo{}, ErrNotFound
+	}
+	for _, c := range r.started {
+		if c.ID == id || c.Name == id {
+			if r.removed[c.ID] {
+				return ContainerInfo{}, ErrNotFound
+			}
+			return c, nil
+		}
+	}
 	r.add("inspect:" + id)
 	r.inspectCount++
 	if r.unknownAfter > 0 && r.inspectCount > r.unknownAfter {
@@ -96,7 +105,7 @@ func (r *scriptRuntime) Pull(_ context.Context, image string) error {
 	r.add("pull:" + image)
 	return nil
 }
-func (r *scriptRuntime) StartCore(_ context.Context, image, name string) (ContainerInfo, error) {
+func (r *scriptRuntime) CreateCore(_ context.Context, image, name string) (ContainerInfo, error) {
 	if r.used == nil {
 		r.used = map[string]bool{}
 	}
@@ -107,13 +116,17 @@ func (r *scriptRuntime) StartCore(_ context.Context, image, name string) (Contai
 	r.add("start:" + image)
 	r.add("name:" + name)
 	info := ContainerInfo{ID: "new-" + name, Name: name, Image: image, Labels: map[string]string{"togavsu.version": "1.1.0"}, State: "running", Running: true}
-	if r.trackStarted {
-		r.started = append(r.started, info)
+	r.started = append(r.started, info)
+	if r.loseCreate {
+		return ContainerInfo{}, errors.New("lost create reply")
 	}
 	if r.afterStart != nil {
 		r.afterStart()
 	}
 	return info, nil
+}
+func (r *scriptRuntime) StartCore(ctx context.Context, image, name string) (ContainerInfo, error) {
+	return r.CreateCore(ctx, image, name)
 }
 func (r *scriptRuntime) Start(ctx context.Context, id string) error {
 	if ctx.Err() != nil {
@@ -178,11 +191,28 @@ func (r *scriptRuntime) Remove(ctx context.Context, id string) error {
 func (r *scriptRuntime) StartModule(context.Context, string) error { return nil }
 func (r *scriptRuntime) StopModule(context.Context, string) error  { return nil }
 
-type scriptProxy struct{ order *[]string }
+type scriptProxy struct {
+	order   *[]string
+	live    *string
+	liveErr error
+}
 
-func (p scriptProxy) Switch(_ context.Context, upstream string) error {
+func (p *scriptProxy) Switch(_ context.Context, upstream string) error {
 	*p.order = append(*p.order, "switch:"+upstream)
+	if p.live != nil {
+		*p.live = upstream
+	}
 	return nil
+}
+
+func (p *scriptProxy) ActiveUpstream(context.Context) (string, error) {
+	if p.liveErr != nil {
+		return "", p.liveErr
+	}
+	if p.live != nil && *p.live != "" {
+		return *p.live, nil
+	}
+	return "core:8080", nil
 }
 
 func TestUpdateHappyPathOrder(t *testing.T) {
@@ -335,6 +365,10 @@ func TestTwoConsecutiveUpdatesUseDistinctNames(t *testing.T) {
 	if _, err := up.Apply(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
+	if proxy, ok := up.Proxy.(*scriptProxy); ok && proxy.live != nil {
+		*proxy.live = "core:8080"
+	}
+	rt.removed = nil
 	if _, err := up.Apply(context.Background(), true); err != nil {
 		t.Fatalf("second update: %v order %v", err, order)
 	}
@@ -403,6 +437,10 @@ func TestUnreconciledProxyLeavesNewCoreRunning(t *testing.T) {
 
 type errProxy struct{ err error }
 
+func (e errProxy) ActiveUpstream(context.Context) (string, error) {
+	return "core:8080", nil
+}
+
 func (p errProxy) Switch(context.Context, string) error { return p.err }
 
 func TestRollbackFailureIsReported(t *testing.T) {
@@ -429,6 +467,12 @@ func testUpdater(t *testing.T, rt *scriptRuntime, order *[]string) *Updater {
 	t.Helper()
 	dir := t.TempDir()
 	out := OpenOutbox(filepath.Join(dir, "outbox.jsonl"))
+	for i := range rt.cores {
+		if rt.cores[i].Name == "" {
+			rt.cores[i].Name = "core"
+		}
+	}
+	live := "core:8080"
 	return &Updater{
 		Now:      func() time.Time { return time.Date(2026, 1, 2, 2, 30, 0, 0, time.UTC) },
 		Window:   Window{Start: 2 * time.Hour, End: 4 * time.Hour, Location: time.UTC},
@@ -444,7 +488,7 @@ func testUpdater(t *testing.T, rt *scriptRuntime, order *[]string) *Updater {
 			*order = append(*order, "restore")
 			return nil
 		},
-		Proxy:  scriptProxy{order: order},
+		Proxy:  &scriptProxy{order: order, live: &live},
 		Notify: func(ctx context.Context, subject, body string) { _ = out.Notify(ctx, subject, body) },
 		Ledger: OpenLedger(filepath.Join(dir, "ledger.jsonl")),
 	}

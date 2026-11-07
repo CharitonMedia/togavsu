@@ -129,8 +129,8 @@ func TestUpdateRollbackKeepsWriteAfterSnapshot(t *testing.T) {
 		Window:   Window{Start: 2 * time.Hour, End: 4 * time.Hour, Location: time.UTC},
 		Registry: staticRegistry{Release{Image: testReleaseImage, Version: "9.0.0"}},
 		Verifier: allowVerifier{},
-		Runtime:  &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Labels: map[string]string{"togavsu.version": "1.0.0"}}}},
-		Proxy:    scriptProxy{order: &order},
+		Runtime:  &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"}}}},
+		Proxy:    &scriptProxy{order: &order, live: strPtr("core:8080")},
 		Migrator: migratorFunc(func(_ context.Context, image string) (bool, error) {
 			order = append(order, "migrate:"+image)
 			return true, errMigration

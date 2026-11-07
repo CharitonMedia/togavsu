@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,7 @@ type ContainerInfo struct {
 	Name    string
 	Image   string
 	Labels  map[string]string
+	Aliases []string
 	State   string
 	Running bool
 }
@@ -100,10 +102,19 @@ type Updater struct {
 	Notify        func(ctx context.Context, subject, body string)
 	Ledger        *Ledger
 	HealthTimeout time.Duration
-	// unreconciled holds replacement containers whose Stop or Remove did not
-	// finish. They are not the serving core, and another update is refused
-	// until that cleanup succeeds.
-	unreconciled map[string]ContainerInfo
+	Journal       *UpdateJournal
+}
+
+type migrationStatus struct {
+	Known          bool
+	Ran            bool
+	Name           string
+	ID             string
+	CleanupPending bool
+}
+
+type migrationRunner interface {
+	RunMigration(ctx context.Context, image, name string, before func(phase, id string) error) (migrationStatus, error)
 }
 
 func (u *Updater) now() time.Time {
@@ -126,18 +137,13 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	if u.Registry == nil || u.Verifier == nil || u.Runtime == nil || u.Proxy == nil {
 		return UpdateResult{Status: "refused", Reason: "not_configured"}, ErrReleaseIndexUnconfigured
 	}
-	if len(u.unreconciled) > 0 {
-		return UpdateResult{Status: "refused", Reason: "cleanup_unreconciled", Rollback: "cleanup_unreconciled"}, ErrCleanupUnreconciled
+	if err := u.Recover(ctx); err != nil {
+		return UpdateResult{Status: "refused", Reason: "cleanup_unreconciled", Rollback: "cleanup_unreconciled"}, err
 	}
-	cores, err := u.Runtime.ListCores(ctx)
+	current, err := u.servingCore(ctx)
 	if err != nil {
-		return UpdateResult{}, err
+		return UpdateResult{Status: "refused", Reason: "proxy_unknown"}, err
 	}
-	cores = u.withoutUnreconciled(cores)
-	if len(cores) == 0 {
-		return UpdateResult{Status: "refused", Reason: "no_core"}, ErrNoCore
-	}
-	current := cores[0]
 	release, err := u.Registry.Latest(ctx)
 	if err != nil {
 		return UpdateResult{Status: "refused", From: current.Image}, err
@@ -177,7 +183,29 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 		u.abort(ctx, backupID, ran, nil)
 		return UpdateResult{Status: "refused", Reason: "migrator", From: current.Image, To: release.Image, BackupID: backupID}, ErrMigratorUnconfigured
 	}
-	ran, err = u.Migrator.Apply(ctx, release.Image)
+	opID := backupID
+	if opID == "" {
+		opID, err = newBackupID(u.now())
+		if err != nil {
+			return UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image}, err
+		}
+	}
+	st, err := u.runMigration(ctx, opID, release.Image, current)
+	ran = st.Known && st.Ran
+	if st.CleanupPending || errors.Is(err, ErrMigrationUnknown) {
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "running"
+			rec.Phase = "migration_unknown"
+			rec.Cleanup = "migration"
+			rec.MigrationName = st.Name
+			rec.MigrationID = st.ID
+			rec.MigrationRan = "unknown"
+			rec.BackupID = backupID
+			rec.CurrentID = current.ID
+			rec.CurrentName = current.Name
+		})
+		return UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, Rollback: "cleanup_unreconciled"}, err
+	}
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
 		u.notify(ctx, "Update refused", "Migrations failed. The running version was left in place.")
@@ -188,7 +216,7 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 		rolled := u.abort(ctx, backupID, ran, nil)
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
-	next, err := u.Runtime.StartCore(ctx, release.Image, nextName)
+	next, err := u.startCandidate(ctx, opID, release.Image, nextName, current, backupID)
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
 		u.notify(ctx, "Update refused", "The new core container did not start. The running version was left in place.")
@@ -200,26 +228,58 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	if err := u.Runtime.WaitHealthy(ctx, next.ID, timeout); err != nil {
 		rolled := u.abort(ctx, backupID, ran, &next)
+		if rolled.Mode == "cleanup_unreconciled" {
+			_ = u.note(opID, func(rec *updateIntent) {
+				rec.Status = "running"
+				rec.Cleanup = "replacement"
+				rec.Phase = "candidate_started"
+				rec.NextID = next.ID
+				rec.NextName = next.Name
+				rec.CurrentID = current.ID
+				rec.CurrentName = current.Name
+				rec.BackupID = backupID
+			})
+		}
 		u.notify(ctx, "Update refused", "The new core failed its health check. The running version was left in place.")
-		return mergeRollback(UpdateResult{Status: "refused", Reason: "health", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, ErrHealth)
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "health", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: rolled.Mode}, rolled, ErrHealth)
 	}
 	upstream := next.Name + ":8080"
-	if err := u.Proxy.Switch(ctx, upstream); err != nil {
-		if errors.Is(err, ErrProxyUnreconciled) {
-			u.notify(ctx, "Update needs attention", "Caddy may still route to the new core, so that container was left running.")
-			return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: "proxy_unreconciled"}, err
-		}
-		rolled := u.abort(ctx, backupID, ran, &next)
-		u.notify(ctx, "Update refused", "Caddy did not switch to the new core. The running version was left in place.")
-		return mergeRollback(UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
+	if err := u.note(opID, func(rec *updateIntent) {
+		rec.Status = "running"
+		rec.Phase = "switch_intended"
+		rec.SwitchTo = upstream
+		rec.NextID = next.ID
+		rec.NextName = next.Name
+		rec.CurrentID = current.ID
+		rec.CurrentName = current.Name
+		rec.BackupID = backupID
+	}); err != nil {
+		return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID}, err
+	}
+	switchErr := u.Proxy.Switch(ctx, upstream)
+	if errors.Is(switchErr, ErrProxyUnreconciled) {
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "running"
+			rec.Phase = "proxy_unreconciled"
+			rec.Cleanup = "proxy_unreconciled"
+			rec.SwitchTo = upstream
+			rec.NextID = next.ID
+			rec.NextName = next.Name
+		})
+		u.notify(ctx, "Update needs attention", "Caddy may still route to the new core, so that container was left running.")
+		return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: "proxy_unreconciled"}, switchErr
+	}
+	routed, routeErr := u.finishSwitch(ctx, opID, current, next, upstream, switchErr)
+	if routeErr != nil {
+		return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: routed}, routeErr
 	}
 	result := UpdateResult{Status: "applied", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}
-	if err := u.Runtime.Stop(ctx, current.ID); err != nil {
-		result.StopError = err.Error()
-		u.notify(ctx, "Update needs attention", "The new core is serving, and the previous container did not stop.")
-	} else {
-		_ = u.Runtime.Remove(ctx, current.ID)
-	}
+	_ = u.note(opID, func(rec *updateIntent) {
+		rec.Status = "completed"
+		rec.Phase = "completed"
+		rec.Cleanup = ""
+		rec.Finished = u.now().UTC()
+	})
 	u.record("update", map[string]string{
 		"status":   "applied",
 		"from":     current.Image,
@@ -243,18 +303,9 @@ func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, sta
 	defer cancel()
 	out := rollbackOutcome{}
 	if started != nil {
-		stopErr := u.Runtime.Stop(cleanCtx, started.ID)
-		var removeErr error
-		if stopErr == nil {
-			removeErr = u.Runtime.Remove(cleanCtx, started.ID)
-		}
-		if stopErr != nil || removeErr != nil {
-			if u.unreconciled == nil {
-				u.unreconciled = map[string]ContainerInfo{}
-			}
-			u.unreconciled[started.ID] = *started
+		if err := confirmAbsent(started.ID, u.Runtime); err != nil {
 			out.Mode = "cleanup_unreconciled"
-			out.Err = fmt.Errorf("%w: %v", ErrCleanupUnreconciled, errors.Join(stopErr, removeErr))
+			out.Err = fmt.Errorf("%w: %v", ErrCleanupUnreconciled, err)
 			u.notify(cleanCtx, "Update needs attention", "The aborted core container was not removed. It is not the serving version, and another update is refused until cleanup finishes.")
 		}
 	}
@@ -285,20 +336,6 @@ func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, sta
 // ceiling: a failed migration's schema changes stay, upgrade: a quiesced
 // rollback that reverses only the migration, trigger: that rollback preserves
 // rows committed after the pre-update snapshot.
-func (u *Updater) withoutUnreconciled(cores []ContainerInfo) []ContainerInfo {
-	if len(u.unreconciled) == 0 {
-		return cores
-	}
-	out := make([]ContainerInfo, 0, len(cores))
-	for _, core := range cores {
-		if _, skip := u.unreconciled[core.ID]; skip {
-			continue
-		}
-		out = append(out, core)
-	}
-	return out
-}
-
 func (u *Updater) rollback(ctx context.Context, backupID string) rollbackOutcome {
 	fn := u.Rollback
 	if fn == nil {
@@ -342,6 +379,14 @@ func (u *Updater) record(kind string, fields map[string]string) {
 	}
 }
 
+func nextMigrateName(now time.Time) (string, error) {
+	id, err := newBackupID(now)
+	if err != nil {
+		return "", err
+	}
+	return "togavsu-migrate-" + id[len(id)-12:], nil
+}
+
 func nextCoreName(now time.Time) (string, error) {
 	id, err := newBackupID(now)
 	if err != nil {
@@ -370,6 +415,408 @@ func ImmutableImage(ref string) error {
 		return fmt.Errorf("%w: release image name", ErrBadRequest)
 	}
 	return nil
+}
+
+type liveProxy interface {
+	ActiveUpstream(context.Context) (string, error)
+}
+
+func (u *Updater) servingCore(ctx context.Context) (ContainerInfo, error) {
+	proxy, ok := u.Proxy.(liveProxy)
+	if !ok {
+		return ContainerInfo{}, ErrProxyUnknown
+	}
+	dial, err := proxy.ActiveUpstream(ctx)
+	if err != nil || dial == "" {
+		if err == nil {
+			err = ErrProxyUnknown
+		}
+		return ContainerInfo{}, err
+	}
+	host, port, err := splitUpstream(dial)
+	if err != nil || port == "" {
+		return ContainerInfo{}, ErrProxyUnknown
+	}
+	hits, err := u.containersForHost(ctx, host)
+	if err != nil {
+		return ContainerInfo{}, err
+	}
+	if len(hits) != 1 {
+		return ContainerInfo{}, ErrProxyUnknown
+	}
+	return hits[0], nil
+}
+
+func (u *Updater) containersForHost(ctx context.Context, host string) ([]ContainerInfo, error) {
+	cores, err := u.Runtime.ListCores(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var hits []ContainerInfo
+	for _, core := range cores {
+		if containerMatchesHost(core, host) {
+			hits = append(hits, core)
+		}
+	}
+	return hits, nil
+}
+
+func containerMatchesHost(core ContainerInfo, host string) bool {
+	if host == "" {
+		return false
+	}
+	if core.Name == host || core.ID == host {
+		return true
+	}
+	for _, alias := range core.Aliases {
+		if alias == host {
+			return true
+		}
+	}
+	return false
+}
+
+func sameCore(a, b ContainerInfo) bool {
+	if a.ID != "" && b.ID != "" {
+		return a.ID == b.ID
+	}
+	return a.Name != "" && a.Name == b.Name
+}
+
+func splitUpstream(dial string) (string, string, error) {
+	return net.SplitHostPort(dial)
+}
+
+func (u *Updater) note(id string, mutate func(*updateIntent)) error {
+	if u.Journal == nil || id == "" {
+		return nil
+	}
+	rec, ok, err := u.Journal.Latest(id)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		rec.ID = id
+		rec.Status = "running"
+		rec.Started = u.now().UTC()
+	}
+	if mutate != nil {
+		mutate(&rec)
+	}
+	rec.ID = id
+	return u.Journal.Put(rec)
+}
+
+func (u *Updater) runMigration(ctx context.Context, opID, image string, current ContainerInfo) (migrationStatus, error) {
+	name, err := nextMigrateName(u.now())
+	if err != nil {
+		return migrationStatus{}, err
+	}
+	if err := u.note(opID, func(rec *updateIntent) {
+		rec.Status = "running"
+		rec.Phase = "migration_intended"
+		rec.MigrationName = name
+		rec.CurrentID = current.ID
+		rec.CurrentName = current.Name
+	}); err != nil {
+		return migrationStatus{}, err
+	}
+	if runner, ok := u.Migrator.(migrationRunner); ok {
+		return runner.RunMigration(ctx, image, name, func(phase, id string) error {
+			return u.note(opID, func(rec *updateIntent) {
+				rec.Phase = phase
+				rec.MigrationName = name
+				if id != "" {
+					rec.MigrationID = id
+				}
+			})
+		})
+	}
+	ran, err := u.Migrator.Apply(ctx, image)
+	if errors.Is(err, ErrMigrationUnknown) {
+		return migrationStatus{Name: name, CleanupPending: true}, err
+	}
+	return migrationStatus{Known: true, Ran: ran, Name: name}, err
+}
+
+func (u *Updater) startCandidate(ctx context.Context, opID, image, name string, current ContainerInfo, backupID string) (ContainerInfo, error) {
+	if err := u.note(opID, func(rec *updateIntent) {
+		rec.Status = "running"
+		rec.Phase = "candidate_intended"
+		rec.NextName = name
+		rec.CurrentID = current.ID
+		rec.CurrentName = current.Name
+		rec.BackupID = backupID
+	}); err != nil {
+		return ContainerInfo{}, err
+	}
+	factory, ok := u.Runtime.(interface {
+		CreateCore(context.Context, string, string) (ContainerInfo, error)
+	})
+	var info ContainerInfo
+	var err error
+	if ok {
+		info, err = factory.CreateCore(ctx, image, name)
+		if err != nil {
+			found, ferr := u.Runtime.Inspect(ctx, name)
+			if ferr != nil || found.ID == "" {
+				return ContainerInfo{}, err
+			}
+			info = found
+			err = nil
+		}
+	} else {
+		info, err = u.Runtime.StartCore(ctx, image, name)
+		if err != nil {
+			return info, err
+		}
+	}
+	if info.Name == "" {
+		info.Name = name
+	}
+	if err := u.note(opID, func(rec *updateIntent) {
+		rec.Phase = "candidate_created"
+		rec.NextID = info.ID
+		rec.NextName = info.Name
+	}); err != nil {
+		return info, err
+	}
+	if ok {
+		if err := u.note(opID, func(rec *updateIntent) { rec.Phase = "candidate_starting" }); err != nil {
+			return info, err
+		}
+		if serr := u.Runtime.Start(ctx, info.ID); serr != nil {
+			found, ferr := u.Runtime.Inspect(ctx, info.ID)
+			if ferr != nil || !found.Running {
+				if cerr := confirmAbsent(info.ID, u.Runtime); cerr != nil {
+					_ = u.note(opID, func(rec *updateIntent) {
+						rec.Status = "running"
+						rec.Cleanup = "replacement"
+						rec.NextID = info.ID
+						rec.NextName = info.Name
+					})
+				}
+				return info, serr
+			}
+		}
+	}
+	return info, nil
+}
+
+func (u *Updater) finishSwitch(ctx context.Context, opID string, current, next ContainerInfo, upstream string, switchErr error) (string, error) {
+	if switchErr != nil && !errors.Is(switchErr, ErrProxyUnreconciled) {
+		live, lerr := u.readLive(ctx)
+		if lerr != nil || live == "" {
+			_ = u.note(opID, func(rec *updateIntent) {
+				rec.Status = "running"
+				rec.Cleanup = "proxy_unreconciled"
+				rec.Phase = "proxy_unknown"
+			})
+			return "proxy_unknown", ErrProxyUnknown
+		}
+		return u.route(ctx, opID, current, next, live, switchErr)
+	}
+	if switchErr == nil {
+		live, lerr := u.readLive(ctx)
+		if lerr != nil {
+			_ = u.note(opID, func(rec *updateIntent) {
+				rec.Status = "running"
+				rec.Cleanup = "proxy_unreconciled"
+				rec.Phase = "proxy_unknown"
+			})
+			return "proxy_unknown", ErrProxyUnknown
+		}
+		return u.route(ctx, opID, current, next, live, nil)
+	}
+	return "", nil
+}
+
+func (u *Updater) route(ctx context.Context, opID string, current, next ContainerInfo, live string, cause error) (string, error) {
+	host, port, err := splitUpstream(live)
+	hits, herr := u.containersForHost(ctx, host)
+	if err != nil || herr != nil || port == "" || len(hits) != 1 {
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "running"
+			rec.Cleanup = "proxy_unreconciled"
+			rec.Phase = "proxy_unknown"
+		})
+		if err == nil {
+			err = herr
+		}
+		if err == nil {
+			err = ErrProxyUnknown
+		}
+		return "proxy_unknown", err
+	}
+	hit := hits[0]
+	switch {
+	case sameCore(hit, next):
+		if err := confirmAbsent(current.ID, u.Runtime); err != nil {
+			_ = u.note(opID, func(rec *updateIntent) {
+				rec.Status = "running"
+				rec.Cleanup = "previous"
+				rec.Phase = "candidate_serving"
+				rec.CurrentID = current.ID
+			})
+			return "cleanup_unreconciled", err
+		}
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "completed"
+			rec.Phase = "completed"
+			rec.Cleanup = ""
+			rec.Finished = u.now().UTC()
+		})
+		return "", nil
+	case sameCore(hit, current):
+		if err := confirmAbsent(next.ID, u.Runtime); err != nil {
+			_ = u.note(opID, func(rec *updateIntent) {
+				rec.Status = "running"
+				rec.Cleanup = "replacement"
+				rec.NextID = next.ID
+				rec.NextName = next.Name
+			})
+			return "cleanup_unreconciled", err
+		}
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "failed"
+			rec.Phase = "failed"
+			rec.Cleanup = ""
+			rec.Finished = u.now().UTC()
+		})
+		if cause == nil {
+			cause = errors.New("caddy still serves the previous core")
+		}
+		return "previous_serving", cause
+	default:
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "running"
+			rec.Cleanup = "proxy_unreconciled"
+			rec.Phase = "proxy_unknown"
+		})
+		return "proxy_unknown", ErrProxyUnknown
+	}
+}
+
+func (u *Updater) readLive(ctx context.Context) (string, error) {
+	proxy, ok := u.Proxy.(liveProxy)
+	if !ok {
+		return "", ErrProxyUnknown
+	}
+	return proxy.ActiveUpstream(ctx)
+}
+
+func (u *Updater) Recover(ctx context.Context) error {
+	if u == nil || u.Journal == nil {
+		return nil
+	}
+	pending, err := u.Journal.Incomplete()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, item := range pending {
+		if err := u.reconcileUpdate(ctx, item); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (u *Updater) reconcileUpdate(ctx context.Context, item updateIntent) error {
+	if item.Cleanup == "migration" || item.Phase == "migration_unknown" || item.Phase == "migration_starting" || item.Phase == "migration_created" {
+		id := item.MigrationID
+		if id == "" {
+			id = item.MigrationName
+		}
+		if id != "" {
+			if err := confirmAbsent(id, u.Runtime); err != nil {
+				return err
+			}
+		}
+		item.Cleanup = ""
+		if item.Cleanup == "" && item.NextID == "" && item.NextName == "" {
+			item.Status = "failed"
+			item.Phase = "failed"
+			item.MigrationRan = "unknown"
+			item.Finished = u.now().UTC()
+			return u.Journal.Put(item)
+		}
+	}
+	live, lerr := u.readLive(ctx)
+	if item.NextID != "" || item.NextName != "" {
+		if lerr != nil || live == "" {
+			return ErrProxyUnknown
+		}
+		host, port, herr := splitUpstream(live)
+		hits, merr := u.containersForHost(ctx, host)
+		if herr != nil || merr != nil || port == "" || len(hits) != 1 {
+			item.Cleanup = "proxy_unreconciled"
+			item.Status = "running"
+			_ = u.Journal.Put(item)
+			return ErrProxyUnknown
+		}
+		hit := hits[0]
+		switch {
+		case hit.ID == item.NextID || (item.NextName != "" && hit.Name == item.NextName):
+			if item.CurrentID != "" {
+				if err := confirmAbsent(item.CurrentID, u.Runtime); err != nil {
+					item.Cleanup = "previous"
+					_ = u.Journal.Put(item)
+					return err
+				}
+			}
+			item.Status = "completed"
+			item.Phase = "completed"
+			item.Cleanup = ""
+			item.Finished = u.now().UTC()
+			return u.Journal.Put(item)
+		case hit.ID == item.CurrentID || (item.CurrentName != "" && (hit.Name == item.CurrentName || containerMatchesHost(hit, item.CurrentName))):
+			id := item.NextID
+			if id == "" {
+				id = item.NextName
+			}
+			if err := confirmAbsent(id, u.Runtime); err != nil {
+				item.Cleanup = "replacement"
+				_ = u.Journal.Put(item)
+				return err
+			}
+			item.Status = "failed"
+			item.Phase = "failed"
+			item.Cleanup = ""
+			item.Finished = u.now().UTC()
+			return u.Journal.Put(item)
+		default:
+			item.Cleanup = "proxy_unreconciled"
+			item.Status = "running"
+			_ = u.Journal.Put(item)
+			return ErrProxyUnknown
+		}
+	}
+	if item.Cleanup == "proxy_unreconciled" {
+		return ErrProxyUnknown
+	}
+	item.Status = "failed"
+	item.Cleanup = ""
+	item.Finished = u.now().UTC()
+	return u.Journal.Put(item)
+}
+
+func confirmAbsent(id string, rt Runtime) error {
+	if id == "" || rt == nil {
+		return errors.New("container was not observed")
+	}
+	clean, cancel := context.WithTimeout(context.Background(), updateCleanupTimeout)
+	defer cancel()
+	_ = rt.Stop(clean, id)
+	_ = rt.Remove(clean, id)
+	_, err := rt.Inspect(clean, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("container %s still present", id)
 }
 
 func versionOf(c ContainerInfo) string {

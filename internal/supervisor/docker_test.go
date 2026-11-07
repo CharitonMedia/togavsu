@@ -199,6 +199,19 @@ func TestStartIsIdempotentWhenDockerSaysAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestDockerListReadsComposeNetworkAlias(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"Id":"abc","Names":["/togavsu-core-1"],"Image":"togavsu-core:local","Labels":{"togavsu.role":"core"},"State":"running","NetworkSettings":{"Networks":{"togavsu_default":{"Aliases":["core","togavsu-core-1"],"DNSNames":["core"]}}}}]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	cores, err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).ListCores(context.Background())
+	if err != nil || len(cores) != 1 || cores[0].Name != "togavsu-core-1" || !containerMatchesHost(cores[0], "core") {
+		t.Fatalf("%+v %v", cores, err)
+	}
+}
+
 func TestMigratorPullsBeforeCreate(t *testing.T) {
 	var order []string
 	mux := http.NewServeMux()

@@ -149,7 +149,7 @@ func (h *handlers) downloadBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) deleteBackup(w http.ResponseWriter, r *http.Request) {
-	if err := h.ops.Store.Delete(r.Context(), r.PathValue("id")); err != nil {
+	if err := h.ops.DeleteBackup(r.Context(), r.PathValue("id")); err != nil {
 		writeErr(w, err)
 		return
 	}

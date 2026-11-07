@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -54,6 +55,9 @@ type Store struct {
 	// OpenDestination, when set, replaces the real destination opener. Tests
 	// use it to fail one remote delete and then retry.
 	OpenDestination func(DestinationSpec) (Destination, error)
+	mu              sync.Mutex
+	receiptsMu      sync.Mutex
+	receipts        *ReceiptBook
 }
 
 func (s *Store) passphrase() (string, error) {
@@ -81,6 +85,12 @@ func validReason(reason string) bool {
 
 // Create dumps the database, copies file versions once, and encrypts the tar.
 func (s *Store) Create(ctx context.Context, reason string) (BackupMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.createLocked(ctx, reason)
+}
+
+func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, error) {
 	if !validReason(reason) {
 		return BackupMeta{}, fmt.Errorf("reason %q: %w", reason, ErrBadRequest)
 	}
@@ -278,12 +288,20 @@ func writeEncryptedTar(dst io.Writer, work, pass string) error {
 }
 
 func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
-	var errs []string
-	dests, err := s.Book.List()
+	if s.Book == nil {
+		return nil
+	}
+	specs, err := s.Book.Specs()
 	if err != nil {
 		return []string{err.Error()}
 	}
-	for _, dest := range dests {
+	var errs []string
+	for _, spec := range specs {
+		dest, err := s.openDest(spec)
+		if err != nil {
+			errs = append(errs, spec.ID+": "+Scrub(err.Error()))
+			continue
+		}
 		if err := s.copyOne(ctx, dest, meta); err != nil {
 			errs = append(errs, dest.ID()+": "+Scrub(err.Error()))
 		}
@@ -301,7 +319,7 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
 		return err
 	}
-	if receipts := s.receipts(); receipts != nil {
+	if receipts := s.receiptBook(); receipts != nil {
 		if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
 			return err
 		}
@@ -396,6 +414,12 @@ func (s *Store) List() ([]BackupMeta, error) {
 // failure leaves the metadata in place so the same call can be retried.
 // Retention pruning uses removeLocal so a longer remote retention survives.
 func (s *Store) Delete(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deleteLocked(ctx, id)
+}
+
+func (s *Store) deleteLocked(ctx context.Context, id string) error {
 	meta, err := s.lookup(id)
 	if err != nil {
 		return err
@@ -431,7 +455,7 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 			failed = append(failed, spec.ID+": "+errors.Join(archiveErr, sideErr).Error())
 			continue
 		}
-		if receipts := s.receipts(); receipts != nil {
+		if receipts := s.receiptBook(); receipts != nil {
 			_ = receipts.Remove(spec.ID, id+".tgbk")
 		}
 	}
@@ -448,11 +472,16 @@ func (s *Store) openDest(spec DestinationSpec) (Destination, error) {
 	return OpenDestination(spec)
 }
 
-func (s *Store) receipts() *ReceiptBook {
+func (s *Store) receiptBook() *ReceiptBook {
 	if s.Book == nil || s.Book.Path == "" {
 		return nil
 	}
-	return &ReceiptBook{Path: filepath.Join(filepath.Dir(s.Book.Path), "destination-receipts.json")}
+	s.receiptsMu.Lock()
+	defer s.receiptsMu.Unlock()
+	if s.receipts == nil {
+		s.receipts = &ReceiptBook{Path: filepath.Join(filepath.Dir(s.Book.Path), "destination-receipts.json")}
+	}
+	return s.receipts
 }
 
 func (s *Store) removeLocal(id string) error {
@@ -470,6 +499,12 @@ func (s *Store) removeLocal(id string) error {
 // Prune deletes local archives older than retention. It does not touch
 // destination copies; those follow PruneDestinations.
 func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pruneLocked(ctx, retention)
+}
+
+func (s *Store) pruneLocked(ctx context.Context, retention time.Duration) (int, error) {
 	if retention <= 0 {
 		return 0, fmt.Errorf("retention: %w", ErrBadRequest)
 	}
@@ -495,6 +530,12 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error)
 
 // PruneDestinations applies each destination's own retention.
 func (s *Store) PruneDestinations(ctx context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pruneDestinationsLocked(ctx)
+}
+
+func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 	if s.Book == nil {
 		return 0, nil
 	}
@@ -513,14 +554,14 @@ func (s *Store) PruneDestinations(ctx context.Context) (int, error) {
 			return n, err
 		}
 		var owned []OwnedObject
-		if receipts := s.receipts(); receipts != nil {
+		if receipts := s.receiptBook(); receipts != nil {
 			owned, err = receipts.List(spec.ID)
 			if err != nil {
 				return n, err
 			}
 		}
 		deleted, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now(), owned)
-		if receipts := s.receipts(); receipts != nil {
+		if receipts := s.receiptBook(); receipts != nil {
 			for _, name := range deleted {
 				_ = receipts.Remove(spec.ID, name)
 			}

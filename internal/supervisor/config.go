@@ -26,6 +26,7 @@ type Config struct {
 	DatabaseURL        string
 	AdminDatabaseURL   string
 	CaddyAdminURL      string
+	CaddyAdminSocket   string
 	UpstreamFile       string
 	DockerSocket       string
 	DockerNetwork      string
@@ -51,7 +52,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Listen:             envDefault(getenv, "SUPERVISOR_LISTEN", ":8081"),
 		DataDir:            envDefault(getenv, "SUPERVISOR_DATA", "/var/lib/togavsu"),
-		CaddyAdminURL:      envDefault(getenv, "CADDY_ADMIN_URL", "http://caddy:2019"),
+		CaddyAdminSocket:   envDefault(getenv, "CADDY_ADMIN_SOCKET", "/run/caddy-admin/admin.sock"),
 		DockerSocket:       envDefault(getenv, "DOCKER_SOCKET", "/var/run/docker.sock"),
 		DockerNetwork:      envDefault(getenv, "TOGAVSU_DOCKER_NETWORK", "togavsu_default"),
 		FirmTimezone:       envDefault(getenv, "FIRM_TIMEZONE", "UTC"),

@@ -54,6 +54,7 @@ type Operations struct {
 	Gate            *Gate
 	Ledger          *Ledger
 	Journal         *Journal
+	UpdateJournal   *UpdateJournal
 	Outbox          *Outbox
 	ApplyDump       func(ctx context.Context, r io.Reader) error
 	ApplyRestore    func(ctx context.Context, payload RestorePayload) error
@@ -153,7 +154,66 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 	if _, err := o.snapshotPass(); err != nil && !errors.Is(err, ErrPassphraseRequired) {
 		return UpdateResult{}, err
 	}
-	return o.Updater.Apply(ctx, force)
+	if o.Updater.Journal == nil {
+		o.Updater.Journal = o.UpdateJournal
+	}
+	// The request context cancels the wait. Cleanup uses its own context, and
+	// the gate stays held until that attempt finishes.
+	opCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-ctx.Done():
+			cancel()
+		case <-opCtx.Done():
+		}
+	}()
+	return o.Updater.Apply(opCtx, force)
+}
+
+func (o *Operations) DeleteBackup(ctx context.Context, id string) error {
+	if o == nil || o.Store == nil {
+		return ErrNotFound
+	}
+	if o.shutting.Load() {
+		return ErrShuttingDown
+	}
+	release, ok := o.Gate.Try()
+	if !ok {
+		return ErrBusy
+	}
+	defer release()
+	if err := o.blockUnresolved(); err != nil {
+		return err
+	}
+	return o.Store.Delete(ctx, id)
+}
+
+func (o *Operations) Prune(ctx context.Context, local time.Duration) error {
+	if o == nil || o.Store == nil {
+		return nil
+	}
+	if o.shutting.Load() {
+		return ErrShuttingDown
+	}
+	release, ok := o.Gate.Try()
+	if !ok {
+		return ErrBusy
+	}
+	defer release()
+	if err := o.blockUnresolved(); err != nil {
+		return err
+	}
+	var errs []error
+	if local > 0 {
+		if _, err := o.Store.Prune(ctx, local); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if _, err := o.Store.PruneDestinations(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // BeginShutdown refuses new backup, update, and restore admission.
@@ -748,7 +808,7 @@ func (o *Operations) restartConfirmed(cores []ContainerInfo) error {
 // live database catalog. It does not start writers when that state is
 // missing or ambiguous, and it does not rename a restored database back.
 func (o *Operations) Recover(ctx context.Context) error {
-	if o == nil || o.Journal == nil {
+	if o == nil {
 		return nil
 	}
 	if o.shutting.Load() {
@@ -759,17 +819,32 @@ func (o *Operations) Recover(ctx context.Context) error {
 		return ErrBusy
 	}
 	defer release()
-	pending, err := o.Journal.Incomplete()
-	if err != nil {
-		return err
-	}
 	var errs []error
-	for _, item := range pending {
-		if err := o.recoverOne(ctx, item); err != nil {
-			errs = append(errs, err)
+	if o.Journal != nil {
+		pending, err := o.Journal.Incomplete()
+		if err != nil {
+			return err
+		}
+		for _, item := range pending {
+			if err := o.recoverOne(ctx, item); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
+	if err := o.recoverUpdates(ctx); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
+}
+
+func (o *Operations) recoverUpdates(ctx context.Context) error {
+	if o.Updater == nil {
+		return nil
+	}
+	if o.Updater.Journal == nil {
+		o.Updater.Journal = o.UpdateJournal
+	}
+	return o.Updater.Recover(ctx)
 }
 
 func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
@@ -928,15 +1003,30 @@ func (o *Operations) dropRolledBackFresh(item journalRecord) {
 }
 
 func (o *Operations) blockUnresolved() error {
-	if o == nil || o.Journal == nil {
+	if o == nil {
 		return nil
 	}
-	pending, err := o.Journal.Incomplete()
-	if err != nil {
-		return err
+	if o.Journal != nil {
+		pending, err := o.Journal.Incomplete()
+		if err != nil {
+			return err
+		}
+		if len(pending) > 0 {
+			return ErrRecoveryRequired
+		}
 	}
-	if len(pending) > 0 {
-		return ErrRecoveryRequired
+	journal := o.UpdateJournal
+	if journal == nil && o.Updater != nil {
+		journal = o.Updater.Journal
+	}
+	if journal != nil {
+		pending, err := journal.Incomplete()
+		if err != nil {
+			return err
+		}
+		if len(pending) > 0 {
+			return ErrRecoveryRequired
+		}
 	}
 	return nil
 }

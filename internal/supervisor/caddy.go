@@ -19,6 +19,7 @@ var errLoadRejected = errors.New("caddy rejected the load")
 // keeps the same core.
 type CaddyProxy struct {
 	AdminURL     string
+	AdminSocket  string
 	AdminListen  string
 	HTTPListen   string
 	HTTPSListen  string
@@ -122,7 +123,46 @@ func (c *CaddyProxy) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
+	if sock := c.socketPath(); sock != "" {
+		return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		}}}
+	}
 	return http.DefaultClient
+}
+
+func (c *CaddyProxy) ActiveUpstream(ctx context.Context) (string, error) {
+	dials, err := c.activeDials(ctx)
+	if err != nil {
+		return "", err
+	}
+	seen := map[string]struct{}{}
+	var uniq []string
+	for _, dial := range dials {
+		if _, ok := seen[dial]; ok {
+			continue
+		}
+		seen[dial] = struct{}{}
+		uniq = append(uniq, dial)
+	}
+	if len(uniq) != 1 {
+		return "", ErrProxyUnknown
+	}
+	return uniq[0], nil
+}
+
+func (c *CaddyProxy) socketPath() string {
+	if c != nil && c.AdminSocket != "" {
+		return c.AdminSocket
+	}
+	listen := ""
+	if c != nil {
+		listen = c.AdminListen
+	}
+	if strings.HasPrefix(listen, "unix//") {
+		return strings.TrimPrefix(listen, "unix/")
+	}
+	return ""
 }
 
 func collectDials(v any, out *[]string) {
@@ -175,7 +215,10 @@ func (c *CaddyProxy) adminListen() string {
 	if c.AdminListen != "" {
 		return c.AdminListen
 	}
-	return "0.0.0.0:2019"
+	if c.AdminSocket != "" {
+		return "unix/" + c.AdminSocket
+	}
+	return "unix//run/caddy-admin/admin.sock"
 }
 
 func (c *CaddyProxy) httpListen() string {

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -426,69 +427,82 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 // Missing receipts are not backfilled from filenames.
 type ReceiptBook struct {
 	Path string
-	mu   sync.Mutex
+}
+
+func (b *ReceiptBook) withLock(fn func() error) error {
+	f, err := os.OpenFile(b.Path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return fn()
 }
 
 func (b *ReceiptBook) Add(obj OwnedObject) error {
 	if b == nil || b.Path == "" || obj.DestinationID == "" || obj.Name == "" {
 		return fmt.Errorf("receipt: %w", ErrBadRequest)
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	all, err := b.read()
-	if err != nil {
-		return err
-	}
-	replaced := false
-	for i := range all {
-		if all[i].DestinationID == obj.DestinationID && all[i].Name == obj.Name {
-			all[i] = obj
-			replaced = true
+	return b.withLock(func() error {
+		all, err := b.read()
+		if err != nil {
+			return err
 		}
-	}
-	if !replaced {
-		all = append(all, obj)
-	}
-	return b.write(all)
+		replaced := false
+		for i := range all {
+			if all[i].DestinationID == obj.DestinationID && all[i].Name == obj.Name {
+				all[i] = obj
+				replaced = true
+			}
+		}
+		if !replaced {
+			all = append(all, obj)
+		}
+		return b.write(all)
+	})
 }
 
 func (b *ReceiptBook) Remove(destID, name string) error {
 	if b == nil || b.Path == "" {
 		return nil
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	all, err := b.read()
-	if err != nil {
-		return err
-	}
-	kept := all[:0]
-	for _, obj := range all {
-		if obj.DestinationID == destID && obj.Name == name {
-			continue
+	return b.withLock(func() error {
+		all, err := b.read()
+		if err != nil {
+			return err
 		}
-		kept = append(kept, obj)
-	}
-	return b.write(kept)
+		kept := all[:0]
+		for _, obj := range all {
+			if obj.DestinationID == destID && obj.Name == name {
+				continue
+			}
+			kept = append(kept, obj)
+		}
+		return b.write(kept)
+	})
 }
 
 func (b *ReceiptBook) List(destID string) ([]OwnedObject, error) {
 	if b == nil || b.Path == "" {
 		return nil, nil
 	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	all, err := b.read()
-	if err != nil {
-		return nil, err
-	}
 	var out []OwnedObject
-	for _, obj := range all {
-		if destID == "" || obj.DestinationID == destID {
-			out = append(out, obj)
+	err := b.withLock(func() error {
+		all, err := b.read()
+		if err != nil {
+			return err
 		}
-	}
-	return out, nil
+		for _, obj := range all {
+			if destID == "" || obj.DestinationID == destID {
+				out = append(out, obj)
+			}
+		}
+		return nil
+	})
+	return out, err
 }
 
 func (b *ReceiptBook) read() ([]OwnedObject, error) {

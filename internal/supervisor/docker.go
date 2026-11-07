@@ -100,11 +100,17 @@ func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, r
 	q.Set("all", "1")
 	q.Set("filters", string(raw))
 	var listed []struct {
-		ID     string            `json:"Id"`
-		Names  []string          `json:"Names"`
-		Image  string            `json:"Image"`
-		Labels map[string]string `json:"Labels"`
-		State  string            `json:"State"`
+		ID              string            `json:"Id"`
+		Names           []string          `json:"Names"`
+		Image           string            `json:"Image"`
+		Labels          map[string]string `json:"Labels"`
+		State           string            `json:"State"`
+		NetworkSettings struct {
+			Networks map[string]struct {
+				Aliases  []string `json:"Aliases"`
+				DNSNames []string `json:"DNSNames"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
 	}
 	if err := d.call(ctx, http.MethodGet, dockerAPI+"/containers/json?"+q.Encode(), nil, &listed); err != nil {
 		return nil, err
@@ -120,7 +126,7 @@ func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, r
 		}
 		state := item.State
 		running := state == "" || state == "running"
-		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels, State: state, Running: running})
+		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels, Aliases: networkAliases(item.Names, item.NetworkSettings.Networks), State: state, Running: running})
 	}
 	return out, nil
 }
@@ -196,16 +202,61 @@ func (d *DockerRuntime) Inspect(ctx context.Context, id string) (ContainerInfo, 
 			Status  string `json:"Status"`
 			Running bool   `json:"Running"`
 		} `json:"State"`
+		NetworkSettings struct {
+			Networks map[string]struct {
+				Aliases  []string `json:"Aliases"`
+				DNSNames []string `json:"DNSNames"`
+			} `json:"Networks"`
+		} `json:"NetworkSettings"`
 	}
 	if err := d.call(ctx, http.MethodGet, dockerAPI+"/containers/"+id+"/json", nil, &inspected); err != nil {
 		return ContainerInfo{}, err
 	}
 	state := inspected.State.Status
 	running := inspected.State.Running || state == "running"
-	return ContainerInfo{ID: id, Name: strings.TrimPrefix(inspected.Name, "/"), State: state, Running: running}, nil
+	gotID := inspected.ID
+	if gotID == "" {
+		gotID = id
+	}
+	name := strings.TrimPrefix(inspected.Name, "/")
+	return ContainerInfo{ID: gotID, Name: name, Aliases: networkAliases([]string{"/" + name}, inspected.NetworkSettings.Networks), State: state, Running: running}, nil
 }
 
-func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (ContainerInfo, error) {
+func networkAliases(names []string, networks map[string]struct {
+	Aliases  []string `json:"Aliases"`
+	DNSNames []string `json:"DNSNames"`
+}) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	add := func(alias string) {
+		alias = strings.TrimPrefix(strings.TrimSpace(alias), "/")
+		if alias == "" {
+			return
+		}
+		if _, ok := seen[alias]; ok {
+			return
+		}
+		seen[alias] = struct{}{}
+		out = append(out, alias)
+	}
+	for i, name := range names {
+		if i == 0 {
+			continue
+		}
+		add(name)
+	}
+	for _, net := range networks {
+		for _, alias := range net.Aliases {
+			add(alias)
+		}
+		for _, alias := range net.DNSNames {
+			add(alias)
+		}
+	}
+	return out
+}
+
+func (d *DockerRuntime) CreateCore(ctx context.Context, image, name string) (ContainerInfo, error) {
 	body := map[string]any{
 		"Image": image,
 		"User":  "65532:65532",
@@ -227,12 +278,45 @@ func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (Cont
 	}
 	path := dockerAPI + "/containers/create?name=" + url.QueryEscape(name)
 	if err := d.call(ctx, http.MethodPost, path, body, &created); err != nil {
-		return ContainerInfo{}, err
-	}
-	if err := d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+created.ID+"/start", nil, nil); err != nil {
-		return ContainerInfo{}, err
+		info, ierr := d.Inspect(ctx, name)
+		if ierr != nil || info.ID == "" {
+			return ContainerInfo{}, err
+		}
+		return info, nil
 	}
 	return ContainerInfo{ID: created.ID, Name: name, Image: image}, nil
+}
+
+func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (ContainerInfo, error) {
+	info, err := d.CreateCore(ctx, image, name)
+	if err != nil {
+		return ContainerInfo{}, err
+	}
+	if err := d.Start(ctx, info.ID); err != nil {
+		found, ierr := d.Inspect(ctx, info.ID)
+		if ierr != nil || !found.Running {
+			return info, err
+		}
+	}
+	return info, nil
+}
+
+// ConfirmAbsent stops and removes a container on a fresh bounded context, then
+// inspects it. A missing container is success. A failed inspect stays pending.
+func (d *DockerRuntime) ConfirmAbsent(ctx context.Context, id string) error {
+	clean, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_ = ctx
+	stopErr := d.Stop(clean, id)
+	remErr := d.Remove(clean, id)
+	_, err := d.Inspect(clean, id)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("container %s still present: %w", id, errors.Join(stopErr, remErr))
 }
 
 func (d *DockerRuntime) WaitHealthy(ctx context.Context, id string, timeout time.Duration) error {
@@ -362,12 +446,77 @@ type DockerMigrator struct {
 }
 
 func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
-	if m.Docker == nil || m.Docker.Client == nil {
-		return false, ErrMigratorUnconfigured
-	}
-	if err := m.Docker.Pull(ctx, image); err != nil {
+	name, err := nextMigrateName(time.Now())
+	if err != nil {
 		return false, err
 	}
+	st, err := m.RunMigration(ctx, image, name, func(string, string) error { return nil })
+	if !st.Known {
+		if err == nil {
+			err = ErrMigrationUnknown
+		}
+		return false, err
+	}
+	return st.Ran, err
+}
+
+func (m DockerMigrator) RunMigration(ctx context.Context, image, name string, before func(phase, id string) error) (migrationStatus, error) {
+	if m.Docker == nil || m.Docker.Client == nil {
+		return migrationStatus{Name: name}, ErrMigratorUnconfigured
+	}
+	if before == nil {
+		before = func(string, string) error { return nil }
+	}
+	if err := before("migration_intended", ""); err != nil {
+		return migrationStatus{Name: name}, err
+	}
+	if err := m.Docker.Pull(ctx, image); err != nil {
+		return migrationStatus{Name: name}, err
+	}
+	id, err := m.createOrFind(ctx, image, name)
+	if err != nil {
+		return migrationStatus{Name: name}, err
+	}
+	if err := before("migration_created", id); err != nil {
+		pending, cerr := m.finishMigrationContainer(id)
+		return migrationStatus{Name: name, ID: id, CleanupPending: pending}, errors.Join(err, cerr)
+	}
+	if err := before("migration_starting", id); err != nil {
+		pending, cerr := m.finishMigrationContainer(id)
+		return migrationStatus{Name: name, ID: id, CleanupPending: pending}, errors.Join(err, cerr)
+	}
+	if err := m.Docker.Start(ctx, id); err != nil {
+		info, ierr := m.Docker.Inspect(ctx, id)
+		if ierr != nil || !info.Running {
+			pending, cerr := m.finishMigrationContainer(id)
+			return migrationStatus{Name: name, ID: id, CleanupPending: pending}, errors.Join(err, cerr)
+		}
+	}
+	var waited struct {
+		StatusCode int `json:"StatusCode"`
+	}
+	if err := m.Docker.call(ctx, http.MethodPost, dockerAPI+"/containers/"+id+"/wait", nil, &waited); err != nil {
+		pending, cerr := m.finishMigrationContainer(id)
+		return migrationStatus{Name: name, ID: id, CleanupPending: pending}, errors.Join(fmt.Errorf("%w: %v", ErrMigrationUnknown, err), cerr)
+	}
+	logs, err := m.logs(ctx, id)
+	pending, cerr := m.finishMigrationContainer(id)
+	st := migrationStatus{Name: name, ID: id, CleanupPending: pending}
+	if err != nil {
+		return st, errors.Join(fmt.Errorf("%w: %v", ErrMigrationUnknown, err), cerr)
+	}
+	st.Known = true
+	st.Ran = strings.Contains(logs, "migrated=true")
+	if cerr != nil {
+		return st, cerr
+	}
+	if waited.StatusCode != 0 {
+		return st, fmt.Errorf("migrate exited %d", waited.StatusCode)
+	}
+	return st, nil
+}
+
+func (m DockerMigrator) createOrFind(ctx context.Context, image, name string) (string, error) {
 	env := append([]string{}, m.Docker.coreEnv()...)
 	body := map[string]any{
 		"Image": image,
@@ -383,33 +532,25 @@ func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
 	var created struct {
 		ID string `json:"Id"`
 	}
-	suffix, err := newBackupID(time.Now())
+	err := m.Docker.call(ctx, http.MethodPost, dockerAPI+"/containers/create?name="+url.QueryEscape(name), body, &created)
+	if err == nil && created.ID != "" {
+		return created.ID, nil
+	}
+	info, ierr := m.Docker.Inspect(ctx, name)
+	if ierr == nil && info.ID != "" {
+		return info.ID, nil
+	}
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	name := "togavsu-migrate-" + suffix[len(suffix)-8:]
-	if err := m.Docker.call(ctx, http.MethodPost, dockerAPI+"/containers/create?name="+name, body, &created); err != nil {
-		return false, err
+	return "", ierr
+}
+
+func (m DockerMigrator) finishMigrationContainer(id string) (bool, error) {
+	if err := m.Docker.ConfirmAbsent(context.Background(), id); err != nil {
+		return true, err
 	}
-	defer m.Docker.call(ctx, http.MethodDelete, dockerAPI+"/containers/"+created.ID+"?force=1", nil, nil)
-	if err := m.Docker.call(ctx, http.MethodPost, dockerAPI+"/containers/"+created.ID+"/start", nil, nil); err != nil {
-		return false, err
-	}
-	var waited struct {
-		StatusCode int `json:"StatusCode"`
-	}
-	if err := m.Docker.call(ctx, http.MethodPost, dockerAPI+"/containers/"+created.ID+"/wait", nil, &waited); err != nil {
-		return false, err
-	}
-	logs, err := m.logs(ctx, created.ID)
-	if err != nil {
-		return false, err
-	}
-	ran := strings.Contains(logs, "migrated=true")
-	if waited.StatusCode != 0 {
-		return ran, fmt.Errorf("migrate exited %d", waited.StatusCode)
-	}
-	return ran, nil
+	return false, nil
 }
 
 func (m DockerMigrator) logs(ctx context.Context, id string) (string, error) {

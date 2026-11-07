@@ -46,6 +46,7 @@ services:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./deploy/caddy/entrypoint.sh:/entrypoint.sh:ro
       - caddy_data:/data
+      - caddy_admin:/run/caddy-admin
       - runtime:/runtime
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     restart: unless-stopped
@@ -64,7 +65,7 @@ services:
       DATABASE_URL_FILE: /appsecrets/database_url
       ADMIN_DATABASE_URL_FILE: /appsecrets/admin_database_url
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
-      CADDY_ADMIN_URL: http://caddy:2019
+      CADDY_ADMIN_SOCKET: /run/caddy-admin/admin.sock
       UPSTREAM_FILE: /runtime/upstream
       DOCKER_SOCKET: /var/run/docker.sock
       TOGAVSU_DOCKER_NETWORK: togavsu_default
@@ -75,6 +76,7 @@ services:
       - backups:/var/lib/togavsu/backups
       - supervisor_data:/var/lib/togavsu
       - runtime:/runtime
+      - caddy_admin:/run/caddy-admin
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       bootstrap:
@@ -119,6 +121,7 @@ volumes:
   pgsecrets:
   appsecrets:
   caddy_data:
+  caddy_admin:
   runtime:
   backups:
   supervisor_data:

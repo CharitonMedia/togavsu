@@ -123,6 +123,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	}
 	ledger := supervisor.OpenLedger(filepath.Join(cfg.DataDir, "ledger.jsonl"))
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
+	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
 	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
 	store := &supervisor.Store{
 		Dir:    cfg.BackupDir,
@@ -158,23 +159,25 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Rollback: func(context.Context, string) error {
 			return supervisor.ErrPreserveWrites
 		},
-		Proxy: &supervisor.CaddyProxy{AdminURL: cfg.CaddyAdminURL, UpstreamFile: cfg.UpstreamFile},
+		Proxy: &supervisor.CaddyProxy{AdminURL: "http://localhost", AdminSocket: cfg.CaddyAdminSocket, UpstreamFile: cfg.UpstreamFile},
 		Notify: func(ctx context.Context, subject, body string) {
 			_ = outbox.Notify(ctx, subject, body)
 		},
 		Ledger:        ledger,
 		HealthTimeout: time.Minute,
+		Journal:       updateJournal,
 	}
 	ops := &supervisor.Operations{
-		Store:      store,
-		Updater:    updater,
-		Runtime:    docker,
-		Gate:       &supervisor.Gate{},
-		Ledger:     ledger,
-		Journal:    journal,
-		Catalog:    supervisor.PostgresCatalog{Bin: "psql", AdminURL: cfg.AdminDatabaseURL},
-		Outbox:     outbox,
-		Passphrase: cfg.ReloadPassphrase,
+		Store:         store,
+		Updater:       updater,
+		Runtime:       docker,
+		Gate:          &supervisor.Gate{},
+		Ledger:        ledger,
+		Journal:       journal,
+		UpdateJournal: updateJournal,
+		Catalog:       supervisor.PostgresCatalog{Bin: "psql", AdminURL: cfg.AdminDatabaseURL},
+		Outbox:        outbox,
+		Passphrase:    cfg.ReloadPassphrase,
 		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {
 			return supervisor.ApplyProductRestore(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload)
 		},
@@ -219,10 +222,7 @@ func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operat
 				}
 			}
 			_, _ = supervisor.PruneLogFiles(cfg.LogDir, now, time.Duration(cfg.LogRetentionDays)*24*time.Hour)
-			if cfg.LocalRetentionDays > 0 {
-				_, _ = ops.Store.Prune(ctx, time.Duration(cfg.LocalRetentionDays)*24*time.Hour)
-			}
-			_, _ = ops.Store.PruneDestinations(ctx)
+			_ = ops.Prune(ctx, time.Duration(cfg.LocalRetentionDays)*24*time.Hour)
 		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -428,6 +429,105 @@ func TestDeleteRetriesAfterRemoteFailure(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(rootA, "other-firm.sha256")); err != nil {
 		t.Fatalf("unrelated checksum removed: %v", err)
+	}
+}
+
+func TestDeleteWaitsForBlockedCopy(t *testing.T) {
+	s := testStore(t)
+	root := filepath.Join(t.TempDir(), "share")
+	book := &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 1}); err != nil {
+		t.Fatal(err)
+	}
+	s.Book = book
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		base, err := OpenDestination(spec)
+		if err != nil {
+			return nil, err
+		}
+		return blockOnceDest{Destination: base, started: started, release: release, once: &once}, nil
+	}
+	errc := make(chan error, 1)
+	go func() {
+		_, err := s.Create(context.Background(), reasonManual)
+		errc <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("copy did not start")
+	}
+	var id string
+	deadline := time.Now().Add(2 * time.Second)
+	for id == "" {
+		all, _ := s.List()
+		if len(all) == 1 {
+			id = all[0].ID
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("metadata was not published while the copy was blocked")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	deleted := make(chan error, 1)
+	go func() { deleted <- s.Delete(context.Background(), id) }()
+	select {
+	case err := <-deleted:
+		t.Fatalf("delete finished while the upload was still blocked: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deleted; err != nil {
+		t.Fatal(err)
+	}
+	specs, err := book.Specs()
+	if err != nil || len(specs) != 1 {
+		t.Fatal(specs, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, specs[0].Namespace, id+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("archive reappeared after delete: %v", err)
+	}
+	if _, err := s.lookup(id); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("metadata reappeared: %v", err)
+	}
+}
+
+type blockOnceDest struct {
+	Destination
+	started chan struct{}
+	release chan struct{}
+	once    *sync.Once
+}
+
+func (b blockOnceDest) Put(ctx context.Context, name string, r io.Reader, sha string) error {
+	b.once.Do(func() { close(b.started); <-b.release })
+	return b.Destination.Put(ctx, name, r, sha)
+}
+
+func TestReceiptsAcrossBooksPreserveUnrelated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "destination-receipts.json")
+	a := &ReceiptBook{Path: path}
+	b := &ReceiptBook{Path: path}
+	old := time.Now().Add(-48 * time.Hour)
+	if err := a.Add(OwnedObject{DestinationID: "share", Name: "owned.tgbk", Created: old}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Add(OwnedObject{DestinationID: "share", Name: "other.tgbk", Created: old}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Remove("share", "owned.tgbk"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := b.List("share")
+	if err != nil || len(got) != 1 || got[0].Name != "other.tgbk" {
+		t.Fatalf("%+v %v", got, err)
 	}
 }
 

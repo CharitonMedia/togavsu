@@ -29,6 +29,39 @@ func TestSFTPRejectsInjectedRemotePath(t *testing.T) {
 	}
 }
 
+func TestSFTPFirstUseCreatesNamespaceWithoutParentMkdir(t *testing.T) {
+	dir := t.TempDir()
+	remote := filepath.Join(dir, "backups")
+	if err := os.MkdirAll(remote, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "sftp")
+	if err := os.WriteFile(script, []byte(sftpPython), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dest := sftpDest(t, dir, remote, script)
+	dest.Spec.Namespace = "nsowned01"
+	payload := []byte("synthetic sftp bytes")
+	sum, err := sha256Hex(bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Put(context.Background(), "one.tgbk", bytes.NewReader(payload), sum); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(remote, "nsowned01", "one.tgbk")); err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dest.Spec.RemotePath = blocked
+	if err := dest.Put(context.Background(), "two.tgbk", bytes.NewReader(payload), sum); err == nil {
+		t.Fatal("put succeeded when the configured base was not a directory")
+	}
+}
+
 func TestSFTPRoundTripPathWithSpaces(t *testing.T) {
 	dir := t.TempDir()
 	remote := filepath.Join(dir, "firm files")
@@ -230,15 +263,27 @@ for raw in open(batch):
         sys.exit(99)
     parts = shlex.split(line)
     cmd = parts[0]
-    if cmd == "put":
-        os.makedirs(os.path.dirname(parts[2]), exist_ok=True)
+    if cmd == "mkdir":
+        os.mkdir(parts[1])
+    elif cmd == "put":
+        parent = os.path.dirname(parts[2])
+        if not os.path.isdir(parent):
+            sys.stderr.write("Couldn't open dest: No such file or directory\n")
+            sys.exit(1)
         shutil.copy(parts[1], parts[2])
     elif cmd == "get":
         shutil.copy(parts[1], parts[2])
     elif cmd == "rm":
         os.remove(parts[1])
     elif cmd == "ls":
-        print("\n".join(sorted(os.listdir(parts[-1]))))
+        target = parts[-1]
+        if not os.path.isdir(target):
+            if os.path.exists(target):
+                sys.stderr.write("Not a directory\n")
+            else:
+                sys.stderr.write("No such file or directory\n")
+            sys.exit(1)
+        print("\n".join(sorted(os.listdir(target))))
 `
 
 func sftpDest(t *testing.T, dir, remote, command string) *SFTPDestination {
