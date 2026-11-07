@@ -147,15 +147,48 @@ func (o *Operations) Job(id string) (RestoreRecord, bool) {
 }
 
 // Restore validates the archive before it stops writers or takes a recovery
-// snapshot. After the archive is accepted, work uses a timeout that is not
-// derived from the caller's context, so a disconnected client cannot cancel
-// recovery. Callers can poll Job or the ledger for status.
+// snapshot. The operation id is unique. The gate is held before the accepted
+// record is published, so a second restore cannot replace this job. After the
+// archive is accepted, work uses a timeout that is not derived from the
+// caller's context, so a disconnected client cannot cancel recovery. Callers
+// can poll Job or the ledger for status.
 func (o *Operations) Restore(caller context.Context, id string) (RestoreRecord, error) {
-	rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "accepted", Started: o.now().UTC()}
 	if err := o.rejectInvalid(caller, id); err != nil {
-		return o.finish(rec, err), err
+		return o.failedRestore(id, err)
 	}
-	return o.runAccepted(id)
+	rec, release, err := o.admitRestore(id)
+	if err != nil {
+		return RestoreRecord{}, err
+	}
+	defer release()
+	return o.executeRestore(rec)
+}
+
+// admitRestore reserves the operation gate and publishes the accepted record.
+// The caller must release the gate when the restore finishes. A busy result
+// does not write a job.
+func (o *Operations) admitRestore(backupID string) (RestoreRecord, func(), error) {
+	release, ok := o.Gate.Try()
+	if !ok {
+		return RestoreRecord{}, nil, ErrBusy
+	}
+	opID, err := newRestoreOpID(o.now())
+	if err != nil {
+		release()
+		return RestoreRecord{}, nil, err
+	}
+	rec := RestoreRecord{ID: opID, BackupID: backupID, Status: "accepted", Started: o.now().UTC()}
+	o.PutJob(rec)
+	return rec, release, nil
+}
+
+func (o *Operations) failedRestore(backupID string, cause error) (RestoreRecord, error) {
+	opID, err := newRestoreOpID(o.now())
+	if err != nil {
+		return RestoreRecord{}, err
+	}
+	rec := RestoreRecord{ID: opID, BackupID: backupID, Started: o.now().UTC()}
+	return o.finish(rec, cause), cause
 }
 
 func (o *Operations) rejectInvalid(ctx context.Context, id string) error {
@@ -171,16 +204,18 @@ func (o *Operations) rejectInvalid(ctx context.Context, id string) error {
 	return ctx.Err()
 }
 
-func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
+// executeRestore runs a restore that admitRestore already reserved. It does
+// not take the gate again.
+func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err error) {
+	defer func() {
+		if done.ID != "" {
+			o.PutJob(done)
+		}
+	}()
 	opCtx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
 	defer cancel()
-	release, ok := o.Gate.Try()
-	if !ok {
-		rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "failed", Started: o.now().UTC()}
-		return o.finish(rec, ErrBusy), ErrBusy
-	}
-	defer release()
-	rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "running", Started: o.now().UTC()}
+	id := rec.BackupID
+	rec.Status = "running"
 	o.PutJob(rec)
 	var stopped []ContainerInfo
 	if o.Runtime != nil {
@@ -219,6 +254,9 @@ func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
 		return o.ApplyDump(ctx, payload.Dump)
 	}
 	err = o.Store.Restore(opCtx, id, "", apply)
+	if errors.Is(err, errSwapUnobserved) || errors.Is(err, errConfiguredDatabaseAbsent) {
+		return o.finishUncertain(rec, stopped, err)
+	}
 	if errors.Is(err, ErrRestoreCleanup) {
 		if startErr := o.restartRecovery(stopped); startErr != nil {
 			joined := fmt.Errorf("%w; restart failed: %v", err, startErr)
@@ -268,6 +306,28 @@ func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
 	o.recordRestore(rec)
 	o.PutJob(rec)
 	return rec, nil
+}
+
+func (o *Operations) finishUncertain(rec RestoreRecord, stopped []ContainerInfo, err error) (RestoreRecord, error) {
+	note := "The database rename could not be observed. The core was restarted without treating either database as confirmed."
+	if errors.Is(err, errConfiguredDatabaseAbsent) {
+		note = "The configured database name was absent after the rename. The core was restarted and may be unable to serve until that name exists."
+	}
+	if startErr := o.restartRecovery(stopped); startErr != nil {
+		joined := fmt.Errorf("%w; restart failed: %v", err, startErr)
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", Scrub(note+" "+joined.Error()))
+		}
+		rec = o.finish(rec, joined)
+		o.PutJob(rec)
+		return rec, joined
+	}
+	if o.Outbox != nil {
+		_ = o.Outbox.Notify(context.Background(), "Restore needs attention", note)
+	}
+	rec = o.finish(rec, err)
+	o.PutJob(rec)
+	return rec, err
 }
 
 func (o *Operations) TestRestore(ctx context.Context, id string) error {

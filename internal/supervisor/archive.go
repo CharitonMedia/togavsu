@@ -130,12 +130,37 @@ func hashFile(path string) (string, error) {
 	return sha256Hex(f)
 }
 
+// writeFileAtomic replaces path with a complete file. Each caller gets its own
+// temporary name so concurrent writers cannot truncate one shared partial file.
 func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
-	tmp := path + ".partial"
-	if err := os.WriteFile(tmp, data, mode); err != nil {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, ".partial-"+filepath.Base(path)+"-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	tmp := f.Name()
+	done := false
+	defer func() {
+		if !done {
+			os.Remove(tmp)
+		}
+	}()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Chmod(mode); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	done = true
+	return nil
 }
 
 func newBackupID(now time.Time) (string, error) {
@@ -144,4 +169,12 @@ func newBackupID(now time.Time) (string, error) {
 		return "", err
 	}
 	return now.UTC().Format("20060102T150405Z") + "-" + hex.EncodeToString(b[:]), nil
+}
+
+func newRestoreOpID(now time.Time) (string, error) {
+	id, err := newBackupID(now)
+	if err != nil {
+		return "", err
+	}
+	return "restore-" + id, nil
 }

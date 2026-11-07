@@ -21,4 +21,16 @@ else
   printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
   cd "$work"
 fi
-go test -tags=integration ./internal/supervisor/ -count=1 -run 'TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot'
+log=$(mktemp)
+if ! go test -tags=integration ./internal/supervisor/ -count=1 -run 'TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap' >"$log" 2>&1; then
+  cat "$log" >&2
+  rm -f "$log"
+  exit 1
+fi
+cat "$log"
+if grep -q "no tests to run" "$log"; then
+  echo "integration filter matched nothing" >&2
+  rm -f "$log"
+  exit 1
+fi
+rm -f "$log"

@@ -220,6 +220,10 @@ func (h *handlers) deleteDestination(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// postRestore is the only asynchronous supervisor operation. Backup, update,
+// and test-restore finish under the gate before their response is written.
+// Admission reserves the gate and a unique operation id before the accepted
+// record is published. A busy request does not write over that record.
 func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		BackupID string `json:"backup_id"`
@@ -233,14 +237,22 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.ops.rejectInvalid(r.Context(), body.BackupID); err != nil {
-		rec := RestoreRecord{ID: body.BackupID + "-restore", BackupID: body.BackupID, Started: time.Now().UTC()}
-		writeAPI(w, err, h.ops.finish(rec, err), nil)
+		rec, recErr := h.ops.failedRestore(body.BackupID, err)
+		if recErr != nil {
+			writeErr(w, recErr)
+			return
+		}
+		writeAPI(w, err, rec, nil)
 		return
 	}
-	rec := RestoreRecord{ID: body.BackupID + "-restore", BackupID: body.BackupID, Status: "accepted", Started: time.Now().UTC()}
-	h.ops.PutJob(rec)
+	rec, release, err := h.ops.admitRestore(body.BackupID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	go func() {
-		done, _ := h.ops.runAccepted(body.BackupID)
+		defer release()
+		done, _ := h.ops.executeRestore(rec)
 		h.ops.PutJob(done)
 	}()
 	writeJSON(w, http.StatusAccepted, rec)

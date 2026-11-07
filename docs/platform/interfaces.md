@@ -38,7 +38,7 @@ The core image must serve the product on port 8080 and define a Docker health ch
 | POST | `/v1/backup-destinations` | Adds a `path`, `s3`, or `sftp` destination. Secrets are not returned. |
 | POST | `/v1/backup-destinations/{id}/test` | Writes and reads a probe object. |
 | DELETE | `/v1/backup-destinations/{id}` | Forgets the destination. |
-| POST | `/v1/restores` | Body `{"backup_id":"..."}`. An invalid archive is rejected before writers stop. An accepted restore returns 202 and continues on its own timeout after the caller disconnects. Poll `GET /v1/restores/{id}`. The dump is loaded into a clean database and swapped in only after its record counts match. |
+| POST | `/v1/restores` | Body `{"backup_id":"..."}`. An invalid archive is rejected before writers stop. An accepted restore returns 202 with a unique operation id and continues on its own timeout after the caller disconnects. A second restore, of the same backup or another, is rejected while that operation holds the gate and does not replace its status. Poll `GET /v1/restores/{id}`. The dump is loaded into a clean database. The two renames commit in one Postgres transaction and are reconciled from `pg_database` before cores restart. The swap happens only after record counts match. |
 | GET | `/v1/restores/{id}` | Last ledger event for that restore. |
 | POST | `/v1/test-restores` | Body `{"backup_id":"..."}`. Restores into a throwaway database and compares counts. |
 

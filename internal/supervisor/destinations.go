@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -65,6 +66,7 @@ func (s DestinationSpec) Public() DestinationSpec {
 // trigger: /api/v1/backup-destinations is served by core.
 type DestinationBook struct {
 	Path string
+	mu   sync.Mutex
 }
 
 func (b *DestinationBook) List() ([]Destination, error) {
@@ -84,6 +86,12 @@ func (b *DestinationBook) List() ([]Destination, error) {
 }
 
 func (b *DestinationBook) Specs() ([]DestinationSpec, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.readSpecs()
+}
+
+func (b *DestinationBook) readSpecs() ([]DestinationSpec, error) {
 	raw, err := os.ReadFile(b.Path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -105,7 +113,9 @@ func (b *DestinationBook) Put(spec DestinationSpec) (DestinationSpec, error) {
 	if spec.RetentionDays == 0 {
 		spec.RetentionDays = 30
 	}
-	specs, err := b.Specs()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	specs, err := b.readSpecs()
 	if err != nil {
 		return DestinationSpec{}, err
 	}
@@ -126,7 +136,9 @@ func (b *DestinationBook) Put(spec DestinationSpec) (DestinationSpec, error) {
 }
 
 func (b *DestinationBook) Delete(id string) error {
-	specs, err := b.Specs()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	specs, err := b.readSpecs()
 	if err != nil {
 		return err
 	}
