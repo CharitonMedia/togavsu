@@ -585,6 +585,29 @@ def trust_account_failure(call: dict) -> str | None:
     return None
 
 
+def _trust_flag_from_event(event: dict, entry: dict) -> dict:
+    """One TrustFlag built from the same balances that emitted trust.flag_raised."""
+    scope = event.get("balance_scope") or "matter"
+    flag = {
+        "id": entry["id"],
+        "created_at": entry["created_at"],
+        "created_by": entry["created_by"],
+        "updated_at": entry["created_at"],
+        "trust_entry_id": entry["id"],
+        "balance_cents": event["balance_cents"],
+        "scope": scope,
+        "status": "open",
+    }
+    if scope == "account":
+        flag["trust_account_id"] = entry["trust_account_id"]
+    elif scope == "client":
+        flag["client_id"] = entry["client_id"]
+    else:
+        flag["client_id"] = entry["client_id"]
+        flag["matter_id"] = entry["matter_id"]
+    return flag
+
+
 def payment_reversal_decision(operation: dict, call: dict) -> dict:
     access = operation["x-togavsu-access"]
     policy = access["payment_reversal"]
@@ -619,7 +642,9 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
             operation,
             [
                 {
+                    "entry_type": posted.get("entry_type"),
                     "amount_cents": posted.get("amount_cents", 0),
+                    "direction": posted.get("direction"),
                     "opening": opening,
                     "matter_id": posted.get("matter_id"),
                     "client_id": posted.get("client_id"),
@@ -631,6 +656,10 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
             committed=True,
         )
     flag = any(event.get("type") == "trust.flag_raised" for event in events)
+    if compensation is not None and not idempotent and events:
+        posted_event = next(event for event in events if event["type"] == "trust.entry_posted")
+        compensation["post"]["balances"] = dict(posted_event["balances"])
+        compensation["post"]["flags"] = [_trust_flag_from_event(event, compensation["entry"]) for event in events if event["type"] == "trust.flag_raised"]
     return {
         "result": "original_result" if idempotent else "allowed",
         "payment_mutated": not idempotent,
@@ -699,31 +728,7 @@ def _reversal_compensation(call: dict, account_id: str) -> dict | None:
         "description": call.get("description") or "Payment reversal",
         "reverses_entry_id": call["trust_entry_id"],
     }
-    flags = []
-    if call.get("below_zero"):
-        flags.append(
-            {
-                "id": call.get("flag_id") or call["posted_entry_id"],
-                "created_at": call["created_at"],
-                "created_by": call["created_by"],
-                "updated_at": call["created_at"],
-                "trust_entry_id": call["posted_entry_id"],
-                "client_id": call["client_id"],
-                "matter_id": call["matter_id"],
-                "balance_cents": call.get("balance_cents", signed),
-                "scope": "matter",
-                "status": "open",
-            }
-        )
-    post = {
-        "entry": entry,
-        "balances": {
-            "matter_cents": call.get("matter_cents", signed),
-            "client_cents": call.get("client_cents", signed),
-            "account_cents": call.get("account_cents", signed),
-        },
-        "flags": flags,
-    }
+    post = {"entry": entry, "balances": {"matter_cents": 0, "client_cents": 0, "account_cents": 0}, "flags": []}
     return {"entry": entry, "post": post}
 
 
@@ -949,6 +954,7 @@ def _posted_trust_events(operation: dict, payment: dict, call: dict, inserted: b
         operation,
         [
             {
+                "entry_type": "deposit",
                 "amount_cents": amount,
                 "opening": opening,
                 "matter_id": payment.get("matter_id"),
@@ -1413,6 +1419,37 @@ def _balance_value(value, default: int = 0) -> int:
     return value
 
 
+def _ledger_delta(item: dict) -> int | None:
+    """Signed effect of one schema-valid row. A withdrawal amount is nonnegative; entry_type supplies the direction."""
+    amount = item.get("amount_cents")
+    if isinstance(amount, bool) or not isinstance(amount, int):
+        return None
+    kind = item.get("entry_type")
+    if kind == "deposit":
+        return amount if amount >= 0 else None
+    if kind in {"withdrawal", "transfer_to_operating", "refund"}:
+        return -amount if amount >= 0 else None
+    if kind == "adjustment":
+        if amount == 0:
+            return None
+        direction = item.get("adjustment_direction")
+        if amount > 0 and direction not in (None, "credit"):
+            return None
+        if amount < 0 and direction not in (None, "debit"):
+            return None
+        return amount
+    if kind == "reversal":
+        if amount == 0:
+            return None
+        direction = item.get("direction")
+        if amount < 0 and direction not in (None, "debit"):
+            return None
+        if amount > 0 and direction not in (None, "credit"):
+            return None
+        return amount
+    return None
+
+
 def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, replay: bool = False, denied: bool = False) -> list[dict]:
     """Post every committed ledger row. Raise trust.flag_raised only when that row's resulting balance is below zero."""
     rule = (operation.get("x-togavsu-access") or {}).get("trust_flag") or {}
@@ -1430,9 +1467,9 @@ def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, 
     for item in items:
         if item.get("trust_posted") is False:
             continue
-        amount = item.get("amount_cents", 0)
-        if isinstance(amount, bool) or not isinstance(amount, int):
-            amount = 0
+        amount = _ledger_delta(item)
+        if amount is None:
+            continue
         opening = item.get("opening") if isinstance(item.get("opening"), dict) else {}
         matter_id = item.get("matter_id")
         client_id = item.get("client_id")
@@ -1462,6 +1499,11 @@ def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, 
             "balance_cents": balances["matter"],
             "trust_entry_id": item.get("trust_entry_id"),
             "balance_scope": scope or "matter",
+            "balances": {
+                "matter_cents": balances["matter"],
+                "client_cents": balances["client"],
+                "account_cents": balances["account"],
+            },
         }
         if posted_name in catalog:
             emitted.append(dict(body))
@@ -3329,10 +3371,11 @@ def trust_debit_decision(call: dict) -> dict:
     if row.get("active") is False or row.get("authorized") is False:
         return {"result": "forbidden", **denied}
     amount = call.get("amount_cents")
-    signed = -abs(amount) if isinstance(amount, int) and not isinstance(amount, bool) else 0
+    debit = abs(amount) if isinstance(amount, int) and not isinstance(amount, bool) else 0
     resulting = call.get("balance_after", 0)
     if isinstance(resulting, bool) or not isinstance(resulting, int):
         resulting = 0
+    opening_cents = resulting + debit
     events = trust_ledger_events(
         {
             "operationId": "trustDebit",
@@ -3341,8 +3384,9 @@ def trust_debit_decision(call: dict) -> dict:
         },
         [
             {
-                "amount_cents": signed,
-                "opening": {"matter_cents": resulting - signed, "client_cents": resulting - signed, "account_cents": resulting - signed},
+                "entry_type": "transfer_to_operating",
+                "amount_cents": debit,
+                "opening": {"matter_cents": opening_cents, "client_cents": opening_cents, "account_cents": opening_cents},
                 "matter_id": call.get("matter_id"),
                 "client_id": call.get("client_id"),
                 "trust_account_id": row["trust_account_id"],

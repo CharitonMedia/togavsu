@@ -4368,7 +4368,10 @@ class ContractTest(unittest.TestCase):
             operation,
             [
                 {
-                    "amount_cents": -10,
+                    "entry_type": "withdrawal",
+                    "amount_cents": 10,
+                    "method": "check",
+                    "description": "withdrawal",
                     "opening": {"matter_cents": 100, "client_cents": 100, "account_cents": 5},
                     "matter_id": matter,
                     "client_id": client,
@@ -5030,48 +5033,94 @@ class ContractTest(unittest.TestCase):
         entry_b = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
         entry_c = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3"
 
-        def row(entry, amount, matter_id=matter, opening=None):
-            item = {"amount_cents": amount, "matter_id": matter_id, "client_id": client, "trust_account_id": account, "trust_entry_id": entry}
+        def row(entry, amount, matter_id=matter, opening=None, kind="deposit"):
+            item = {
+                "amount_cents": amount,
+                "entry_type": kind,
+                "matter_id": matter_id,
+                "client_id": client,
+                "trust_account_id": account,
+                "trust_entry_id": entry,
+                "method": "check",
+                "description": kind,
+            }
+            if kind == "reversal":
+                item["direction"] = "debit" if amount < 0 else "credit"
+            if kind == "adjustment":
+                item["adjustment_direction"] = "credit" if amount > 0 else "debit"
             if opening is not None:
                 item["opening"] = opening
             return item
+
+        def write_body(item):
+            body = {
+                "trust_account_id": item["trust_account_id"],
+                "client_id": item["client_id"],
+                "matter_id": item["matter_id"],
+                "entry_type": item["entry_type"],
+                "amount_cents": item["amount_cents"],
+                "method": item["method"],
+                "description": item["description"],
+            }
+            if item["entry_type"] == "adjustment":
+                body["adjustment_direction"] = item["adjustment_direction"]
+            return body
 
         opening = {"matter_cents": 100, "client_cents": 100, "account_cents": 500}
         post = _operation(self.spec, "postTrustEntry")
         bulk = _operation(self.spec, "bulkTrustEntry")
         reverse = _operation(self.spec, "reverseTrustEntry")
-        safe = trust_ledger_events(post, [row(entry_a, 25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0})], committed=True)
+        safe_item = row(entry_a, 25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0})
+        _component_validator(self.spec, "TrustEntryWrite").validate(write_body(safe_item))
+        safe = trust_ledger_events(post, [safe_item], committed=True)
         self.assertEqual([event["type"] for event in safe], ["trust.entry_posted"])
-        flagged = trust_ledger_events(post, [row(entry_a, -25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0})], committed=True)
+        flagged_item = row(entry_a, 25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0}, kind="withdrawal")
+        _component_validator(self.spec, "TrustEntryWrite").validate(write_body(flagged_item))
+        flagged = trust_ledger_events(post, [flagged_item], committed=True)
         self.assertEqual([event["type"] for event in flagged], ["trust.entry_posted", "trust.flag_raised"])
         self.assertEqual(flagged[1]["balance_cents"], -25)
         self.assertEqual(flagged[1]["balance_scope"], "matter")
+        canonical = row(entry_b, 1500, opening={"matter_cents": 1000, "client_cents": 1000, "account_cents": 1000}, kind="withdrawal")
+        _component_validator(self.spec, "TrustEntryWrite").validate(write_body(canonical))
+        canonical_events = trust_ledger_events(post, [canonical], committed=True)
+        self.assertEqual(canonical_events[0]["balances"]["matter_cents"], -500)
+        self.assertEqual([event["type"] for event in canonical_events], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(canonical_events[1]["balance_cents"], -500)
+        for kind in ("refund", "transfer_to_operating"):
+            typed = row(entry_c, 1500, opening={"matter_cents": 1000, "client_cents": 1000, "account_cents": 1000}, kind=kind)
+            _component_validator(self.spec, "TrustEntryWrite").validate(write_body(typed))
+            typed_events = trust_ledger_events(post, [typed], committed=True)
+            self.assertEqual(typed_events[0]["balances"]["matter_cents"], -500, kind)
+            self.assertEqual(typed_events[1]["balance_scope"], "matter", kind)
+        invalid = {"entry_type": "withdrawal", "amount_cents": -1500, "matter_id": matter, "client_id": client, "trust_account_id": account, "trust_entry_id": entry_a, "method": "check", "description": "bad", "opening": {"matter_cents": 1000, "client_cents": 1000, "account_cents": 1000}}
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "TrustEntryWrite").validate(write_body(invalid))
+        self.assertEqual(trust_ledger_events(post, [invalid], committed=True), [])
         for label, kwargs in (("rollback", {"committed": False}), ("replay", {"committed": True, "replay": True}), ("denied", {"committed": True, "denied": True})):
-            self.assertEqual(trust_ledger_events(post, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
-            self.assertEqual(trust_ledger_events(bulk, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
-            self.assertEqual(trust_ledger_events(reverse, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
-        ordered = trust_ledger_events(
-            bulk,
-            [row(entry_a, -40, opening=opening), row(entry_b, -80), row(entry_c, 5)],
-            committed=True,
-        )
+            self.assertEqual(trust_ledger_events(post, [row(entry_a, 25, opening=opening, kind="withdrawal")], **kwargs), [], label)
+            self.assertEqual(trust_ledger_events(bulk, [row(entry_a, 25, opening=opening, kind="withdrawal")], **kwargs), [], label)
+            self.assertEqual(trust_ledger_events(reverse, [row(entry_a, 25, opening=opening, kind="withdrawal")], **kwargs), [], label)
+        ordered_items = [row(entry_a, 40, opening=opening, kind="withdrawal"), row(entry_b, 80, kind="withdrawal"), row(entry_c, 5)]
+        for item in ordered_items:
+            _component_validator(self.spec, "TrustEntryWrite").validate(write_body(item))
+        ordered = trust_ledger_events(bulk, ordered_items, committed=True)
         self.assertEqual([event["type"] for event in ordered], ["trust.entry_posted", "trust.entry_posted", "trust.flag_raised", "trust.entry_posted", "trust.flag_raised"])
         self.assertEqual([event["balance_cents"] for event in ordered if event["type"] == "trust.flag_raised"], [-20, -15])
         separate = trust_ledger_events(
             bulk,
             [
-                row(entry_a, -5, opening={"matter_cents": 10, "client_cents": 10, "account_cents": 10}),
-                row(entry_b, -5, matter_id=other_matter, opening={"matter_cents": 100, "client_cents": 0, "account_cents": 0}),
+                row(entry_a, 5, opening={"matter_cents": 10, "client_cents": 10, "account_cents": 10}, kind="withdrawal"),
+                row(entry_b, 5, matter_id=other_matter, opening={"matter_cents": 100, "client_cents": 0, "account_cents": 0}, kind="withdrawal"),
             ],
             committed=True,
         )
         self.assertEqual([event["type"] for event in separate], ["trust.entry_posted", "trust.entry_posted"])
-        deposit_reversal = trust_ledger_events(reverse, [row(entry_a, -250, opening={"matter_cents": 200, "client_cents": 200, "account_cents": 200})], committed=True)
+        deposit_reversal = trust_ledger_events(reverse, [row(entry_a, -250, opening={"matter_cents": 200, "client_cents": 200, "account_cents": 200}, kind="reversal")], committed=True)
         self.assertEqual([event["type"] for event in deposit_reversal], ["trust.entry_posted", "trust.flag_raised"])
         self.assertEqual(deposit_reversal[1]["balance_cents"], -50)
         client_only = trust_ledger_events(
             post,
-            [row(entry_a, -10, opening={"matter_cents": 50, "client_cents": 5, "account_cents": 80})],
+            [row(entry_a, 10, opening={"matter_cents": 50, "client_cents": 5, "account_cents": 80}, kind="withdrawal")],
             committed=True,
         )
         self.assertEqual(client_only[1]["balance_scope"], "client")
@@ -5083,8 +5132,8 @@ class ContractTest(unittest.TestCase):
         mixed_accounts = trust_ledger_events(
             bulk,
             [
-                {"amount_cents": -30, "matter_id": matter_a, "client_id": client, "trust_account_id": account_a, "trust_entry_id": entry_a, "opening": {"matter_cents": 100, "client_cents": 50, "account_cents": 100}},
-                {"amount_cents": -30, "matter_id": matter_b, "client_id": client, "trust_account_id": account_b, "trust_entry_id": entry_b, "opening": {"matter_cents": 80, "client_cents": 50, "account_cents": 80}},
+                {"entry_type": "withdrawal", "amount_cents": 30, "method": "check", "description": "withdrawal", "matter_id": matter_a, "client_id": client, "trust_account_id": account_a, "trust_entry_id": entry_a, "opening": {"matter_cents": 100, "client_cents": 50, "account_cents": 100}},
+                {"entry_type": "withdrawal", "amount_cents": 30, "method": "check", "description": "withdrawal", "matter_id": matter_b, "client_id": client, "trust_account_id": account_b, "trust_entry_id": entry_b, "opening": {"matter_cents": 80, "client_cents": 50, "account_cents": 80}},
             ],
             committed=True,
         )
@@ -5148,6 +5197,10 @@ class ContractTest(unittest.TestCase):
         self.assertTrue(reversal["ledger_mutated"])
         self.assertTrue(reversal["flag"])
         self.assertEqual([event["type"] for event in reversal["events"]], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(reversal["trust_post"]["balances"], {"matter_cents": -1300, "client_cents": -1300, "account_cents": -1300})
+        self.assertEqual(reversal["trust_post"]["flags"][0]["balance_cents"], -1300)
+        self.assertEqual(reversal["trust_post"]["flags"][0]["scope"], "matter")
+        _component_validator(self.spec, "TrustPostResult").validate(reversal["trust_post"])
         restored = payment_reversal_decision(
             _operation(self.spec, "reversePayment"),
             {
@@ -5165,6 +5218,60 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(restored["result"], "allowed")
         self.assertFalse(restored["flag"])
         self.assertEqual([event["type"] for event in restored["events"]], ["trust.entry_posted"])
+        self.assertEqual(restored["trust_post"]["balances"], {"matter_cents": 3500, "client_cents": 3500, "account_cents": 3500})
+        self.assertEqual(restored["trust_post"]["flags"], [])
+        _component_validator(self.spec, "TrustPostResult").validate(restored["trust_post"])
+        hinted = payment_reversal_decision(
+            _operation(self.spec, "reversePayment"),
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                "below_zero": True,
+                "trust_account_id": account_row,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "opening": {"matter_cents": 5000, "client_cents": 5000, "account_cents": 5000},
+                **compensation,
+            },
+        )
+        self.assertFalse(hinted["flag"])
+        self.assertEqual(hinted["trust_post"]["flags"], [])
+        self.assertEqual(hinted["trust_post"]["balances"]["matter_cents"], 3500)
+        replayed_reversal = payment_reversal_decision(
+            _operation(self.spec, "reversePayment"),
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                "below_zero": True,
+                "trust_account_id": account_row,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "opening": {"matter_cents": 200, "client_cents": 200, "account_cents": 200},
+                "existing_reversal": {
+                    "id": entry_b,
+                    "entry_type": "reversal",
+                    "amount_cents": -1500,
+                    "direction": "debit",
+                    "reverses_entry_id": entry_a,
+                    "created_at": "2026-11-07T18:00:00Z",
+                    "created_by": "018f1a00-7b3c-7d4e-8a11-555555555555",
+                    "trust_account_id": account_row,
+                    "client_id": client,
+                    "matter_id": matter,
+                    "method": "internal_transfer",
+                    "description": "Payment reversal",
+                },
+                **compensation,
+            },
+        )
+        self.assertEqual(replayed_reversal["result"], "original_result")
+        self.assertEqual(replayed_reversal["events"], [])
+        self.assertEqual(replayed_reversal["trust_post"]["flags"], [])
+        self.assertFalse(replayed_reversal["ledger_mutated"])
         denied_reversal = payment_reversal_decision(
             _operation(self.spec, "reversePayment"),
             {"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": True, "matter_walled": False, "trust_account_id": account_row, "trust_accounts": accounts, "firm_id": "firm-1", **compensation},
