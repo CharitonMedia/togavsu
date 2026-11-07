@@ -2002,12 +2002,37 @@ def manifest_custom_fields(manifest: dict, claimed_module_id: str | None = None)
     return {"result": "allowed", "module_id": owner, "fields": fields}
 
 
-def normalize_manifest_permissions(permissions, *, signature_verified: bool) -> dict:
+_VIEW_SCOPE = re.compile(r"^views:([a-z0-9][a-z0-9-]*)\.([a-z][a-z0-9_]{0,62}):read$")
+
+
+def _registered_view_names(manifest: dict | None, published_views: list[str] | None) -> set[str]:
+    names = {name for name in (published_views or []) if isinstance(name, str)}
+    if not manifest:
+        return names
+    module_id = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    data = manifest.get("data") if isinstance(manifest.get("data"), dict) else {}
+    for view in data.get("views") or []:
+        if isinstance(view, dict) and isinstance(view.get("name"), str) and module_id:
+            names.add(f"{module_id}.{view['name']}")
+    return names
+
+
+def _scope_is_granted(scope: str, *, delegable: set[str], registered_views: set[str]) -> bool:
+    if scope in delegable:
+        return True
+    match = _VIEW_SCOPE.fullmatch(scope)
+    if not match or "*" in scope or "?" in scope:
+        return False
+    return f"{match.group(1)}.{match.group(2)}" in registered_views
+
+
+def normalize_manifest_permissions(permissions, *, signature_verified: bool, published_views: list[str] | None = None, manifest: dict | None = None) -> dict:
     """Strings are required-true shorthand. Normalization runs only after the signature verifies."""
     if not signature_verified:
         return {"result": "unsigned_module", "permissions": []}
     from contract.model import DELEGABLE_SCOPES
 
+    registered = _registered_view_names(manifest, published_views)
     normalized = []
     seen: dict[str, bool] = {}
     for item in permissions or []:
@@ -2019,16 +2044,28 @@ def normalize_manifest_permissions(permissions, *, signature_verified: bool) -> 
             scope, required = item["scope"], item["required"]
         else:
             return {"result": "validation_failed", "permissions": []}
-        if scope not in DELEGABLE_SCOPES or scope in seen:
+        if scope in seen or not _scope_is_granted(scope, delegable=set(DELEGABLE_SCOPES), registered_views=registered):
             return {"result": "validation_failed", "permissions": []}
         seen[scope] = required
         normalized.append({"scope": scope, "required": required})
     return {"result": "allowed", "permissions": normalized}
 
 
-def decide_module_permissions(manifest: dict, decisions: list[dict] | None, *, signature_verified: bool, previous: dict | None = None) -> dict:
+def decide_module_permissions(
+    manifest: dict,
+    decisions: list[dict] | None,
+    *,
+    signature_verified: bool,
+    previous: dict | None = None,
+    published_views: list[str] | None = None,
+) -> dict:
     """Required comes from the signed manifest. A required flag on the approval request is ignored."""
-    parsed = normalize_manifest_permissions(manifest.get("permissions"), signature_verified=signature_verified)
+    parsed = normalize_manifest_permissions(
+        manifest.get("permissions"),
+        signature_verified=signature_verified,
+        published_views=published_views,
+        manifest=manifest,
+    )
     version = manifest.get("version")
     kept = previous.get("version") if previous else None
     if parsed["result"] != "allowed":
@@ -2045,27 +2082,54 @@ def decide_module_permissions(manifest: dict, decisions: list[dict] | None, *, s
         elif choice == "decline":
             declined.add(scope)
     rows = parsed["permissions"]
+    requested = [row["scope"] for row in rows]
     if any(row["required"] and row["scope"] in declined for row in rows):
         listed = [{**row, "approved": False} for row in rows]
         return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
-    previous_scopes = set((previous or {}).get("approved_scopes") or [])
-    pending = [row["scope"] for row in rows if row["scope"] not in previous_scopes and row["scope"] not in approved and row["scope"] not in declined]
+    previous_scopes = [scope for scope in (previous or {}).get("approved_scopes") or [] if scope in requested and scope not in declined]
+    pending = [scope for scope in requested if scope not in previous_scopes and scope not in approved and scope not in declined]
     if previous and pending:
         listed = [{**row, "approved": row["scope"] in previous_scopes} for row in rows]
         return {
             "result": "awaiting_approval",
             "outcome": "awaiting_approval",
-            "token_scopes": [scope for scope in previous.get("approved_scopes") or []],
+            "token_scopes": previous_scopes,
             "permissions": listed,
             "version": kept,
             "previous_version": kept,
         }
-    if any(row["required"] and row["scope"] not in approved for row in rows):
+    if previous is None and any(row["required"] and row["scope"] not in approved for row in rows):
         listed = [{**row, "approved": False} for row in rows]
         return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
-    token = [row["scope"] for row in rows if row["scope"] in approved and row["scope"] not in declined]
+    token = [scope for scope in requested if scope not in declined and (scope in previous_scopes or scope in approved)]
     listed = [{**row, "approved": row["scope"] in token} for row in rows]
     return {"result": "installed", "outcome": "installed", "token_scopes": token, "permissions": listed, "version": version, "previous_version": kept}
+
+
+def replace_matter_wall(operation: dict, call: dict) -> dict:
+    """Check the current wall before replacing it. Denial leaves the membership and emits nothing."""
+    access = operation["x-togavsu-access"]
+    current = call.get("current_wall")
+    unchanged = {"mutated": False, "event": None, "wall": current}
+    if not access.get("matter_wall") or access.get("admin_bypasses_wall"):
+        return {"result": "forbidden", **unchanged}
+    role = call.get("viewer_role", call.get("role"))
+    if role not in access.get("roles", []):
+        return {"result": "forbidden", **unchanged}
+    scopes = call.get("module_scopes") if call.get("caller_module_id") else call.get("token_scopes")
+    if scopes is not None and any(scope not in scopes for scope in access.get("scopes", [])):
+        return {"result": "scope_denied", **unchanged}
+    if call.get("matter_walled") and not call.get("on_wall"):
+        return {"result": "not_found", **unchanged}
+    user_ids = call.get("user_ids")
+    if not isinstance(user_ids, list):
+        return {"result": "validation_failed", **unchanged}
+    return {
+        "result": "allowed",
+        "mutated": True,
+        "event": "matter.wall_changed",
+        "wall": {"matter_id": call.get("matter_id"), "user_ids": list(user_ids)},
+    }
 
 
 def include_views_decision(operation: dict, call: dict) -> str:
@@ -2080,6 +2144,8 @@ def include_views_decision(operation: dict, call: dict) -> str:
     if access.get("attorney_only") and call.get("role") not in ("attorney", "admin"):
         return "not_found"
     approved = set(call.get("approved_scopes") or [])
+    if "current_approved_scopes" in call:
+        approved &= set(call.get("current_approved_scopes") or [])
     for view in call.get("include") or []:
         if view.count(".") != 1:
             return "validation_failed"

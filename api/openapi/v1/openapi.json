@@ -11073,7 +11073,7 @@
       "put": {
         "operationId": "putMatterWall",
         "summary": "Replace a matter wall",
-        "description": "Sets the users who can see the matter. An empty list removes the wall. Everyone else loses it from lists, search, widgets, reports, and direct reads.",
+        "description": "Replaces the wall only after the caller is allowed through the current wall, the same check as reading it. An admin who is off the wall, including a module acting for that admin, receives not_found. The membership is not replaced and matter.wall_changed is not emitted. An open matter can gain its first wall. A caller on the wall can replace the list or clear it.",
         "tags": [
           "Matters"
         ],
@@ -11143,8 +11143,13 @@
             "matters:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
+          "access_inherits": "matter",
+          "admin_bypasses_wall": false,
+          "authorize_before": "any_mutation",
+          "on_denial": "no_mutation_no_event",
+          "open_matter": "may_create_wall",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -55861,7 +55866,7 @@
       "post": {
         "operationId": "decideModulePermissions",
         "summary": "Approve module permissions",
-        "description": "Decisions name scopes from the signed manifest. required on this body is ignored. A declined required permission cancels the install and issues no token. Declining an optional permission installs with a token of only the approved scopes. New permissions on an update wait here while the old version keeps running.",
+        "description": "Decisions name scopes from the signed manifest. required on this body is ignored. A declined required permission cancels the install and issues no token. Declining an optional permission installs with a token of only the approved scopes. New permissions on an update wait here while the old version keeps running. Previously approved scopes stay unless this manifest drops them or the decision explicitly declines them. Approving only a new scope does not drop the older approved scopes, and a new scope is not approved automatically.",
         "tags": [
           "Modules"
         ],

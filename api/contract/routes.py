@@ -944,7 +944,12 @@ def _practice(api: Contract) -> None:
         "/api/v1/matters/{matter_id}/wall",
         operation_id="putMatterWall",
         summary="Replace a matter wall",
-        description="Sets the users who can see the matter. An empty list removes the wall. Everyone else loses it from lists, search, widgets, reports, and direct reads.",
+        description=(
+            "Replaces the wall only after the caller is allowed through the current wall, the same check as reading it. "
+            "An admin who is off the wall, including a module acting for that admin, receives not_found. "
+            "The membership is not replaced and matter.wall_changed is not emitted. "
+            "An open matter can gain its first wall. A caller on the wall can replace the list or clear it."
+        ),
         tag="Matters",
         features=["matter-walls"],
         roles=ADMIN,
@@ -952,6 +957,13 @@ def _practice(api: Contract) -> None:
         body="MatterWall",
         response="MatterWall",
         events=["matter.wall_changed"],
+        extra_access={
+            **WALL,
+            "admin_bypasses_wall": False,
+            "authorize_before": "any_mutation",
+            "on_denial": "no_mutation_no_event",
+            "open_matter": "may_create_wall",
+        },
     )
     api.add(
         "get",
@@ -3931,7 +3943,9 @@ def _modules(api: Contract) -> None:
             "Decisions name scopes from the signed manifest. required on this body is ignored. "
             "A declined required permission cancels the install and issues no token. "
             "Declining an optional permission installs with a token of only the approved scopes. "
-            "New permissions on an update wait here while the old version keeps running."
+            "New permissions on an update wait here while the old version keeps running. "
+            "Previously approved scopes stay unless this manifest drops them or the decision explicitly declines them. "
+            "Approving only a new scope does not drop the older approved scopes, and a new scope is not approved automatically."
         ),
         tag="Modules",
         features=["modules"],

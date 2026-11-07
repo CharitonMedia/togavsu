@@ -37,6 +37,7 @@ from contract.policy import (
     notification_page,
     notification_recipient_decision,
     decide_module_permissions,
+    replace_matter_wall,
     manifest_contributions,
     manifest_custom_fields,
     module_ui_targets,
@@ -567,6 +568,49 @@ class ContractTest(unittest.TestCase):
             access = _operation(self.spec, operation_id)["x-togavsu-access"]
             self.assertTrue(access["matter_wall"], operation_id)
             self.assertEqual(access["access_inherits"], inherits, operation_id)
+        put_wall = _operation(self.spec, "putMatterWall")
+        get_wall = _operation(self.spec, "getMatterWall")
+        self.assertTrue(put_wall["x-togavsu-access"]["matter_wall"])
+        self.assertTrue(get_wall["x-togavsu-access"]["matter_wall"])
+        self.assertEqual(put_wall["x-togavsu-access"]["access_inherits"], "matter")
+        self.assertEqual(get_wall["x-togavsu-access"]["access_inherits"], "matter")
+        self.assertEqual(put_wall["x-togavsu-access"]["authorize_before"], "any_mutation")
+        self.assertFalse(put_wall["x-togavsu-access"]["admin_bypasses_wall"])
+        current = {"matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333", "user_ids": ["018f1a00-7b3c-7d4e-8a11-222222222222"]}
+        off_wall = {
+            "role": "admin",
+            "matter_walled": True,
+            "on_wall": False,
+            "user_ids": [],
+            "current_wall": current,
+            "token_scopes": ["matters:write"],
+            "matter_id": current["matter_id"],
+        }
+        denied = replace_matter_wall(put_wall, off_wall)
+        self.assertEqual(denied["result"], "not_found")
+        self.assertFalse(denied["mutated"])
+        self.assertIsNone(denied["event"])
+        self.assertEqual(denied["wall"], current)
+        delegated = replace_matter_wall(
+            put_wall,
+            {**off_wall, "viewer_role": "admin", "caller_module_id": "clock", "module_scopes": ["matters:write"], "user_ids": ["018f1a00-7b3c-7d4e-8a11-111111111111"]},
+        )
+        self.assertEqual(delegated["result"], "not_found")
+        self.assertFalse(delegated["mutated"])
+        self.assertIsNone(delegated["event"])
+        kept = replace_matter_wall(
+            put_wall,
+            {**off_wall, "on_wall": True, "user_ids": ["018f1a00-7b3c-7d4e-8a11-111111111111"]},
+        )
+        self.assertEqual(kept["result"], "allowed")
+        self.assertTrue(kept["mutated"])
+        self.assertEqual(kept["event"], "matter.wall_changed")
+        opened = replace_matter_wall(
+            put_wall,
+            {"role": "admin", "matter_walled": False, "on_wall": False, "user_ids": ["018f1a00-7b3c-7d4e-8a11-111111111111"], "token_scopes": ["matters:write"], "matter_id": current["matter_id"]},
+        )
+        self.assertEqual(opened["result"], "allowed")
+        self.assertTrue(opened["mutated"])
 
     def test_first_admin_enrolls_totp_before_a_session(self):
         setup = self.spec["paths"]["/api/v1/setup"]["post"]
@@ -1043,6 +1087,86 @@ class ContractTest(unittest.TestCase):
             "validation_failed",
         )
         self.assertEqual(decide_module_permissions({**manifest, "permissions": ["settings:write"]}, [], signature_verified=True)["result"], "validation_failed")
+        published = ["matter-clock.targets"]
+        view_scope = "views:matter-clock.targets:read"
+        unchanged = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read", {"scope": "files:write", "required": False}]},
+            [],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read", "files:write"]},
+        )
+        self.assertEqual(unchanged["outcome"], "installed")
+        self.assertEqual(unchanged["version"], "0.2.0")
+        self.assertEqual(unchanged["token_scopes"], ["matters:read", "files:write"])
+        only_new = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read", "trust:read"]},
+            [{"scope": "trust:read", "decision": "approve"}],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read"]},
+        )
+        self.assertEqual(only_new["outcome"], "installed")
+        self.assertEqual(only_new["token_scopes"], ["matters:read", "trust:read"])
+        self.assertNotIn("notes:read", only_new["token_scopes"])
+        removed = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read"]},
+            [{"scope": "files:write", "decision": "decline"}],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read", "files:write", "notes:read"]},
+        )
+        self.assertEqual(removed["token_scopes"], ["matters:read"])
+        self.assertNotIn("files:write", removed["token_scopes"])
+        self.assertNotIn("notes:read", removed["token_scopes"])
+        for bad_scope in ("views:matter-clock.*:read", "views:matter-clock.targets:write", "views:matter-clock.missing:read", "users:write"):
+            self.assertEqual(
+                decide_module_permissions({**manifest, "permissions": ["matters:read", bad_scope]}, [], signature_verified=True, published_views=published)["result"],
+                "validation_failed",
+                bad_scope,
+            )
+        granted = decide_module_permissions(
+            {"id": "intake", "version": "0.2.0", "permissions": ["matters:read", {"scope": view_scope, "required": False}]},
+            [{"scope": view_scope, "decision": "approve", "required": True}],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read"]},
+            published_views=published,
+        )
+        self.assertEqual(granted["outcome"], "installed")
+        self.assertEqual(granted["token_scopes"], ["matters:read", view_scope])
+        self.assertTrue(next(row for row in granted["permissions"] if row["scope"] == view_scope)["required"] is False)
+        matter = _operation(self.spec, "getMatter")
+        self.assertEqual(
+            include_views_decision(matter, {"role": "staff", "approved_scopes": granted["token_scopes"], "current_approved_scopes": granted["token_scopes"], "include": ["matter-clock.targets"]}),
+            "allowed",
+        )
+        self.assertEqual(
+            include_views_decision(matter, {"role": "staff", "approved_scopes": ["matters:read", view_scope], "current_approved_scopes": ["matters:read"], "include": ["matter-clock.targets"]}),
+            "forbidden",
+        )
+        self.assertEqual(
+            include_views_decision(matter, {"role": "staff", "approved_scopes": granted["token_scopes"], "include": ["other.secret"]}),
+            "forbidden",
+        )
+        self.assertEqual(
+            include_views_decision(matter, {"role": "client", "approved_scopes": granted["token_scopes"], "include": ["matter-clock.targets"]}),
+            "forbidden",
+        )
+        self.assertEqual(
+            include_views_decision(
+                matter,
+                {"role": "staff", "approved_scopes": granted["token_scopes"], "include": ["matter-clock.targets"], "matter_walled": True, "on_wall": False},
+            ),
+            "not_found",
+        )
+        held = decide_module_permissions(
+            {"id": "intake", "version": "0.2.0", "permissions": ["matters:read", view_scope]},
+            [],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read"]},
+            published_views=published,
+        )
+        self.assertEqual(held["outcome"], "awaiting_approval")
+        self.assertEqual(held["version"], "0.1.0")
+        self.assertEqual(held["token_scopes"], ["matters:read"])
+        self.assertNotIn(view_scope, held["token_scopes"])
 
     def test_doc_tender_result_is_readable(self):
         file_schema = self.spec["components"]["schemas"]["File"]["properties"]
