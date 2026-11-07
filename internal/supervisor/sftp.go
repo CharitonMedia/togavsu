@@ -51,8 +51,15 @@ func (s *SFTPDestination) Put(ctx context.Context, name string, r io.Reader, sha
 			return ErrChecksum
 		}
 	}
-	remote := s.remote(name)
-	return s.batch(ctx, "put "+tmp.Name()+" "+remote)
+	remote, err := s.remote(name)
+	if err != nil {
+		return err
+	}
+	local, err := quoteSFTP(tmp.Name())
+	if err != nil {
+		return err
+	}
+	return s.batch(ctx, "put "+local+" "+remote)
 }
 
 func (s *SFTPDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -65,7 +72,15 @@ func (s *SFTPDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 	}
 	tmp.Close()
 	os.Remove(tmp.Name())
-	if err := s.batch(ctx, "get "+s.remote(name)+" "+tmp.Name()); err != nil {
+	remote, err := s.remote(name)
+	if err != nil {
+		return nil, err
+	}
+	local, err := quoteSFTP(tmp.Name())
+	if err != nil {
+		return nil, err
+	}
+	if err := s.batch(ctx, "get "+remote+" "+local); err != nil {
 		os.Remove(tmp.Name())
 		return nil, err
 	}
@@ -80,11 +95,19 @@ func (s *SFTPDestination) Delete(ctx context.Context, name string) error {
 	if err := safeName(name); err != nil {
 		return err
 	}
-	return s.batch(ctx, "rm "+s.remote(name))
+	remote, err := s.remote(name)
+	if err != nil {
+		return err
+	}
+	return s.batch(ctx, "rm "+remote)
 }
 
 func (s *SFTPDestination) List(ctx context.Context) ([]RemoteObject, error) {
-	out, err := s.output(ctx, "ls -1 "+s.Spec.RemotePath)
+	quoted, err := quoteSFTP(s.Spec.RemotePath)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.output(ctx, "ls -1 "+quoted)
 	if err != nil {
 		return nil, err
 	}
@@ -107,8 +130,45 @@ func (s *SFTPDestination) Test(ctx context.Context) error {
 	return roundTripTest(ctx, s)
 }
 
-func (s *SFTPDestination) remote(name string) string {
-	return strings.TrimRight(s.Spec.RemotePath, "/") + "/" + name
+func (s *SFTPDestination) remote(name string) (string, error) {
+	if err := validSFTPPath(s.Spec.RemotePath); err != nil {
+		return "", err
+	}
+	return quoteSFTP(strings.TrimRight(s.Spec.RemotePath, "/") + "/" + name)
+}
+
+// quoteSFTP wraps a batch argument. Control characters are rejected because
+// a newline starts another sftp command, including !command, which OpenSSH
+// runs in the local shell.
+func quoteSFTP(path string) (string, error) {
+	if err := validSFTPPath(path); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range path {
+		if r == '"' || r == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('"')
+	return b.String(), nil
+}
+
+func validSFTPPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("%w: empty sftp path", ErrBadRequest)
+	}
+	for _, r := range path {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("%w: control character in sftp path", ErrBadRequest)
+		}
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("%w: sftp path", ErrBadRequest)
+	}
+	return nil
 }
 
 func (s *SFTPDestination) batch(ctx context.Context, commands string) error {

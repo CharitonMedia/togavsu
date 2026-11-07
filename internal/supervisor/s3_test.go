@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,54 @@ func TestS3RoundTripAndSignature(t *testing.T) {
 	}
 	if err := dest.Test(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestS3FileUploadSetsContentLength(t *testing.T) {
+	var length int64
+	var got []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "method", 405)
+			return
+		}
+		if r.ContentLength <= 0 || r.TransferEncoding != nil && len(r.TransferEncoding) > 0 {
+			http.Error(w, "chunked", http.StatusBadRequest)
+			return
+		}
+		length = r.ContentLength
+		got, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	f, err := os.CreateTemp(t.TempDir(), "archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte("synthetic-archive-from-file")
+	if _, err := f.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := &S3Destination{
+		Spec: DestinationSpec{
+			ID: "obj", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+			Bucket: "backups", AccessKey: "AKID", SecretKey: "secret",
+		},
+		HTTP: srv.Client(),
+		Now:  func() time.Time { return time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC) },
+	}
+	if err := dest.Put(context.Background(), "obj.bin", f, sum); err != nil {
+		t.Fatal(err)
+	}
+	if length != int64(len(body)) || !bytes.Equal(got, body) {
+		t.Fatalf("length %d body %q", length, got)
 	}
 }
 

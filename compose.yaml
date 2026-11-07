@@ -87,7 +87,10 @@ services:
 
   # The core service is part of the one-project install. Its image build fails
   # closed until cmd/core lands, so AC-001 is not claimed by this file.
+  # togavsu.role=core is how the supervisor finds this container.
   core:
+    labels:
+      togavsu.role: core
     build:
       context: .
       dockerfile: deploy/core.Dockerfile

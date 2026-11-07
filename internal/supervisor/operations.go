@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -132,27 +133,50 @@ func (o *Operations) Restore(ctx context.Context, id string) (RestoreRecord, err
 		}
 		for _, core := range cores {
 			if err := o.Runtime.Stop(ctx, core.ID); err != nil {
-				o.start(ctx, stopped)
+				if startErr := o.restart(ctx, stopped); startErr != nil {
+					joined := fmt.Errorf("stop %s: %w; restart failed: %v", core.ID, err, startErr)
+					return o.finish(rec, joined), joined
+				}
 				return o.finish(rec, err), err
 			}
 			stopped = append(stopped, core)
 		}
 	}
-	err = o.Store.Restore(ctx, id, "", func(ctx context.Context, r io.Reader, _ Manifest) error {
-		return o.ApplyDump(ctx, r)
-	})
+	apply := func(ctx context.Context, payload RestorePayload) error {
+		return o.ApplyDump(ctx, payload.Dump)
+	}
+	err = o.Store.Restore(ctx, id, "", apply)
 	if err != nil {
-		_ = o.Store.Restore(ctx, safety.ID, "", func(ctx context.Context, r io.Reader, _ Manifest) error {
-			return o.ApplyDump(ctx, r)
-		})
-		o.start(ctx, stopped)
+		recErr := o.Store.Restore(ctx, safety.ID, "", apply)
+		if recErr != nil {
+			joined := fmt.Errorf("restore failed: %w; safety restore failed: %v", err, recErr)
+			if o.Outbox != nil {
+				_ = o.Outbox.Notify(ctx, "Restore failed", "The restore failed and the safety backup could not be applied. The core was left stopped. "+Scrub(joined.Error()))
+			}
+			rec = o.finish(rec, joined)
+			return rec, joined
+		}
+		if startErr := o.restart(ctx, stopped); startErr != nil {
+			joined := fmt.Errorf("restore failed: %w; safety backup applied; restart failed: %v", err, startErr)
+			if o.Outbox != nil {
+				_ = o.Outbox.Notify(ctx, "Restore failed", Scrub(joined.Error()))
+			}
+			rec = o.finish(rec, joined)
+			return rec, joined
+		}
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(ctx, "Restore failed", "The restore failed and the safety backup was applied. "+Scrub(err.Error()))
 		}
 		rec = o.finish(rec, err)
 		return rec, err
 	}
-	o.start(ctx, stopped)
+	if startErr := o.restart(ctx, stopped); startErr != nil {
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(ctx, "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
+		}
+		rec = o.finish(rec, startErr)
+		return rec, startErr
+	}
 	rec.Status = "completed"
 	rec.Finished = o.now().UTC()
 	o.recordRestore(rec)
@@ -185,17 +209,21 @@ func (o *Operations) TestRestore(ctx context.Context, id string) error {
 	return err
 }
 
-func (o *Operations) start(ctx context.Context, cores []ContainerInfo) {
-	if o.Runtime == nil {
-		return
+func (o *Operations) restart(ctx context.Context, cores []ContainerInfo) error {
+	if o.Runtime == nil || len(cores) == 0 {
+		return nil
 	}
+	var errs []error
 	for _, core := range cores {
-		name := core.Name
-		if name == "" {
-			name = "togavsu-core"
+		if err := o.Runtime.Start(ctx, core.ID); err != nil {
+			errs = append(errs, fmt.Errorf("start %s: %w", core.ID, err))
+			continue
 		}
-		_, _ = o.Runtime.StartCore(ctx, core.Image, name)
+		if err := o.Runtime.WaitHealthy(ctx, core.ID, time.Minute); err != nil {
+			errs = append(errs, fmt.Errorf("health %s: %w", core.ID, err))
+		}
 	}
+	return errors.Join(errs...)
 }
 
 func (o *Operations) finish(rec RestoreRecord, err error) RestoreRecord {

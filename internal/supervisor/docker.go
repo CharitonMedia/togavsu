@@ -23,6 +23,41 @@ type DockerRuntime struct {
 	BaseURL string
 	Network string
 	Env     []string
+	Binds   []string
+}
+
+// CoreEnv is the environment the Compose core service receives. Replacements
+// started by the supervisor must carry the same files and supervisor address.
+func CoreEnv() []string {
+	return []string{
+		"DATABASE_URL_FILE=/appsecrets/database_url",
+		"FIELD_KEY_FILE=/appsecrets/field_key",
+		"SUPERVISOR_URL=http://supervisor:8081",
+		"SUPERVISOR_TOKEN_FILE=/appsecrets/supervisor_token",
+	}
+}
+
+// CoreBinds mounts the installer secret volume. The default name matches the
+// Compose project name togavsu.
+func CoreBinds(volume string) []string {
+	if volume == "" {
+		volume = "togavsu_appsecrets"
+	}
+	return []string{volume + ":/appsecrets"}
+}
+
+func (d *DockerRuntime) coreEnv() []string {
+	if len(d.Env) == 0 {
+		return CoreEnv()
+	}
+	return d.Env
+}
+
+func (d *DockerRuntime) coreBinds() []string {
+	if len(d.Binds) == 0 {
+		return CoreBinds("")
+	}
+	return d.Binds
 }
 
 func DockerSocketClient(socketPath string) *http.Client {
@@ -76,13 +111,30 @@ func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, r
 	return out, nil
 }
 
+func (d *DockerRuntime) Pull(ctx context.Context, image string) error {
+	if err := ImmutableImage(image); err != nil {
+		return err
+	}
+	q := url.Values{}
+	q.Set("fromImage", image)
+	return d.call(ctx, http.MethodPost, dockerAPI+"/images/create?"+q.Encode(), nil, nil)
+}
+
+func (d *DockerRuntime) Start(ctx context.Context, id string) error {
+	return d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+id+"/start", nil, nil)
+}
+
 func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (ContainerInfo, error) {
 	body := map[string]any{
-		"Image":  image,
-		"Labels": map[string]string{"togavsu.role": "core", "togavsu.core.active": "0"},
-		"Env":    d.Env,
+		"Image": image,
+		"Labels": map[string]string{
+			"togavsu.role":        "core",
+			"togavsu.core.active": "0",
+		},
+		"Env": d.coreEnv(),
 		"HostConfig": map[string]any{
 			"NetworkMode": d.Network,
+			"Binds":       d.coreBinds(),
 		},
 	}
 	var created struct {
@@ -224,7 +276,7 @@ func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
 	if m.Docker == nil || m.Docker.Client == nil {
 		return false, ErrMigratorUnconfigured
 	}
-	env := append([]string{}, m.Docker.Env...)
+	env := append([]string{}, m.Docker.coreEnv()...)
 	if m.DatabaseURL != "" {
 		env = append(env, "DATABASE_URL="+m.DatabaseURL)
 	}
@@ -235,6 +287,7 @@ func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
 		"Tty":   true,
 		"HostConfig": map[string]any{
 			"NetworkMode": m.Docker.Network,
+			"Binds":       m.Docker.coreBinds(),
 		},
 	}
 	var created struct {

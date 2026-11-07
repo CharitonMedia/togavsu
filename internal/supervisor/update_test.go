@@ -4,15 +4,20 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
+const testReleaseImage = "ghcr.io/charitonmedia/togavsu-core@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 type scriptRuntime struct {
-	order  *[]string
-	cores  []ContainerInfo
-	health error
-	stopID string
+	order     *[]string
+	cores     []ContainerInfo
+	health    error
+	stopID    string
+	failStart string
+	used      map[string]bool
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -23,9 +28,28 @@ func (r *scriptRuntime) ListCores(context.Context) ([]ContainerInfo, error) {
 	r.add("list")
 	return r.cores, nil
 }
+func (r *scriptRuntime) Pull(_ context.Context, image string) error {
+	r.add("pull:" + image)
+	return nil
+}
 func (r *scriptRuntime) StartCore(_ context.Context, image, name string) (ContainerInfo, error) {
+	if r.used == nil {
+		r.used = map[string]bool{}
+	}
+	if r.used[name] {
+		return ContainerInfo{}, errors.New("name already in use")
+	}
+	r.used[name] = true
 	r.add("start:" + image)
-	return ContainerInfo{ID: "new", Name: name, Image: image}, nil
+	r.add("name:" + name)
+	return ContainerInfo{ID: "new-" + name, Name: name, Image: image}, nil
+}
+func (r *scriptRuntime) Start(_ context.Context, id string) error {
+	r.add("restart:" + id)
+	if id == r.failStart {
+		return errors.New("start failed")
+	}
+	return nil
 }
 func (r *scriptRuntime) WaitHealthy(context.Context, string, time.Duration) error {
 	r.add("health")
@@ -71,9 +95,17 @@ func TestUpdateHappyPathOrder(t *testing.T) {
 	if got.Status != "applied" || restored {
 		t.Fatalf("result %+v restored %v", got, restored)
 	}
-	want := []string{"list", "backup", "migrate", "start:togavsu-core:1.1.0", "health", "switch:togavsu-core-next:8080", "stop:old", "remove:old"}
-	if stringsJoin(order) != stringsJoin(want) {
-		t.Fatalf("order %v", order)
+	if !containsStep(order, "pull:"+testReleaseImage) || !containsStep(order, "start:"+testReleaseImage) || !containsStep(order, "migrate:"+testReleaseImage) {
+		t.Fatalf("digest was not pulled and executed: %v", order)
+	}
+	var name string
+	for _, step := range order {
+		if strings.HasPrefix(step, "name:") {
+			name = strings.TrimPrefix(step, "name:")
+		}
+	}
+	if name == "" || name == "togavsu-core-next" || !containsStep(order, "switch:"+name+":8080") {
+		t.Fatalf("name %q order %v", name, order)
 	}
 }
 
@@ -87,7 +119,7 @@ func TestUpdateRejectsBadSignatureAndKeepsCore(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	for _, step := range order {
-		if step == "stop:old" || step == "migrate" || step == "backup" {
+		if step == "stop:old" || step == "backup" || strings.HasPrefix(step, "migrate") || strings.HasPrefix(step, "pull:") {
 			t.Fatalf("signature failure continued: %v", order)
 		}
 	}
@@ -112,8 +144,17 @@ func TestUpdateHealthFailureRestoresBackup(t *testing.T) {
 	if !got.Restored || !got.MigrationRan {
 		t.Fatalf("result %+v", got)
 	}
-	if stringsJoin(order) != stringsJoin([]string{"list", "backup", "migrate", "start:togavsu-core:1.1.0", "health", "stop:new", "remove:new", "restore"}) {
+	if !containsStep(order, "pull:"+testReleaseImage) || !containsStep(order, "restore") {
 		t.Fatalf("order %v", order)
+	}
+	stoppedNew := false
+	for _, step := range order {
+		if strings.HasPrefix(step, "stop:new-") {
+			stoppedNew = true
+		}
+	}
+	if !stoppedNew {
+		t.Fatalf("new container was not stopped: %v", order)
 	}
 	for _, step := range order {
 		if step == "stop:old" || step == "switch:togavsu-core-next:8080" {
@@ -154,9 +195,48 @@ func TestUpdateMissingMigratorDoesNotSwitch(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	for _, step := range order {
-		if step == "switch:togavsu-core-next:8080" || step == "start:togavsu-core:1.1.0" {
+		if strings.HasPrefix(step, "switch:") || strings.HasPrefix(step, "start:") {
 			t.Fatalf("switched without migrations: %v", order)
 		}
+	}
+}
+
+func TestUpdateRejectsMutableTag(t *testing.T) {
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
+	up := testUpdater(t, rt, &order)
+	up.Registry = staticRegistry{Release{Image: "togavsu-core:1.1.0", Version: "1.1.0"}}
+	_, err := up.Apply(context.Background(), true)
+	if !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("got %v", err)
+	}
+	for _, step := range order {
+		if strings.HasPrefix(step, "pull:") || strings.HasPrefix(step, "start:") || step == "backup" {
+			t.Fatalf("mutable tag continued: %v", order)
+		}
+	}
+}
+
+func TestTwoConsecutiveUpdatesUseDistinctNames(t *testing.T) {
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	if _, err := up.Apply(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := up.Apply(context.Background(), true); err != nil {
+		t.Fatalf("second update: %v order %v", err, order)
+	}
+	var names []string
+	for _, step := range order {
+		if strings.HasPrefix(step, "name:") {
+			names = append(names, strings.TrimPrefix(step, "name:"))
+		}
+	}
+	if len(names) != 2 || names[0] == names[1] || names[0] == "togavsu-core-next" {
+		t.Fatalf("names %v", names)
 	}
 }
 
@@ -176,7 +256,7 @@ func testUpdater(t *testing.T, rt *scriptRuntime, order *[]string) *Updater {
 	return &Updater{
 		Now:      func() time.Time { return time.Date(2026, 1, 2, 2, 30, 0, 0, time.UTC) },
 		Window:   Window{Start: 2 * time.Hour, End: 4 * time.Hour, Location: time.UTC},
-		Registry: staticRegistry{Release{Image: "togavsu-core:1.1.0", Version: "1.1.0"}},
+		Registry: staticRegistry{Release{Image: testReleaseImage, Version: "1.1.0"}},
 		Verifier: allowVerifier{},
 		Runtime:  rt,
 		Migrator: scriptMigrator{order: order},
@@ -211,9 +291,18 @@ func (allowVerifier) Verify(context.Context, string) error { return nil }
 
 type scriptMigrator struct{ order *[]string }
 
-func (m scriptMigrator) Apply(context.Context, string) (bool, error) {
-	*m.order = append(*m.order, "migrate")
+func (m scriptMigrator) Apply(_ context.Context, image string) (bool, error) {
+	*m.order = append(*m.order, "migrate:"+image)
 	return true, nil
+}
+
+func containsStep(steps []string, want string) bool {
+	for _, step := range steps {
+		if step == want {
+			return true
+		}
+	}
+	return false
 }
 
 func stringsJoin(v []string) string {

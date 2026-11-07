@@ -18,6 +18,7 @@ required = [
     "POSTGRES_PASSWORD_FILE",
     "SUPERVISOR_TOKEN_FILE",
     "deploy/core.Dockerfile",
+    "togavsu.role: core",
 ]
 missing = [item for item in required if item not in text]
 if missing:

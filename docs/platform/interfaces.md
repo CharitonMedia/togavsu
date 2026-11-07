@@ -12,8 +12,8 @@ Order when a newer release exists:
 
 1. Refuse outside 02:00–04:00 firm time unless `force` is true. Default zone is `FIRM_TIMEZONE` (UTC until the settings registry is the source).
 2. Refuse when `UPDATES_PAUSED` is set, unless `force` is true.
-3. Read `TOGAVSU_RELEASE_INDEX`, a JSON document `{"image":"...","version":"1.2.3"}`.
-4. Verify with `cosign verify --key $COSIGN_KEY`. A missing key or a failed verify refuses the update and leaves the running core in place.
+3. Read `TOGAVSU_RELEASE_INDEX`, a JSON document `{"image":"ghcr.io/charitonmedia/togavsu-core@sha256:<64 hex>","version":"1.2.3"}`. A tag without a digest is refused.
+4. Verify that digest with `cosign verify --key $COSIGN_KEY`, pull that same digest, and migrate and start only that digest. A missing key, a failed verify, or a failed pull leaves the running core in place.
 5. Take a `pre-update` backup.
 6. Run the new image as a one-shot container with command `migrate`. The image must exit 0 and print `migrated=true` when it applied a migration. A checksum mismatch or a failed migration aborts the swap. If a migration ran, the supervisor restores the pre-update backup.
 7. Start `togavsu-core-next`, wait until its Docker health check is `healthy`, and refuse a missing health check.
@@ -38,7 +38,7 @@ The core image must serve the product on port 8080 and define a Docker health ch
 | POST | `/v1/backup-destinations` | Adds a `path`, `s3`, or `sftp` destination. Secrets are not returned. |
 | POST | `/v1/backup-destinations/{id}/test` | Writes and reads a probe object. |
 | DELETE | `/v1/backup-destinations/{id}` | Forgets the destination. |
-| POST | `/v1/restores` | Body `{"backup_id":"..."}`. Stops core containers, applies the dump, starts them again. |
+| POST | `/v1/restores` | Body `{"backup_id":"..."}`. Stops the labeled core containers, applies the dump over the existing database, and starts those same containers again only after the data is in place. File bytes in the archive are on disk for the apply callback. |
 | GET | `/v1/restores/{id}` | Last ledger event for that restore. |
 | POST | `/v1/test-restores` | Body `{"backup_id":"..."}`. Restores into a throwaway database and compares counts. |
 

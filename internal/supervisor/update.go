@@ -43,7 +43,9 @@ type ContainerInfo struct {
 // Runtime is the Docker socket, held only by the supervisor.
 type Runtime interface {
 	ListCores(ctx context.Context) ([]ContainerInfo, error)
+	Pull(ctx context.Context, image string) error
 	StartCore(ctx context.Context, image, name string) (ContainerInfo, error)
+	Start(ctx context.Context, id string) error
 	WaitHealthy(ctx context.Context, id string, timeout time.Duration) error
 	Stop(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
@@ -126,10 +128,18 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	} else if release.Image == "" || release.Image == current.Image {
 		return UpdateResult{Status: "up_to_date", From: current.Image, To: release.Image}, nil
 	}
+	if err := ImmutableImage(release.Image); err != nil {
+		u.notify(ctx, "Update refused", "The release index did not name an immutable image digest. The running version was left in place.")
+		return UpdateResult{Status: "refused", Reason: "digest", From: current.Image, To: release.Image}, err
+	}
 	if err := u.Verifier.Verify(ctx, release.Image); err != nil {
 		u.record("update", map[string]string{"status": "refused", "reason": "signature", "image": release.Image})
 		u.notify(ctx, "Update refused", "The new core image failed signature verification. The running version was left in place.")
 		return UpdateResult{Status: "refused", Reason: "signature", From: current.Image, To: release.Image}, ErrSignature
+	}
+	if err := u.Runtime.Pull(ctx, release.Image); err != nil {
+		u.notify(ctx, "Update refused", "The verified image digest could not be pulled. The running version was left in place.")
+		return UpdateResult{Status: "refused", Reason: "pull", From: current.Image, To: release.Image}, err
 	}
 	var backupID string
 	if u.Backup != nil {
@@ -151,7 +161,12 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 		u.notify(ctx, "Update refused", "Migrations failed. The running version was left in place.")
 		return UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
 	}
-	next, err := u.Runtime.StartCore(ctx, release.Image, "togavsu-core-next")
+	nextName, err := nextCoreName(u.now())
+	if err != nil {
+		restored := u.abort(ctx, backupID, ran, nil)
+		return UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
+	}
+	next, err := u.Runtime.StartCore(ctx, release.Image, nextName)
 	if err != nil {
 		restored := u.abort(ctx, backupID, ran, nil)
 		u.notify(ctx, "Update refused", "The new core container did not start. The running version was left in place.")
@@ -214,6 +229,36 @@ func (u *Updater) record(kind string, fields map[string]string) {
 	if u.Ledger != nil {
 		_, _ = u.Ledger.Append(kind, "supervisor", fields)
 	}
+}
+
+func nextCoreName(now time.Time) (string, error) {
+	id, err := newBackupID(now)
+	if err != nil {
+		return "", err
+	}
+	return "togavsu-core-" + id[len(id)-12:], nil
+}
+
+// ImmutableImage requires name@sha256:<64 hex> so a mutable tag cannot select
+// a different image from the local cache after verification.
+func ImmutableImage(ref string) error {
+	at := strings.LastIndex(ref, "@")
+	if at <= 0 || !strings.HasPrefix(ref[at+1:], "sha256:") {
+		return fmt.Errorf("%w: release image must be name@sha256:<64 hex chars>", ErrBadRequest)
+	}
+	sum := ref[at+len("@sha256:"):]
+	if len(sum) != 64 {
+		return fmt.Errorf("%w: release image digest length", ErrBadRequest)
+	}
+	for _, c := range sum {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return fmt.Errorf("%w: release image digest", ErrBadRequest)
+		}
+	}
+	if strings.ContainsAny(ref[:at], " \t\r\n") {
+		return fmt.Errorf("%w: release image name", ErrBadRequest)
+	}
+	return nil
 }
 
 func versionOf(c ContainerInfo) string {

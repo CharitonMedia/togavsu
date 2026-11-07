@@ -46,7 +46,6 @@ type Store struct {
 	Dir        string
 	Passphrase string
 	Dump       func(ctx context.Context, w io.Writer) error
-	Counts     func(ctx context.Context) (map[string]int64, error)
 	Files      func(ctx context.Context) ([]FileBlob, error)
 	Now        func() time.Time
 	Book       *DestinationBook
@@ -148,12 +147,14 @@ func (s *Store) Create(ctx context.Context, reason string) (BackupMeta, error) {
 		}
 	}
 
-	counts := map[string]int64{}
-	if s.Counts != nil {
-		counts, err = s.Counts(ctx)
-		if err != nil {
-			return BackupMeta{}, err
-		}
+	dumpForCounts, err := os.Open(dumpPath)
+	if err != nil {
+		return BackupMeta{}, err
+	}
+	counts, err := countsFromDump(dumpForCounts)
+	dumpForCounts.Close()
+	if err != nil {
+		return BackupMeta{}, err
 	}
 	man := Manifest{
 		Format:       manifestFormat,
@@ -238,19 +239,30 @@ func (s *Store) storeBlob(work, sum string, blob FileBlob) error {
 }
 
 func (s *Store) encryptDir(work, archive, pass string) error {
+	out, err := os.OpenFile(archive, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	err = writeEncryptedTar(out, work, pass)
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
+// writeEncryptedTar streams the tar into the encrypted writer. The pipe reader
+// is closed on every exit so a failed destination cannot leave the tar
+// producer blocked, which would hold the operation gate.
+func writeEncryptedTar(dst io.Writer, work, pass string) error {
 	pr, pw := io.Pipe()
 	errc := make(chan error, 1)
 	go func() {
 		errc <- pw.CloseWithError(writeTar(pw, work))
 	}()
-	out, err := os.OpenFile(archive, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		_ = pr.Close()
-		<-errc
-		return err
-	}
-	encErr := Encrypt(out, pr, pass)
-	closeErr := out.Close()
+	defer pr.Close()
+	encErr := Encrypt(dst, pr, pass)
+	_ = pr.Close()
 	tarErr := <-errc
 	if encErr != nil {
 		return encErr
@@ -258,7 +270,7 @@ func (s *Store) encryptDir(work, archive, pass string) error {
 	if tarErr != nil {
 		return tarErr
 	}
-	return closeErr
+	return nil
 }
 
 func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
@@ -370,16 +382,11 @@ func (s *Store) List() ([]BackupMeta, error) {
 	return out, nil
 }
 
-// Delete removes the local archive. Destination copies are removed when the
-// destination is still configured.
+// Delete removes the local archive and every configured destination copy.
+// Retention pruning uses removeLocal so a longer remote retention survives.
 func (s *Store) Delete(ctx context.Context, id string) error {
-	if _, err := s.lookup(id); err != nil {
+	if err := s.removeLocal(id); err != nil {
 		return err
-	}
-	for _, suffix := range []string{".tgbk", ".sha256", ".json"} {
-		if err := os.Remove(filepath.Join(s.Dir, id+suffix)); err != nil && !os.IsNotExist(err) {
-			return err
-		}
 	}
 	if s.Book == nil {
 		return nil
@@ -401,7 +408,20 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// Prune deletes local archives older than retention.
+func (s *Store) removeLocal(id string) error {
+	if _, err := s.lookup(id); err != nil {
+		return err
+	}
+	for _, suffix := range []string{".tgbk", ".sha256", ".json"} {
+		if err := os.Remove(filepath.Join(s.Dir, id+suffix)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// Prune deletes local archives older than retention. It does not touch
+// destination copies; those follow PruneDestinations.
 func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error) {
 	if retention <= 0 {
 		return 0, fmt.Errorf("retention: %w", ErrBadRequest)
@@ -414,7 +434,7 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error)
 	n := 0
 	for _, meta := range all {
 		if meta.CreatedAt.Before(cutoff) {
-			if err := s.Delete(ctx, meta.ID); err != nil {
+			if err := s.removeLocal(meta.ID); err != nil {
 				return n, err
 			}
 			n++
@@ -423,8 +443,51 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error)
 	return n, nil
 }
 
-// Restore decrypts id and calls apply with the verified dump.
-func (s *Store) Restore(ctx context.Context, id, passphrase string, apply func(context.Context, io.Reader, Manifest) error) error {
+// PruneDestinations applies each destination's own retention.
+func (s *Store) PruneDestinations(ctx context.Context) (int, error) {
+	if s.Book == nil {
+		return 0, nil
+	}
+	specs, err := s.Book.Specs()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, spec := range specs {
+		days := spec.RetentionDays
+		if days == 0 {
+			days = 30
+		}
+		dest, err := OpenDestination(spec)
+		if err != nil {
+			return n, err
+		}
+		removed, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now())
+		n += removed
+		if err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+// RestorePayload is the decrypted backup. File paths are readable only until
+// apply returns; the staging directory is removed after that.
+type RestorePayload struct {
+	Dump     io.Reader
+	Manifest Manifest
+	Files    []RestoredFile
+}
+
+// RestoredFile is one logical file version recovered from the archive.
+type RestoredFile struct {
+	Name   string
+	SHA256 string
+	Path   string
+}
+
+// Restore decrypts id and calls apply with the dump and recovered file bytes.
+func (s *Store) Restore(ctx context.Context, id, passphrase string, apply func(context.Context, RestorePayload) error) error {
 	if passphrase == "" {
 		var err error
 		passphrase, err = s.passphrase()
@@ -432,12 +495,12 @@ func (s *Store) Restore(ctx context.Context, id, passphrase string, apply func(c
 			return err
 		}
 	}
-	man, dump, err := s.openPlain(id, passphrase)
+	payload, cleanup, err := s.openPlain(id, passphrase)
 	if err != nil {
 		return err
 	}
-	defer dump.Close()
-	return apply(ctx, dump, man)
+	defer cleanup()
+	return apply(ctx, payload)
 }
 
 // TestRestore decrypts a backup, asks measure for live counts from the dump,
@@ -447,101 +510,100 @@ func (s *Store) TestRestore(ctx context.Context, id string, measure func(context
 	if err != nil {
 		return err
 	}
-	man, dump, err := s.openPlain(id, pass)
+	payload, cleanup, err := s.openPlain(id, pass)
 	if err != nil {
 		return err
 	}
-	defer dump.Close()
-	got, err := measure(ctx, dump)
+	defer cleanup()
+	got, err := measure(ctx, payload.Dump)
 	if err != nil {
 		return err
 	}
-	return compareCounts(man.RecordCounts, got)
+	return compareCounts(payload.Manifest.RecordCounts, got)
 }
 
-func (s *Store) openPlain(id, passphrase string) (Manifest, io.ReadCloser, error) {
+func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error) {
+	fail := func(err error) (RestorePayload, func(), error) {
+		return RestorePayload{}, func() {}, err
+	}
 	rc, _, err := s.Open(id)
 	if err != nil {
-		return Manifest{}, nil, err
+		return fail(err)
 	}
 	defer rc.Close()
 	work, err := os.MkdirTemp(s.Dir, "restore-")
 	if err != nil {
-		return Manifest{}, nil, err
+		return fail(err)
 	}
+	cleanupWork := func() { os.RemoveAll(work) }
 	plainPath := filepath.Join(work, "plain.tar")
 	plainFile, err := os.OpenFile(plainPath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, err
+		cleanupWork()
+		return fail(err)
 	}
 	decErr := Decrypt(plainFile, rc, passphrase)
 	closeErr := plainFile.Close()
 	if decErr != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, decErr
+		cleanupWork()
+		return fail(decErr)
 	}
 	if closeErr != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, closeErr
+		cleanupWork()
+		return fail(closeErr)
 	}
 	in, err := os.Open(plainPath)
 	if err != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, err
+		cleanupWork()
+		return fail(err)
 	}
 	untarErr := untar(work, in)
 	in.Close()
 	os.Remove(plainPath)
 	if untarErr != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, untarErr
+		cleanupWork()
+		return fail(untarErr)
 	}
 	raw, err := os.ReadFile(filepath.Join(work, "manifest.json"))
 	if err != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, ErrArchive
+		cleanupWork()
+		return fail(ErrArchive)
 	}
 	var man Manifest
 	if err := json.Unmarshal(raw, &man); err != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, ErrArchive
+		cleanupWork()
+		return fail(ErrArchive)
 	}
 	if man.Format != manifestFormat || man.ID != id {
-		os.RemoveAll(work)
-		return Manifest{}, nil, ErrArchive
+		cleanupWork()
+		return fail(ErrArchive)
 	}
 	dumpPath := filepath.Join(work, "db", "dump.sql")
 	sum, err := hashFile(dumpPath)
 	if err != nil || sum != man.DumpSHA256 {
-		os.RemoveAll(work)
-		return Manifest{}, nil, ErrChecksum
+		cleanupWork()
+		return fail(ErrChecksum)
 	}
+	var files []RestoredFile
 	for _, file := range man.Files {
 		blob := filepath.Join(work, "files", file.SHA256)
 		got, err := hashFile(blob)
 		if err != nil || got != file.SHA256 {
-			os.RemoveAll(work)
-			return Manifest{}, nil, ErrChecksum
+			cleanupWork()
+			return fail(ErrChecksum)
 		}
+		files = append(files, RestoredFile{Name: file.Name, SHA256: file.SHA256, Path: blob})
 	}
 	f, err := os.Open(dumpPath)
 	if err != nil {
-		os.RemoveAll(work)
-		return Manifest{}, nil, err
+		cleanupWork()
+		return fail(err)
 	}
-	return man, &cleanupFile{File: f, dir: work}, nil
-}
-
-type cleanupFile struct {
-	*os.File
-	dir string
-}
-
-func (c *cleanupFile) Close() error {
-	err := c.File.Close()
-	_ = os.RemoveAll(c.dir)
-	return err
+	payload := RestorePayload{Dump: f, Manifest: man, Files: files}
+	return payload, func() {
+		f.Close()
+		cleanupWork()
+	}, nil
 }
 
 func compareCounts(want, got map[string]int64) error {

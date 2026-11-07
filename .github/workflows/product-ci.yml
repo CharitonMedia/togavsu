@@ -18,6 +18,7 @@ jobs:
           go-version: "1.22"
       - run: sh scripts/ci/test-supervisor.sh
       - run: sh scripts/ci/test-bootstrap.sh
+      - run: sh scripts/ci/test-core-image-gate.sh
       - run: sh scripts/ci/pending-gate.sh
       - run: python3 scripts/ci/check-compose.py
       - run: sh scripts/ci/ui-qc.sh
@@ -75,10 +76,5 @@ jobs:
         run: docker compose -f compose.yaml config >/dev/null
       - name: Build supervisor image
         run: docker build -f Dockerfile -t togavsu-supervisor:local .
-      - name: Core image stays unavailable
-        run: |
-          if docker build -f deploy/core.Dockerfile -t togavsu-core:local .; then
-            echo "core image built; cmd/core is present"
-          else
-            echo "PENDING core image: deploy/core.Dockerfile failed closed, AC-001 is not claimed"
-          fi
+      - name: Core image
+        run: sh scripts/ci/build-core-image.sh

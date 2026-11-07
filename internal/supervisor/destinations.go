@@ -196,8 +196,8 @@ func validateSpec(spec DestinationSpec) error {
 		if spec.Host == "" || spec.User == "" || spec.IdentityFile == "" || spec.KnownHosts == "" || spec.RemotePath == "" {
 			return fmt.Errorf("sftp: %w", ErrBadRequest)
 		}
-		if strings.Contains(spec.RemotePath, "..") {
-			return fmt.Errorf("sftp path: %w", ErrBadRequest)
+		if err := validSFTPPath(spec.RemotePath); err != nil {
+			return err
 		}
 	default:
 		return fmt.Errorf("kind: %w", ErrBadRequest)

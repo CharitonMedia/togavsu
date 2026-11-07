@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -174,6 +175,17 @@ func (s *S3Destination) do(ctx context.Context, method, key string, query url.Va
 			}
 			return io.NopCloser(seeker), nil
 		}
+	}
+	if f, ok := body.(*os.File); ok {
+		info, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		pos, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return nil, err
+		}
+		req.ContentLength = info.Size() - pos
 	}
 	amz := s.now().UTC().Format("20060102T150405Z")
 	req.Host = u.Host

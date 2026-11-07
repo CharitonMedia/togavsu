@@ -21,11 +21,8 @@ func testStore(t *testing.T) *Store {
 		Passphrase: "synthetic-passphrase",
 		Now:        func() time.Time { return time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC) },
 		Dump: func(ctx context.Context, w io.Writer) error {
-			_, err := io.WriteString(w, "CREATE TABLE synthetic_items(id int);\nINSERT INTO synthetic_items VALUES (1),(2),(3);\n")
+			_, err := io.WriteString(w, "COPY core.synthetic_items (id) FROM stdin;\n1\n2\n3\n\\.\n")
 			return err
-		},
-		Counts: func(context.Context) (map[string]int64, error) {
-			return map[string]int64{"core.synthetic_items": 3}, nil
 		},
 	}
 }
@@ -40,11 +37,11 @@ func TestBackupRoundTripAndChecksum(t *testing.T) {
 		t.Fatalf("meta = %+v", meta)
 	}
 	var restored bytes.Buffer
-	err = s.Restore(context.Background(), meta.ID, "", func(_ context.Context, r io.Reader, man Manifest) error {
-		if man.RecordCounts["core.synthetic_items"] != 3 {
-			t.Fatalf("counts = %v", man.RecordCounts)
+	err = s.Restore(context.Background(), meta.ID, "", func(_ context.Context, payload RestorePayload) error {
+		if payload.Manifest.RecordCounts["core.synthetic_items"] != 3 {
+			t.Fatalf("counts = %v", payload.Manifest.RecordCounts)
 		}
-		_, err := io.Copy(&restored, r)
+		_, err := io.Copy(&restored, payload.Dump)
 		return err
 	})
 	if err != nil {
@@ -83,7 +80,7 @@ func TestBackupWrongPassphrase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Restore(context.Background(), meta.ID, "nope", func(context.Context, io.Reader, Manifest) error {
+	err = s.Restore(context.Background(), meta.ID, "nope", func(context.Context, RestorePayload) error {
 		t.Fatal("apply should not run")
 		return nil
 	})
@@ -110,9 +107,21 @@ func TestBackupFileDedupAndBadHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = s.Restore(context.Background(), meta.ID, "", func(_ context.Context, _ io.Reader, man Manifest) error {
-		if len(man.Files) != 2 || man.Files[0].SHA256 != man.Files[1].SHA256 {
-			t.Fatalf("files = %+v", man.Files)
+	err = s.Restore(context.Background(), meta.ID, "", func(_ context.Context, payload RestorePayload) error {
+		if len(payload.Manifest.Files) != 2 || payload.Manifest.Files[0].SHA256 != payload.Manifest.Files[1].SHA256 {
+			t.Fatalf("files = %+v", payload.Manifest.Files)
+		}
+		if len(payload.Files) != 2 {
+			t.Fatalf("recovered %d files", len(payload.Files))
+		}
+		for _, file := range payload.Files {
+			got, err := os.ReadFile(file.Path)
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(got, body) {
+				t.Fatalf("recovered %s = %q", file.Name, got)
+			}
 		}
 		return nil
 	})
@@ -300,6 +309,94 @@ func TestPruneSkipsUnknownSFTPTime(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("pruned %d", n)
+	}
+}
+
+func TestLocalPruneKeepsLongerDestinationCopy(t *testing.T) {
+	s := testStore(t)
+	old := time.Now().Add(-40 * 24 * time.Hour)
+	s.Now = func() time.Time { return old }
+	destDir := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: destDir, RetentionDays: 365}); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonNightly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := filepath.Join(destDir, meta.ID+".tgbk")
+	if err := os.Chtimes(remote, old, old); err != nil {
+		t.Fatal(err)
+	}
+	s.Now = time.Now
+	n, err := s.Prune(context.Background(), 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("local pruned %d", n)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatal("local archive still present")
+	}
+	if _, err := os.Stat(remote); err != nil {
+		t.Fatalf("remote copy removed with local retention: %v", err)
+	}
+	removed, err := s.PruneDestinations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("destination pruned %d within 365 days", removed)
+	}
+	if _, err := os.Stat(remote); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEncryptFailureDoesNotHang(t *testing.T) {
+	work := t.TempDir()
+	if err := os.WriteFile(filepath.Join(work, "big"), bytes.Repeat([]byte("a"), 4<<20), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- writeEncryptedTar(&failAfterWriter{limit: 64}, work, "phrase")
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected a write failure")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("encryption blocked the tar producer")
+	}
+}
+
+type failAfterWriter struct{ limit int }
+
+func (w *failAfterWriter) Write(p []byte) (int, error) {
+	if w.limit <= 0 {
+		return 0, errors.New("disk full")
+	}
+	if len(p) > w.limit {
+		n := w.limit
+		w.limit = 0
+		return n, errors.New("disk full")
+	}
+	w.limit -= len(p)
+	return len(p), nil
+}
+
+func TestCountsFromDumpIgnoreLaterText(t *testing.T) {
+	sql := "INSERT INTO core.synthetic_items VALUES (9);\nCOPY core.synthetic_items (id) FROM stdin;\n1\n2\n\\.\n"
+	counts, err := countsFromDump(strings.NewReader(sql))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["core.synthetic_items"] != 2 {
+		t.Fatalf("counts %v", counts)
 	}
 }
 

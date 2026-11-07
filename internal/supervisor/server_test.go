@@ -143,6 +143,107 @@ func TestRestoreFailureRollsBackToSafety(t *testing.T) {
 	}
 }
 
+func TestRestoreRestartsStoppedContainer(t *testing.T) {
+	store := testStore(t)
+	var order []string
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyDump: func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1", Name: "togavsu-core-abc", Image: "img"}}},
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if err != nil || rec.Status != "completed" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+		t.Fatalf("order %v", order)
+	}
+	for _, step := range order {
+		if strings.HasPrefix(step, "start:") {
+			t.Fatalf("created a replacement instead of restarting: %v", order)
+		}
+	}
+}
+
+func TestSafetyRestoreFailureDoesNotResume(t *testing.T) {
+	store := testStore(t)
+	var order []string
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyDump: func(context.Context, io.Reader) error {
+			return io.ErrClosedPipe
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		Outbox:  OpenOutbox(filepath.Join(store.Dir, "outbox.jsonl")),
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if err == nil || rec.Status == "completed" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if !strings.Contains(err.Error(), "safety restore failed") {
+		t.Fatalf("err %v", err)
+	}
+	notes, err := ops.Outbox.List()
+	if err != nil || len(notes) != 1 {
+		t.Fatalf("notes %+v %v", notes, err)
+	}
+	if strings.Contains(notes[0].Body, "was applied") {
+		t.Fatalf("notice claimed recovery: %s", notes[0].Body)
+	}
+	for _, step := range order {
+		if strings.HasPrefix(step, "restart:") {
+			t.Fatalf("writers resumed: %v", order)
+		}
+	}
+}
+
+func TestRestoreRestartErrorIsNotSuccess(t *testing.T) {
+	store := testStore(t)
+	var order []string
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyDump: func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, failStart: "core-1"},
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if err == nil || rec.Status == "completed" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+}
+
 func TestBusyRejectsSecondBackup(t *testing.T) {
 	store := testStore(t)
 	ops := &Operations{Store: store, Gate: &Gate{}, Passphrase: func() (string, error) { return store.Passphrase, nil }}

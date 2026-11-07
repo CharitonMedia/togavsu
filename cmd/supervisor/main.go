@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -126,18 +125,14 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	store := &supervisor.Store{
 		Dir:    cfg.BackupDir,
 		Dump:   supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
-		Counts: supervisor.CountCommand("psql", cfg.DatabaseURL),
 		Book:   &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json")},
 		Outbox: outbox,
-	}
-	var env []string
-	if cfg.DatabaseURL != "" {
-		env = append(env, "DATABASE_URL="+cfg.DatabaseURL)
 	}
 	docker := &supervisor.DockerRuntime{
 		Client:  supervisor.DockerSocketClient(cfg.DockerSocket),
 		Network: cfg.DockerNetwork,
-		Env:     env,
+		Env:     supervisor.CoreEnv(),
+		Binds:   supervisor.CoreBinds(""),
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {
@@ -165,8 +160,8 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 				return err
 			}
 			store.Passphrase = pass
-			return store.Restore(ctx, id, pass, func(ctx context.Context, r io.Reader, _ supervisor.Manifest) error {
-				return apply(ctx, r)
+			return store.Restore(ctx, id, pass, func(ctx context.Context, payload supervisor.RestorePayload) error {
+				return apply(ctx, payload.Dump)
 			})
 		},
 		Proxy: &supervisor.CaddyProxy{AdminURL: cfg.CaddyAdminURL, UpstreamFile: cfg.UpstreamFile},
@@ -229,6 +224,7 @@ func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operat
 			if cfg.LocalRetentionDays > 0 {
 				_, _ = ops.Store.Prune(ctx, time.Duration(cfg.LocalRetentionDays)*24*time.Hour)
 			}
+			_, _ = ops.Store.PruneDestinations(ctx)
 		}
 	}
 }

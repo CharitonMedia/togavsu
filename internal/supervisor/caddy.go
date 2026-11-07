@@ -16,6 +16,9 @@ import (
 // keeps the same core.
 type CaddyProxy struct {
 	AdminURL     string
+	AdminListen  string
+	HTTPListen   string
+	HTTPSListen  string
 	UpstreamFile string
 	HTTP         *http.Client
 }
@@ -28,7 +31,7 @@ func (c *CaddyProxy) Switch(ctx context.Context, upstream string) error {
 	if err := writeFileAtomic(c.UpstreamFile, []byte(upstream+"\n"), 0o644); err != nil {
 		return err
 	}
-	body, err := json.Marshal(caddyConfig(upstream))
+	body, err := json.Marshal(caddyConfig(upstream, c.adminListen(), c.httpListen(), c.httpsListen()))
 	if err != nil {
 		return err
 	}
@@ -74,7 +77,28 @@ func validUpstream(upstream string) error {
 	return nil
 }
 
-func caddyConfig(upstream string) map[string]any {
+func (c *CaddyProxy) adminListen() string {
+	if c.AdminListen != "" {
+		return c.AdminListen
+	}
+	return "0.0.0.0:2019"
+}
+
+func (c *CaddyProxy) httpListen() string {
+	if c.HTTPListen != "" {
+		return c.HTTPListen
+	}
+	return ":80"
+}
+
+func (c *CaddyProxy) httpsListen() string {
+	if c.HTTPSListen != "" {
+		return c.HTTPSListen
+	}
+	return ":443"
+}
+
+func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[string]any {
 	proxy := map[string]any{
 		"handle": []any{map[string]any{
 			"handler":   "reverse_proxy",
@@ -90,15 +114,16 @@ func caddyConfig(upstream string) map[string]any {
 		}},
 	}
 	return map[string]any{
+		"admin": map[string]any{"listen": adminListen},
 		"apps": map[string]any{
 			"http": map[string]any{
 				"servers": map[string]any{
 					"http": map[string]any{
-						"listen": []string{":80"},
+						"listen": []string{httpListen},
 						"routes": []any{ready},
 					},
 					"https": map[string]any{
-						"listen": []string{":443"},
+						"listen": []string{httpsListen},
 						"routes": []any{ready, proxy},
 					},
 				},

@@ -68,6 +68,55 @@ func TestReadDockerLog(t *testing.T) {
 	}
 }
 
+func TestStartCoreReproducesComposeSpec(t *testing.T) {
+	var created map[string]any
+	var pulled string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/images/create", func(w http.ResponseWriter, r *http.Request) {
+		pulled = r.URL.Query().Get("fromImage")
+		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/v1.43/containers/create", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"Id": "created"})
+	})
+	mux.HandleFunc("/v1.43/containers/created/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	image := testReleaseImage
+	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "togavsu_default"}
+	if err := rt.Pull(context.Background(), image); err != nil {
+		t.Fatal(err)
+	}
+	if pulled != image {
+		t.Fatalf("pulled %q", pulled)
+	}
+	if _, err := rt.StartCore(context.Background(), image, "togavsu-core-abc"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		"FIELD_KEY_FILE=/appsecrets/field_key",
+		"DATABASE_URL_FILE=/appsecrets/database_url",
+		"SUPERVISOR_TOKEN_FILE=/appsecrets/supervisor_token",
+		"SUPERVISOR_URL=http://supervisor:8081",
+		"togavsu_appsecrets:/appsecrets",
+		image,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("create body missing %s: %s", want, body)
+		}
+	}
+}
+
 func TestMigratorUnconfigured(t *testing.T) {
 	_, err := (DockerMigrator{}).Apply(context.Background(), "image")
 	code, _ := PublicCode(err)

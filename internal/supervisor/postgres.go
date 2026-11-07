@@ -23,7 +23,7 @@ func DumpCommand(bin, databaseURL string) func(context.Context, io.Writer) error
 		if databaseURL == "" {
 			return fmt.Errorf("DATABASE_URL: %w", ErrBadRequest)
 		}
-		cmd := exec.CommandContext(ctx, bin, "--format=plain", "--no-owner", "--no-privileges", "--dbname", databaseURL)
+		cmd := exec.CommandContext(ctx, bin, "--format=plain", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--dbname", databaseURL)
 		cmd.Stdout = w
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
