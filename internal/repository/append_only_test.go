@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// TestAppendOnlyInterfaces checks the Go interfaces only. It does not prove a
+// database rejects UPDATE or DELETE. That persistence proof is pending; see
+// db.TestAppendOnlyNotEnforcedAtDatabase.
 func TestAppendOnlyInterfaces(t *testing.T) {
 	types := []reflect.Type{
 		reflect.TypeOf((*TrustLedger)(nil)).Elem(),

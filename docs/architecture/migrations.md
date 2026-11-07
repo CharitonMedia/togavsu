@@ -22,7 +22,7 @@ Do not edit `0001_core_schema.sql` after it has been applied in a shared databas
 | 1100–1199 | marketplace |
 | 1200–1299 | release |
 
-Version 1 creates the section 5 tables in portable SQL: `TEXT` identifiers, `BIGINT` cents and unix microseconds, `INTEGER` flags, and whole JSON documents in `TEXT`. There are no triggers. Append-only behavior is the repository interface.
+Version 1 creates the section 5 tables in portable SQL: `TEXT` identifiers, `BIGINT` cents and unix microseconds, `INTEGER` flags, and whole JSON documents in `TEXT`. There are no triggers. PRD section 6 forbids triggers that carry business logic, so this migration does not add one. Repository interfaces for the append-only tables omit update and delete. That is not a persistence guarantee: raw SQL and the table owner can still change those rows. The owning tasks must reject hostile UPDATE and DELETE before their acceptance. The table is in `docs/architecture/contracts.md`.
 
 `db.Apply` checks out one pool connection, sets `search_path` to `core` for that connection, and runs `RESET search_path` before the connection returns to the pool. Other connections keep the default search path. Open the application pool with pgx and set `search_path` on each new connection when the core schema should be the default. `db.Apply` rejects a schema name that is not a single identifier.
 

@@ -236,6 +236,8 @@ type TrustAccounts interface {
 }
 
 // TrustLedger is append-only. A reversal is a new row with ReversesID set.
+// The missing Update and Delete methods are not a database guarantee. Raw SQL can
+// still change the row until the trust task rejects those statements. See contracts.md.
 type TrustLedger interface {
 	Append(ctx context.Context, row domain.TrustEntry) error
 	Get(ctx context.Context, id domain.ID) (domain.TrustEntry, error)

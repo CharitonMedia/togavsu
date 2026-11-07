@@ -8,5 +8,3 @@ func cents(n int) int { return n * 100 }
 func shifted(n int) int { return n << 8 }
 
 func neg() int { return -5 }
-
-func empty(n int) bool { return n > 0 || n == 0 }

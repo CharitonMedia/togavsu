@@ -33,8 +33,10 @@ func TestScanSource(t *testing.T) {
 		{"cmd/core/slice.go", "package main\nfunc f() []int { return []int{25} }\n", true},
 		{"cmd/core/send.go", "package main\nfunc f(ch chan int) { ch <- 25 }\n", true},
 		{"internal/billing/scale.go", "package billing\nfunc f(n int) int { return n * 100 }\n", false},
-		{"internal/db/ranges.go", "package db\nvar bands = []struct{ Min int }{{Min: 100}}\n", false},
-		{"internal/db/other.go", "package db\nvar bands = []struct{ Min int }{{Min: 100}}\n", true},
+		{"internal/db/ranges.go", "package db\nfunc MigrationRanges() int { return struct{ Min int }{Min: 100}.Min }\n", false},
+		{"internal/db/ranges.go", "package db\nfunc Extra() int { return struct{ Min int }{Min: 100}.Min }\n", true},
+		{"internal/practice/ranges.go", "package practice\nfunc MigrationRanges() int { return struct{ Min int }{Min: 100}.Min }\n", true},
+		{"internal/db/other.go", "package db\nvar bands = []struct{ Min int }{{Min: 4}}\n", true},
 		{"internal/domain/notdefault.go", "package domain\nimport \"time\"\nfunc f() time.Duration { return time.Hour }\n", true},
 		{"internal/domain/defaults.go", "package domain\nconst title = \"AVAILABLE DATES FOR HEARING\"\n", false},
 		{"internal/billing/wait.go", "package billing\nimport \"time\"\nfunc f() { time.ParseDuration(\"15m\") }\n", true},
@@ -67,6 +69,12 @@ func TestAC030Fixtures(t *testing.T) {
 		{"calls.go", "6"},
 		{"calls.go", "10"},
 		{"calls.go", "15"},
+		{"not_default.go", "4"},
+		{"not_default.go", "11"},
+		{"not_default.go", "9"},
+		{"not_default.go", "7"},
+		{"zero_config.go", "0"},
+		{"zero_config.go", "1"},
 	}
 	for _, tc := range negative {
 		src := readFixture(t, filepath.Join(dir, tc.file))
@@ -76,7 +84,7 @@ func TestAC030Fixtures(t *testing.T) {
 			t.Errorf("%s: expected tunable number %s, got %s", tc.file, tc.number, joined)
 		}
 	}
-	for _, file := range []string{"scale.go", "not_default.go"} {
+	for _, file := range []string{"scale.go", "idiom.go"} {
 		src := readFixture(t, filepath.Join(dir, file))
 		msgs := settings.ScanSource(filepath.Join("internal", "practice", file), src)
 		if len(msgs) != 0 {
@@ -90,19 +98,18 @@ func TestFixedNumberExclusions(t *testing.T) {
 		path string
 		src  string
 	}{
-		{"internal/db/migrate.go", "package db\nfunc f(version int) bool { return version < 1 }\n"},
-		{"internal/bootstrap/config.go", "package bootstrap\nfunc f() int { return 2 }\n"},
-		{"internal/domain/money.go", "package domain\nfunc f(frac int) bool { return frac > 8 || frac == 8 }\n"},
-		{"internal/domain/id.go", "package domain\nfunc f(dec []byte) bool { return dec[8]>>6 != 2 }\n"},
-		{"internal/db/goose_store.go", "package db\nvar baseline = struct{ Version int }{Version: 0}\n"},
-		{"internal/db/seed.go", "package db\nconst maxSavedLayouts = 10\n"},
-		{"internal/db/ranges.go", "package db\nvar bands = []struct{ Min int }{{Min: 100}}\n"},
-		{"internal/settings/registry.go", "package settings\nfunc f(n float64) bool { return n > 1 }\n"},
+		{"internal/db/migrate.go", "package db\nfunc LoadFS(version int) bool { return version < 1 }\n"},
+		{"internal/bootstrap/config.go", "package bootstrap\nfunc RunFrom() int { return 2 }\n"},
+		{"internal/domain/money.go", "package domain\nfunc combineCents(frac int) bool { return frac > 8 || frac == 4 }\n"},
+		{"internal/domain/id.go", "package domain\nfunc ParseID(dec []byte) bool { return dec[8]>>6 != 2 }\n"},
+		{"internal/db/goose_store.go", "package db\nfunc ensureBaseline() int { return struct{ Version int }{Version: 0}.Version }\n"},
+		{"internal/db/seed.go", "package db\nfunc insertSynthetic() int { const maxSavedLayouts = 11; return maxSavedLayouts }\n"},
+		{"internal/settings/registry.go", "package settings\nfunc validateSpecial(n float64) bool { return n > 1 || n < 0 || n > 365 }\n"},
 		{"internal/settings/registry.go", "package settings\nimport \"strconv\"\nfunc f(s string) (int64, error) { return strconv.ParseInt(s, 10, 64) }\n"},
 	}
 	for _, tc := range clean {
 		if msgs := settings.ScanSource(tc.path, tc.src); len(msgs) != 0 {
-			t.Errorf("%s should be a fixed constant: %s", tc.path, strings.Join(msgs, "; "))
+			t.Errorf("%s should be a fixed rule: %s", tc.path, strings.Join(msgs, "; "))
 		}
 	}
 	flagged := []struct {
@@ -110,15 +117,16 @@ func TestFixedNumberExclusions(t *testing.T) {
 		src  string
 		num  string
 	}{
-		{"internal/practice/version.go", "package practice\nfunc f(version int) bool { return version < 1 }\n", "1"},
-		{"internal/db/migrate.go", "package db\nconst maxSavedLayouts = 10\n", "10"},
-		{"internal/bootstrap/config.go", "package bootstrap\nconst maxRuns = 2\n", "2"},
-		{"internal/billing/limit.go", "package billing\nfunc f(frac int) bool { return frac > 8 }\n", "8"},
-		{"internal/practice/uuid.go", "package practice\nfunc f(dec []byte) bool { return dec[8]>>6 != 2 }\n", "2"},
-		{"internal/db/seed_extra.go", "package db\nconst maxSavedLayouts = 10\n", "10"},
-		{"internal/domain/money.go", "package domain\nconst notesPage = 25\n", "25"},
-		{"internal/settings/check_extra.go", "package settings\nconst maxSavedLayouts = 10\n", "10"},
-		{"internal/settings/registry.go", "package settings\nconst maxSavedLayouts = 10\n", "10"},
+		{"internal/practice/version.go", "package practice\nfunc LoadFS(version int) bool { return version < 1 }\n", "1"},
+		{"internal/db/migrate.go", "package db\nfunc Extra(version int) bool { return version < 1 }\n", "1"},
+		{"internal/db/migrate.go", "package db\nconst maxSavedLayouts = 11\n", "11"},
+		{"internal/bootstrap/config.go", "package bootstrap\nfunc f() int { return 2 }\n", "2"},
+		{"internal/domain/money.go", "package domain\nfunc f(frac int) bool { return frac > 4 }\n", "4"},
+		{"internal/domain/id.go", "package domain\nfunc f(dec []byte) bool { return dec[8]>>6 != 2 }\n", "2"},
+		{"internal/db/seed.go", "package db\nfunc extra() int { const maxSavedLayouts = 11; return maxSavedLayouts }\n", "11"},
+		{"internal/settings/registry.go", "package settings\nfunc validateSpecial() int { const maxSavedLayouts = 11; return maxSavedLayouts }\n", "11"},
+		{"internal/settings/registry.go", "package settings\nfunc other(n float64) bool { return n > 1 }\n", "1"},
+		{"internal/settings/check.go", "package settings\nfunc extra(failures int) bool { return failures >= 4 }\n", "4"},
 		{"internal/practice/markup.go", "package practice\nconst markup = 0\n", "0"},
 	}
 	for _, tc := range flagged {

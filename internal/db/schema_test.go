@@ -398,6 +398,37 @@ func TestRangesAndEmbedded(t *testing.T) {
 	}
 }
 
+func TestAppendOnlyNotEnforcedAtDatabase(t *testing.T) {
+	ctx := context.Background()
+	db := openCoreDB(t)
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ApplySynthetic(ctx, db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	// These names are the append-only section 5 tables. The application role can
+	// still rewrite them. Identity, practice, trust, files, and modules have to
+	// make both statements fail before their acceptance. This test is the gap.
+	tables := []string{"trust_ledger", "audit_log", "events", "file_versions", "file_renditions", "ai_call_log"}
+	for _, table := range tables {
+		if !regexp.MustCompile(`^[a-z_]+$`).MatchString(table) {
+			t.Fatal(table)
+		}
+		res, err := db.ExecContext(ctx, "UPDATE "+table+" SET updated_at = updated_at")
+		if err != nil {
+			t.Fatalf("%s: raw UPDATE was rejected (%v). When immutability lands, replace this gap test with a rejection test", table, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil || n < 1 {
+			t.Fatalf("%s: expected a rewritten row, n=%d err=%v", table, n, err)
+		}
+		if _, err := db.ExecContext(ctx, "DELETE FROM "+table+" WHERE false"); err != nil {
+			t.Fatalf("%s: raw DELETE was rejected (%v). When immutability lands, replace this gap test with a rejection test", table, err)
+		}
+	}
+}
+
 func TestSeedAndSetup(t *testing.T) {
 	ctx := context.Background()
 	db := openCoreDB(t)

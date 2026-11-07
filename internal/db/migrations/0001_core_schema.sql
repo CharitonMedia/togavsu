@@ -5,7 +5,11 @@
 -- JSON is stored whole in TEXT columns.
 -- invoice_id on time entries and expenses has no foreign key because invoice lines already point at those rows.
 -- current_version_id has no foreign key because a file and its versions refer to each other.
--- Append-only rows (trust ledger, audit log, events, file versions, renditions, AI call log) are enforced by repository interfaces.
+-- Append-only tables: trust_ledger, audit_log, events, file_versions, file_renditions, ai_call_log.
+-- Their repository interfaces have no update or delete method. This schema does not enforce that.
+-- Raw SQL and the table owner can still update or delete rows. There is no trigger.
+-- PRD section 6 forbids triggers that carry business logic, so immutability stays with the
+-- identity, practice, trust, files, and modules implementations. See docs/architecture/contracts.md.
 
 CREATE TABLE practice_areas (
   id TEXT PRIMARY KEY,

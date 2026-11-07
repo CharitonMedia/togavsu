@@ -17,7 +17,12 @@ type ID string
 var ErrID = errors.New("invalid id")
 
 // SystemUserID is the synthetic actor for reference rows written before any person exists.
-var SystemUserID = mustCompose(1_767_225_600_000, 0, 1)
+var SystemUserID = systemUserID()
+
+func systemUserID() ID {
+	// 2026-01-01T00:00:00Z, fixed rand fields. Not a firm setting.
+	return mustCompose(1_767_225_600_000, 0, 1)
+}
 
 // NewID returns a UUIDv7 from the current UTC time and crypto/rand.
 func NewID() (ID, error) {
