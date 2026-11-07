@@ -212,16 +212,17 @@ def render_mcp(spec: dict) -> dict:
             mcp = operation["x-togavsu-mcp"]
             if mcp["parity"] != "required":
                 continue
-            tools.append(
-                {
-                    "name": operation["operationId"],
-                    "method": method.upper(),
-                    "path": path,
-                    "features": operation["x-togavsu-features"],
-                    "scopes": operation["x-togavsu-access"]["scopes"],
-                    "roles": operation["x-togavsu-access"]["roles"],
-                }
-            )
+            tool = {
+                "name": operation["operationId"],
+                "method": method.upper(),
+                "path": path,
+                "features": operation["x-togavsu-features"],
+                "scopes": operation["x-togavsu-access"]["scopes"],
+                "roles": operation["x-togavsu-access"]["roles"],
+            }
+            if "transfer" in mcp:
+                tool["transfer"] = mcp["transfer"]
+            tools.append(tool)
     return {"transport": "POST /mcp", "tools": tools}
 
 

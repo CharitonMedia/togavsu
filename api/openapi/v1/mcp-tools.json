@@ -9,7 +9,18 @@
         "openapi"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getLlmsTxt",
@@ -19,7 +30,18 @@
         "llms"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "result": {
+          "encoding": "text",
+          "media_type": "text/markdown"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getHealthz",
@@ -29,7 +51,18 @@
         "health"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getSetup",
@@ -39,7 +72,18 @@
         "setup"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createSetup",
@@ -49,7 +93,23 @@
         "setup"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "login",
@@ -59,7 +119,23 @@
         "auth"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "verifyTotp",
@@ -69,7 +145,77 @@
         "auth"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "startTotpEnrollment",
+      "method": "POST",
+      "path": "/api/v1/auth/totp/enroll",
+      "features": [
+        "auth",
+        "setup"
+      ],
+      "scopes": [],
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "confirmTotpEnrollment",
+      "method": "POST",
+      "path": "/api/v1/auth/totp/confirm",
+      "features": [
+        "auth",
+        "setup"
+      ],
+      "scopes": [],
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "verifyRecoveryCode",
@@ -79,7 +225,23 @@
         "auth"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "logout",
@@ -97,7 +259,17 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "requestPasswordReset",
@@ -107,7 +279,23 @@
         "auth"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "confirmPasswordReset",
@@ -117,7 +305,22 @@
         "auth"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMe",
@@ -135,7 +338,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMe",
@@ -153,7 +367,23 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "changePassword",
@@ -171,7 +401,22 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "resetTotp",
@@ -189,7 +434,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "regenerateRecoveryCodes",
@@ -207,7 +463,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getMeSettings",
@@ -225,7 +492,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMeSettings",
@@ -243,7 +521,23 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getNotificationPreferences",
@@ -260,7 +554,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putNotificationPreferences",
@@ -277,7 +582,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getSidebarState",
@@ -294,7 +615,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putSidebarState",
@@ -311,7 +643,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listSessions",
@@ -329,7 +677,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "deleteSession",
@@ -347,7 +706,17 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listUser",
@@ -361,7 +730,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createUser",
@@ -375,7 +755,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getUser",
@@ -389,7 +785,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateUser",
@@ -403,7 +810,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deactivateUser",
@@ -417,7 +840,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listApiToken",
@@ -436,7 +870,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createApiToken",
@@ -454,7 +899,23 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getApiToken",
@@ -473,7 +934,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "revokeApiToken",
@@ -491,7 +963,17 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listContact",
@@ -507,7 +989,21 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createContact",
@@ -523,7 +1019,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getContact",
@@ -539,7 +1051,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateContact",
@@ -555,7 +1078,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "archiveContact",
@@ -571,7 +1110,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "historyContact",
@@ -588,7 +1138,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkContact",
@@ -605,7 +1166,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listContactAddress",
@@ -621,7 +1198,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createContactAddress",
@@ -637,7 +1225,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getContactAddress",
@@ -653,7 +1257,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateContactAddress",
@@ -669,7 +1284,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkContactAddress",
@@ -686,7 +1317,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listContactEmail",
@@ -702,7 +1349,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createContactEmail",
@@ -718,7 +1376,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getContactEmail",
@@ -734,7 +1408,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateContactEmail",
@@ -750,7 +1435,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkContactEmail",
@@ -767,7 +1468,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listContactPhone",
@@ -783,7 +1500,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createContactPhone",
@@ -799,7 +1527,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getContactPhone",
@@ -815,7 +1559,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateContactPhone",
@@ -831,7 +1586,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkContactPhone",
@@ -848,7 +1619,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listContactTag",
@@ -864,7 +1651,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createContactTag",
@@ -880,7 +1678,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getContactTag",
@@ -896,7 +1710,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateContactTag",
@@ -912,7 +1737,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkContactTag",
@@ -929,7 +1770,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "mergeContact",
@@ -945,7 +1802,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listMatter",
@@ -963,7 +1836,21 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createMatter",
@@ -981,7 +1868,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMatter",
@@ -999,7 +1902,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMatter",
@@ -1017,7 +1931,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "historyMatter",
@@ -1036,7 +1966,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkMatter",
@@ -1055,7 +1996,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "previewMatterClose",
@@ -1071,7 +2028,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "closeMatter",
@@ -1087,7 +2055,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "reopenMatter",
@@ -1102,7 +2086,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "mergeMatter",
@@ -1118,7 +2118,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listMattersMissingCaseNumber",
@@ -1134,7 +2150,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listMatterTimeline",
@@ -1150,7 +2177,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listMatterParty",
@@ -1166,7 +2204,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createMatterParty",
@@ -1182,7 +2231,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMatterParty",
@@ -1198,7 +2263,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMatterParty",
@@ -1214,7 +2290,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkMatterParty",
@@ -1231,7 +2323,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "putMatterWall",
@@ -1245,7 +2353,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMatterWall",
@@ -1259,7 +2383,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listMatterMarker",
@@ -1275,7 +2410,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createMatterMarker",
@@ -1291,7 +2437,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMatterMarker",
@@ -1307,7 +2469,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMatterMarker",
@@ -1323,7 +2496,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteMatterMarker",
@@ -1339,7 +2528,17 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listMarkerDefinition",
@@ -1355,7 +2554,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createMarkerDefinition",
@@ -1369,7 +2579,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getMarkerDefinition",
@@ -1385,7 +2611,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateMarkerDefinition",
@@ -1399,7 +2636,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listFeeAgreement",
@@ -1415,7 +2668,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createFeeAgreement",
@@ -1431,7 +2695,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getFeeAgreement",
@@ -1447,7 +2727,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateFeeAgreement",
@@ -1463,7 +2754,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "historyFeeAgreement",
@@ -1480,7 +2787,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkFeeAgreement",
@@ -1497,7 +2815,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listNote",
@@ -1513,7 +2847,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createNote",
@@ -1529,7 +2874,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getNote",
@@ -1545,7 +2906,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateNote",
@@ -1561,7 +2933,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "archiveNote",
@@ -1577,7 +2965,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkNote",
@@ -1594,7 +2993,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listConflictRecord",
@@ -1610,7 +3025,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createConflictRecord",
@@ -1626,7 +3052,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getConflictRecord",
@@ -1642,7 +3084,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateConflictRecord",
@@ -1658,7 +3111,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkConflictRecord",
@@ -1675,7 +3144,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "runConflictCheck",
@@ -1691,7 +3176,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listConflictChecks",
@@ -1707,7 +3203,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getConflictCheck",
@@ -1723,7 +3230,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "decideConflictHit",
@@ -1738,7 +3256,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listPracticeArea",
@@ -1754,7 +3288,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createPracticeArea",
@@ -1768,7 +3313,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getPracticeArea",
@@ -1784,7 +3345,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updatePracticeArea",
@@ -1798,7 +3370,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listCounty",
@@ -1814,7 +3402,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createCounty",
@@ -1828,7 +3427,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getCounty",
@@ -1844,7 +3459,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateCounty",
@@ -1858,7 +3484,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listReferralSource",
@@ -1874,7 +3516,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createReferralSource",
@@ -1888,7 +3541,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getReferralSource",
@@ -1904,7 +3573,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateReferralSource",
@@ -1918,7 +3598,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listPartyRole",
@@ -1934,7 +3630,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createPartyRole",
@@ -1948,7 +3655,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getPartyRole",
@@ -1964,7 +3687,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updatePartyRole",
@@ -1978,7 +3712,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listFeeItem",
@@ -1994,7 +3744,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createFeeItem",
@@ -2008,7 +3769,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getFeeItem",
@@ -2024,7 +3801,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateFeeItem",
@@ -2038,7 +3826,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listActivityType",
@@ -2054,7 +3858,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createActivityType",
@@ -2068,7 +3883,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getActivityType",
@@ -2084,7 +3915,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateActivityType",
@@ -2098,7 +3940,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listExpenseType",
@@ -2114,7 +3972,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createExpenseType",
@@ -2128,7 +3997,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getExpenseType",
@@ -2144,7 +4029,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateExpenseType",
@@ -2158,7 +4054,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listCustomFieldDefinition",
@@ -2174,7 +4086,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createCustomFieldDefinition",
@@ -2188,7 +4111,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getCustomFieldDefinition",
@@ -2204,7 +4143,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateCustomFieldDefinition",
@@ -2218,7 +4168,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "retireCustomFieldDefinition",
@@ -2232,7 +4198,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putMatterCustomFields",
@@ -2248,7 +4225,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "putTimeEntryCustomFields",
@@ -2264,7 +4257,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "putExpenseCustomFields",
@@ -2280,7 +4289,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkCustomFieldValue",
@@ -2300,7 +4325,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "putContactCustomFields",
@@ -2316,7 +4357,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listTimeEntry",
@@ -2333,7 +4390,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTimeEntry",
@@ -2349,7 +4420,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTimeEntry",
@@ -2366,7 +4453,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateTimeEntry",
@@ -2382,7 +4480,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "historyTimeEntry",
@@ -2400,7 +4514,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkTimeEntry",
@@ -2417,7 +4542,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listTimer",
@@ -2433,7 +4574,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTimer",
@@ -2449,7 +4601,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTimer",
@@ -2465,7 +4633,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "pauseTimer",
@@ -2481,7 +4660,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "stopTimer",
@@ -2497,7 +4687,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listExpense",
@@ -2514,7 +4715,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createExpense",
@@ -2530,7 +4745,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getExpense",
@@ -2547,7 +4778,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateExpense",
@@ -2563,7 +4805,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "historyExpense",
@@ -2581,7 +4839,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkExpense",
@@ -2598,7 +4867,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listInvoice",
@@ -2616,7 +4901,21 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getInvoice",
@@ -2634,7 +4933,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateInvoice",
@@ -2650,7 +4960,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "historyInvoice",
@@ -2669,7 +4995,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createInvoiceDrafts",
@@ -2686,7 +5023,55 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "updateInvoiceDraft",
+      "method": "PUT",
+      "path": "/api/v1/invoices/{invoice_id}/draft",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "approveInvoice",
@@ -2701,7 +5086,18 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "sendInvoice",
@@ -2716,7 +5112,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getInvoicePdf",
@@ -2734,7 +5146,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/pdf"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "voidInvoice",
@@ -2749,7 +5172,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "applyTrustToInvoice",
@@ -2765,7 +5204,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "writeOffInvoice",
@@ -2781,7 +5236,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "requestInvoiceReplenishment",
@@ -2798,7 +5269,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listPayment",
@@ -2816,7 +5303,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createPayment",
@@ -2833,7 +5334,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getPayment",
@@ -2851,7 +5368,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkPayment",
@@ -2869,7 +5397,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "updatePaymentStatus",
@@ -2885,7 +5429,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "reversePayment",
@@ -2900,7 +5460,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getBillingWorklist",
@@ -2917,7 +5493,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "applyFlatFee",
@@ -2933,7 +5520,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "reportUnbilledTime",
@@ -2950,7 +5553,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportTimeByUser",
@@ -2967,7 +5584,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportArAging",
@@ -2984,7 +5615,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportPaymentsReceived",
@@ -3001,7 +5646,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportWriteOffs",
@@ -3018,7 +5677,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportTrustBalances",
@@ -3036,7 +5709,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportTrustClientLedger",
@@ -3054,7 +5741,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportTrustAccountLedger",
@@ -3072,7 +5773,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportReconciliations",
@@ -3090,7 +5805,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "reportDocTenderSpend",
@@ -3107,7 +5836,21 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listTrustAccount",
@@ -3124,7 +5867,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTrustAccount",
@@ -3138,7 +5892,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustAccount",
@@ -3155,7 +5925,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateTrustAccount",
@@ -3169,7 +5950,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listTrustEntry",
@@ -3187,7 +5984,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "postTrustEntry",
@@ -3198,13 +6006,30 @@
         "trust-below-zero"
       ],
       "scopes": [
-        "trust:write"
+        "trust:write",
+        "trust:withdraw"
       ],
       "roles": [
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustEntry",
@@ -3222,7 +6047,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkTrustEntry",
@@ -3234,13 +6070,30 @@
         "bulk"
       ],
       "scopes": [
-        "trust:write"
+        "trust:write",
+        "trust:withdraw"
       ],
       "roles": [
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "reverseTrustEntry",
@@ -3255,7 +6108,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustBalances",
@@ -3272,7 +6141,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listTrustFlag",
@@ -3289,7 +6169,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getTrustFlag",
@@ -3306,7 +6197,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "resolveTrustFlag",
@@ -3321,7 +6223,23 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listTrustReplenishment",
@@ -3338,7 +6256,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTrustReplenishment",
@@ -3354,7 +6283,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustReplenishment",
@@ -3371,7 +6316,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "cancelTrustReplenishment",
@@ -3387,7 +6343,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "satisfyTrustReplenishment",
@@ -3403,7 +6370,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listTrustReconciliation",
@@ -3420,7 +6398,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTrustReconciliation",
@@ -3436,7 +6425,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustReconciliation",
@@ -3453,7 +6458,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listCalendarEvent",
@@ -3469,7 +6485,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createCalendarEvent",
@@ -3485,7 +6512,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getCalendarEvent",
@@ -3501,7 +6544,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateCalendarEvent",
@@ -3517,7 +6571,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteCalendarEvent",
@@ -3533,7 +6603,17 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "bulkCalendarEvent",
@@ -3550,7 +6630,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listDeadline",
@@ -3566,7 +6662,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createDeadline",
@@ -3582,7 +6689,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getDeadline",
@@ -3598,7 +6721,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateDeadline",
@@ -3614,7 +6748,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkDeadline",
@@ -3631,7 +6781,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "previewAvailableDates",
@@ -3647,7 +6813,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listIcalFeed",
@@ -3663,7 +6845,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createIcalFeed",
@@ -3679,7 +6872,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getIcalFeed",
@@ -3695,7 +6904,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "revokeIcalFeed",
@@ -3711,7 +6931,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "downloadIcal",
@@ -3721,7 +6952,18 @@
         "ical"
       ],
       "scopes": [],
-      "roles": []
+      "roles": [],
+      "transfer": {
+        "result": {
+          "encoding": "text",
+          "media_type": "text/calendar"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listFile",
@@ -3739,7 +6981,55 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "application/json": "json",
+            "text/csv": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "publishFile",
+      "method": "POST",
+      "path": "/api/v1/files",
+      "features": [
+        "files",
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getFile",
@@ -3757,7 +7047,50 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "updateFileMetadata",
+      "method": "PATCH",
+      "path": "/api/v1/files/{file_id}",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkFile",
@@ -3775,7 +7108,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "renameFile",
@@ -3791,7 +7140,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "moveFile",
@@ -3807,7 +7172,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "markFileStatus",
@@ -3823,7 +7204,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "trashFile",
@@ -3839,7 +7236,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "restoreFile",
@@ -3855,7 +7263,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "purgeFile",
@@ -3869,7 +7288,22 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listFileVersions",
@@ -3887,7 +7321,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "addFileVersion",
@@ -3904,7 +7349,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "downloadFileVersion",
@@ -3923,7 +7384,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/octet-stream"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "restoreFileVersion",
@@ -3939,7 +7411,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "quarantineFileVersion",
@@ -3955,7 +7438,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listFileRenditions",
@@ -3973,7 +7472,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "downloadFileRendition",
@@ -3991,7 +7501,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/octet-stream"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createFileUpload",
@@ -4008,7 +7529,23 @@
         "attorney",
         "staff",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getFileUpload",
@@ -4025,7 +7562,18 @@
         "attorney",
         "staff",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putFileChunk",
@@ -4042,7 +7590,27 @@
         "attorney",
         "staff",
         "client"
-      ]
+      ],
+      "transfer": {
+        "headers": [
+          "Content-Range"
+        ],
+        "body": {
+          "encoding": "base64",
+          "media_type": "application/octet-stream"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "headers",
+          "body_base64"
+        ]
+      }
     },
     {
       "name": "completeFileUpload",
@@ -4059,7 +7627,18 @@
         "attorney",
         "staff",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createFileArchive",
@@ -4077,7 +7656,23 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/zip"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listFolder",
@@ -4093,7 +7688,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createFolder",
@@ -4109,7 +7715,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getFolder",
@@ -4125,7 +7747,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateFolder",
@@ -4141,7 +7774,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteFolder",
@@ -4157,7 +7806,17 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "acquireEditLock",
@@ -4174,7 +7833,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "releaseEditLock",
@@ -4190,7 +7860,17 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "renewEditLock",
@@ -4206,7 +7886,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getEditor",
@@ -4223,7 +7914,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listEditorCommands",
@@ -4239,7 +7941,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "runEditor",
@@ -4255,7 +7968,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "convertFile",
@@ -4271,7 +8000,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listCourtProfile",
@@ -4287,7 +8032,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createCourtProfile",
@@ -4303,7 +8059,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getCourtProfile",
@@ -4319,7 +8091,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateCourtProfile",
@@ -4335,7 +8118,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "verifyCourtProfile",
@@ -4350,7 +8149,18 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listStorageBackend",
@@ -4364,7 +8174,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createStorageBackend",
@@ -4378,7 +8199,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getStorageBackend",
@@ -4392,7 +8229,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateStorageBackend",
@@ -4406,7 +8254,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "testStorageBackend",
@@ -4420,7 +8284,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listStorageMove",
@@ -4434,7 +8309,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createStorageMove",
@@ -4448,7 +8334,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getStorageMove",
@@ -4462,7 +8364,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "confirmStorageMove",
@@ -4476,7 +8389,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listDocTenderJobs",
@@ -4492,7 +8416,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getDocTenderJob",
@@ -4508,7 +8443,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "retryDocTenderJob",
@@ -4523,7 +8469,18 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listDocTenderException",
@@ -4538,7 +8495,18 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getDocTenderException",
@@ -4553,7 +8521,18 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "resolveDocTenderException",
@@ -4568,7 +8547,50 @@
       "roles": [
         "admin",
         "attorney"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "getDocTenderResult",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/doc-tender-result",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listDocCategory",
@@ -4584,7 +8606,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createDocCategory",
@@ -4598,7 +8631,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getDocCategory",
@@ -4614,7 +8663,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateDocCategory",
@@ -4628,7 +8688,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getDocTenderNaming",
@@ -4644,7 +8720,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putDocTenderNaming",
@@ -4658,7 +8745,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "search",
@@ -4674,7 +8777,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getNavContext",
@@ -4691,7 +8805,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listNotification",
@@ -4709,7 +8834,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createNotification",
@@ -4725,7 +8861,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getNotification",
@@ -4743,7 +8895,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "markNotificationRead",
@@ -4761,7 +8924,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "markAllNotificationsRead",
@@ -4779,7 +8953,17 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listWidgets",
@@ -4796,7 +8980,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetMyTime",
@@ -4813,7 +9008,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetRunningTimer",
@@ -4830,7 +9036,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetUnbilled",
@@ -4848,7 +9065,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetMyOpenMatters",
@@ -4865,7 +9093,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetUpcomingDeadlines",
@@ -4882,7 +9121,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetTodaysCalendar",
@@ -4899,7 +9149,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetTrustAlerts",
@@ -4917,7 +9178,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetReplenishmentRequests",
@@ -4935,7 +9207,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetArAging",
@@ -4953,7 +9236,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetRecentActivity",
@@ -4970,7 +9264,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetPendingConflictChecks",
@@ -4987,7 +9292,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "widgetModuleAlerts",
@@ -5002,7 +9318,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getCurrentLayout",
@@ -5019,7 +9346,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putCurrentLayout",
@@ -5036,7 +9374,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listHomeLayout",
@@ -5053,7 +9407,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createHomeLayout",
@@ -5070,7 +9435,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getHomeLayout",
@@ -5087,7 +9468,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateHomeLayout",
@@ -5104,7 +9496,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteHomeLayout",
@@ -5121,7 +9529,17 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "setDefaultLayout",
@@ -5138,7 +9556,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "applyLayout",
@@ -5155,7 +9584,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listLayoutResetOptions",
@@ -5173,7 +9613,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getRoleLayout",
@@ -5187,7 +9638,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putRoleLayout",
@@ -5201,7 +9663,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listHelpSection",
@@ -5218,7 +9696,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createHelpSection",
@@ -5232,7 +9721,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getHelpSection",
@@ -5249,7 +9754,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateHelpSection",
@@ -5263,7 +9779,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteHelpSection",
@@ -5277,7 +9809,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listHelpItem",
@@ -5294,7 +9836,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createHelpItem",
@@ -5308,7 +9861,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getHelpItem",
@@ -5325,7 +9894,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateHelpItem",
@@ -5339,7 +9919,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteHelpItem",
@@ -5353,7 +9949,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listHelpTopics",
@@ -5370,7 +9976,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getHelpGuide",
@@ -5388,7 +10005,21 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "per_media_type",
+          "media_types": {
+            "text/html": "text",
+            "text/markdown": "text"
+          }
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getHelpGuidePdf",
@@ -5406,7 +10037,18 @@
         "staff",
         "accountant",
         "client"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/pdf"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listModuleHelpPages",
@@ -5423,7 +10065,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createModuleHelpPage",
@@ -5437,7 +10090,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "replaceModuleHelpPages",
@@ -5451,7 +10120,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteModuleHelpPage",
@@ -5465,7 +10150,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listEvents",
@@ -5482,7 +10177,18 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createEvent",
@@ -5498,7 +10204,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "bulkEvent",
@@ -5515,7 +10237,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listAuditLog",
@@ -5529,7 +10267,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listWebhookDeliveries",
@@ -5543,7 +10292,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listSettings",
@@ -5557,7 +10317,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getSetting",
@@ -5571,7 +10342,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateSetting",
@@ -5585,7 +10367,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "resetSetting",
@@ -5599,7 +10397,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getAppearance",
@@ -5616,7 +10425,18 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putAppearance",
@@ -5630,7 +10450,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listAiProviders",
@@ -5644,7 +10480,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putAiProviderKey",
@@ -5658,7 +10505,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "checkAiProvider",
@@ -5672,7 +10535,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createAiCall",
@@ -5688,7 +10562,23 @@
         "admin",
         "attorney",
         "staff"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listAiCalls",
@@ -5702,7 +10592,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putSmtpPassword",
@@ -5716,7 +10617,22 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "testMail",
@@ -5730,7 +10646,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listProblemReport",
@@ -5744,7 +10676,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createProblemReport",
@@ -5761,7 +10704,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getProblemReport",
@@ -5775,7 +10734,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getSeatCount",
@@ -5789,7 +10759,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listBackup",
@@ -5803,7 +10784,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createBackup",
@@ -5817,7 +10809,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getBackup",
@@ -5831,7 +10834,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "deleteBackup",
@@ -5845,7 +10859,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "downloadBackup",
@@ -5859,7 +10883,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "base64",
+          "media_type": "application/octet-stream"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listBackupDestination",
@@ -5873,7 +10908,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createBackupDestination",
@@ -5887,7 +10933,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getBackupDestination",
@@ -5901,7 +10963,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateBackupDestination",
@@ -5915,7 +10988,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteBackupDestination",
@@ -5929,7 +11018,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "testBackupDestination",
@@ -5943,7 +11042,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listRestore",
@@ -5957,7 +11067,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createRestore",
@@ -5971,7 +11092,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getRestore",
@@ -5985,7 +11122,49 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
+      "name": "createBackupUpload",
+      "method": "POST",
+      "path": "/api/v1/backup-uploads",
+      "features": [
+        "backups",
+        "restores"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "base64",
+          "media_type": "application/octet-stream"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body_base64"
+        ]
+      }
     },
     {
       "name": "listUpdates",
@@ -5999,7 +11178,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "startUpdate",
@@ -6013,7 +11203,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listModules",
@@ -6027,7 +11233,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "installModule",
@@ -6042,7 +11259,33 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "one_of",
+          "json": {
+            "media_type": "application/json"
+          },
+          "multipart": {
+            "package": {
+              "encoding": "base64",
+              "media_type": "application/octet-stream",
+              "argument": "package_base64"
+            }
+          }
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body",
+          "package_base64"
+        ]
+      }
     },
     {
       "name": "getModule",
@@ -6056,7 +11299,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "decideModulePermissions",
@@ -6070,7 +11324,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "enableModule",
@@ -6084,7 +11354,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "disableModule",
@@ -6098,7 +11379,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "uninstallModule",
@@ -6112,7 +11404,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getModuleSettings",
@@ -6126,7 +11434,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putModuleSettings",
@@ -6140,7 +11459,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "createModuleContextToken",
@@ -6157,7 +11492,23 @@
         "attorney",
         "staff",
         "accountant"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "listMarketplaceListings",
@@ -6171,7 +11522,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getMarketplaceListing",
@@ -6185,7 +11547,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listModuleAlert",
@@ -6199,7 +11572,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "getModuleAlert",
@@ -6213,7 +11597,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listTrustedKey",
@@ -6227,7 +11622,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "createTrustedKey",
@@ -6241,7 +11647,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "getTrustedKey",
@@ -6255,7 +11677,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "updateTrustedKey",
@@ -6269,7 +11702,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     },
     {
       "name": "deleteTrustedKey",
@@ -6283,7 +11732,17 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "listDomainHandlers",
@@ -6297,7 +11756,18 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
     },
     {
       "name": "putDomainHandler",
@@ -6311,7 +11781,23 @@
       ],
       "roles": [
         "admin"
-      ]
+      ],
+      "transfer": {
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
     }
   ]
 }

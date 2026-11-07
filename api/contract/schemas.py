@@ -37,6 +37,8 @@ PROBLEM_CODES = [
     "already_set_up",
     "use_provider_endpoint",
     "setting_locked",
+    "scope_denied",
+    "field_locked",
 ]
 
 
@@ -662,7 +664,18 @@ SCHEMAS = _register(
                 "dispute_notes": {"type": "string"},
                 "issued_on": _date(),
             },
-            description="Fields a caller may patch. Amounts change through draft, write-off, payment, and void.",
+            description="Fields that can change after the invoice leaves draft. Draft lines, fee items, and the adjustment use updateInvoiceDraft.",
+        ),
+        "InvoiceDraftEdit": _obj(
+            {
+                "lines": _arr(_ref("InvoiceLine")),
+                "adjustment_cents": _signed_cents(),
+                "adjustment_reason": {"type": "string"},
+                "client_message": {"type": "string"},
+                "issued_on": _date(),
+            },
+            ["lines"],
+            "Replaces the lines on a draft invoice. A line may set fee_item_id. The description and amount stay editable after the catalog fills them in. adjustment_cents and adjustment_reason are the invoice adjustment.",
         ),
         "InvoiceDraftRequest": _obj(
             {
@@ -967,6 +980,7 @@ SCHEMAS = _register(
                 "source": {"type": "string"},
                 "arrived_as": {"type": "string", "description": "Name the file arrived with. Kept for audit and page order. Not the display name."},
                 "locked_fields": _arr(_enum(["name", "category", "matter", "grouping"])),
+                "summary": {"type": "string", "description": "Hover summary from the published Doc Tender result. Omitted when that result does not exist yet."},
                 "current_version_id": _null(_uuid()),
                 "trashed_at": _null(_dt()),
                 "trashed_by": _null(_uuid()),
@@ -1018,10 +1032,10 @@ SCHEMAS = _register(
                 "next_offset": {"type": "integer", "minimum": 0},
                 "size_bytes": {"type": "integer", "minimum": 0},
                 "expires_at": _dt(),
-                "complete": {"type": "boolean"},
+                "status": _enum(["receiving", "staged", "published", "expired"]),
             },
-            ["id", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "complete"],
-            "A resumable upload. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter.",
+            ["id", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "status"],
+            "A resumable upload. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet.",
         ),
         "FileUploadWrite": _obj(
             {
@@ -1045,7 +1059,17 @@ SCHEMAS = _register(
                 "shared_with_client": {"type": "boolean"},
             },
             ["upload_id"],
-            "Links a finished chunked upload to a file record. The batch carries no file bytes and no storage key.",
+            "Publishes a staged upload. completeFileUpload must already have set status staged. The batch carries no file bytes and no storage key.",
+        ),
+        "FileMetadataWrite": _obj(
+            {
+                "attorney_only": {"type": "boolean"},
+                "shared_with_client": {"type": "boolean"},
+                "category_id": _null(_uuid()),
+                "matter_id": _null(_uuid()),
+                "contact_id": _null(_uuid()),
+            },
+            description="Metadata edited without a new file version. A field listed in locked_fields is refused with field_locked. Name stays on the rename method. Folder stays on the move method.",
         ),
         "FileArchiveRequest": _obj(
             {"file_ids": _arr(_uuid()), "folder_id": _null(_uuid())},
@@ -1172,7 +1196,7 @@ SCHEMAS = _register(
                 "last_error": {"type": "string"},
             },
             ["file_version_id", "stage", "status", "attempts"],
-            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call.",
+            "A Doc Tender job. A closed matter is stored as not_processed_matter_closed and makes no model call. The published labels are getDocTenderResult, not this object.",
             mutable=False,
         ),
         "DocTenderException": _meta(
@@ -1200,6 +1224,41 @@ SCHEMAS = _register(
             },
             ["action"],
             "A person resolving an exception locks name, category, matter, or grouping when they set one. Doc Tender does not change a locked field later.",
+        ),
+        "Citation": _obj(
+            {
+                "page": _null({"type": "integer", "minimum": 1}),
+                "timestamp": _null({"type": "string", "description": "Timestamp in the recording, when the source is audio or video."}),
+            },
+            description="Where the field was read. A published field sets page, timestamp, or both.",
+        ),
+        "CitedField": _obj(
+            {
+                "name": {"type": "string"},
+                "value": {"type": "string"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "citation": _ref("Citation"),
+            },
+            ["name", "value", "confidence", "citation"],
+            "One critical field from labeling, with its confidence and citation.",
+        ),
+        "DocTenderResult": _obj(
+            {
+                "file_id": _uuid(),
+                "file_version_id": _uuid(),
+                "summary": {"type": "string"},
+                "name_parts": _obj(
+                    {"what_it_is": {"type": "string"}, "doc_date": _null(_date())},
+                    ["what_it_is"],
+                ),
+                "category_id": _null(_uuid()),
+                "category_source": _enum(["model", "model_agreement", "person"]),
+                "fields": _arr(_ref("CitedField")),
+                "matter_id": _null(_uuid()),
+                "markdown_rendition_id": _null(_uuid()),
+            },
+            ["file_id", "file_version_id", "summary", "name_parts", "fields"],
+            "Published Doc Tender labels for one file version. fields are the cited critical values.",
         ),
         "DocCategory": _meta(
             {
@@ -1616,9 +1675,23 @@ SCHEMAS = _register(
             "A restore. This is the operation that interrupts users.",
             mutable=False,
         ),
+        "BackupUpload": _obj(
+            {
+                "upload_token": {"type": "string"},
+                "checksum": {"type": "string"},
+                "bytes": {"type": "integer", "minimum": 0},
+            },
+            ["upload_token", "checksum", "bytes"],
+            "Produced by uploading a backup archive the admin downloaded. The token is the source for a restore. It is not itself a restore.",
+        ),
         "RestoreWrite": _obj(
-            {"backup_id": _null(_uuid()), "upload_token": {"type": "string"}},
-            description="One of backup_id or upload_token from a completed backup upload.",
+            {
+                "backup_id": _null(_uuid("A stored backup. Omit when upload_token is set.")),
+                "upload_token": {"type": "string", "description": "From createBackupUpload, including an archive that was downloaded and uploaded again."},
+                "passphrase": {"type": "string", "minLength": 1, "description": "Backup passphrase set at first-run setup."},
+            },
+            ["passphrase"],
+            "One source is required: backup_id or upload_token. passphrase is always required. A body with neither source is validation_failed.",
         ),
         "UpdateRecord": _meta(
             {
@@ -1704,6 +1777,10 @@ SCHEMAS = _register(
                 "image": _obj({"reference": {"type": "string"}, "digest": {"type": "string"}}, ["reference", "digest"]),
                 "permissions": _arr({"type": "string"}),
                 "widgets": _arr(_ref("ManifestWidget")),
+                "sidebar": _arr(_ref("ManifestSidebarEntry")),
+                "quick_create": _arr(_ref("ManifestQuickCreate")),
+                "search_scopes": _arr(_ref("ManifestSearchScope")),
+                "matter_screen": _ref("ManifestMatterScreen"),
                 "help": {"type": "object", "additionalProperties": True},
                 "tabs": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
                 "event_subscriptions": _arr({"type": "string"}),
@@ -1719,10 +1796,52 @@ SCHEMAS = _register(
                 "id": {"type": "string"},
                 "title": {"type": "string"},
                 "default_size": _obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"]),
+                "allowed_sizes": _arr(_obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"])),
                 "target": _obj({"path": {"type": "string"}, "filters": {"type": "object", "additionalProperties": True}}, ["path"]),
             },
-            ["id", "title", "target"],
-            "target is required. Install refuses a widget that omits it.",
+            ["id", "title", "default_size", "allowed_sizes", "target"],
+            "target is required. Install refuses a widget that omits it. allowed_sizes lists the grid sizes the widget may take.",
+        ),
+        "ManifestSidebarEntry": _obj(
+            {
+                "section": {"type": "string"},
+                "subgroup": {"type": "string"},
+                "label": {"type": "string"},
+                "icon": {"type": "string"},
+                "order": {"type": "integer"},
+                "badge": _enum(["normal", "warning"]),
+            },
+            ["section", "label", "icon", "order"],
+            "A sidebar entry from the module manifest.",
+        ),
+        "ManifestQuickCreate": _obj(
+            {"label": {"type": "string"}, "target": {"type": "string"}},
+            ["label", "target"],
+            "A quick-create item. target is the path the core opens.",
+        ),
+        "ManifestSearchScope": _obj(
+            {"id": {"type": "string"}, "label": {"type": "string"}},
+            ["id", "label"],
+            "A search scope the core merges into header search.",
+        ),
+        "ManifestMatterScreen": _obj(
+            {
+                "panels": _arr(_obj({"id": {"type": "string"}, "title": {"type": "string"}}, ["id", "title"])),
+                "actions": _arr(_obj({"id": {"type": "string"}, "label": {"type": "string"}}, ["id", "label"])),
+            },
+            ["panels", "actions"],
+            "Matter-screen panels and actions.",
+        ),
+        "ModulePackageUpload": _obj(
+            {
+                "package": {
+                    "type": "string",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "Signed module package bytes.",
+                }
+            },
+            ["package"],
+            "Multipart body for a local signed package. The JSON ModuleInstall body is the marketplace alternative on the same path.",
         ),
         "AiProvider": _obj(
             {
@@ -1954,13 +2073,47 @@ SCHEMAS = _register(
         "LoginRequest": _obj({"email": {"type": "string", "format": "email"}, "password": {"type": "string"}}, ["email", "password"]),
         "LoginResponse": _obj(
             {
-                "status": _enum(["totp_required", "authenticated"]),
+                "status": _enum(["totp_required", "enrollment_required", "authenticated"]),
                 "totp_token": {"type": "string"},
+                "enrollment_token": {"type": "string"},
                 "user": _ref("User"),
                 "csrf_token": {"type": "string"},
             },
             ["status"],
-            "totp_required carries totp_token. authenticated sets the session cookie and returns csrf_token.",
+            "totp_required carries totp_token for a user who already enrolled. enrollment_required carries enrollment_token and no session; the secret is returned by startTotpEnrollment or by first-run setup, not here. authenticated sets the session cookie and returns csrf_token.",
+        ),
+        "EnrollmentChallenge": _obj(
+            {
+                "status": {"const": "totp_enrollment_required"},
+                "enrollment_token": {"type": "string"},
+                "otpauth_uri": {"type": "string"},
+                "secret": {"type": "string", "description": "Base32 TOTP secret, shown once."},
+            },
+            ["status", "enrollment_token", "otpauth_uri", "secret"],
+            "Issued before a session exists. The next call is confirmTotpEnrollment.",
+        ),
+        "EnrollmentStart": _obj(
+            {"enrollment_token": {"type": "string", "minLength": 1}},
+            ["enrollment_token"],
+            "Token from a login response whose status is enrollment_required.",
+        ),
+        "EnrollmentConfirm": _obj(
+            {
+                "enrollment_token": {"type": "string", "minLength": 1},
+                "code": {"type": "string", "minLength": 6},
+            },
+            ["enrollment_token", "code"],
+            "Confirms the first TOTP code. No session is required.",
+        ),
+        "SessionStarted": _obj(
+            {
+                "status": {"const": "authenticated"},
+                "user": _ref("User"),
+                "csrf_token": {"type": "string"},
+                "recovery_codes": _arr({"type": "string"}),
+            },
+            ["status", "user", "csrf_token", "recovery_codes"],
+            "Session cookie plus the initial recovery codes, returned once.",
         ),
         "TotpRequest": _obj({"totp_token": {"type": "string"}, "code": {"type": "string", "minLength": 6}}, ["totp_token", "code"]),
         "RecoveryLoginRequest": _obj({"totp_token": {"type": "string"}, "recovery_code": {"type": "string"}}, ["totp_token", "recovery_code"]),

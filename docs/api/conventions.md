@@ -21,6 +21,10 @@ Attorney-only values (SSN, EIN, conflict reasons) use `{ "redacted": true }` or 
 
 An accountant can read billing, trust, reports, and file records that are receipts or invoice PDFs. Accountant is absent from billing and trust writes. A client reaches shared items on their own matters. The user guide returns `not_found` for a client.
 
+`access_inherits` says which row carries the wall. `matter` hides a record whose matter is walled. `file` hides a record whose file is on a walled matter, or whose file is attorney-only for a caller without that access. A conflict record with no matter stays visible. The same flag is on reads and on the writes that reveal or change those rows, including Doc Tender exceptions, timer pause and stop, replenishment cancel and satisfy, and quarantine.
+
+A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` posts a deposit. A withdrawal, transfer to operating, refund, or adjustment needs `trust:withdraw`. A deposit-only token is `scope_denied` on those types, including inside a bulk batch, and the batch writes nothing. Role checks still apply.
+
 Replaceable domains are time, trust, and calendar (`x-togavsu-replaceable-domain`). Switching the handler does not change these paths. Core rows stay readable. A trust module still posts a below-zero entry and raises `trust.flag_raised`.
 
 ## Errors
@@ -64,6 +68,12 @@ Routers match a literal path before a parameter. `/api/v1/settings/appearance` i
 Trust ledger entries, audit rows, events, and file versions have no update and no delete. A trust correction is `POST /api/v1/trust-ledger/{id}/reversals`. A payment correction is `POST /api/v1/payments/{id}/reverse`. Restoring a file version copies it forward as a new version.
 
 Storage keys stay off the API. Downloads check SHA-256. A mismatch fails the read and emails the admins. A quarantined version downloads only with `confirm=true`.
+
+`completeFileUpload` stores bytes and sets the upload to `staged`. It does not create a file or a Doc Tender job. `publishFile`, `addFileVersion`, and `bulkFile` attach staged uploads. Each of those is one transaction: a failure leaves the upload staged and creates no file.
+
+`createBackupUpload` accepts an encrypted archive, including one returned by `downloadBackup`, and returns `upload_token`. `createRestore` requires `passphrase` and either `backup_id` or that token.
+
+A draft invoice's lines, fee-item selection, line description, line amount, and adjustment are `updateInvoiceDraft`. The invoice must be `draft`. Metadata on an existing file, including `attorney_only`, `shared_with_client`, category, and matter, is `updateFileMetadata` and does not add a version. A person-locked field returns `field_locked`.
 
 ## Settings
 

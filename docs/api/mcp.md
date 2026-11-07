@@ -19,7 +19,32 @@
 }
 ```
 
-`name` is the OpenAPI `operationId`. Arguments are the path parameters, the query parameters, `idempotency_key` on writes, and `body` when the HTTP call has a JSON body. The success payload is the HTTP success body. A failure sets the JSON-RPC error `data` to the problem+json body.
+`name` is the OpenAPI `operationId`. Each required tool records `x-togavsu-mcp.transfer`, and the same object is copied onto `api/openapi/v1/mcp-tools.json`.
+
+JSON calls use `path`, `query`, `idempotency_key`, and `body`. A call with a header parameter also sends `headers`. A raw body sends `body_base64` instead of `body`: standard base64 of the octets, no line breaks. A binary success uses the same encoding in the tool result, with `media_type` naming the HTTP type. A failure still sets the JSON-RPC error `data` to the problem+json body.
+
+Chunk upload:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "putFileChunk",
+    "arguments": {
+      "upload_id": "018f...",
+      "headers": {"Content-Range": "bytes 0-8388607/9000000"},
+      "idempotency_key": "chunk-0",
+      "body_base64": "AAECAw=="
+    }
+  }
+}
+```
+
+`putFileChunk.transfer.body.encoding` is `base64` and `transfer.headers` includes `Content-Range`. `downloadFileVersion`, `downloadFileRendition`, `getInvoicePdf`, and `createFileArchive` set `transfer.result.encoding` to `base64`. The result is `{ "media_type": "application/octet-stream", "body_base64": "..." }` (or `application/pdf` or `application/zip`).
+
+`installModule` accepts either JSON `body` (`ModuleInstall`) or multipart `package_base64` (`ModulePackageUpload`). `transfer.body.encoding` is `one_of`. `createBackupUpload` is `body_base64` of the archive.
 
 Every operation carries `x-togavsu-mcp`:
 

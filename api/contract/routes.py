@@ -11,10 +11,27 @@ BILLING = ["admin", "attorney", "staff", "accountant"]
 FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
 
-WALL = {"matter_wall": True}
-SHARED = {"matter_wall": True, "client": "shared", "accountant": "receipts-and-invoice-pdfs"}
+WALL = {"matter_wall": True, "access_inherits": "matter"}
+FILE_WALL = {"matter_wall": True, "access_inherits": "file"}
+SHARED = {"matter_wall": True, "access_inherits": "file", "client": "shared", "accountant": "receipts-and-invoice-pdfs"}
 OWN = {"client": "own"}
 
+ENTRY_TYPE_SCOPES = {
+    "deposit": ["trust:write"],
+    "withdrawal": ["trust:withdraw"],
+    "transfer_to_operating": ["trust:withdraw"],
+    "refund": ["trust:withdraw"],
+    "adjustment": ["trust:withdraw"],
+}
+TRUST_SCOPE_CASES = [
+    {"token_scopes": ["trust:write"], "entry_type": "deposit", "result": "allowed"},
+    {"token_scopes": ["trust:write"], "entry_type": "withdrawal", "result": "scope_denied"},
+    {"token_scopes": ["trust:write"], "entry_type": "transfer_to_operating", "result": "scope_denied"},
+    {"token_scopes": ["trust:write"], "entry_type": "refund", "result": "scope_denied"},
+    {"token_scopes": ["trust:write"], "entry_type": "adjustment", "result": "scope_denied"},
+    {"token_scopes": ["trust:withdraw"], "entry_type": "withdrawal", "result": "allowed"},
+    {"token_scopes": ["trust:write", "trust:withdraw"], "entry_type": "deposit", "result": "allowed"},
+]
 TRUST_ENTRY_ROLES = {
     "entry_type_roles": {
         "deposit": STAFF,
@@ -23,8 +40,12 @@ TRUST_ENTRY_ROLES = {
         "refund": ATTORNEY,
         "adjustment": ATTORNEY,
     },
+    "entry_type_scopes": ENTRY_TYPE_SCOPES,
+    "scope_combination": "per_entry_type",
+    "scope_cases": TRUST_SCOPE_CASES,
     "below_zero": "posts",
     "matter_wall": True,
+    "access_inherits": "matter",
 }
 
 
@@ -162,18 +183,22 @@ def _platform(api: Contract) -> None:
         "/api/v1/setup",
         operation_id="createSetup",
         summary="Run first-run setup",
-        description="Creates the firm and the first admin. A later call returns already_set_up. TOTP enrollment follows before the admin works in the app.",
+        description=(
+            "Creates the firm and the first admin, then returns an enrollment challenge with otpauth_uri and the TOTP secret. "
+            "No session cookie is set. The next call is confirmTotpEnrollment. A later setup call returns already_set_up."
+        ),
         tag="Platform",
         features=["setup"],
         roles=None,
         scopes=[],
         public=True,
         body="SetupRequest",
-        response="LoginResponse",
+        response="EnrollmentChallenge",
         success="201",
         error_codes=["already_set_up"],
         events=["user.created"],
     )
+    api.spec["paths"]["/api/v1/setup"]["post"]["x-togavsu-next"] = "confirmTotpEnrollment"
 
 
 def _identity(api: Contract) -> None:
@@ -183,7 +208,12 @@ def _identity(api: Contract) -> None:
         "/api/v1/auth/login",
         operation_id="login",
         summary="Sign in",
-        description="Password check. When the role requires TOTP the status is totp_required and no session cookie is set. Repeated failures lock the account.",
+        description=(
+            "Password check. No session cookie is set until TOTP is confirmed. "
+            "A user who already enrolled gets status totp_required. "
+            "A user who has not enrolled gets status enrollment_required and enrollment_token, then calls startTotpEnrollment. "
+            "Repeated failures lock the account."
+        ),
         tag="Identity",
         features=["auth"],
         roles=None,
@@ -199,7 +229,7 @@ def _identity(api: Contract) -> None:
         "/api/v1/auth/totp",
         operation_id="verifyTotp",
         summary="Finish sign-in with TOTP",
-        description="Exchanges a totp_token and a code for a session.",
+        description="Exchanges a totp_token and a code for a session. This is only for a user who already finished enrollment. The first enrollment uses confirmTotpEnrollment.",
         tag="Identity",
         features=["auth"],
         roles=None,
@@ -207,6 +237,42 @@ def _identity(api: Contract) -> None:
         public=True,
         body="TotpRequest",
         response="LoginResponse",
+        extra_responses={"401": {"description": "Wrong code.", "content": problem}},
+    )
+    api.add(
+        "post",
+        "/api/v1/auth/totp/enroll",
+        operation_id="startTotpEnrollment",
+        summary="Start TOTP enrollment before a session",
+        description="Public. Takes the enrollment_token from a login whose status is enrollment_required. Returns otpauth_uri and the secret once. Does not set a session.",
+        tag="Identity",
+        features=["auth", "setup"],
+        roles=None,
+        scopes=[],
+        public=True,
+        body="EnrollmentStart",
+        response="EnrollmentChallenge",
+        error_codes=["unauthenticated"],
+        extra_responses={"401": {"description": "Unknown enrollment token.", "content": problem}},
+    )
+    api.add(
+        "post",
+        "/api/v1/auth/totp/confirm",
+        operation_id="confirmTotpEnrollment",
+        summary="Confirm TOTP enrollment and open a session",
+        description=(
+            "Public. Confirms the first code for the enrollment_token from setup or startTotpEnrollment. "
+            "Sets the session cookie and returns the initial recovery codes once. "
+            "resetTotp is the later authenticated reset, not this step."
+        ),
+        tag="Identity",
+        features=["auth", "setup"],
+        roles=None,
+        scopes=[],
+        public=True,
+        body="EnrollmentConfirm",
+        response="SessionStarted",
+        error_codes=["unauthenticated"],
         extra_responses={"401": {"description": "Wrong code.", "content": problem}},
     )
     api.add(
@@ -828,7 +894,7 @@ def _practice(api: Contract) -> None:
         bulk=True,
         filters=["q"],
         events={"created": "conflict_record.created", "updated": "conflict_record.updated"},
-        extra_access={"attorney_only": ["reason"]},
+        extra_access={"attorney_only": ["reason"], "matter_wall": True, "access_inherits": "matter"},
     )
     api.add(
         "post",
@@ -1086,20 +1152,21 @@ def _billing(api: Contract) -> None:
         "/api/v1/timers/{timer_id}/pause",
         operation_id="pauseTimer",
         summary="Pause a timer",
-        description="Pauses the caller's timer.",
+        description="Pauses the caller's timer. The timer's matter wall applies; a walled matter the caller cannot see is not_found.",
         tag="Billing",
         features=["timers"],
         roles=STAFF,
         scopes=["time:write"],
         response="Timer",
         replaceable="time",
+        extra_access=WALL,
     )
     api.add(
         "post",
         "/api/v1/timers/{timer_id}/stop",
         operation_id="stopTimer",
         summary="Stop a timer",
-        description="Stops the timer and creates a draft time entry for review.",
+        description="Stops the timer and creates a draft time entry for review. The timer's matter wall applies.",
         tag="Billing",
         features=["timers"],
         roles=STAFF,
@@ -1107,6 +1174,7 @@ def _billing(api: Contract) -> None:
         response="TimerStopResult",
         events=["time_entry.created"],
         replaceable="time",
+        extra_access=WALL,
     )
     api.resource(
         collection="/api/v1/expenses",
@@ -1164,6 +1232,27 @@ def _billing(api: Contract) -> None:
         success="201",
         events=["invoice.drafted"],
         extra_access=WALL,
+    )
+    api.add(
+        "put",
+        "/api/v1/invoices/{invoice_id}/draft",
+        operation_id="updateInvoiceDraft",
+        summary="Edit a draft invoice",
+        description=(
+            "Replaces lines on a draft, including a catalog fee item whose description and amount stay editable. "
+            "Sets adjustment_cents and adjustment_reason. "
+            "The invoice must be status draft; any other status returns conflict and writes nothing. "
+            "Approval is approveInvoice. An accountant cannot call this."
+        ),
+        tag="Billing",
+        features=["invoices"],
+        roles=STAFF,
+        scopes=["invoices:write"],
+        body="InvoiceDraftEdit",
+        response="Invoice",
+        events=["invoice.updated"],
+        error_codes=["conflict"],
+        extra_access={**WALL, "required_status": "draft"},
     )
     api.add(
         "post",
@@ -1430,7 +1519,9 @@ def _trust(api: Contract) -> None:
         summary="Post a trust ledger entry",
         description=(
             "Appends a deposit, withdrawal, transfer to operating, refund, or adjustment. "
-            "A withdrawal, transfer, refund, or adjustment requires an attorney or admin. "
+            "The bearer scope comes from entry_type_scopes: deposit needs trust:write, and a withdrawal, transfer, refund, or adjustment needs trust:withdraw. "
+            "A token that holds only trust:write is scope_denied on those four types. "
+            "A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. "
             "Staff may post a deposit. "
             "An entry that leaves a negative client balance, per matter or overall, still posts. "
             "The core raises a trust flag and emails the admins and the responsible attorney. "
@@ -1439,13 +1530,13 @@ def _trust(api: Contract) -> None:
         tag="Trust",
         features=["trust-ledger", "trust-below-zero"],
         roles=STAFF,
-        scopes=["trust:write"],
+        scopes=["trust:write", "trust:withdraw"],
         body="TrustEntryWrite",
         response="TrustPostResult",
         success="201",
         events=["trust.entry_posted", "trust.flag_raised"],
         replaceable="trust",
-        error_codes=["forbidden"],
+        error_codes=["forbidden", "scope_denied"],
         extra_access=TRUST_ENTRY_ROLES,
     )
     api.add(
@@ -1453,11 +1544,15 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust-ledger:bulk",
         operation_id="bulkTrustEntry",
         summary="Post trust ledger entries in one batch",
-        description="One transaction. A failed item posts nothing. A negative balance still posts and returns its flags. There is no bulk edit and no bulk delete.",
+        description=(
+            "One transaction. A failed item posts nothing. A negative balance still posts and returns its flags. "
+            "Each item uses entry_type_scopes. A trust:write token is scope_denied for a withdrawal, transfer, refund, or adjustment in the batch, and nothing is posted. "
+            "There is no bulk edit and no bulk delete."
+        ),
         tag="Trust",
         features=["trust-ledger", "trust-below-zero", "bulk"],
         roles=STAFF,
-        scopes=["trust:write"],
+        scopes=["trust:write", "trust:withdraw"],
         body_schema={
             "type": "object",
             "additionalProperties": False,
@@ -1468,7 +1563,7 @@ def _trust(api: Contract) -> None:
         success="201",
         events=["trust.entry_posted"],
         replaceable="trust",
-        error_codes=["batch_rejected"],
+        error_codes=["batch_rejected", "scope_denied"],
         extra_access=TRUST_ENTRY_ROLES,
     )
     api.add(
@@ -1486,7 +1581,7 @@ def _trust(api: Contract) -> None:
         success="201",
         events=["trust.entry_posted"],
         replaceable="trust",
-        extra_access=TRUST_ENTRY_ROLES,
+        extra_access={"below_zero": "posts", "matter_wall": True, "access_inherits": "matter"},
     )
     api.add(
         "get",
@@ -1562,26 +1657,28 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust-replenishment-requests/{replenishment_id}/cancel",
         operation_id="cancelTrustReplenishment",
         summary="Cancel a replenishment request",
-        description="Sets status cancelled.",
+        description="Sets status cancelled. The request's matter wall applies.",
         tag="Trust",
         features=["trust-replenishment"],
         roles=STAFF,
         scopes=["trust:write"],
         response="TrustReplenishment",
         replaceable="trust",
+        extra_access=WALL,
     )
     api.add(
         "post",
         "/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy",
         operation_id="satisfyTrustReplenishment",
         summary="Satisfy a replenishment request",
-        description="Sets status satisfied.",
+        description="Sets status satisfied. The request's matter wall applies.",
         tag="Trust",
         features=["trust-replenishment"],
         roles=STAFF,
         scopes=["trust:write"],
         response="TrustReplenishment",
         replaceable="trust",
+        extra_access=WALL,
     )
     api.resource(
         collection="/api/v1/trust-reconciliations",
@@ -1744,8 +1841,12 @@ def _files(api: Contract) -> None:
         "post",
         "/api/v1/files:bulk",
         operation_id="bulkFile",
-        summary="Create file records from finished uploads",
-        description="Each item names a completed upload. The batch has no bytes and no storage key. One failed item creates nothing.",
+        summary="Publish staged uploads as files in one batch",
+        description=(
+            "Each item names a staged upload. The batch has no bytes and no storage key. "
+            "Publication is one transaction: every file and first version is created, or none are. "
+            "A failed item returns batch_rejected and leaves every upload staged."
+        ),
         tag="Files",
         features=["files", "file-uploads", "bulk"],
         roles=STAFF,
@@ -1763,7 +1864,7 @@ def _files(api: Contract) -> None:
         extra_access=WALL,
     )
     for method, path, op, summary, body, event, desc in (
-        ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX."),
+        ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person-locked name returns field_locked."),
         ("post", "/api/v1/files/{file_id}/move", "moveFile", "Move a file between folders", "FileMove", "file.updated", "Changes the folder record. Bytes stay on the same key."),
         ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive."),
         ("post", "/api/v1/files/{file_id}/trash", "trashFile", "Trash a file", None, "file.trashed", "The file stays listed and restorable."),
@@ -1784,6 +1885,28 @@ def _files(api: Contract) -> None:
             events=[event],
             extra_access=WALL,
         )
+    api.spec["paths"]["/api/v1/files/{file_id}/rename"]["post"]["x-togavsu-error-codes"] = ["field_locked"]
+    api.add(
+        "patch",
+        "/api/v1/files/{file_id}",
+        operation_id="updateFileMetadata",
+        summary="Update file metadata",
+        description=(
+            "Sets attorney_only, shared_with_client, category, matter, or contact without adding a version. "
+            "Name stays on rename. Folder stays on move. "
+            "A change to a field in locked_fields returns field_locked and writes nothing. "
+            "The edit is audited. The file's matter wall and attorney-only flag apply; a hidden file is not_found."
+        ),
+        tag="Files",
+        features=["files"],
+        roles=STAFF,
+        scopes=["files:write"],
+        body="FileMetadataWrite",
+        response="File",
+        events=["file.updated"],
+        error_codes=["field_locked"],
+        extra_access={**FILE_WALL, "attorney_only": ["attorney_only"]},
+    )
     api.add(
         "post",
         "/api/v1/files/{file_id}/purge",
@@ -1820,7 +1943,11 @@ def _files(api: Contract) -> None:
         "/api/v1/files/{file_id}/versions",
         operation_id="addFileVersion",
         summary="Add a file version from a finished upload",
-        description="Points the file at a new immutable version built from a completed upload.",
+        description=(
+            "Attaches one staged upload as a new immutable version in one transaction and marks that upload published. "
+            "The upload must already be status staged. This does not create another file record. "
+            "A failed attach leaves the upload staged."
+        ),
         tag="Files",
         features=["file-versions", "file-uploads"],
         roles=STAFF,
@@ -1868,7 +1995,7 @@ def _files(api: Contract) -> None:
         "/api/v1/files/{file_id}/versions/{version_id}/quarantine",
         operation_id="quarantineFileVersion",
         summary="Set the quarantine flag",
-        description="A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation.",
+        description="A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation. The file's matter wall applies; a walled file is not_found.",
         tag="Files",
         features=["quarantine"],
         roles=STAFF,
@@ -1876,6 +2003,7 @@ def _files(api: Contract) -> None:
         body="QuarantineWrite",
         response="FileVersion",
         events=["file.quarantine_changed"],
+        extra_access=FILE_WALL,
     )
     api.add(
         "get",
@@ -1956,28 +2084,52 @@ def _files(api: Contract) -> None:
                 "description": "bytes start-end/total",
             }
         ],
+        request_content={
+            "application/octet-stream": {
+                "schema": {"type": "string", "contentMediaType": "application/octet-stream"}
+            }
+        },
         response="FileUpload",
         extra_access={"client": "own"},
     )
-    # putFileChunk needs a raw body. Declare it as octet-stream by replacing requestBody after add.
-    api.spec["paths"]["/api/v1/file-uploads/{upload_id}"]["put"]["requestBody"] = {
-        "required": True,
-        "content": {"application/octet-stream": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}},
-    }
     api.add(
         "post",
         "/api/v1/file-uploads/{upload_id}/complete",
         operation_id="completeFileUpload",
-        summary="Complete an upload",
-        description="Checks the SHA-256, stores the encrypted bytes, and creates the file and its first version. A matching hash already in the matter adds a warning and still completes.",
+        summary="Stage a completed upload",
+        description=(
+            "Checks the SHA-256 and stores the encrypted bytes with status staged. "
+            "It does not create a file, a version, or a Doc Tender job. "
+            "publishFile, addFileVersion, or bulkFile publishes the staged upload in a later transaction. "
+            "A matching hash already in the matter is reported on that later publish, not here."
+        ),
         tag="Files",
         features=["file-uploads"],
         roles=STAFF + ["client"],
         scopes=["files:write"],
+        response="FileUpload",
+        success="200",
+        events=["file_upload.staged"],
+        extra_access={**WALL, "client": "shared"},
+    )
+    api.add(
+        "post",
+        "/api/v1/files",
+        operation_id="publishFile",
+        summary="Publish a staged upload as a file",
+        description=(
+            "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. "
+            "completeFileUpload must have run first. A failed publish leaves the upload staged and creates no file and no Doc Tender job."
+        ),
+        tag="Files",
+        features=["files", "file-uploads"],
+        roles=STAFF + ["client"],
+        scopes=["files:write"],
+        body="FileBulkItem",
         response="File",
         success="201",
         events=["file.created", "file.version_created"],
-        extra_access={"client": "shared"},
+        extra_access={**FILE_WALL, "client": "shared"},
     )
     api.add(
         "post",
@@ -2211,21 +2363,21 @@ def _doc_tender(api: Contract) -> None:
         paginate=True,
         query=["matter_id", "status"],
         writes=False,
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "get",
         "/api/v1/doc-tender/jobs/{job_id}",
         operation_id="getDocTenderJob",
         summary="Get a Doc Tender job",
-        description="Status, stage, attempts, and the last error.",
+        description="Status, stage, attempts, and the last error. Labels and citations are getDocTenderResult.",
         tag="Doc Tender",
         features=["doc-tender"],
         roles=STAFF,
         scopes=["doc_tender:read"],
         response="DocTenderJob",
         writes=False,
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "post",
@@ -2239,7 +2391,7 @@ def _doc_tender(api: Contract) -> None:
         scopes=["doc_tender:write"],
         response="DocTenderJob",
         events=["doc_tender.published"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.resource(
         collection="/api/v1/doc-tender/exceptions",
@@ -2256,13 +2408,14 @@ def _doc_tender(api: Contract) -> None:
         create=False,
         update=False,
         filters=["status", "kind"],
+        extra_access=FILE_WALL,
     )
     api.add(
         "post",
         "/api/v1/doc-tender/exceptions/{exception_id}/resolve",
         operation_id="resolveDocTenderException",
         summary="Resolve a Doc Tender exception",
-        description="Accept, correct, assign matter, retry, or keep. Correct and assign lock the fields a person set.",
+        description="Accept, correct, assign matter, retry, or keep. Correct and assign lock the fields a person set. The file's matter wall applies.",
         tag="Doc Tender",
         features=["doc-tender"],
         roles=ATTORNEY,
@@ -2270,6 +2423,25 @@ def _doc_tender(api: Contract) -> None:
         body="DocTenderResolve",
         response="DocTenderException",
         events=["doc_tender.exception_resolved"],
+        extra_access=FILE_WALL,
+    )
+    api.add(
+        "get",
+        "/api/v1/files/{file_id}/doc-tender-result",
+        operation_id="getDocTenderResult",
+        summary="Read a published Doc Tender result",
+        description=(
+            "The published summary, name parts, category, and critical fields. "
+            "Each field has a confidence and a page or timestamp citation. "
+            "The file's matter wall and attorney-only flag apply. A file with no published result is not_found."
+        ),
+        tag="Doc Tender",
+        features=["doc-tender"],
+        roles=STAFF,
+        scopes=["doc_tender:read"],
+        response="DocTenderResult",
+        writes=False,
+        extra_access=FILE_WALL,
     )
     api.resource(
         collection="/api/v1/doc-tender/categories",
@@ -3102,6 +3274,33 @@ def _admin(api: Contract) -> None:
         update=False,
         events={"created": "restore.started"},
     )
+    api.spec["paths"]["/api/v1/restores"]["post"]["description"] = (
+        "Starts a restore, which interrupts users. "
+        "The body requires passphrase and one source: backup_id for a stored backup, or upload_token from createBackupUpload. "
+        "upload_token is how an archive the admin downloaded is restored. A body with neither source is validation_failed."
+    )
+    api.spec["paths"]["/api/v1/restores"]["post"]["x-togavsu-error-codes"] = ["validation_failed"]
+    api.add(
+        "post",
+        "/api/v1/backup-uploads",
+        operation_id="createBackupUpload",
+        summary="Upload a backup archive",
+        description=(
+            "Accepts the encrypted archive from downloadBackup, or another backup file the admin holds. "
+            "Returns upload_token. This does not start a restore. createRestore consumes the token and the passphrase."
+        ),
+        tag="Backups",
+        features=["backups", "restores"],
+        roles=ADMIN,
+        scopes=["backups:admin"],
+        request_content={
+            "application/octet-stream": {
+                "schema": {"type": "string", "contentMediaType": "application/octet-stream"}
+            }
+        },
+        response="BackupUpload",
+        success="201",
+    )
     api.add(
         "get",
         "/api/v1/updates",
@@ -3165,7 +3364,10 @@ def _modules(api: Contract) -> None:
         features=["modules", "marketplace"],
         roles=ADMIN,
         scopes=["modules:write"],
-        body="ModuleInstall",
+        request_content={
+            "application/json": {"schema": {"$ref": "#/components/schemas/ModuleInstall"}},
+            "multipart/form-data": {"schema": {"$ref": "#/components/schemas/ModulePackageUpload"}},
+        },
         response="Module",
         success="202",
         events=["module.install_requested"],

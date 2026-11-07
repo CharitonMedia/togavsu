@@ -333,6 +333,7 @@ class ContractTest(unittest.TestCase):
     def test_public_and_authenticated_security(self):
         public = {
             "confirmPasswordReset",
+            "confirmTotpEnrollment",
             "createSetup",
             "downloadIcal",
             "getHealth",
@@ -343,6 +344,7 @@ class ContractTest(unittest.TestCase):
             "getSetup",
             "login",
             "requestPasswordReset",
+            "startTotpEnrollment",
             "verifyRecoveryCode",
             "verifyTotp",
         }
@@ -484,12 +486,248 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(dump(render_mcp(self.spec)), MCP_PATH.read_text(encoding="utf-8"))
         self.assertEqual(render_coverage(self.spec), COVERAGE_PATH.read_text(encoding="utf-8"))
 
+    def test_trust_entry_scopes_deny_a_deposit_only_token(self):
+        for operation_id in ("postTrustEntry", "bulkTrustEntry"):
+            operation = _operation(self.spec, operation_id)
+            access = operation["x-togavsu-access"]
+            self.assertEqual(access["scope_combination"], "per_entry_type")
+            scopes = access["entry_type_scopes"]
+            self.assertEqual(scopes["deposit"], ["trust:write"])
+            for entry_type in ("withdrawal", "transfer_to_operating", "refund", "adjustment"):
+                self.assertEqual(scopes[entry_type], ["trust:withdraw"], entry_type)
+            self.assertIn("scope_denied", operation["x-togavsu-error-codes"])
+            denied = [case for case in access["scope_cases"] if case["result"] == "scope_denied"]
+            self.assertGreaterEqual(len(denied), 4)
+            for case in access["scope_cases"]:
+                self.assertEqual(
+                    _scope_decision(scopes, case["token_scopes"], case["entry_type"]),
+                    case["result"],
+                    case,
+                )
+            self.assertEqual(_scope_decision(scopes, ["trust:write"], "withdrawal"), "scope_denied")
+
+    def test_matter_wall_is_inherited_on_named_flows(self):
+        expected = {
+            "getMatter": "matter",
+            "listMatter": "matter",
+            "search": "matter",
+            "listConflictRecord": "matter",
+            "getConflictRecord": "matter",
+            "pauseTimer": "matter",
+            "stopTimer": "matter",
+            "cancelTrustReplenishment": "matter",
+            "satisfyTrustReplenishment": "matter",
+            "listDocTenderException": "file",
+            "getDocTenderException": "file",
+            "resolveDocTenderException": "file",
+            "getDocTenderResult": "file",
+            "quarantineFileVersion": "file",
+            "updateFileMetadata": "file",
+        }
+        for operation_id, inherits in expected.items():
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertTrue(access["matter_wall"], operation_id)
+            self.assertEqual(access["access_inherits"], inherits, operation_id)
+
+    def test_first_admin_enrolls_totp_before_a_session(self):
+        setup = self.spec["paths"]["/api/v1/setup"]["post"]
+        self.assertEqual(setup["x-togavsu-next"], "confirmTotpEnrollment")
+        self.assertEqual(_schema_name(setup["responses"]["201"]), "EnrollmentChallenge")
+        challenge = self.spec["components"]["schemas"]["EnrollmentChallenge"]
+        for field in ("enrollment_token", "otpauth_uri", "secret"):
+            self.assertIn(field, challenge["required"])
+        enroll = _operation(self.spec, "startTotpEnrollment")
+        confirm = _operation(self.spec, "confirmTotpEnrollment")
+        self.assertEqual(enroll["security"], [])
+        self.assertEqual(confirm["security"], [])
+        self.assertEqual(_schema_name(enroll["responses"]["200"]), "EnrollmentChallenge")
+        started = self.spec["components"]["schemas"]["SessionStarted"]
+        self.assertIn("recovery_codes", started["required"])
+        self.assertEqual(_schema_name(confirm["responses"]["200"]), "SessionStarted")
+        reset = _operation(self.spec, "resetTotp")
+        self.assertNotEqual(reset["security"], [])
+
+    def test_mcp_binary_upload_and_download(self):
+        chunk = _operation(self.spec, "putFileChunk")
+        transfer = chunk["x-togavsu-mcp"]["transfer"]
+        self.assertEqual(transfer["body"]["encoding"], "base64")
+        self.assertIn("Content-Range", transfer["headers"])
+        self.assertIn("body_base64", transfer["arguments"])
+        self.assertIn("headers", transfer["arguments"])
+        download = _operation(self.spec, "downloadFileVersion")
+        self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["encoding"], "base64")
+        self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["media_type"], "application/octet-stream")
+        self.assertEqual(_operation(self.spec, "getInvoicePdf")["x-togavsu-mcp"]["transfer"]["result"]["encoding"], "base64")
+        catalog = render_mcp(self.spec)
+        listed = next(tool for tool in catalog["tools"] if tool["name"] == "putFileChunk")
+        self.assertEqual(listed["transfer"]["body"]["encoding"], "base64")
+        listed_download = next(tool for tool in catalog["tools"] if tool["name"] == "downloadFileVersion")
+        self.assertEqual(listed_download["transfer"]["result"]["encoding"], "base64")
+
+    def test_local_module_install_is_multipart(self):
+        operation = _operation(self.spec, "installModule")
+        content = operation["requestBody"]["content"]
+        self.assertIn("application/json", content)
+        self.assertIn("multipart/form-data", content)
+        self.assertEqual(content["multipart/form-data"]["schema"]["$ref"], "#/components/schemas/ModulePackageUpload")
+        package = self.spec["components"]["schemas"]["ModulePackageUpload"]
+        self.assertIn("package", package["required"])
+        transfer = operation["x-togavsu-mcp"]["transfer"]
+        self.assertEqual(transfer["body"]["encoding"], "one_of")
+        self.assertEqual(transfer["body"]["multipart"]["package"]["encoding"], "base64")
+        self.assertIn("package_base64", transfer["arguments"])
+
+    def test_restore_accepts_a_downloaded_archive_and_passphrase(self):
+        upload = _operation(self.spec, "createBackupUpload")
+        self.assertEqual(upload["x-togavsu-mcp"]["transfer"]["body"]["encoding"], "base64")
+        self.assertEqual(_schema_name(upload["responses"]["201"]), "BackupUpload")
+        self.assertIn("upload_token", self.spec["components"]["schemas"]["BackupUpload"]["required"])
+        write = self.spec["components"]["schemas"]["RestoreWrite"]
+        self.assertIn("passphrase", write["required"])
+        self.assertIn("upload_token", write["properties"])
+        self.assertIn("backup_id", write["properties"])
+        restore = _operation(self.spec, "createRestore")
+        self.assertIn("passphrase", restore["description"])
+        self.assertIn("upload_token", restore["description"])
+        download = _operation(self.spec, "downloadBackup")
+        self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["media_type"], "application/octet-stream")
+
+    def test_upload_staging_is_separate_from_publication(self):
+        complete = _operation(self.spec, "completeFileUpload")
+        self.assertEqual(_schema_name(complete["responses"]["200"]), "FileUpload")
+        self.assertNotIn("file.created", complete["x-togavsu-events"])
+        self.assertNotIn("file.version_created", complete["x-togavsu-events"])
+        self.assertIn("staged", complete["description"])
+        publish = _operation(self.spec, "publishFile")
+        self.assertIn("one transaction", publish["description"])
+        self.assertIn("file.created", publish["x-togavsu-events"])
+        attach = _operation(self.spec, "addFileVersion")
+        self.assertIn("staged", attach["description"])
+        self.assertIn("one transaction", attach["description"])
+        bulk = _operation(self.spec, "bulkFile")
+        self.assertIn("staged", bulk["description"])
+        self.assertIn("batch_rejected", bulk["x-togavsu-error-codes"])
+
+    def test_draft_invoice_lines_are_editable(self):
+        operation = _operation(self.spec, "updateInvoiceDraft")
+        self.assertEqual(operation["x-togavsu-access"]["required_status"], "draft")
+        self.assertIn("conflict", operation["x-togavsu-error-codes"])
+        self.assertNotIn("accountant", operation["x-togavsu-access"]["roles"])
+        self.assertIn("invoices:write", operation["x-togavsu-access"]["scopes"])
+        edit = self.spec["components"]["schemas"]["InvoiceDraftEdit"]
+        self.assertIn("lines", edit["required"])
+        self.assertIn("adjustment_cents", edit["properties"])
+        self.assertIn("adjustment_reason", edit["properties"])
+        line = self.spec["components"]["schemas"]["InvoiceLine"]["properties"]
+        for field in ("fee_item_id", "description", "amount_cents"):
+            self.assertIn(field, line)
+
+    def test_file_metadata_edit_respects_locks(self):
+        operation = _operation(self.spec, "updateFileMetadata")
+        self.assertTrue(operation["x-togavsu-access"]["matter_wall"])
+        self.assertIn("field_locked", operation["x-togavsu-error-codes"])
+        self.assertIn("file.updated", operation["x-togavsu-events"])
+        self.assertNotIn("file.version_created", operation["x-togavsu-events"])
+        fields = self.spec["components"]["schemas"]["FileMetadataWrite"]["properties"]
+        for field in ("attorney_only", "shared_with_client", "category_id", "matter_id"):
+            self.assertIn(field, fields)
+        self.assertIn("field_locked", _operation(self.spec, "renameFile")["x-togavsu-error-codes"])
+
+    def test_complete_module_manifest_validates(self):
+        import copy
+
+        from jsonschema import Draft202012Validator
+
+        schemas = copy.deepcopy(self.spec["components"]["schemas"])
+
+        def rewrite(node):
+            if isinstance(node, dict):
+                ref = node.get("$ref")
+                if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                    node["$ref"] = "#/$defs/" + ref.rsplit("/", 1)[1]
+                for value in node.values():
+                    rewrite(value)
+            elif isinstance(node, list):
+                for value in node:
+                    rewrite(value)
+
+        rewrite(schemas)
+        validator = Draft202012Validator(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$defs": schemas,
+                "$ref": "#/$defs/ModuleManifest",
+            }
+        )
+        manifest = {
+            "id": "matter-clock",
+            "name": "Matter Clock",
+            "version": "0.1.0",
+            "image": {"reference": "ghcr.io/example/matter-clock", "digest": "sha256:abc"},
+            "permissions": ["matters:read"],
+            "widgets": [
+                {
+                    "id": "hours",
+                    "title": "Hours this month",
+                    "default_size": {"w": 3, "h": 2},
+                    "allowed_sizes": [{"w": 3, "h": 2}, {"w": 4, "h": 2}],
+                    "target": {"path": "/m/matter-clock/hours", "filters": {"month": "current"}},
+                }
+            ],
+            "sidebar": [{"section": "Activity", "label": "Matter Clock", "icon": "clock", "order": 10}],
+            "quick_create": [{"label": "Set target", "target": "/m/matter-clock/target"}],
+            "search_scopes": [{"id": "matter-clock", "label": "Targets"}],
+            "matter_screen": {
+                "panels": [{"id": "target", "title": "Monthly target"}],
+                "actions": [{"id": "edit-target", "label": "Edit target"}],
+            },
+        }
+        validator.validate(manifest)
+        widget = self.spec["components"]["schemas"]["ManifestWidget"]
+        self.assertIn("allowed_sizes", widget["required"])
+        for field in ("sidebar", "quick_create", "search_scopes", "matter_screen"):
+            self.assertIn(field, self.spec["components"]["schemas"]["ModuleManifest"]["properties"])
+
+    def test_doc_tender_result_is_readable(self):
+        file_schema = self.spec["components"]["schemas"]["File"]["properties"]
+        self.assertIn("summary", file_schema)
+        result = self.spec["components"]["schemas"]["DocTenderResult"]
+        for field in ("summary", "fields", "file_id", "file_version_id"):
+            self.assertIn(field, result["required"])
+        cited = self.spec["components"]["schemas"]["CitedField"]["properties"]
+        self.assertIn("confidence", cited)
+        self.assertIn("page", self.spec["components"]["schemas"]["Citation"]["properties"])
+        self.assertIn("timestamp", self.spec["components"]["schemas"]["Citation"]["properties"])
+        operation = _operation(self.spec, "getDocTenderResult")
+        self.assertTrue(operation["x-togavsu-access"]["matter_wall"])
+        self.assertEqual(operation["x-togavsu-access"]["access_inherits"], "file")
+        self.assertIn("doc_tender:read", operation["x-togavsu-access"]["scopes"])
+        self.assertEqual(_schema_name(operation["responses"]["200"]), "DocTenderResult")
+
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]
         self.assertIn("/v1/operator/listings/{listing_id}/flag", paths)
         self.assertIn("/v1/operator/listings/{listing_id}/pull", paths)
         self.assertIn("/v1/alerts", paths)
         self.assertEqual(self.market["servers"][0]["url"], "https://marketplace.example.invalid")
+
+
+def _operation(spec: dict, operation_id: str) -> dict:
+    for _method, _path, operation in _ops(spec):
+        if operation["operationId"] == operation_id:
+            return operation
+    raise AssertionError(operation_id)
+
+
+def _schema_name(response: dict) -> str:
+    return response["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+
+
+def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type: str) -> str:
+    needed = entry_type_scopes[entry_type]
+    if all(scope in token_scopes for scope in needed):
+        return "allowed"
+    return "scope_denied"
 
 
 def _param_name(parameter: dict) -> str:

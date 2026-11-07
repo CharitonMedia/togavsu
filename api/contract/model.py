@@ -56,6 +56,7 @@ class Contract:
         extra_access: dict | None = None,
         error_codes: list[str] | None = None,
         content_type: str = "application/json",
+        request_content: dict | None = None,
         response_content: dict | None = None,
         extra_responses: dict | None = None,
         extra_parameters: list[dict] | None = None,
@@ -147,12 +148,15 @@ class Contract:
             operation["x-togavsu-replaceable-domain"] = replaceable
         if error_codes:
             operation["x-togavsu-error-codes"] = error_codes
-        if body or body_schema is not None:
+        if request_content is not None:
+            operation["requestBody"] = {"required": True, "content": request_content}
+        elif body or body_schema is not None:
             schema = body_schema if body_schema is not None else {"$ref": f"#/components/schemas/{body}"}
             operation["requestBody"] = {
                 "required": True,
                 "content": {"application/json": {"schema": schema}},
             }
+        _attach_mcp_transfer(operation)
         if method in UNSAFE and not operation["x-togavsu-writes"] and mcp != "transport":
             operation["x-togavsu-writes"] = False
 
@@ -493,3 +497,69 @@ def _responses(
     if extra_responses:
         responses.update(extra_responses)
     return responses
+
+
+def _attach_mcp_transfer(operation: dict) -> None:
+    """Record how tools/call carries headers and non-JSON bodies."""
+    mcp = operation["x-togavsu-mcp"]
+    if mcp.get("parity") != "required":
+        return
+    arguments = ["path", "query", "idempotency_key"]
+    transfer: dict = {}
+    headers = [parameter["name"] for parameter in operation.get("parameters", []) if parameter.get("in") == "header"]
+    if headers:
+        arguments.append("headers")
+        transfer["headers"] = headers
+    content = operation.get("requestBody", {}).get("content", {})
+    if "application/json" in content and "multipart/form-data" in content:
+        arguments.extend(["body", "package_base64"])
+        transfer["body"] = {
+            "encoding": "one_of",
+            "json": {"media_type": "application/json"},
+            "multipart": {
+                "package": {
+                    "encoding": "base64",
+                    "media_type": "application/octet-stream",
+                    "argument": "package_base64",
+                }
+            },
+        }
+    elif "multipart/form-data" in content:
+        arguments.append("package_base64")
+        transfer["body"] = {
+            "encoding": "multipart",
+            "parts": {"package": {"encoding": "base64", "media_type": "application/octet-stream"}},
+        }
+    elif content:
+        media = next(iter(content))
+        if media == "application/json":
+            arguments.append("body")
+            transfer["body"] = {"encoding": "json", "media_type": media}
+        else:
+            arguments.append("body_base64")
+            transfer["body"] = {"encoding": "base64", "media_type": media}
+    result_content = {}
+    for code, response in operation.get("responses", {}).items():
+        if code.startswith("2") and isinstance(response, dict) and "content" in response:
+            result_content = response["content"]
+            break
+    if not result_content:
+        transfer["result"] = {"encoding": "empty"}
+    elif len(result_content) == 1:
+        media = next(iter(result_content))
+        transfer["result"] = {"encoding": _mcp_encoding(media), "media_type": media}
+    else:
+        transfer["result"] = {
+            "encoding": "per_media_type",
+            "media_types": {media: _mcp_encoding(media) for media in result_content},
+        }
+    transfer["arguments"] = arguments
+    mcp["transfer"] = transfer
+
+
+def _mcp_encoding(media: str) -> str:
+    if media in {"application/json", "application/problem+json"}:
+        return "json"
+    if media.startswith("text/"):
+        return "text"
+    return "base64"

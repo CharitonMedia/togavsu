@@ -15,6 +15,8 @@ It does not claim the handlers or the MCP server are implemented.
 | setup | `POST` | `/api/v1/setup` | `createSetup` | required:createSetup | public | none |
 | auth | `POST` | `/api/v1/auth/login` | `login` | required:login | public | none |
 | auth | `POST` | `/api/v1/auth/totp` | `verifyTotp` | required:verifyTotp | public | none |
+| auth, setup | `POST` | `/api/v1/auth/totp/enroll` | `startTotpEnrollment` | required:startTotpEnrollment | public | none |
+| auth, setup | `POST` | `/api/v1/auth/totp/confirm` | `confirmTotpEnrollment` | required:confirmTotpEnrollment | public | none |
 | auth | `POST` | `/api/v1/auth/recovery` | `verifyRecoveryCode` | required:verifyRecoveryCode | public | none |
 | auth | `POST` | `/api/v1/auth/logout` | `logout` | required:logout | admin, attorney, staff, accountant, client | sessions:write |
 | auth | `POST` | `/api/v1/auth/password-resets` | `requestPasswordReset` | required:requestPasswordReset | public | none |
@@ -178,6 +180,7 @@ It does not claim the handlers or the MCP server are implemented.
 | invoices | `PATCH` | `/api/v1/invoices/{invoice_id}` | `updateInvoice` | required:updateInvoice | admin, attorney, staff | invoices:write |
 | invoices, edit-history | `GET` | `/api/v1/invoices/{invoice_id}/history` | `historyInvoice` | required:historyInvoice | admin, attorney, staff, accountant, client | invoices:read |
 | invoices, billing-worklist | `POST` | `/api/v1/invoice-drafts` | `createInvoiceDrafts` | required:createInvoiceDrafts | admin, attorney, staff | invoices:write |
+| invoices | `PUT` | `/api/v1/invoices/{invoice_id}/draft` | `updateInvoiceDraft` | required:updateInvoiceDraft | admin, attorney, staff | invoices:write |
 | invoices | `POST` | `/api/v1/invoices/{invoice_id}/approve` | `approveInvoice` | required:approveInvoice | admin, attorney | invoices:approve |
 | invoices | `POST` | `/api/v1/invoices/{invoice_id}/send` | `sendInvoice` | required:sendInvoice | admin, attorney | invoices:send |
 | invoices | `GET` | `/api/v1/invoices/{invoice_id}/pdf` | `getInvoicePdf` | required:getInvoicePdf | admin, attorney, staff, accountant, client | invoices:read |
@@ -208,9 +211,9 @@ It does not claim the handlers or the MCP server are implemented.
 | trust-accounts | `GET` | `/api/v1/trust-accounts/{trust_account_id}` | `getTrustAccount` | required:getTrustAccount | admin, attorney, staff, accountant | trust:read |
 | trust-accounts | `PATCH` | `/api/v1/trust-accounts/{trust_account_id}` | `updateTrustAccount` | required:updateTrustAccount | admin | trust:write |
 | trust-ledger, trust-below-zero | `GET` | `/api/v1/trust-ledger` | `listTrustEntry` | required:listTrustEntry | admin, attorney, staff, accountant | trust:read |
-| trust-ledger, trust-below-zero | `POST` | `/api/v1/trust-ledger` | `postTrustEntry` | required:postTrustEntry | admin, attorney, staff | trust:write |
+| trust-ledger, trust-below-zero | `POST` | `/api/v1/trust-ledger` | `postTrustEntry` | required:postTrustEntry | admin, attorney, staff | trust:write, trust:withdraw |
 | trust-ledger, trust-below-zero | `GET` | `/api/v1/trust-ledger/{trust_entry_id}` | `getTrustEntry` | required:getTrustEntry | admin, attorney, staff, accountant | trust:read |
-| trust-ledger, trust-below-zero, bulk | `POST` | `/api/v1/trust-ledger:bulk` | `bulkTrustEntry` | required:bulkTrustEntry | admin, attorney, staff | trust:write |
+| trust-ledger, trust-below-zero, bulk | `POST` | `/api/v1/trust-ledger:bulk` | `bulkTrustEntry` | required:bulkTrustEntry | admin, attorney, staff | trust:write, trust:withdraw |
 | trust-ledger | `POST` | `/api/v1/trust-ledger/{trust_entry_id}/reversals` | `reverseTrustEntry` | required:reverseTrustEntry | admin, attorney | trust:withdraw |
 | trust-ledger | `GET` | `/api/v1/trust/balances` | `getTrustBalances` | required:getTrustBalances | admin, attorney, staff, accountant | trust:read |
 | trust-flags | `GET` | `/api/v1/trust-flags` | `listTrustFlag` | required:listTrustFlag | admin, attorney, staff, accountant | trust:read |
@@ -242,7 +245,9 @@ It does not claim the handlers or the MCP server are implemented.
 | ical | `POST` | `/api/v1/ical-feeds/{feed_id}/revoke` | `revokeIcalFeed` | required:revokeIcalFeed | admin, attorney, staff | calendar:write |
 | ical | `GET` | `/ical/{secret}.ics` | `downloadIcal` | required:downloadIcal | public | none |
 | files | `GET` | `/api/v1/files` | `listFile` | required:listFile | admin, attorney, staff, accountant, client | files:read |
+| files, file-uploads | `POST` | `/api/v1/files` | `publishFile` | required:publishFile | admin, attorney, staff, client | files:write |
 | files | `GET` | `/api/v1/files/{file_id}` | `getFile` | required:getFile | admin, attorney, staff, accountant, client | files:read |
+| files | `PATCH` | `/api/v1/files/{file_id}` | `updateFileMetadata` | required:updateFileMetadata | admin, attorney, staff | files:write |
 | files, file-uploads, bulk | `POST` | `/api/v1/files:bulk` | `bulkFile` | required:bulkFile | admin, attorney, staff | files:write |
 | files | `POST` | `/api/v1/files/{file_id}/rename` | `renameFile` | required:renameFile | admin, attorney, staff | files:write |
 | files | `POST` | `/api/v1/files/{file_id}/move` | `moveFile` | required:moveFile | admin, attorney, staff | files:write |
@@ -294,6 +299,7 @@ It does not claim the handlers or the MCP server are implemented.
 | doc-tender | `GET` | `/api/v1/doc-tender/exceptions` | `listDocTenderException` | required:listDocTenderException | admin, attorney | doc_tender:read |
 | doc-tender | `GET` | `/api/v1/doc-tender/exceptions/{exception_id}` | `getDocTenderException` | required:getDocTenderException | admin, attorney | doc_tender:read |
 | doc-tender | `POST` | `/api/v1/doc-tender/exceptions/{exception_id}/resolve` | `resolveDocTenderException` | required:resolveDocTenderException | admin, attorney | doc_tender:write |
+| doc-tender | `GET` | `/api/v1/files/{file_id}/doc-tender-result` | `getDocTenderResult` | required:getDocTenderResult | admin, attorney, staff | doc_tender:read |
 | doc-tender | `GET` | `/api/v1/doc-tender/categories` | `listDocCategory` | required:listDocCategory | admin, attorney, staff | doc_tender:read |
 | doc-tender | `POST` | `/api/v1/doc-tender/categories` | `createDocCategory` | required:createDocCategory | admin | doc_tender:write |
 | doc-tender | `GET` | `/api/v1/doc-tender/categories/{category_id}` | `getDocCategory` | required:getDocCategory | admin, attorney, staff | doc_tender:read |
@@ -387,6 +393,7 @@ It does not claim the handlers or the MCP server are implemented.
 | restores | `GET` | `/api/v1/restores` | `listRestore` | required:listRestore | admin | backups:admin |
 | restores | `POST` | `/api/v1/restores` | `createRestore` | required:createRestore | admin | backups:admin |
 | restores | `GET` | `/api/v1/restores/{restore_id}` | `getRestore` | required:getRestore | admin | backups:admin |
+| backups, restores | `POST` | `/api/v1/backup-uploads` | `createBackupUpload` | required:createBackupUpload | admin | backups:admin |
 | updates | `GET` | `/api/v1/updates` | `listUpdates` | required:listUpdates | admin | updates:admin |
 | updates | `POST` | `/api/v1/updates` | `startUpdate` | required:startUpdate | admin | updates:admin |
 | modules | `GET` | `/api/v1/modules` | `listModules` | required:listModules | admin | modules:read |
@@ -411,4 +418,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 405.
+Operations: 412.
