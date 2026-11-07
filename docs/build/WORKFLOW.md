@@ -37,3 +37,6 @@ Cursor does not assume Ponytail's Claude Code slash commands or hooks work. Pres
 ## Credentials and cost
 The Codex GitHub Action uses the OPENAI_API_KEY repository secret and API billing, separate from Cursor/ChatGPT subscription allowances. The native Codex GitHub integration is optional extra review and is not automatically enabled by this setup.
 Keys remain in the control environment or GitHub Secrets. Do not copy local credential files into cloud VMs or the repository.
+
+## Repository enforcement
+The source repository is public as required by the PRD. Main requires pull requests, current-base Setup checks and Codex checkpoint success, resolved conversations, and protection for admins; force pushes and branch deletion are disabled. The native Codex app is not required for the Actions-based checkpoint.
