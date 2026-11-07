@@ -14,7 +14,7 @@ This package layout is the shared Go contract for later waves. It is not the fin
 | `internal/db` | Numbered SQL migrations, the section 5 schema, reference data, and synthetic seed. |
 | `docs/architecture` | These notes, including migration number ranges. |
 
-`go.mod` pins the module and the pure-Go SQLite driver used by unit tests. `cmd/core` does not import it. pgx, chi, sqlc, and goose are not pinned yet; add them when a package first imports them.
+`go.mod` pins pgx and goose. Postgres connections are opened with `db.OpenPostgres`. sqlc generates typed queries when repository implementations land; this branch has no query files yet.
 
 ## What this branch tests
 
@@ -22,10 +22,11 @@ This package layout is the shared Go contract for later waves. It is not the fin
 - Role and matter-wall decisions, including accountant reads, staff trust deposits, and walled matters.
 - Settings changes apply on the next read, out-of-range values are rejected, reset restores the default, and secret values are redacted in the audit record and encrypted at rest.
 - The source check rejects environment reads outside `internal/bootstrap` and named tunables outside the registry. `go test ./internal/settings/` passes on this tree.
-- Migration order, checksum refusal, rollback of a failed migration, and a second owner at the same version.
+- Migration order, checksum refusal, rollback of a failed migration, and a second owner at the same version, executed on Postgres 17.
+- A migration that sets `search_path` does not leave that path on other pooled connections.
 - After the synthetic seed, every section 5 table has a row. Reference data alone leaves first-run setup incomplete.
 
-Tests run on SQLite because this VM has no Postgres. The SQL avoids Postgres-only features so the same files can run on Postgres 17.
+The SQL stays free of Postgres-only features so a later SQLite dialect can reuse it. These tests do not claim that dialect exists.
 
 ## Pending
 

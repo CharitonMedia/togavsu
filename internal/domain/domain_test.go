@@ -79,6 +79,10 @@ func TestCents(t *testing.T) {
 		{"1,000.00", 0, false},
 		{"10.", 0, false},
 		{"abc", 0, false},
+		{"\u0661", 0, false},
+		{"\u0661.00", 0, false},
+		{"1\u0662.00", 0, false},
+		{"\uFF11.00", 0, false},
 	}
 	for _, tc := range cases {
 		got, err := ParseCents(tc.in)

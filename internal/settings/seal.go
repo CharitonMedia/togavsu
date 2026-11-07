@@ -43,10 +43,10 @@ func NewSealingStore(inner Store, key []byte, secret func(string) bool) (*Sealin
 	return &SealingStore{inner: inner, aead: aead, secret: secret}, nil
 }
 
-// Get decrypts a sealed value.
+// Get decrypts a sealed secret. A non-secret value is returned unchanged, even if it begins with the seal prefix.
 func (s *SealingStore) Get(ctx context.Context, key string) (string, bool, error) {
 	value, ok, err := s.inner.Get(ctx, key)
-	if err != nil || !ok || !strings.HasPrefix(value, sealPrefix) {
+	if err != nil || !ok || !s.secret(key) || !strings.HasPrefix(value, sealPrefix) {
 		return value, ok, err
 	}
 	plain, err := s.open(value)
@@ -71,6 +71,22 @@ func (s *SealingStore) Put(ctx context.Context, key, value string, at time.Time,
 // Delete removes the inner row.
 func (s *SealingStore) Delete(ctx context.Context, key string) error {
 	return s.inner.Delete(ctx, key)
+}
+
+// Transact wraps the inner transaction so secret values are sealed inside it.
+func (s *SealingStore) Transact(ctx context.Context, fn func(Store) error) error {
+	return s.inner.Transact(ctx, func(tx Store) error {
+		return fn(&SealingStore{inner: tx, aead: s.aead, secret: s.secret})
+	})
+}
+
+// LogChange forwards a durable audit write when the inner transaction records one.
+func (s *SealingStore) LogChange(ctx context.Context, change Change) error {
+	logger, ok := s.inner.(ChangeLogger)
+	if !ok {
+		return nil
+	}
+	return logger.LogChange(ctx, change)
 }
 
 // Raw returns the inner stored text. Tests use it to prove a secret is not plaintext.

@@ -65,6 +65,7 @@ func ScanSource(path, src string) []string {
 		return []string{path + ": " + err.Error()}
 	}
 	var out []string
+	aliases := importAliases(file)
 	for _, imp := range file.Imports {
 		if imp.Name == nil || imp.Name.Name != "." {
 			continue
@@ -81,7 +82,7 @@ func ScanSource(path, src string) []string {
 			if !ok {
 				return true
 			}
-			if (ident.Name == "os" || ident.Name == "syscall") && envSelectors[sel.Sel.Name] && !envAllowed(path) {
+			if envSelectors[sel.Sel.Name] && isEnvPackage(ident.Name, aliases) && !envAllowed(path) {
 				pos := fset.Position(sel.Pos())
 				out = append(out, fmt.Sprintf("%s:%d: environment read %s.%s", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
 			}
@@ -109,6 +110,30 @@ func ScanSource(path, src string) []string {
 		return true
 	})
 	return out
+}
+
+func importAliases(file *ast.File) map[string]string {
+	aliases := map[string]string{}
+	for _, imp := range file.Imports {
+		pkg, err := strconv.Unquote(imp.Path.Value)
+		if err != nil || imp.Name != nil && (imp.Name.Name == "." || imp.Name.Name == "_") {
+			continue
+		}
+		local := pkg
+		if slash := strings.LastIndex(pkg, "/"); slash >= 0 {
+			local = pkg[slash+1:]
+		}
+		if imp.Name != nil {
+			local = imp.Name.Name
+		}
+		aliases[local] = pkg
+	}
+	return aliases
+}
+
+func isEnvPackage(name string, aliases map[string]string) bool {
+	pkg := aliases[name]
+	return pkg == "os" || pkg == "syscall" || (pkg == "" && (name == "os" || name == "syscall"))
 }
 
 func envAllowed(path string) bool {

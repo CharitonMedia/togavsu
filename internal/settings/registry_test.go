@@ -85,6 +85,96 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	if _, err := reg.Set(ctx, "firm.phone", "555", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
+	for _, bad := range []string{"NaN", "nan", "+Inf", "-Inf", "Inf"} {
+		if _, err := reg.Set(ctx, "doctender.review_confidence", bad, domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+			t.Fatalf("%s accepted: %v", bad, err)
+		}
+	}
+}
+
+func TestRegistryAtomicAudit(t *testing.T) {
+	ctx := context.Background()
+	mem := settings.NewMemory()
+	audit := &recordAudit{}
+	reg, err := settings.New(mem, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	gate := &gateAudit{next: audit, entered: entered, release: release}
+	regA, err := settings.New(mem, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := regA.Set(ctx, "billing.time_increment_minutes", "10", domain.SystemUserID)
+		errCh <- err
+	}()
+	<-entered
+	gate.fail = true
+	close(release)
+	if err := <-errCh; err == nil {
+		t.Fatal("expected audit failure")
+	}
+	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "6" {
+		t.Fatalf("failed write visible: %s %v", got, err)
+	}
+	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "15", domain.SystemUserID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "15" {
+		t.Fatalf("later write lost: %s %v", got, err)
+	}
+	if len(audit.changes) != 1 || audit.changes[0].New != "15" {
+		t.Fatalf("audits %+v", audit.changes)
+	}
+}
+
+func TestRegistryCancelBeforeCommit(t *testing.T) {
+	mem := settings.NewMemory()
+	ctx, cancel := context.WithCancel(context.Background())
+	reg, err := settings.New(mem, cancelAudit{cancel: cancel})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = reg.Set(ctx, "billing.time_increment_minutes", "10", domain.SystemUserID)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+	if got, err := reg.Get(context.Background(), "billing.time_increment_minutes"); err != nil || got != "6" {
+		t.Fatalf("cancelled write visible: %s %v", got, err)
+	}
+}
+
+type gateAudit struct {
+	next    *recordAudit
+	entered chan struct{}
+	release chan struct{}
+	fail    bool
+	once    bool
+}
+
+func (g *gateAudit) SettingChanged(ctx context.Context, c settings.Change) error {
+	if !g.once {
+		g.once = true
+		g.entered <- struct{}{}
+		<-g.release
+	}
+	if g.fail {
+		return errors.New("audit down")
+	}
+	return g.next.SettingChanged(ctx, c)
+}
+
+type cancelAudit struct {
+	cancel context.CancelFunc
+}
+
+func (c cancelAudit) SettingChanged(ctx context.Context, _ settings.Change) error {
+	c.cancel()
+	return ctx.Err()
 }
 
 func TestSecretAuditAndList(t *testing.T) {
@@ -164,6 +254,28 @@ func TestSealingStore(t *testing.T) {
 	got, err := reg.Get(ctx, "mail.smtp_password")
 	if err != nil || got != secret {
 		t.Fatal(got, err)
+	}
+	const literal = "enc:v1:example"
+	if _, err := reg.Set(ctx, "llms.firm_paragraph", literal, domain.SystemUserID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reg.Get(ctx, "llms.firm_paragraph"); err != nil || got != literal {
+		t.Fatalf("non-secret prefix: %q %v", got, err)
+	}
+	list, err := reg.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range list {
+		if entry.Key == "llms.firm_paragraph" && entry.Value != literal {
+			t.Fatal(entry.Value)
+		}
+	}
+	if _, err := reg.Set(ctx, "llms.firm_paragraph", "firm text", domain.SystemUserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Reset(ctx, "llms.firm_paragraph", domain.SystemUserID); err != nil {
+		t.Fatal(err)
 	}
 	wrong, err := settings.NewSealingStore(mem, bytesKey(9), secretKey)
 	if err != nil {

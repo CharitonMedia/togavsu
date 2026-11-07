@@ -2,29 +2,81 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
 
-	"database/sql"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/settings"
-	_ "modernc.org/sqlite"
 )
+
+const testAdminDSN = "postgres://togavsu:togavsu@127.0.0.1:5432/togavsu?sslmode=disable"
 
 func openDB(t *testing.T) *sql.DB {
 	t.Helper()
-	name := strings.ReplaceAll(t.Name(), "/", "_")
-	db, err := sql.Open("sqlite", "file:"+name+"?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	return openPostgres(t, "")
+}
+
+func openCoreDB(t *testing.T) *sql.DB {
+	t.Helper()
+	plain := openPostgres(t, "")
+	applyEmbedded(t, plain)
+	_ = plain.Close()
+	return openPostgresNamed(t, dbName(t), "core")
+}
+
+func openPostgres(t *testing.T, searchPath string) *sql.DB {
+	t.Helper()
+	admin, err := OpenPostgres(testAdminDSN, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.SetMaxOpenConns(1)
+	defer admin.Close()
+	if err := admin.PingContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	name := dbName(t)
+	if _, err := admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.ExecContext(context.Background(), "CREATE DATABASE "+name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		admin, err := OpenPostgres(testAdminDSN, "")
+		if err != nil {
+			return
+		}
+		defer admin.Close()
+		_, _ = admin.ExecContext(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
+		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name)
+	})
+	return openPostgresNamed(t, name, searchPath)
+}
+
+func openPostgresNamed(t *testing.T, name, searchPath string) *sql.DB {
+	t.Helper()
+	dsn := fmt.Sprintf("postgres://togavsu:togavsu@127.0.0.1:5432/%s?sslmode=disable", name)
+	db, err := OpenPostgres(dsn, searchPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(4)
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+func dbName(t *testing.T) string {
+	t.Helper()
+	sum := sha256.Sum256([]byte(t.Name()))
+	return "t" + hex.EncodeToString(sum[:8])
 }
 
 func applyEmbedded(t *testing.T, db *sql.DB) {
@@ -33,7 +85,7 @@ func applyEmbedded(t *testing.T, db *sql.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(context.Background(), db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: ms}); err != nil {
+	if err := Apply(context.Background(), db, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -135,38 +187,78 @@ func TestMigrationRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: ms}); err != nil {
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: ms}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: ms}); err != nil {
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: ms}); err != nil {
 		t.Fatal("rerun", err)
 	}
 	var n int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE owner = ?`, CoreOwner).Scan(&n); err != nil || n != 2 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE owner = $1`, CoreOwner).Scan(&n); err != nil || n != 3 {
 		t.Fatal(n, err)
 	}
 	ms[0].SQL += "\n-- edited\n"
 	ms[0].Checksum = ""
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: ms[:1]}); !errors.Is(err, ErrChecksum) {
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: ms}); !errors.Is(err, ErrChecksum) {
 		t.Fatal(err)
 	}
 	other := []Migration{{Version: 2, Name: "0002_earlier", SQL: "CREATE TABLE IF NOT EXISTS earlier (id TEXT);\n"}}
-	if err := Apply(ctx, db, ApplySpec{Owner: "mod_clock", Dialect: "sqlite", Migrations: other}); err != nil {
+	if err := Apply(ctx, db, ApplySpec{Owner: "mod_clock", Dialect: "postgres", Migrations: other}); err != nil {
 		t.Fatal(err)
 	}
 	bad := []Migration{{Version: 3, SQL: "CREATE TABLE kept (id TEXT); INSERT INTO missing_table (id) VALUES ('x');"}}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: bad}); err == nil {
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: bad}); err == nil {
 		t.Fatal("bad migration succeeded")
 	}
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = 3`).Scan(&n); err != nil || n != 0 {
 		t.Fatal("failed migration recorded", n, err)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE name = 'kept'`).Scan(&n); err != nil || n != 0 {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'kept'`).Scan(&n); err != nil || n != 0 {
 		t.Fatal("failed migration left a table", n, err)
 	}
 	dup := []Migration{{Version: 4, SQL: "SELECT 1"}, {Version: 4, SQL: "SELECT 1"}}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "sqlite", Migrations: dup}); !errors.Is(err, ErrVersion) {
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: dup}); !errors.Is(err, ErrVersion) {
 		t.Fatal(err)
+	}
+}
+
+func TestPostgresMigrationConnectionIsolation(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	ms := []Migration{{
+		Version: 1,
+		SQL:     "CREATE TABLE path_probe (sp TEXT);\nINSERT INTO path_probe (sp) VALUES (current_setting('search_path'));\n",
+	}}
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms}); err != nil {
+		t.Fatal(err)
+	}
+	var seen string
+	if err := db.QueryRowContext(ctx, `SELECT sp FROM core.path_probe`).Scan(&seen); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(seen, "core") {
+		t.Fatalf("migration connection search_path %q", seen)
+	}
+	for i := 0; i < 8; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sp string
+		if err := conn.QueryRowContext(ctx, `SHOW search_path`).Scan(&sp); err != nil {
+			t.Fatal(err)
+		}
+		if sp == "core" || strings.HasPrefix(sp, "core,") || strings.HasPrefix(sp, "core ") {
+			t.Fatalf("pooled connection %d kept search_path %q", i, sp)
+		}
+		var n int
+		err = conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM path_probe`).Scan(&n)
+		if err == nil {
+			t.Fatalf("unqualified path_probe visible on connection %d with search_path %q", i, sp)
+		}
+		if err := conn.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -199,16 +291,15 @@ func TestRangesAndEmbedded(t *testing.T) {
 
 func TestSeedAndSetup(t *testing.T) {
 	ctx := context.Background()
-	db := openDB(t)
-	applyEmbedded(t, db)
+	db := openCoreDB(t)
 	setup, err := ReadSetup(ctx, db)
 	if err != nil || setup.Complete {
 		t.Fatal(setup, err)
 	}
-	if err := ApplyReference(ctx, db, "sqlite"); err != nil {
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplyReference(ctx, db, "sqlite"); err != nil {
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
 		t.Fatal("reference rerun", err)
 	}
 	var settingsN, cats int
@@ -225,10 +316,10 @@ func TestSeedAndSetup(t *testing.T) {
 	if err != nil || setup.Complete || setup.FirmName != "" {
 		t.Fatal(setup, err)
 	}
-	if err := ApplySynthetic(ctx, db, "sqlite"); err != nil {
+	if err := ApplySynthetic(ctx, db, "postgres"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ApplySynthetic(ctx, db, "sqlite"); !errors.Is(err, ErrAlreadySeeded) {
+	if err := ApplySynthetic(ctx, db, "postgres"); !errors.Is(err, ErrAlreadySeeded) {
 		t.Fatal(err)
 	}
 	for _, rec := range domain.RecordTypes() {
@@ -254,7 +345,7 @@ func TestSeedAndSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO fee_agreements (id, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, status, signed_on, void_reason, file_id)
-		SELECT ?, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, 'signed', signed_on, void_reason, file_id FROM fee_agreements LIMIT 1`, string(id)); err == nil {
+		SELECT $1, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, 'signed', signed_on, void_reason, file_id FROM fee_agreements LIMIT 1`, string(id)); err == nil {
 		t.Fatal("second active fee agreement accepted")
 	}
 	voidID, err := domain.ComposeV7(uint64(seedAt.UnixMilli()), 1, 901)
@@ -262,7 +353,7 @@ func TestSeedAndSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO fee_agreements (id, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, status, signed_on, void_reason, file_id)
-		SELECT ?, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, 'void', signed_on, 'seed', file_id FROM fee_agreements LIMIT 1`, string(voidID)); err != nil {
+		SELECT $1, created_at, updated_at, created_by, matter_id, fee_type, amount_cents, services, 'void', signed_on, 'seed', file_id FROM fee_agreements LIMIT 1`, string(voidID)); err != nil {
 		t.Fatal("void agreement", err)
 	}
 	timerID, err := domain.ComposeV7(uint64(seedAt.UnixMilli()), 1, 902)
@@ -270,19 +361,18 @@ func TestSeedAndSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO timers (id, created_at, updated_at, created_by, matter_id, user_id, started_at, stopped_at, time_entry_id)
-		SELECT ?, created_at, updated_at, created_by, matter_id, user_id, started_at, NULL, NULL FROM timers LIMIT 1`, string(timerID)); err == nil {
+		SELECT $1, created_at, updated_at, created_by, matter_id, user_id, started_at, NULL, NULL FROM timers LIMIT 1`, string(timerID)); err == nil {
 		t.Fatal("second running timer accepted")
 	}
 }
 
 func TestSettingsStoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
-	db := openDB(t)
-	applyEmbedded(t, db)
-	if err := ApplyReference(ctx, db, "sqlite"); err != nil {
+	db := openCoreDB(t)
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
 		t.Fatal(err)
 	}
-	store := SettingsStore{DB: db, Dialect: "sqlite"}
+	store := SettingsStore{DB: db, Dialect: "postgres"}
 	reg, err := settings.New(store, allowAudit{})
 	if err != nil {
 		t.Fatal(err)
@@ -331,6 +421,82 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	if err != nil || got != "stored-secret" {
 		t.Fatal(got, err)
 	}
+	var audits int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity = 'setting' AND entity_id = 'billing.time_increment_minutes'`).Scan(&audits); err != nil || audits < 1 {
+		t.Fatal(audits, err)
+	}
+	regFail, err := settings.New(store, failAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := regFail.Set(ctx, "search.min_chars", "4", domain.SystemUserID); err == nil {
+		t.Fatal("failed audit committed a setting")
+	}
+	got, err = reg.Get(ctx, "search.min_chars")
+	if err != nil || got != "2" {
+		t.Fatal(got, err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity_id = 'search.min_chars'`).Scan(&audits); err != nil || audits != 0 {
+		t.Fatal(audits, err)
+	}
+}
+
+type failAudit struct{}
+
+func (failAudit) SettingChanged(context.Context, settings.Change) error {
+	return errors.New("audit down")
+}
+
+func TestPostgresSettingsInterleaved(t *testing.T) {
+	ctx := context.Background()
+	db := openCoreDB(t)
+	if err := ApplyReference(ctx, db, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	store := SettingsStore{DB: db, Dialect: "postgres"}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	regA, err := settings.New(store, blockAudit{entered: entered, release: release})
+	if err != nil {
+		t.Fatal(err)
+	}
+	regB, err := settings.New(store, allowAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := regA.Set(ctx, "notes.page_size", "50", domain.SystemUserID)
+		errCh <- err
+	}()
+	<-entered
+	done := make(chan error, 1)
+	go func() {
+		_, err := regB.Set(ctx, "notes.page_size", "40", domain.SystemUserID)
+		done <- err
+	}()
+	close(release)
+	if err := <-errCh; err == nil {
+		t.Fatal("rolled back writer returned success")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	got, err := regB.Get(ctx, "notes.page_size")
+	if err != nil || got != "40" {
+		t.Fatalf("interleaved value %s %v", got, err)
+	}
+}
+
+type blockAudit struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b blockAudit) SettingChanged(context.Context, settings.Change) error {
+	b.entered <- struct{}{}
+	<-b.release
+	return errors.New("audit down")
 }
 
 type allowAudit struct{}

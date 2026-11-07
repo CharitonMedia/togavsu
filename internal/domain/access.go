@@ -151,7 +151,8 @@ func Decide(p Principal, in AccessInput) Decision {
 		return Decision{Allow: false, Reason: ReasonRole}
 	}
 	if attorneyOnly(in) && !p.HasRole(RoleAdmin) && !p.HasRole(RoleAttorney) {
-		if in.Action != ActionRead || p.HasRole(RoleClient) {
+		// An attorney-only file is hidden. Redaction is only for a field on a record the caller may otherwise read.
+		if in.Resource == ResFile || in.Action != ActionRead || p.HasRole(RoleClient) {
 			return Decision{Allow: false, Reason: ReasonAttorneyOnly}
 		}
 		return Decision{Allow: true, Redact: true, Reason: ReasonAttorneyOnly}

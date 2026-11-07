@@ -14,7 +14,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
+	"testing/fstest"
+
+	"github.com/pressly/goose/v3"
 )
 
 //go:embed migrations/*.sql
@@ -45,10 +47,6 @@ type ApplySpec struct {
 	Dialect    string
 	Migrations []Migration
 }
-
-// ponytail: checksum ledger is schema_migrations rather than goose_db_version. Upgrade path: adopt goose when one table can store owner and checksum. trigger: sqlc and pgx land and the lead asks for the goose CLI.
-//
-// ponytail: Apply is exercised on SQLite in unit tests. Upgrade path: run the same Apply against Postgres 17. trigger: platform Compose publishes a Postgres service to CI.
 
 var migrationName = regexp.MustCompile(`^(\d+)_([a-z0-9_]+)\.sql$`)
 var identName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -138,94 +136,152 @@ func Rebind(query, dialect string) string {
 	return b.String()
 }
 
-// Apply runs each migration once in its own transaction and records owner, version, checksum, and time.
+// Apply runs migrations with goose on one connection. When Schema is set, that connection uses it
+// for the whole run and RESET search_path before the connection returns to the pool.
 func Apply(ctx context.Context, db *sql.DB, spec ApplySpec) error {
 	if spec.Owner == "" {
 		return fmt.Errorf("%w: owner is required", ErrVersion)
 	}
-	if spec.Schema != "" {
-		if !identName.MatchString(spec.Schema) {
-			return fmt.Errorf("%w: schema %q", ErrVersion, spec.Schema)
-		}
-		if _, err := db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+spec.Schema); err != nil {
-			return err
-		}
-		if _, err := db.ExecContext(ctx, "SET search_path TO "+spec.Schema); err != nil {
-			return err
-		}
+	if spec.Schema != "" && !identName.MatchString(spec.Schema) {
+		return fmt.Errorf("%w: schema %q", ErrVersion, spec.Schema)
 	}
-	if _, err := db.ExecContext(ctx, schemaMigrationsSQL); err != nil {
-		return err
+	if len(spec.Migrations) == 0 {
+		return nil
 	}
-	ms := append([]Migration(nil), spec.Migrations...)
-	sort.Slice(ms, func(i, j int) bool { return ms[i].Version < ms[j].Version })
 	seen := map[int]bool{}
-	for _, m := range ms {
+	for _, m := range spec.Migrations {
 		if m.Version < 1 || seen[m.Version] {
 			return fmt.Errorf("%w: %d", ErrVersion, m.Version)
 		}
 		seen[m.Version] = true
-		if err := applyOne(ctx, db, spec, m); err != nil {
+	}
+	files, sums, err := gooseFS(spec.Migrations)
+	if err != nil {
+		return err
+	}
+	store := &ledgerStore{owner: spec.Owner, dialect: spec.Dialect, checksums: sums}
+	// Goose checks pending migrations on a pool connection before it locks the migration
+	// session. Keep the pool to one connection so that check and the migration share the
+	// schema selection, then put the connection back with the default search_path.
+	prevOpen := db.Stats().MaxOpenConnections
+	db.SetMaxOpenConns(1)
+	defer func() {
+		if prevOpen <= 0 {
+			db.SetMaxOpenConns(0)
+		} else {
+			db.SetMaxOpenConns(prevOpen)
+		}
+	}()
+	if err := prepareMigrationConn(ctx, db, spec, store); err != nil {
+		return err
+	}
+	defer resetMigrationConn(db, spec.Schema)
+	provider, err := goose.NewProvider("", db, files,
+		goose.WithStore(store),
+		goose.WithSessionLocker(schemaSession{schema: spec.Schema}),
+		goose.WithDisableGlobalRegistry(true),
+	)
+	if err != nil {
+		return err
+	}
+	_, err = provider.Up(ctx)
+	return err
+}
+
+func prepareMigrationConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if spec.Schema != "" {
+		if _, err := conn.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+spec.Schema); err != nil {
+			return err
+		}
+		if _, err := conn.ExecContext(ctx, "SET search_path TO "+spec.Schema); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-func applyOne(ctx context.Context, db *sql.DB, spec ApplySpec, m Migration) error {
-	sum := m.Checksum
-	if sum == "" {
-		raw := sha256.Sum256([]byte(m.SQL))
-		sum = hex.EncodeToString(raw[:])
-	}
-	var existing string
-	err := db.QueryRowContext(ctx, Rebind(`SELECT checksum FROM schema_migrations WHERE owner = ? AND version = ?`, spec.Dialect), spec.Owner, m.Version).Scan(&existing)
-	switch {
-	case err == sql.ErrNoRows:
-	case err != nil:
+	exists, err := store.TableExists(ctx, conn)
+	if err != nil {
 		return err
-	case existing != sum:
-		return fmt.Errorf("%w: %s version %d", ErrChecksum, spec.Owner, m.Version)
-	default:
+	}
+	if exists {
 		return nil
 	}
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, stmt := range statements(m.SQL) {
-		if _, err := tx.ExecContext(ctx, stmt); err != nil {
-			return fmt.Errorf("migration %d: %w", m.Version, err)
-		}
+	if err := store.CreateVersionTable(ctx, tx); err != nil {
+		return err
 	}
-	if _, err := tx.ExecContext(ctx, Rebind(`INSERT INTO schema_migrations (owner, version, checksum, applied_at) VALUES (?, ?, ?, ?)`, spec.Dialect), spec.Owner, m.Version, sum, time.Now().UTC().UnixMicro()); err != nil {
+	if err := store.ensureBaseline(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func statements(sqlText string) []string {
-	parts := strings.Split(sqlText, ";")
-	var out []string
-	for _, part := range parts {
-		if strings.TrimSpace(stripLineComments(part)) == "" {
-			continue
-		}
-		out = append(out, part)
+func resetMigrationConn(db *sql.DB, schema string) {
+	if schema == "" {
+		return
 	}
-	return out
+	ctx := context.Background()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	_, _ = conn.ExecContext(ctx, "RESET search_path")
 }
 
-func stripLineComments(s string) string {
-	var b strings.Builder
-	for _, line := range strings.Split(s, "\n") {
-		trim := strings.TrimSpace(line)
-		if strings.HasPrefix(trim, "--") {
-			continue
+func gooseFS(ms []Migration) (fs.FS, map[int64]string, error) {
+	files := fstest.MapFS{}
+	sums := map[int64]string{}
+	for _, m := range ms {
+		body := m.SQL
+		sum := m.Checksum
+		if sum == "" {
+			raw := sha256.Sum256([]byte(body))
+			sum = hex.EncodeToString(raw[:])
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		sums[int64(m.Version)] = sum
+		name := fmt.Sprintf("%05d_migration.sql", m.Version)
+		files[name] = &fstest.MapFile{Data: []byte(ensureGoose(body))}
 	}
-	return b.String()
+	return files, sums, nil
+}
+
+func ensureGoose(sqlText string) string {
+	if strings.Contains(sqlText, "+goose Up") {
+		return sqlText
+	}
+	return "-- +goose Up\n" + sqlText + "\n-- +goose Down\nSELECT 1;\n"
+}
+
+// schemaSession pins search_path to the migration connection goose checks out, then resets it.
+type schemaSession struct {
+	schema string
+}
+
+func (s schemaSession) SessionLock(ctx context.Context, conn *sql.Conn) error {
+	if s.schema == "" {
+		return nil
+	}
+	if _, err := conn.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+s.schema); err != nil {
+		return fmt.Errorf("create schema: %w", err)
+	}
+	if _, err := conn.ExecContext(ctx, "SET search_path TO "+s.schema); err != nil {
+		return fmt.Errorf("set search_path: %w", err)
+	}
+	return nil
+}
+
+func (s schemaSession) SessionUnlock(ctx context.Context, conn *sql.Conn) error {
+	if s.schema == "" {
+		return nil
+	}
+	_, err := conn.ExecContext(context.WithoutCancel(ctx), "RESET search_path")
+	return err
 }

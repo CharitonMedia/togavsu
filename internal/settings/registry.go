@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -95,6 +96,13 @@ type Store interface {
 	Get(ctx context.Context, key string) (value string, ok bool, err error)
 	Put(ctx context.Context, key, value string, at time.Time, actor domain.ID) error
 	Delete(ctx context.Context, key string) error
+	// Transact runs fn atomically. A store mutation is visible only when fn returns nil and ctx is still active.
+	Transact(ctx context.Context, fn func(tx Store) error) error
+}
+
+// ChangeLogger records a setting change in the same transaction as the value.
+type ChangeLogger interface {
+	LogChange(ctx context.Context, change Change) error
 }
 
 // Auditor records old and new values. Implementations must not expect secrets in the clear.
@@ -236,35 +244,44 @@ func (r *Registry) current(ctx context.Context, def Definition) (string, error) 
 }
 
 func (r *Registry) persist(ctx context.Context, def Definition, value string, actor domain.ID) (Change, error) {
-	prev, ok, err := r.store.Get(ctx, def.Key)
-	if err != nil {
-		return Change{}, err
-	}
-	current := def.Default
-	if ok {
-		current = prev
-	}
-	at := r.now().UTC()
-	change := Change{Key: def.Key, Actor: actor, At: at}
-	change.Old = display(def, current)
-	change.New = display(def, value)
-	change.Redacted = def.Secret
-	if value == current {
-		return change, nil
-	}
-	if value == def.Default {
-		if err := r.store.Delete(ctx, def.Key); err != nil {
-			return Change{}, err
+	var change Change
+	err := r.store.Transact(ctx, func(tx Store) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-	} else if err := r.store.Put(ctx, def.Key, value, at, actor); err != nil {
-		return Change{}, err
-	}
-	if err := r.audit.SettingChanged(ctx, change); err != nil {
+		prev, ok, err := tx.Get(ctx, def.Key)
+		if err != nil {
+			return err
+		}
+		current := def.Default
 		if ok {
-			_ = r.store.Put(ctx, def.Key, prev, at, actor)
-		} else {
-			_ = r.store.Delete(ctx, def.Key)
+			current = prev
 		}
+		at := r.now().UTC()
+		change = Change{Key: def.Key, Actor: actor, At: at, Redacted: def.Secret}
+		change.Old = display(def, current)
+		change.New = display(def, value)
+		if value == current {
+			return nil
+		}
+		if value == def.Default {
+			if err := tx.Delete(ctx, def.Key); err != nil {
+				return err
+			}
+		} else if err := tx.Put(ctx, def.Key, value, at, actor); err != nil {
+			return err
+		}
+		if logger, ok := tx.(ChangeLogger); ok {
+			if err := logger.LogChange(ctx, change); err != nil {
+				return err
+			}
+		}
+		if err := r.audit.SettingChanged(ctx, change); err != nil {
+			return err
+		}
+		return ctx.Err()
+	})
+	if err != nil {
 		return Change{}, err
 	}
 	return change, nil
@@ -379,7 +396,7 @@ func validateSpecial(def Definition, value string) error {
 		}
 	case "confidence":
 		n, err := strconv.ParseFloat(value, 64)
-		if err != nil || n < 0 || n > 1 {
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < 0 || n > 1 {
 			return fmt.Errorf("%w: %s", ErrInvalid, def.Key)
 		}
 	case "backup_scope":

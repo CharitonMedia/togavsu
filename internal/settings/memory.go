@@ -51,3 +51,58 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	delete(m.m, key)
 	return nil
 }
+
+// Transact holds the store lock until fn returns. Mutations publish only when fn and ctx succeed.
+func (m *Memory) Transact(ctx context.Context, fn func(Store) error) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	tx := &memTx{m: cloneRows(m.m)}
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.m = tx.m
+	return nil
+}
+
+type memTx struct {
+	m map[string]memoryRow
+}
+
+func (t *memTx) Get(_ context.Context, key string) (string, bool, error) {
+	row, ok := t.m[key]
+	if !ok {
+		return "", false, nil
+	}
+	return row.value, true, nil
+}
+
+func (t *memTx) Put(_ context.Context, key, value string, at time.Time, actor domain.ID) error {
+	t.m[key] = memoryRow{value: value, at: at, actor: actor}
+	return nil
+}
+
+func (t *memTx) Delete(_ context.Context, key string) error {
+	delete(t.m, key)
+	return nil
+}
+
+func (t *memTx) Transact(ctx context.Context, fn func(Store) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fn(t)
+}
+
+func cloneRows(in map[string]memoryRow) map[string]memoryRow {
+	out := make(map[string]memoryRow, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}

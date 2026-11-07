@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode"
 )
 
 // Cents is an integer amount of money. Negative values are allowed.
@@ -17,7 +16,7 @@ var ErrMoney = errors.New("invalid money")
 var ErrOverflow = errors.New("money overflow")
 
 // ParseCents parses a decimal amount such as "12.34", "-0.01", or "2".
-// More than two fractional digits is rejected. Thousands separators are rejected.
+// Digits must be ASCII. More than two fractional digits is rejected.
 func ParseCents(s string) (Cents, error) {
 	in := strings.TrimSpace(s)
 	if in == "" {
@@ -40,19 +39,12 @@ func ParseCents(s string) (Cents, error) {
 	if whole == "" {
 		whole = "0"
 	}
-	for _, r := range whole {
-		if !unicode.IsDigit(r) {
-			return 0, ErrMoney
-		}
+	if !asciiDigits(whole) {
+		return 0, ErrMoney
 	}
 	if hasDot {
-		if frac == "" || len(frac) > 2 {
+		if frac == "" || len(frac) > 2 || !asciiDigits(frac) {
 			return 0, ErrMoney
-		}
-		for _, r := range frac {
-			if !unicode.IsDigit(r) {
-				return 0, ErrMoney
-			}
 		}
 		if len(frac) == 1 {
 			frac += "0"
@@ -105,6 +97,18 @@ func addCents(a, b Cents) (Cents, error) {
 		return 0, ErrOverflow
 	}
 	return Cents(s), nil
+}
+
+func asciiDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parsePositive(s string) (int64, error) {

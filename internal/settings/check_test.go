@@ -16,6 +16,9 @@ func TestScanSource(t *testing.T) {
 		bad  bool
 	}{
 		{"cmd/core/main.go", "package main\nimport \"os\"\nfunc f(){ os.Getenv(\"TOGAVSU_DATABASE_URL\") }\n", true},
+		{"cmd/core/alias.go", "package main\nimport env \"os\"\nfunc f(){ env.Getenv(\"X\") }\n", true},
+		{"cmd/core/syscall.go", "package main\nimport sys \"syscall\"\nfunc f(){ sys.Getenv(\"X\") }\n", true},
+		{"internal/bootstrap/alias.go", "package bootstrap\nimport env \"os\"\nfunc f(){ env.LookupEnv(\"X\") }\n", false},
 		{"internal/bootstrap/config.go", "package bootstrap\nimport \"os\"\nfunc f(){ os.Getenv(\"TOGAVSU_DATABASE_URL\") }\n", false},
 		{"internal/bootstrap/extra/x.go", "package extra\nimport \"os\"\nfunc f(){ os.LookupEnv(\"X\") }\n", true},
 		{"internal/practice/time.go", "package practice\nimport \"time\"\nfunc f() time.Duration { return 5 * time.Minute }\n", true},

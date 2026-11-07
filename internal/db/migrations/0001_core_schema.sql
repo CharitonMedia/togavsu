@@ -1,3 +1,4 @@
+-- +goose Up
 -- core schema version 1
 -- contracts migration range 1-99
 -- section 5 records. Money is integer cents. Timestamps are unix microseconds UTC.
@@ -791,3 +792,7 @@ CREATE INDEX trust_ledger_client_idx ON trust_ledger (client_id);
 CREATE INDEX audit_log_entity_idx ON audit_log (entity, entity_id);
 CREATE INDEX events_matter_idx ON events (matter_id);
 CREATE INDEX sessions_user_idx ON sessions (user_id);
+
+-- +goose Down
+-- The initial schema is not reversed in place.
+SELECT 1;
