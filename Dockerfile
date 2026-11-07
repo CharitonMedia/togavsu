@@ -1,0 +1,18 @@
+# Supervisor image. The product core image is deploy/core.Dockerfile and fails
+# closed until the contracts assignment publishes cmd/core and go.mod.
+
+FROM golang:1.22-bookworm AS supervisor-build
+WORKDIR /src
+COPY cmd/supervisor ./cmd/supervisor
+COPY internal/supervisor ./internal/supervisor
+RUN printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > go.mod \
+    && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/supervisor ./cmd/supervisor
+
+# ponytail: the supervisor image runs as root so it can use the Docker socket,
+# ceiling: one root container, upgrade: a socket proxy that exposes only the
+# engine calls this process makes, trigger: phase 7 release hardening.
+FROM postgres:17
+COPY --from=supervisor-build /out/supervisor /usr/local/bin/supervisor
+USER root
+ENTRYPOINT ["/usr/local/bin/supervisor"]
+CMD ["serve"]

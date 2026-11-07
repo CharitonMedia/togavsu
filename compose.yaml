@@ -1,0 +1,118 @@
+name: togavsu
+
+services:
+  bootstrap:
+    image: postgres:17
+    user: "0"
+    entrypoint: ["/bin/sh", "/bootstrap-secrets.sh"]
+    volumes:
+      - ./deploy/bootstrap/bootstrap-secrets.sh:/bootstrap-secrets.sh:ro
+      - pgsecrets:/pgsecrets
+      - appsecrets:/appsecrets
+    restart: "no"
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: togavsu
+      POSTGRES_DB: togavsu
+      POSTGRES_PASSWORD_FILE: /pgsecrets/postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgsecrets:/pgsecrets:ro
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U togavsu -d togavsu"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  caddy:
+    # ponytail: root so the alpine entrypoint can read the upstream file and write certificates, ceiling: root on the edge container, upgrade: a non-root entrypoint image, trigger: phase 7 release hardening.
+    image: caddy:2-alpine
+    user: "0"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CORE_UPSTREAM: core:8080
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/caddy/entrypoint.sh:/entrypoint.sh:ro
+      - caddy_data:/data
+      - runtime:/runtime
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: unless-stopped
+
+  supervisor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: togavsu-supervisor:local
+    environment:
+      SUPERVISOR_TOKEN_FILE: /appsecrets/supervisor_token
+      SUPERVISOR_LISTEN: ":8081"
+      SUPERVISOR_DATA: /var/lib/togavsu
+      BACKUP_DIR: /var/lib/togavsu/backups
+      BACKUP_PASSPHRASE_FILE: /appsecrets/backup_passphrase
+      DATABASE_URL_FILE: /appsecrets/database_url
+      ADMIN_DATABASE_URL_FILE: /appsecrets/admin_database_url
+      CADDY_ADMIN_URL: http://caddy:2019
+      UPSTREAM_FILE: /runtime/upstream
+      DOCKER_SOCKET: /var/run/docker.sock
+      TOGAVSU_DOCKER_NETWORK: togavsu_default
+      FIRM_TIMEZONE: UTC
+      COSIGN_KEY: /appsecrets/cosign.pub
+    volumes:
+      - appsecrets:/appsecrets:ro
+      - backups:/var/lib/togavsu/backups
+      - supervisor_data:/var/lib/togavsu
+      - runtime:/runtime
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/supervisor", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # The core service is part of the one-project install. Its image build fails
+  # closed until cmd/core lands, so AC-001 is not claimed by this file.
+  core:
+    build:
+      context: .
+      dockerfile: deploy/core.Dockerfile
+    image: togavsu-core:local
+    environment:
+      DATABASE_URL_FILE: /appsecrets/database_url
+      FIELD_KEY_FILE: /appsecrets/field_key
+      SUPERVISOR_URL: http://supervisor:8081
+      SUPERVISOR_TOKEN_FILE: /appsecrets/supervisor_token
+    volumes:
+      - appsecrets:/appsecrets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      supervisor:
+        condition: service_healthy
+    expose:
+      - "8080"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  pgsecrets:
+  appsecrets:
+  caddy_data:
+  runtime:
+  backups:
+  supervisor_data:

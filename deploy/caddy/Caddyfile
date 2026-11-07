@@ -1,0 +1,22 @@
+{
+	admin 0.0.0.0:2019
+	local_certs
+}
+
+http:// {
+	handle /ready {
+		respond "ok" 200
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+https:// {
+	handle /ready {
+		respond "ok" 200
+	}
+	handle {
+		reverse_proxy {$CORE_UPSTREAM:core:8080}
+	}
+}

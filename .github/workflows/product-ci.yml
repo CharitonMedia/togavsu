@@ -1,0 +1,84 @@
+name: Product CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  supervisor:
+    name: Supervisor tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: "1.22"
+      - run: sh scripts/ci/test-supervisor.sh
+      - run: sh scripts/ci/test-bootstrap.sh
+      - run: sh scripts/ci/pending-gate.sh
+      - run: python3 scripts/ci/check-compose.py
+      - run: sh scripts/ci/ui-qc.sh
+      - run: sh scripts/ci/update-load.sh
+
+  postgres:
+    name: Backup integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: togavsu
+          POSTGRES_PASSWORD: synthetic-postgres-password
+          POSTGRES_DB: togavsu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U togavsu -d togavsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: "1.22"
+      - name: Install Postgres 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+      - name: Restore synthetic rows
+        env:
+          TOGAVSU_TEST_DATABASE_URL: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable
+          TOGAVSU_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+          TOGAVSU_PSQL: /usr/lib/postgresql/17/bin/psql
+        run: sh scripts/ci/test-backup-integration.sh
+
+  image:
+    name: Supervisor image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Validate Compose
+        run: docker compose -f compose.yaml config >/dev/null
+      - name: Build supervisor image
+        run: docker build -f Dockerfile -t togavsu-supervisor:local .
+      - name: Core image stays unavailable
+        run: |
+          if docker build -f deploy/core.Dockerfile -t togavsu-core:local .; then
+            echo "core image built; cmd/core is present"
+          else
+            echo "PENDING core image: deploy/core.Dockerfile failed closed, AC-001 is not claimed"
+          fi
