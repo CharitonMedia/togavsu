@@ -211,11 +211,19 @@ class Remote:
         return native
 
     def changed_files(self, number):
+        pr = self.gh("pulls/" + str(number))
+        count = pr.get("changed_files")
+        if type(count) is not int or not 0 <= count < 3000:
+            raise ValueError("PR file inventory is missing or reaches GitHub's 3000-file cap")
         files, page = [], 1
         while True:
             rows = self.gh("pulls/" + str(number) + "/files?per_page=100&page=" + str(page))
             files.extend(rows)
             if len(rows) < 100:
+                fresh = self.gh("pulls/" + str(number))
+                if (len(files) != count or len({f["filename"] for f in files}) != count
+                        or fresh.get("changed_files") != count or fresh["head"]["sha"] != pr["head"]["sha"]):
+                    raise ValueError("Incomplete or changed PR file inventory; protected-file scan unavailable")
                 return files
             page += 1
 
@@ -401,7 +409,12 @@ class Controller:
             self.effect("bind task label on PR " + str(number), bind_label)
             record["waiting"] = "Assignment label added; await task-bound Codex review"
             return False
-        for file in self.remote.changed_files(number):
+        try:
+            changed_files = self.remote.changed_files(number)
+        except ValueError as error:
+            self.halt(task, record, str(error))
+            return False
+        for file in changed_files:
             paths = {file["filename"], file.get("previous_filename", "")}
             if paths & PROTECTED or any(p.startswith("deploy/controller/") for p in paths):
                 self.halt(task, record, "Worker changed protected control-plane file; requires independent control-plane review")

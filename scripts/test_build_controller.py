@@ -504,6 +504,43 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.record["halted"])
         self.assertNotIn("completed", self.record)
 
+    def test_truncated_inventory_cannot_hide_protected_file(self):
+        remote = Remote()
+        all_files = [{"filename": "safe/" + str(i)} for i in range(3000)]
+        all_files.append({"filename": ".github/workflows/codex-checkpoint.yml"})
+        def gh(path, **kwargs):
+            if path == "pulls/7":
+                return {"changed_files": len(all_files), "head": {"sha": HEAD}}
+            page = int(path.rsplit("=", 1)[1])
+            return all_files[:3000][(page-1)*100:page*100]
+        remote.gh = gh
+        self.remote.changed_files = remote.changed_files
+        self.process()
+        self.assertIn("3000-file cap", self.record["halted"])
+        self.assertNotIn("completed", self.record)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_file_inventory_requires_complete_unique_stable_count(self):
+        for count, rows, fresh_head in [(2, [{"filename": "safe"}], HEAD),
+                (2, [{"filename": "safe"}]*2, HEAD),
+                (1, [{"filename": "safe"}], NEW)]:
+            with self.subTest(count=count, rows=rows, fresh_head=fresh_head):
+                remote, reads = Remote(), []
+                def gh(path, **kwargs):
+                    if path == "pulls/7":
+                        reads.append(path)
+                        return {"changed_files": count, "head": {"sha": HEAD if len(reads)==1 else fresh_head}}
+                    return rows
+                remote.gh = gh
+                with self.assertRaises(ValueError):
+                    remote.changed_files(7)
+
+    def test_complete_file_inventory_is_accepted(self):
+        remote = Remote()
+        remote.gh = lambda path: ({"changed_files": 1, "head": {"sha": HEAD}}
+            if path == "pulls/7" else [{"filename": "safe"}])
+        self.assertEqual(remote.changed_files(7), [{"filename": "safe"}])
+
     def test_renaming_control_script_also_blocks_merge(self):
         self.remote.changed_files = lambda n: [{"filename": "other.py", "previous_filename": "scripts/build_controller.py"}]
         self.process()
