@@ -66,6 +66,60 @@ func TestBackupRoundTripAndChecksum(t *testing.T) {
 	}
 }
 
+func TestBackupIDRejectsTraversalAndKeepsCanonicalIDs(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || !validID(meta.ID) {
+		t.Fatalf("%+v %v", meta, err)
+	}
+	outside := filepath.Join(filepath.Dir(s.Dir), "escaped-backup.json")
+	if err := os.WriteFile(outside, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(outside) })
+	hostile := []string{
+		"../other/bakfile-0123456789abcdef",
+		"..%2fother%2fbakfile-0123456789abcdef",
+		"20260102T023000Z-0123456789abcd",
+		"20260102T023000Z-0123456789ABCDEF",
+		"20261399T023000Z-0123456789abcdef",
+		"20260102t023000Z-0123456789abcdef",
+		meta.ID + "/../../" + filepath.Base(outside),
+	}
+	for _, id := range hostile {
+		if validID(id) {
+			t.Fatalf("accepted %q", id)
+		}
+		if _, err := s.lookup(id); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("lookup %q: %v", id, err)
+		}
+		if err := s.Delete(context.Background(), id); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("delete %q: %v", id, err)
+		}
+		if err := s.Restore(context.Background(), id, "", func(context.Context, RestorePayload) error { return nil }); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("restore %q: %v", id, err)
+		}
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("hostile id touched a file outside the store: %v", err)
+	}
+	poison := filepath.Join(s.Dir, "20260102T030405Z-abcdef0123456789.json")
+	if err := os.WriteFile(poison, []byte(`{"id":"../other/bakfile-0123456789abcdef","created_at":"2026-01-02T03:04:05Z","reason":"manual","sha256":"abc","bytes":1}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.lookup("20260102T030405Z-abcdef0123456789"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("untrusted metadata id was accepted: %v", err)
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("metadata id escaped the store: %v", err)
+	}
+	rc, _, err := s.Open(meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc.Close()
+}
+
 func TestBackupRequiresPassphrase(t *testing.T) {
 	s := testStore(t)
 	s.Passphrase = ""

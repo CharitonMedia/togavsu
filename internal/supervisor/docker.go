@@ -92,6 +92,14 @@ func (d *DockerRuntime) ListAllCores(ctx context.Context) ([]ContainerInfo, erro
 }
 
 func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, runningOnly bool) ([]ContainerInfo, error) {
+	network := strings.TrimSpace(d.Network)
+	if network == "" {
+		return nil, errors.New("docker network is not configured")
+	}
+	if filters == nil {
+		filters = map[string][]string{}
+	}
+	filters["network"] = []string{network}
 	raw, err := json.Marshal(filters)
 	if err != nil {
 		return nil, err
@@ -120,13 +128,20 @@ func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, r
 		if runningOnly && item.State != "" && item.State != "running" {
 			continue
 		}
+		if _, ours := item.NetworkSettings.Networks[network]; !ours {
+			continue
+		}
 		name := ""
 		if len(item.Names) > 0 {
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
 		state := item.State
-		running := state == "" || state == "running"
-		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels, Aliases: networkAliases(item.Names, item.NetworkSettings.Networks), State: state, Running: running})
+		running := state == "running"
+		ours := map[string]struct {
+			Aliases  []string `json:"Aliases"`
+			DNSNames []string `json:"DNSNames"`
+		}{network: item.NetworkSettings.Networks[network]}
+		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels, Aliases: networkAliases(item.Names, ours), State: state, Running: running})
 	}
 	return out, nil
 }
@@ -218,8 +233,20 @@ func (d *DockerRuntime) Inspect(ctx context.Context, id string) (ContainerInfo, 
 	if gotID == "" {
 		gotID = id
 	}
+	if network := strings.TrimSpace(d.Network); network != "" {
+		if _, ours := inspected.NetworkSettings.Networks[network]; !ours {
+			return ContainerInfo{}, ErrNotFound
+		}
+	}
 	name := strings.TrimPrefix(inspected.Name, "/")
-	return ContainerInfo{ID: gotID, Name: name, Aliases: networkAliases([]string{"/" + name}, inspected.NetworkSettings.Networks), State: state, Running: running}, nil
+	aliases := inspected.NetworkSettings.Networks
+	if network := strings.TrimSpace(d.Network); network != "" {
+		aliases = map[string]struct {
+			Aliases  []string `json:"Aliases"`
+			DNSNames []string `json:"DNSNames"`
+		}{network: inspected.NetworkSettings.Networks[network]}
+	}
+	return ContainerInfo{ID: gotID, Name: name, Aliases: networkAliases([]string{"/" + name}, aliases), State: state, Running: running}, nil
 }
 
 func networkAliases(names []string, networks map[string]struct {
@@ -333,12 +360,20 @@ func (d *DockerRuntime) WaitHealthy(ctx context.Context, id string, timeout time
 		if err := d.call(ctx, http.MethodGet, dockerAPI+"/containers/"+id+"/json", nil, &inspected); err != nil {
 			return err
 		}
-		if inspected.State.Health == nil || inspected.State.Health.Status == "" || inspected.State.Health.Status == "none" {
+		health := ""
+		if inspected.State.Health != nil {
+			health = inspected.State.Health.Status
+		}
+		if health == "" || health == "none" {
 			return fmt.Errorf("%w: core image has no health check", ErrHealth)
 		}
-		switch inspected.State.Health.Status {
+		status := strings.ToLower(strings.TrimSpace(inspected.State.Status))
+		switch health {
 		case "healthy":
-			return nil
+			if status == "running" {
+				return nil
+			}
+			return fmt.Errorf("%w: container is %s", ErrHealth, status)
 		case "unhealthy":
 			return fmt.Errorf("%w: container reported unhealthy", ErrHealth)
 		}

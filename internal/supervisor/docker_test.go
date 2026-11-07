@@ -21,6 +21,7 @@ func TestDockerStartAndMissingHealth(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode([]map[string]any{{
 			"Id": "mod1", "Names": []string{"/clock"}, "Image": "clock:1", "State": "exited",
+			"NetworkSettings": map[string]any{"Networks": map[string]any{"togavsu_default": map[string]any{}}},
 		}})
 	})
 	mux.HandleFunc("/v1.43/containers/mod1/start", func(w http.ResponseWriter, r *http.Request) {
@@ -206,9 +207,74 @@ func TestDockerListReadsComposeNetworkAlias(t *testing.T) {
 	})
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	cores, err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).ListCores(context.Background())
+	cores, err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "togavsu_default"}).ListCores(context.Background())
 	if err != nil || len(cores) != 1 || cores[0].Name != "togavsu-core-1" || !containerMatchesHost(cores[0], "core") {
 		t.Fatalf("%+v %v", cores, err)
+	}
+}
+
+func TestStaleHealthDoesNotCountAsServing(t *testing.T) {
+	for _, status := range []string{"exited", "paused", "dead"} {
+		t.Run(status, func(t *testing.T) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/v1.43/containers/core-1/json", func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"Id": "core-1", "State": map[string]any{
+						"Status": status, "Running": false,
+						"Health": map[string]any{"Status": "healthy"},
+					},
+				})
+			})
+			srv := httptest.NewServer(mux)
+			defer srv.Close()
+			err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "togavsu_default"}).WaitHealthy(context.Background(), "core-1", time.Second)
+			if err == nil || !strings.Contains(err.Error(), status) {
+				t.Fatalf("stale health was accepted: %v", err)
+			}
+		})
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/core-1/json", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id": "core-1", "State": map[string]any{
+				"Status": "running", "Running": true,
+				"Health": map[string]any{"Status": "healthy"},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	if err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "togavsu_default"}).WaitHealthy(context.Background(), "core-1", time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestListCoresStayOnTheInstallationNetwork(t *testing.T) {
+	var filters string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/json", func(w http.ResponseWriter, r *http.Request) {
+		filters = r.URL.Query().Get("filters")
+		_, _ = w.Write([]byte(`[
+			{"Id":"ours","Names":["/togavsu-core-1"],"Labels":{"togavsu.role":"core"},"State":"running","NetworkSettings":{"Networks":{"firm-a":{"Aliases":["core"],"DNSNames":["core"]}}}},
+			{"Id":"theirs","Names":["/other-core-1"],"Labels":{"togavsu.role":"core"},"State":"running","NetworkSettings":{"Networks":{"firm-b":{"Aliases":["core"],"DNSNames":["core"]}}}}
+		]`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "firm-a"}
+	cores, err := rt.ListCores(context.Background())
+	if err != nil || len(cores) != 1 || cores[0].ID != "ours" {
+		t.Fatalf("list %+v %v", cores, err)
+	}
+	all, err := rt.ListAllCores(context.Background())
+	if err != nil || len(all) != 1 || all[0].ID != "ours" {
+		t.Fatalf("all %+v %v", all, err)
+	}
+	if !strings.Contains(filters, "firm-a") || !strings.Contains(filters, "togavsu.role=core") {
+		t.Fatalf("filters %s", filters)
+	}
+	if _, err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).ListCores(context.Background()); err == nil {
+		t.Fatal("unscoped discovery was allowed")
 	}
 }
 

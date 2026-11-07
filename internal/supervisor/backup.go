@@ -401,7 +401,10 @@ func (s *Store) Open(id string) (io.ReadCloser, BackupMeta, error) {
 	if err != nil {
 		return nil, BackupMeta{}, err
 	}
-	path := filepath.Join(s.Dir, id+".tgbk")
+	path, err := s.contained(id, ".tgbk")
+	if err != nil {
+		return nil, BackupMeta{}, err
+	}
 	sum, err := hashFile(path)
 	if err != nil {
 		return nil, BackupMeta{}, err
@@ -417,10 +420,11 @@ func (s *Store) Open(id string) (io.ReadCloser, BackupMeta, error) {
 }
 
 func (s *Store) lookup(id string) (BackupMeta, error) {
-	if !validID(id) {
-		return BackupMeta{}, ErrNotFound
+	path, err := s.contained(id, ".json")
+	if err != nil {
+		return BackupMeta{}, err
 	}
-	raw, err := os.ReadFile(filepath.Join(s.Dir, id+".json"))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return BackupMeta{}, ErrNotFound
@@ -430,6 +434,9 @@ func (s *Store) lookup(id string) (BackupMeta, error) {
 	var meta BackupMeta
 	if err := json.Unmarshal(raw, &meta); err != nil {
 		return BackupMeta{}, err
+	}
+	if meta.ID != id || !validID(meta.ID) {
+		return BackupMeta{}, ErrNotFound
 	}
 	return meta, nil
 }
@@ -477,7 +484,11 @@ func (s *Store) deleteLocked(ctx context.Context, id string) error {
 		return err
 	}
 	meta.Deleting = true
-	if err := writeFileAtomic(filepath.Join(s.Dir, id+".json"), mustJSON(meta), 0o600); err != nil {
+	path, err := s.contained(id, ".json")
+	if err != nil {
+		return err
+	}
+	if err := writeFileAtomic(path, mustJSON(meta), 0o600); err != nil {
 		return err
 	}
 	if err := s.deleteRemotes(ctx, id); err != nil {
@@ -541,7 +552,11 @@ func (s *Store) removeLocal(id string) error {
 		return err
 	}
 	for _, suffix := range []string{".tgbk", ".sha256", ".json"} {
-		if err := os.Remove(filepath.Join(s.Dir, id+suffix)); err != nil && !os.IsNotExist(err) {
+		path, err := s.contained(id, suffix)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
@@ -813,16 +828,55 @@ func backupTimeFromName(name string) (time.Time, bool) {
 }
 
 func validID(id string) bool {
-	const stamp = len("20060102T150405Z")
-	if len(id) != stamp+1+16 || id[stamp] != '-' {
+	const layout = "20060102T150405Z"
+	if len(id) != len(layout)+1+16 || id[len(layout)] != '-' {
 		return false
 	}
-	for _, c := range id[stamp+1:] {
+	for i, c := range id[:len(layout)] {
+		switch i {
+		case 8:
+			if c != 'T' {
+				return false
+			}
+		case 15:
+			if c != 'Z' {
+				return false
+			}
+		default:
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+	if _, err := time.Parse(layout, id[:len(layout)]); err != nil {
+		return false
+	}
+	for _, c := range id[len(layout)+1:] {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
 	return true
+}
+
+// contained is the only path a backup id may name. The id must already be
+// the canonical timestamp-and-hex form, and the cleaned path must stay
+// inside the store directory.
+func (s *Store) contained(id, suffix string) (string, error) {
+	if s == nil || !validID(id) || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+		return "", ErrNotFound
+	}
+	name := id + suffix
+	if name != filepath.Base(name) {
+		return "", ErrNotFound
+	}
+	dir := filepath.Clean(s.Dir)
+	path := filepath.Join(dir, name)
+	rel, err := filepath.Rel(dir, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ErrNotFound
+	}
+	return path, nil
 }
 
 func mustJSON(v any) []byte {

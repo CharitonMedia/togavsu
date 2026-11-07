@@ -30,7 +30,10 @@ func TestCanceledMigrationCleanupFailureBlocksAdmission(t *testing.T) {
 	mux.HandleFunc("/v1.43/containers/mig-1/start", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	waiting := make(chan struct{})
+	var waitingOnce sync.Once
 	mux.HandleFunc("/v1.43/containers/mig-1/wait", func(w http.ResponseWriter, r *http.Request) {
+		waitingOnce.Do(func() { close(waiting) })
 		<-r.Context().Done()
 	})
 	mux.HandleFunc("/v1.43/containers/mig-1/json", func(w http.ResponseWriter, r *http.Request) {
@@ -69,14 +72,30 @@ func TestCanceledMigrationCleanupFailureBlocksAdmission(t *testing.T) {
 	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	errc := make(chan error, 1)
+	var st migrationStatus
 	go func() {
-		time.Sleep(20 * time.Millisecond)
-		cancel()
+		var runErr error
+		st, runErr = (DockerMigrator{Docker: &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}}).RunMigration(ctx, testReleaseImage, "togavsu-migrate-once", func(phase, id string) error {
+			rec := updateIntent{ID: "upd-1", Status: "running", Phase: phase, MigrationName: "togavsu-migrate-once", MigrationID: id}
+			return journal.Put(rec)
+		})
+		errc <- runErr
 	}()
-	st, err := (DockerMigrator{Docker: &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}}).RunMigration(ctx, testReleaseImage, "togavsu-migrate-once", func(phase, id string) error {
-		rec := updateIntent{ID: "upd-1", Status: "running", Phase: phase, MigrationName: "togavsu-migrate-once", MigrationID: id}
-		return journal.Put(rec)
-	})
+	select {
+	case <-waiting:
+	case err := <-errc:
+		t.Fatalf("migration ended before wait: %+v %v", st, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("migration did not reach the wait request")
+	}
+	cancel()
+	var err error
+	select {
+	case err = <-errc:
+	case <-time.After(5 * time.Second):
+		t.Fatal("migration did not finish after the wait was canceled")
+	}
 	if !errors.Is(err, ErrMigrationUnknown) || !st.CleanupPending {
 		t.Fatalf("status %+v err %v", st, err)
 	}
