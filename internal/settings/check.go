@@ -1,0 +1,135 @@
+package settings
+
+import (
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/domain"
+)
+
+var envSelectors = map[string]bool{
+	"Getenv": true, "LookupEnv": true, "Environ": true, "Setenv": true,
+	"Unsetenv": true, "Clearenv": true, "ExpandEnv": true,
+}
+
+var durationNames = map[string]bool{
+	"Nanosecond": true, "Microsecond": true, "Millisecond": true,
+	"Second": true, "Minute": true, "Hour": true,
+}
+
+// CheckModule fails when core code reads the environment outside internal/bootstrap
+// or embeds a named tunable outside the settings registry and domain defaults.
+func CheckModule(root string) error {
+	var msgs []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "vendor", "testdata":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		msgs = append(msgs, ScanSource(path, string(src))...)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(msgs) > 0 {
+		return fmt.Errorf("settings check failed:\n%s", strings.Join(msgs, "\n"))
+	}
+	return nil
+}
+
+// ScanSource applies the AC-030 rules to one Go file.
+func ScanSource(path, src string) []string {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, src, 0)
+	if err != nil {
+		return []string{path + ": " + err.Error()}
+	}
+	var out []string
+	for _, imp := range file.Imports {
+		if imp.Name == nil || imp.Name.Name != "." {
+			continue
+		}
+		pkg, err := strconv.Unquote(imp.Path.Value)
+		if err == nil && (pkg == "os" || pkg == "syscall") && !envAllowed(path) {
+			pos := fset.Position(imp.Pos())
+			out = append(out, fmt.Sprintf("%s:%d: dot-import of %s can hide an environment read", pos.Filename, pos.Line, pkg))
+		}
+	}
+	ast.Inspect(file, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok {
+			ident, ok := sel.X.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if (ident.Name == "os" || ident.Name == "syscall") && envSelectors[sel.Sel.Name] && !envAllowed(path) {
+				pos := fset.Position(sel.Pos())
+				out = append(out, fmt.Sprintf("%s:%d: environment read %s.%s", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
+			}
+			if ident.Name == "time" && durationNames[sel.Sel.Name] && !tunableAllowed(path) {
+				pos := fset.Position(sel.Pos())
+				out = append(out, fmt.Sprintf("%s:%d: tunable duration time.%s is not in the settings registry", pos.Filename, pos.Line, sel.Sel.Name))
+			}
+		}
+		if call, ok := n.(*ast.CallExpr); ok {
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if ok && sel.Sel.Name == "ParseDuration" && len(call.Args) == 1 {
+				if _, ok := call.Args[0].(*ast.BasicLit); ok && !tunableAllowed(path) {
+					pos := fset.Position(call.Pos())
+					out = append(out, fmt.Sprintf("%s:%d: tunable duration literal is not in the settings registry", pos.Filename, pos.Line))
+				}
+			}
+		}
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && !tunableAllowed(path) {
+			val, err := strconv.Unquote(lit.Value)
+			if err == nil && anchored(val) {
+				pos := fset.Position(lit.Pos())
+				out = append(out, fmt.Sprintf("%s:%d: tunable %q belongs in the settings registry", pos.Filename, pos.Line, val))
+			}
+		}
+		return true
+	})
+	return out
+}
+
+func envAllowed(path string) bool {
+	return strings.HasSuffix(filepath.ToSlash(filepath.Dir(path)), "internal/bootstrap")
+}
+
+func tunableAllowed(path string) bool {
+	slash := filepath.ToSlash(path)
+	if strings.HasSuffix(slash, "_test.go") {
+		return true
+	}
+	dir := filepath.ToSlash(filepath.Dir(path))
+	return strings.HasSuffix(dir, "internal/settings") || strings.Contains(dir, "internal/settings/") ||
+		strings.HasSuffix(dir, "internal/domain") || strings.Contains(dir, "internal/domain/")
+}
+
+func anchored(value string) bool {
+	switch value {
+	case domain.LawCraftCommit, domain.AvailableDatesTitle, domain.LabelingModel, domain.NamingPattern, domain.MatterNumberFormat:
+		return true
+	default:
+		return false
+	}
+}
