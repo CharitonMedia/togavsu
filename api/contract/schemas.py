@@ -657,11 +657,41 @@ SCHEMAS = _register(
                 "sent_at": _null(_dt()),
                 "paid_at": _null(_dt()),
                 "client_message": {"type": "string"},
-                "internal_notes": {"type": "string"},
+                "internal_notes": {"type": "string", "description": "Staff only. Absent from InvoiceClient."},
                 "included": _ref("Included"),
             },
             ["matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents", "write_off_cents"],
-            "An invoice. Totals are server-computed. Zero-fee matters are absent from collections.",
+            "An invoice for staff, attorneys, admins, and accountants. A client receives InvoiceClient.",
+        ),
+        "InvoiceClient": _obj(
+            {
+                "id": _uuid(),
+                "matter_id": _uuid(),
+                "number": {"type": "string"},
+                "issued_on": _date(),
+                "status": _INVOICE_STATUS,
+                "lines": _arr(_ref("InvoiceLine")),
+                "subtotal_cents": _signed_cents(),
+                "adjustment_cents": _signed_cents(),
+                "interest_cents": _cents(),
+                "total_cents": _signed_cents(),
+                "amount_paid_cents": _cents(),
+                "balance_due_cents": _signed_cents(),
+                "sent_at": _null(_dt()),
+                "paid_at": _null(_dt()),
+                "client_message": {"type": "string"},
+            },
+            ["id", "matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents"],
+            "Invoice fields a client may see. internal_notes is not a property.",
+        ),
+        "InvoiceClientHistoryEntry": _obj(
+            {
+                "at": _dt(),
+                "actor_kind": _ACTOR,
+                "field": _enum(["status", "total_cents", "amount_paid_cents", "balance_due_cents", "sent_at", "paid_at", "client_message", "lines"]),
+            },
+            ["at", "actor_kind", "field"],
+            "Client invoice history. old_value and new_value are absent. internal_notes is not a field.",
         ),
         "InvoicePatch": _obj(
             {
@@ -1140,8 +1170,12 @@ SCHEMAS = _register(
             "One file history row: a field edit or a version save. Visible to anyone who can read the file.",
         ),
         "FileArchiveRequest": _obj(
-            {"file_ids": _arr(_uuid()), "folder_id": _null(_uuid())},
-            description="One of file_ids or folder_id. The response is a zip. Each file download is audited.",
+            {
+                "file_ids": _arr(_uuid()),
+                "folder_id": _null(_uuid()),
+                "confirm_quarantine": {"type": "boolean", "description": "Must be true when any selected version is quarantined."},
+            },
+            description="One of file_ids or folder_id. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip.",
         ),
         "QuarantineWrite": _obj({"quarantined": {"type": "boolean"}}, ["quarantined"], "A malware-scanning module sets the flag. The version stays visible."),
         "EditLock": _obj(
@@ -1293,13 +1327,29 @@ SCHEMAS = _register(
             ["action"],
             "A person resolving an exception locks name, category, matter, or grouping when they set one. Doc Tender does not change a locked field later.",
         ),
-        "Citation": _obj(
-            {
-                "page": _null({"type": "integer", "minimum": 1}),
-                "timestamp": _null({"type": "string", "description": "Timestamp in the recording, when the source is audio or video."}),
-            },
-            description="Where the field was read. A published field sets page, timestamp, or both.",
-        ),
+        "Citation": {
+            "description": "Where the field was read. At least one of page or timestamp is non-null.",
+            "oneOf": [
+                _obj(
+                    {"page": {"type": "integer", "minimum": 1}, "timestamp": {"type": "null"}},
+                    ["page"],
+                    "Page only.",
+                ),
+                _obj(
+                    {"page": {"type": "null"}, "timestamp": {"type": "string", "minLength": 1}},
+                    ["timestamp"],
+                    "Timestamp only.",
+                ),
+                _obj(
+                    {
+                        "page": {"type": "integer", "minimum": 1},
+                        "timestamp": {"type": "string", "minLength": 1},
+                    },
+                    ["page", "timestamp"],
+                    "Page and timestamp.",
+                ),
+            ],
+        },
         "CitedField": _obj(
             {
                 "name": {"type": "string"},
@@ -1844,12 +1894,21 @@ SCHEMAS = _register(
                 "name": {"type": "string"},
                 "author": {"type": "string"},
                 "version": {"type": "string"},
+                "signing_key": {"type": "string", "minLength": 1, "description": "Author's verified signing key."},
+                "permissions": _arr({"type": "string"}, "Scopes the module requests."),
+                "version_history": _arr(
+                    _obj(
+                        {"version": {"type": "string"}, "released_at": _dt()},
+                        ["version", "released_at"],
+                    )
+                ),
+                "price_note": {"type": "string", "description": "Empty when the module is free."},
                 "flagged": {"type": "boolean"},
                 "flag_note": {"type": "string"},
                 "pulled": {"type": "boolean"},
                 "notice": {"type": "string"},
             },
-            ["id", "name", "author", "version", "flagged", "pulled", "notice"],
+            ["id", "name", "author", "version", "signing_key", "permissions", "version_history", "price_note", "flagged", "pulled", "notice"],
             "A marketplace listing as the core shows it. The notice states that the marketplace does not review modules.",
         ),
         "ModuleAlert": _meta(
@@ -1961,14 +2020,35 @@ SCHEMAS = _register(
                 "model": {"type": "string"},
                 "tokens_in": {"type": "integer", "minimum": 0},
                 "tokens_out": {"type": "integer", "minimum": 0},
+                "cost_micro_usd": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Sum of attempt costs in millionths of a US dollar. 15000 is $0.015000. Zero is an unpriced call.",
+                },
                 "fell_back": {"type": "boolean"},
-                "attempts": _arr(_obj({"provider": {"type": "string"}, "model": {"type": "string"}, "status": {"type": "string"}}, ["provider", "model", "status"])),
+                "attempts": _arr(_ref("AiCallAttempt")),
                 "output": {"type": "object", "additionalProperties": True},
                 "requester": {"type": "string"},
             },
-            ["task", "provider", "model", "tokens_in", "tokens_out", "fell_back", "attempts", "requester"],
-            "One AI call log row. Fallback attempts are listed.",
+            ["task", "provider", "model", "tokens_in", "tokens_out", "cost_micro_usd", "fell_back", "attempts", "requester"],
+            "One AI call log row. cost_micro_usd is an integer count of millionths of a US dollar and equals the sum of attempts.",
             mutable=False,
+        ),
+        "AiCallAttempt": _obj(
+            {
+                "provider": {"type": "string"},
+                "model": {"type": "string"},
+                "status": {"type": "string"},
+                "tokens_in": {"type": "integer", "minimum": 0},
+                "tokens_out": {"type": "integer", "minimum": 0},
+                "cost_micro_usd": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "This attempt's cost in millionths of a US dollar, including a failed attempt that was billed.",
+                },
+            },
+            ["provider", "model", "status", "tokens_in", "tokens_out", "cost_micro_usd"],
+            "One provider attempt inside an AI call log row.",
         ),
         "ProblemReport": _meta({"page": {"type": "string"}, "message": {"type": "string"}, "user_id": _uuid()}, ["page", "message", "user_id"]),
         "ProblemReportWrite": _obj({"page": {"type": "string"}, "message": {"type": "string", "minLength": 1}}, ["message"]),

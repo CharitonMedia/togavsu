@@ -20887,7 +20887,14 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Invoice"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/Invoice"
+                          },
+                          {
+                            "$ref": "#/components/schemas/InvoiceClient"
+                          }
+                        ]
                       }
                     },
                     "page": {
@@ -20937,7 +20944,15 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "client_schema": "InvoiceClient",
+          "staff_schema": "Invoice",
+          "client_omitted_fields": [
+            "internal_notes"
+          ],
+          "client_csv_omitted_columns": [
+            "internal_notes"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21010,7 +21025,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Invoice"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Invoice"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceClient"
+                    }
+                  ]
                 }
               }
             }
@@ -21049,7 +21071,12 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "client_schema": "InvoiceClient",
+          "staff_schema": "Invoice",
+          "client_omitted_fields": [
+            "internal_notes"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21267,7 +21294,14 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/AuditEntry"
+                        "oneOf": [
+                          {
+                            "$ref": "#/components/schemas/AuditEntry"
+                          },
+                          {
+                            "$ref": "#/components/schemas/InvoiceClientHistoryEntry"
+                          }
+                        ]
                       }
                     },
                     "page": {
@@ -21313,7 +21347,14 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "client_schema": "InvoiceClientHistoryEntry",
+          "staff_schema": "AuditEntry",
+          "client_omitted_fields": [
+            "old_value",
+            "new_value",
+            "internal_notes"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29839,8 +29880,45 @@
             "calendar:read"
           ],
           "public": false,
-          "matter_wall": false,
-          "client": "deny"
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "feed_owner": "self_or_admin",
+          "firm_feed_roles": [
+            "admin"
+          ],
+          "download_filter": "omit_events_on_walled_matters",
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "firm",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "firm",
+              "result": "allowed"
+            },
+            {
+              "action": "download",
+              "event_on_walled_matter": true,
+              "result": "omitted"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29874,7 +29952,7 @@
       "post": {
         "operationId": "createIcalFeed",
         "summary": "Create an iCal feed",
-        "description": "Returns the secret URL once. The feed is empty when calendar.ical_enabled is false.",
+        "description": "Returns the secret URL once. A staff user can create only their own feed. A firm feed, owner_user_id null, is admin only. Another user's owner_user_id is not_found. The feed is empty when calendar.ical_enabled is false.",
         "tags": [
           "Calendar"
         ],
@@ -29937,8 +30015,45 @@
             "calendar:write"
           ],
           "public": false,
-          "matter_wall": false,
-          "client": "deny"
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "feed_owner": "self_or_admin",
+          "firm_feed_roles": [
+            "admin"
+          ],
+          "download_filter": "omit_events_on_walled_matters",
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "firm",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "firm",
+              "result": "allowed"
+            },
+            {
+              "action": "download",
+              "event_on_walled_matter": true,
+              "result": "omitted"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -30050,8 +30165,45 @@
             "calendar:read"
           ],
           "public": false,
-          "matter_wall": false,
-          "client": "deny"
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "feed_owner": "self_or_admin",
+          "firm_feed_roles": [
+            "admin"
+          ],
+          "download_filter": "omit_events_on_walled_matters",
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "firm",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "firm",
+              "result": "allowed"
+            },
+            {
+              "action": "download",
+              "event_on_walled_matter": true,
+              "result": "omitted"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30087,7 +30239,7 @@
       "post": {
         "operationId": "revokeIcalFeed",
         "summary": "Revoke an iCal feed",
-        "description": "The secret URL stops working.",
+        "description": "The owner or an admin revokes the feed. Another staff user receives not_found. The secret URL stops working.",
         "tags": [
           "Calendar"
         ],
@@ -30159,8 +30311,45 @@
             "calendar:write"
           ],
           "public": false,
-          "matter_wall": false,
-          "client": "deny"
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "feed_owner": "self_or_admin",
+          "firm_feed_roles": [
+            "admin"
+          ],
+          "download_filter": "omit_events_on_walled_matters",
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "firm",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "firm",
+              "result": "allowed"
+            },
+            {
+              "action": "download",
+              "event_on_walled_matter": true,
+              "result": "omitted"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -30197,7 +30386,7 @@
       "get": {
         "operationId": "downloadIcal",
         "summary": "Download an iCal feed",
-        "description": "Public to anyone holding the secret. Revocation and calendar.ical_enabled false return not_found.",
+        "description": "The secret URL is the credential. Revocation and calendar.ical_enabled false return not_found. Events on matters the feed owner cannot currently see are omitted, including matters walled after the feed was created. The secret does not publish walled events.",
         "tags": [
           "Calendar"
         ],
@@ -30246,8 +30435,45 @@
           "roles": [],
           "scopes": [],
           "public": true,
-          "matter_wall": false,
-          "client": "public"
+          "matter_wall": true,
+          "client": "public",
+          "access_inherits": "matter",
+          "feed_owner": "self_or_admin",
+          "firm_feed_roles": [
+            "admin"
+          ],
+          "download_filter": "omit_events_on_walled_matters",
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "create",
+              "role": "staff",
+              "owner": "firm",
+              "result": "forbidden"
+            },
+            {
+              "action": "create",
+              "role": "admin",
+              "owner": "firm",
+              "result": "allowed"
+            },
+            {
+              "action": "download",
+              "event_on_walled_matter": true,
+              "result": "omitted"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33789,7 +34015,7 @@
       "post": {
         "operationId": "createFileArchive",
         "summary": "Download a zip of files",
-        "description": "A folder or a selection. Each included file is audited as a download.",
+        "description": "A folder or a selection. Each included file is audited as a download. If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. confirm_quarantine true includes those versions after the same confirmation a single download requires.",
         "tags": [
           "Files"
         ],
@@ -33877,6 +34103,18 @@
               "on_wall": false,
               "result": "not_found"
             }
+          ],
+          "archive_cases": [
+            {
+              "confirm_quarantine": false,
+              "contains_quarantined": true,
+              "result": "quarantine_confirmation_required"
+            },
+            {
+              "confirm_quarantine": true,
+              "contains_quarantined": true,
+              "result": "allowed"
+            }
           ]
         },
         "x-togavsu-events": [
@@ -33913,6 +34151,9 @@
           {
             "bearerAuth": []
           }
+        ],
+        "x-togavsu-error-codes": [
+          "quarantine_confirmation_required"
         ],
         "requestBody": {
           "required": true,
@@ -54359,7 +54600,8 @@
             "type": "string"
           },
           "internal_notes": {
-            "type": "string"
+            "type": "string",
+            "description": "Staff only. Absent from InvoiceClient."
           },
           "included": {
             "$ref": "#/components/schemas/Included"
@@ -54383,7 +54625,155 @@
           "balance_due_cents",
           "write_off_cents"
         ],
-        "description": "An invoice. Totals are server-computed. Zero-fee matters are absent from collections."
+        "description": "An invoice for staff, attorneys, admins, and accountants. A client receives InvoiceClient."
+      },
+      "InvoiceClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string"
+          },
+          "issued_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "sent",
+              "viewed",
+              "paid",
+              "void"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "adjustment_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "interest_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "total_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "amount_paid_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "balance_due_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "client_message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "matter_id",
+          "number",
+          "issued_on",
+          "status",
+          "lines",
+          "subtotal_cents",
+          "adjustment_cents",
+          "interest_cents",
+          "total_cents",
+          "amount_paid_cents",
+          "balance_due_cents"
+        ],
+        "description": "Invoice fields a client may see. internal_notes is not a property."
+      },
+      "InvoiceClientHistoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "actor_kind": {
+            "type": "string",
+            "enum": [
+              "staff",
+              "client",
+              "agent",
+              "module",
+              "system"
+            ]
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "status",
+              "total_cents",
+              "amount_paid_cents",
+              "balance_due_cents",
+              "sent_at",
+              "paid_at",
+              "client_message",
+              "lines"
+            ]
+          }
+        },
+        "required": [
+          "at",
+          "actor_kind",
+          "field"
+        ],
+        "description": "Client invoice history. old_value and new_value are absent. internal_notes is not a field."
       },
       "InvoicePatch": {
         "type": "object",
@@ -56807,9 +57197,13 @@
                 "type": "null"
               }
             ]
+          },
+          "confirm_quarantine": {
+            "type": "boolean",
+            "description": "Must be true when any selected version is quarantined."
           }
         },
-        "description": "One of file_ids or folder_id. The response is a zip. Each file download is audited."
+        "description": "One of file_ids or folder_id. confirm_quarantine defaults to false. A quarantined version without confirmation returns quarantine_confirmation_required and no zip."
       },
       "QuarantineWrite": {
         "type": "object",
@@ -57610,33 +58004,62 @@
         "description": "A person resolving an exception locks name, category, matter, or grouping when they set one. Doc Tender does not change a locked field later."
       },
       "Citation": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "page": {
-            "anyOf": [
-              {
+        "description": "Where the field was read. At least one of page or timestamp is non-null.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "page": {
                 "type": "integer",
                 "minimum": 1
               },
-              {
+              "timestamp": {
                 "type": "null"
               }
-            ]
+            },
+            "required": [
+              "page"
+            ],
+            "description": "Page only."
           },
-          "timestamp": {
-            "anyOf": [
-              {
-                "type": "string",
-                "description": "Timestamp in the recording, when the source is audio or video."
-              },
-              {
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "page": {
                 "type": "null"
+              },
+              "timestamp": {
+                "type": "string",
+                "minLength": 1
               }
-            ]
+            },
+            "required": [
+              "timestamp"
+            ],
+            "description": "Timestamp only."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "page": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "timestamp": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "page",
+              "timestamp"
+            ],
+            "description": "Page and timestamp."
           }
-        },
-        "description": "Where the field was read. A published field sets page, timestamp, or both."
+        ]
       },
       "CitedField": {
         "type": "object",
@@ -60362,6 +60785,43 @@
           "version": {
             "type": "string"
           },
+          "signing_key": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Author's verified signing key."
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scopes the module requests."
+          },
+          "version_history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "released_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "UTC timestamp."
+                }
+              },
+              "required": [
+                "version",
+                "released_at"
+              ]
+            }
+          },
+          "price_note": {
+            "type": "string",
+            "description": "Empty when the module is free."
+          },
           "flagged": {
             "type": "boolean"
           },
@@ -60380,6 +60840,10 @@
           "name",
           "author",
           "version",
+          "signing_key",
+          "permissions",
+          "version_history",
+          "price_note",
           "flagged",
           "pulled",
           "notice"
@@ -60927,30 +61391,18 @@
             "type": "integer",
             "minimum": 0
           },
+          "cost_micro_usd": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sum of attempt costs in millionths of a US dollar. 15000 is $0.015000. Zero is an unpriced call."
+          },
           "fell_back": {
             "type": "boolean"
           },
           "attempts": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "provider": {
-                  "type": "string"
-                },
-                "model": {
-                  "type": "string"
-                },
-                "status": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "provider",
-                "model",
-                "status"
-              ]
+              "$ref": "#/components/schemas/AiCallAttempt"
             }
           },
           "output": {
@@ -60970,11 +61422,49 @@
           "model",
           "tokens_in",
           "tokens_out",
+          "cost_micro_usd",
           "fell_back",
           "attempts",
           "requester"
         ],
-        "description": "One AI call log row. Fallback attempts are listed."
+        "description": "One AI call log row. cost_micro_usd is an integer count of millionths of a US dollar and equals the sum of attempts."
+      },
+      "AiCallAttempt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tokens_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokens_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cost_micro_usd": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "This attempt's cost in millionths of a US dollar, including a failed attempt that was billed."
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "status",
+          "tokens_in",
+          "tokens_out",
+          "cost_micro_usd"
+        ],
+        "description": "One provider attempt inside an AI call log row."
       },
       "ProblemReport": {
         "type": "object",

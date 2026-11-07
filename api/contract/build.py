@@ -73,15 +73,27 @@ def build_marketplace() -> dict:
                 "Listing": {
                     "type": "object",
                     "additionalProperties": False,
-                    "required": ["id", "name", "author", "version", "flagged", "pulled", "notice"],
+                    "required": ["id", "name", "author", "signing_key", "version", "permissions", "version_history", "price_note", "flagged", "pulled", "notice"],
                     "properties": {
                         "id": {"type": "string"},
                         "module_id": {"type": "string"},
                         "name": {"type": "string"},
                         "author": {"type": "string"},
-                        "signing_key": {"type": "string"},
+                        "signing_key": {"type": "string", "minLength": 1},
                         "version": {"type": "string"},
                         "permissions": {"type": "array", "items": {"type": "string"}},
+                        "version_history": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": ["version", "released_at"],
+                                "properties": {
+                                    "version": {"type": "string"},
+                                    "released_at": {"type": "string", "format": "date-time"},
+                                },
+                            },
+                        },
                         "price_note": {"type": "string"},
                         "flagged": {"type": "boolean"},
                         "flag_note": {"type": "string"},

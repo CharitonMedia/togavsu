@@ -43,6 +43,20 @@ BATCH_WALL = {
     "batch_authorization": "all_or_nothing",
     "inaccessible_result": "not_found",
 }
+ICAL_POLICY = {
+    "matter_wall": True,
+    "access_inherits": "matter",
+    "feed_owner": "self_or_admin",
+    "firm_feed_roles": ["admin"],
+    "download_filter": "omit_events_on_walled_matters",
+    "access_cases": [
+        {"action": "read", "role": "staff", "owner": "other_user", "result": "not_found"},
+        {"action": "read", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "create", "role": "staff", "owner": "firm", "result": "forbidden"},
+        {"action": "create", "role": "admin", "owner": "firm", "result": "allowed"},
+        {"action": "download", "event_on_walled_matter": True, "result": "omitted"},
+    ],
+}
 MODULE_HELP = {
     "client": "deny",
     "module_principal": {
@@ -1293,6 +1307,7 @@ def _billing(api: Contract) -> None:
         events={"updated": "invoice.updated"},
         extra_access={**WALL, "client": "shared"},
     )
+    _project_client_invoices(api)
     api.add(
         "post",
         "/api/v1/invoice-drafts",
@@ -1850,13 +1865,18 @@ def _calendar(api: Contract) -> None:
         create=False,
         update=False,
         replaceable="calendar",
+        extra_access=ICAL_POLICY,
     )
     api.add(
         "post",
         "/api/v1/ical-feeds",
         operation_id="createIcalFeed",
         summary="Create an iCal feed",
-        description="Returns the secret URL once. The feed is empty when calendar.ical_enabled is false.",
+        description=(
+            "Returns the secret URL once. A staff user can create only their own feed. "
+            "A firm feed, owner_user_id null, is admin only. "
+            "Another user's owner_user_id is not_found. The feed is empty when calendar.ical_enabled is false."
+        ),
         tag="Calendar",
         features=["ical"],
         roles=STAFF,
@@ -1865,26 +1885,32 @@ def _calendar(api: Contract) -> None:
         response="IcalFeedCreated",
         success="201",
         replaceable="calendar",
+        extra_access=ICAL_POLICY,
     )
     api.add(
         "post",
         "/api/v1/ical-feeds/{feed_id}/revoke",
         operation_id="revokeIcalFeed",
         summary="Revoke an iCal feed",
-        description="The secret URL stops working.",
+        description="The owner or an admin revokes the feed. Another staff user receives not_found. The secret URL stops working.",
         tag="Calendar",
         features=["ical"],
         roles=STAFF,
         scopes=["calendar:write"],
         response="IcalFeed",
         replaceable="calendar",
+        extra_access=ICAL_POLICY,
     )
     api.add(
         "get",
         "/ical/{secret}.ics",
         operation_id="downloadIcal",
         summary="Download an iCal feed",
-        description="Public to anyone holding the secret. Revocation and calendar.ical_enabled false return not_found.",
+        description=(
+            "The secret URL is the credential. Revocation and calendar.ical_enabled false return not_found. "
+            "Events on matters the feed owner cannot currently see are omitted, including matters walled after the feed was created. "
+            "The secret does not publish walled events."
+        ),
         tag="Calendar",
         features=["ical"],
         roles=None,
@@ -1893,6 +1919,7 @@ def _calendar(api: Contract) -> None:
         response_content={"text/calendar": {"schema": {"type": "string"}}},
         writes=False,
         replaceable="calendar",
+        extra_access=ICAL_POLICY,
     )
 
 
@@ -2246,7 +2273,11 @@ def _files(api: Contract) -> None:
         "/api/v1/file-archives",
         operation_id="createFileArchive",
         summary="Download a zip of files",
-        description="A folder or a selection. Each included file is audited as a download.",
+        description=(
+            "A folder or a selection. Each included file is audited as a download. "
+            "If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. "
+            "confirm_quarantine true includes those versions after the same confirmation a single download requires."
+        ),
         tag="Files",
         features=["files"],
         roles=BILLING + ["client"],
@@ -2254,7 +2285,14 @@ def _files(api: Contract) -> None:
         body="FileArchiveRequest",
         response_content={"application/zip": {"schema": {"type": "string", "contentMediaType": "application/zip"}}},
         events=["file.downloaded"],
-        extra_access=SHARED,
+        error_codes=["quarantine_confirmation_required"],
+        extra_access={
+            **SHARED,
+            "archive_cases": [
+                {"confirm_quarantine": False, "contains_quarantined": True, "result": "quarantine_confirmation_required"},
+                {"confirm_quarantine": True, "contains_quarantined": True, "result": "allowed"},
+            ],
+        },
     )
     api.resource(
         collection="/api/v1/folders",
@@ -3717,6 +3755,51 @@ def _modules(api: Contract) -> None:
         response="DomainHandler",
         events=["domain.switched"],
     )
+
+
+def _project_client_invoices(api: Contract) -> None:
+    staff_item = {"$ref": "#/components/schemas/Invoice"}
+    client_item = {"$ref": "#/components/schemas/InvoiceClient"}
+    mixed = {"oneOf": [staff_item, client_item]}
+    page = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {"type": "array", "items": mixed},
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    list_op = api.spec["paths"]["/api/v1/invoices"]["get"]
+    get_op = api.spec["paths"]["/api/v1/invoices/{invoice_id}"]["get"]
+    list_op["responses"]["200"]["content"]["application/json"]["schema"] = page
+    get_op["responses"]["200"]["content"]["application/json"]["schema"] = mixed
+    for operation in (list_op, get_op):
+        operation["x-togavsu-access"]["client_schema"] = "InvoiceClient"
+        operation["x-togavsu-access"]["staff_schema"] = "Invoice"
+        operation["x-togavsu-access"]["client_omitted_fields"] = ["internal_notes"]
+    list_op["x-togavsu-access"]["client_csv_omitted_columns"] = ["internal_notes"]
+    history = api.spec["paths"]["/api/v1/invoices/{invoice_id}/history"]["get"]
+    history["responses"]["200"]["content"]["application/json"]["schema"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["data", "page"],
+        "properties": {
+            "data": {
+                "type": "array",
+                "items": {
+                    "oneOf": [
+                        {"$ref": "#/components/schemas/AuditEntry"},
+                        {"$ref": "#/components/schemas/InvoiceClientHistoryEntry"},
+                    ]
+                },
+            },
+            "page": {"$ref": "#/components/schemas/Page"},
+        },
+    }
+    history["x-togavsu-access"]["client_schema"] = "InvoiceClientHistoryEntry"
+    history["x-togavsu-access"]["staff_schema"] = "AuditEntry"
+    history["x-togavsu-access"]["client_omitted_fields"] = ["old_value", "new_value", "internal_notes"]
 
 
 def _slug(schema: str) -> str:

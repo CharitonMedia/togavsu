@@ -702,8 +702,10 @@ class ContractTest(unittest.TestCase):
             self.assertIn(field, result["required"])
         cited = self.spec["components"]["schemas"]["CitedField"]["properties"]
         self.assertIn("confidence", cited)
-        self.assertIn("page", self.spec["components"]["schemas"]["Citation"]["properties"])
-        self.assertIn("timestamp", self.spec["components"]["schemas"]["Citation"]["properties"])
+        citation_fields = set()
+        for branch in self.spec["components"]["schemas"]["Citation"]["oneOf"]:
+            citation_fields.update(branch["properties"])
+        self.assertEqual(citation_fields, {"page", "timestamp"})
         operation = _operation(self.spec, "getDocTenderResult")
         self.assertTrue(operation["x-togavsu-access"]["matter_wall"])
         self.assertEqual(operation["x-togavsu-access"]["access_inherits"], "file")
@@ -918,6 +920,172 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(flag["required"], ["note"])
         self.assertIn("version", flag["properties"])
         self.assertNotIn("version", flag["required"])
+
+    def test_ical_feeds_are_owner_bound_and_wall_filtered(self):
+        for operation_id in ("listIcalFeed", "getIcalFeed", "createIcalFeed", "revokeIcalFeed", "downloadIcal"):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertTrue(access["matter_wall"], operation_id)
+            self.assertEqual(access["feed_owner"], "self_or_admin", operation_id)
+            self.assertEqual(access["download_filter"], "omit_events_on_walled_matters", operation_id)
+            cases = {(case.get("action"), case.get("role"), case.get("owner"), case.get("result")) for case in access["access_cases"]}
+            self.assertIn(("read", "staff", "other_user", "not_found"), cases)
+            self.assertIn(("create", "staff", "firm", "forbidden"), cases)
+            self.assertIn(("create", "admin", "firm", "allowed"), cases)
+        download = _operation(self.spec, "downloadIcal")
+        omitted = [case for case in download["x-togavsu-access"]["access_cases"] if case.get("event_on_walled_matter")]
+        self.assertEqual(omitted[0]["result"], "omitted")
+
+    def test_client_invoice_hides_internal_notes_and_history(self):
+        from jsonschema import Draft202012Validator
+
+        client = self.spec["components"]["schemas"]["InvoiceClient"]
+        self.assertNotIn("internal_notes", client["properties"])
+        bundled = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": {"InvoiceLine": self.spec["components"]["schemas"]["InvoiceLine"]},
+            **{key: value for key, value in client.items() if key != "properties"},
+            "properties": {
+                name: (
+                    {"type": "array", "items": {"$ref": "#/$defs/InvoiceLine"}}
+                    if name == "lines"
+                    else value
+                )
+                for name, value in client["properties"].items()
+            },
+        }
+        Draft202012Validator(bundled).validate(
+            {
+                "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                "number": "1",
+                "issued_on": "2026-11-01",
+                "status": "sent",
+                "lines": [{"kind": "flat_fee", "description": "Fee", "amount_cents": 10000}],
+                "subtotal_cents": 10000,
+                "adjustment_cents": 0,
+                "interest_cents": 0,
+                "total_cents": 10000,
+                "amount_paid_cents": 0,
+                "balance_due_cents": 10000,
+            }
+        )
+        with self.assertRaises(Exception):
+            Draft202012Validator(bundled).validate({"internal_notes": "do not share"})
+        history = self.spec["components"]["schemas"]["InvoiceClientHistoryEntry"]
+        self.assertNotIn("old_value", history["properties"])
+        self.assertNotIn("new_value", history["properties"])
+        self.assertNotIn("internal_notes", history["properties"]["field"]["enum"])
+        for operation_id in ("listInvoice", "getInvoice", "historyInvoice"):
+            operation = _operation(self.spec, operation_id)
+            self.assertIn("client", operation["x-togavsu-access"]["roles"])
+            self.assertIn("internal_notes", operation["x-togavsu-access"]["client_omitted_fields"])
+        self.assertEqual(_operation(self.spec, "listInvoice")["x-togavsu-access"]["client_schema"], "InvoiceClient")
+        self.assertEqual(_operation(self.spec, "historyInvoice")["x-togavsu-access"]["client_schema"], "InvoiceClientHistoryEntry")
+        self.assertEqual(_operation(self.spec, "listInvoice")["x-togavsu-access"]["client_csv_omitted_columns"], ["internal_notes"])
+
+    def test_complete_marketplace_listing_validates(self):
+        import copy
+
+        from jsonschema import Draft202012Validator
+
+        listing = {
+            "id": "matter-clock",
+            "name": "Matter Clock",
+            "author": "Example",
+            "signing_key": "ed25519:abc",
+            "version": "0.1.0",
+            "permissions": ["matters:read"],
+            "version_history": [{"version": "0.1.0", "released_at": "2026-11-01T00:00:00Z"}],
+            "price_note": "",
+            "flagged": False,
+            "pulled": False,
+            "notice": "Modules are published by their authors.",
+        }
+        core = copy.deepcopy(self.spec["components"]["schemas"])
+
+        def rewrite(node):
+            if isinstance(node, dict):
+                ref = node.get("$ref")
+                if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                    node["$ref"] = "#/$defs/" + ref.rsplit("/", 1)[1]
+                for value in node.values():
+                    rewrite(value)
+            elif isinstance(node, list):
+                for value in node:
+                    rewrite(value)
+
+        rewrite(core)
+        Draft202012Validator(
+            {"$schema": "https://json-schema.org/draft/2020-12/schema", "$defs": core, "$ref": "#/$defs/MarketplaceListing"}
+        ).validate(listing)
+        Draft202012Validator(self.market["components"]["schemas"]["Listing"]).validate(listing)
+        for field in ("signing_key", "permissions", "version_history", "price_note"):
+            self.assertIn(field, self.spec["components"]["schemas"]["MarketplaceListing"]["required"])
+            self.assertIn(field, self.market["components"]["schemas"]["Listing"]["required"])
+
+    def test_archive_quarantine_requires_confirmation(self):
+        operation = _operation(self.spec, "createFileArchive")
+        self.assertIn("confirm_quarantine", self.spec["components"]["schemas"]["FileArchiveRequest"]["properties"])
+        self.assertIn("quarantine_confirmation_required", operation["x-togavsu-error-codes"])
+        cases = {(case["confirm_quarantine"], case["result"]) for case in operation["x-togavsu-access"]["archive_cases"]}
+        self.assertIn((False, "quarantine_confirmation_required"), cases)
+        self.assertIn((True, "allowed"), cases)
+
+    def test_citation_requires_a_location(self):
+        from jsonschema import Draft202012Validator
+
+        citation = self.spec["components"]["schemas"]["Citation"]
+        validator = Draft202012Validator(citation)
+        validator.validate({"page": 4})
+        validator.validate({"timestamp": "00:01:30"})
+        validator.validate({"page": 4, "timestamp": "00:01:30"})
+        for invalid in ({}, {"page": None, "timestamp": None}, {"page": None}, {"timestamp": None}):
+            with self.assertRaises(Exception):
+                validator.validate(invalid)
+
+    def test_ai_call_log_includes_cost(self):
+        from jsonschema import Draft202012Validator
+
+        schemas = self.spec["components"]["schemas"]
+        call = schemas["AiCall"]
+        self.assertIn("cost_micro_usd", call["properties"])
+        self.assertIn("cost_micro_usd", call["required"])
+        self.assertEqual(call["properties"]["cost_micro_usd"]["type"], "integer")
+        attempt = schemas["AiCallAttempt"]
+        self.assertIn("cost_micro_usd", attempt["required"])
+        document = {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": {"AiCallAttempt": attempt},
+            **{key: value for key, value in call.items() if key != "properties"},
+            "properties": {
+                name: ({"$ref": "#/$defs/AiCallAttempt"} if value.get("$ref", "").endswith("AiCallAttempt") else value)
+                if name != "attempts"
+                else {"type": "array", "items": {"$ref": "#/$defs/AiCallAttempt"}}
+                for name, value in call["properties"].items()
+            },
+        }
+        row = {
+            "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+            "created_at": "2026-11-07T12:00:00Z",
+            "created_by": "018f1a00-7b3c-7d4e-8a11-222222222222",
+            "task": "labeling",
+            "provider": "openai",
+            "model": "gpt-6.1-sol",
+            "tokens_in": 20,
+            "tokens_out": 20,
+            "cost_micro_usd": 6000,
+            "fell_back": True,
+            "attempts": [
+                {"provider": "openai", "model": "gpt-6.1-sol", "status": "timeout", "tokens_in": 10, "tokens_out": 0, "cost_micro_usd": 1000},
+                {"provider": "anthropic", "model": "strong", "status": "ok", "tokens_in": 10, "tokens_out": 20, "cost_micro_usd": 5000},
+            ],
+            "requester": "matter-clock",
+        }
+        Draft202012Validator(document).validate(row)
+        incomplete = dict(row)
+        del incomplete["cost_micro_usd"]
+        with self.assertRaises(Exception):
+            Draft202012Validator(document).validate(incomplete)
 
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]

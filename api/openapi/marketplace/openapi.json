@@ -342,7 +342,11 @@
           "id",
           "name",
           "author",
+          "signing_key",
           "version",
+          "permissions",
+          "version_history",
+          "price_note",
           "flagged",
           "pulled",
           "notice"
@@ -361,7 +365,8 @@
             "type": "string"
           },
           "signing_key": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "version": {
             "type": "string"
@@ -370,6 +375,26 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "version_history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "released_at"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "released_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
             }
           },
           "price_note": {
