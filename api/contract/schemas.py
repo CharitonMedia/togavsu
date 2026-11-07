@@ -2455,6 +2455,7 @@ SCHEMAS = _register(
                 "permissions": _arr(_ref("ManifestPermission"), "Requested scopes. A string means required. An object may set required false."),
                 "widgets": _arr(_ref("ManifestWidget")),
                 "sidebar": _arr(_ref("ManifestSidebarEntry")),
+                "sidebar_panel": _ref("ManifestSidebarPanel"),
                 "quick_create": _arr(_ref("ManifestQuickCreate")),
                 "search_scopes": _arr(_ref("ManifestSearchScope")),
                 "matter_screen": _ref("ManifestMatterScreen"),
@@ -2595,6 +2596,18 @@ SCHEMAS = _register(
             },
             ["id", "section", "label", "icon", "order", "target", "scopes", "roles"],
             "A sidebar entry. id is unique in the manifest. target is a module-local path, not a core route or another module's path. Two ids with different targets open two pages.",
+        ),
+        "ManifestSidebarPanel": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "title": {"type": "string", "minLength": 1},
+                "slot": {"const": "top-band", "description": "The one slot under the sidebar top band."},
+                "target": _module_local_path("Module-local path. The core opens /m/{module_id}/{target}."),
+                "scopes": _arr({"type": "string"}),
+                "roles": _arr(_ROLE),
+            },
+            ["id", "title", "slot", "target", "scopes", "roles"],
+            "At most one panel under the top band. target is module-local, and the caller's role and scopes are checked before it is shown.",
         ),
         "ManifestQuickCreate": _obj(
             {
@@ -2941,6 +2954,25 @@ SCHEMAS = _register(
             },
             ["status", "enrollment_token", "otpauth_uri", "secret"],
             "Issued before a session exists. The next call is confirmTotpEnrollment.",
+        ),
+        "TotpResetChallenge": _obj(
+            {
+                "status": {"const": "totp_reset_pending"},
+                "enrollment_token": {"type": "string", "minLength": 1},
+                "expires_at": _dt("The token is refused after this time."),
+                "otpauth_uri": {"type": "string"},
+                "secret": {"type": "string", "description": "Pending base32 secret, shown once. It is not active yet."},
+            },
+            ["status", "enrollment_token", "expires_at", "otpauth_uri", "secret"],
+            "Authenticated reset challenge. The current secret stays active until confirmTotpReset. The token is single-use.",
+        ),
+        "TotpResetConfirm": _obj(
+            {
+                "enrollment_token": {"type": "string", "minLength": 1},
+                "code": {"type": "string", "minLength": 6, "maxLength": 8},
+            },
+            ["enrollment_token", "code"],
+            "Confirms the pending reset. The caller is the signed-in user.",
         ),
         "EnrollmentStart": _obj(
             {"enrollment_token": {"type": "string", "minLength": 1}},

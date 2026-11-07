@@ -376,7 +376,7 @@ def _identity(api: Contract) -> None:
         description=(
             "Public. Confirms the first code for the enrollment_token from setup or startTotpEnrollment. "
             "Sets the session cookie and returns the initial recovery codes once. "
-            "resetTotp is the later authenticated reset, not this step."
+            "An authenticated reset uses resetTotp and confirmTotpReset, not this step."
         ),
         tag="Identity",
         features=["auth", "setup"],
@@ -546,18 +546,40 @@ def _identity(api: Contract) -> None:
         "/api/v1/me/totp/reset",
         operation_id="resetTotp",
         summary="Reset two-factor",
-        description="Starts a new TOTP enrollment and invalidates the old secret.",
+        description=(
+            "Starts a replacement enrollment for the signed-in user. "
+            "The current secret stays active until confirmTotpReset accepts the first code. "
+            "The response includes a single-use enrollment_token that expires. "
+            "Another user's reset is not_found."
+        ),
         tag="Identity",
         features=["auth"],
         roles=ANY,
         scopes=["profile:write"],
-        response_schema={
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["otpauth_uri"],
-            "properties": {"otpauth_uri": {"type": "string"}},
-        },
-        extra_access=OWN,
+        response="TotpResetChallenge",
+        events=["user.totp_reset_started"],
+        extra_access={**OWN, "old_secret": "active_until_confirm", "token": "single_use_bounded"},
+    )
+    api.add(
+        "post",
+        "/api/v1/me/totp/reset/confirm",
+        operation_id="confirmTotpReset",
+        summary="Confirm a two-factor reset",
+        description=(
+            "Activates the pending secret for the signed-in user and then invalidates the old one. "
+            "The enrollment_token is the one resetTotp returned, and it is spent by a correct code. "
+            "A wrong code, an expired token, or a replay does not change the active secret. "
+            "A token issued for another user is forbidden."
+        ),
+        tag="Identity",
+        features=["auth"],
+        roles=ANY,
+        scopes=["profile:write"],
+        body="TotpResetConfirm",
+        response="User",
+        events=["user.totp_reset"],
+        error_codes=["unauthenticated"],
+        extra_access={**OWN, "old_secret": "retired_after_valid_code", "token": "single_use_bounded"},
     )
     api.add(
         "post",

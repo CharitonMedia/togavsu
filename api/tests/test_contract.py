@@ -35,7 +35,10 @@ from contract.policy import (
     event_read_scopes,
     file_download_decision,
     is_core_file_download,
+    confirm_totp_reset,
     include_views_decision,
+    sidebar_panel,
+    start_totp_reset,
     issue_api_token,
     notification_page,
     notification_recipient_decision,
@@ -651,7 +654,39 @@ class ContractTest(unittest.TestCase):
         self.assertIn("recovery_codes", started["required"])
         self.assertEqual(_schema_name(confirm["responses"]["200"]), "SessionStarted")
         reset = _operation(self.spec, "resetTotp")
+        confirm_reset = _operation(self.spec, "confirmTotpReset")
         self.assertNotEqual(reset["security"], [])
+        self.assertNotEqual(confirm_reset["security"], [])
+        challenge_schema = self.spec["components"]["schemas"]["TotpResetChallenge"]
+        for field in ("enrollment_token", "expires_at", "otpauth_uri", "secret"):
+            self.assertIn(field, challenge_schema["required"])
+        self.assertEqual(_schema_name(reset["responses"]["200"]), "TotpResetChallenge")
+        self.assertEqual(reset["x-togavsu-events"], ["user.totp_reset_started"])
+        self.assertEqual(confirm_reset["x-togavsu-events"], ["user.totp_reset"])
+        started = start_totp_reset(reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "user_id": "user-1", "issued_token": "reset-1", "expires_at": "2026-11-07T18:10:00Z"})
+        self.assertEqual(started["result"], "allowed")
+        self.assertTrue(started["old_secret_active"])
+        self.assertFalse(started["activated"])
+        self.assertEqual(started["challenge"]["enrollment_token"], "reset-1")
+        pending = started["challenge"]
+        wrong = confirm_totp_reset(confirm_reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "enrollment_token": "reset-1", "code": "000000", "expected_code": "123456"}, pending)
+        self.assertEqual(wrong["result"], "unauthenticated")
+        self.assertTrue(wrong["old_secret_active"])
+        self.assertFalse(pending["used"])
+        other_owner = confirm_totp_reset(confirm_reset, {"role": "staff", "owner": "self", "caller_user_id": "user-2", "enrollment_token": "reset-1", "code": "123456", "expected_code": "123456"}, pending)
+        self.assertEqual(other_owner["result"], "forbidden")
+        self.assertTrue(other_owner["old_secret_active"])
+        activated = confirm_totp_reset(confirm_reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "enrollment_token": "reset-1", "code": "123456", "expected_code": "123456"}, pending)
+        self.assertEqual(activated["result"], "allowed")
+        self.assertTrue(activated["activated"])
+        self.assertFalse(activated["old_secret_active"])
+        self.assertTrue(activated["challenge"]["used"])
+        replayed = confirm_totp_reset(confirm_reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "enrollment_token": "reset-1", "code": "123456", "expected_code": "123456"}, activated["challenge"])
+        self.assertEqual(replayed["result"], "forbidden")
+        self.assertFalse(replayed["activated"])
+        expired = confirm_totp_reset(confirm_reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "enrollment_token": "reset-2", "code": "123456", "expected_code": "123456", "expired": True}, {**pending, "enrollment_token": "reset-2", "used": False})
+        self.assertEqual(expired["result"], "forbidden")
+        self.assertTrue(expired["old_secret_active"])
 
     def test_mcp_binary_upload_and_download(self):
         chunk = _operation(self.spec, "putFileChunk")
@@ -799,6 +834,14 @@ class ContractTest(unittest.TestCase):
                     },
                 },
             ],
+            "sidebar_panel": {
+                "id": "softphone",
+                "title": "Softphone",
+                "slot": "top-band",
+                "target": "softphone",
+                "scopes": ["matters:read"],
+                "roles": ["staff"],
+            },
             "sidebar": [
                 {
                     "id": "targets",
@@ -1044,6 +1087,16 @@ class ContractTest(unittest.TestCase):
         omitted_ui = manifest_contributions(no_ui, {"role": "staff"})
         self.assertEqual(omitted_ui["result"], "allowed")
         self.assertEqual(omitted_ui["pages"], [])
+        panel = sidebar_panel("matter-clock", manifest["sidebar_panel"], {"role": "staff", "scopes": ["matters:read"]})
+        self.assertEqual(panel["result"], "allowed")
+        self.assertEqual(panel["path"], "/m/matter-clock/softphone")
+        self.assertEqual(sidebar_panel("matter-clock", manifest["sidebar_panel"], {"role": "client", "scopes": ["matters:read"]})["result"], "forbidden")
+        self.assertEqual(sidebar_panel("matter-clock", {**manifest["sidebar_panel"], "target": "https://evil.example"}, {"role": "staff", "scopes": ["matters:read"]})["result"], "validation_failed")
+        self.assertEqual(sidebar_panel("matter-clock", [manifest["sidebar_panel"], {**manifest["sidebar_panel"], "id": "second"}])["result"], "validation_failed")
+        two_panels = copy.deepcopy(manifest)
+        two_panels["sidebar_panel"] = [manifest["sidebar_panel"], manifest["sidebar_panel"]]
+        with self.assertRaises(Exception):
+            validator.validate(two_panels)
         fields = manifest_custom_fields(manifest, "matter-clock")
         self.assertEqual(fields["result"], "allowed")
         self.assertEqual(fields["module_id"], "matter-clock")
@@ -3249,6 +3302,42 @@ class ContractTest(unittest.TestCase):
             include_views_decision(matter, {"role": "staff", "approved_scopes": ["matters:read", "views:clock.targets:read"], "include": ["clock.targets"], "matter_walled": True, "on_wall": False}),
             "not_found",
         )
+        self.assertEqual(matter["x-togavsu-access"]["extension_include"]["declared_table"], "owner_module_or_viewer")
+        self.assertEqual(matter["x-togavsu-access"]["extension_include"]["other_module_unpublished_table"], "forbidden")
+        extension = {
+            "role": "staff",
+            "approved_scopes": ["matters:read"],
+            "include": ["matter-clock.matter_targets"],
+            "extensions": ["matter-clock.matter_targets"],
+        }
+        self.assertEqual(include_views_decision(matter, extension), "allowed")
+        self.assertEqual(include_views_decision(matter, {**extension, "caller_module_id": "matter-clock"}), "allowed")
+        self.assertEqual(include_views_decision(matter, {**extension, "caller_module_id": "other-module"}), "forbidden")
+        self.assertEqual(
+            include_views_decision(matter, {**extension, "caller_module_id": "other-module", "approved_scopes": ["matters:read", "views:matter-clock.matter_targets:read"]}),
+            "forbidden",
+        )
+        self.assertEqual(
+            include_views_decision(
+                matter,
+                {
+                    "role": "staff",
+                    "caller_module_id": "other-module",
+                    "approved_scopes": ["matters:read", "views:matter-clock.targets:read"],
+                    "include": ["matter-clock.targets"],
+                    "published_views": ["matter-clock.targets"],
+                },
+            ),
+            "allowed",
+        )
+        self.assertEqual(
+            include_views_decision(
+                matter,
+                {"role": "staff", "caller_module_id": "other-module", "approved_scopes": ["matters:read"], "include": ["matter-clock.targets"], "published_views": ["matter-clock.targets"]},
+            ),
+            "forbidden",
+        )
+        self.assertEqual(include_views_decision(matter, {**extension, "matter_walled": True, "on_wall": False}), "not_found")
         conflict = _operation(self.spec, "getConflictRecord")
         self.assertEqual(
             include_views_decision(conflict, {"role": "staff", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}),

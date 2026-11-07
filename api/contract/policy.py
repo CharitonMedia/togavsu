@@ -491,12 +491,26 @@ def attach_grant_projections(spec: dict) -> None:
         }
 
 
+def publish_extension_include(spec: dict) -> None:
+    """An extension table is included with the core record. A published view still needs its scope."""
+    rule = {
+        "declared_table": "owner_module_or_viewer",
+        "published_view": "views:{module}.{view}:read",
+        "other_module_unpublished_table": "forbidden",
+    }
+    for _method, _path, operation in iter_operations(spec):
+        access = operation["x-togavsu-access"]
+        if "include_scope_pattern" in access:
+            access["extension_include"] = dict(rule)
+
+
 def finalize(spec: dict) -> None:
     apply_file_download_contract(spec)
     publish_client_context(spec)
     publish_payment_policy(spec)
     tag_noninteractive_workflows(spec)
     attach_grant_projections(spec)
+    publish_extension_include(spec)
     ensure_mutation_events(spec)
     publish_trust_debit(spec)
     publish_inherited_history(spec)
@@ -1099,7 +1113,8 @@ MUTATION_EVENTS = {
     "confirmPasswordReset": ["user.password_changed"],
     "requestEmailChange": ["user.email_change_requested"],
     "changePassword": ["user.password_changed"],
-    "resetTotp": ["user.totp_reset"],
+    "resetTotp": ["user.totp_reset_started"],
+    "confirmTotpReset": ["user.totp_reset"],
     "regenerateRecoveryCodes": ["user.recovery_codes_regenerated"],
     "updateMeSettings": ["user.settings_updated"],
     "putNotificationPreferences": ["notification_preferences.updated"],
@@ -2235,6 +2250,27 @@ def replace_matter_wall(operation: dict, call: dict) -> dict:
     }
 
 
+def sidebar_panel(module_id: str, panel, caller: dict | None = None) -> dict:
+    """One module panel may sit under the sidebar top band. Its target stays module-local."""
+    if panel is None:
+        return {"result": "allowed", "path": None}
+    if isinstance(panel, list):
+        if len(panel) != 1:
+            return {"result": "validation_failed", "path": None}
+        panel = panel[0]
+    if not isinstance(panel, dict) or panel.get("slot") != "top-band":
+        return {"result": "validation_failed", "path": None}
+    path = normalize_module_target(module_id, panel.get("target"))
+    if not path:
+        return {"result": "validation_failed", "path": None}
+    if caller is not None:
+        roles = set(panel.get("roles") or [])
+        scopes = set(panel.get("scopes") or [])
+        if caller.get("role") not in roles or not scopes <= set(caller.get("scopes") or []):
+            return {"result": "forbidden", "path": None}
+    return {"result": "allowed", "path": path}
+
+
 def include_views_decision(operation: dict, call: dict) -> str:
     """include= is the approved view scope, not a bypass of role or wall."""
     access = operation["x-togavsu-access"]
@@ -2252,12 +2288,64 @@ def include_views_decision(operation: dict, call: dict) -> str:
     for view in call.get("include") or []:
         if view.count(".") != 1:
             return "validation_failed"
-        module_id, view_name = view.split(".", 1)
-        needed = f"views:{module_id}.{view_name}:read"
-        # Section 9.9: another module may include this view only after the admin approves this scope.
+        if "*" in view or "?" in view:
+            return "validation_failed"
+        module_id, name = view.split(".", 1)
+        if not module_id or not name:
+            return "validation_failed"
+        key = f"{module_id}.{name}"
+        extensions = set(call.get("extensions") or [])
+        published = set(call.get("published_views") or [])
+        # The owning module, or a viewer who can already read the core record, may include a declared table that has no published view.
+        if key in extensions and call.get("caller_module_id") in (None, module_id):
+            continue
+        if key in extensions and key not in published:
+            return "forbidden"
+        needed = f"views:{module_id}.{name}:read"
+        # Section 9.9: another module may include a published view only after the admin approves this scope.
         if needed not in approved:
             return "forbidden"
     return "allowed"
+
+
+def start_totp_reset(operation: dict, call: dict) -> dict:
+    """Begin a reset without retiring the current secret. The challenge token is single-use and expires."""
+    denied = {"result": "forbidden", "old_secret_active": True, "activated": False, "challenge": None}
+    access = operation["x-togavsu-access"]
+    if call.get("role") not in access.get("roles", []) or call.get("owner") not in (None, "self"):
+        return denied
+    if call.get("user_id") not in (None, call.get("caller_user_id")):
+        return {"result": "not_found", "old_secret_active": True, "activated": False, "challenge": None}
+    return {
+        "result": "allowed",
+        "old_secret_active": True,
+        "activated": False,
+        "challenge": {
+            "status": "totp_reset_pending",
+            "enrollment_token": call.get("issued_token") or "reset-token",
+            "expires_at": call.get("expires_at"),
+            "otpauth_uri": "otpauth://totp/togavsu",
+            "secret": "NEWSECRET",
+            "user_id": call.get("caller_user_id"),
+            "used": False,
+        },
+    }
+
+
+def confirm_totp_reset(operation: dict, call: dict, challenge: dict | None) -> dict:
+    """Activate the new secret only after the owner's code. A bad code or a replay leaves the current secret in place."""
+    access = operation["x-togavsu-access"]
+    kept = {"old_secret_active": True, "activated": False, "challenge": challenge}
+    if call.get("role") not in access.get("roles", []) or call.get("owner") not in (None, "self"):
+        return {"result": "forbidden", **kept}
+    if not challenge or challenge.get("user_id") != call.get("caller_user_id") or challenge.get("enrollment_token") != call.get("enrollment_token"):
+        return {"result": "forbidden", **kept}
+    if challenge.get("used") or call.get("expired"):
+        return {"result": "forbidden", **kept}
+    if call.get("code") != call.get("expected_code"):
+        return {"result": "unauthenticated", **kept}
+    spent = {**challenge, "used": True}
+    return {"result": "allowed", "old_secret_active": False, "activated": True, "challenge": spent}
 
 
 def publish_trust_debit(spec: dict) -> None:

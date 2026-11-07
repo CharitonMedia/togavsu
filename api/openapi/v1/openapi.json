@@ -996,7 +996,7 @@
       "post": {
         "operationId": "confirmTotpEnrollment",
         "summary": "Confirm TOTP enrollment and open a session",
-        "description": "Public. Confirms the first code for the enrollment_token from setup or startTotpEnrollment. Sets the session cookie and returns the initial recovery codes once. resetTotp is the later authenticated reset, not this step.",
+        "description": "Public. Confirms the first code for the enrollment_token from setup or startTotpEnrollment. Sets the session cookie and returns the initial recovery codes once. An authenticated reset uses resetTotp and confirmTotpReset, not this step.",
         "tags": [
           "Identity"
         ],
@@ -1564,7 +1564,12 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -2085,7 +2090,7 @@
       "post": {
         "operationId": "resetTotp",
         "summary": "Reset two-factor",
-        "description": "Starts a new TOTP enrollment and invalidates the old secret.",
+        "description": "Starts a replacement enrollment for the signed-in user. The current secret stays active until confirmTotpReset accepts the first code. The response includes a single-use enrollment_token that expires. Another user's reset is not_found.",
         "tags": [
           "Identity"
         ],
@@ -2108,16 +2113,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "otpauth_uri"
-                  ],
-                  "properties": {
-                    "otpauth_uri": {
-                      "type": "string"
-                    }
-                  }
+                  "$ref": "#/components/schemas/TotpResetChallenge"
                 }
               }
             }
@@ -2161,11 +2157,13 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
+          "old_secret": "active_until_confirm",
+          "token": "single_use_bounded",
           "events_on": "commit",
           "events_on_failure": "none"
         },
         "x-togavsu-events": [
-          "user.totp_reset"
+          "user.totp_reset_started"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -2194,6 +2192,132 @@
             "bearerAuth": []
           }
         ]
+      }
+    },
+    "/api/v1/me/totp/reset/confirm": {
+      "post": {
+        "operationId": "confirmTotpReset",
+        "summary": "Confirm a two-factor reset",
+        "description": "Activates the pending secret for the signed-in user and then invalidates the old one. The enrollment_token is the one resetTotp returned, and it is spent by a correct code. A wrong code, an expired token, or a replay does not change the active secret. A token issued for another user is forbidden.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "auth"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "scopes": [
+            "profile:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "old_secret": "retired_after_valid_code",
+          "token": "single_use_bounded",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "user.totp_reset"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "confirmTotpReset",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "unauthenticated"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TotpResetConfirm"
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/me/recovery-codes": {
@@ -3327,7 +3451,12 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3424,6 +3553,11 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -3547,7 +3681,12 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3653,6 +3792,11 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -4768,7 +4912,12 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4886,6 +5035,11 @@
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -5027,7 +5181,12 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5151,6 +5310,11 @@
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -5296,6 +5460,11 @@
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -5452,6 +5621,11 @@
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -5589,6 +5763,11 @@
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -8753,7 +8932,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -8871,6 +9055,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -9012,7 +9201,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9136,6 +9330,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -9281,6 +9480,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -9437,6 +9641,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -9574,6 +9783,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -10293,7 +10507,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10614,7 +10833,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10727,6 +10951,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -10866,7 +11095,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10988,6 +11222,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -11135,6 +11374,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -12863,7 +13107,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12976,6 +13225,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -13115,7 +13369,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13237,6 +13496,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -13406,6 +13670,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -13541,6 +13810,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -13810,7 +14084,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13923,6 +14202,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -14062,7 +14346,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -14184,6 +14473,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -14327,6 +14621,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -14459,6 +14758,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -14655,7 +14959,12 @@
           ],
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -14771,6 +15080,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -14913,7 +15227,12 @@
           ],
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -15038,6 +15357,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -15188,6 +15512,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -20631,7 +20960,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20748,6 +21082,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -20889,7 +21228,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21012,6 +21356,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -21183,6 +21532,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -21319,6 +21673,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -22352,7 +22711,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -22469,6 +22833,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -22610,7 +22979,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -22733,6 +23107,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -22904,6 +23283,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -23040,6 +23424,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -23300,7 +23689,12 @@
           ],
           "client_csv_omitted_columns": [
             "internal_notes"
-          ]
+          ],
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23438,7 +23832,12 @@
           "staff_schema": "Invoice",
           "client_omitted_fields": [
             "internal_notes"
-          ]
+          ],
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23561,6 +23960,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -23747,6 +24151,11 @@
             "new_value",
             "internal_notes"
           ],
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "admin_bypasses_wall": false,
           "inherited_record_access": {
             "matter_wall": true,
@@ -25378,7 +25787,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25534,6 +25948,11 @@
             }
           },
           "noninteractive_workflow": "payment_processor",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -25686,7 +26105,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25852,6 +26276,11 @@
                 "entry_type": "deposit"
               }
             }
+          },
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
           "events_on_failure": "none"
@@ -28504,7 +28933,12 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -28615,6 +29049,11 @@
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -28755,7 +29194,12 @@
           "matter_wall": false,
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -28875,6 +29319,11 @@
           "client": "deny",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -31999,7 +32448,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32113,6 +32567,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -32253,7 +32712,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32376,6 +32840,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -32511,6 +32980,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -32643,6 +33117,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -32877,7 +33356,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32991,6 +33475,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -33131,7 +33620,12 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33254,6 +33748,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -33402,6 +33901,11 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -34590,7 +35094,12 @@
             }
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -34941,6 +35450,11 @@
             ],
             "additional_properties": false,
             "required_subset_of_grant": true
+          },
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
           }
         },
         "x-togavsu-events": [],
@@ -35465,7 +35979,12 @@
           "unassigned_review": true,
           "assigns_matter": false,
           "module_delegation": "delegated_viewer_or_noninteractive",
-          "noninteractive_workflow": "background_file_publication"
+          "noninteractive_workflow": "background_file_publication",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -69801,6 +70320,9 @@
               "$ref": "#/components/schemas/ManifestSidebarEntry"
             }
           },
+          "sidebar_panel": {
+            "$ref": "#/components/schemas/ManifestSidebarPanel"
+          },
           "quick_create": {
             "type": "array",
             "items": {
@@ -70334,6 +70856,62 @@
           "roles"
         ],
         "description": "A sidebar entry. id is unique in the manifest. target is a module-local path, not a core route or another module's path. Two ids with different targets open two pages."
+      },
+      "ManifestSidebarPanel": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "slot": {
+            "const": "top-band",
+            "description": "The one slot under the sidebar top band."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path. The core opens /m/{module_id}/{target}."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "slot",
+          "target",
+          "scopes",
+          "roles"
+        ],
+        "description": "At most one panel under the top band. target is module-local, and the caller's role and scopes are checked before it is shown."
       },
       "ManifestQuickCreate": {
         "type": "object",
@@ -72361,6 +72939,59 @@
           "secret"
         ],
         "description": "Issued before a session exists. The next call is confirmTotpEnrollment."
+      },
+      "TotpResetChallenge": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "totp_reset_pending"
+          },
+          "enrollment_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The token is refused after this time."
+          },
+          "otpauth_uri": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Pending base32 secret, shown once. It is not active yet."
+          }
+        },
+        "required": [
+          "status",
+          "enrollment_token",
+          "expires_at",
+          "otpauth_uri",
+          "secret"
+        ],
+        "description": "Authenticated reset challenge. The current secret stays active until confirmTotpReset. The token is single-use."
+      },
+      "TotpResetConfirm": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enrollment_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "code": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 8
+          }
+        },
+        "required": [
+          "enrollment_token",
+          "code"
+        ],
+        "description": "Confirms the pending reset. The caller is the signed-in user."
       },
       "EnrollmentStart": {
         "type": "object",
@@ -75670,6 +76301,9 @@
       "users:read"
     ],
     "user.email_change_requested": [
+      "profile:read"
+    ],
+    "user.totp_reset_started": [
       "profile:read"
     ],
     "user.totp_reset": [

@@ -568,6 +568,43 @@
       }
     },
     {
+      "name": "confirmTotpReset",
+      "method": "POST",
+      "path": "/api/v1/me/totp/reset/confirm",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
       "name": "regenerateRecoveryCodes",
       "method": "POST",
       "path": "/api/v1/me/recovery-codes",

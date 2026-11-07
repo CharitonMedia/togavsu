@@ -27,6 +27,7 @@ It does not claim the handlers or the MCP server are implemented.
 | profile | `POST` | `/api/v1/me/email-change/confirm` | `confirmEmailChange` | required:confirmEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/password` | `changePassword` | required:changePassword | admin, attorney, staff, accountant, client | profile:write |
 | auth | `POST` | `/api/v1/me/totp/reset` | `resetTotp` | required:resetTotp | admin, attorney, staff, accountant, client | profile:write |
+| auth | `POST` | `/api/v1/me/totp/reset/confirm` | `confirmTotpReset` | required:confirmTotpReset | admin, attorney, staff, accountant, client | profile:write |
 | auth | `POST` | `/api/v1/me/recovery-codes` | `regenerateRecoveryCodes` | required:regenerateRecoveryCodes | admin, attorney, staff, accountant, client | profile:write |
 | me-settings | `GET` | `/api/v1/me/settings` | `getMeSettings` | required:getMeSettings | admin, attorney, staff, accountant, client | profile:read |
 | me-settings | `PATCH` | `/api/v1/me/settings` | `updateMeSettings` | required:updateMeSettings | admin, attorney, staff, accountant, client | profile:write |
@@ -433,4 +434,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 427.
+Operations: 428.
