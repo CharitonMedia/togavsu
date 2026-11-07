@@ -565,6 +565,21 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("completed", self.record)
 
 
+    def test_cancelled_event_waits_for_replacement_with_a_bounded_deadline(self):
+        def review(check):
+            raise ReviewSuperseded("Cancelled checkpoint; await the replacement review event")
+        self.remote.review = review
+        self.remote.check_rows["Codex checkpoint"]["conclusion"] = "cancelled"
+        self.process()
+        self.assertIn("replacement", self.record["waiting"])
+        self.assertNotIn("infra_retried", self.record)
+        self.assertFalse(any(c[1].endswith("/rerun") for c in self.remote.calls))
+        self.record["evidence_wait"]["since"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=91)).isoformat()
+        self.process()
+        self.assertIn("90 minutes", self.record["halted"])
+        self.assertFalse(self.posts())
+
+
 class ReviewDataTests(unittest.TestCase):
     def test_state_durability_orders_file_sync_replace_then_directory_sync(self):
         events = []
@@ -587,6 +602,23 @@ class ReviewDataTests(unittest.TestCase):
             report = dict(r.report, verdict=value)
             with self.assertRaises(ValueError):
                 validate_review(report, r.context, r.pr, BASE)
+
+    def test_cancelled_review_does_not_fetch_artifacts_or_replay_the_old_event(self):
+        remote, fetched = Remote(), []
+        def gh(path, **kwargs):
+            fetched.append(path)
+            if path == "actions/jobs/456":
+                return {"id": 456, "run_id": 123,
+                    "check_run_url": "https://api.github.com/repos/CharitonMedia/togavsu/check-runs/1",
+                    "head_sha": HEAD, "name": "Codex checkpoint", "status": "completed", "conclusion": "cancelled"}
+            if path == "actions/runs/123":
+                return {"path": ".github/workflows/codex-checkpoint.yml", "event": "pull_request",
+                    "head_sha": HEAD, "status": "completed", "conclusion": "cancelled", "run_attempt": 1}
+            raise AssertionError("Cancelled event must not be replayed or read for artifacts: " + path)
+        remote.gh = gh
+        with self.assertRaises(ReviewSuperseded):
+            remote.review(check("Codex checkpoint", conclusion="cancelled"))
+        self.assertFalse(any("artifacts" in path or "rerun" in path for path in fetched))
 
     def test_retry_selects_attempt_two_artifact_over_existing_attempt_one(self):
         r = FakeRemote()
