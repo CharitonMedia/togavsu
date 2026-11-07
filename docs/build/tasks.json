@@ -54,7 +54,12 @@
         "AC-016",
         "AC-018"
       ],
-      "prompt": "Build Compose/Caddy/Postgres/supervisor scaffolding and product CI using synthetic data. Own Docker/release tooling; do not edit go.mod, cmd/core or shared data packages. Specify required interfaces under docs/platform. Add actual Go tests when core lands, database integration and UI QC wiring. Mark dependent unimplemented features pending. No production deploy or signed release claims."
+      "prompt": "Build Compose/Caddy/Postgres/supervisor scaffolding and product CI using synthetic data. Own Docker/release tooling; do not edit go.mod, cmd/core or shared data packages. Specify required interfaces under docs/platform. Add actual Go tests when core lands, database integration and UI QC wiring. Mark dependent unimplemented features pending. No production deploy or signed release claims.",
+      "required_checks": [
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ]
     },
     {
       "id": "api",
@@ -204,12 +209,133 @@
       "prompt": "Implement contacts/matters/parties/notes/conflicts/custom fields/history/timeline and all practice scope. Use established access interfaces, include tests and mark integration pending until identity passes."
     },
     {
+      "id": "integrate-practice",
+      "wave": "integration",
+      "phase": 2,
+      "depends_on": [
+        "identity",
+        "practice"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "11",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-041",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-practice.json",
+      "prompt": "Wire the accepted foundation, identity and practice packages into a real running Go core. Reconcile shared contracts, settings, schema/migrations, auth, HTTP routes, MCP and OpenAPI with service-layer access checks. Implement missing phase 1/2 composition rather than leaving packages disconnected. Add meaningful real Postgres integration and end-to-end tests, first-run setup, a core Docker image build and executable CI. The CI must expose these exact job names: Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration, Supervisor image. Tests must run all actual Go packages and all API and QA harness tests against the merged code. Preserve the existing supervisor tests. Perform visual QC for changed screens. Include phase 1/2 reports listing actual passing and pending criteria; do not advance if assigned phase behavior is missing. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, PRD or task plan. Add docs/build/reports/integrate-practice.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The report and PR must honestly distinguish this phase from full product acceptance. Codex independently checks all evidence. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs.",
+      "phase_acceptance": {
+        "foundation-first-run": [
+          "AC-001"
+        ],
+        "identity-access": [
+          "AC-003",
+          "AC-004",
+          "AC-018",
+          "AC-024"
+        ],
+        "practice-records": [
+          "AC-009",
+          "AC-020",
+          "AC-023",
+          "AC-025"
+        ],
+        "api-mcp-practice": [
+          "AC-002"
+        ],
+        "settings-audit": [
+          "AC-029",
+          "AC-030",
+          "AC-035"
+        ]
+      }
+    },
+    {
       "id": "billing",
       "wave": "finance",
       "phase": 3,
       "depends_on": [
-        "identity",
-        "practice"
+        "integrate-practice"
       ],
       "owned_paths": [
         "internal/billing/",
@@ -232,8 +358,7 @@
       "wave": "finance",
       "phase": 3,
       "depends_on": [
-        "identity",
-        "practice"
+        "integrate-practice"
       ],
       "owned_paths": [
         "internal/trust/",
@@ -258,8 +383,7 @@
       "wave": "documents",
       "phase": 4,
       "depends_on": [
-        "identity",
-        "practice"
+        "integrate-practice"
       ],
       "owned_paths": [
         "internal/calendar/",
@@ -280,8 +404,7 @@
       "wave": "documents",
       "phase": 4,
       "depends_on": [
-        "identity",
-        "practice"
+        "integrate-practice"
       ],
       "owned_paths": [
         "internal/files/",
@@ -298,6 +421,123 @@
         "AC-050"
       ],
       "prompt": "Implement sole file store, immutable versions/renditions/typed links, resumable uploads, integrity, storage adapters/moves/drop folder and permission tests. Publish editor/Doc Tender contracts."
+    },
+    {
+      "id": "integrate-finance",
+      "wave": "integration",
+      "phase": 3,
+      "depends_on": [
+        "billing",
+        "trust"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "11",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-041",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-finance.json",
+      "prompt": "Integrate billing and trust services, UI, HTTP/MCP handlers, audit and transactional cross-domain transfers against the running core. Run live invoice/trust workflows with synthetic data, including reversal, negative flags/email, reconciliation and permission failures. All product CI jobs must run, not be skipped. Complete phase 3 integration and provide actual evidence. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, PRD or task plan. Add docs/build/reports/integrate-finance.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The report and PR must honestly distinguish this phase from full product acceptance. Codex independently checks all evidence. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs.",
+      "phase_acceptance": {
+        "invoice-workflows": [
+          "AC-008",
+          "AC-009",
+          "AC-026"
+        ],
+        "trust-invariants": [
+          "AC-005",
+          "AC-006",
+          "AC-007"
+        ],
+        "finance-permissions": [
+          "AC-003",
+          "AC-004",
+          "AC-018"
+        ],
+        "trust-notices": [
+          "AC-021"
+        ]
+      }
     },
     {
       "id": "editor",
@@ -349,12 +589,138 @@
       "prompt": "Implement every PRD extraction/check/label/group/retry/locked-field/Markdown/review queue behavior, page citations and generated regression corpus; real failure injection at page 49."
     },
     {
+      "id": "integrate-documents",
+      "wave": "integration",
+      "phase": 4,
+      "depends_on": [
+        "calendar",
+        "files",
+        "editor",
+        "doc-tender",
+        "integrate-finance"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "11",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-041",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-documents.json",
+      "prompt": "Integrate calendar, file/storage, LawCraft and Doc Tender into the running core, including endpoints, job queue, access, settings, media pipelines and actual original-page citations. Run generated-corpus failure cases, resumable upload, file bytes restore, editor compatibility and user journeys. Complete phase 4 integration with actual tests and visual QC; do not accept structural substitutes as real documents. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, PRD or task plan. Add docs/build/reports/integrate-documents.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The report and PR must honestly distinguish this phase from full product acceptance. Codex independently checks all evidence. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs.",
+      "phase_acceptance": {
+        "calendar-deadlines": [
+          "AC-011",
+          "AC-027"
+        ],
+        "storage-versions-moves": [
+          "AC-039",
+          "AC-040",
+          "AC-050"
+        ],
+        "lawcraft-editor": [
+          "AC-041",
+          "AC-042"
+        ],
+        "doctender-corpus": [
+          "AC-043",
+          "AC-044",
+          "AC-045",
+          "AC-046",
+          "AC-047",
+          "AC-048",
+          "AC-049",
+          "AC-050",
+          "AC-051",
+          "AC-052"
+        ]
+      }
+    },
+    {
       "id": "ui",
       "wave": "interface",
       "phase": 5,
       "depends_on": [
-        "billing",
-        "trust",
+        "integrate-finance",
         "calendar",
         "files"
       ],
@@ -434,19 +800,157 @@
       "prompt": "Implement separate marketplace service/client, verified signing-key registration, listings, flags/pulls and installed-firm alerts, preserving firm control."
     },
     {
+      "id": "integrate-extensions",
+      "wave": "integration",
+      "phase": 6,
+      "depends_on": [
+        "modules",
+        "marketplace",
+        "ui",
+        "integrate-documents"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "11",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-001",
+        "AC-002",
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-017",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-041",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-extensions.json",
+      "prompt": "Integrate all UI, admin settings, guides, module runtime, marketplace and sample module with the running core. Run full phase 5/6 behavior and permissions, includes/views, signed installs, forbidden migration rejection, replacement and notices. Complete phase 5/6 integration with actual tests and visual QC. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, PRD or task plan. Add docs/build/reports/integrate-extensions.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The report and PR must honestly distinguish this phase from full product acceptance. Codex independently checks all evidence. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs.",
+      "phase_acceptance": {
+        "ui-admin-guide": [
+          "AC-010",
+          "AC-011",
+          "AC-019",
+          "AC-020",
+          "AC-021",
+          "AC-022",
+          "AC-028",
+          "AC-029",
+          "AC-032"
+        ],
+        "module-lifecycle": [
+          "AC-012",
+          "AC-013",
+          "AC-014",
+          "AC-033",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "marketplace-alerts": [
+          "AC-015"
+        ],
+        "ai-mediation": [
+          "AC-028",
+          "AC-031"
+        ]
+      }
+    },
+    {
       "id": "release",
       "wave": "release",
       "phase": 7,
       "depends_on": [
-        "editor",
-        "doc-tender",
-        "modules",
-        "marketplace"
+        "integrate-extensions",
+        "integrate-documents",
+        "integrate-finance"
       ],
       "owned_paths": [
         "docs/release/",
         "docs/build/reports/",
-        "scripts/release/"
+        "scripts/release/",
+        ".github/workflows/product-ci.yml",
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/"
       ],
       "prd_sections": [
         "6",
@@ -507,7 +1011,86 @@
         "AC-051",
         "AC-052"
       ],
-      "prompt": "Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes."
+      "prompt": "Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes. Add a Full acceptance CI job that actually executes all 52 criteria and clean Docker Desktop validation; never turn unexecuted acceptance into a passing job. Provide docs/build/reports/release.json with task_id release, status pass only after full acceptance, actual tests/exit_code and acceptance results. External blockers remain pending; never claim a signed release from scaffolding. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs. You are the final integration lead, authorized to reconcile shared implementation and product CI in these owned paths, including the Full acceptance job. Protected controller and review-gate files remain forbidden.",
+      "report_path": "docs/build/reports/release.json",
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image",
+        "Full acceptance"
+      ],
+      "phase_acceptance": {
+        "full-acceptance": [
+          "AC-001",
+          "AC-002",
+          "AC-003",
+          "AC-004",
+          "AC-005",
+          "AC-006",
+          "AC-007",
+          "AC-008",
+          "AC-009",
+          "AC-010",
+          "AC-011",
+          "AC-012",
+          "AC-013",
+          "AC-014",
+          "AC-015",
+          "AC-016",
+          "AC-017",
+          "AC-018",
+          "AC-019",
+          "AC-020",
+          "AC-021",
+          "AC-022",
+          "AC-023",
+          "AC-024",
+          "AC-025",
+          "AC-026",
+          "AC-027",
+          "AC-028",
+          "AC-029",
+          "AC-030",
+          "AC-031",
+          "AC-032",
+          "AC-033",
+          "AC-034",
+          "AC-035",
+          "AC-036",
+          "AC-037",
+          "AC-038",
+          "AC-039",
+          "AC-040",
+          "AC-041",
+          "AC-042",
+          "AC-043",
+          "AC-044",
+          "AC-045",
+          "AC-046",
+          "AC-047",
+          "AC-048",
+          "AC-049",
+          "AC-050",
+          "AC-051",
+          "AC-052"
+        ],
+        "desktop-install": [
+          "AC-001"
+        ],
+        "signed-images-updater-load": [
+          "AC-013",
+          "AC-016"
+        ],
+        "backup-restore": [
+          "AC-018",
+          "AC-040"
+        ]
+      },
+      "full_acceptance": true
     }
-  ]
+  ],
+  "max_repairs": 3
 }

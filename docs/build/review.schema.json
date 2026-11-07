@@ -6,7 +6,8 @@
     "reviewed_head",
     "verdict",
     "summary",
-    "findings"
+    "findings",
+    "task_id"
   ],
   "properties": {
     "reviewed_base": {
@@ -52,6 +53,9 @@
           }
         }
       }
+    },
+    "task_id": {
+      "type": "string"
     }
   }
 }
