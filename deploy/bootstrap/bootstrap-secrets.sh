@@ -22,8 +22,22 @@ fi
 if [ ! -s /appsecrets/supervisor_token ]; then
   rand 24 > /appsecrets/supervisor_token
 fi
+# New installs store standard base64 of 32 raw bytes. An existing file,
+# including the earlier 64-character hex encoding, is left unchanged.
 if [ ! -s /appsecrets/field_key ]; then
-  rand 32 > /appsecrets/field_key
+  head -c 32 /dev/urandom | base64 -w 0 > /appsecrets/field_key
+  printf '\n' >> /appsecrets/field_key
+fi
+
+domain=${TOGAVSU_DOMAIN:-localhost}
+if [ ! -s /appsecrets/domain ]; then
+  printf '%s\n' "$domain" > /appsecrets/domain
+else
+  existing=$(tr -d ' \n\r' < /appsecrets/domain)
+  if [ "$existing" != "$domain" ]; then
+    echo "domain file does not match TOGAVSU_DOMAIN" >&2
+    exit 1
+  fi
 fi
 
 pass=$(tr -d '\n' < /pgsecrets/postgres_password)
@@ -39,11 +53,13 @@ chmod 750 /appsecrets
 chown "root:${core_gid}" \
   /appsecrets/supervisor_token \
   /appsecrets/field_key \
+  /appsecrets/domain \
   /appsecrets/database_url \
   /appsecrets/admin_database_url
 chmod 640 \
   /appsecrets/supervisor_token \
   /appsecrets/field_key \
+  /appsecrets/domain \
   /appsecrets/database_url \
   /appsecrets/admin_database_url
 chown "${core_uid}:${core_gid}" /appsecrets/backup_passphrase

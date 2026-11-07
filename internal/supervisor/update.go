@@ -35,15 +35,19 @@ type Migrator interface {
 
 // ContainerInfo is one container the supervisor started or found.
 type ContainerInfo struct {
-	ID     string
-	Name   string
-	Image  string
-	Labels map[string]string
+	ID      string
+	Name    string
+	Image   string
+	Labels  map[string]string
+	State   string
+	Running bool
 }
 
 // Runtime is the Docker socket, held only by the supervisor.
 type Runtime interface {
 	ListCores(ctx context.Context) ([]ContainerInfo, error)
+	ListAllCores(ctx context.Context) ([]ContainerInfo, error)
+	Inspect(ctx context.Context, id string) (ContainerInfo, error)
 	Pull(ctx context.Context, image string) error
 	StartCore(ctx context.Context, image, name string) (ContainerInfo, error)
 	Start(ctx context.Context, id string) error

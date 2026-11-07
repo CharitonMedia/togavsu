@@ -55,6 +55,9 @@ func serve() error {
 		Handler:           supervisor.NewMux(cfg.Token, ops, log),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+	if err := ops.Recover(context.Background()); err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	errc := make(chan error, 1)
@@ -67,9 +70,7 @@ func serve() error {
 	go schedule(ctx, cfg, ops)
 	select {
 	case <-ctx.Done():
-		shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return srv.Shutdown(shut)
+		return ops.Drain(srv)
 	case err := <-errc:
 		return err
 	}
@@ -121,6 +122,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		return nil, err
 	}
 	ledger := supervisor.OpenLedger(filepath.Join(cfg.DataDir, "ledger.jsonl"))
+	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
 	store := &supervisor.Store{
 		Dir:    cfg.BackupDir,
@@ -169,6 +171,8 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Runtime:    docker,
 		Gate:       &supervisor.Gate{},
 		Ledger:     ledger,
+		Journal:    journal,
+		Catalog:    supervisor.PostgresCatalog{Bin: "psql", AdminURL: cfg.AdminDatabaseURL},
 		Outbox:     outbox,
 		Passphrase: cfg.ReloadPassphrase,
 		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {

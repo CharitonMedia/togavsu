@@ -236,17 +236,12 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, fmtBad("backup_id"))
 		return
 	}
-	if err := h.ops.rejectInvalid(r.Context(), body.BackupID); err != nil {
-		rec, recErr := h.ops.failedRestore(body.BackupID, err)
-		if recErr != nil {
-			writeErr(w, recErr)
+	rec, release, err := h.ops.admitRestore(r.Context(), body.BackupID)
+	if err != nil {
+		if rec.ID != "" {
+			writeAPI(w, err, rec, nil)
 			return
 		}
-		writeAPI(w, err, rec, nil)
-		return
-	}
-	rec, release, err := h.ops.admitRestore(body.BackupID)
-	if err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -259,23 +254,16 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) getRestore(w http.ResponseWriter, r *http.Request) {
-	if rec, ok := h.ops.Job(r.PathValue("id")); ok {
-		writeJSON(w, http.StatusOK, rec)
-		return
-	}
-	events, err := h.events("restore")
+	rec, ok, err := h.ops.LookupRestore(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	id := r.PathValue("id")
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Fields["id"] == id {
-			writeJSON(w, http.StatusOK, events[i])
-			return
-		}
+	if !ok {
+		writeErr(w, ErrNotFound)
+		return
 	}
-	writeErr(w, ErrNotFound)
+	writeJSON(w, http.StatusOK, rec)
 }
 
 func (h *handlers) postTestRestore(w http.ResponseWriter, r *http.Request) {

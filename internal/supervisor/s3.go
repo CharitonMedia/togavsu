@@ -158,16 +158,25 @@ func (s *S3Destination) do(ctx context.Context, method, key string, query url.Va
 	if err != nil {
 		return nil, err
 	}
-	u := *endpoint
-	u.Path = "/" + s.Spec.Bucket + "/"
+	// Path stays raw. RawPath is the SigV4 canonical URI. Go sends RawPath
+	// only when PathUnescape(RawPath) equals Path, so both must be set from
+	// the same raw key and the encoder must run only once.
+	rawPath := "/" + s.Spec.Bucket + "/"
 	if key != "" {
-		u.Path += key
+		rawPath += key
 	}
+	canonPath := canonicalPath(rawPath)
+	u := *endpoint
+	u.Path = rawPath
+	u.RawPath = canonPath
 	u.RawQuery = canonicalQuery(query)
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
 		return nil, err
 	}
+	req.URL.Path = rawPath
+	req.URL.RawPath = canonPath
+	req.URL.RawQuery = u.RawQuery
 	if seeker, ok := body.(io.ReadSeeker); ok {
 		req.GetBody = func() (io.ReadCloser, error) {
 			if _, err := seeker.Seek(0, io.SeekStart); err != nil {
@@ -221,7 +230,7 @@ func signS3(req *http.Request, payloadHash, access, secret, region, service, amz
 	}
 	canon := strings.Join([]string{
 		req.Method,
-		canonicalPath(req.URL.Path),
+		requestCanonicalURI(req.URL),
 		req.URL.RawQuery,
 		canonHeaders.String(),
 		strings.Join(signed, ";"),
@@ -237,6 +246,21 @@ func signS3(req *http.Request, payloadHash, access, secret, region, service, amz
 	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+access+"/"+scope+", SignedHeaders="+strings.Join(signed, ";")+", Signature="+sig)
 }
 
+// requestCanonicalURI is the path that will be sent. When RawPath is a valid
+// encoding of Path, Go's client sends RawPath and the signature must use that
+// exact string. Otherwise the raw path is encoded once.
+func requestCanonicalURI(u *url.URL) string {
+	if u == nil {
+		return "/"
+	}
+	if u.RawPath != "" && u.EscapedPath() == u.RawPath {
+		return u.RawPath
+	}
+	return canonicalPath(u.Path)
+}
+
+// canonicalPath encodes each raw segment and keeps every '/' separator.
+// It does not drop empty, ".", or ".." segments and does not reorder them.
 func canonicalPath(p string) string {
 	if p == "" {
 		return "/"
@@ -246,7 +270,7 @@ func canonicalPath(p string) string {
 	}
 	parts := strings.Split(p, "/")
 	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
+		parts[i] = awsURIEncode(part, false)
 	}
 	return strings.Join(parts, "/")
 }
@@ -272,7 +296,29 @@ func canonicalQuery(v url.Values) string {
 }
 
 func awsEscape(s string) string {
-	return strings.ReplaceAll(url.QueryEscape(s), "+", "%20")
+	return awsURIEncode(s, true)
+}
+
+// awsURIEncode is AWS Signature Version 4 URI encoding of raw bytes.
+// Unreserved bytes are only A-Z a-z 0-9 - _ . ~. Every other byte is '%'
+// plus two uppercase hex digits. encodeSlash reports whether '/' is encoded.
+// The input is encoded once: a literal '%' byte becomes %25, not %2525.
+func awsURIEncode(s string, encodeSlash bool) string {
+	const hexdigits = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			c == '-' || c == '_' || c == '.' || c == '~' || (c == '/' && !encodeSlash) {
+			b.WriteByte(c)
+			continue
+		}
+		b.WriteByte('%')
+		b.WriteByte(hexdigits[c>>4])
+		b.WriteByte(hexdigits[c&0x0F])
+	}
+	return b.String()
 }
 
 func hmacSHA(key []byte, value string) []byte {

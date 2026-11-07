@@ -13,7 +13,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/core /usr/local/bin/core
+COPY deploy/core/entrypoint.sh /usr/local/bin/core-entrypoint
+RUN chmod 755 /usr/local/bin/core-entrypoint
 LABEL togavsu.role=core
 USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["/usr/local/bin/core"]
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/core-entrypoint"]

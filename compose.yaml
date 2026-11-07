@@ -4,6 +4,8 @@ services:
   bootstrap:
     image: postgres:17
     user: "0"
+    environment:
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
     entrypoint: ["/bin/sh", "/bootstrap-secrets.sh"]
     volumes:
       - ./deploy/bootstrap/bootstrap-secrets.sh:/bootstrap-secrets.sh:ro
@@ -60,6 +62,7 @@ services:
       BACKUP_PASSPHRASE_FILE: /appsecrets/backup_passphrase
       DATABASE_URL_FILE: /appsecrets/database_url
       ADMIN_DATABASE_URL_FILE: /appsecrets/admin_database_url
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
       CADDY_ADMIN_URL: http://caddy:2019
       UPSTREAM_FILE: /runtime/upstream
       DOCKER_SOCKET: /var/run/docker.sock
@@ -95,11 +98,10 @@ services:
       context: .
       dockerfile: deploy/core.Dockerfile
     image: togavsu-core:local
+    user: "65532:65532"
     environment:
-      DATABASE_URL_FILE: /appsecrets/database_url
-      FIELD_KEY_FILE: /appsecrets/field_key
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
       SUPERVISOR_URL: http://supervisor:8081
-      SUPERVISOR_TOKEN_FILE: /appsecrets/supervisor_token
     volumes:
       - appsecrets:/appsecrets
     depends_on:

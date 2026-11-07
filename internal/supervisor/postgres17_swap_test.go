@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPostgres17Swap(t *testing.T) {
@@ -109,6 +110,90 @@ func TestPostgres17Swap(t *testing.T) {
 			t.Fatal("databases changed before the pair")
 		}
 	})
+
+	t.Run("recovery of a committed swap does not roll it back", func(t *testing.T) {
+		orig, replaced := recoveryPair(t, psql, admin)
+		var order []string
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		rec := journalRecord{
+			Record: RestoreRecord{ID: "restore-cleanup", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: orig, Fresh: "tgswap_absent", Replaced: replaced, SwapIntended: true},
+		}
+		if err := ops.Journal.Put(rec); err != nil {
+			t.Fatal(err)
+		}
+		if err := ops.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
+			t.Fatal("recovery renamed a committed database")
+		}
+		if !containsStep(order, "restart:core-1") {
+			t.Fatalf("writers stayed stopped after the catalog check: %v", order)
+		}
+		got, ok, err := ops.LookupRestore(rec.Record.ID)
+		if err != nil || !ok || got.Status != "completed" || got.Error != "cleanup_pending" || got.Cleanup != "pending" {
+			t.Fatalf("status %+v %v %v", got, ok, err)
+		}
+	})
+
+	t.Run("recovery does not start writers when the configured name is missing", func(t *testing.T) {
+		_, replaced := recoveryPair(t, psql, admin)
+		dropDatabaseIfExists(psql, admin, replaced)
+		var order []string
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		missing := "tgswap_missing"
+		rec := journalRecord{
+			Record: RestoreRecord{ID: "restore-missing", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: missing, Fresh: "tgswap_fresh", Replaced: "tgswap_replaced", SwapIntended: true},
+		}
+		if err := ops.Journal.Put(rec); err != nil {
+			t.Fatal(err)
+		}
+		err := ops.Recover(ctx)
+		if err == nil || containsStep(order, "restart:core-1") {
+			t.Fatalf("err %v order %v", err, order)
+		}
+		got, _, _ := ops.LookupRestore(rec.Record.ID)
+		if got.Status == "completed" || got.Recovery != "configured_database_absent" {
+			t.Fatalf("%+v", got)
+		}
+	})
+
+	t.Run("recovery does not start writers when the catalog cannot be read", func(t *testing.T) {
+		var order []string
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: "postgres://togavsu:synthetic@127.0.0.1:1/postgres?sslmode=disable"})
+		rec := journalRecord{
+			Record: RestoreRecord{ID: "restore-unread", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: "tgswap_cfg", Fresh: "tgswap_fresh", Replaced: "tgswap_old", SwapIntended: true},
+		}
+		if err := ops.Journal.Put(rec); err != nil {
+			t.Fatal(err)
+		}
+		err := ops.Recover(ctx)
+		if err == nil || containsStep(order, "restart:core-1") {
+			t.Fatalf("err %v order %v", err, order)
+		}
+		got, _, _ := ops.LookupRestore(rec.Record.ID)
+		if got.Status == "completed" || got.Status == "failed" || got.Recovery != "catalog_unobserved" {
+			t.Fatalf("%+v", got)
+		}
+	})
 }
 
 func postgres17Admin(t *testing.T) string {
@@ -193,6 +278,36 @@ func databaseExists(t *testing.T, psql, admin, name string) bool {
 func dropDatabaseIfExists(psql, admin, name string) {
 	_, _ = psqlLines(context.Background(), psql, admin, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+name+"' AND pid <> pg_backend_pid()")
 	_, _ = psqlLines(context.Background(), psql, admin, "DROP DATABASE IF EXISTS "+name)
+}
+
+func recoveryOps(t *testing.T, rt Runtime, catalog Catalog) *Operations {
+	t.Helper()
+	dir := t.TempDir()
+	return &Operations{
+		Gate:    &Gate{},
+		Runtime: rt,
+		Catalog: catalog,
+		Journal: OpenJournal(filepath.Join(dir, "restore-journal.jsonl")),
+		Ledger:  OpenLedger(filepath.Join(dir, "ledger.jsonl")),
+	}
+}
+
+func recoveryPair(t *testing.T, psql, admin string) (orig, replaced string) {
+	t.Helper()
+	var raw [4]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		t.Fatal(err)
+	}
+	suffix := hex.EncodeToString(raw[:])
+	orig = "tgrecovo" + suffix
+	replaced = "tgrecor" + suffix
+	seedMarker(t, psql, admin, orig, "new")
+	seedMarker(t, psql, admin, replaced, "old")
+	t.Cleanup(func() {
+		dropDatabaseIfExists(psql, admin, orig)
+		dropDatabaseIfExists(psql, admin, replaced)
+	})
+	return orig, replaced
 }
 
 func writeSwapWrapper(t *testing.T, real, mode, orig, fresh, replaced string) string {

@@ -81,3 +81,5 @@ jobs:
         run: docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'
       - name: Core image
         run: sh scripts/ci/build-core-image.sh
+      - name: Core image smoke
+        run: sh scripts/ci/test-core-smoke.sh

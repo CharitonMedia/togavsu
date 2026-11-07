@@ -12,13 +12,17 @@ import (
 const testReleaseImage = "ghcr.io/charitonmedia/togavsu-core@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 type scriptRuntime struct {
-	order     *[]string
-	cores     []ContainerInfo
-	health    error
-	stopID    string
-	failStart string
-	used      map[string]bool
-	stopHook  func()
+	order       *[]string
+	cores       []ContainerInfo
+	health      error
+	stopID      string
+	failStart   string
+	used        map[string]bool
+	stopHook    func()
+	states      map[string]string
+	inspectErr  map[string]error
+	loseStop    map[string]bool
+	cancelStops bool
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -28,6 +32,34 @@ func (r *scriptRuntime) add(step string) {
 func (r *scriptRuntime) ListCores(context.Context) ([]ContainerInfo, error) {
 	r.add("list")
 	return r.cores, nil
+}
+
+func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
+	r.add("list-all")
+	out := make([]ContainerInfo, len(r.cores))
+	copy(out, r.cores)
+	for i := range out {
+		if st, ok := r.states[out[i].ID]; ok && st != "" {
+			out[i].State = st
+		}
+		if out[i].State == "" {
+			out[i].State = "running"
+		}
+		out[i].Running = out[i].State == "running"
+	}
+	return out, nil
+}
+
+func (r *scriptRuntime) Inspect(_ context.Context, id string) (ContainerInfo, error) {
+	r.add("inspect:" + id)
+	if err := r.inspectErr[id]; err != nil {
+		return ContainerInfo{}, err
+	}
+	state := "running"
+	if st, ok := r.states[id]; ok && st != "" {
+		state = st
+	}
+	return ContainerInfo{ID: id, State: state, Running: state == "running"}, nil
 }
 func (r *scriptRuntime) Pull(_ context.Context, image string) error {
 	r.add("pull:" + image)
@@ -50,23 +82,41 @@ func (r *scriptRuntime) Start(ctx context.Context, id string) error {
 		return ctx.Err()
 	}
 	r.add("restart:" + id)
+	if r.states == nil {
+		r.states = map[string]string{}
+	}
+	if r.states[id] == "running" {
+		return nil
+	}
 	if id == r.failStart {
 		return errors.New("start failed")
 	}
+	r.states[id] = "running"
 	return nil
 }
 func (r *scriptRuntime) WaitHealthy(context.Context, string, time.Duration) error {
 	r.add("health")
 	return r.health
 }
-func (r *scriptRuntime) Stop(_ context.Context, id string) error {
+func (r *scriptRuntime) Stop(ctx context.Context, id string) error {
 	r.add("stop:" + id)
 	if r.stopHook != nil {
 		r.stopHook()
 	}
-	if id == r.stopID {
+	if r.states == nil {
+		r.states = map[string]string{}
+	}
+	if r.loseStop[id] || id == r.stopID || r.cancelStops {
+		r.states[id] = "exited"
+		if r.loseStop[id] {
+			return errors.New("lost stop reply")
+		}
+		if r.cancelStops {
+			return context.Canceled
+		}
 		return errors.New("stop failed")
 	}
+	r.states[id] = "exited"
 	return nil
 }
 func (r *scriptRuntime) Remove(_ context.Context, id string) error {

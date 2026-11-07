@@ -89,6 +89,7 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 	image := testReleaseImage
+	t.Setenv("TOGAVSU_DOMAIN", "firm.example")
 	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "togavsu_default"}
 	if err := rt.Pull(context.Background(), image); err != nil {
 		t.Fatal(err)
@@ -105,16 +106,20 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 	}
 	body := string(raw)
 	for _, want := range []string{
-		"FIELD_KEY_FILE=/appsecrets/field_key",
-		"DATABASE_URL_FILE=/appsecrets/database_url",
-		"SUPERVISOR_TOKEN_FILE=/appsecrets/supervisor_token",
+		"TOGAVSU_DOMAIN=firm.example",
 		"SUPERVISOR_URL=http://supervisor:8081",
 		"togavsu_appsecrets:/appsecrets",
+		"65532:65532",
 		"unless-stopped",
 		image,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("create body missing %s: %s", want, body)
+		}
+	}
+	for _, banned := range []string{"FIELD_KEY_FILE", "DATABASE_URL_FILE", "SUPERVISOR_TOKEN_FILE", "postgres://"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("create body carried %s: %s", banned, body)
 		}
 	}
 }
@@ -164,6 +169,34 @@ func TestPullConsumesStream(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	})
+}
+
+func TestStartIsIdempotentWhenDockerSaysAlreadyRunning(t *testing.T) {
+	var starts int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/core-1/start", func(w http.ResponseWriter, r *http.Request) {
+		starts++
+		w.WriteHeader(http.StatusNotModified)
+	})
+	mux.HandleFunc("/v1.43/containers/core-1/json", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id": "core-1", "Name": "/core",
+			"State": map[string]any{"Status": "running", "Running": true},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}
+	if err := rt.Start(context.Background(), "core-1"); err != nil {
+		t.Fatal(err)
+	}
+	if starts != 1 {
+		t.Fatalf("starts %d", starts)
+	}
+	info, err := rt.Inspect(context.Background(), "core-1")
+	if err != nil || !info.Running || info.State != "running" {
+		t.Fatalf("%+v %v", info, err)
+	}
 }
 
 func TestMigratorUnconfigured(t *testing.T) {

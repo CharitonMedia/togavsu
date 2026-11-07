@@ -689,14 +689,17 @@ func TestUnobservedSwapDoesNotClaimDataLeftInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec, err := ops.Restore(context.Background(), meta.ID)
-	if !errors.Is(err, errSwapUnobserved) || rec.Status == "completed" {
+	if !errors.Is(err, errSwapUnobserved) || rec.Status == "completed" || rec.Status == "failed" {
 		t.Fatalf("%+v %v", rec, err)
 	}
-	if !containsStep(order, "restart:core-1") {
-		t.Fatalf("writers left stopped: %v", order)
+	if containsStep(order, "restart:core-1") {
+		t.Fatalf("restarted writers without a live catalog: %v", order)
+	}
+	if rec.Recovery != "catalog_unobserved" {
+		t.Fatalf("recovery %+v", rec)
 	}
 	notes, err := ops.Outbox.List()
-	if err != nil || len(notes) != 1 || strings.Contains(notes[0].Body, "left in place") {
+	if err != nil || len(notes) != 1 || strings.Contains(notes[0].Body, "left in place") || !strings.Contains(notes[0].Body, "not restarted") {
 		t.Fatalf("notes %+v %v", notes, err)
 	}
 }

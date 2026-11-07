@@ -23,6 +23,8 @@ var (
 	ErrPreserveWrites           = errors.New("pre-update snapshot was kept so later commits stay in place")
 	ErrRestoreCleanup           = errors.New("restored database is live and the previous database was not dropped")
 	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
+	ErrShuttingDown             = errors.New("supervisor is shutting down")
+	ErrRecoveryRequired         = errors.New("a restore is waiting for recovery")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become
@@ -41,6 +43,10 @@ func PublicCode(err error) (code string, status int) {
 		return "updates_paused", 409
 	case errors.Is(err, ErrBusy):
 		return "operation_in_progress", 409
+	case errors.Is(err, ErrShuttingDown):
+		return "shutting_down", 409
+	case errors.Is(err, ErrRecoveryRequired):
+		return "recovery_required", 409
 	case errors.Is(err, ErrBadRequest):
 		return "bad_request", 400
 	case errors.Is(err, ErrDecrypt):

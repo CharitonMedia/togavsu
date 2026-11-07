@@ -20,7 +20,9 @@ Order when a newer release exists:
 8. Point Caddy at `<container>:8080` and record the dial address in `/runtime/upstream`.
 9. Stop the previous core. If that stop fails, the new core stays in service and the result includes `stop_error`.
 
-The core image must serve the product on port 8080 and define a Docker health check. Suggested check: `GET /health`.
+The core image entrypoint is `deploy/core/entrypoint.sh`. Compose and every replacement or migration container the supervisor creates run as uid 65532, mount the installer secret volume at `/appsecrets`, and use that entrypoint. It reads `database_url`, `field_key`, `supervisor_token`, and `domain` and exports `TOGAVSU_DATABASE_URL`, `TOGAVSU_ENCRYPTION_KEY` (standard base64 of the same 32 bytes), `TOGAVSU_DOMAIN`, and `TOGAVSU_SUPERVISOR_SECRET`. A 64-character hex field key is accepted and not rewritten. The supervisor passes `TOGAVSU_DOMAIN` only when its own environment has the same value. It does not put the database URL, field key, or supervisor secret in the container environment.
+
+The core image must serve the product on port 8080 and define a Docker health check once the HTTP server exists. The current image only accepts the four bootstrap values and exits. Suggested check, when HTTP exists: `GET /health`.
 
 ## Modules
 
@@ -38,8 +40,8 @@ The core image must serve the product on port 8080 and define a Docker health ch
 | POST | `/v1/backup-destinations` | Adds a `path`, `s3`, or `sftp` destination. Secrets are not returned. |
 | POST | `/v1/backup-destinations/{id}/test` | Writes and reads a probe object. |
 | DELETE | `/v1/backup-destinations/{id}` | Forgets the destination. |
-| POST | `/v1/restores` | Body `{"backup_id":"..."}`. An invalid archive is rejected before writers stop. An accepted restore returns 202 with a unique operation id and continues on its own timeout after the caller disconnects. A second restore, of the same backup or another, is rejected while that operation holds the gate and does not replace its status. Poll `GET /v1/restores/{id}`. The dump is loaded into a clean database. The two renames commit in one Postgres transaction and are reconciled from `pg_database` before cores restart. The swap happens only after record counts match. |
-| GET | `/v1/restores/{id}` | Last ledger event for that restore. |
+| POST | `/v1/restores` | Body `{"backup_id":"..."}`. Admission takes the operation gate before the passphrase is read or the archive is validated, and before an accepted id is published. A busy or shutting-down request does not publish an id. An invalid archive is rejected before writers stop. An accepted restore returns 202 with a unique operation id and continues on its own timeout after the caller disconnects. Intent is fsynced before writers are stopped and before the database rename. A second restore is rejected while that operation holds the gate. |
+| GET | `/v1/restores/{id}` | One restore record: `id`, `backup_id`, `status` (`accepted`, `running`, `completed`, or `failed`), and, when set, `error`, `recovery`, and `cleanup`. Memory, the journal, and the ledger return that same shape. A committed swap whose previous database is still present is `completed` with `cleanup` `pending`. It is not `failed` and it is not rolled back. |
 | POST | `/v1/test-restores` | Body `{"backup_id":"..."}`. Restores into a throwaway database and compares counts. |
 
 A missing passphrase returns `409 passphrase_required`. Copy failures keep the local archive and append an admin notice to `/var/lib/togavsu/mail-outbox.jsonl`. Core system mail drains that file.

@@ -5,16 +5,20 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
 const dockerAPI = "/v1.43"
+
+var errDockerNotModified = errors.New("container already running")
 
 // DockerRuntime talks to the engine over the socket. The core container does
 // not get this client.
@@ -28,13 +32,17 @@ type DockerRuntime struct {
 
 // CoreEnv is the environment the Compose core service receives. Replacements
 // started by the supervisor must carry the same files and supervisor address.
+// CoreEnv is the process environment shared by Compose and by containers
+// this supervisor creates. Secrets stay in the mounted files. The core image
+// entrypoint reads those files into the bootstrap contract. TOGAVSU_DOMAIN,
+// when the supervisor has it, is passed through so the replacement matches
+// the installed domain file.
 func CoreEnv() []string {
-	return []string{
-		"DATABASE_URL_FILE=/appsecrets/database_url",
-		"FIELD_KEY_FILE=/appsecrets/field_key",
-		"SUPERVISOR_URL=http://supervisor:8081",
-		"SUPERVISOR_TOKEN_FILE=/appsecrets/supervisor_token",
+	env := []string{"SUPERVISOR_URL=http://supervisor:8081"}
+	if domain := strings.TrimSpace(os.Getenv("TOGAVSU_DOMAIN")); domain != "" {
+		env = append(env, "TOGAVSU_DOMAIN="+domain)
 	}
+	return env
 }
 
 // CoreBinds mounts the installer secret volume. The default name matches the
@@ -79,6 +87,10 @@ func (d *DockerRuntime) ListCores(ctx context.Context) ([]ContainerInfo, error) 
 	return d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, true)
 }
 
+func (d *DockerRuntime) ListAllCores(ctx context.Context) ([]ContainerInfo, error) {
+	return d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, false)
+}
+
 func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, runningOnly bool) ([]ContainerInfo, error) {
 	raw, err := json.Marshal(filters)
 	if err != nil {
@@ -106,7 +118,9 @@ func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, r
 		if len(item.Names) > 0 {
 			name = strings.TrimPrefix(item.Names[0], "/")
 		}
-		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels})
+		state := item.State
+		running := state == "" || state == "running"
+		out = append(out, ContainerInfo{ID: item.ID, Name: name, Image: item.Image, Labels: item.Labels, State: state, Running: running})
 	}
 	return out, nil
 }
@@ -167,12 +181,34 @@ func readPullStream(r io.Reader) error {
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, id string) error {
-	return d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+id+"/start", nil, nil)
+	err := d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+id+"/start", nil, nil)
+	if errors.Is(err, errDockerNotModified) {
+		return nil
+	}
+	return err
+}
+
+func (d *DockerRuntime) Inspect(ctx context.Context, id string) (ContainerInfo, error) {
+	var inspected struct {
+		ID    string `json:"Id"`
+		Name  string `json:"Name"`
+		State struct {
+			Status  string `json:"Status"`
+			Running bool   `json:"Running"`
+		} `json:"State"`
+	}
+	if err := d.call(ctx, http.MethodGet, dockerAPI+"/containers/"+id+"/json", nil, &inspected); err != nil {
+		return ContainerInfo{}, err
+	}
+	state := inspected.State.Status
+	running := inspected.State.Running || state == "running"
+	return ContainerInfo{ID: id, Name: strings.TrimPrefix(inspected.Name, "/"), State: state, Running: running}, nil
 }
 
 func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (ContainerInfo, error) {
 	body := map[string]any{
 		"Image": image,
+		"User":  "65532:65532",
 		"Labels": map[string]string{
 			"togavsu.role":        "core",
 			"togavsu.core.active": "0",
@@ -301,6 +337,10 @@ func (d *DockerRuntime) call(ctx context.Context, method, path string, body any,
 		return err
 	}
 	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotModified {
+		_, _ = io.Copy(io.Discard, res.Body)
+		return errDockerNotModified
+	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		msg, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		if res.StatusCode == http.StatusNotFound {
@@ -326,11 +366,9 @@ func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {
 		return false, ErrMigratorUnconfigured
 	}
 	env := append([]string{}, m.Docker.coreEnv()...)
-	if m.DatabaseURL != "" {
-		env = append(env, "DATABASE_URL="+m.DatabaseURL)
-	}
 	body := map[string]any{
 		"Image": image,
+		"User":  "65532:65532",
 		"Cmd":   []string{"migrate"},
 		"Env":   env,
 		"Tty":   true,

@@ -122,8 +122,48 @@ var errConfiguredDatabaseAbsent = errors.New("configured database is absent")
 
 const swapRecoveryTimeout = 30 * time.Second
 
+type swapHookFunc func(configured, fresh, replaced string) error
+
+type swapHookKey struct{}
+
+// WithSwapHook attaches a function that runs after the fresh database is
+// loaded and before the rename transaction starts. The hook must return only
+// after its own durable record is fsynced.
+func WithSwapHook(ctx context.Context, hook func(configured, fresh, replaced string) error) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, swapHookKey{}, swapHookFunc(hook))
+}
+
+func swapHook(ctx context.Context) swapHookFunc {
+	if ctx == nil {
+		return nil
+	}
+	hook, _ := ctx.Value(swapHookKey{}).(swapHookFunc)
+	return hook
+}
+
 func recoveryContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), swapRecoveryTimeout)
+}
+
+// PostgresCatalog reads pg_database through the admin connection. It does not
+// rename or drop databases.
+type PostgresCatalog struct {
+	Bin      string
+	AdminURL string
+}
+
+func (p PostgresCatalog) Observe(ctx context.Context, configured, fresh, replaced string) (map[string]bool, error) {
+	if p.AdminURL == "" {
+		return nil, errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return observeDatabases(ctx, bin, p.AdminURL, configured, fresh, replaced)
 }
 
 // swapDatabase renames orig to replaced and fresh to orig in one Postgres
@@ -142,6 +182,11 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 	}
 	rec, cancel := recoveryContext()
 	defer cancel()
+	if hook := swapHook(ctx); hook != nil {
+		if err := hook(orig, fresh, replaced); err != nil {
+			return err
+		}
+	}
 	_, _ = psqlLines(rec, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+orig+"' AND pid <> pg_backend_pid()")
 	txn := "BEGIN; ALTER DATABASE " + orig + " RENAME TO " + replaced + "; ALTER DATABASE " + fresh + " RENAME TO " + orig + "; COMMIT;"
 	txnErr := psqlExec(ctx, bin, adminURL, txn)

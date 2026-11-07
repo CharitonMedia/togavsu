@@ -6,6 +6,7 @@ root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 if [ -f "$root/go.mod" ]; then
   cd "$root"
   go test ./internal/supervisor/ ./cmd/supervisor/
+  go test -race ./internal/supervisor/ ./cmd/supervisor/
   go build -o /dev/null ./cmd/supervisor
   exit 0
 fi
@@ -17,4 +18,5 @@ cp -a "$root/internal/supervisor" "$work/internal/supervisor"
 printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
 cd "$work"
 go test ./internal/supervisor/ ./cmd/supervisor/
+go test -race ./internal/supervisor/ ./cmd/supervisor/
 go build -o /dev/null ./cmd/supervisor
