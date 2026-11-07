@@ -29,7 +29,11 @@ Module help writes accept the module's own `help:write` token for its heading. T
 
 A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` posts a deposit. A withdrawal, transfer to operating, refund, or adjustment needs `trust:withdraw`. A deposit-only token is `scope_denied` on those types, including inside a bulk batch, and the batch writes nothing. Role checks still apply. An adjustment amount is signed cents: positive credits the client and negative debits the client. Other entry types stay zero or greater.
 
-A module token calls a core operation only when `module_delegation` is `delegated_viewer` and the module's approved scopes include that operation. The call also carries `X-Togavsu-Context-Token` for the viewer. The result is the intersection of the module scope, the viewer's role, and that viewer's walls. A scope does not open a walled matter or an attorney-only file the viewer cannot see, and it does not make the module an admin.
+A module token calls a core operation only when `module_delegation` is set and the module's approved scopes include that operation. Interactive calls carry `X-Togavsu-Context-Token` for the viewer. The result is the intersection of the module scope, the viewer's role, and that viewer's walls. A scope does not open a walled matter or an attorney-only file the viewer cannot see, and it does not make the module an admin.
+
+Background work, such as a malware module that later quarantines the file from `file.version_created`, uses `delegated_viewer_or_noninteractive`. That call carries `X-Togavsu-Task-Authorization`, a core-issued capability for that event's resource, operation, and fields. It does not require an iframe token. An unrelated file or matter is `not_found`. A missing scope is `scope_denied`. An expired or revoked capability is `forbidden`. A revoked module token is `unauthenticated`. A field outside the capability is `field_locked`. The capability is not a firm-wide or admin grant.
+
+When time is replaced, invoice and payment operations follow that module. A billing post that also moves trust still posts exactly one append-only trust row through the trust handler. The time module does not post a second row. A below-zero result still flags.
 
 Replaceable domains are time, trust, and calendar (`x-togavsu-replaceable-domain`). Switching the handler does not change these paths. Core rows stay readable. A trust module still posts a below-zero entry and raises `trust.flag_raised`.
 

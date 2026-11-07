@@ -6202,7 +6202,8 @@
       "method": "GET",
       "path": "/api/v1/reports/unbilled-time",
       "features": [
-        "reports"
+        "reports",
+        "trust-reports"
       ],
       "scopes": [
         "reports:read"
@@ -6235,7 +6236,8 @@
       "method": "GET",
       "path": "/api/v1/reports/time-by-user",
       "features": [
-        "reports"
+        "reports",
+        "trust-reports"
       ],
       "scopes": [
         "reports:read"
@@ -6268,7 +6270,8 @@
       "method": "GET",
       "path": "/api/v1/reports/ar-aging",
       "features": [
-        "reports"
+        "reports",
+        "trust-reports"
       ],
       "scopes": [
         "reports:read"
@@ -6301,7 +6304,8 @@
       "method": "GET",
       "path": "/api/v1/reports/payments-received",
       "features": [
-        "reports"
+        "reports",
+        "trust-reports"
       ],
       "scopes": [
         "reports:read"
@@ -6334,7 +6338,8 @@
       "method": "GET",
       "path": "/api/v1/reports/write-offs",
       "features": [
-        "reports"
+        "reports",
+        "trust-reports"
       ],
       "scopes": [
         "reports:read"
@@ -12875,7 +12880,8 @@
         "admin",
         "attorney",
         "staff",
-        "accountant"
+        "accountant",
+        "client"
       ],
       "transfer": {
         "shape": "path_query_body",

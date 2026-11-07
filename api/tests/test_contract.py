@@ -1094,7 +1094,6 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["grants_admin"])
         self.assertEqual(policy["context_header"], "X-Togavsu-Context-Token")
         for operation_id in (
-            "createAiCall",
             "getMatter",
             "listMatter",
             "updateFileMetadata",
@@ -1102,7 +1101,6 @@ class ContractTest(unittest.TestCase):
             "downloadFileVersion",
             "createNote",
             "createTimeEntry",
-            "createEvent",
             "runEditor",
             "postTrustEntry",
         ):
@@ -1111,6 +1109,19 @@ class ContractTest(unittest.TestCase):
                 "delegated_viewer",
                 operation_id,
             )
+        background = set(policy["noninteractive"]["operations"])
+        self.assertFalse(policy["noninteractive"]["viewer_context_required"])
+        self.assertFalse(policy["noninteractive"]["grants_admin"])
+        self.assertFalse(policy["noninteractive"]["firmwide_bypass"])
+        self.assertTrue(policy["noninteractive"]["attorney_only_redaction"])
+        for operation_id in background:
+            self.assertEqual(
+                _operation(self.spec, operation_id)["x-togavsu-access"]["module_delegation"],
+                "delegated_viewer_or_noninteractive",
+                operation_id,
+            )
+        for case in policy["noninteractive_cases"]:
+            self.assertEqual(_background_result(case), case["result"], case)
         for operation_id in ("updateSetting", "listAuditLog", "createUser", "listApiToken", "updateMe", "requestEmailChange"):
             self.assertNotEqual(
                 _operation(self.spec, operation_id)["x-togavsu-access"].get("module_delegation"),
@@ -1119,6 +1130,88 @@ class ContractTest(unittest.TestCase):
             )
         for case in policy["cases"]:
             self.assertEqual(_delegation_result(case), case["result"], case)
+
+    def test_client_context_token_is_own_matter_only(self):
+        operation = _operation(self.spec, "createModuleContextToken")
+        access = operation["x-togavsu-access"]
+        self.assertIn("client", access["roles"])
+        self.assertEqual(access["client"], "own_matter")
+        policy = access["client_context"]
+        self.assertTrue(policy["own_matters_only"])
+        self.assertEqual(policy["impersonation"], "forbidden")
+        self.assertFalse(policy["firm_roles_unless_held"])
+        self.assertEqual(policy["client_session_authorized_by"], "role")
+        self.assertTrue(policy["scope_does_not_bypass_matter"])
+        self.assertEqual(
+            policy["client_allowed_operations"],
+            ["createFileUpload", "putFileChunk", "completeFileUpload", "publishFile", "createFileLink"],
+        )
+        request = self.spec["components"]["schemas"]["ContextTokenRequest"]
+        self.assertEqual(set(request["properties"]), {"matter_id"})
+        self.assertFalse(request["additionalProperties"])
+        token = self.spec["components"]["schemas"]["ContextToken"]
+        self.assertIn("viewer_user_id", token["required"])
+        self.assertIn("roles", token["required"])
+        for case in policy["access_cases"]:
+            self.assertEqual(_client_context_result(case), case["result"], case)
+
+    def test_invoicing_is_time_domain_and_trust_posts_once(self):
+        for operation_id in (
+            "listInvoice",
+            "getInvoice",
+            "updateInvoice",
+            "historyInvoice",
+            "createInvoiceDrafts",
+            "updateInvoiceDraft",
+            "approveInvoice",
+            "sendInvoice",
+            "getInvoicePdf",
+            "voidInvoice",
+            "writeOffInvoice",
+            "getBillingWorklist",
+            "listPayment",
+            "getPayment",
+            "createPayment",
+            "bulkPayment",
+            "updatePaymentStatus",
+            "reversePayment",
+            "applyTrustToInvoice",
+            "applyFlatFee",
+            "reportUnbilledTime",
+            "reportTimeByUser",
+            "reportArAging",
+            "reportPaymentsReceived",
+            "reportWriteOffs",
+            "listTimeEntry",
+            "createTimeEntry",
+            "listExpense",
+            "createExpense",
+        ):
+            self.assertEqual(
+                _operation(self.spec, operation_id).get("x-togavsu-replaceable-domain"),
+                "time",
+                operation_id,
+            )
+        for operation_id in ("postTrustEntry", "listTrustEntry", "requestInvoiceReplenishment", "reportTrustBalances", "reportReconciliations"):
+            self.assertEqual(
+                _operation(self.spec, operation_id).get("x-togavsu-replaceable-domain"),
+                "trust",
+                operation_id,
+            )
+        self.assertEqual(_operation(self.spec, "listCalendarEvent").get("x-togavsu-replaceable-domain"), "calendar")
+        self.assertIsNone(_operation(self.spec, "listFeeAgreement").get("x-togavsu-replaceable-domain"))
+        self.assertNotIn("x-togavsu-domain-dispatch", _operation(self.spec, "postTrustEntry"))
+        switch = _operation(self.spec, "putDomainHandler")["x-togavsu-access"]["trust_posting"]
+        self.assertTrue(switch["exactly_once"])
+        self.assertTrue(switch["append_only"])
+        self.assertFalse(switch["time_module_also_posts"])
+        self.assertEqual(switch["billing_transfer_posted_by"], "trust_handler")
+        for operation_id in ("applyTrustToInvoice", "applyFlatFee", "reversePayment"):
+            dispatch = _operation(self.spec, operation_id)["x-togavsu-domain-dispatch"]
+            self.assertEqual(dispatch["primary_domain"], "time", operation_id)
+            for trust_replaced in (False, True):
+                poster = _trust_poster(trust_replaced, dispatch)
+                self.assertEqual(poster, "trust_module" if trust_replaced else "core", operation_id)
 
     def test_api_token_reads_are_self_or_admin(self):
         for operation_id in ("listApiToken", "getApiToken", "createApiToken", "revokeApiToken"):
@@ -1213,6 +1306,40 @@ def _schema_name(node: dict) -> str:
 
 def _schema_name_from_page(operation: dict) -> str:
     return operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["items"]["$ref"].rsplit("/", 1)[1]
+
+
+def _background_result(case: dict) -> str:
+    if case.get("token_revoked"):
+        return "unauthenticated"
+    if case["operation_scope"] not in case["module_scopes"]:
+        return "scope_denied"
+    capability = case.get("capability")
+    if not capability or capability.get("expired") or capability.get("revoked"):
+        return "forbidden"
+    if capability.get("resource") == "unrelated" or capability.get("matter") == "unrelated":
+        return "not_found"
+    if capability.get("attorney_only") and not capability.get("attorney_only_grant"):
+        return "not_found"
+    if case.get("field") not in capability.get("allowed_fields", []):
+        return "field_locked"
+    return "allowed"
+
+
+def _client_context_result(case: dict) -> str:
+    if case.get("requested_roles") or case.get("impersonate"):
+        return "forbidden"
+    if case["role"] == "client" and case.get("matter") != "own_shared":
+        return "not_found"
+    return "allowed"
+
+
+def _trust_poster(trust_replaced: bool, dispatch: dict) -> str:
+    entry = dispatch["trust_entry"]
+    if entry["time_module_also_posts"]:
+        return "ambiguous"
+    if not entry["exactly_once"] or not entry["append_only"] or entry["posted_by"] != "trust_handler":
+        return "ambiguous"
+    return "trust_module" if trust_replaced else "core"
 
 
 def _delegation_result(case: dict) -> str:

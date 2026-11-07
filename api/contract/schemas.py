@@ -1964,8 +1964,22 @@ SCHEMAS = _register(
             ["module_id", "kind", "note"],
             "An alert delivered to admins by dashboard and email.",
         ),
-        "ContextToken": _obj({"token": {"type": "string"}, "expires_at": _dt()}, ["token", "expires_at"], "Short-lived signed iframe context. It is not the session cookie."),
-        "ContextTokenRequest": _obj({"matter_id": _null(_uuid())}),
+        "ContextToken": _obj(
+            {
+                "token": {"type": "string"},
+                "expires_at": _dt(),
+                "viewer_user_id": _uuid("The caller. A client cannot name another user."),
+                "roles": _arr(_ROLE, "The caller's roles. A client token does not gain firm roles."),
+                "matter_id": _null(_uuid()),
+                "allowed_operations": _arr({"type": "string"}, "Operation ids this token may accompany."),
+            },
+            ["token", "expires_at", "viewer_user_id", "roles", "allowed_operations"],
+            "Short-lived signed context. It is not the session cookie. A client receives only their own shared matter and the upload operations.",
+        ),
+        "ContextTokenRequest": _obj(
+            {"matter_id": _null(_uuid())},
+            description="The viewer is the authenticated caller. user_id and roles are not accepted.",
+        ),
         "ModuleManifest": _obj(
             {
                 "id": {"type": "string"},

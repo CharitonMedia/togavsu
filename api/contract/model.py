@@ -57,16 +57,49 @@ DELEGABLE_SCOPES = {
     "help:read",
 }
 
+# Background calls use a core-issued task authorization instead of an iframe viewer token.
+NONINTERACTIVE_OPERATIONS = {
+    "quarantineFileVersion",
+    "createEvent",
+    "bulkEvent",
+    "createNotification",
+    "createFileLink",
+    "createAiCall",
+}
+
 MODULE_DELEGATION_POLICY = {
     "mode": "delegated_viewer",
     "context_header": "X-Togavsu-Context-Token",
     "context_required_for_actor": "module",
+    "missing_context": "forbidden_for_delegated_viewer",
     "intersection": ["approved_scopes", "viewer_role", "matter_wall", "attorney_only", "client_shared"],
     "scope_bypasses_wall": False,
     "scope_bypasses_viewer_role": False,
     "grants_admin": False,
+    "firmwide_bypass": False,
     "viewer_mismatch": "forbidden",
-    "missing_context": "forbidden",
+    "noninteractive": {
+        "authorization_header": "X-Togavsu-Task-Authorization",
+        "viewer_context_required": False,
+        "issued_by": "core",
+        "binds": ["module_id", "event_id", "resource_ids", "allowed_operations", "allowed_fields", "expires_at"],
+        "missing_task_authorization": "forbidden",
+        "expired_or_revoked": "forbidden",
+        "revoked_module_token": "unauthenticated",
+        "unrelated_resource": "not_found",
+        "field_outside_capability": "field_locked",
+        "grants_admin": False,
+        "firmwide_bypass": False,
+        "attorney_only_redaction": True,
+        "operations": [
+            "quarantineFileVersion",
+            "createEvent",
+            "bulkEvent",
+            "createNotification",
+            "createFileLink",
+            "createAiCall",
+        ],
+    },
     "cases": [
         {"operation_scope": "ai:use", "module_scopes": ["ai:use"], "viewer_role": "staff", "result": "allowed"},
         {"operation_scope": "ai:use", "module_scopes": ["files:read"], "viewer_role": "admin", "result": "scope_denied"},
@@ -109,6 +142,100 @@ MODULE_DELEGATION_POLICY = {
             "result": "forbidden",
         },
     ],
+    "noninteractive_cases": [
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "token_revoked": False,
+            "field": "quarantined",
+            "capability": {
+                "event": "file.version_created",
+                "resource": "same",
+                "allowed_fields": ["quarantined"],
+                "expired": False,
+                "revoked": False,
+            },
+            "result": "allowed",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": {"event": "file.version_created", "resource": "unrelated", "allowed_fields": ["quarantined"]},
+            "result": "not_found",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["matters:read"],
+            "field": "quarantined",
+            "capability": {"resource": "same", "allowed_fields": ["quarantined"]},
+            "result": "scope_denied",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": {"resource": "same", "allowed_fields": ["quarantined"], "expired": True},
+            "result": "forbidden",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": {"resource": "same", "allowed_fields": ["quarantined"], "revoked": True},
+            "result": "forbidden",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "token_revoked": True,
+            "field": "quarantined",
+            "capability": {"resource": "same", "allowed_fields": ["quarantined"]},
+            "result": "unauthenticated",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "name",
+            "capability": {"resource": "same", "allowed_fields": ["quarantined"]},
+            "result": "field_locked",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": None,
+            "result": "forbidden",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": {"resource": "same", "matter": "unrelated", "allowed_fields": ["quarantined"]},
+            "result": "not_found",
+        },
+        {
+            "operation": "quarantineFileVersion",
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "field": "quarantined",
+            "capability": {
+                "resource": "same",
+                "allowed_fields": ["quarantined"],
+                "attorney_only": True,
+            },
+            "result": "not_found",
+        },
+    ],
 }
 
 
@@ -117,6 +244,14 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
         return False
     scopes = access.get("scopes") or []
     return bool(scopes) and all(scope in DELEGABLE_SCOPES for scope in scopes)
+
+
+def _delegation_mode(access: dict, public: bool, mcp: str, operation_id: str) -> str | None:
+    if not _delegated_viewer(access, public, mcp):
+        return None
+    if operation_id in NONINTERACTIVE_OPERATIONS:
+        return "delegated_viewer_or_noninteractive"
+    return "delegated_viewer"
 
 UNSAFE = {"post", "put", "patch", "delete"}
 
@@ -165,6 +300,7 @@ class Contract:
         response_content: dict | None = None,
         extra_responses: dict | None = None,
         extra_parameters: list[dict] | None = None,
+        domain_dispatch: dict | None = None,
     ) -> None:
         method = method.lower()
         if operation_id in self.operation_ids:
@@ -214,8 +350,9 @@ class Contract:
         if extra_access:
             for key, value in extra_access.items():
                 access[key] = value
-        if _delegated_viewer(access, public, mcp):
-            access["module_delegation"] = "delegated_viewer"
+        delegation_mode = _delegation_mode(access, public, mcp, operation_id)
+        if delegation_mode:
+            access["module_delegation"] = delegation_mode
 
         mcp_block: dict = {"parity": mcp}
         if mcp == "required":
@@ -254,6 +391,8 @@ class Contract:
             operation["security"] = AUTH_SECURITY
         if replaceable:
             operation["x-togavsu-replaceable-domain"] = replaceable
+        if domain_dispatch:
+            operation["x-togavsu-domain-dispatch"] = domain_dispatch
         if error_codes:
             operation["x-togavsu-error-codes"] = error_codes
         if request_content is not None:
@@ -438,6 +577,7 @@ class Contract:
                 response_schema=_page("AuditEntry"),
                 paginate=True,
                 writes=False,
+                replaceable=replaceable,
                 extra_access=access,
             )
         if bulk:

@@ -201,11 +201,11 @@ It does not claim the handlers or the MCP server are implemented.
 | payments | `POST` | `/api/v1/payments/{payment_id}/reverse` | `reversePayment` | required:reversePayment | admin, attorney | payments:write |
 | billing-worklist | `GET` | `/api/v1/billing/worklist` | `getBillingWorklist` | required:getBillingWorklist | admin, attorney, staff, accountant | invoices:read |
 | billing-worklist, trust-ledger | `POST` | `/api/v1/billing/flat-fees/{matter_id}/apply` | `applyFlatFee` | required:applyFlatFee | admin, attorney | trust:withdraw |
-| reports | `GET` | `/api/v1/reports/unbilled-time` | `reportUnbilledTime` | required:reportUnbilledTime | admin, attorney, staff, accountant | reports:read |
-| reports | `GET` | `/api/v1/reports/time-by-user` | `reportTimeByUser` | required:reportTimeByUser | admin, attorney, staff, accountant | reports:read |
-| reports | `GET` | `/api/v1/reports/ar-aging` | `reportArAging` | required:reportArAging | admin, attorney, staff, accountant | reports:read |
-| reports | `GET` | `/api/v1/reports/payments-received` | `reportPaymentsReceived` | required:reportPaymentsReceived | admin, attorney, staff, accountant | reports:read |
-| reports | `GET` | `/api/v1/reports/write-offs` | `reportWriteOffs` | required:reportWriteOffs | admin, attorney, staff, accountant | reports:read |
+| reports, trust-reports | `GET` | `/api/v1/reports/unbilled-time` | `reportUnbilledTime` | required:reportUnbilledTime | admin, attorney, staff, accountant | reports:read |
+| reports, trust-reports | `GET` | `/api/v1/reports/time-by-user` | `reportTimeByUser` | required:reportTimeByUser | admin, attorney, staff, accountant | reports:read |
+| reports, trust-reports | `GET` | `/api/v1/reports/ar-aging` | `reportArAging` | required:reportArAging | admin, attorney, staff, accountant | reports:read |
+| reports, trust-reports | `GET` | `/api/v1/reports/payments-received` | `reportPaymentsReceived` | required:reportPaymentsReceived | admin, attorney, staff, accountant | reports:read |
+| reports, trust-reports | `GET` | `/api/v1/reports/write-offs` | `reportWriteOffs` | required:reportWriteOffs | admin, attorney, staff, accountant | reports:read |
 | reports, trust-reports | `GET` | `/api/v1/reports/trust-balances` | `reportTrustBalances` | required:reportTrustBalances | admin, attorney, staff, accountant | trust:read |
 | reports, trust-reports | `GET` | `/api/v1/reports/trust-client-ledger` | `reportTrustClientLedger` | required:reportTrustClientLedger | admin, attorney, staff, accountant | trust:read |
 | reports, trust-reports | `GET` | `/api/v1/reports/trust-account-ledger` | `reportTrustAccountLedger` | required:reportTrustAccountLedger | admin, attorney, staff, accountant | trust:read |
@@ -416,7 +416,7 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
-| modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant | modules:read |
+| modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant, client | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings` | `listMarketplaceListings` | required:listMarketplaceListings | admin | modules:read |
 | marketplace | `GET` | `/api/v1/marketplace/listings/{listing_id}` | `getMarketplaceListing` | required:getMarketplaceListing | admin | modules:read |
 | marketplace | `GET` | `/api/v1/module-alerts` | `listModuleAlert` | required:listModuleAlert | admin | modules:read |

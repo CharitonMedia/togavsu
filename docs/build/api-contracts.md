@@ -19,6 +19,7 @@ These stay proposals until that agent adopts them. This branch does not edit `in
 - `Page`: `limit` and `next_cursor`.
 - `Principal`: user id, roles, actor kind (`staff`, `client`, `agent`, `module`, `system`), token scopes, module id when the caller is a module.
 - Access decision: allow, `not_found` when a wall hides the row, redact attorney-only fields. The same decision for HTTP, MCP, search, reports, files, and widgets.
+- Module calls: interactive work uses `X-Togavsu-Context-Token` and the viewer's role and walls. Background event work uses `X-Togavsu-Task-Authorization`, a core-issued capability for that resource, operation, and fields. It is not an admin or firm-wide grant. A client can obtain a context token only for their own shared matter and the upload operations. Invoice, payment, and billing-report operations are the `time` replacement domain. A billing post that moves trust still posts exactly one append-only trust row through the trust handler.
 - Settings registry keys and starting values: `x-togavsu-settings` on the core document. 133 keys. Locked key: `security.totp_required.admin`.
 
 Seeds the data layer should load are `x-togavsu-seeds`: 17 Doc Tender categories, the party-role keys, the naming tokens, the default folder names, and LawCraft commit `770a8fab12392485c0c2789fb254da7d9296df4d`.

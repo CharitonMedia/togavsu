@@ -19629,7 +19629,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/time-entries:bulk": {
@@ -21179,7 +21180,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/expenses:bulk": {
@@ -21544,7 +21546,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/invoices/{invoice_id}": {
@@ -21666,7 +21669,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       },
       "patch": {
         "operationId": "updateInvoice",
@@ -21784,6 +21788,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -21946,7 +21951,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/invoice-drafts": {
@@ -22069,6 +22075,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -22198,6 +22205,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "x-togavsu-error-codes": [
           "conflict"
         ],
@@ -22322,7 +22330,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/invoices/{invoice_id}/send": {
@@ -22440,6 +22449,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -22570,7 +22580,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/invoices/{invoice_id}/void": {
@@ -22688,6 +22699,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -22704,7 +22716,7 @@
       "post": {
         "operationId": "applyTrustToInvoice",
         "summary": "Apply trust to an invoice",
-        "description": "Posts a trust transfer to operating and a matching payment. The amount is required in the body. An attorney or admin must call it.",
+        "description": "Posts one trust transfer to operating and a matching payment. The amount is required in the body. An attorney or admin must call it. The invoice update follows the time handler. The ledger row is posted once by the trust handler. The time module does not post a second ledger row. The trust row stays append-only, and a below-zero balance still flags.",
         "tags": [
           "Billing"
         ],
@@ -22911,6 +22923,17 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-domain-dispatch": {
+          "primary_domain": "time",
+          "trust_entry": {
+            "posted_by": "trust_handler",
+            "append_only": true,
+            "exactly_once": true,
+            "time_module_also_posts": false,
+            "below_zero": "posts"
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -23039,6 +23062,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -23168,6 +23192,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "trust",
         "requestBody": {
           "required": true,
           "content": {
@@ -23385,7 +23410,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       },
       "post": {
         "operationId": "createPayment",
@@ -23495,6 +23521,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -23614,7 +23641,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/payments:bulk": {
@@ -23739,6 +23767,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "x-togavsu-error-codes": [
           "batch_rejected",
           "validation_failed"
@@ -23884,6 +23913,7 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
         "requestBody": {
           "required": true,
           "content": {
@@ -23900,7 +23930,7 @@
       "post": {
         "operationId": "reversePayment",
         "summary": "Reverse a payment",
-        "description": "Posts a reversal. The original payment is not edited.",
+        "description": "Posts a reversal. The original payment is not edited. When the payment posted a trust entry, the trust handler posts exactly one reversal. The time module does not post another.",
         "tags": [
           "Billing"
         ],
@@ -24011,6 +24041,17 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-domain-dispatch": {
+          "primary_domain": "time",
+          "trust_entry": {
+            "posted_by": "trust_handler",
+            "append_only": true,
+            "exactly_once": true,
+            "time_module_also_posts": false,
+            "below_zero": "posts"
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -24109,14 +24150,15 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/billing/flat-fees/{matter_id}/apply": {
       "post": {
         "operationId": "applyFlatFee",
         "summary": "Apply a flat fee from trust",
-        "description": "Moves the confirmed amount from trust to operating. Only an attorney or admin can post it. The row can then show Collected.",
+        "description": "Moves the confirmed amount from trust to operating. Only an attorney or admin can post it. The row can then show Collected. The trust handler posts the one ledger row. A replaced time module does not post a second row. The entry stays append-only, and a below-zero balance still flags.",
         "tags": [
           "Billing"
         ],
@@ -24322,6 +24364,17 @@
             "bearerAuth": []
           }
         ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-domain-dispatch": {
+          "primary_domain": "time",
+          "trust_entry": {
+            "posted_by": "trust_handler",
+            "append_only": true,
+            "exactly_once": true,
+            "time_module_also_posts": false,
+            "below_zero": "posts"
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -24435,7 +24488,8 @@
           }
         },
         "x-togavsu-features": [
-          "reports"
+          "reports",
+          "trust-reports"
         ],
         "x-togavsu-access": {
           "roles": [
@@ -24482,7 +24536,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/reports/time-by-user": {
@@ -24577,7 +24632,8 @@
           }
         },
         "x-togavsu-features": [
-          "reports"
+          "reports",
+          "trust-reports"
         ],
         "x-togavsu-access": {
           "roles": [
@@ -24624,7 +24680,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/reports/ar-aging": {
@@ -24699,7 +24756,8 @@
           }
         },
         "x-togavsu-features": [
-          "reports"
+          "reports",
+          "trust-reports"
         ],
         "x-togavsu-access": {
           "roles": [
@@ -24746,7 +24804,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/reports/payments-received": {
@@ -24832,7 +24891,8 @@
           }
         },
         "x-togavsu-features": [
-          "reports"
+          "reports",
+          "trust-reports"
         ],
         "x-togavsu-access": {
           "roles": [
@@ -24879,7 +24939,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/reports/write-offs": {
@@ -24965,7 +25026,8 @@
           }
         },
         "x-togavsu-features": [
-          "reports"
+          "reports",
+          "trust-reports"
         ],
         "x-togavsu-access": {
           "roles": [
@@ -25012,7 +25074,8 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "x-togavsu-replaceable-domain": "time"
       }
     },
     "/api/v1/reports/trust-balances": {
@@ -33573,7 +33636,7 @@
             "conversion_of",
             "grouped_photo_source"
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [
           "file.linked"
@@ -33929,7 +33992,7 @@
       "post": {
         "operationId": "quarantineFileVersion",
         "summary": "Set the quarantine flag",
-        "description": "A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation. The file's matter wall applies; a walled file is not_found.",
+        "description": "A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation. The file's matter wall applies; a walled file is not_found. A background scan uses the core-issued task authorization for this version and the quarantined field. It does not need an iframe token and it is not an admin grant.",
         "tags": [
           "Files"
         ],
@@ -34032,7 +34095,7 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [
           "file.quarantine_changed"
@@ -40080,7 +40143,7 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [
           "notification.created"
@@ -45749,7 +45812,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -45881,7 +45944,7 @@
           "access_inherits": "matter",
           "batch_authorization": "all_or_nothing",
           "inaccessible_result": "not_found",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -47328,7 +47391,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [
           "ai.call_completed"
@@ -51230,7 +51293,7 @@
       "post": {
         "operationId": "createModuleContextToken",
         "summary": "Issue an iframe context token",
-        "description": "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. The module does not receive the session cookie. When matter_id is set, the viewer's matter wall is checked before the token is signed. A walled matter the viewer cannot see returns not_found and no token.",
+        "description": "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. The module does not receive the session cookie. When matter_id is set, the viewer's matter wall is checked before the token is signed. A walled matter the viewer cannot see returns not_found and no token. A client can obtain a token only for their own shared matter, and only for upload operations. The token's roles are the caller's roles. A client cannot name another client or request a firm role.",
         "tags": [
           "Modules"
         ],
@@ -51299,15 +51362,67 @@
             "admin",
             "attorney",
             "staff",
-            "accountant"
+            "accountant",
+            "client"
           ],
           "scopes": [
             "modules:read"
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
-          "access_inherits": "matter"
+          "client": "own_matter",
+          "access_inherits": "matter",
+          "client_context": {
+            "own_matters_only": true,
+            "impersonation": "forbidden",
+            "firm_roles_unless_held": false,
+            "client_session_authorized_by": "role",
+            "modules_read_required_for": "firm_bearer",
+            "scope_does_not_bypass_matter": true,
+            "client_allowed_operations": [
+              "createFileUpload",
+              "putFileChunk",
+              "completeFileUpload",
+              "publishFile",
+              "createFileLink"
+            ],
+            "access_cases": [
+              {
+                "role": "client",
+                "matter": "own_shared",
+                "modules_read": false,
+                "result": "allowed"
+              },
+              {
+                "role": "client",
+                "matter": "other_client",
+                "result": "not_found"
+              },
+              {
+                "role": "client",
+                "matter": "own_unshared",
+                "result": "not_found"
+              },
+              {
+                "role": "client",
+                "matter": "other_client",
+                "modules_read": true,
+                "result": "not_found"
+              },
+              {
+                "role": "client",
+                "requested_roles": [
+                  "admin"
+                ],
+                "result": "forbidden"
+              },
+              {
+                "role": "client",
+                "impersonate": true,
+                "result": "forbidden"
+              }
+            ]
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -52473,7 +52588,7 @@
       "put": {
         "operationId": "putDomainHandler",
         "summary": "Switch a replaceable domain",
-        "description": "Sends that domain's API calls to the module and keeps core data readable. An empty module id restores the core. The trust below-zero rule remains part of the contract either way.",
+        "description": "Sends that domain's API calls to the module and keeps core data readable. An empty module id restores the core. The trust below-zero rule remains part of the contract either way. Switching time does not let the time module post trust. A billing operation that moves trust still posts exactly one append-only row through the trust handler, whether trust is the core or a module.",
         "tags": [
           "Modules"
         ],
@@ -52549,7 +52664,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "trust_posting": {
+            "billing_transfer_posted_by": "trust_handler",
+            "exactly_once": true,
+            "append_only": true,
+            "time_module_also_posts": false
+          }
         },
         "x-togavsu-events": [
           "domain.switched"
@@ -62070,13 +62191,55 @@
             "type": "string",
             "format": "date-time",
             "description": "UTC timestamp."
+          },
+          "viewer_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The caller. A client cannot name another user."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            },
+            "description": "The caller's roles. A client token does not gain firm roles."
+          },
+          "matter_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowed_operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Operation ids this token may accompany."
           }
         },
         "required": [
           "token",
-          "expires_at"
+          "expires_at",
+          "viewer_user_id",
+          "roles",
+          "allowed_operations"
         ],
-        "description": "Short-lived signed iframe context. It is not the session cookie."
+        "description": "Short-lived signed context. It is not the session cookie. A client receives only their own shared matter and the upload operations."
       },
       "ContextTokenRequest": {
         "type": "object",
@@ -62094,7 +62257,8 @@
               }
             ]
           }
-        }
+        },
+        "description": "The viewer is the authenticated caller. user_id and roles are not accepted."
       },
       "ModuleManifest": {
         "type": "object",
@@ -66504,6 +66668,7 @@
     "mode": "delegated_viewer",
     "context_header": "X-Togavsu-Context-Token",
     "context_required_for_actor": "module",
+    "missing_context": "forbidden_for_delegated_viewer",
     "intersection": [
       "approved_scopes",
       "viewer_role",
@@ -66514,8 +66679,37 @@
     "scope_bypasses_wall": false,
     "scope_bypasses_viewer_role": false,
     "grants_admin": false,
+    "firmwide_bypass": false,
     "viewer_mismatch": "forbidden",
-    "missing_context": "forbidden",
+    "noninteractive": {
+      "authorization_header": "X-Togavsu-Task-Authorization",
+      "viewer_context_required": false,
+      "issued_by": "core",
+      "binds": [
+        "module_id",
+        "event_id",
+        "resource_ids",
+        "allowed_operations",
+        "allowed_fields",
+        "expires_at"
+      ],
+      "missing_task_authorization": "forbidden",
+      "expired_or_revoked": "forbidden",
+      "revoked_module_token": "unauthenticated",
+      "unrelated_resource": "not_found",
+      "field_outside_capability": "field_locked",
+      "grants_admin": false,
+      "firmwide_bypass": false,
+      "attorney_only_redaction": true,
+      "operations": [
+        "quarantineFileVersion",
+        "createEvent",
+        "bulkEvent",
+        "createNotification",
+        "createFileLink",
+        "createAiCall"
+      ]
+    },
     "cases": [
       {
         "operation_scope": "ai:use",
@@ -66582,6 +66776,163 @@
           "admin"
         ],
         "result": "forbidden"
+      }
+    ],
+    "noninteractive_cases": [
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "token_revoked": false,
+        "field": "quarantined",
+        "capability": {
+          "event": "file.version_created",
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ],
+          "expired": false,
+          "revoked": false
+        },
+        "result": "allowed"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "event": "file.version_created",
+          "resource": "unrelated",
+          "allowed_fields": [
+            "quarantined"
+          ]
+        },
+        "result": "not_found"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "matters:read"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ]
+        },
+        "result": "scope_denied"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ],
+          "expired": true
+        },
+        "result": "forbidden"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ],
+          "revoked": true
+        },
+        "result": "forbidden"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "token_revoked": true,
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ]
+        },
+        "result": "unauthenticated"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "name",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ]
+        },
+        "result": "field_locked"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": null,
+        "result": "forbidden"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "matter": "unrelated",
+          "allowed_fields": [
+            "quarantined"
+          ]
+        },
+        "result": "not_found"
+      },
+      {
+        "operation": "quarantineFileVersion",
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "field": "quarantined",
+        "capability": {
+          "resource": "same",
+          "allowed_fields": [
+            "quarantined"
+          ],
+          "attorney_only": true
+        },
+        "result": "not_found"
       }
     ]
   },

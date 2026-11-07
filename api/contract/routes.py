@@ -37,6 +37,16 @@ PERSON_LOCK = {
     "automated_actor": "field_locked",
     "blocked_actors": ["doc_tender"],
 }
+TRUST_BILLING_DISPATCH = {
+    "primary_domain": "time",
+    "trust_entry": {
+        "posted_by": "trust_handler",
+        "append_only": True,
+        "exactly_once": True,
+        "time_module_also_posts": False,
+        "below_zero": "posts",
+    },
+}
 BATCH_WALL = {
     "matter_wall": True,
     "access_inherits": "matter",
@@ -1368,6 +1378,7 @@ def _billing(api: Contract) -> None:
         csv=True,
         filters=["matter_id", "status", "from_date", "to_date"],
         events={"updated": "invoice.updated"},
+        replaceable="time",
         extra_access={**WALL, "client": "shared"},
     )
     _project_client_invoices(api)
@@ -1385,6 +1396,7 @@ def _billing(api: Contract) -> None:
         response_schema=_batch_result("Invoice"),
         success="201",
         events=["invoice.drafted"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1406,6 +1418,7 @@ def _billing(api: Contract) -> None:
         response="Invoice",
         events=["invoice.updated"],
         error_codes=["conflict"],
+        replaceable="time",
         extra_access={**WALL, "required_status": "draft"},
     )
     api.add(
@@ -1420,6 +1433,7 @@ def _billing(api: Contract) -> None:
         scopes=["invoices:approve"],
         response="Invoice",
         events=["invoice.approved"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1435,6 +1449,7 @@ def _billing(api: Contract) -> None:
         body="InvoiceSend",
         response="Invoice",
         events=["invoice.sent"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1449,6 +1464,7 @@ def _billing(api: Contract) -> None:
         scopes=["invoices:read"],
         response_content={"application/pdf": {"schema": {"type": "string", "contentMediaType": "application/pdf"}}},
         writes=False,
+        replaceable="time",
         extra_access={**SHARED, "client": "shared"},
     )
     api.add(
@@ -1464,6 +1480,7 @@ def _billing(api: Contract) -> None:
         body="Reason",
         response="Invoice",
         events=["invoice.voided"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1471,7 +1488,11 @@ def _billing(api: Contract) -> None:
         "/api/v1/invoices/{invoice_id}/apply-trust",
         operation_id="applyTrustToInvoice",
         summary="Apply trust to an invoice",
-        description="Posts a trust transfer to operating and a matching payment. The amount is required in the body. An attorney or admin must call it.",
+        description=(
+            "Posts one trust transfer to operating and a matching payment. The amount is required in the body. An attorney or admin must call it. "
+            "The invoice update follows the time handler. The ledger row is posted once by the trust handler. "
+            "The time module does not post a second ledger row. The trust row stays append-only, and a below-zero balance still flags."
+        ),
         tag="Billing",
         features=["collections", "trust-ledger"],
         roles=ATTORNEY,
@@ -1479,6 +1500,8 @@ def _billing(api: Contract) -> None:
         body="ApplyTrust",
         response="Payment",
         events=["payment.completed", "trust.entry_posted"],
+        replaceable="time",
+        domain_dispatch=TRUST_BILLING_DISPATCH,
         extra_access={**TRUST_ENTRY_ROLES},
     )
     api.add(
@@ -1494,6 +1517,7 @@ def _billing(api: Contract) -> None:
         body="WriteOff",
         response="Invoice",
         events=["invoice.updated"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1510,6 +1534,7 @@ def _billing(api: Contract) -> None:
         response="TrustReplenishment",
         success="201",
         events=["trust.replenishment_requested"],
+        replaceable="trust",
         extra_access=WALL,
     )
     api.resource(
@@ -1530,6 +1555,7 @@ def _billing(api: Contract) -> None:
         csv=True,
         filters=["matter_id", "invoice_id", "from_date", "to_date", "status"],
         events={"created": "payment.completed"},
+        replaceable="time",
         extra_access=WALL,
         extra_features=["collections"],
     )
@@ -1546,6 +1572,7 @@ def _billing(api: Contract) -> None:
         body="PaymentStatusWrite",
         response="Payment",
         events=["payment.updated"],
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1553,7 +1580,11 @@ def _billing(api: Contract) -> None:
         "/api/v1/payments/{payment_id}/reverse",
         operation_id="reversePayment",
         summary="Reverse a payment",
-        description="Posts a reversal. The original payment is not edited.",
+        description=(
+            "Posts a reversal. The original payment is not edited. "
+            "When the payment posted a trust entry, the trust handler posts exactly one reversal. "
+            "The time module does not post another."
+        ),
         tag="Billing",
         features=["payments"],
         roles=ATTORNEY,
@@ -1561,6 +1592,8 @@ def _billing(api: Contract) -> None:
         body="Reason",
         response="Payment",
         events=["payment.reversed"],
+        replaceable="time",
+        domain_dispatch=TRUST_BILLING_DISPATCH,
         extra_access=WALL,
     )
     api.add(
@@ -1575,6 +1608,7 @@ def _billing(api: Contract) -> None:
         scopes=["invoices:read"],
         response="BillingWorklist",
         writes=False,
+        replaceable="time",
         extra_access=WALL,
     )
     api.add(
@@ -1582,7 +1616,11 @@ def _billing(api: Contract) -> None:
         "/api/v1/billing/flat-fees/{matter_id}/apply",
         operation_id="applyFlatFee",
         summary="Apply a flat fee from trust",
-        description="Moves the confirmed amount from trust to operating. Only an attorney or admin can post it. The row can then show Collected.",
+        description=(
+            "Moves the confirmed amount from trust to operating. Only an attorney or admin can post it. The row can then show Collected. "
+            "The trust handler posts the one ledger row. A replaced time module does not post a second row. "
+            "The entry stays append-only, and a below-zero balance still flags."
+        ),
         tag="Billing",
         features=["billing-worklist", "trust-ledger"],
         roles=ATTORNEY,
@@ -1590,6 +1628,8 @@ def _billing(api: Contract) -> None:
         body="FlatFeeApply",
         response="TrustPostResult",
         events=["trust.entry_posted"],
+        replaceable="time",
+        domain_dispatch=TRUST_BILLING_DISPATCH,
         extra_access=TRUST_ENTRY_ROLES,
     )
     for report_id, feature, query, required in (
@@ -1610,6 +1650,8 @@ def _billing(api: Contract) -> None:
         if report_id.startswith("trust") or report_id == "reconciliations":
             scopes = ["trust:read"]
             replaceable = "trust"
+        elif report_id in {"unbilled-time", "time-by-user", "ar-aging", "payments-received", "write-offs"}:
+            replaceable = "time"
         api.add(
             "get",
             f"/api/v1/reports/{report_id}",
@@ -2230,7 +2272,11 @@ def _files(api: Contract) -> None:
         "/api/v1/files/{file_id}/versions/{version_id}/quarantine",
         operation_id="quarantineFileVersion",
         summary="Set the quarantine flag",
-        description="A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation. The file's matter wall applies; a walled file is not_found.",
+        description=(
+            "A module with files:write marks a version quarantined. The version stays visible and downloads only after confirmation. "
+            "The file's matter wall applies; a walled file is not_found. "
+            "A background scan uses the core-issued task authorization for this version and the quarantined field. It does not need an iframe token and it is not an admin grant."
+        ),
         tag="Files",
         features=["quarantine"],
         roles=STAFF,
@@ -3755,16 +3801,44 @@ def _modules(api: Contract) -> None:
             "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. "
             "The module does not receive the session cookie. "
             "When matter_id is set, the viewer's matter wall is checked before the token is signed. "
-            "A walled matter the viewer cannot see returns not_found and no token."
+            "A walled matter the viewer cannot see returns not_found and no token. "
+            "A client can obtain a token only for their own shared matter, and only for upload operations. "
+            "The token's roles are the caller's roles. A client cannot name another client or request a firm role."
         ),
         tag="Modules",
         features=["modules"],
-        roles=FIRM,
+        roles=FIRM + ["client"],
         scopes=["modules:read"],
         body="ContextTokenRequest",
         response="ContextToken",
         success="201",
-        extra_access=WALL,
+        extra_access={
+            **WALL,
+            "client": "own_matter",
+            "client_context": {
+                "own_matters_only": True,
+                "impersonation": "forbidden",
+                "firm_roles_unless_held": False,
+                "client_session_authorized_by": "role",
+                "modules_read_required_for": "firm_bearer",
+                "scope_does_not_bypass_matter": True,
+                "client_allowed_operations": [
+                    "createFileUpload",
+                    "putFileChunk",
+                    "completeFileUpload",
+                    "publishFile",
+                    "createFileLink",
+                ],
+                "access_cases": [
+                    {"role": "client", "matter": "own_shared", "modules_read": False, "result": "allowed"},
+                    {"role": "client", "matter": "other_client", "result": "not_found"},
+                    {"role": "client", "matter": "own_unshared", "result": "not_found"},
+                    {"role": "client", "matter": "other_client", "modules_read": True, "result": "not_found"},
+                    {"role": "client", "requested_roles": ["admin"], "result": "forbidden"},
+                    {"role": "client", "impersonate": True, "result": "forbidden"},
+                ],
+            },
+        },
     )
     api.add(
         "get",
@@ -3844,7 +3918,11 @@ def _modules(api: Contract) -> None:
         "/api/v1/domain-handlers/{domain}",
         operation_id="putDomainHandler",
         summary="Switch a replaceable domain",
-        description="Sends that domain's API calls to the module and keeps core data readable. An empty module id restores the core. The trust below-zero rule remains part of the contract either way.",
+        description=(
+            "Sends that domain's API calls to the module and keeps core data readable. An empty module id restores the core. "
+            "The trust below-zero rule remains part of the contract either way. "
+            "Switching time does not let the time module post trust. A billing operation that moves trust still posts exactly one append-only row through the trust handler, whether trust is the core or a module."
+        ),
         tag="Modules",
         features=["domain-replacement"],
         roles=ADMIN,
@@ -3852,6 +3930,14 @@ def _modules(api: Contract) -> None:
         body="DomainHandlerWrite",
         response="DomainHandler",
         events=["domain.switched"],
+        extra_access={
+            "trust_posting": {
+                "billing_transfer_posted_by": "trust_handler",
+                "exactly_once": True,
+                "append_only": True,
+                "time_module_also_posts": False,
+            }
+        },
     )
 
 
