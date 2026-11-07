@@ -45,6 +45,12 @@ class CatalogTests(unittest.TestCase):
         errors = integrity_errors(broken, self.acceptance, self.tasks)
         self.assertTrue(any("not pending" in error for error in errors))
 
+    def test_boolean_expected_exit_code_is_flagged(self):
+        broken = copy.deepcopy(self.matrix)
+        broken[1]["positive"][0]["expected_exit_code"] = False
+        errors = integrity_errors(broken, self.acceptance, self.tasks)
+        self.assertTrue(any("AC-002-P1" in error and "expected exit" in error for error in errors))
+
     def test_domains_come_from_tasks(self):
         by_id = {task["id"]: task for task in self.tasks}
         self.assertEqual(by_id["qa"]["acceptance_ids"].__len__(), 52)

@@ -4267,46 +4267,6 @@
       {
         "phase": 5,
         "kind": "e2e",
-        "title": "Change time_increment_choices applies on the next request",
-        "arrange": "Record the process start time. Setting time_increment_choices on the Time and billing tab starts at its inventoried default.",
-        "action": "Change time_increment_choices on its admin tab and issue the next request.",
-        "expect": [
-          "The new value of time_increment_choices is in effect.",
-          "The audit row for time_increment_choices has the old value and the new value.",
-          "The process start time is unchanged."
-        ],
-        "evidence": [
-          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
-        ],
-        "status": "pending",
-        "mocks_accepted": false,
-        "id": "AC-029-P2-time_increment_choices",
-        "criterion": "AC-029",
-        "polarity": "positive",
-        "expected_exit_code": 0
-      },
-      {
-        "phase": 5,
-        "kind": "e2e",
-        "title": "Reset time_increment_choices to its default",
-        "arrange": "time_increment_choices on the Time and billing tab has been changed away from its inventoried default.",
-        "action": "Press Reset to default on time_increment_choices and issue the next request.",
-        "expect": [
-          "time_increment_choices is back to its inventoried default: 1, 6, 10 or 15 minutes."
-        ],
-        "evidence": [
-          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
-        ],
-        "status": "pending",
-        "mocks_accepted": false,
-        "id": "AC-029-P3-time_increment_choices",
-        "criterion": "AC-029",
-        "polarity": "positive",
-        "expected_exit_code": 0
-      },
-      {
-        "phase": 5,
-        "kind": "e2e",
         "title": "Change expense_markup applies on the next request",
         "arrange": "Record the process start time. Setting expense_markup on the Time and billing tab starts at its inventoried default.",
         "action": "Change expense_markup on its admin tab and issue the next request.",
@@ -7943,44 +7903,6 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-029-F3-time_increment",
-        "criterion": "AC-029",
-        "polarity": "failure",
-        "expected_exit_code": 0
-      },
-      {
-        "phase": 5,
-        "kind": "e2e",
-        "title": "Change to time_increment_choices requires a restart",
-        "arrange": "time_increment_choices on the Time and billing tab was changed.",
-        "action": "Issue the next request without a restart.",
-        "expect": [
-          "time_increment_choices still at its previous value fails the criterion."
-        ],
-        "evidence": [
-          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
-        ],
-        "status": "pending",
-        "mocks_accepted": false,
-        "id": "AC-029-F2-time_increment_choices",
-        "criterion": "AC-029",
-        "polarity": "failure",
-        "expected_exit_code": 0
-      },
-      {
-        "phase": 5,
-        "kind": "e2e",
-        "title": "Reset leaves time_increment_choices changed",
-        "arrange": "time_increment_choices was changed away from its inventoried default.",
-        "action": "Reset time_increment_choices and read it.",
-        "expect": [
-          "A value of time_increment_choices other than 1, 6, 10 or 15 minutes fails the criterion."
-        ],
-        "evidence": [
-          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
-        ],
-        "status": "pending",
-        "mocks_accepted": false,
-        "id": "AC-029-F3-time_increment_choices",
         "criterion": "AC-029",
         "polarity": "failure",
         "expected_exit_code": 0

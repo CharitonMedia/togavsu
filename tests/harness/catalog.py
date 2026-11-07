@@ -110,7 +110,9 @@ def inventory_errors(matrix: list[dict]) -> list[str]:
             for got_case, want_case in zip(got_cases, want_cases):
                 if got_case.get("polarity") != want_case.get("polarity"):
                     errors.append(f"{got_case.get('id')} polarity does not match the canonical inventory")
-                if got_case.get("expected_exit_code") != want_case.get("expected_exit_code"):
+                got_exit = got_case.get("expected_exit_code")
+                want_exit = want_case.get("expected_exit_code")
+                if type(got_exit) is not int or got_exit != want_exit:
                     errors.append(f"{got_case.get('id')} expected_exit_code does not match the canonical inventory")
     if len(seen_cases) != len(set(seen_cases)):
         errors.append("duplicate case ids")
@@ -149,7 +151,7 @@ def integrity_errors(matrix: list[dict], acceptance: list[dict], tasks: list[dic
                 errors.append(f"{case['id']} phase is outside the criterion")
             if case["kind"] not in CASE_KINDS:
                 errors.append(f"{case['id']} has an unknown kind")
-            if not isinstance(case.get("expected_exit_code"), int):
+            if type(case.get("expected_exit_code")) is not int:
                 errors.append(f"{case['id']} has no expected exit code")
             for field in ("title", "arrange", "action"):
                 if not str(case.get(field, "")).strip():

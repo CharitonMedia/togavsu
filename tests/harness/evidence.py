@@ -23,6 +23,13 @@ def _nonempty(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
 
 
+def _real_exit_code(value):
+    """bool is an int subclass, and False == 0. Only a real int counts."""
+    if type(value) is int:
+        return value
+    return None
+
+
 def decide(case: dict, evidence: dict | None, standins: frozenset[str], denylist_ok: bool = True) -> dict:
     if not evidence:
         return {"status": "pending", "accepted": False, "reason": "no product evidence"}
@@ -49,8 +56,8 @@ def decide(case: dict, evidence: dict | None, standins: frozenset[str], denylist
             "accepted": False,
             "reason": "a structural stand-in hash is not product evidence",
         }
-    exit_code = evidence.get("exit_code")
-    if not _nonempty(evidence.get("command")) or not _nonempty(evidence.get("observation")) or not isinstance(exit_code, int):
+    exit_code = _real_exit_code(evidence.get("exit_code"))
+    if not _nonempty(evidence.get("command")) or not _nonempty(evidence.get("observation")) or exit_code is None:
         return {
             "status": "refused",
             "accepted": False,
@@ -86,7 +93,7 @@ def docker_desktop_ok(attestation: dict | None) -> bool:
         and attestation.get("outcome") == "passed"
         and attestation.get("mocked") is not True
         and not _uses_double(attestation)
-        and attestation.get("exit_code") == 0
+        and _real_exit_code(attestation.get("exit_code")) == 0
         and _nonempty(attestation.get("command"))
         and _nonempty(attestation.get("observation"))
     )

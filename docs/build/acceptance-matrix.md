@@ -38,7 +38,7 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-026 | 3 | 7 | integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
 | AC-027 | 4 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-028 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions | 6 | pending |
-| AC-029 | 5 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 371 | pending |
+| AC-029 | 5 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 367 | pending |
 | AC-030 | 7 | none | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
 | AC-031 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 3 | pending |
 | AC-032 | 7 | none | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
@@ -2426,30 +2426,6 @@ Expect: time_increment is back to its inventoried default: 6 minutes.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
-#### AC-029-P2-time_increment_choices Change time_increment_choices applies on the next request
-
-Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
-
-Arrange: Record the process start time. Setting time_increment_choices on the Time and billing tab starts at its inventoried default.
-
-Action: Change time_increment_choices on its admin tab and issue the next request.
-
-Expect: The new value of time_increment_choices is in effect.; The audit row for time_increment_choices has the old value and the new value.; The process start time is unchanged.
-
-Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
-
-#### AC-029-P3-time_increment_choices Reset time_increment_choices to its default
-
-Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
-
-Arrange: time_increment_choices on the Time and billing tab has been changed away from its inventoried default.
-
-Action: Press Reset to default on time_increment_choices and issue the next request.
-
-Expect: time_increment_choices is back to its inventoried default: 1, 6, 10 or 15 minutes.
-
-Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
-
 #### AC-029-P2-expense_markup Change expense_markup applies on the next request
 
 Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
@@ -4645,30 +4621,6 @@ Arrange: time_increment was changed away from its inventoried default.
 Action: Reset time_increment and read it.
 
 Expect: A value of time_increment other than 6 minutes fails the criterion.
-
-Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
-
-#### AC-029-F2-time_increment_choices Change to time_increment_choices requires a restart
-
-Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
-
-Arrange: time_increment_choices on the Time and billing tab was changed.
-
-Action: Issue the next request without a restart.
-
-Expect: time_increment_choices still at its previous value fails the criterion.
-
-Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
-
-#### AC-029-F3-time_increment_choices Reset leaves time_increment_choices changed
-
-Phase 5. Kind: e2e. Status: pending. Expected exit code: 0.
-
-Arrange: time_increment_choices was changed away from its inventoried default.
-
-Action: Reset time_increment_choices and read it.
-
-Expect: A value of time_increment_choices other than 1, 6, 10 or 15 minutes fails the criterion.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 

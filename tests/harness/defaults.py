@@ -21,7 +21,7 @@ DEFAULTS = (
     {"key": "case_number_pattern", "value": "Missouri docket numbers", "tab": "Practice", "setting": True, "anchor": "default Missouri docket numbers"},
     {"key": "conflict_score_floor", "value": "60 out of 100", "tab": "Practice", "setting": True, "anchor": "default 60 out of 100"},
     {"key": "time_increment", "value": "6 minutes", "tab": "Time and billing", "setting": True, "anchor": "default 6 minutes"},
-    {"key": "time_increment_choices", "value": "1, 6, 10 or 15 minutes", "tab": "Time and billing", "setting": True, "anchor": "The admin can set 1, 6, 10 or 15 minutes."},
+    {"key": "time_increment_choices", "value": "1, 6, 10, 15", "tab": "Time and billing", "setting": False, "validates": "time_increment", "allowed": [1, 6, 10, 15], "anchor": "The admin can set 1, 6, 10 or 15 minutes."},
     {"key": "expense_markup", "value": "0 percent", "tab": "Time and billing", "setting": True, "anchor": "default 0 percent"},
     {"key": "payment_terms", "value": "due in 30 days", "tab": "Time and billing", "setting": True, "anchor": "default due in 30 days"},
     {"key": "grace_period", "value": "15 days", "tab": "Time and billing", "setting": True, "anchor": "grace period (default 15 days)"},

@@ -1,11 +1,38 @@
 """Synthetic Doc Tender corpus, including the four legacy failure slots."""
 
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 
-from harness.corpus import LEGACY_IDS, PHOTO_PAGES, build_files, pdf_page_numbers, png_color_count, render_page_png, write_corpus
+from harness.corpus import (
+    LEGACY_IDS,
+    PHOTO_PAGES,
+    build_files,
+    pdf_drawing_streams,
+    pdf_image_rasters,
+    pdf_page_numbers,
+    png_color_count,
+    render_page_png,
+    render_scan_raster,
+    scan_page_label,
+    write_corpus,
+)
 from harness.policy import byte_errors, contact_errors
+
+
+def _ocr_raster(raw: bytes, width: int, height: int) -> str:
+    tesseract = shutil.which("tesseract")
+    if not tesseract:
+        raise AssertionError("tesseract is not installed; scanned page labels were not sampled")
+    from PIL import Image
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "page.png"
+        Image.frombytes("L", (width, height), raw).save(path)
+        text = subprocess.check_output([tesseract, str(path), "stdout", "--psm", "7"], text=True)
+    return " ".join(text.split())
 
 
 class CorpusTests(unittest.TestCase):
@@ -25,8 +52,23 @@ class CorpusTests(unittest.TestCase):
         self.assertEqual(item["inject_failure_at_page"], 49)
         self.assertEqual(item["resume_at_page"], 49)
         self.assertFalse(item["text_layer"])
-        self.assertNotIn(b"BT ", payload)
+        self.assertNotIn(b"/Font", payload)
+        drawings = pdf_drawing_streams(payload)
+        self.assertEqual(len(drawings), 120)
+        self.assertTrue(all(b"BT" not in stream and b"Tj" not in stream for stream in drawings))
+        rasters = pdf_image_rasters(payload)
+        self.assertEqual(len(rasters), 120)
+        self.assertEqual(len(set(rasters)), 120)
+        width, height, _raw = render_scan_raster(scan_page_label(1))
+        for page in (1, 49, 120):
+            label = scan_page_label(page)
+            _w, _h, expected = render_scan_raster(label)
+            self.assertEqual(rasters[page - 1], expected)
+            self.assertGreater(len(set(rasters[page - 1])), 1)
+            self.assertIn(label, _ocr_raster(rasters[page - 1], width, height))
+        self.assertNotEqual(rasters[0], bytes([80]) * 64)
         self.assertTrue(item["product_ready"])
+        self.assertTrue(item["acceptance_evidence"])
 
     def test_merged_then_split_expects_three_and_five_not_four_and_four(self):
         self.assertEqual(self.manifest["expected_groups"], [

@@ -140,9 +140,42 @@ PHOTO_PAGES = (
 )
 
 
+def scan_page_label(page: int) -> str:
+    return f"SCAN {page:03d}"
+
+
+def _scan_font_path() -> str:
+    candidates = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    )
+    for candidate in candidates:
+        if Path(candidate).is_file():
+            return candidate
+    raise FileNotFoundError(
+        "scanned-page raster needs DejaVu Sans or Liberation Sans; a solid image is not acceptance evidence"
+    )
+
+
+def render_scan_raster(label: str) -> tuple[int, int, bytes]:
+    """Grayscale page image. The glyphs are the only place the page number lives."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    font = ImageFont.truetype(_scan_font_path(), 64)
+    image = Image.new("L", (560, 160), 255)
+    ImageDraw.Draw(image).text((24, 40), label, fill=0, font=font)
+    width, height = image.size
+    raw = image.tobytes()
+    if len(set(raw)) < 2:
+        raise RuntimeError(f"{label} raster is a solid block")
+    return width, height, raw
+
+
 def _pdf(labels: list[str], mode: str, encrypt_standin: bool = False) -> bytes:
     if mode not in {"text", "image"}:
         raise ValueError(mode)
+    if mode == "image":
+        return _image_pdf(labels, encrypt_standin=encrypt_standin)
     n = len(labels)
     font_obj = 3
     next_id = 4
@@ -154,13 +187,9 @@ def _pdf(labels: list[str], mode: str, encrypt_standin: bool = False) -> bytes:
         next_id += 2
         kids.append(page_id)
         marker = f"/TogavsuSyntheticPage {index}".encode()
-        if mode == "text":
-            shown = f"SYNTHETIC PAGE {index} {label}".encode()
-            stream = b"BT /F1 12 Tf 72 720 Td (" + shown + b") Tj ET"
-            resources = f"<< /Font << /F1 {font_obj} 0 R >> >>".encode()
-        else:
-            stream = b"q 612 0 0 792 0 0 cm /Im0 Do Q"
-            resources = f"<< /XObject << /Im0 {font_obj} 0 R >> >>".encode()
+        shown = f"SYNTHETIC PAGE {index} {label}".encode()
+        stream = b"BT /F1 12 Tf 72 720 Td (" + shown + b") Tj ET"
+        resources = f"<< /Font << /F1 {font_obj} 0 R >> >>".encode()
         content = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
         page = (
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents "
@@ -176,16 +205,7 @@ def _pdf(labels: list[str], mode: str, encrypt_standin: bool = False) -> bytes:
     kids_text = " ".join(f"{kid} 0 R" for kid in kids)
     catalog = b"<< /Type /Catalog /Pages 2 0 R >>"
     pages = f"<< /Type /Pages /Kids [{kids_text}] /Count {n} >>".encode()
-    if mode == "text":
-        shared = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
-    else:
-        raw = bytes([80]) * 64
-        shared = (
-            b"<< /Type /XObject /Subtype /Image /Width 8 /Height 8 "
-            b"/ColorSpace /DeviceGray /BitsPerComponent 8 /Length 64 >>\nstream\n"
-            + raw
-            + b"\nendstream"
-        )
+    shared = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
     ordered = [catalog, pages, shared, *page_parts]
     encrypt_id = None
     if encrypt_standin:
@@ -217,6 +237,133 @@ def _pdf(labels: list[str], mode: str, encrypt_standin: bool = False) -> bytes:
     out += trailer.encode()
     out += f"startxref\n{xref_at}\n%%EOF\n".encode()
     return bytes(out)
+
+
+def _image_pdf(labels: list[str], encrypt_standin: bool = False) -> bytes:
+    """One flate grayscale image per page. No text operators and no shared solid tile."""
+    page_bits = []
+    for label in labels:
+        width, height, raw = render_scan_raster(label)
+        page_bits.append((width, height, zlib.compress(raw), raw))
+    # 1 catalog, 2 pages, then image, content, page dict for each page.
+    next_id = 3
+    kids = []
+    objects = [b"", b""]
+    for index, (width, height, compressed, _raw) in enumerate(page_bits, start=1):
+        image_id = next_id
+        content_id = next_id + 1
+        page_id = next_id + 2
+        next_id += 3
+        kids.append(page_id)
+        image = (
+            f"<< /Type /XObject /Subtype /Image /Width {width} /Height {height} "
+            f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
+            f"/Length {len(compressed)} >>\nstream\n".encode()
+            + compressed
+            + b"\nendstream"
+        )
+        stream = f"q {width} 0 0 {height} 0 0 cm /Im0 Do Q".encode()
+        content = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+        page = (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+            + str(width).encode()
+            + b" "
+            + str(height).encode()
+            + b"] /Contents "
+            + str(content_id).encode()
+            + b" 0 R /Resources << /XObject << /Im0 "
+            + str(image_id).encode()
+            + b" 0 R >> >> /TogavsuSyntheticPage "
+            + str(index).encode()
+            + b" >>"
+        )
+        objects.extend((image, content, page))
+    kids_text = " ".join(f"{kid} 0 R" for kid in kids)
+    objects[0] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    objects[1] = f"<< /Type /Pages /Kids [{kids_text}] /Count {len(labels)} >>".encode()
+    if encrypt_standin:
+        objects.append(
+            b"<< /Filter /Standard /V 1 /R 2 /P -4 /O <"
+            + b"00" * 32
+            + b"> /U <"
+            + b"11" * 32
+            + b"> >>"
+        )
+        encrypt_id = len(objects)
+    else:
+        encrypt_id = None
+    return _pack_pdf(objects, encrypt_id)
+
+
+def _pack_pdf(objects: list[bytes], encrypt_id: int | None) -> bytes:
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{number} 0 obj\n".encode()
+        out += body
+        out += b"\nendobj\n"
+    xref_at = len(out)
+    size = len(objects) + 1
+    out += f"xref\n0 {size}\n".encode()
+    out += b"0000000000 65535 f \n"
+    for offset in offsets[1:]:
+        out += f"{offset:010d} 00000 n \n".encode()
+    trailer = f"trailer\n<< /Size {size} /Root 1 0 R"
+    if encrypt_id is not None:
+        trailer += f" /Encrypt {encrypt_id} 0 R"
+    trailer += " >>\n"
+    out += trailer.encode()
+    out += f"startxref\n{xref_at}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+def _xref_object_offsets(payload: bytes) -> list[int]:
+    start = payload.rfind(b"startxref\n")
+    xref_at = int(payload[start + len(b"startxref\n"):].split()[0])
+    line_end = payload.find(b"\n", xref_at)
+    count_end = payload.find(b"\n", line_end + 1)
+    count = int(payload[line_end + 1:count_end].split()[1])
+    offsets = []
+    cursor = count_end + 1
+    for _ in range(count):
+        offsets.append(int(payload[cursor:cursor + 10]))
+        cursor += 20
+    return offsets[1:]
+
+
+def _iter_streams(payload: bytes):
+    """Yield (header, data) from xref offsets so compressed bytes are not rescanned."""
+    marker = b"stream\n"
+    for offset in _xref_object_offsets(payload):
+        body = payload.find(b"\n", offset) + 1
+        stream_at = payload.find(marker, body)
+        endobj = payload.find(b"endobj", body)
+        if stream_at < 0 or endobj < stream_at:
+            continue
+        header = payload[body:stream_at]
+        length_at = header.rfind(b"/Length ")
+        if length_at < 0:
+            continue
+        length = int(header[length_at + len(b"/Length "):].split()[0])
+        data = payload[stream_at + len(marker):stream_at + len(marker) + length]
+        yield header, data
+
+
+def pdf_image_rasters(payload: bytes) -> list[bytes]:
+    """Decompressed grayscale samples, in page order."""
+    samples = []
+    for header, data in _iter_streams(payload):
+        if b"/Subtype /Image" not in header:
+            continue
+        if b"/FlateDecode" in header:
+            data = zlib.decompress(data)
+        samples.append(data)
+    return samples
+
+
+def pdf_drawing_streams(payload: bytes) -> list[bytes]:
+    return [data for header, data in _iter_streams(payload) if data.startswith(b"q ")]
 
 
 def pdf_page_numbers(payload: bytes) -> list[int]:
@@ -328,7 +475,7 @@ def build_files() -> tuple[dict, dict[str, bytes]]:
         item.update(meta)
         entries.append(item)
 
-    scanned = _pdf([f"SCAN {index}" for index in range(1, 121)], mode="image")
+    scanned = _pdf([scan_page_label(index) for index in range(1, 121)], mode="image")
     add(
         "legacy/scanned-120.pdf",
         scanned,

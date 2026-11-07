@@ -125,6 +125,35 @@ class EvidenceTests(unittest.TestCase):
         loud["exit_code"] = 1
         self.assertTrue(decide(validator, loud, self.standins)["accepted"])
 
+    def test_boolean_exit_codes_are_not_integers(self):
+        success = self._case("AC-002-P1")
+        self.assertEqual(success["expected_exit_code"], 0)
+        fake_zero = _evidence("passed")
+        fake_zero["exit_code"] = False
+        decision = decide(success, fake_zero, self.standins)
+        self.assertEqual(decision["status"], "refused")
+        self.assertFalse(decision["accepted"])
+        failure = self._case("AC-030-P1")
+        self.assertEqual(failure["expected_exit_code"], 1)
+        fake_one = _evidence("passed")
+        fake_one["exit_code"] = True
+        decision = decide(failure, fake_one, self.standins)
+        self.assertEqual(decision["status"], "refused")
+        self.assertFalse(decision["accepted"])
+        attestation = {
+            "kind": "clean_install",
+            "host": "docker_desktop",
+            "outcome": "passed",
+            "command": "docker compose up",
+            "exit_code": False,
+            "observation": "first-run form",
+        }
+        self.assertFalse(docker_desktop_ok(attestation))
+        report = summarize(self.matrix, self._filled(), attestation, self.standins)
+        self.assertFalse(report["app_complete"])
+        attestation["exit_code"] = True
+        self.assertFalse(docker_desktop_ok(attestation))
+
     def test_empty_command_and_observation_are_refused(self):
         for field, value in (("command", ""), ("command", "   "), ("observation", ""), ("observation", "\n")):
             item = _evidence("passed")

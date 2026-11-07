@@ -28,6 +28,10 @@ class InventoryTests(unittest.TestCase):
         for item in DEFAULTS:
             if item["setting"]:
                 self.assertTrue(item["tab"], item["key"])
+            elif item.get("validates"):
+                self.assertEqual(item["key"], "time_increment_choices")
+                self.assertEqual(item["validates"], "time_increment")
+                self.assertEqual(item["allowed"], [1, 6, 10, 15])
             else:
                 self.assertIn(item["key"], {
                     "trust_ledger_append_only",
@@ -37,6 +41,19 @@ class InventoryTests(unittest.TestCase):
                     "s3_and_dropbox_encryption_always_on",
                     "labeling_categorizing_no_local_endpoint",
                 })
+
+    def test_time_increment_choices_are_not_a_separate_setting(self):
+        choices = next(item for item in DEFAULTS if item["key"] == "time_increment_choices")
+        self.assertFalse(choices["setting"])
+        increment = next(item for item in setting_defaults() if item["key"] == "time_increment")
+        self.assertEqual(increment["value"], "6 minutes")
+        self.assertNotIn("time_increment_choices", {item["key"] for item in setting_defaults()})
+        criterion = next(item for item in build_matrix() if item["id"] == "AC-029")
+        case_ids = [case["id"] for case in criterion["positive"] + criterion["failure"]]
+        self.assertTrue(any(case_id.startswith("AC-029-P2-time_increment") and not case_id.startswith("AC-029-P2-time_increment_choices") for case_id in case_ids))
+        self.assertIn("AC-029-P2-time_increment", case_ids)
+        self.assertIn("AC-029-P3-time_increment", case_ids)
+        self.assertFalse(any("time_increment_choices" in case_id for case_id in case_ids))
 
     def test_prd_categories_and_conditional_ai_defaults_are_required(self):
         rows = prd_category_rows(self.prd)
