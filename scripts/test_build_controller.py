@@ -1,4 +1,5 @@
 import copy
+import datetime as dt
 import io
 import json
 from pathlib import Path
@@ -237,6 +238,24 @@ class ControllerTests(unittest.TestCase):
         self.remote.changed_files = lambda n: [{"filename": "other.py", "previous_filename": "scripts/build_controller.py"}]
         self.process()
         self.assertTrue(self.record["halted"])
+
+    def test_missing_required_ci_is_sent_back_after_grace(self):
+        spec = dict(SPEC, required_checks=["Core tests"])
+        self.record["check_wait"] = {"head": HEAD, "since": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=16)).isoformat()}
+        self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_stalled_ci_does_not_silently_wait_forever(self):
+        self.remote.check_rows["Codex checkpoint"]["status"] = "in_progress"
+        self.record["check_wait"] = {"head": HEAD, "since": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=91)).isoformat()}
+        self.process()
+        self.assertIn("90 minutes", self.record["halted"])
+
+    def test_missing_phase_report_is_a_bounded_correction(self):
+        spec = dict(SPEC, report_path="docs/build/reports/one.json")
+        self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertNotIn("completed", self.record)
 
 
 class ReviewDataTests(unittest.TestCase):

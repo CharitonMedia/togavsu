@@ -318,8 +318,19 @@ class Controller:
         required = REQUIRED | set(spec.get("required_checks", []))
         if not required <= checks.keys() or any(c["status"] != "completed" for c in checks.values()):
             record["waiting"] = "Checks pending for " + head
+            if record.get("check_wait", {}).get("head") != head:
+                record["check_wait"] = {"head": head, "since": now()}
+            elapsed = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(record["check_wait"]["since"])).total_seconds()
+            missing = sorted(required - checks.keys())
+            if missing and elapsed > 900 and checks and all(c["status"] == "completed" for c in checks.values()):
+                self.followup(task, record, snapshot, "missing-checks:" + head,
+                    "Your PR is missing required executable CI jobs: " + ", ".join(missing) + ". Wire the actual tests into CI, "
+                    "run them and push on the same branch. Do not add placeholder success jobs or weaken required checks.")
+            elif elapsed > 5400:
+                self.halt(task, record, "Required CI missing or stalled for 90 minutes; no merge or duplicate job launch")
             return False
         record.pop("waiting", None)
+        record.pop("check_wait", None)
         codex = checks["Codex checkpoint"]
         try:
             report, context = self.remote.review(codex)
@@ -356,13 +367,20 @@ class Controller:
             self.halt(task, record, "Passing review artifact conflicts with failed checkpoint status")
             return False
         if spec.get("report_path"):
-            data = self.remote.gh("contents/" + spec["report_path"] + "?ref=" + head)
-            evidence = json.loads(base64.b64decode(data["content"]))
-            if evidence.get("task_id") != task or evidence.get("status") != "pass" or not evidence.get("tests"):
-                self.halt(task, record, "Integrated acceptance report absent or not passing")
-                return False
-            if any(t.get("exit_code") != 0 or not t.get("command") for t in evidence["tests"]):
-                self.halt(task, record, "Integrated acceptance report contains failed or empty test evidence")
+            try:
+                data = self.remote.gh("contents/" + spec["report_path"] + "?ref=" + head)
+                evidence = json.loads(base64.b64decode(data["content"]))
+                if evidence.get("task_id") != task or evidence.get("status") != "pass" or not evidence.get("tests"):
+                    raise ValueError("Integrated acceptance report absent or not passing")
+                if any(t.get("exit_code") != 0 or not t.get("command") for t in evidence["tests"]):
+                    raise ValueError("Integrated acceptance report contains failed or empty test evidence")
+            except (ValueError, KeyError, TypeError, RuntimeError) as error:
+                if isinstance(error, RuntimeError) and "HTTP 404" not in str(error):
+                    raise  # Transient control failures are not implementation defects.
+                self.followup(task, record, snapshot, "phase-evidence:" + head,
+                    "Your required integration report " + spec["report_path"] + " is invalid: " + str(error) +
+                    ". Complete the assigned integration and actual tests, record honest results and push. "
+                    "Never fabricate acceptance or change a failed result to pass. Report external blockers explicitly.")
                 return False
         # Refresh both PR HEAD and current main immediately before merge. GitHub protection is final authority.
         fresh = self.remote.gh("pulls/" + str(number))
@@ -447,6 +465,7 @@ class Controller:
                     self.state["last_result"] = "Merged " + task + "; re-evaluate next tick"
                     self.save()
                     return
+                record.pop("last_error", None)
             except Exception as error:
                 record["last_error"] = type(error).__name__ + ": " + str(error)[:1800]
                 self.event(task, "Control error; no bypass: " + record["last_error"])
