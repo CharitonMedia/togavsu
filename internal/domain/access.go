@@ -151,8 +151,9 @@ func Decide(p Principal, in AccessInput) Decision {
 		return Decision{Allow: false, Reason: ReasonRole}
 	}
 	if attorneyOnly(in) && !p.HasRole(RoleAdmin) && !p.HasRole(RoleAttorney) {
-		// An attorney-only file is hidden. Redaction is only for a field on a record the caller may otherwise read.
-		if in.Resource == ResFile || in.Action != ActionRead || p.HasRole(RoleClient) {
+		// An attorney-only file is hidden. A client-only principal does not get redacted field access,
+		// but another role that already grants the read keeps that redacted access.
+		if in.Resource == ResFile || in.Action != ActionRead || !redactedFieldRead(p) {
 			return Decision{Allow: false, Reason: ReasonAttorneyOnly}
 		}
 		return Decision{Allow: true, Redact: true, Reason: ReasonAttorneyOnly}
@@ -162,6 +163,17 @@ func Decide(p Principal, in AccessInput) Decision {
 
 func attorneyOnly(in AccessInput) bool {
 	return in.AttorneyOnly || in.Resource == ResConflictReason || in.Resource == ResSensitiveContact
+}
+
+// redactedFieldRead reports whether a non-attorney role grants a redacted read.
+// RoleClient does not, and it does not cancel a role that does.
+func redactedFieldRead(p Principal) bool {
+	for _, role := range p.Roles {
+		if role == RoleStaff {
+			return true
+		}
+	}
+	return false
 }
 
 func clientDenied(p Principal, in AccessInput) bool {

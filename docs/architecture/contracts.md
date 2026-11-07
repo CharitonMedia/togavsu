@@ -20,7 +20,7 @@ Money is `domain.Cents`. IDs are lowercase UUIDv7. Stored timestamps are unix mi
 
 ## Settings
 
-Read and write tunables through `settings.Registry`. `Get` reads the store every time. `Set` validates the range, `Reset` deletes the override, and the value and audit record commit in one transaction. A cancelled context or a failed audit leaves the previous value in place. Secret values are AES-256-GCM sealed when the store is wrapped with `settings.NewSealingStore`, and the audit record stores `[redacted]`. A non-secret value is stored as written, including text that begins with the seal prefix.
+Read and write tunables through `settings.Registry`. `Set` and `Reset` take a `domain.Principal`. The audit row stores that caller's roles, source, and any token or module id. `Get` reads the store every time. The value and audit record commit in one transaction. A cancelled context or a failed audit leaves the previous value in place. Secret values are AES-256-GCM sealed when the store is wrapped with `settings.NewSealingStore`, and the audit record stores `[redacted]`. A non-secret value is stored as written, including text that begins with the seal prefix.
 
 The only environment variables are `TOGAVSU_DATABASE_URL`, `TOGAVSU_ENCRYPTION_KEY` (standard base64 of 32 bytes), `TOGAVSU_DOMAIN`, and `TOGAVSU_SUPERVISOR_SECRET`. `internal/bootstrap` is the only package that may call `os.Getenv`.
 

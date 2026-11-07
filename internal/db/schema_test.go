@@ -90,6 +90,10 @@ func applyEmbedded(t *testing.T, db *sql.DB) {
 	}
 }
 
+func actor() domain.Principal {
+	return domain.Principal{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
+}
+
 func TestSchemaContract(t *testing.T) {
 	sqlText, err := SchemaSQL()
 	if err != nil {
@@ -206,19 +210,97 @@ func TestMigrationRunner(t *testing.T) {
 	if err := Apply(ctx, db, ApplySpec{Owner: "mod_clock", Dialect: "postgres", Migrations: other}); err != nil {
 		t.Fatal(err)
 	}
-	bad := []Migration{{Version: 3, SQL: "CREATE TABLE kept (id TEXT); INSERT INTO missing_table (id) VALUES ('x');"}}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: bad}); err == nil {
-		t.Fatal("bad migration succeeded")
+	dup := []Migration{{Version: 4, SQL: "SELECT 1"}, {Version: 4, SQL: "SELECT 1"}}
+	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: dup}); !errors.Is(err, ErrVersion) {
+		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = 3`).Scan(&n); err != nil || n != 0 {
+}
+
+func TestMigrationRollback(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	bad := []Migration{{Version: 11, SQL: "CREATE TABLE kept (id TEXT); INSERT INTO missing_table (id) VALUES ('x');"}}
+	err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: bad})
+	if err == nil || !strings.Contains(err.Error(), "missing_table") {
+		t.Fatalf("expected the missing_table statement to fail, got %v", err)
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE version = 11`).Scan(&n); err != nil || n != 0 {
 		t.Fatal("failed migration recorded", n, err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'kept'`).Scan(&n); err != nil || n != 0 {
 		t.Fatal("failed migration left a table", n, err)
 	}
-	dup := []Migration{{Version: 4, SQL: "SELECT 1"}, {Version: 4, SQL: "SELECT 1"}}
-	if err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: dup}); !errors.Is(err, ErrVersion) {
+}
+
+func TestMigrationSearchPathFailureAndBorrower(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	migrationAfterSearchPath = func(context.Context, *sql.Conn) error {
+		return errors.New("prepare failed")
+	}
+	t.Cleanup(func() { migrationAfterSearchPath = nil })
+	err := Apply(ctx, db, ApplySpec{Owner: CoreOwner, Schema: "core", Dialect: "postgres", Migrations: []Migration{{Version: 1, SQL: "SELECT 1"}}})
+	if err == nil || !strings.Contains(err.Error(), "prepare failed") {
 		t.Fatal(err)
+	}
+	assertDefaultSearchPath(t, db)
+
+	holder, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	if _, err := holder.ExecContext(ctx, `SELECT pg_advisory_lock(424242)`); err != nil {
+		t.Fatal(err)
+	}
+	defer holder.ExecContext(context.Background(), `SELECT pg_advisory_unlock(424242)`)
+	started := make(chan struct{})
+	migrationAfterSearchPath = func(context.Context, *sql.Conn) error {
+		close(started)
+		return nil
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- Apply(ctx, db, ApplySpec{
+			Owner: CoreOwner, Schema: "core", Dialect: "postgres",
+			Migrations: []Migration{{Version: 1, SQL: "SELECT pg_advisory_xact_lock(424242); CREATE TABLE borrowed_ok (id INT);"}},
+		})
+	}()
+	<-started
+	assertDefaultSearchPath(t, db)
+	if _, err := holder.ExecContext(ctx, `SELECT pg_advisory_unlock(424242)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	migrationAfterSearchPath = nil
+	assertDefaultSearchPath(t, db)
+}
+
+func assertDefaultSearchPath(t *testing.T, db *sql.DB) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var sp string
+		if err := conn.QueryRowContext(ctx, `SHOW search_path`).Scan(&sp); err != nil {
+			conn.Close()
+			t.Fatal(err)
+		}
+		var one int
+		if err := conn.QueryRowContext(ctx, `SELECT 1`).Scan(&one); err != nil || one != 1 {
+			conn.Close()
+			t.Fatal(err, one)
+		}
+		conn.Close()
+		if sp == "core" || strings.HasPrefix(sp, "core,") || strings.HasPrefix(sp, "core ") {
+			t.Fatalf("borrowed connection %d has search_path %q", i, sp)
+		}
 	}
 }
 
@@ -381,14 +463,14 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	if err != nil || got != "YYYY-NNNN" {
 		t.Fatal(got, err)
 	}
-	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "10", domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "10", actor()); err != nil {
 		t.Fatal(err)
 	}
 	got, err = reg.Get(ctx, "billing.time_increment_minutes")
 	if err != nil || got != "10" {
 		t.Fatal(got, err)
 	}
-	if _, err := reg.Reset(ctx, "billing.time_increment_minutes", domain.SystemUserID); err != nil {
+	if _, err := reg.Reset(ctx, "billing.time_increment_minutes", actor()); err != nil {
 		t.Fatal(err)
 	}
 	got, err = reg.Get(ctx, "billing.time_increment_minutes")
@@ -407,7 +489,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := secretReg.Set(ctx, "mail.smtp_password", "stored-secret", domain.SystemUserID); err != nil {
+	if _, err := secretReg.Set(ctx, "mail.smtp_password", "stored-secret", actor()); err != nil {
 		t.Fatal(err)
 	}
 	var raw string
@@ -429,7 +511,7 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := regFail.Set(ctx, "search.min_chars", "4", domain.SystemUserID); err == nil {
+	if _, err := regFail.Set(ctx, "search.min_chars", "4", actor()); err == nil {
 		t.Fatal("failed audit committed a setting")
 	}
 	got, err = reg.Get(ctx, "search.min_chars")
@@ -438,6 +520,20 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	}
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity_id = 'search.min_chars'`).Scan(&audits); err != nil || audits != 0 {
 		t.Fatal(audits, err)
+	}
+	who := domain.Principal{
+		UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin, domain.RoleAttorney},
+		Source: domain.SourceAPIToken, TokenID: "tok-1", ModuleID: "matter-clock",
+	}
+	if _, err := reg.Set(ctx, "notes.page_size", "30", who); err != nil {
+		t.Fatal(err)
+	}
+	var role, source, reason string
+	if err := db.QueryRowContext(ctx, `SELECT role, source, reason FROM audit_log WHERE entity_id = 'notes.page_size'`).Scan(&role, &source, &reason); err != nil {
+		t.Fatal(err)
+	}
+	if role != "admin,attorney" || source != "api_token" || !strings.Contains(reason, "token=tok-1") || !strings.Contains(reason, "module=matter-clock") {
+		t.Fatalf("role=%q source=%q reason=%q", role, source, reason)
 	}
 }
 
@@ -466,13 +562,13 @@ func TestPostgresSettingsInterleaved(t *testing.T) {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := regA.Set(ctx, "notes.page_size", "50", domain.SystemUserID)
+		_, err := regA.Set(ctx, "notes.page_size", "50", actor())
 		errCh <- err
 	}()
 	<-entered
 	done := make(chan error, 1)
 	go func() {
-		_, err := regB.Set(ctx, "notes.page_size", "40", domain.SystemUserID)
+		_, err := regB.Set(ctx, "notes.page_size", "40", actor())
 		done <- err
 	}()
 	close(release)

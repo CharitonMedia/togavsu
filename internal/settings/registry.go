@@ -74,11 +74,16 @@ type Definition struct {
 }
 
 // Change is the audit record for one update or reset. Secret values are redacted.
+// Role, Source, TokenID, and ModuleID are the caller's provenance, not a fixed system actor.
 type Change struct {
 	Key      string
 	Old      string
 	New      string
 	Actor    domain.ID
+	Role     string
+	Source   domain.ActorSource
+	TokenID  domain.ID
+	ModuleID string
 	At       time.Time
 	Redacted bool
 }
@@ -198,12 +203,13 @@ func (r *Registry) List(ctx context.Context) ([]Entry, error) {
 }
 
 // Set validates and stores a value, then audits the old and new values.
-func (r *Registry) Set(ctx context.Context, key, value string, actor domain.ID) (Change, error) {
+// who supplies the actor id, roles, and source written to the audit log.
+func (r *Registry) Set(ctx context.Context, key, value string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
 		return Change{}, err
 	}
-	if actor.IsZero() {
+	if who.UserID.IsZero() {
 		return Change{}, ErrActor
 	}
 	if def.Locked && value != def.Default {
@@ -212,16 +218,16 @@ func (r *Registry) Set(ctx context.Context, key, value string, actor domain.ID) 
 	if err := validate(def, value); err != nil {
 		return Change{}, err
 	}
-	return r.persist(ctx, def, value, actor)
+	return r.persist(ctx, def, value, who)
 }
 
 // Reset restores the default and audits the change.
-func (r *Registry) Reset(ctx context.Context, key string, actor domain.ID) (Change, error) {
+func (r *Registry) Reset(ctx context.Context, key string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
 		return Change{}, err
 	}
-	return r.Set(ctx, key, def.Default, actor)
+	return r.Set(ctx, key, def.Default, who)
 }
 
 func (r *Registry) definition(key string) (Definition, error) {
@@ -243,7 +249,7 @@ func (r *Registry) current(ctx context.Context, def Definition) (string, error) 
 	return value, nil
 }
 
-func (r *Registry) persist(ctx context.Context, def Definition, value string, actor domain.ID) (Change, error) {
+func (r *Registry) persist(ctx context.Context, def Definition, value string, who domain.Principal) (Change, error) {
 	var change Change
 	err := r.store.Transact(ctx, func(tx Store) error {
 		if err := ctx.Err(); err != nil {
@@ -258,7 +264,10 @@ func (r *Registry) persist(ctx context.Context, def Definition, value string, ac
 			current = prev
 		}
 		at := r.now().UTC()
-		change = Change{Key: def.Key, Actor: actor, At: at, Redacted: def.Secret}
+		change = Change{
+			Key: def.Key, Actor: who.UserID, Role: formatRoles(who.Roles), Source: who.Source,
+			TokenID: who.TokenID, ModuleID: who.ModuleID, At: at, Redacted: def.Secret,
+		}
 		change.Old = display(def, current)
 		change.New = display(def, value)
 		if value == current {
@@ -268,7 +277,7 @@ func (r *Registry) persist(ctx context.Context, def Definition, value string, ac
 			if err := tx.Delete(ctx, def.Key); err != nil {
 				return err
 			}
-		} else if err := tx.Put(ctx, def.Key, value, at, actor); err != nil {
+		} else if err := tx.Put(ctx, def.Key, value, at, who.UserID); err != nil {
 			return err
 		}
 		if logger, ok := tx.(ChangeLogger); ok {
@@ -285,6 +294,17 @@ func (r *Registry) persist(ctx context.Context, def Definition, value string, ac
 		return Change{}, err
 	}
 	return change, nil
+}
+
+func formatRoles(roles []domain.Role) string {
+	if len(roles) == 0 {
+		return ""
+	}
+	parts := make([]string, len(roles))
+	for i, role := range roles {
+		parts[i] = string(role)
+	}
+	return strings.Join(parts, ",")
 }
 
 func display(def Definition, value string) string {

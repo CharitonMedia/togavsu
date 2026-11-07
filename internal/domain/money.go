@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -60,12 +61,32 @@ func ParseCents(s string) (Cents, error) {
 	if err != nil {
 		return 0, err
 	}
-	if w > (1<<62)/100 {
+	return combineCents(w, f, sign < 0)
+}
+
+func combineCents(whole, frac int64, neg bool) (Cents, error) {
+	if frac < 0 || frac > 99 {
+		return 0, ErrMoney
+	}
+	const boundary = math.MaxInt64 / 100 // 92233720368547758
+	if whole > boundary {
 		return 0, ErrOverflow
 	}
-	total := w*100 + f
-	if sign < 0 {
-		total = -total
+	if whole == boundary {
+		if neg {
+			if frac > 8 {
+				return 0, ErrOverflow
+			}
+			if frac == 8 {
+				return Cents(math.MinInt64), nil
+			}
+		} else if frac > math.MaxInt64%100 {
+			return 0, ErrOverflow
+		}
+	}
+	total := whole*100 + frac
+	if neg {
+		return Cents(-total), nil
 	}
 	return Cents(total), nil
 }
@@ -73,6 +94,9 @@ func ParseCents(s string) (Cents, error) {
 // String renders the amount with a sign and two decimal places.
 func (c Cents) String() string {
 	v := int64(c)
+	if v == math.MinInt64 {
+		return "-92233720368547758.08"
+	}
 	sign := ""
 	if v < 0 {
 		sign = "-"
@@ -88,6 +112,12 @@ func (c Cents) Add(o Cents) (Cents, error) {
 
 // Sub returns the difference or ErrOverflow.
 func (c Cents) Sub(o Cents) (Cents, error) {
+	if o == math.MinInt64 {
+		if c == math.MinInt64 {
+			return 0, nil
+		}
+		return 0, ErrOverflow
+	}
 	return addCents(c, -o)
 }
 
@@ -115,7 +145,7 @@ func parsePositive(s string) (int64, error) {
 	var n int64
 	for _, r := range s {
 		d := int64(r - '0')
-		if n > (1<<62)/10 {
+		if n > (math.MaxInt64-d)/10 {
 			return 0, ErrOverflow
 		}
 		n = n*10 + d

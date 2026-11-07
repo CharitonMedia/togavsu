@@ -163,9 +163,16 @@ func (t *settingsTx) LogChange(ctx context.Context, change settings.Change) erro
 		return err
 	}
 	micros := domain.UnixMicroUTC(change.At)
+	reason := "settings update"
+	if change.TokenID != "" {
+		reason += " token=" + string(change.TokenID)
+	}
+	if change.ModuleID != "" {
+		reason += " module=" + change.ModuleID
+	}
 	_, err = t.tx.ExecContext(ctx, Rebind(`INSERT INTO audit_log (
 		id, created_at, updated_at, created_by, actor_id, role, source, entity, entity_id, field, old_value, new_value, reason
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, t.dialect),
-		string(id), micros, micros, string(change.Actor), string(change.Actor), "", "system", "setting", change.Key, "value", change.Old, change.New, "settings update")
+		string(id), micros, micros, string(change.Actor), string(change.Actor), change.Role, string(change.Source), "setting", change.Key, "value", change.Old, change.New, reason)
 	return err
 }

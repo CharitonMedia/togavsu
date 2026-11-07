@@ -108,6 +108,32 @@ func TestCents(t *testing.T) {
 	if err != nil || diff != -150 {
 		t.Fatal(diff, err)
 	}
+	max := Cents(math.MaxInt64)
+	min := Cents(math.MinInt64)
+	if max.String() != "92233720368547758.07" || min.String() != "-92233720368547758.08" {
+		t.Fatal(max.String(), min.String())
+	}
+	parsed, err := ParseCents(max.String())
+	if err != nil || parsed != max {
+		t.Fatal(parsed, err)
+	}
+	parsed, err = ParseCents(min.String())
+	if err != nil || parsed != min {
+		t.Fatal(parsed, err)
+	}
+	if _, err := ParseCents("92233720368547758.08"); err != ErrOverflow {
+		t.Fatal(err)
+	}
+	if _, err := Cents(0).Sub(min); err != ErrOverflow {
+		t.Fatal(err)
+	}
+	got, err := min.Sub(min)
+	if err != nil || got != 0 {
+		t.Fatal(got, err)
+	}
+	if _, err := min.Add(-1); err != ErrOverflow {
+		t.Fatal(err)
+	}
 }
 
 func TestTimeAndPhone(t *testing.T) {

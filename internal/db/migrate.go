@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -160,40 +161,27 @@ func Apply(ctx context.Context, db *sql.DB, spec ApplySpec) error {
 		return err
 	}
 	store := &ledgerStore{owner: spec.Owner, dialect: spec.Dialect, checksums: sums}
-	// Goose checks pending migrations on a pool connection before it locks the migration
-	// session. Keep the pool to one connection so that check and the migration share the
-	// schema selection, then put the connection back with the default search_path.
-	prevOpen := db.Stats().MaxOpenConnections
-	db.SetMaxOpenConns(1)
-	defer func() {
-		if prevOpen <= 0 {
-			db.SetMaxOpenConns(0)
-		} else {
-			db.SetMaxOpenConns(prevOpen)
-		}
-	}()
-	if err := prepareMigrationConn(ctx, db, spec, store); err != nil {
-		return err
-	}
-	defer resetMigrationConn(db, spec.Schema)
-	provider, err := goose.NewProvider("", db, files,
-		goose.WithStore(store),
-		goose.WithSessionLocker(schemaSession{schema: spec.Schema}),
-		goose.WithDisableGlobalRegistry(true),
-	)
-	if err != nil {
-		return err
-	}
-	_, err = provider.Up(ctx)
-	return err
+	return migrateOnHeldConn(ctx, db, spec, store, files)
 }
 
-func prepareMigrationConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore) error {
+// migrationAfterSearchPath, when set, runs after search_path changes and before goose.
+// Tests use it to force a preparation failure. Production leaves it nil.
+var migrationAfterSearchPath func(context.Context, *sql.Conn) error
+
+// migrateOnHeldConn checks one connection out of the caller's pool and does not put it
+// back until search_path has been restored, including when preparation fails.
+func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore, files fs.FS) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	changed := false
+	defer func() {
+		if changed {
+			_, _ = conn.ExecContext(context.Background(), "RESET search_path")
+		}
+	}()
 	if spec.Schema != "" {
 		if _, err := conn.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+spec.Schema); err != nil {
 			return err
@@ -201,15 +189,44 @@ func prepareMigrationConn(ctx context.Context, db *sql.DB, spec ApplySpec, store
 		if _, err := conn.ExecContext(ctx, "SET search_path TO "+spec.Schema); err != nil {
 			return err
 		}
+		changed = true
+		if migrationAfterSearchPath != nil {
+			if err := migrationAfterSearchPath(ctx, conn); err != nil {
+				return err
+			}
+		}
 	}
-	exists, err := store.TableExists(ctx, conn)
-	if err != nil {
+	return conn.Raw(func(raw any) error {
+		dc, ok := raw.(driver.Conn)
+		if !ok {
+			return fmt.Errorf("db: driver connection is %T", raw)
+		}
+		private := sql.OpenDB(&heldConnector{conn: dc})
+		private.SetMaxOpenConns(1)
+		private.SetMaxIdleConns(1)
+		defer private.Close()
+		if err := ensureLedger(ctx, private, store); err != nil {
+			return err
+		}
+		provider, err := goose.NewProvider("", private, files,
+			goose.WithStore(store),
+			goose.WithSessionLocker(schemaSession{schema: spec.Schema}),
+			goose.WithDisableGlobalRegistry(true),
+		)
+		if err != nil {
+			return err
+		}
+		_, err = provider.Up(ctx)
+		return err
+	})
+}
+
+func ensureLedger(ctx context.Context, db *sql.DB, store *ledgerStore) error {
+	exists, err := store.TableExists(ctx, db)
+	if err != nil || exists {
 		return err
 	}
-	if exists {
-		return nil
-	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -223,17 +240,73 @@ func prepareMigrationConn(ctx context.Context, db *sql.DB, spec ApplySpec, store
 	return tx.Commit()
 }
 
-func resetMigrationConn(db *sql.DB, schema string) {
-	if schema == "" {
-		return
+// heldConnector serves one already checked-out driver connection to a private pool.
+type heldConnector struct {
+	conn driver.Conn
+}
+
+func (c *heldConnector) Connect(context.Context) (driver.Conn, error) {
+	return &heldConn{raw: c.conn}, nil
+}
+
+func (c *heldConnector) Driver() driver.Driver { return heldDriver{} }
+
+type heldDriver struct{}
+
+func (heldDriver) Open(string) (driver.Conn, error) {
+	return nil, errors.New("db: migration driver is not opened by name")
+}
+
+// heldConn delegates to the checked-out session and refuses to close it.
+// Close is a no-op so the private pool cannot return the session to the caller early.
+type heldConn struct {
+	raw driver.Conn
+}
+
+func (h *heldConn) Prepare(query string) (driver.Stmt, error) { return h.raw.Prepare(query) }
+func (h *heldConn) Begin() (driver.Tx, error)                 { return h.raw.Begin() }
+func (h *heldConn) Close() error                              { return nil }
+
+func (h *heldConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	if p, ok := h.raw.(driver.ConnPrepareContext); ok {
+		return p.PrepareContext(ctx, query)
 	}
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return
+	return h.raw.Prepare(query)
+}
+
+func (h *heldConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
+	if b, ok := h.raw.(driver.ConnBeginTx); ok {
+		return b.BeginTx(ctx, opts)
 	}
-	defer conn.Close()
-	_, _ = conn.ExecContext(ctx, "RESET search_path")
+	return h.raw.Begin()
+}
+
+func (h *heldConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	if e, ok := h.raw.(driver.ExecerContext); ok {
+		return e.ExecContext(ctx, query, args)
+	}
+	return nil, driver.ErrSkip
+}
+
+func (h *heldConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+	if q, ok := h.raw.(driver.QueryerContext); ok {
+		return q.QueryContext(ctx, query, args)
+	}
+	return nil, driver.ErrSkip
+}
+
+func (h *heldConn) Ping(ctx context.Context) error {
+	if p, ok := h.raw.(driver.Pinger); ok {
+		return p.Ping(ctx)
+	}
+	return nil
+}
+
+func (h *heldConn) CheckNamedValue(v *driver.NamedValue) error {
+	if c, ok := h.raw.(driver.NamedValueChecker); ok {
+		return c.CheckNamedValue(v)
+	}
+	return driver.ErrSkip
 }
 
 func gooseFS(ms []Migration) (fs.FS, map[int64]string, error) {

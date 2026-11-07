@@ -21,12 +21,12 @@ This package layout is the shared Go contract for later waves. It is not the fin
 - UUIDv7, integer cents, UTC time, and E.164 phones, including rejected values.
 - Role and matter-wall decisions, including accountant reads, staff trust deposits, and walled matters.
 - Settings changes apply on the next read, out-of-range values are rejected, reset restores the default, and secret values are redacted in the audit record and encrypted at rest.
-- The source check rejects environment reads outside `internal/bootstrap` and named tunables outside the registry. `go test ./internal/settings/` passes on this tree.
-- Migration order, checksum refusal, rollback of a failed migration, and a second owner at the same version, executed on Postgres 17.
-- A migration that sets `search_path` does not leave that path on other pooled connections.
+- The source check rejects environment reads outside `internal/bootstrap`, including aliased `os` and `time` imports, and it rejects hard-coded registry numbers outside the default declarations.
+- Database tests open PostgreSQL 17 with pgx. They are not a SQLite suite. The command log for a revision belongs in that revision's pull request, not in this file.
+- Goose applies each migration on one checked-out connection. `search_path` is restored before that connection returns to the pool, including when preparation fails.
 - After the synthetic seed, every section 5 table has a row. Reference data alone leaves first-run setup incomplete.
 
-The SQL stays free of Postgres-only features so a later SQLite dialect can reuse it. These tests do not claim that dialect exists.
+The SQL stays free of Postgres-only features so a later SQLite dialect can reuse it. These tests do not claim that dialect exists. Product acceptance remains pending.
 
 ## Pending
 

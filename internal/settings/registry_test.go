@@ -11,6 +11,10 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
+func actor() domain.Principal {
+	return domain.Principal{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
+}
+
 func TestRegistrySetResetAndReload(t *testing.T) {
 	ctx := context.Background()
 	mem := settings.NewMemory()
@@ -24,19 +28,19 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "no.such", "1", domain.SystemUserID); !errors.Is(err, settings.ErrUnknown) {
+	if _, err := reg.Set(ctx, "no.such", "1", actor()); !errors.Is(err, settings.ErrUnknown) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "5", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "5", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "1", domain.ID("")); !errors.Is(err, settings.ErrActor) {
+	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "1", domain.Principal{}); !errors.Is(err, settings.ErrActor) {
 		t.Fatal(err)
 	}
 	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "6" {
 		t.Fatalf("unchanged %s %v", got, err)
 	}
-	change, err := reg.Set(ctx, "billing.time_increment_minutes", "1", domain.SystemUserID)
+	change, err := reg.Set(ctx, "billing.time_increment_minutes", "1", actor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +50,7 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	if got, err := other.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "1" {
 		t.Fatalf("next reader got %s %v", got, err)
 	}
-	if _, err := reg.Reset(ctx, "billing.time_increment_minutes", domain.SystemUserID); err != nil {
+	if _, err := reg.Reset(ctx, "billing.time_increment_minutes", actor()); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "6" {
@@ -55,38 +59,38 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	if _, ok, err := mem.Get(ctx, "billing.time_increment_minutes"); err != nil || ok {
 		t.Fatal("reset left an override", ok, err)
 	}
-	if _, err := reg.Set(ctx, "security.totp_required.admin", "false", domain.SystemUserID); !errors.Is(err, settings.ErrReadOnly) {
+	if _, err := reg.Set(ctx, "security.totp_required.admin", "false", actor()); !errors.Is(err, settings.ErrReadOnly) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "files.encrypt_s3", "false", domain.SystemUserID); !errors.Is(err, settings.ErrReadOnly) {
+	if _, err := reg.Set(ctx, "files.encrypt_s3", "false", actor()); !errors.Is(err, settings.ErrReadOnly) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "doctender.naming_pattern", "<status>.<ext>", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "doctender.naming_pattern", "<status>.<ext>", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "doctender.naming_pattern", "<clientlast>-<what-it-is>.<ext>", domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "doctender.naming_pattern", "<clientlast>-<what-it-is>.<ext>", actor()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "doctender.review_confidence", "1.5", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "doctender.review_confidence", "1.5", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "practice.conflict_score_minimum", "101", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "practice.conflict_score_minimum", "101", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "home.max_saved_layouts", "0", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "home.max_saved_layouts", "0", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "trust.reconciliation_reminder_day", "29", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "trust.reconciliation_reminder_day", "29", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "firm.time_zone", "Not/AZone", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "firm.time_zone", "Not/AZone", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := reg.Set(ctx, "firm.phone", "555", domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+	if _, err := reg.Set(ctx, "firm.phone", "555", actor()); !errors.Is(err, settings.ErrInvalid) {
 		t.Fatal(err)
 	}
 	for _, bad := range []string{"NaN", "nan", "+Inf", "-Inf", "Inf"} {
-		if _, err := reg.Set(ctx, "doctender.review_confidence", bad, domain.SystemUserID); !errors.Is(err, settings.ErrInvalid) {
+		if _, err := reg.Set(ctx, "doctender.review_confidence", bad, actor()); !errors.Is(err, settings.ErrInvalid) {
 			t.Fatalf("%s accepted: %v", bad, err)
 		}
 	}
@@ -109,7 +113,7 @@ func TestRegistryAtomicAudit(t *testing.T) {
 	}
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := regA.Set(ctx, "billing.time_increment_minutes", "10", domain.SystemUserID)
+		_, err := regA.Set(ctx, "billing.time_increment_minutes", "10", actor())
 		errCh <- err
 	}()
 	<-entered
@@ -121,7 +125,7 @@ func TestRegistryAtomicAudit(t *testing.T) {
 	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "6" {
 		t.Fatalf("failed write visible: %s %v", got, err)
 	}
-	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "15", domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "billing.time_increment_minutes", "15", actor()); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := reg.Get(ctx, "billing.time_increment_minutes"); err != nil || got != "15" {
@@ -139,7 +143,7 @@ func TestRegistryCancelBeforeCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = reg.Set(ctx, "billing.time_increment_minutes", "10", domain.SystemUserID)
+	_, err = reg.Set(ctx, "billing.time_increment_minutes", "10", actor())
 	if !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
@@ -186,7 +190,7 @@ func TestSecretAuditAndList(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "smtp-password-value"
-	change, err := reg.Set(ctx, "mail.smtp_password", secret, domain.SystemUserID)
+	change, err := reg.Set(ctx, "mail.smtp_password", secret, actor())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +219,7 @@ func TestSecretAuditAndList(t *testing.T) {
 		}
 	}
 	audit.fail = true
-	if _, err := reg.Set(ctx, "mail.smtp_password", "next-secret", domain.SystemUserID); err == nil {
+	if _, err := reg.Set(ctx, "mail.smtp_password", "next-secret", actor()); err == nil {
 		t.Fatal("audit failure stored")
 	}
 	got, err = reg.Get(ctx, "mail.smtp_password")
@@ -244,7 +248,7 @@ func TestSealingStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "live-api-key"
-	if _, err := reg.Set(ctx, "mail.smtp_password", secret, domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "mail.smtp_password", secret, actor()); err != nil {
 		t.Fatal(err)
 	}
 	raw, ok, err := sealed.Raw(ctx, "mail.smtp_password")
@@ -256,7 +260,7 @@ func TestSealingStore(t *testing.T) {
 		t.Fatal(got, err)
 	}
 	const literal = "enc:v1:example"
-	if _, err := reg.Set(ctx, "llms.firm_paragraph", literal, domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "llms.firm_paragraph", literal, actor()); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := reg.Get(ctx, "llms.firm_paragraph"); err != nil || got != literal {
@@ -271,10 +275,10 @@ func TestSealingStore(t *testing.T) {
 			t.Fatal(entry.Value)
 		}
 	}
-	if _, err := reg.Set(ctx, "llms.firm_paragraph", "firm text", domain.SystemUserID); err != nil {
+	if _, err := reg.Set(ctx, "llms.firm_paragraph", "firm text", actor()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.Reset(ctx, "llms.firm_paragraph", domain.SystemUserID); err != nil {
+	if _, err := reg.Reset(ctx, "llms.firm_paragraph", actor()); err != nil {
 		t.Fatal(err)
 	}
 	wrong, err := settings.NewSealingStore(mem, bytesKey(9), secretKey)
