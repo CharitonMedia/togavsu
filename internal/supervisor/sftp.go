@@ -113,17 +113,27 @@ func (s *SFTPDestination) Delete(ctx context.Context, name string) error {
 	return err
 }
 
-// remoteObjectAbsent is true only for a missing owned object. Permission and
-// network failures stay errors so a retry is not reported as finished.
+// remoteObjectAbsent is true only for a missing owned object. OpenSSH's sftp
+// client reports that as "no such file", `Can't ls: "…" not found`, or
+// `File "…" not found.` Permission and network failures stay errors.
 func remoteObjectAbsent(err error) bool {
 	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, os.ErrNotExist) {
 		return true
 	}
 	msg := strings.ToLower(err.Error())
-	if strings.Contains(msg, "permission denied") || strings.Contains(msg, "connection refused") || strings.Contains(msg, "network is unreachable") || strings.Contains(msg, "timed out") || strings.Contains(msg, "timeout") {
+	if strings.Contains(msg, "permission denied") || strings.Contains(msg, "connection refused") || strings.Contains(msg, "network is unreachable") || strings.Contains(msg, "no route to host") || strings.Contains(msg, "connection reset") || strings.Contains(msg, "timed out") || strings.Contains(msg, "timeout") || strings.Contains(msg, "host not found") || strings.Contains(msg, "not known") {
 		return false
 	}
-	return strings.Contains(msg, "no such file")
+	if strings.Contains(msg, "no such file") {
+		return true
+	}
+	if strings.Contains(msg, "can't ls:") && strings.Contains(msg, "not found") {
+		return true
+	}
+	if strings.Contains(msg, "file \"") && strings.Contains(msg, "not found") {
+		return true
+	}
+	return false
 }
 
 func (s *SFTPDestination) List(ctx context.Context) ([]RemoteObject, error) {

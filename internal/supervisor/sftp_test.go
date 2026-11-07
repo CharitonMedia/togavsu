@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -295,6 +299,180 @@ func TestSFTPDeleteConfirmsAbsenceAndRetriesAfterRestart(t *testing.T) {
 	if owned, err := restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
 		t.Fatalf("receipt remained: %+v %v", owned, err)
 	}
+}
+
+func TestOpenSSHMissingDiagnostics(t *testing.T) {
+	if remoteObjectAbsent(fmt.Errorf("sftp: Can't ls: \"/backups/nsowned01\" not found")) != true {
+		t.Fatal("ls not found was not absence")
+	}
+	if remoteObjectAbsent(fmt.Errorf("sftp: File \"/backups/nsowned01/a.tgbk\" not found.")) != true {
+		t.Fatal("get not found was not absence")
+	}
+	if remoteObjectAbsent(fmt.Errorf("sftp: Couldn't stat remote file: No such file or directory")) != true {
+		t.Fatal("no such file was not absence")
+	}
+	if remoteObjectAbsent(fmt.Errorf("sftp: Permission denied")) {
+		t.Fatal("permission was treated as absence")
+	}
+	if remoteObjectAbsent(fmt.Errorf("ssh: connect to host files.example port 22: Connection refused")) {
+		t.Fatal("connection refused was treated as absence")
+	}
+	if remoteObjectAbsent(fmt.Errorf("ssh: Could not resolve hostname files.example: Name or service not known")) {
+		t.Fatal("name lookup was treated as absence")
+	}
+}
+
+func TestOpenSSHNamespaceFirstUseAndStoreDelete(t *testing.T) {
+	if _, err := os.Stat("/usr/sbin/sshd"); err != nil {
+		t.Fatal("real sshd is required")
+	}
+	if _, err := exec.LookPath("sftp"); err != nil {
+		t.Fatal("real sftp client is required")
+	}
+	dest, root := startRealSFTP(t)
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec := dest.Spec
+	spec.RetentionDays = 30
+	if _, err := s.Book.Put(spec); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 || specs[0].Namespace == "" {
+		t.Fatal(specs, err)
+	}
+	dest.Spec.Namespace = specs[0].Namespace
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		copy := *dest
+		copy.Spec = got
+		return &copy, nil
+	}
+	other := filepath.Join(root, "other-firm.tgbk")
+	write := exec.Command("sudo", "tee", other)
+	write.Stdin = strings.NewReader("other-firm")
+	if out, err := write.CombinedOutput(); err != nil {
+		t.Fatalf("other firm file: %v %s", err, out)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("%+v %v", meta.DestinationErrors, err)
+	}
+	nsDir := filepath.Join(root, specs[0].Namespace)
+	if _, err := os.Stat(filepath.Join(nsDir, meta.ID+".tgbk")); err != nil {
+		t.Fatalf("first use did not publish the archive: %v", err)
+	}
+	if err := s.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(nsDir, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("archive remained after confirmed absence: %v", err)
+	}
+	if _, err := s.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("local metadata remained: %v", err)
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Fatalf("other firm file removed: %v", err)
+	}
+	if _, err := dest.Get(context.Background(), meta.ID+".tgbk"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("real client did not confirm absence: %v", err)
+	}
+}
+
+func startRealSFTP(t *testing.T) (*SFTPDestination, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	host := filepath.Join(dir, "host")
+	id := filepath.Join(dir, "id")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-f", host, "-N", "").CombinedOutput(); err != nil {
+		t.Fatalf("host key: %v %s", err, out)
+	}
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-f", id, "-N", "").CombinedOutput(); err != nil {
+		t.Fatalf("user key: %v %s", err, out)
+	}
+	if err := os.Chmod(id+".pub", 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := "togavsu-sftp-test"
+	home := filepath.Join(dir, "home")
+	root := filepath.Join(home, "backups")
+	_ = exec.Command("sudo", "userdel", user).Run()
+	if out, err := exec.Command("sudo", "useradd", "-M", "-d", home, "-s", "/bin/sh", user).CombinedOutput(); err != nil {
+		t.Fatalf("useradd: %v %s", err, out)
+	}
+	t.Cleanup(func() { _ = exec.Command("sudo", "userdel", user).Run() })
+	if out, err := exec.Command("sudo", "usermod", "-p", "*", "-d", home, "-s", "/bin/sh", user).CombinedOutput(); err != nil {
+		t.Fatalf("usermod: %v %s", err, out)
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("sudo", "chown", "-R", user+":"+user, home).CombinedOutput(); err != nil {
+		t.Fatalf("chown: %v %s", err, out)
+	}
+	t.Cleanup(func() {
+		_ = exec.Command("sudo", "chown", "-R", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), dir).Run()
+	})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	pidFile := filepath.Join(dir, "sshd.pid")
+	cfg := filepath.Join(dir, "sshd_config")
+	text := fmt.Sprintf("Port %d\nListenAddress 127.0.0.1\nHostKey %s\nPidFile %s\nAuthorizedKeysFile %s\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nUsePAM no\nPubkeyAuthentication yes\nStrictModes no\nSubsystem sftp internal-sftp\nAllowUsers %s\nPrintMotd no\nX11Forwarding no\nAllowTcpForwarding no\n", port, host, pidFile, id+".pub", user)
+	if err := os.WriteFile(cfg, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(dir, "sshd.log")
+	cmd := exec.Command("sudo", "/usr/sbin/sshd", "-f", cfg, "-E", logPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		log, _ := os.ReadFile(logPath)
+		t.Fatalf("sshd: %v %s %s", err, out, log)
+	}
+	t.Cleanup(func() {
+		pid, err := os.ReadFile(pidFile)
+		if err == nil {
+			_ = exec.Command("sudo", "kill", strings.TrimSpace(string(pid))).Run()
+		}
+	})
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 100*time.Millisecond)
+		if err == nil {
+			c.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	scan := exec.Command("ssh-keyscan", "-p", strconv.Itoa(port), "-t", "ed25519", "127.0.0.1")
+	known, err := scan.Output()
+	if err != nil || len(known) == 0 {
+		t.Fatalf("keyscan: %v %q", err, known)
+	}
+	knownPath := filepath.Join(dir, "known")
+	if err := os.WriteFile(knownPath, known, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	probe := exec.Command("sftp", "-b", "-", "-i", id, "-P", strconv.Itoa(port), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile="+knownPath, "--", user+"@127.0.0.1")
+	probe.Stdin = strings.NewReader("bye\n")
+	if out, err := probe.CombinedOutput(); err != nil {
+		log, _ := exec.Command("sudo", "cat", logPath).CombinedOutput()
+		t.Fatalf("probe: %v %s\nsshd: %s", err, out, log)
+	}
+	return &SFTPDestination{
+		Command: "sftp",
+		Spec: DestinationSpec{
+			ID: "share", Kind: "sftp", Host: "127.0.0.1", User: user, Port: port,
+			IdentityFile: id, KnownHosts: knownPath, RemotePath: root,
+		},
+	}, root
 }
 
 func TestSFTPHostileArgumentsDoNotStart(t *testing.T) {

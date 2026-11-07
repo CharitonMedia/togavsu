@@ -12,7 +12,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -236,6 +238,170 @@ func TestS3ObjectKeyPreservesRawPrefix(t *testing.T) {
 
 // sigV4Signature is an independent HMAC-SHA256 SigV4 implementation.
 // It does not call signS3, canonicalPath, or awsEscape.
+func TestLateS3PutKeepsOwnershipUntilTheBytesAreGone(t *testing.T) {
+	old := uncertainSettleWindow
+	uncertainSettleWindow = 400 * time.Millisecond
+	t.Cleanup(func() { uncertainSettleWindow = old })
+	var mu sync.Mutex
+	stored := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+	var puts int
+	hold := make(chan struct{})
+	gotBody := make(chan struct{})
+	committed := make(chan struct{})
+	var bodyOnce sync.Once
+	var commitOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(hold) }) }
+	t.Cleanup(release)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			puts++
+			mu.Unlock()
+			bodyOnce.Do(func() { close(gotBody) })
+			<-hold
+			mu.Lock()
+			stored[r.URL.Path] = body
+			mu.Unlock()
+			commitOnce.Do(func() { close(committed) })
+			w.WriteHeader(http.StatusOK)
+		case http.MethodGet:
+			mu.Lock()
+			body, ok := stored[r.URL.Path]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(body)
+		case http.MethodDelete:
+			mu.Lock()
+			delete(stored, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	clock := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	s := testStore(t)
+	s.Now = func() time.Time { return clock }
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{
+			Spec: spec,
+			HTTP: &http.Client{Timeout: 200 * time.Millisecond},
+			Now:  func() time.Time { return clock },
+		}, nil
+	}
+	type result struct {
+		meta BackupMeta
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		meta, err := s.Create(context.Background(), reasonManual)
+		done <- result{meta, err}
+	}()
+	select {
+	case <-gotBody:
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not accept the upload")
+	}
+	var created result
+	select {
+	case created = <-done:
+		if created.err != nil || len(created.meta.DestinationErrors) != 1 || !strings.Contains(created.meta.DestinationErrors[0], "uncertain") {
+			t.Fatalf("%+v %v", created.meta.DestinationErrors, created.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("upload wait did not end while the parent context was live")
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain {
+		t.Fatalf("tombstone = %+v %v", owned, err)
+	}
+	ops := &Operations{Store: s, Gate: &Gate{}, Passphrase: func() (string, error) { return s.Passphrase, nil }}
+	req := httptest.NewRequest(http.MethodDelete, "/v1/backups/"+created.meta.ID, nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	NewMux("secret", ops, nil).ServeHTTP(rec, req)
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("delete reported success before the upload could publish")
+	}
+	if kept, err := s.lookup(created.meta.ID); err != nil || !kept.Deleting {
+		t.Fatalf("deleting record = %+v %v", kept, err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 1 {
+		t.Fatalf("ownership removed while the upload could still publish: %+v %v", owned, err)
+	}
+	release()
+	select {
+	case <-committed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("late upload did not commit")
+	}
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 {
+		t.Fatal(specs, err)
+	}
+	dest, err := s.openDest(specs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	_, late := stored["/backups/"+specs[0].Namespace+"/"+created.meta.ID+".tgbk"]
+	other := string(stored["/backups/other-firm/keep"])
+	putCount := puts
+	mu.Unlock()
+	if late {
+		t.Fatal("late archive was left in place")
+	}
+	if other != "keep" {
+		t.Fatalf("other firm data = %q", other)
+	}
+	if putCount != 1 {
+		t.Fatalf("uploads = %d", putCount)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 1 {
+		t.Fatalf("tombstone dropped before the settle window: %+v %v", owned, err)
+	}
+	clock = clock.Add(uncertainWindow() + time.Second)
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("tombstone remained after the upload settled absent: %+v %v", owned, err)
+	}
+	rec = httptest.NewRecorder()
+	NewMux("secret", ops, nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("settled delete status %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := s.lookup(created.meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("local archive remained: %v", err)
+	}
+	mu.Lock()
+	putCount = puts
+	other = string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if putCount != 1 || other != "keep" {
+		t.Fatalf("puts %d other %q", putCount, other)
+	}
+}
+
 func sigV4Signature(canonical, secret, amz, region, service string) string {
 	date := amz[:8]
 	scope := date + "/" + region + "/" + service + "/aws4_request"

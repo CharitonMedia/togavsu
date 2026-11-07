@@ -67,7 +67,7 @@ func (s *S3Destination) Put(ctx context.Context, name string, r io.Reader, sha s
 		}
 		res, err := s.do(ctx, http.MethodPut, key, nil, seeker, sha)
 		if err != nil {
-			return err
+			return uncertainMutation(err)
 		}
 		res.Body.Close()
 		return nil
@@ -83,10 +83,17 @@ func (s *S3Destination) Put(ctx context.Context, name string, r io.Reader, sha s
 	}
 	res, err := s.do(ctx, http.MethodPut, key, nil, bytes.NewReader(body), got)
 	if err != nil {
-		return err
+		return uncertainMutation(err)
 	}
 	res.Body.Close()
 	return nil
+}
+
+func uncertainMutation(err error) error {
+	if err == nil || !ambiguousRemote(err) {
+		return err
+	}
+	return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
 }
 
 func (s *S3Destination) Get(ctx context.Context, name string) (io.ReadCloser, error) {

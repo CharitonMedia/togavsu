@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -424,7 +425,14 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 		return err
 	}
 	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
+		if ambiguousRemote(err) {
+			_ = receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptUncertain})
+			return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
+		}
 		if uncertainRemote(err, dest.ID(), name) {
+			if errors.Is(err, ErrRemoteUncertain) && !remoteBusy(remoteKey(dest.ID(), name)) {
+				_ = receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptUncertain})
+			}
 			return err
 		}
 		if s.dropRemote(ctx, dest, name) {
@@ -484,7 +492,38 @@ func uncertainJoin(a, b error) error {
 }
 
 func uncertainRemote(err error, destID, name string) bool {
-	return errors.Is(err, ErrRemoteUncertain) || remoteBusy(remoteKey(destID, name))
+	return errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) || remoteBusy(remoteKey(destID, name))
+}
+
+// ambiguousRemote reports a mutating request whose response was lost. The
+// parent context can still be live. A definite HTTP status is not ambiguous.
+func ambiguousRemote(err error) bool {
+	if err == nil || errors.Is(err, ErrRemoteUncertain) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBadRequest) || errors.Is(err, ErrChecksum) {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "timed out"),
+		strings.Contains(msg, "connection reset"), strings.Contains(msg, "broken pipe"),
+		strings.Contains(msg, "unexpected eof"):
+		return true
+	default:
+		return false
+	}
+}
+
+func receiptSettled(obj OwnedObject, now time.Time) bool {
+	if obj.Created.IsZero() {
+		return false
+	}
+	return now.Sub(obj.Created) >= uncertainWindow()
 }
 
 // dropRemote removes one owned name and its partial sibling. It reports
@@ -515,11 +554,11 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 		return err
 	}
 	for _, obj := range owned {
-		if obj.State != receiptPending {
-			continue
-		}
-		if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
-			return err
+		switch obj.State {
+		case receiptPending, receiptUncertain:
+			if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -538,6 +577,9 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	if meta, err := s.lookup(id); err == nil {
 		localSHA = meta.SHA256
 		deleting = meta.Deleting
+	}
+	if obj.State == receiptUncertain {
+		return s.reconcileUncertain(ctx, dest, receipts, obj)
 	}
 	if deleting {
 		if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
@@ -579,6 +621,36 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 		return receipts.Remove(dest.ID(), obj.Name)
 	}
 	return nil
+}
+
+// reconcileUncertain keeps the tombstone while a lost acknowledgment might
+// still publish the object. Absence inside that window is not success.
+// Bytes that show up are deleted once and are not uploaded again.
+func (s *Store) reconcileUncertain(ctx context.Context, dest Destination, receipts *ReceiptBook, obj OwnedObject) error {
+	if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+		return nil
+	}
+	rc, err := dest.Get(ctx, obj.Name)
+	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) {
+		return nil
+	}
+	if err == nil {
+		_ = rc.Close()
+		if s.removeOwnedRemote(ctx, dest, obj.Name) != nil {
+			return nil
+		}
+		if !receiptSettled(obj, s.now()) {
+			return nil
+		}
+		if confirmNameAbsent(ctx, dest, obj.Name) != nil {
+			return nil
+		}
+		return receipts.Remove(dest.ID(), obj.Name)
+	}
+	if !errors.Is(err, ErrNotFound) || !receiptSettled(obj, s.now()) {
+		return nil
+	}
+	return receipts.Remove(dest.ID(), obj.Name)
 }
 
 // Open verifies the sidecar checksum and returns the encrypted bytes.
@@ -703,6 +775,19 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 			failed = append(failed, dest.ID()+": filesystem call still running")
 			continue
 		}
+		if receipts := s.receiptBook(); receipts != nil {
+			owned, rerr := receipts.List(dest.ID())
+			if rerr != nil {
+				return rerr
+			}
+			for _, obj := range owned {
+				if obj.Name == name && obj.State == receiptUncertain && !receiptSettled(obj, s.now()) {
+					_ = s.removeOwnedRemote(ctx, dest, name)
+					failed = append(failed, dest.ID()+": upload outcome is still uncertain")
+					goto nextDest
+				}
+			}
+		}
 		if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
 			failed = append(failed, dest.ID()+": "+err.Error())
 			continue
@@ -710,6 +795,7 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 		if receipts := s.receiptBook(); receipts != nil {
 			_ = receipts.Remove(spec.ID, name)
 		}
+	nextDest:
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%w: %s", ErrDestination, strings.Join(failed, "; "))

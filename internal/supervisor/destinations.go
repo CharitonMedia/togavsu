@@ -727,7 +727,22 @@ func roundTripTest(ctx context.Context, dest Destination) error {
 
 // receiptPending is an ownership record written before bytes can reach the
 // destination. An empty state is a confirmed copy. Older receipts omit it.
-const receiptPending = "pending"
+const (
+	receiptPending   = "pending"
+	receiptUncertain = "uncertain"
+)
+
+// uncertainSettleWindow is how long an ambiguous upload keeps its tombstone
+// after the client stops waiting. Zero uses destinationIOTimeout. A missing
+// read inside the window does not prove the server finished the PUT.
+var uncertainSettleWindow time.Duration
+
+func uncertainWindow() time.Duration {
+	if uncertainSettleWindow > 0 {
+		return uncertainSettleWindow
+	}
+	return destinationIOTimeout
+}
 
 // OwnedObject is one archive this installation stored on a destination.
 // Retention deletes these names only. A matching suffix is not ownership.
