@@ -10,7 +10,13 @@ import (
 	"os/exec"
 	"path"
 	"strings"
+	"syscall"
+	"time"
 )
+
+// sftpPipeWait bounds how long Wait stays on stderr after the destination
+// deadline. OpenSSH sftp starts an ssh child that inherits that pipe.
+const sftpPipeWait = 250 * time.Millisecond
 
 // SFTPDestination copies archives with the OpenSSH sftp client.
 //
@@ -290,6 +296,19 @@ func (s *SFTPDestination) output(ctx context.Context, commands string) (string, 
 		return "", err
 	}
 	cmd := exec.CommandContext(ctx, s.Command, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.WaitDelay = sftpPipeWait
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return os.ErrProcessDone
+		}
+		// The negative pid is the process group created by Setpgid.
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if err == nil || err == syscall.ESRCH {
+			return nil
+		}
+		return err
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

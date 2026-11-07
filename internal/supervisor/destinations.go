@@ -108,6 +108,21 @@ func trackFS(key string, ctx context.Context, fn func() error) error {
 	}
 }
 
+// destinationBusy reports an in-flight filesystem operation for one destination.
+func destinationBusy(destID string) bool {
+	prefix := destID + "\x00"
+	busy := false
+	remoteOps.Range(func(key, _ any) bool {
+		name, ok := key.(string)
+		if ok && strings.HasPrefix(name, prefix) && remoteBusy(name) {
+			busy = true
+			return false
+		}
+		return true
+	})
+	return busy
+}
+
 // remoteBusy reports whether a tracked filesystem operation for key has not
 // finished. A finished operation is dropped from the registry.
 func remoteBusy(key string) bool {
@@ -732,25 +747,23 @@ const (
 	receiptUncertain = "uncertain"
 )
 
-// uncertainSettleWindow is how long an ambiguous upload keeps its tombstone
-// after the client stops waiting. Zero uses destinationIOTimeout. A missing
-// read inside the window does not prove the server finished the PUT.
-var uncertainSettleWindow time.Duration
-
-func uncertainWindow() time.Duration {
-	if uncertainSettleWindow > 0 {
-		return uncertainSettleWindow
-	}
-	return destinationIOTimeout
-}
+// An uncertain receipt is not aged out. A lost PUT that never publishes leaves
+// the tombstone in place so a later copy can still be deleted. That is the
+// limit of what the client can know.
 
 // OwnedObject is one archive this installation stored on a destination.
 // Retention deletes these names only. A matching suffix is not ownership.
+//
+// UncertainAt is when a mutating upload lost its acknowledgment. It is not
+// the backup's Created time. The client deadline does not bound the server,
+// so an uncertain receipt stays until the object is observed and removed.
+// Elapsed wall time is not evidence that the original PUT finished.
 type OwnedObject struct {
 	DestinationID string    `json:"destination_id"`
 	Name          string    `json:"name"`
 	Created       time.Time `json:"created"`
 	State         string    `json:"state,omitempty"`
+	UncertainAt   time.Time `json:"uncertain_at,omitempty"`
 }
 
 // PruneDestination deletes owned archives older than retention. It does not
@@ -765,7 +778,7 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 		if dest.ID() != "" && obj.DestinationID != "" && obj.DestinationID != dest.ID() {
 			continue
 		}
-		if obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
+		if obj.State == receiptUncertain || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
 			continue
 		}
 		when := obj.Created
@@ -906,6 +919,10 @@ func (b *ReceiptBook) write(all []OwnedObject) error {
 // so its storage location cannot be replaced. Retention and credentials
 // can change. The historical path would otherwise be abandoned.
 var errDestinationRelocation = fmt.Errorf("%w: destination location cannot change while copies remain", ErrBadRequest)
+
+// errDestinationRemoval means the specification still names owned copies or
+// an upload. Removing it would let the same id come back at a new location.
+var errDestinationRemoval = fmt.Errorf("%w: destination cannot be removed while copies or an upload remain", ErrBadRequest)
 
 func sameStorage(a, b DestinationSpec) bool {
 	if a.Kind != b.Kind {

@@ -213,7 +213,7 @@ func (h *handlers) deleteDestination(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, ErrNotFound)
 		return
 	}
-	if err := h.ops.Store.Book.Delete(r.PathValue("id")); err != nil {
+	if err := h.ops.Store.DeleteDestination(r.PathValue("id")); err != nil {
 		writeErr(w, err)
 		return
 	}

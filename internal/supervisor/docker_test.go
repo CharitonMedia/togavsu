@@ -9,6 +9,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -386,6 +389,85 @@ func TestStalledMigrationWaitFailsUncertain(t *testing.T) {
 	}
 	if !st.CleanupPending || !errors.Is(err, ErrMigrationUnknown) {
 		t.Fatalf("stalled wait %+v %v", st, err)
+	}
+}
+
+func TestTwoComposeProjectsStaySeparate(t *testing.T) {
+	compose := filepath.Join("..", "..", "compose.yaml")
+	if _, err := os.Stat(compose); err != nil {
+		t.Fatal(err)
+	}
+	for _, project := range []string{"firma", "firmb"} {
+		out, err := exec.Command("sudo", "docker", "compose", "-p", project, "-f", compose, "config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("%s config: %v %s", project, err, out)
+		}
+		text := string(out)
+		for _, want := range []string{
+			"TOGAVSU_DOCKER_NETWORK: " + project + "_default",
+			"TOGAVSU_APPSECRETS_VOLUME: " + project + "_appsecrets",
+			"name: " + project + "_appsecrets",
+			"name: " + project + "_default",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s config missing %s", project, want)
+			}
+		}
+		if strings.Contains(text, "togavsu_default") || strings.Contains(text, "togavsu_appsecrets") {
+			t.Fatalf("%s config still names the default installation:\n%s", project, text)
+		}
+		cfg, err := LoadFrom(func(k string) string {
+			switch k {
+			case "SUPERVISOR_TOKEN":
+				return "token"
+			case "TOGAVSU_DOCKER_NETWORK":
+				return project + "_default"
+			case "TOGAVSU_APPSECRETS_VOLUME":
+				return project + "_appsecrets"
+			default:
+				return ""
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.DockerNetwork != project+"_default" || cfg.AppSecretsVolume != project+"_appsecrets" {
+			t.Fatalf("config %+v", cfg)
+		}
+		if got := CoreBinds(cfg.AppSecretsVolume); len(got) != 1 || got[0] != project+"_appsecrets:/appsecrets" {
+			t.Fatalf("binds %v", got)
+		}
+	}
+	for _, project := range []string{"firma", "firmb"} {
+		_ = exec.Command("sudo", "docker", "rm", "-f", project+"-core").Run()
+		if out, err := exec.Command("sudo", "docker", "network", "create", project+"_default").CombinedOutput(); err != nil && !strings.Contains(string(out), "already exists") {
+			t.Fatalf("network %s: %v %s", project, err, out)
+		}
+		if out, err := exec.Command("sudo", "docker", "volume", "create", project+"_appsecrets").CombinedOutput(); err != nil {
+			t.Fatalf("volume %s: %v %s", project, err, out)
+		}
+		out, err := exec.Command("sudo", "docker", "run", "-d", "--name", project+"-core", "--network", project+"_default", "--label", "togavsu.role=core", "--entrypoint", "/bin/sleep", "caddy:2-alpine", "90").CombinedOutput()
+		if err != nil {
+			t.Fatalf("container %s: %v %s", project, err, out)
+		}
+	}
+	t.Cleanup(func() {
+		for _, project := range []string{"firma", "firmb"} {
+			_ = exec.Command("sudo", "docker", "rm", "-f", project+"-core").Run()
+			_ = exec.Command("sudo", "docker", "network", "rm", project+"_default").Run()
+			_ = exec.Command("sudo", "docker", "volume", "rm", project+"_appsecrets").Run()
+		}
+	})
+	if out, err := exec.Command("sudo", "docker", "stop", "firma-core").CombinedOutput(); err != nil {
+		t.Fatalf("stop firma: %v %s", err, out)
+	}
+	out, err := exec.Command("sudo", "docker", "inspect", "-f", "{{.State.Running}}", "firmb-core").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "true" {
+		t.Fatalf("other firm's core was affected: %v %s", err, out)
+	}
+	out, err = exec.Command("sudo", "docker", "inspect", "-f", "{{.State.Running}}", "firma-core").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "false" {
+		t.Fatalf("this installation's core was not stopped: %v %s", err, out)
 	}
 }
 

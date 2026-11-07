@@ -1793,6 +1793,97 @@ func TestStalledPostgresCleanupStillRestartsWriters(t *testing.T) {
 	}
 }
 
+func TestStalledSSHHandshakeRestartsWriters(t *testing.T) {
+	if _, err := exec.LookPath("sftp"); err != nil {
+		t.Fatal(err)
+	}
+	old := destinationIOTimeout
+	destinationIOTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conns []net.Conn
+	var connMu sync.Mutex
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			connMu.Lock()
+			conns = append(conns, c)
+			connMu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		ln.Close()
+		connMu.Lock()
+		for _, c := range conns {
+			c.Close()
+		}
+		connMu.Unlock()
+	})
+	port := ln.Addr().(*net.TCPAddr).Port
+	dir := t.TempDir()
+	key := filepath.Join(dir, "id")
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-f", key, "-N", "").CombinedOutput(); err != nil {
+		t.Fatalf("key: %v %s", err, out)
+	}
+	known := filepath.Join(dir, "known")
+	if err := os.WriteFile(known, []byte("placeholder\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Book = &DestinationBook{Path: filepath.Join(store.Dir, "destinations.json")}
+	if _, err := store.Book.Put(DestinationSpec{
+		ID: "share", Kind: "sftp", Host: "127.0.0.1", User: "backup", Port: port,
+		IdentityFile: key, KnownHosts: known, RemotePath: "/tmp/backups", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &SFTPDestination{Spec: spec, Command: "sftp"}, nil
+	}
+	var order []string
+	ops := &Operations{
+		Store: store, Gate: &Gate{}, Now: store.Now,
+		RestoreTimeout: 8 * time.Second,
+		Runtime:        &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		Passphrase:     func() (string, error) { return store.Passphrase, nil },
+		ApplyDump: func(context.Context, io.Reader) error {
+			return nil
+		},
+	}
+	start := time.Now()
+	done := make(chan struct{})
+	var rec RestoreRecord
+	var restoreErr error
+	go func() {
+		rec, restoreErr = ops.Restore(context.Background(), meta.ID)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stalled ssh handshake held writers")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("stalled ssh handshake held writers for %s", elapsed)
+	}
+	if restoreErr == nil && rec.Status == "completed" && len(order) == 0 {
+		t.Fatal("restore did not exercise the destination")
+	}
+	if !containsStep(order, "stop:core-1") || !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers were not recovered: %v err %v rec %+v", order, restoreErr, rec)
+	}
+}
+
 func noticeBody(t *testing.T, box *Outbox) string {
 	t.Helper()
 	notes, err := box.List()

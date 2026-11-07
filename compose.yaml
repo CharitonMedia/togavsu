@@ -68,7 +68,8 @@ services:
       CADDY_ADMIN_SOCKET: /run/caddy-admin/admin.sock
       UPSTREAM_FILE: /runtime/upstream
       DOCKER_SOCKET: /var/run/docker.sock
-      TOGAVSU_DOCKER_NETWORK: togavsu_default
+      TOGAVSU_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-togavsu}_default
+      TOGAVSU_APPSECRETS_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_appsecrets
       FIRM_TIMEZONE: UTC
       COSIGN_KEY: /appsecrets/cosign.pub
     volumes:

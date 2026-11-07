@@ -43,11 +43,12 @@ var errDockerNotModified = errors.New("container already running")
 // DockerRuntime talks to the engine over the socket. The core container does
 // not get this client.
 type DockerRuntime struct {
-	Client  *http.Client
-	BaseURL string
-	Network string
-	Env     []string
-	Binds   []string
+	Client           *http.Client
+	BaseURL          string
+	Network          string
+	AppSecretsVolume string
+	Env              []string
+	Binds            []string
 }
 
 // CoreEnv is the environment the Compose core service receives. Replacements
@@ -83,7 +84,7 @@ func (d *DockerRuntime) coreEnv() []string {
 
 func (d *DockerRuntime) coreBinds() []string {
 	if len(d.Binds) == 0 {
-		return CoreBinds("")
+		return CoreBinds(d.AppSecretsVolume)
 	}
 	return d.Binds
 }

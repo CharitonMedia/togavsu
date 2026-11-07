@@ -30,6 +30,7 @@ type Config struct {
 	UpstreamFile       string
 	DockerSocket       string
 	DockerNetwork      string
+	AppSecretsVolume   string
 	FirmTimezone       string
 	ReleaseIndexURL    string
 	CosignBin          string
@@ -55,6 +56,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		CaddyAdminSocket:   envDefault(getenv, "CADDY_ADMIN_SOCKET", "/run/caddy-admin/admin.sock"),
 		DockerSocket:       envDefault(getenv, "DOCKER_SOCKET", "/var/run/docker.sock"),
 		DockerNetwork:      envDefault(getenv, "TOGAVSU_DOCKER_NETWORK", "togavsu_default"),
+		AppSecretsVolume:   envDefault(getenv, "TOGAVSU_APPSECRETS_VOLUME", "togavsu_appsecrets"),
 		FirmTimezone:       envDefault(getenv, "FIRM_TIMEZONE", "UTC"),
 		ReleaseIndexURL:    getenv("TOGAVSU_RELEASE_INDEX"),
 		CosignBin:          envDefault(getenv, "COSIGN_BIN", "cosign"),

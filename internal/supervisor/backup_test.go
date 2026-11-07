@@ -1301,6 +1301,130 @@ func (p putCount) Put(ctx context.Context, name string, r io.Reader, sha string)
 	return p.Destination.Put(ctx, name, r, sha)
 }
 
+func TestDeleteSkipsUnreceiptedDestinations(t *testing.T) {
+	s := testStore(t)
+	root := filepath.Join(t.TempDir(), "owned")
+	otherRoot := filepath.Join(t.TempDir(), "unreceipted")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "owned", Kind: "path", Path: root, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("%+v %v", meta.DestinationErrors, err)
+	}
+	var contacted int
+	prev := s.OpenDestination
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		if spec.Kind == "s3" {
+			contacted++
+			return nil, errors.New("unreachable s3")
+		}
+		if prev != nil {
+			return prev(spec)
+		}
+		return OpenDestination(spec)
+	}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "later", Kind: "s3", Endpoint: "http://127.0.0.1:9", Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ns string
+	for _, spec := range specs {
+		if spec.ID == "owned" {
+			ns = spec.Namespace
+		}
+	}
+	sameName := filepath.Join(otherRoot, "nsother01", meta.ID+".tgbk")
+	if err := os.MkdirAll(filepath.Dir(sameName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sameName, []byte("not-ours"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if contacted != 0 {
+		t.Fatalf("unreceipted destination was contacted %d times", contacted)
+	}
+	if _, err := os.Stat(sameName); err != nil {
+		t.Fatalf("unreceipted name removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ns, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("owned archive remained: %v", err)
+	}
+}
+
+func TestDestinationRemovalKeepsTheOwnedLocation(t *testing.T) {
+	s := testStore(t)
+	dirA := filepath.Join(t.TempDir(), "a")
+	dirB := filepath.Join(t.TempDir(), "b")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	saved, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirA, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("%+v %v", meta.DestinationErrors, err)
+	}
+	if err := s.DeleteDestination("share"); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("removed a destination that still has a copy: %v", err)
+	}
+	if _, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirB, Namespace: saved.Namespace, RetentionDays: 30}); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("re-add changed the location: %v", err)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 || specs[0].Path != dirA {
+		t.Fatalf("spec %+v %v", specs, err)
+	}
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var once sync.Once
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		base, err := OpenDestination(spec)
+		if err != nil {
+			return nil, err
+		}
+		return blockOnceDest{Destination: base, started: started, release: release, once: &once}, nil
+	}
+	errc := make(chan error, 1)
+	go func() {
+		_, err := s.Create(context.Background(), reasonManual)
+		errc <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("copy did not start")
+	}
+	removed := make(chan error, 1)
+	go func() { removed <- s.DeleteDestination("share") }()
+	select {
+	case err := <-removed:
+		t.Fatalf("destination removal finished during the copy: %v", err)
+	case <-time.After(80 * time.Millisecond):
+	}
+	close(release)
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-removed; !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("removal after the copy: %v", err)
+	}
+	specs, err = s.Book.Specs()
+	if err != nil || specs[0].Path != dirA {
+		t.Fatalf("location changed during the copy %+v %v", specs, err)
+	}
+}
+
 func tarWithName(t *testing.T, name string) io.Reader {
 	t.Helper()
 	var buf bytes.Buffer

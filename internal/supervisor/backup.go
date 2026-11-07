@@ -380,6 +380,31 @@ func (s *Store) PutDestination(spec DestinationSpec) (DestinationSpec, error) {
 	return s.Book.Put(prepared)
 }
 
+// DeleteDestination removes a destination under the same lock as copy and
+// delete. Receipts or an in-flight upload keep the stored specification, so
+// the same id cannot be added back at a different location and inherit the
+// old ownership history.
+func (s *Store) DeleteDestination(id string) error {
+	if s == nil || s.Book == nil {
+		return ErrNotFound
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if receipts := s.receiptBook(); receipts != nil {
+		owned, err := receipts.List(id)
+		if err != nil {
+			return err
+		}
+		if len(owned) > 0 {
+			return errDestinationRemoval
+		}
+	}
+	if destinationBusy(id) {
+		return fmt.Errorf("%w: an upload for this destination is still running", ErrRemoteUncertain)
+	}
+	return s.Book.Delete(id)
+}
+
 func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
 	if s.Book == nil {
 		return nil
@@ -425,14 +450,14 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 		return err
 	}
 	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
-		if ambiguousRemote(err) {
-			_ = receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptUncertain})
+		if ambiguousRemote(err) || (errors.Is(err, ErrRemoteUncertain) && !remoteBusy(remoteKey(dest.ID(), name))) {
+			_ = s.markUncertain(receipts, dest.ID(), name, meta.CreatedAt)
+			if errors.Is(err, ErrRemoteUncertain) {
+				return err
+			}
 			return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
 		}
 		if uncertainRemote(err, dest.ID(), name) {
-			if errors.Is(err, ErrRemoteUncertain) && !remoteBusy(remoteKey(dest.ID(), name)) {
-				_ = receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptUncertain})
-			}
 			return err
 		}
 		if s.dropRemote(ctx, dest, name) {
@@ -519,11 +544,13 @@ func ambiguousRemote(err error) bool {
 	}
 }
 
-func receiptSettled(obj OwnedObject, now time.Time) bool {
-	if obj.Created.IsZero() {
-		return false
-	}
-	return now.Sub(obj.Created) >= uncertainWindow()
+// markUncertain records when the acknowledgment was lost. Created stays the
+// backup's own time and is not used to decide that the server finished.
+func (s *Store) markUncertain(receipts *ReceiptBook, destID, name string, created time.Time) error {
+	return receipts.Add(OwnedObject{
+		DestinationID: destID, Name: name, Created: created,
+		State: receiptUncertain, UncertainAt: s.now(),
+	})
 }
 
 // dropRemote removes one owned name and its partial sibling. It reports
@@ -623,34 +650,42 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	return nil
 }
 
-// reconcileUncertain keeps the tombstone while a lost acknowledgment might
-// still publish the object. Absence inside that window is not success.
-// Bytes that show up are deleted once and are not uploaded again.
+// reconcileUncertain keeps the tombstone until the late object is actually
+// seen and removed. A missing read, including after the client timeout has
+// elapsed, does not prove the original PUT finished.
 func (s *Store) reconcileUncertain(ctx context.Context, dest Destination, receipts *ReceiptBook, obj OwnedObject) error {
-	if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
-		return nil
-	}
-	rc, err := dest.Get(ctx, obj.Name)
-	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) {
-		return nil
-	}
-	if err == nil {
-		_ = rc.Close()
-		if s.removeOwnedRemote(ctx, dest, obj.Name) != nil {
-			return nil
-		}
-		if !receiptSettled(obj, s.now()) {
-			return nil
-		}
-		if confirmNameAbsent(ctx, dest, obj.Name) != nil {
-			return nil
-		}
-		return receipts.Remove(dest.ID(), obj.Name)
-	}
-	if !errors.Is(err, ErrNotFound) || !receiptSettled(obj, s.now()) {
+	done, err := s.observedUncertainCleanup(ctx, dest, obj.Name)
+	if err != nil || !done {
 		return nil
 	}
 	return receipts.Remove(dest.ID(), obj.Name)
+}
+
+// observedUncertainCleanup deletes an object only after GET shows it.
+// NotFound leaves the tombstone. The return is true only when that observed
+// object was then confirmed absent.
+func (s *Store) observedUncertainCleanup(ctx context.Context, dest Destination, name string) (bool, error) {
+	if remoteBusy(remoteKey(dest.ID(), name)) {
+		return false, fmt.Errorf("%w: filesystem call still running", ErrRemoteUncertain)
+	}
+	rc, err := dest.Get(ctx, name)
+	if errors.Is(err, ErrNotFound) {
+		return false, fmt.Errorf("%w: upload outcome is still uncertain", ErrRemoteUncertain)
+	}
+	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) || err != nil {
+		if err == nil {
+			err = ErrRemoteUncertain
+		}
+		return false, err
+	}
+	_ = rc.Close()
+	if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
+		return false, err
+	}
+	if err := confirmNameAbsent(ctx, dest, name); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Open verifies the sidecar checksum and returns the encrypted bytes.
@@ -755,6 +790,15 @@ func (s *Store) deleteLocked(ctx context.Context, id string) error {
 	return s.removeLocal(id)
 }
 
+func matchingReceipt(owned []OwnedObject, destID, name string) (OwnedObject, bool) {
+	for _, obj := range owned {
+		if obj.Name == name && (obj.DestinationID == "" || obj.DestinationID == destID) {
+			return obj, true
+		}
+	}
+	return OwnedObject{}, false
+}
+
 func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 	if s.Book == nil {
 		return nil
@@ -765,37 +809,50 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 	}
 	var failed []string
 	name := id + ".tgbk"
+	receipts := s.receiptBook()
 	for _, spec := range specs {
+		var owned []OwnedObject
+		if receipts != nil {
+			var rerr error
+			owned, rerr = receipts.List(spec.ID)
+			if rerr != nil {
+				return rerr
+			}
+		}
+		obj, ok := matchingReceipt(owned, spec.ID, name)
+		if !ok {
+			continue
+		}
+		if remoteBusy(remoteKey(spec.ID, name)) {
+			failed = append(failed, spec.ID+": filesystem call still running")
+			continue
+		}
 		dest, err := s.openDest(spec)
 		if err != nil {
 			failed = append(failed, spec.ID+": "+err.Error())
 			continue
 		}
-		if remoteBusy(remoteKey(dest.ID(), name)) {
-			failed = append(failed, dest.ID()+": filesystem call still running")
-			continue
-		}
-		if receipts := s.receiptBook(); receipts != nil {
-			owned, rerr := receipts.List(dest.ID())
-			if rerr != nil {
-				return rerr
-			}
-			for _, obj := range owned {
-				if obj.Name == name && obj.State == receiptUncertain && !receiptSettled(obj, s.now()) {
-					_ = s.removeOwnedRemote(ctx, dest, name)
-					failed = append(failed, dest.ID()+": upload outcome is still uncertain")
-					goto nextDest
+		if obj.State == receiptUncertain {
+			done, uerr := s.observedUncertainCleanup(ctx, dest, name)
+			if uerr != nil || !done {
+				if uerr == nil {
+					uerr = fmt.Errorf("%w: upload outcome is still uncertain", ErrRemoteUncertain)
 				}
+				failed = append(failed, spec.ID+": "+uerr.Error())
+				continue
 			}
+			if receipts != nil {
+				_ = receipts.Remove(spec.ID, name)
+			}
+			continue
 		}
 		if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
-			failed = append(failed, dest.ID()+": "+err.Error())
+			failed = append(failed, spec.ID+": "+err.Error())
 			continue
 		}
-		if receipts := s.receiptBook(); receipts != nil {
+		if receipts != nil {
 			_ = receipts.Remove(spec.ID, name)
 		}
-	nextDest:
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%w: %s", ErrDestination, strings.Join(failed, "; "))
