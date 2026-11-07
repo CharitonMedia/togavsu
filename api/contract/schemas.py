@@ -2144,7 +2144,7 @@ SCHEMAS = _register(
                 "background_file_authorization": _null(_ref("BackgroundFileAuthorization")),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null.",
+            "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null.",
         ),
         "Backup": _meta(
             {

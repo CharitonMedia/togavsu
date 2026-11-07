@@ -22,6 +22,7 @@ AUTH_SECURITY = [{"sessionCookie": []}, {"bearerAuth": []}]
 
 # Scopes a module manifest may be granted for core records and AI.
 # Profile, token, settings, user, backup, update, and module-admin scopes are not delegated.
+# help:write is the module's own heading only. It does not delegate firm help writes.
 DELEGABLE_SCOPES = {
     "contacts:read",
     "contacts:write",
@@ -62,6 +63,7 @@ DELEGABLE_SCOPES = {
     "search:use",
     "reports:read",
     "help:read",
+    "help:write",
 }
 
 # Background calls use a core-issued workflow grant. The set is the union of those workflows.
@@ -281,7 +283,12 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
     if public or mcp != "required" or access.get("module_principal") or access.get("module_delegation"):
         return False
     scopes = access.get("scopes") or []
-    return bool(scopes) and all(scope in DELEGABLE_SCOPES for scope in scopes)
+    if not scopes or not all(scope in DELEGABLE_SCOPES for scope in scopes):
+        return False
+    # Firm help writes stay admin-only. help:write on a module is the own-heading principal, not viewer delegation.
+    if scopes == ["help:write"]:
+        return False
+    return True
 
 
 def _delegation_mode(access: dict, public: bool, mcp: str, operation_id: str) -> str | None:

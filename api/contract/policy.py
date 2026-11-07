@@ -9,7 +9,11 @@ recognized by response semantics, not by a path prefix.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import html
 import re
+from html.parser import HTMLParser
 
 FILE_DOWNLOAD = {
     "audit": True,
@@ -1502,6 +1506,35 @@ def issue_api_token(operation: dict, call: dict) -> dict:
     }
 
 
+def module_help_registration(operation: dict, call: dict) -> str:
+    """help:write on an installed module registers pages under that module's heading only."""
+    principal = operation["x-togavsu-access"].get("module_principal") or {}
+    if not principal.get("own_heading_only") or principal.get("grants_admin") or principal.get("scope") != "help:write":
+        return "forbidden"
+    if call.get("actor") != "module" or call.get("human_session"):
+        return "forbidden"
+    if "help:write" not in set(call.get("scopes") or []):
+        return "scope_denied"
+    if call.get("target") == "firm" or call.get("module_id") != call.get("path_module_id"):
+        return "forbidden"
+    if call.get("heading") not in (None, call.get("module_id")):
+        return "forbidden"
+    return "allowed"
+
+
+def webhook_signature(secret: bytes | str, body: bytes | str) -> str:
+    """Canonical X-Togavsu-Signature: sha256= plus lowercase hex HMAC-SHA256 of the raw body bytes."""
+    key = secret.encode("utf-8") if isinstance(secret, str) else secret
+    payload = body.encode("utf-8") if isinstance(body, str) else body
+    return "sha256=" + hmac.new(key, payload, hashlib.sha256).hexdigest()
+
+
+def webhook_signature_matches(secret: bytes | str, body: bytes | str, header: str) -> bool:
+    if not isinstance(header, str) or not header.startswith("sha256=") or len(header) != len("sha256=") + 64:
+        return False
+    return hmac.compare_digest(webhook_signature(secret, body), header)
+
+
 def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:
     """Fail closed. An unmapped restricted event does not fall back to events:read."""
     if event_type.startswith("custom_field."):
@@ -1962,16 +1995,96 @@ def open_widget_target(module_id: str, target: dict, caller: dict) -> dict:
     return denied
 
 
-_UNSAFE_MARKDOWN = re.compile(
-    r"(?i)<\s*/?\s*script\b|javascript\s*:|data\s*:|on(?:error|load|click)\s*=|<\s*/?\s*(?:iframe|object|embed)\b"
-)
+_MARKDOWN_TAGS = frozenset({"p", "br", "strong", "em", "code", "pre", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "a"})
+_MARKDOWN_DROP = frozenset({"script", "style", "iframe", "object", "embed", "svg", "math", "link", "meta", "form"})
+_VOID_TAGS = frozenset({"br"})
+
+
+def _safe_href(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = html.unescape(value)
+    text = "".join(ch for ch in text if ch.isprintable() and ch not in "\t\n\r")
+    text = text.strip()
+    if text.startswith("//"):
+        return None
+    compact = "".join(text.lower().split())
+    for scheme in ("javascript:", "vbscript:", "data:", "file:"):
+        if scheme in compact:
+            return None
+    head = compact.split("/", 1)[0]
+    if ":" in head and not compact.startswith(("http://", "https://", "mailto:")):
+        return None
+    return text
+
+
+class _MarkdownHTML(HTMLParser):
+    """Allowlist rebuild. This models guide rendering. It is not UI acceptance."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._drop = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._open(tag, attrs, close=False)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self._open(tag, attrs, close=True)
+
+    def _open(self, tag: str, attrs: list[tuple[str, str | None]], *, close: bool) -> None:
+        name = tag.lower()
+        if name in _MARKDOWN_DROP:
+            if not close:
+                self._drop += 1
+            return
+        if self._drop or name not in _MARKDOWN_TAGS:
+            return
+        if name == "a":
+            href = _safe_href(dict(attrs).get("href"))
+            if href:
+                self.parts.append(f'<a href="{html.escape(href, quote=True)}">')
+            else:
+                self.parts.append("<a>")
+            if close:
+                self.parts.append("</a>")
+            return
+        if name in _VOID_TAGS:
+            self.parts.append(f"<{name}>")
+            return
+        self.parts.append(f"<{name}>")
+        if close:
+            self.parts.append(f"</{name}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        name = tag.lower()
+        if name in _MARKDOWN_DROP and self._drop:
+            self._drop -= 1
+            return
+        if self._drop or name not in _MARKDOWN_TAGS or name in _VOID_TAGS:
+            return
+        self.parts.append(f"</{name}>")
+
+    def handle_data(self, data: str) -> None:
+        if self._drop or not data:
+            return
+        self.parts.append(html.escape(data))
+
+    def handle_comment(self, data: str) -> None:
+        return
+
+    def handle_decl(self, decl: str) -> None:
+        return
 
 
 def rendered_markdown(source: str) -> str:
-    """Core-rendered Markdown. Script, handlers, and non-http URL schemes are removed."""
-    if not isinstance(source, str):
+    """Rebuild guide HTML from an allowlist. Handlers, scripts, and unsafe URLs are not emitted."""
+    if not isinstance(source, str) or not source:
         return ""
-    return _UNSAFE_MARKDOWN.sub("", source)
+    parser = _MarkdownHTML()
+    parser.feed(source)
+    parser.close()
+    return "".join(parser.parts)
 
 
 def _unique_ids(items: list) -> set[str] | None:

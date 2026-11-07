@@ -281,7 +281,7 @@ def _webhooks() -> dict:
                     "An attorney-only conflict record is not serialized. "
                     "A module that fails any check receives no POST and no record id or summary. "
                     "The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. "
-                    "X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. "
+                    "X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. "
                     "X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts "
                     "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. "
                     "For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. "
@@ -314,7 +314,8 @@ def _webhooks() -> dict:
                         "name": "X-Togavsu-Signature",
                         "in": "header",
                         "required": True,
-                        "schema": {"type": "string"},
+                        "description": "sha256= plus lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret.",
+                        "schema": {"type": "string", "pattern": "^sha256=[a-f0-9]{64}$"},
                     },
                     {
                         "name": "X-Togavsu-Timestamp",

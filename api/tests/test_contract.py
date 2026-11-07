@@ -37,6 +37,10 @@ from contract.policy import (
     is_core_file_download,
     confirm_totp_reset,
     include_views_decision,
+    module_help_registration,
+    rendered_markdown,
+    webhook_signature,
+    webhook_signature_matches,
     sidebar_panel,
     start_totp_reset,
     issue_api_token,
@@ -1074,8 +1078,32 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(guides["heading"], "Matter Clock")
         self.assertEqual([page["id"] for page in guides["pages"]], ["hours-guide", "matter-guide"])
         self.assertEqual([tab["path"] for tab in guides["tabs"]], ["/m/matter-clock/hours", "/m/matter-clock/history"])
-        self.assertNotIn("script", guides["pages"][1]["markdown"])
-        self.assertIn("matter tab", guides["pages"][1]["markdown"])
+        rendered = guides["pages"][1]["markdown"]
+        self.assertIn("matter tab", rendered)
+        self.assertNotIn("<script", rendered.lower())
+        self.assertNotIn("onmouseover", rendered.lower())
+        for hostile in (
+            '<a onmouseover="alert(1)">x</a>',
+            '<a href="javascript:alert(1)">x</a>',
+            '<a href="JaVaScRiPt:alert(1)">x</a>',
+            '<a href="&#106;avascript:alert(1)">x</a>',
+            '<a href="java&#115;cript:alert(1)">x</a>',
+            "<ScRiPt>alert(1)</ScRiPt>",
+            "<script>alert(1)",
+            '<img src=x onerror=alert(1)>',
+            '<a href="data:text/html,hi">x</a>',
+        ):
+            safe = rendered_markdown(hostile)
+            lowered = safe.lower()
+            self.assertNotIn("<script", lowered, hostile)
+            self.assertNotIn("onmouseover", lowered, hostile)
+            self.assertNotIn("onerror", lowered, hostile)
+            self.assertNotIn("javascript:", lowered, hostile)
+            self.assertNotIn("data:", lowered, hostile)
+            if hostile.lower().startswith("<a"):
+                self.assertIn("x", safe, hostile)
+        self.assertIn(">x</a>", rendered_markdown('<a href="https://example.com/help" onclick="alert(1)">x</a>'))
+        self.assertIn('href="https://example.com/help"', rendered_markdown('<a href="https://example.com/help" onclick="alert(1)">x</a>'))
         self.assertEqual(manifest_contributions(manifest, {"role": "client"})["result"], "not_found")
         self.assertEqual(manifest_contributions(manifest, {"role": "client"})["pages"], [])
         dangling = copy.deepcopy(manifest)
@@ -1336,6 +1364,29 @@ class ContractTest(unittest.TestCase):
             self.assertTrue(principal["own_heading_only"])
             self.assertEqual(principal["scope"], "help:write")
             self.assertEqual(operation["x-togavsu-access"]["scopes"], ["help:write"])
+        firm = _operation(self.spec, "createHelpSection")
+        self.assertEqual(firm["x-togavsu-access"]["roles"], ["admin"])
+        self.assertNotEqual(firm["x-togavsu-access"].get("module_delegation"), "delegated_viewer")
+        self.assertEqual(module_help_registration(firm, {"actor": "module", "module_id": "matter-clock", "path_module_id": "matter-clock", "scopes": ["help:write"]}), "forbidden")
+        installed = decide_module_permissions(
+            {"id": "matter-clock", "version": "0.1.0", "permissions": ["help:write"]},
+            [{"scope": "help:write", "decision": "approve"}],
+            signature_verified=True,
+        )
+        self.assertEqual(installed["token_scopes"], ["help:write"])
+        omitted = decide_module_permissions(
+            {"id": "matter-clock", "version": "0.1.0", "permissions": ["matters:read"]},
+            [{"scope": "matters:read", "decision": "approve"}],
+            signature_verified=True,
+        )
+        self.assertNotIn("help:write", omitted["token_scopes"])
+        create = _operation(self.spec, "createModuleHelpPage")
+        own = {"actor": "module", "module_id": "matter-clock", "path_module_id": "matter-clock", "scopes": installed["token_scopes"], "heading": "matter-clock"}
+        self.assertEqual(module_help_registration(create, own), "allowed")
+        self.assertEqual(module_help_registration(create, {**own, "path_module_id": "other-module"}), "forbidden")
+        self.assertEqual(module_help_registration(create, {**own, "target": "firm"}), "forbidden")
+        self.assertEqual(module_help_registration(create, {**own, "actor": "human", "human_session": True}), "forbidden")
+        self.assertEqual(module_help_registration(create, {**own, "scopes": ["help:read"]}), "scope_denied")
 
     def test_module_update_keeps_the_old_version_on_failure(self):
         operation = _operation(self.spec, "updateModule")
@@ -3238,6 +3289,20 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(event_read_scopes("not.a.real.event"), [])
         self.assertEqual(event_read_scopes("custom_field.updated", None), [])
         self.assertEqual(event_read_scopes("custom_field.updated", "time_entry"), ["time:read"])
+        secret = b"top-secret"
+        payload = b'{"type":"matter.created"}'
+        signature = webhook_signature(secret, payload)
+        self.assertEqual(signature, "sha256=e9464e954a1b5f9acf9da3a55d8f0a31d00090a745fa83e3591fe7d2afcbae88")
+        self.assertTrue(webhook_signature_matches(secret, payload, signature))
+        self.assertFalse(webhook_signature_matches(secret, payload + b" ", signature))
+        self.assertFalse(webhook_signature_matches(b"other-secret", payload, signature))
+        import hashlib
+
+        plain = "sha256=" + hashlib.sha256(payload).hexdigest()
+        self.assertNotEqual(plain, signature)
+        self.assertFalse(webhook_signature_matches(secret, payload, plain))
+        self.assertIn("HMAC-SHA256", self.spec["components"]["schemas"]["WebhookEvent"]["description"])
+        self.assertIn("keyed", self.spec["webhooks"]["moduleEvent"]["post"]["description"])
 
     def test_include_views_cover_extensible_core_records(self):
         expected = {
