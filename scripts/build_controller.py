@@ -383,7 +383,9 @@ class Controller:
                 self.event(task, "Refresh branch against main; await fresh tests and Codex")
             return False
         checks = self.remote.checks(head)
-        required = REQUIRED | set(spec.get("required_checks", []))
+        existing_protection = self.remote.gh("branches/main/protection")
+        required = REQUIRED | set(spec.get("required_checks", [])) | set(
+            (existing_protection.get("required_status_checks") or {}).get("contexts", []))
         if not required <= checks.keys() or any(c["status"] != "completed" for c in checks.values()):
             record["waiting"] = "Checks pending for " + head
             if record.get("check_wait", {}).get("head") != head:
@@ -453,7 +455,36 @@ class Controller:
                     ". Complete the assigned integration and actual tests, record honest results and push. "
                     "Never fabricate acceptance or change a failed result to pass. Report external blockers explicitly.")
                 return False
-        # Refresh both PR HEAD and current main immediately before merge. GitHub protection is final authority.
+        protection = self.remote.gh("branches/main/protection")
+        required_config = protection.get("required_status_checks") or {}
+        if not (required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
+                and protection.get("enforce_admins", {}).get("enabled")
+                and protection.get("required_pull_request_reviews") is not None):
+            self.halt(task, record, "Branch protection changed or no longer enforces required checkpoints")
+            return False
+        # Required product jobs must be enforced by GitHub, not just a stale local snapshot.
+        enforced = set(required_config.get("contexts", []))
+        required |= enforced
+        if not required <= enforced:
+            prior = {c["context"]: c for c in required_config.get("checks", [])}
+            bindings = [dict(prior.get(name, {"context": name, "app_id": -1})) for name in sorted(enforced | required)]
+            for binding in bindings:
+                if binding["context"] in REQUIRED | set(spec.get("required_checks", [])):
+                    binding["app_id"] = APP_ID
+            if self.dry:
+                self.effect("enforce product checks " + task, lambda: None)
+            else:
+                self.remote.gh("branches/main/protection/required_status_checks", "PATCH", {"strict": True, "checks": bindings})
+                protection = self.remote.gh("branches/main/protection")
+                if not required <= set(protection["required_status_checks"].get("contexts", [])):
+                    self.halt(task, record, "GitHub did not enforce task-required product checks")
+                    return False
+        current_checks = self.remote.checks(head)
+        if (not required <= current_checks.keys() or any(c["status"] != "completed" or c.get("conclusion") != "success"
+                for c in current_checks.values()) or current_checks["Codex checkpoint"]["id"] != codex["id"]):
+            record["waiting"] = "Checks changed during final refresh; await current results"
+            return False
+        # Final metadata refresh follows product-check enforcement and observation.
         fresh = self.remote.gh("pulls/" + str(number))
         current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
         if fresh["head"]["sha"] != head or current_main != main:
@@ -462,13 +493,6 @@ class Controller:
             validate_review(report, context, fresh, main, task)
         except ReviewSuperseded as error:
             self.wait_for_review(task, record, fresh, str(error))
-            return False
-        protection = self.remote.gh("branches/main/protection")
-        required_config = protection.get("required_status_checks") or {}
-        if not (required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
-                and protection.get("enforce_admins", {}).get("enabled")
-                and protection.get("required_pull_request_reviews") is not None):
-            self.halt(task, record, "Branch protection changed or no longer enforces required checkpoints")
             return False
         if self.dry:
             self.effect("protected merge PR " + str(number), lambda: None)

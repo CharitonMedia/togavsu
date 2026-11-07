@@ -35,6 +35,8 @@ class FakeRemote:
         self.fail_post = False
         self.fail_merge = False
         self.check_rows = {name: check(name) for name in ["Setup checks", "Codex checkpoint"]}
+        self.protection = {"required_status_checks": {"strict": True, "contexts": ["Setup checks", "Codex checkpoint"]},
+                           "enforce_admins": {"enabled": True}, "required_pull_request_reviews": {}}
 
     def gh(self, path, method="GET", payload=None, binary=False):
         self.calls.append((method, path, payload))
@@ -43,8 +45,11 @@ class FakeRemote:
         if path == "pulls/7":
             return copy.deepcopy(self.pr)
         if path == "branches/main/protection":
-            return {"required_status_checks": {"strict": True, "contexts": ["Setup checks", "Codex checkpoint"]},
-                    "enforce_admins": {"enabled": True}, "required_pull_request_reviews": {}}
+            return copy.deepcopy(self.protection)
+        if path == "branches/main/protection/required_status_checks" and method == "PATCH":
+            self.protection["required_status_checks"] = {"strict": payload["strict"], "checks": payload["checks"],
+                "contexts": [c["context"] for c in payload["checks"]]}
+            return copy.deepcopy(self.protection["required_status_checks"])
         if path.startswith("compare/"):
             return {"behind_by": self.behind}
         if path == "pulls/7/merge":
@@ -377,6 +382,30 @@ class ControllerTests(unittest.TestCase):
         self.process()
         self.assertNotIn("completed", self.record)
         self.assertIn("identity changed", self.record["waiting"])
+
+    def test_product_check_change_during_final_refresh_blocks_merge(self):
+        spec = dict(SPEC, required_checks=["Core tests"])
+        self.remote.check_rows["Core tests"] = check("Core tests")
+        original, reads = self.remote.checks, []
+        def checks(head):
+            value = original(head)
+            reads.append(head)
+            if len(reads) == 2:
+                value["Core tests"]["conclusion"] = "failure"
+            return value
+        self.remote.checks = checks
+        self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+        self.assertNotIn("completed", self.record)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.assertIn("Core tests", self.remote.protection["required_status_checks"]["contexts"])
+
+    def test_product_checks_are_server_enforced_before_merge(self):
+        spec = dict(SPEC, required_checks=["Core tests"])
+        self.remote.check_rows["Core tests"] = check("Core tests")
+        self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+        self.assertTrue(self.record["completed"])
+        bindings = self.remote.protection["required_status_checks"]["checks"]
+        self.assertIn({"context": "Core tests", "app_id": APP_ID}, bindings)
 
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True
