@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -310,6 +312,80 @@ func TestMigratorPullsBeforeCreate(t *testing.T) {
 	}
 	if len(order) < 2 || order[0] != "pull" || order[1] != "create" {
 		t.Fatalf("order %v", order)
+	}
+}
+
+func TestStalledInspectRespectsHealthTimeout(t *testing.T) {
+	stall := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.Copy(io.Discard, buf)
+		one := make([]byte, 1)
+		_, _ = conn.Read(one)
+	}))
+	defer stall.Close()
+	rt := &DockerRuntime{Client: &http.Client{}, BaseURL: stall.URL, Network: "togavsu_default"}
+	start := time.Now()
+	err := rt.WaitHealthy(context.Background(), "core-1", 200*time.Millisecond)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("health wait held the caller for %s", elapsed)
+	}
+	if err == nil || !errors.Is(err, ErrHealth) || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("stalled inspect = %v", err)
+	}
+}
+
+func TestStalledMigrationWaitFailsUncertain(t *testing.T) {
+	old := dockerWaitLimit
+	dockerWaitLimit = 200 * time.Millisecond
+	t.Cleanup(func() { dockerWaitLimit = old })
+	stallWait := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/images/create"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("{\"status\":\"Status: downloaded\"}\n"))
+		case strings.HasSuffix(r.URL.Path, "/create"):
+			_ = json.NewEncoder(w).Encode(map[string]string{"Id": "mig"})
+		case strings.HasSuffix(r.URL.Path, "/start"), strings.HasSuffix(r.URL.Path, "/stop"), r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case strings.HasSuffix(r.URL.Path, "/json"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"Id": "mig", "State": map[string]any{"Status": "running", "Running": true},
+			})
+		case strings.HasSuffix(r.URL.Path, "/wait"):
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				http.Error(w, "no hijack", http.StatusInternalServerError)
+				return
+			}
+			conn, buf, err := hj.Hijack()
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			_, _ = io.Copy(io.Discard, buf)
+			one := make([]byte, 1)
+			_, _ = conn.Read(one)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer stallWait.Close()
+	start := time.Now()
+	st, err := (DockerMigrator{Docker: &DockerRuntime{Client: &http.Client{}, BaseURL: stallWait.URL}}).RunMigration(context.Background(), testReleaseImage, "togavsu-migrate-once", nil)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("migration wait held the caller for %s", elapsed)
+	}
+	if !st.CleanupPending || !errors.Is(err, ErrMigrationUnknown) {
+		t.Fatalf("stalled wait %+v %v", st, err)
 	}
 }
 

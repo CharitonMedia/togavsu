@@ -40,8 +40,24 @@ type remoteOp struct {
 
 var remoteOps sync.Map
 
+// canonicalOwnedName is the receipt name for an archive, its partial sibling,
+// and its checksum sidecar. Put, get, delete, and temp cleanup share this
+// identity so one of them cannot decide the object is absent while another
+// is still writing it.
+func canonicalOwnedName(name string) string {
+	name = strings.TrimSuffix(name, ".partial")
+	if strings.HasSuffix(name, ".sha256") {
+		return strings.TrimSuffix(name, ".sha256") + ".tgbk"
+	}
+	return name
+}
+
 func remoteKey(destID, name string) string {
-	return destID + "\x00" + name
+	return destID + "\x00" + canonicalOwnedName(name)
+}
+
+func listKey(destID string) string {
+	return destID + "\x00\x00list"
 }
 
 // trackFS waits up to ctx for fn. On deadline it returns ErrRemoteUncertain
@@ -458,7 +474,7 @@ func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 		f         *os.File
 		abandoned bool
 	}
-	err := trackFS(remoteKey(p.ID(), "open\x00"+name), wait, func() error {
+	err := trackFS(remoteKey(p.ID(), name), wait, func() error {
 		if p.stall != nil {
 			p.stall("open")
 		}
@@ -500,17 +516,16 @@ func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 	}
 	opened = box.f
 	return &pathRead{
-		f:        opened,
-		parent:   ctx,
-		cancel:   cancel,
-		readKey:  remoteKey(p.ID(), "read\x00"+name),
-		closeKey: remoteKey(p.ID(), "close\x00"+name),
-		stall:    p.stall,
+		f:       opened,
+		parent:  ctx,
+		cancel:  cancel,
+		readKey: remoteKey(p.ID(), name),
+		stall:   p.stall,
 	}, nil
 }
 
 func (p *PathDestination) closeTracked(f *os.File, name string) {
-	_ = trackFS(remoteKey(p.ID(), "close\x00"+name), context.Background(), func() error {
+	_ = trackFS(remoteKey(p.ID(), name), context.Background(), func() error {
 		if p.stall != nil {
 			p.stall("close")
 		}
@@ -532,7 +547,7 @@ func (p *PathDestination) Delete(ctx context.Context, name string) error {
 	}
 	wait, cancel := destinationContext(ctx)
 	defer cancel()
-	return trackFS(remoteKey(p.ID(), "delete\x00"+name), wait, func() error {
+	return trackFS(remoteKey(p.ID(), name), wait, func() error {
 		if p.stall != nil {
 			p.stall("remove")
 		}
@@ -551,7 +566,7 @@ func (p *PathDestination) List(ctx context.Context) ([]RemoteObject, error) {
 	wait, cancel := destinationContext(ctx)
 	defer cancel()
 	var out []RemoteObject
-	err := trackFS(remoteKey(p.ID(), "list"), wait, func() error {
+	err := trackFS(listKey(p.ID()), wait, func() error {
 		if p.stall != nil {
 			p.stall("list")
 		}
@@ -585,7 +600,6 @@ type pathRead struct {
 	parent    context.Context
 	cancel    context.CancelFunc
 	readKey   string
-	closeKey  string
 	stall     func(string)
 	mu        sync.Mutex
 	abandoned bool
@@ -657,7 +671,7 @@ func (r *pathRead) Close() error {
 	r.mu.Unlock()
 	wait, cancel := destinationContext(r.parent)
 	defer cancel()
-	return trackFS(r.closeKey, wait, func() error {
+	return trackFS(r.readKey, wait, func() error {
 		if r.stall != nil {
 			r.stall("close")
 		}

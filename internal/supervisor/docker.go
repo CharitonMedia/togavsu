@@ -18,6 +18,26 @@ import (
 
 const dockerAPI = "/v1.43"
 
+// dockerWaitLimit bounds an engine call whose caller did not set a deadline.
+// Scheduled updates use the process lifetime context, so a stalled inspect,
+// wait, or pull would otherwise hold the operation gate until shutdown.
+var dockerWaitLimit = 2 * time.Minute
+
+// boundDocker keeps a caller deadline that is already set. A context with no
+// deadline gets one, so the HTTP request itself stops waiting.
+func boundDocker(ctx context.Context, limit time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	if limit <= 0 {
+		limit = dockerWaitLimit
+	}
+	return context.WithTimeout(ctx, limit)
+}
+
 var errDockerNotModified = errors.New("container already running")
 
 // DockerRuntime talks to the engine over the socket. The core container does
@@ -152,6 +172,8 @@ func (d *DockerRuntime) Pull(ctx context.Context, image string) error {
 	}
 	q := url.Values{}
 	q.Set("fromImage", image)
+	ctx, cancel := boundDocker(ctx, dockerWaitLimit)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.base()+dockerAPI+"/images/create?"+q.Encode(), nil)
 	if err != nil {
 		return err
@@ -347,8 +369,19 @@ func (d *DockerRuntime) ConfirmAbsent(ctx context.Context, id string) error {
 }
 
 func (d *DockerRuntime) WaitHealthy(ctx context.Context, id string, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = time.Minute
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	deadline := time.Now().Add(timeout)
 	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("%w: timed out after %s", ErrHealth, timeout)
+		}
+		reqCtx, cancel := context.WithTimeout(ctx, remaining)
 		var inspected struct {
 			State struct {
 				Status string `json:"Status"`
@@ -357,7 +390,15 @@ func (d *DockerRuntime) WaitHealthy(ctx context.Context, id string, timeout time
 				} `json:"Health"`
 			} `json:"State"`
 		}
-		if err := d.call(ctx, http.MethodGet, dockerAPI+"/containers/"+id+"/json", nil, &inspected); err != nil {
+		err := d.call(reqCtx, http.MethodGet, dockerAPI+"/containers/"+id+"/json", nil, &inspected)
+		cancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("%w: timed out after %s", ErrHealth, timeout)
+			}
 			return err
 		}
 		health := ""
@@ -432,6 +473,8 @@ func safeModule(name string) error {
 }
 
 func (d *DockerRuntime) call(ctx context.Context, method, path string, body any, dest any) error {
+	ctx, cancel := boundDocker(ctx, dockerWaitLimit)
+	defer cancel()
 	var reader io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -593,6 +636,8 @@ func (m DockerMigrator) finishMigrationContainer(id string) (bool, error) {
 }
 
 func (m DockerMigrator) logs(ctx context.Context, id string) (string, error) {
+	ctx, cancel := boundDocker(ctx, dockerWaitLimit)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.Docker.base()+dockerAPI+"/containers/"+id+"/logs?stdout=1&stderr=1", nil)
 	if err != nil {
 		return "", err

@@ -534,8 +534,19 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	}
 	id := strings.TrimSuffix(obj.Name, ".tgbk")
 	localSHA := ""
+	deleting := false
 	if meta, err := s.lookup(id); err == nil {
 		localSHA = meta.SHA256
+		deleting = meta.Deleting
+	}
+	if deleting {
+		if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+			return nil
+		}
+		if err := s.removeOwnedRemote(ctx, dest, obj.Name); err != nil {
+			return nil
+		}
+		return receipts.Remove(dest.ID(), obj.Name)
 	}
 	rc, err := dest.Get(ctx, obj.Name)
 	if errors.Is(err, ErrRemoteUncertain) {
@@ -681,26 +692,69 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 		return err
 	}
 	var failed []string
+	name := id + ".tgbk"
 	for _, spec := range specs {
 		dest, err := s.openDest(spec)
 		if err != nil {
 			failed = append(failed, spec.ID+": "+err.Error())
 			continue
 		}
-		archiveErr := dest.Delete(ctx, id+".tgbk")
-		sideErr := dest.Delete(ctx, id+".sha256")
-		if archiveErr != nil || sideErr != nil {
-			failed = append(failed, spec.ID+": "+errors.Join(archiveErr, sideErr).Error())
+		if remoteBusy(remoteKey(dest.ID(), name)) {
+			failed = append(failed, dest.ID()+": filesystem call still running")
+			continue
+		}
+		if err := s.removeOwnedRemote(ctx, dest, name); err != nil {
+			failed = append(failed, dest.ID()+": "+err.Error())
 			continue
 		}
 		if receipts := s.receiptBook(); receipts != nil {
-			_ = receipts.Remove(spec.ID, id+".tgbk")
+			_ = receipts.Remove(spec.ID, name)
 		}
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%w: %s", ErrDestination, strings.Join(failed, "; "))
 	}
 	return nil
+}
+
+// removeOwnedRemote deletes one owned archive, its sidecar, and its partial
+// sibling. It returns an error until the final name and the partial name are
+// both confirmed absent. A late writer still registered under that object
+// keeps the receipt.
+func (s *Store) removeOwnedRemote(ctx context.Context, dest Destination, name string) error {
+	if remoteBusy(remoteKey(dest.ID(), name)) {
+		return fmt.Errorf("%w: filesystem call still running", ErrRemoteUncertain)
+	}
+	if err := dest.Delete(ctx, name); err != nil {
+		return err
+	}
+	side := strings.TrimSuffix(name, ".tgbk") + ".sha256"
+	if err := dest.Delete(ctx, side); err != nil {
+		return err
+	}
+	if partial, ok := dest.(interface {
+		RemovePartial(context.Context, string) error
+	}); ok {
+		if err := partial.RemovePartial(ctx, name); err != nil {
+			return err
+		}
+		if err := confirmNameAbsent(ctx, dest, name+".partial"); err != nil {
+			return err
+		}
+	}
+	return confirmNameAbsent(ctx, dest, name)
+}
+
+func confirmNameAbsent(ctx context.Context, dest Destination, name string) error {
+	rc, err := dest.Get(ctx, name)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_ = rc.Close()
+	return fmt.Errorf("%w: %s still present", ErrRemoteUncertain, name)
 }
 
 func (s *Store) openDest(spec DestinationSpec) (Destination, error) {

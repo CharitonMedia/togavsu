@@ -928,12 +928,12 @@ func TestStalledPathReadStaysTrackedUntilTheSyscallReturns(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("read wait did not end")
 	}
-	if !remoteBusy(remoteKey("share", "read\x00owned.tgbk")) {
+	if !remoteBusy(remoteKey("share", "owned.tgbk")) {
 		t.Fatal("stalled read was dropped")
 	}
 	release()
 	deadline := time.Now().Add(2 * time.Second)
-	for remoteBusy(remoteKey("share", "read\x00owned.tgbk")) {
+	for remoteBusy(remoteKey("share", "owned.tgbk")) {
 		if time.Now().After(deadline) {
 			t.Fatal("read worker did not finish")
 		}
@@ -1111,6 +1111,147 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 	}
 	if owned, err := receipts.List("share"); err != nil || len(owned) != 0 {
 		t.Fatalf("mismatched receipt remained: %+v %v", owned, err)
+	}
+}
+
+func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+
+	s := testStore(t)
+	root := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	releaseCh := make(chan struct{})
+	started := make(chan struct{})
+	var startOnce sync.Once
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(releaseCh) }) }
+	t.Cleanup(release)
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, stall: func(step string) {
+			if step == "rename" {
+				startOnce.Do(func() { close(started) })
+				<-releaseCh
+			}
+		}}, nil
+	}
+	ops := &Operations{Store: s, Gate: &Gate{}, Passphrase: func() (string, error) { return s.Passphrase, nil }}
+	type result struct {
+		meta BackupMeta
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		meta, err := ops.CreateBackup(context.Background(), reasonManual)
+		done <- result{meta, err}
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("rename did not start")
+	}
+	var created result
+	select {
+	case created = <-done:
+		if created.err != nil || len(created.meta.DestinationErrors) != 1 || !strings.Contains(created.meta.DestinationErrors[0], "still running") {
+			t.Fatalf("%+v %v", created.meta.DestinationErrors, created.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("backup stayed blocked after the upload wait")
+	}
+	name := created.meta.ID + ".tgbk"
+	ns := filepath.Join(root, spec.Namespace)
+	partial := filepath.Join(ns, name+".partial")
+	final := filepath.Join(ns, name)
+	if _, err := os.Stat(partial); err != nil {
+		t.Fatalf("partial: %v", err)
+	}
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatal("final archive existed before the late writer resumed")
+	}
+	otherDir := filepath.Join(root, "other-installation")
+	if err := os.MkdirAll(otherDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	otherFile := filepath.Join(otherDir, "other.tgbk")
+	if err := os.WriteFile(otherFile, []byte("other-firm"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(ns, "foreign.tgbk")
+	if err := os.WriteFile(foreign, []byte("not-ours"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodDelete, "/v1/backups/"+created.meta.ID, nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	NewMux("secret", ops, nil).ServeHTTP(rec, req)
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("delete reported success while the upload was still running")
+	}
+	kept, err := s.lookup(created.meta.ID)
+	if err != nil || !kept.Deleting {
+		t.Fatalf("deleting record was dropped: %+v %v", kept, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, name)); err != nil {
+		t.Fatalf("local archive removed: %v", err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].Name != name || owned[0].State != receiptPending {
+		t.Fatalf("receipt was dropped while the writer was running: %+v %v", owned, err)
+	}
+	release()
+	deadline := time.Now().Add(2 * time.Second)
+	for remoteBusy(remoteKey("share", name)) {
+		if time.Now().After(deadline) {
+			t.Fatal("late writer did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := os.Stat(final); err != nil {
+		t.Fatalf("late writer did not publish the archive: %v", err)
+	}
+	if _, err := os.Stat(partial); !os.IsNotExist(err) {
+		t.Fatalf("partial remained after rename: %v", err)
+	}
+	dest, err := OpenDestination(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatalf("late archive remained after reconcile: %v", err)
+	}
+	if _, err := os.Stat(partial); !os.IsNotExist(err) {
+		t.Fatalf("partial remained after reconcile: %v", err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt remained after the objects were confirmed absent: %+v %v", owned, err)
+	}
+	if _, err := os.Stat(otherFile); err != nil {
+		t.Fatalf("other installation removed: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("unreceipted object removed: %v", err)
+	}
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now}
+	if err := restarted.Delete(context.Background(), created.meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.lookup(created.meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleting record remained after absence was confirmed: %v", err)
+	}
+	if _, err := os.Stat(otherFile); err != nil {
+		t.Fatalf("other installation removed on restart: %v", err)
+	}
+	if _, err := os.Stat(foreign); err != nil {
+		t.Fatalf("unreceipted object removed on restart: %v", err)
 	}
 }
 
