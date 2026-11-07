@@ -925,6 +925,66 @@ func TestUnreadableOrUnhealthyWritersStayPending(t *testing.T) {
 	})
 }
 
+func TestUnknownStateIsNotTreatedAsHealthy(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}, unknownAfter: 1}
+	ops := &Operations{
+		Store: store, Gate: &Gate{}, Now: store.Now,
+		Journal:    OpenJournal(path),
+		Passphrase: func() (string, error) { return store.Passphrase, nil },
+		ApplyDump: func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		},
+		Runtime: rt,
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if err == nil || rec.Status == "completed" || rec.Status == "failed" || rec.Recovery != "container_unobserved" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if containsStep(order, "restart:core-1") || containsStep(order, "health") {
+		t.Fatalf("unknown state was started or accepted as healthy: %v", order)
+	}
+	if _, err := ops.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+		t.Fatalf("admission while the container state is unknown: %v", err)
+	}
+	rt.unknownAfter = 0
+	rt.states["core-1"] = "exited"
+	next := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+	if err := next.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
+		t.Fatalf("order %v", order)
+	}
+	got, ok, err := next.LookupRestore(rec.ID)
+	if err != nil || !ok || got.Status != "completed" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
+func TestMissingJournalRecordDoesNotFinish(t *testing.T) {
+	var order []string
+	ops := &Operations{
+		Gate:    &Gate{},
+		Journal: OpenJournal(t.TempDir()),
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+	}
+	got, err := ops.closeStopped(RestoreRecord{ID: "restore-missing", Status: "running", Started: time.Now().UTC()}, nil, errors.New("stop failed"), "")
+	if err == nil || got.Status == "failed" || got.Status == "completed" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	if containsStep(order, "restart:core-1") || containsStep(order, "health") {
+		t.Fatalf("missing journal record was treated as reconciled: %v", order)
+	}
+}
+
 func TestUpdateBlockedWhileRestoreIsPending(t *testing.T) {
 	dir := t.TempDir()
 	journal := OpenJournal(filepath.Join(dir, "restore-journal.jsonl"))

@@ -22,6 +22,8 @@ type scriptRuntime struct {
 	states       map[string]string
 	inspectErr   map[string]error
 	inspectAllow int
+	inspectCount int
+	unknownAfter int
 	loseStop     map[string]bool
 	cancelStops  bool
 	onList       func()
@@ -57,6 +59,10 @@ func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
 
 func (r *scriptRuntime) Inspect(_ context.Context, id string) (ContainerInfo, error) {
 	r.add("inspect:" + id)
+	r.inspectCount++
+	if r.unknownAfter > 0 && r.inspectCount > r.unknownAfter {
+		return ContainerInfo{ID: id, State: "unknown"}, nil
+	}
 	if r.inspectAllow > 0 {
 		r.inspectAllow--
 	} else if err := r.inspectErr[id]; err != nil {

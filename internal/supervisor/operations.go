@@ -830,9 +830,17 @@ func (o *Operations) journalItem(id string) (journalRecord, bool) {
 func (o *Operations) restoreWriters(rec RestoreRecord, fallback []ContainerInfo) error {
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
-	item, ok := o.journalItem(rec.ID)
-	if ok && stopWasIntended(item) {
-		return o.reconcileWriters(ctx, item)
+	if o.Journal != nil {
+		item, ok, err := o.Journal.Latest(rec.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("inspect %s: journal record missing", rec.ID)
+		}
+		if stopWasIntended(item) {
+			return o.reconcileWriters(ctx, item)
+		}
 	}
 	return o.restart(ctx, fallback)
 }
@@ -851,7 +859,7 @@ func (o *Operations) reconcileWriters(ctx context.Context, item journalRecord) e
 			errs = append(errs, fmt.Errorf("inspect %s: %w", c.ID, err))
 			continue
 		}
-		if info.State == "" && !info.Running {
+		if unobservedState(info) {
 			errs = append(errs, fmt.Errorf("inspect %s: unknown state", c.ID))
 			continue
 		}
@@ -866,6 +874,14 @@ func (o *Operations) reconcileWriters(ctx context.Context, item journalRecord) e
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func unobservedState(info ContainerInfo) bool {
+	state := strings.ToLower(strings.TrimSpace(info.State))
+	if state == "unknown" {
+		return true
+	}
+	return state == "" && !info.Running
 }
 
 func writerRecoveryReason(err error) string {
@@ -886,18 +902,10 @@ func stopWasIntended(item journalRecord) bool {
 }
 
 func (o *Operations) leftUnobserved(ctx context.Context, item journalRecord) bool {
-	if o.Runtime == nil {
+	if !stopWasIntended(item) {
 		return false
 	}
-	for _, c := range item.Containers {
-		if c.Prior != "running" || !c.StopIntended {
-			continue
-		}
-		if _, err := o.Runtime.Inspect(ctx, c.ID); err != nil {
-			return true
-		}
-	}
-	return false
+	return o.reconcileWriters(ctx, item) != nil
 }
 
 func (o *Operations) persistRunning(rec RestoreRecord) {
