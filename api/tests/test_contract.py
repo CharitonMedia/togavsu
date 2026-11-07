@@ -33,7 +33,8 @@ from contract.policy import (
     file_download_decision,
     is_core_file_download,
     include_views_decision,
-    issue_background_file_grant,
+    background_grant_issuance,
+    inherited_history_rows,
     mcp_credential_rejection,
     payment_effect_decision,
     payment_reversal_decision,
@@ -1499,9 +1500,19 @@ class ContractTest(unittest.TestCase):
         account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
         accounts = [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}]
         trust_ok = {"trust_account_id": account, "trust_accounts": accounts, "firm_id": "firm-1"}
+        compensation = {
+            "client_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "amount_cents": 1500,
+            "trust_entry_id": "018f1a00-7b3c-7d4e-8a11-444444444444",
+            "created_by": "018f1a00-7b3c-7d4e-8a11-555555555555",
+            "posted_entry_id": "018f1a00-7b3c-7d4e-8a11-666666666666",
+            "created_at": "2026-11-07T18:00:00Z",
+            "balance_cents": -1500,
+        }
         cases = [
             ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False}, "allowed", False, False),
-            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok}, "allowed", True, True),
+            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok, **compensation}, "allowed", True, True),
             ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
             ({"role": "attorney", "token_scopes": ["trust:withdraw"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
             ({"role": "staff", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False}, "forbidden", False, False),
@@ -1521,12 +1532,27 @@ class ContractTest(unittest.TestCase):
                 self.assertTrue(decision["amount_unchanged"])
         trust = payment_reversal_decision(
             reverse,
-            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok},
+            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok, **compensation},
         )
         self.assertTrue(trust["ledger_append_only"])
         self.assertFalse(trust["original_trust_edited"])
         self.assertEqual(trust["trust_posted_by"], "trust_handler")
         self.assertEqual(trust["trust_account_id"], account)
+        self.assertEqual(trust["trust_entry"]["entry_type"], "reversal")
+        self.assertEqual(trust["trust_entry"]["amount_cents"], -1500)
+        self.assertEqual(trust["trust_entry"]["direction"], "debit")
+        self.assertEqual(trust["trust_entry"]["reverses_entry_id"], compensation["trust_entry_id"])
+        _component_validator(self.spec, "TrustEntry").validate(trust["trust_entry"])
+        _component_validator(self.spec, "TrustPostResult").validate(trust["trust_post"])
+        write_row = {key: value for key, value in trust["trust_entry"].items() if key not in {"id", "created_at", "created_by"}}
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "TrustEntryWrite").validate(write_row)
+        incomplete = payment_reversal_decision(
+            reverse,
+            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, **trust_ok},
+        )
+        self.assertEqual(incomplete["result"], "validation_failed")
+        self.assertFalse(incomplete["ledger_mutated"])
         mismatched = payment_reversal_decision(
             reverse,
             {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "reversal_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002", **trust_ok},
@@ -2209,7 +2235,8 @@ class ContractTest(unittest.TestCase):
         page_validator = _component_validator(self.spec, "FileVersionGrantPage")
         Draft202012Validator(file_schema).validate(file_body)
         Draft202012Validator(version_schema).validate(version_body)
-        page_validator.validate({"data": [version_body], "page": {"limit": 50, "next_cursor": None}})
+        page_validator.validate({"projection": "grant", "data": [version_body], "page": {"limit": 50, "next_cursor": None}})
+        page_validator.validate({"projection": "grant", "data": [], "page": {"limit": 50, "next_cursor": None}})
         for extra in ({"origin": "firm"}, {"created_by": "018f1a00-7b3c-7d4e-8a11-555555555555"}):
             with self.assertRaises(Exception):
                 Draft202012Validator(file_schema).validate({**file_body, **extra})
@@ -2223,7 +2250,7 @@ class ContractTest(unittest.TestCase):
                 Draft202012Validator(version_schema).validate({**version_body, **extra})
         projections = {
             "getFile": ("FileGrantView", file_body),
-            "listFileVersions": ("FileVersionGrantPage", {"data": [version_body], "page": {"limit": 50, "next_cursor": None}}),
+            "listFileVersions": ("FileVersionGrantPage", {"projection": "grant", "data": [version_body], "page": {"limit": 50, "next_cursor": None}}),
             "quarantineFileVersion": ("FileVersionGrantView", version_body),
         }
         for operation_id, (schema_name, body) in projections.items():
@@ -2237,6 +2264,13 @@ class ContractTest(unittest.TestCase):
         download = _operation(self.spec, "downloadFileVersion")
         self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["encoding"], "base64")
         self.assertNotIn("response_projection", download["x-togavsu-access"])
+        versions = _operation(self.spec, "listFileVersions")
+        response = versions["responses"]["200"]["content"]["application/json"]["schema"]
+        empty_page = {"data": [], "page": {"limit": 50, "next_cursor": None}}
+        _schema_validator(self.spec, response).validate(empty_page)
+        _schema_validator(self.spec, response).validate({"projection": "grant", **empty_page})
+        with self.assertRaises(Exception):
+            page_validator.validate(empty_page)
 
     def test_webhook_delivery_is_authorized_before_serialization(self):
         webhook = self.spec["webhooks"]["moduleEvent"]["post"]
@@ -2420,6 +2454,75 @@ class ContractTest(unittest.TestCase):
             "allowed",
         )
 
+    def test_history_inherits_the_underlying_record(self):
+        covered = []
+        for method, _path, operation in _ops(self.spec):
+            if method != "get":
+                continue
+            if "inherited_record_access" not in operation["x-togavsu-access"]:
+                continue
+            rule = operation["x-togavsu-access"]["inherited_record_access"]
+            self.assertTrue(operation["x-togavsu-access"]["matter_wall"], operation["operationId"])
+            self.assertFalse(operation["x-togavsu-access"]["admin_bypasses_wall"], operation["operationId"])
+            self.assertFalse(rule["admin_bypasses_wall"], operation["operationId"])
+            self.assertEqual(rule["scopes_from"], "underlying_record", operation["operationId"])
+            self.assertEqual(rule["attorney_only_values"], "redacted", operation["operationId"])
+            covered.append(operation["operationId"])
+        for operation_id in (
+            "listAuditLog",
+            "listWebhookDeliveries",
+            "listEvents",
+            "listAiCalls",
+            "historyMatter",
+            "historyFile",
+            "historyInvoice",
+            "reportArAging",
+            "search",
+            "widgetRecentActivity",
+        ):
+            self.assertIn(operation_id, covered, operation_id)
+        hidden = {
+            "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+            "entity_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "record_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "summary": "walled matter opened",
+            "old_value": "secret reason",
+            "new_value": "secret reason",
+            "matter_walled": True,
+            "required_scopes": ["matters:read"],
+            "attorney_only": True,
+        }
+        visible = {
+            "id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+            "entity_id": "018f1a00-7b3c-7d4e-8a11-444444444444",
+            "summary": "firm setting",
+            "matter_walled": False,
+            "required_scopes": ["settings:read"],
+            "attorney_only": False,
+        }
+        admin_off_wall = {"role": "admin", "on_wall": False, "scopes": ["audit:read", "webhooks:read", "matters:read", "settings:read"]}
+        for operation_id in ("listAuditLog", "listWebhookDeliveries", "listEvents", "historyMatter", "search", "reportArAging"):
+            operation = _operation(self.spec, operation_id)
+            page = inherited_history_rows(operation, admin_off_wall, [hidden, visible])
+            self.assertEqual(page["result"], "allowed", operation_id)
+            self.assertEqual([row["id"] for row in page["rows"]], [visible["id"]], operation_id)
+            self.assertNotIn(hidden["entity_id"], str(page["rows"]), operation_id)
+        audit = _operation(self.spec, "listAuditLog")
+        redacted = inherited_history_rows(
+            audit,
+            {"role": "staff", "on_wall": True, "scopes": ["audit:read", "matters:read"]},
+            [{**hidden, "matter_walled": False}],
+        )
+        self.assertEqual(redacted["rows"][0]["old_value"], {"redacted": True})
+        self.assertEqual(redacted["rows"][0]["new_value"], {"redacted": True})
+        self.assertNotIn("secret reason", str(redacted["rows"]))
+        narrowed = inherited_history_rows(
+            audit,
+            {"role": "admin", "on_wall": True, "scopes": ["audit:read"]},
+            [hidden],
+        )
+        self.assertEqual(narrowed["rows"], [])
+
     def test_background_file_publication_grant(self):
         policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["background_file_publication"]
         self.assertFalse(policy["viewer_context_required"])
@@ -2428,16 +2531,41 @@ class ContractTest(unittest.TestCase):
             operation = _operation(self.spec, operation_id)
             self.assertEqual(operation["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive", operation_id)
             self.assertEqual(operation["x-togavsu-access"]["noninteractive_workflow"], "background_file_publication", operation_id)
-        module = {"registered": True, "module_id": "email", "approved_scopes": ["files:write"]}
-        job = {"module_id": "email", "source": "email", "matter_id": "matter-1", "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False}
-        issued = issue_background_file_grant(policy, module, job)
+        issuance = _operation(self.spec, "issueFilePublicationGrant")
+        self.assertEqual(issuance["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(issuance["x-togavsu-mcp"]["tool"], "issueFilePublicationGrant")
+        self.assertEqual(issuance["x-togavsu-access"]["grant_issuance"], "background_file_publication")
+        self.assertFalse(issuance["x-togavsu-access"]["grants_admin"])
+        module = {"installed": True, "registered": True, "module_id": "email", "approved_scopes": ["files:write"]}
+        job = {
+            "module_id": "email",
+            "source": "email",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "expires_at": "2026-11-07T20:00:00Z",
+            "matter_walled": False,
+            "principal_matter_ids": ["018f1a00-7b3c-7d4e-8a11-333333333333"],
+            "event_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb",
+        }
+        issued = background_grant_issuance(issuance, module, job)
         self.assertEqual(issued["result"], "allowed")
         self.assertFalse(issued["file_created"])
-        self.assertIsNone(issue_background_file_grant(policy, {**module, "approved_scopes": ["matters:read"]}, job)["grant"])
-        self.assertIsNone(issue_background_file_grant(policy, module, {**job, "matter_walled": True, "on_wall": False})["grant"])
+        self.assertEqual(issued["events"], ["file.background_authorized"])
+        _component_validator(self.spec, "BackgroundFileAuthorization").validate(issued["grant"])
+        _component_validator(self.spec, "BackgroundFileGrantRequest").validate({"matter_id": job["matter_id"], "source": "email"})
+        delivered_grant = webhook_envelope(
+            {**module, "subscriptions": ["file.background_authorized"], "on_wall": True, "attorney_only": False},
+            issued["webhook_event"],
+        )
+        self.assertEqual(delivered_grant["background_file_authorization"]["matter_id"], job["matter_id"])
+        _component_validator(self.spec, "WebhookEvent").validate(delivered_grant)
+        self.assertIsNone(background_grant_issuance(issuance, {**module, "approved_scopes": ["matters:read"]}, job)["grant"])
+        self.assertIsNone(background_grant_issuance(issuance, {**module, "installed": False}, job)["grant"])
+        self.assertIsNone(background_grant_issuance(issuance, module, {**job, "matter_walled": True, "on_wall": False})["grant"])
+        self.assertIsNone(background_grant_issuance(issuance, module, {**job, "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333334"})["grant"])
         grant = issued["grant"]
+        matter = job["matter_id"]
         store = {"uploads": {}, "files": {}, "events": []}
-        base = {"grant": grant, "caller_module_id": "email", "module_scopes": ["files:write"], "matter_id": "matter-1", "viewer_present": False}
+        base = {"grant": grant, "caller_module_id": "email", "module_scopes": ["files:write"], "matter_id": matter, "viewer_present": False}
         created = background_file_step(store, policy, _operation(self.spec, "createFileUpload"), {**base, "operation": "createFileUpload"})
         self.assertEqual(created["result"], "allowed")
         upload_id = created["upload_id"]
@@ -2461,39 +2589,45 @@ class ContractTest(unittest.TestCase):
         before_events = len(store["events"])
         bulk_op = _operation(self.spec, "bulkFile")
         for label, items in (
-            ("missing-upload", [{"upload_id": "up-unknown", "matter_id": "matter-1"}]),
-            ("not-in-grant", [{"upload_id": "foreign", "matter_id": "matter-1"}]),
+            ("missing-upload", [{"upload_id": "up-unknown", "matter_id": matter}]),
+            ("not-in-grant", [{"upload_id": "foreign", "matter_id": matter}]),
             ("omitted-matter", [{"upload_id": staged["upload_id"]}]),
-            ("unfinished", [{"upload_id": other["upload_id"], "matter_id": "matter-1"}]),
-            ("second-item-unfinished", [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}, {"upload_id": other["upload_id"], "matter_id": "matter-1"}]),
+            ("unfinished", [{"upload_id": other["upload_id"], "matter_id": matter}]),
+            ("second-item-unfinished", [{"upload_id": staged["upload_id"], "matter_id": matter}, {"upload_id": other["upload_id"], "matter_id": matter}]),
+            ("duplicate-id", [{"upload_id": staged["upload_id"], "matter_id": matter}, {"upload_id": staged["upload_id"], "matter_id": matter}]),
         ):
             if label == "not-in-grant":
-                store["uploads"]["foreign"] = {"id": "foreign", "status": "staged", "matter_id": "matter-1", "owner": "email"}
+                store["uploads"]["foreign"] = {"id": "foreign", "status": "staged", "matter_id": matter, "owner": "email"}
             denied_bulk = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": items})
             self.assertNotEqual(denied_bulk["result"], "allowed", label)
             self.assertEqual(denied_bulk["events"], [], label)
             self.assertEqual(len(store["files"]), before_files, label)
             self.assertEqual(len(store["events"]), before_events, label)
         store["uploads"][staged["upload_id"]]["matter_id"] = "matter-9"
-        wrong_matter = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        wrong_matter = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": matter}]})
         self.assertEqual(wrong_matter["result"], "not_found")
         self.assertEqual(len(store["files"]), before_files)
         self.assertEqual(len(store["events"]), before_events)
-        store["uploads"][staged["upload_id"]]["matter_id"] = "matter-1"
+        store["uploads"][staged["upload_id"]]["matter_id"] = matter
         store["uploads"][staged["upload_id"]]["owner"] = "zoom"
-        stolen = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        stolen = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": matter}]})
         self.assertEqual(stolen["result"], "forbidden")
         self.assertEqual(len(store["files"]), before_files)
         store["uploads"][staged["upload_id"]]["owner"] = "email"
-        published_bulk = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        published_bulk = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": matter}]})
         self.assertEqual(published_bulk["result"], "allowed")
-        self.assertIn("file.version_created", published_bulk["events"])
+        version_events = [event for event in published_bulk["events"] if event == "file.version_created"]
+        self.assertEqual(version_events, ["file.version_created"])
+        replayed = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": matter}]})
+        self.assertEqual(replayed["result"], "original_result")
+        self.assertEqual(replayed["events"], [])
+        self.assertEqual(len(store["files"]), before_files + 1)
         raced = commit_concurrent_publishes(policy, _operation(self.spec, "publishFile"), grant, upload_id)
         self.assertEqual(len(raced["store"]["files"]), 1)
         self.assertEqual(raced["second"]["result"], "original_result")
         self.assertFalse(raced["second"]["file_created"])
         for source in ("zoom", "importer", "drop_folder"):
-            other = issue_background_file_grant(policy, {**module, "module_id": source}, {**job, "module_id": source, "source": source})
+            other = background_grant_issuance(issuance, {**module, "module_id": source}, {**job, "module_id": source, "source": source})
             self.assertEqual(other["result"], "allowed", source)
             self.assertFalse(other["file_created"], source)
 
@@ -2711,6 +2845,30 @@ def _client_portal_result(spec: dict, policy: dict, operation_id: str, call: dic
     if client == "own" and call.get("owner") not in (None, "self"):
         return "not_found"
     return "allowed"
+
+
+def _schema_validator(spec: dict, schema: dict):
+    import copy
+
+    from jsonschema import Draft202012Validator
+
+    schemas = copy.deepcopy(spec["components"]["schemas"])
+    node = copy.deepcopy(schema)
+
+    def rewrite(value):
+        if isinstance(value, dict):
+            ref = value.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                value["$ref"] = "#/$defs/" + ref.rsplit("/", 1)[1]
+            for child in value.values():
+                rewrite(child)
+        elif isinstance(value, list):
+            for child in value:
+                rewrite(child)
+
+    rewrite(schemas)
+    rewrite(node)
+    return Draft202012Validator({"$defs": schemas, **node})
 
 
 def _component_validator(spec: dict, schema_name: str):

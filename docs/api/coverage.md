@@ -257,6 +257,7 @@ It does not claim the handlers or the MCP server are implemented.
 | files | `GET` | `/api/v1/files/{file_id}` | `getFile` | required:getFile | admin, attorney, staff, accountant, client | files:read |
 | files | `PATCH` | `/api/v1/files/{file_id}` | `updateFileMetadata` | required:updateFileMetadata | admin, attorney, staff | files:write |
 | files, file-uploads, bulk | `POST` | `/api/v1/files:bulk` | `bulkFile` | required:bulkFile | admin, attorney, staff | files:write |
+| files, file-uploads | `POST` | `/api/v1/files/publication-grants` | `issueFilePublicationGrant` | required:issueFilePublicationGrant | admin, attorney, staff | files:write |
 | files | `POST` | `/api/v1/files/{file_id}/rename` | `renameFile` | required:renameFile | admin, attorney, staff | files:write |
 | files | `POST` | `/api/v1/files/{file_id}/move` | `moveFile` | required:moveFile | admin, attorney, staff | files:write |
 | files | `POST` | `/api/v1/files/{file_id}/status` | `markFileStatus` | required:markFileStatus | admin, attorney, staff | files:write |
@@ -430,4 +431,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 424.
+Operations: 425.

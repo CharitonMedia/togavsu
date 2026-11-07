@@ -10169,6 +10169,60 @@
       }
     },
     {
+      "name": "issueFilePublicationGrant",
+      "method": "POST",
+      "path": "/api/v1/files/publication-grants",
+      "features": [
+        "files",
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token",
+          "task_authorization",
+          "body"
+        ]
+      }
+    },
+    {
       "name": "renameFile",
       "method": "POST",
       "path": "/api/v1/files/{file_id}/rename",

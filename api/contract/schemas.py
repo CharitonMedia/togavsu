@@ -44,6 +44,45 @@ PROBLEM_CODES = [
 ]
 
 
+def _trust_reversal_schema() -> dict:
+    """Read response only. A client cannot post this shape through TrustEntryWrite."""
+    return _obj(
+        {
+            "id": _uuid(),
+            "created_at": _dt(),
+            "created_by": _uuid("User who posted the compensation, or the nil id for System."),
+            "trust_account_id": _uuid(),
+            "client_id": _uuid(),
+            "matter_id": _uuid(),
+            "entry_type": {"const": "reversal"},
+            "amount_cents": {
+                "type": "integer",
+                "not": {"const": 0},
+                "description": "Signed cents. Negative debits the client and pairs with direction debit. Positive credits the client and pairs with direction credit.",
+            },
+            "direction": _enum(["credit", "debit"], "debit undoes a deposit. credit undoes a withdrawal, transfer, or refund."),
+            "method": _PAY_METHOD,
+            "description": {"type": "string"},
+            "reverses_entry_id": _uuid("The original ledger row. This compensation does not edit that row."),
+        },
+        [
+            "id",
+            "created_at",
+            "created_by",
+            "trust_account_id",
+            "client_id",
+            "matter_id",
+            "entry_type",
+            "amount_cents",
+            "direction",
+            "method",
+            "description",
+            "reverses_entry_id",
+        ],
+        "Read-only reversal. reversePayment and reverseTrustEntry append it. The write schema rejects entry_type reversal.",
+    )
+
+
 def _trust_entry_schema(*, read: bool, adjustment: bool) -> dict:
     non_adjust = ["deposit", "withdrawal", "transfer_to_operating", "refund"]
     properties = {
@@ -946,10 +985,16 @@ SCHEMAS = _register(
             ["bank", "name", "last_four"],
         ),
         "TrustEntry": {
-            "description": "Append-only ledger row. Deposit, withdrawal, transfer, and refund amounts are zero or greater. An adjustment amount is signed: positive credits the client and negative debits the client. A debit that leaves a negative balance still posts and raises a flag.",
+            "description": (
+                "Append-only ledger row. Deposit, withdrawal, transfer, and refund amounts are zero or greater. "
+                "An adjustment amount is signed: positive credits the client and negative debits the client. "
+                "A reversal is read-only compensation: amount_cents is signed, direction is debit when the amount is negative, "
+                "and reverses_entry_id names the original row. TrustEntryWrite does not accept entry_type reversal."
+            ),
             "oneOf": [
                 _trust_entry_schema(read=True, adjustment=False),
                 _trust_entry_schema(read=True, adjustment=True),
+                _trust_reversal_schema(),
             ],
         },
         "TrustEntryWrite": {
@@ -1239,11 +1284,12 @@ SCHEMAS = _register(
         ),
         "FileVersionGrantPage": _obj(
             {
+                "projection": {"const": "grant"},
                 "data": _arr(_ref("FileVersionGrantView")),
                 "page": _ref("Page"),
             },
-            ["data", "page"],
-            "One page of grant version projections.",
+            ["projection", "data", "page"],
+            "One page of grant version projections. projection is grant so an empty data array is not also a FileVersion page.",
         ),
         "FileRendition": _meta(
             {
@@ -1293,7 +1339,30 @@ SCHEMAS = _register(
                 "shared_with_client": {"type": "boolean"},
             },
             ["upload_id"],
-            "Publishes a staged upload. completeFileUpload must already have set status staged. The batch carries no file bytes and no storage key.",
+            "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event.",
+        ),
+        "BackgroundFileGrantRequest": _obj(
+            {
+                "matter_id": _uuid("The matter the service principal can already access. Another matter is not_found."),
+                "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+            },
+            ["matter_id", "source"],
+            "Asks the core for a pre-upload publication grant. The body cannot name a module id, a role, or an expiry. The core sets those.",
+        ),
+        "BackgroundFileAuthorization": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1},
+                "matter_id": _uuid(),
+                "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+                "allowed_operations": _arr({"type": "string"}),
+                "expires_at": _dt("After this instant the grant is forbidden."),
+                "revoked": {"type": "boolean"},
+                "expired": {"type": "boolean"},
+                "issued_by": {"const": "core"},
+                "upload_ids": _arr(_uuid(), "Uploads created under this grant. Empty until createFileUpload."),
+            },
+            ["module_id", "matter_id", "source", "allowed_operations", "expires_at", "revoked", "expired", "issued_by", "upload_ids"],
+            "Core-issued pre-upload grant for one installed module, one matter, and the publication sequence. It is not an admin grant.",
         ),
         "FileMetadataWrite": _obj(
             {
@@ -1988,9 +2057,10 @@ SCHEMAS = _register(
                 },
                 "task_authorization": _null(_ref("TaskAuthorization")),
                 "processor_authorization": _null(_ref("ProcessorAuthorization")),
+                "background_file_authorization": _null(_ref("BackgroundFileAuthorization")),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. Other events set both to null.",
+            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null.",
         ),
         "Backup": _meta(
             {

@@ -291,6 +291,8 @@ def _webhooks() -> dict:
                     "An operation outside the grant is forbidden. A field outside the grant is field_locked. "
                     "An attorney-only field stays not_found. The approved scopes on each operation are still required. "
                     "The grant is not an admin or firm-wide bypass. "
+                    "file.background_authorized delivers background_file_authorization to the installed module that holds files:write. "
+                    "That grant is one matter the service principal can access, the publication sequence, and an expiry. "
                     "payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. "
                     "That grant binds the initialization, payment, matter, contact, amount, and destination. "
                     "createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. "

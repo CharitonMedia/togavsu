@@ -2119,8 +2119,10 @@ def _files(api: Contract) -> None:
         description=(
             "Each item names a staged upload. The batch has no bytes and no storage key. "
             "Importer modules publish through this operation. "
-            "Publication is one transaction: every file and first version is created, or none are. "
-            "After that transaction commits, each published version emits file.version_created. "
+            "upload_id values in one batch are unique. A repeated id rejects the batch and writes nothing. "
+            "Publication is one transaction: every new file and first version is created, or none are. "
+            "After that transaction commits, each newly published version emits file.version_created. "
+            "An upload that already has a file is an atomic replay: the original file is returned and no publication event or grant is added. "
             "A failed item returns batch_rejected, leaves every upload staged, and emits no file.created, no file.version_created, and no scan grant."
         ),
         tag="Files",
@@ -2137,7 +2139,37 @@ def _files(api: Contract) -> None:
         success="201",
         events=["file.created", "file.version_created"],
         error_codes=["batch_rejected"],
-        extra_access={**FILE_WALL, **version_publication("bulk", "import")},
+        extra_access={**FILE_WALL, **version_publication("bulk", "import"), "unique_upload_ids": True},
+    )
+    api.add(
+        "post",
+        "/api/v1/files/publication-grants",
+        operation_id="issueFilePublicationGrant",
+        summary="Issue a background file publication grant",
+        description=(
+            "The core issues one pre-upload grant to an installed module that already holds files:write. "
+            "The grant names that module, one matter the service principal can access, the source, the publication sequence, and an expiry. "
+            "A matter outside that access, including a walled matter the principal is not on, is not_found. "
+            "An admin role does not widen the matter. The grant is not an admin or firm-wide bypass. "
+            "file.background_authorized delivers background_file_authorization to that module. "
+            "createFileUpload through bulkFile then run with the grant and no viewer session."
+        ),
+        tag="Files",
+        features=["files", "file-uploads"],
+        roles=STAFF,
+        scopes=["files:write"],
+        body="BackgroundFileGrantRequest",
+        response="BackgroundFileAuthorization",
+        success="201",
+        events=["file.background_authorized"],
+        error_codes=["scope_denied", "forbidden", "not_found"],
+        extra_access={
+            **FILE_WALL,
+            "grant_issuance": "background_file_publication",
+            "event_read_scopes": ["files:write"],
+            "grants_admin": False,
+            "firmwide_bypass": False,
+        },
     )
     for method, path, op, summary, body, event, desc in (
         ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
@@ -3382,7 +3414,11 @@ def _shell(api: Contract) -> None:
         "/api/v1/audit-log",
         operation_id="listAuditLog",
         summary="Audit log",
-        description="Append-only. Every create, update, and delete is recorded with actor, role, and source. There is no write method on this path. Attorney-only values are redacted.",
+        description=(
+            "Append-only. Every create, update, and delete is recorded with actor, role, and source. There is no write method on this path. "
+            "Each row keeps the underlying record's read scope, matter wall, and attorney-only redaction. "
+            "An admin outside a matter wall does not receive that row. Attorney-only old and new values are redacted for a caller who cannot read them."
+        ),
         tag="Shell",
         features=["audit"],
         roles=ADMIN,
@@ -3397,7 +3433,11 @@ def _shell(api: Contract) -> None:
         "/api/v1/webhook-deliveries",
         operation_id="listWebhookDeliveries",
         summary="Webhook deliveries",
-        description="Recent signed deliveries and their retry state. Attempts follow webhooks.retry_attempts over webhooks.retry_window_hours.",
+        description=(
+            "Recent signed deliveries and their retry state. Attempts follow webhooks.retry_attempts over webhooks.retry_window_hours. "
+            "Each delivery keeps the underlying record's read scope, matter wall, and summary redaction. "
+            "An admin outside a matter wall does not receive that delivery."
+        ),
         tag="Shell",
         features=["webhooks"],
         roles=ADMIN,

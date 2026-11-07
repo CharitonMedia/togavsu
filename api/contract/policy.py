@@ -162,7 +162,11 @@ GENERIC_NONINTERACTIVE = frozenset(
     }
 )
 NONINTERACTIVE_OPERATIONS = (
-    GENERIC_NONINTERACTIVE | frozenset(MALWARE_SEQUENCE) | frozenset(PAYMENT_PROCESSOR["sequence"]) | frozenset(BACKGROUND_FILE_SEQUENCE)
+    GENERIC_NONINTERACTIVE
+    | frozenset(MALWARE_SEQUENCE)
+    | frozenset(PAYMENT_PROCESSOR["sequence"])
+    | frozenset(BACKGROUND_FILE_SEQUENCE)
+    | frozenset({"issueFilePublicationGrant"})
 )
 
 _TRUST_POST = {
@@ -391,7 +395,7 @@ def tag_noninteractive_workflows(spec: dict) -> None:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_processor"
         elif operation_id in MALWARE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
-        elif operation_id in BACKGROUND_FILE_SEQUENCE:
+        elif operation_id in BACKGROUND_FILE_SEQUENCE or operation_id == "issueFilePublicationGrant":
             operation["x-togavsu-access"]["noninteractive_workflow"] = "background_file_publication"
 
 
@@ -432,7 +436,8 @@ def attach_grant_projections(spec: dict) -> None:
         slot["schema"] = {
             "description": (
                 "A viewer receives the full record. A file.version_created task grant receives "
-                f"{schema_name} and no ungranted field."
+                f"{schema_name} and no ungranted field. FileVersionGrantPage requires projection=grant, "
+                "so an empty data array matches only one branch."
             ),
             "oneOf": [slot["schema"], {"$ref": f"#/components/schemas/{schema_name}"}],
         }
@@ -446,6 +451,7 @@ def finalize(spec: dict) -> None:
     attach_grant_projections(spec)
     ensure_mutation_events(spec)
     publish_trust_debit(spec)
+    publish_inherited_history(spec)
     publish_event_scopes(spec)
 
 
@@ -495,6 +501,7 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
     if any(scope not in call["token_scopes"] for scope in branch["scopes"]):
         return _denied(policy["insufficient_scopes"])
     account_id = None
+    compensation = None
     if call.get("trust_linked"):
         account_id = call.get("trust_account_id")
         failure = trust_account_failure({**call, "destination": "trust", "trust_account_id": account_id})
@@ -502,6 +509,9 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
             return _denied(failure)
         if call.get("reversal_account_id") not in (None, account_id):
             return _denied("forbidden")
+        compensation = _reversal_compensation(call, account_id)
+        if compensation is None:
+            return _denied("validation_failed")
     entry = branch.get("trust_entry") or {}
     flag = bool(
         call.get("trust_linked")
@@ -520,8 +530,61 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         "flag": flag,
         "trust_posted_by": entry.get("posted_by") if call.get("trust_linked") else None,
         "trust_account_id": account_id if call.get("trust_linked") else None,
+        "trust_entry": None if compensation is None else compensation["entry"],
+        "trust_post": None if compensation is None else compensation["post"],
         "grant": None,
     }
+
+
+def _reversal_compensation(call: dict, account_id: str) -> dict | None:
+    """Read-only compensation row. The write schema does not accept entry_type reversal."""
+    required = ("client_id", "matter_id", "amount_cents", "trust_entry_id", "created_by", "posted_entry_id", "created_at")
+    if any(call.get(key) in (None, "") for key in required):
+        return None
+    amount = call["amount_cents"]
+    if not isinstance(amount, int) or amount == 0:
+        return None
+    signed = -abs(amount)
+    entry = {
+        "id": call["posted_entry_id"],
+        "created_at": call["created_at"],
+        "created_by": call["created_by"],
+        "trust_account_id": account_id,
+        "client_id": call["client_id"],
+        "matter_id": call["matter_id"],
+        "entry_type": "reversal",
+        "amount_cents": signed,
+        "direction": "debit",
+        "method": call.get("method") or "internal_transfer",
+        "description": call.get("description") or "Payment reversal",
+        "reverses_entry_id": call["trust_entry_id"],
+    }
+    flags = []
+    if call.get("below_zero"):
+        flags.append(
+            {
+                "id": call.get("flag_id") or call["posted_entry_id"],
+                "created_at": call["created_at"],
+                "created_by": call["created_by"],
+                "updated_at": call["created_at"],
+                "trust_entry_id": call["posted_entry_id"],
+                "client_id": call["client_id"],
+                "matter_id": call["matter_id"],
+                "balance_cents": call.get("balance_cents", signed),
+                "scope": "matter",
+                "status": "open",
+            }
+        )
+    post = {
+        "entry": entry,
+        "balances": {
+            "matter_cents": call.get("matter_cents", signed),
+            "client_cents": call.get("client_cents", signed),
+            "account_cents": call.get("account_cents", signed),
+        },
+        "flags": flags,
+    }
+    return {"entry": entry, "post": post}
 
 
 def _effect_items(call: dict) -> list[dict]:
@@ -963,6 +1026,8 @@ def committed_events(operation: dict, *, committed: bool, count: int = 1) -> lis
     events = list(operation.get("x-togavsu-events") or [])
     publication = operation["x-togavsu-access"].get("version_publication")
     if publication and publication.get("cardinality") == "one_per_published_version":
+        if count <= 0:
+            return []
         expanded = []
         for event in events:
             expanded.extend([event] * count if event == publication["event"] else [event])
@@ -1023,6 +1088,79 @@ def _domain_read(scope: str) -> str | None:
     if scope.endswith(":read") or scope.endswith(":admin") or scope == "ai:use":
         return scope if scope in SCOPES or scope == "ai:use" else None
     return None
+
+
+HISTORY_RESPONSE_SCHEMAS = {
+    "AuditEntry",
+    "WebhookEvent",
+    "Event",
+    "FileHistoryEntry",
+    "AiCall",
+    "ReportTable",
+    "SearchResponse",
+    "Widget",
+}
+_HISTORY_REDACTED_FIELDS = ("old_value", "new_value", "summary", "reason", "excerpt")
+
+
+def _response_schema_names(operation: dict) -> set[str]:
+    found: set[str] = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                found.add(ref.rsplit("/", 1)[1])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    for code, response in operation.get("responses", {}).items():
+        if isinstance(code, str) and code.startswith("2") and isinstance(response, dict):
+            walk(response.get("content") or {})
+    return found
+
+
+def publish_inherited_history(spec: dict) -> None:
+    """Firm logs, exports, and delivery history use the underlying record. Admin does not bypass a wall."""
+    rule = {
+        "matter_wall": True,
+        "admin_bypasses_wall": False,
+        "unreadable_row": "omitted",
+        "attorney_only_values": "redacted",
+        "scopes_from": "underlying_record",
+    }
+    for method, _path, operation in iter_operations(spec):
+        if method != "get":
+            continue
+        if not (_response_schema_names(operation) & HISTORY_RESPONSE_SCHEMAS):
+            continue
+        access = operation["x-togavsu-access"]
+        access["matter_wall"] = True
+        access["admin_bypasses_wall"] = False
+        access["inherited_record_access"] = dict(rule)
+
+
+def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> dict:
+    rule = operation["x-togavsu-access"].get("inherited_record_access")
+    if not rule or rule.get("admin_bypasses_wall") or not operation["x-togavsu-access"].get("matter_wall"):
+        return {"result": "forbidden", "rows": []}
+    visible = []
+    for row in rows:
+        if row.get("matter_walled") and not caller.get("on_wall"):
+            continue
+        needed = list(row.get("required_scopes") or [])
+        if any(scope not in set(caller.get("scopes") or []) for scope in needed):
+            continue
+        copied = {key: value for key, value in row.items() if key not in {"matter_walled", "required_scopes", "attorney_only"}}
+        if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin"):
+            for field in _HISTORY_REDACTED_FIELDS:
+                if field in copied and copied[field] is not None:
+                    copied[field] = {"redacted": True}
+        visible.append(copied)
+    return {"result": "allowed", "rows": visible}
 
 
 def publish_event_scopes(spec: dict) -> None:
@@ -1113,12 +1251,20 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
         "summary": summary,
         "task_authorization": event.get("task_authorization"),
         "processor_authorization": event.get("processor_authorization"),
+        "background_file_authorization": event.get("background_file_authorization"),
     }
 
 
-def issue_background_file_grant(policy: dict, module: dict, job: dict) -> dict:
-    denied = {"result": "forbidden", "grant": None, "file_created": False, "events": []}
-    if not module.get("registered") or not policy.get("registered_module"):
+def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
+    """Issue a pre-upload grant from the published operation. A direct helper is not the contract."""
+    denied = {"result": "forbidden", "grant": None, "file_created": False, "events": [], "webhook": None}
+    access = operation.get("x-togavsu-access") or {}
+    if access.get("grant_issuance") != "background_file_publication":
+        return denied
+    if operation.get("operationId") != "issueFilePublicationGrant":
+        return denied
+    policy = BACKGROUND_FILE_PUBLICATION
+    if not module.get("installed") or not module.get("registered") or not policy.get("registered_module"):
         return {**denied, "result": policy["unregistered"]}
     if module.get("module_id") != job.get("module_id"):
         return {**denied, "result": policy["wrong_module"]}
@@ -1126,25 +1272,45 @@ def issue_background_file_grant(policy: dict, module: dict, job: dict) -> dict:
         return denied
     if any(scope not in module.get("approved_scopes", []) for scope in policy["scopes"]):
         return {**denied, "result": policy["missing_scope"]}
+    if not job.get("expires_at") or job.get("expired"):
+        return {**denied, "result": policy["expired"]}
     if job.get("matter_walled") and not job.get("on_wall"):
         return {**denied, "result": policy["wrong_matter"]}
-    if policy.get("grants_admin") or policy.get("firmwide_bypass"):
+    principal_matters = job.get("principal_matter_ids")
+    if principal_matters is not None and job.get("matter_id") not in principal_matters:
+        return {**denied, "result": policy["wrong_matter"]}
+    if not job.get("matter_id"):
+        return {**denied, "result": "validation_failed"}
+    if policy.get("grants_admin") or policy.get("firmwide_bypass") or access.get("grants_admin") or access.get("firmwide_bypass"):
         return denied
+    grant = {
+        "module_id": module["module_id"],
+        "matter_id": job["matter_id"],
+        "source": job["source"],
+        "allowed_operations": list(policy["sequence"]),
+        "expires_at": job["expires_at"],
+        "revoked": False,
+        "issued_by": policy["issued_by"],
+        "upload_ids": [],
+        "expired": False,
+    }
+    event = {
+        "id": job.get("event_id") or "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb",
+        "type": "file.background_authorized",
+        "occurred_at": job.get("occurred_at") or job["expires_at"],
+        "actor_kind": "module",
+        "record_type": "matter",
+        "record_id": job["matter_id"],
+        "matter_id": job["matter_id"],
+        "summary": "Publication grant issued",
+        "background_file_authorization": grant,
+    }
     return {
         "result": "allowed",
-        "grant": {
-            "module_id": module["module_id"],
-            "matter_id": job["matter_id"],
-            "source": job["source"],
-            "allowed_operations": list(policy["sequence"]),
-            "expires_at": job["expires_at"],
-            "revoked": False,
-            "expired": False,
-            "issued_by": policy["issued_by"],
-            "upload_ids": [],
-        },
+        "grant": grant,
         "file_created": False,
-        "events": [],
+        "events": list(operation.get("x-togavsu-events") or ["file.background_authorized"]),
+        "webhook_event": event,
     }
 
 
@@ -1216,21 +1382,34 @@ def background_file_step(store: dict, policy: dict, operation: dict, call: dict)
         return {"result": "allowed", "file_created": True, "events": emitted, "file": file_row}
     if operation_id == "bulkFile":
         items = call.get("items") or []
+        seen_ids: set[str] = set()
+        duplicate = False
+        for item in items:
+            upload_id = item.get("upload_id")
+            if upload_id in seen_ids:
+                duplicate = True
+            if upload_id:
+                seen_ids.add(upload_id)
+        if duplicate:
+            return _background_denied(store, before_files, before_events, "validation_failed")
         problems = [_bulk_upload_problem(store, grant, item) for item in items] or ["validation_failed"]
         if any(problems):
             return _background_denied(store, before_files, before_events, next(problem for problem in problems if problem))
         created = []
+        replayed = []
         for item in items:
             key = item["upload_id"]
             if key in store["files"]:
-                created.append(store["files"][key])
+                replayed.append(store["files"][key])
                 continue
             row = {"id": f"file-{key}", "matter_id": grant["matter_id"], "upload_id": key}
             store["files"][key] = row
             created.append(row)
         emitted = committed_events(operation, committed=True, count=len(created))
         store["events"].extend(emitted)
-        return {"result": "allowed", "file_created": True, "events": emitted, "files": created}
+        if not created:
+            return {"result": "original_result", "file_created": False, "events": [], "files": replayed}
+        return {"result": "allowed", "file_created": True, "events": emitted, "files": created + replayed}
     return _background_denied(store, before_files, before_events, policy["operation_outside_grant"])
 
 
