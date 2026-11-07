@@ -1180,6 +1180,28 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(waiting["outcome"], "awaiting_approval")
         self.assertEqual(waiting["version"], "0.1.0")
         self.assertEqual(waiting["token_scopes"], ["matters:read"])
+        remove_and_add = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read", "trust:read"]},
+            [],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read", "files:write"]},
+        )
+        self.assertEqual(remove_and_add["outcome"], "awaiting_approval")
+        self.assertEqual(remove_and_add["version"], "0.1.0")
+        self.assertEqual(remove_and_add["token_scopes"], ["matters:read", "files:write"])
+        self.assertEqual(remove_and_add["active_scopes"], ["matters:read", "files:write"])
+        self.assertNotIn("trust:read", remove_and_add["token_scopes"])
+        revoked = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read", "trust:read"]},
+            [{"scope": "files:write", "decision": "decline"}],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read", "files:write"]},
+        )
+        self.assertEqual(revoked["outcome"], "awaiting_approval")
+        self.assertEqual(revoked["version"], "0.1.0")
+        self.assertEqual(revoked["token_scopes"], ["matters:read"])
+        self.assertNotIn("files:write", revoked["token_scopes"])
+        self.assertNotIn("trust:read", revoked["token_scopes"])
         self.assertEqual(decide_module_permissions(manifest, [{"scope": "matters:read", "decision": "approve"}], signature_verified=False)["result"], "unsigned_module")
         self.assertEqual(decide_module_permissions({**manifest, "permissions": ["matters:read", "matters:read"]}, [], signature_verified=True)["result"], "validation_failed")
         self.assertEqual(
@@ -2320,6 +2342,8 @@ class ContractTest(unittest.TestCase):
             (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed"}, "scope_denied", False),
             (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", **trust_ok}, "allowed", True),
             (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "pending", **trust_ok}, "allowed", False),
+            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", **trust_ok}, "allowed", False),
+            (bulk, {"role": "staff", "token_scopes": ["payments:write"], "trust_accounts": accounts, "firm_id": "firm-1", "items": [{"destination": "trust", "trust_account_id": account}]}, "allowed", False),
             (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "matter_walled": True, "on_wall": False}, "not_found", False),
             (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": False}, "scope_denied", False),
             (status, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "trust_already_posted": False, **trust_ok}, "allowed", True),
@@ -2467,6 +2491,11 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(base["viewer_present"])
         replayed = processor_apply(store, policy, _operation(self.spec, "createPayment"), {**base, "operation": "createPayment", "idempotency_key": "pay-1"})
         self.assertEqual(replayed["result"], "original_result")
+        omitted_status = {key: value for key, value in base.items() if key != "status"}
+        omitted_replay = processor_apply(store, policy, _operation(self.spec, "createPayment"), {**omitted_status, "operation": "createPayment", "idempotency_key": "pay-1"})
+        self.assertEqual(omitted_replay["result"], "original_result")
+        self.assertEqual(omitted_replay["payment"]["accepted_request"]["status"], "pending")
+        self.assertEqual(len(store["ledger"]), 0)
         self.assertEqual(replayed["payment"]["id"], next(iter(store["payments"].values()))["id"])
         self.assertEqual(len(store["payments"]), 1)
         status_conflict = processor_apply(
@@ -3881,6 +3910,10 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(bulk_payment["x-togavsu-events"], ["payment.created", "payment.completed"])
         self.assertEqual(
             payment_lifecycle_events(create_payment, [{"status": "pending", "inserted": True}], committed=True),
+            ["payment.created"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(create_payment, [{"inserted": True}], committed=True),
             ["payment.created"],
         )
         self.assertEqual(

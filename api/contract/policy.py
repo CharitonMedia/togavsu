@@ -688,6 +688,14 @@ def _effect_items(call: dict) -> list[dict]:
     return [call]
 
 
+def _item_payment_status(item: dict) -> str:
+    """A create or bulk item with no status is the graph's initial pending, not completed."""
+    raw = item.get("status") if "status" in item else None
+    if raw in (None, ""):
+        return PAYMENT_STATUS_GRAPH["initial"]
+    return raw
+
+
 def payment_effect_decision(operation: dict, call: dict) -> dict:
     access = operation["x-togavsu-access"]
     policy = access["payment_effect"]
@@ -700,7 +708,7 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
     posts_trust = False
     for item in _effect_items(call):
         destination = item.get("destination", call.get("destination"))
-        status = item.get("status", call.get("status", "completed"))
+        status = _item_payment_status(item)
         already = item.get("trust_already_posted", call.get("trust_already_posted", False))
         needs_trust = destination == "trust" and status == "completed" and not already
         needed = policy["trust_destination"]["scopes"] if needs_trust else policy["operating"]["scopes"]
@@ -717,7 +725,7 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
             item.get("trust_account_id", call.get("trust_account_id"))
             for item in _effect_items(call)
             if item.get("destination", call.get("destination")) == "trust"
-            and item.get("status", call.get("status", "completed")) == "completed"
+            and _item_payment_status(item) == "completed"
             and not item.get("trust_already_posted", call.get("trust_already_posted", False))
         ]
     return {
@@ -926,7 +934,7 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
             "method": call.get("method"),
             "reference_number": call.get("reference_number"),
             "source": call.get("source"),
-            "status": call.get("status", "pending"),
+            "status": _item_payment_status(call),
             "trust_posted": False,
             "accepted_request": request,
         }
@@ -1210,8 +1218,8 @@ def payment_lifecycle_events(operation: dict, items: list[dict], *, committed: b
     emitted: list[str] = []
     for item in items:
         previous = item.get("previous_status")
-        status = item.get("status")
         inserted = bool(item.get("inserted", previous is None))
+        status = _item_payment_status(item) if inserted else item.get("status")
         if inserted and "payment.created" in catalog:
             emitted.append("payment.created")
         if status == "completed" and previous != "completed" and "payment.completed" in catalog:
@@ -2314,17 +2322,27 @@ def decide_module_permissions(
             declined.add(scope)
     rows = parsed["permissions"]
     requested = [row["scope"] for row in rows]
+    active_scopes = [scope for scope in (previous or {}).get("approved_scopes") or [] if scope not in declined]
     if any(row["required"] and row["scope"] in declined for row in rows):
         listed = [{**row, "approved": False} for row in rows]
-        return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
-    previous_scopes = [scope for scope in (previous or {}).get("approved_scopes") or [] if scope in requested and scope not in declined]
-    pending = [scope for scope in requested if scope not in previous_scopes and scope not in approved and scope not in declined]
+        return {
+            "result": "permission_declined",
+            "outcome": "cancelled",
+            "token_scopes": active_scopes if previous else [],
+            "active_scopes": active_scopes if previous else [],
+            "permissions": listed,
+            "version": kept,
+            "previous_version": kept,
+        }
+    pending = [scope for scope in requested if scope not in active_scopes and scope not in approved and scope not in declined]
     if previous and pending:
-        listed = [{**row, "approved": row["scope"] in previous_scopes} for row in rows]
+        listed = [{**row, "approved": row["scope"] in active_scopes} for row in rows]
         return {
             "result": "awaiting_approval",
             "outcome": "awaiting_approval",
-            "token_scopes": previous_scopes,
+            "token_scopes": active_scopes,
+            "active_scopes": active_scopes,
+            "proposed_scopes": requested,
             "permissions": listed,
             "version": kept,
             "previous_version": kept,
@@ -2332,7 +2350,7 @@ def decide_module_permissions(
     if previous is None and any(row["required"] and row["scope"] not in approved for row in rows):
         listed = [{**row, "approved": False} for row in rows]
         return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
-    token = [scope for scope in requested if scope not in declined and (scope in previous_scopes or scope in approved)]
+    token = [scope for scope in requested if scope not in declined and (scope in active_scopes or scope in approved)]
     listed = [{**row, "approved": row["scope"] in token} for row in rows]
     return {"result": "installed", "outcome": "installed", "token_scopes": token, "permissions": listed, "version": version, "previous_version": kept}
 
