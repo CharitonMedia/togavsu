@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -286,9 +287,11 @@ func TestAdvancingClockDoesNotFinishAnUncertainPut(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
-	clock := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	var clock atomic.Int64
+	clock.Store(time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC).UnixNano())
+	now := func() time.Time { return time.Unix(0, clock.Load()).UTC() }
 	s := testStore(t)
-	s.Now = func() time.Time { return clock }
+	s.Now = now
 	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
@@ -297,7 +300,7 @@ func TestAdvancingClockDoesNotFinishAnUncertainPut(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
-		return &S3Destination{Spec: spec, HTTP: &http.Client{Timeout: destinationIOTimeout}, Now: func() time.Time { return clock }}, nil
+		return &S3Destination{Spec: spec, HTTP: &http.Client{Timeout: destinationIOTimeout}, Now: now}, nil
 	}
 	done := make(chan BackupMeta, 1)
 	go func() {
@@ -312,7 +315,7 @@ func TestAdvancingClockDoesNotFinishAnUncertainPut(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("upload did not start")
 	}
-	clock = clock.Add(2 * destinationIOTimeout)
+	clock.Add(int64(2 * destinationIOTimeout))
 	meta := <-done
 	if len(meta.DestinationErrors) != 1 {
 		t.Fatalf("errors = %v", meta.DestinationErrors)
@@ -329,7 +332,7 @@ func TestAdvancingClockDoesNotFinishAnUncertainPut(t *testing.T) {
 	if rec.Code == http.StatusNoContent {
 		t.Fatal("clock past the upload timeout reported deletion")
 	}
-	clock = clock.Add(2 * destinationIOTimeout)
+	clock.Add(int64(2 * destinationIOTimeout))
 	rec = httptest.NewRecorder()
 	NewMux("secret", ops, nil).ServeHTTP(rec, req)
 	if rec.Code == http.StatusNoContent {
