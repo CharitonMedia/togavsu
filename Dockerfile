@@ -1,5 +1,5 @@
-# Supervisor image. The product core image is deploy/core.Dockerfile and fails
-# closed until the contracts assignment publishes cmd/core and go.mod.
+# Supervisor image. The product core image is deploy/core.Dockerfile. cmd/core
+# accepts bootstrap configuration and does not start HTTP or migrations.
 
 FROM golang:1.22-bookworm AS supervisor-build
 WORKDIR /src

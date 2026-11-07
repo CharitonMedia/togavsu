@@ -1,5 +1,6 @@
-# Product core image. Fails closed until the contracts assignment adds go.mod
-# and cmd/core. This Dockerfile does not invent a setup wizard.
+# Product core image. Builds the contracts bootstrap binary. The process
+# accepts its four environment values and does not start HTTP or migrations.
+# The go.mod and cmd/core checks still fail the build if those files are removed.
 FROM golang:1.22-bookworm AS build
 WORKDIR /src
 COPY . .

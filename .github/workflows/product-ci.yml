@@ -17,6 +17,7 @@ jobs:
         with:
           go-version: "1.22"
       - run: sh scripts/ci/test-supervisor.sh
+      - run: go test ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/
       - run: sh scripts/ci/test-bootstrap.sh
       - run: sh scripts/ci/test-core-image-gate.sh
       - run: sh scripts/ci/pending-gate.sh
