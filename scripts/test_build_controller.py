@@ -58,6 +58,8 @@ class FakeRemote:
         if path == "pulls/7/merge":
             if self.fail_merge:
                 raise RuntimeError("GitHub protection rejected merge")
+            self.pr.update(merged=True,merge_commit_sha=NEW,state="closed")
+            self.main=NEW
             return {"merged": True, "sha": NEW}
         if path == "issues/1/comments":
             return {"id": 99}
@@ -424,6 +426,41 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("completed", self.record)
         self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
         self.assertIn("retargeted", self.record["halted"])
+
+    def test_retarget_during_merge_never_unlocks_dependencies(self):
+        original=self.remote.gh
+        def gh(path,method="GET",payload=None,**kwargs):
+            if path=="pulls/7/merge":
+                self.remote.pr["base"]["ref"]="other"
+                self.remote.pr.update(merged=True,merge_commit_sha=NEW,state="closed")
+                return {"merged":True,"sha":NEW}
+            return original(path,method,payload,**kwargs)
+        self.remote.gh=gh
+        self.process()
+        self.assertNotIn("completed",self.record)
+        self.assertIn("outside main",self.record["halted"])
+
+    def test_accepted_branch_update_without_progress_stops_after_deadline(self):
+        self.remote.behind=1
+        self.process()
+        self.record["update_requested_at"]=(dt.datetime.now(dt.timezone.utc)-dt.timedelta(minutes=16)).isoformat()
+        self.process()
+        self.assertIn("did not advance",self.record["halted"])
+        self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/update-branch")]),1)
+
+    def test_merge_response_without_main_membership_does_not_complete(self):
+        self.record["merge_intent"]={"head":HEAD,"base":BASE,"result_sha":NEW}
+        self.remote.pr.update(merged=True,merge_commit_sha=NEW,state="closed")
+        self.process()
+        self.assertNotIn("completed",self.record)
+        self.assertIn("dependencies remain blocked",self.record["waiting"])
+
+    def test_accepted_merge_with_stale_pr_view_is_not_resubmitted(self):
+        self.record["merge_intent"]={"head":HEAD,"base":BASE,"result_sha":NEW}
+        self.process()
+        self.process()
+        self.assertNotIn("completed",self.record)
+        self.assertFalse(any(c[1].endswith("/merge") or c[1].endswith("/update-branch") for c in self.remote.calls))
 
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True

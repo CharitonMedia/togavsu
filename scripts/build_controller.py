@@ -373,14 +373,15 @@ class Controller:
             self.halt(task, record, "Unexpected PR repository or target branch")
             return False
         head, number = pr["head"]["sha"], pr["number"]
+        if record.get("merge_intent", {}).get("result_sha"):
+            self.verify_merge(task, record, pr)
+            return False  # Accepted merge responses are reconciled, never submitted again.
         if pr.get("merged"):
             # Merged work is a bounded dependency, never a declaration of product/phase acceptance.
             if not record.get("merge_intent") or record["merge_intent"]["head"] != head:
                 self.halt(task, record, "PR merged outside this controller; verify evidence before adopting completion")
                 return False
-            record["completed"] = {"pr": number, "merge_sha": pr["merge_commit_sha"], "report": pr["html_url"], "head": head}
-            self.event(task, "Verified protected merge " + pr["merge_commit_sha"])
-            self.save()
+            self.verify_merge(task, record, pr)
             return False
         if pr["state"] != "open":
             self.halt(task, record, "Assignment PR closed without merge")
@@ -414,6 +415,12 @@ class Controller:
             return False
         comparison = self.remote.gh("compare/" + main + "..." + head)
         if comparison["behind_by"]:
+            if record.get("updated_for") == [head, main]:
+                record.setdefault("update_requested_at", now())
+                elapsed = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(record["update_requested_at"])).total_seconds()
+                if elapsed > 900:
+                    self.halt(task, record, "Accepted branch update did not advance the head within 15 minutes")
+                    return False
             if pr.get("mergeable") is None:
                 return False
             if pr.get("mergeable") is False:
@@ -423,11 +430,12 @@ class Controller:
                     "Run complete applicable tests, refresh the ORIGINAL PR body with current revision/results, commit and push. "
                     "Do not force-push, merge the PR, weaken checks or discard another domain's work.", repair=False)
             elif record.get("updated_for") != [head, main]:
-                self.effect("update branch PR " + str(number), lambda: self.remote.gh("pulls/" + str(number) + "/update-branch",
-                    "PUT", {"expected_head_sha": head}))
                 if not self.dry:
                     record["updated_for"] = [head, main]
-                    self.save()
+                    record["update_requested_at"] = now()
+                    self.save()  # A lost update response must still have a bounded deadline.
+                self.effect("update branch PR " + str(number), lambda: self.remote.gh("pulls/" + str(number) + "/update-branch",
+                    "PUT", {"expected_head_sha": head}))
                 self.event(task, "Refresh branch against main; await fresh tests and Codex")
             return False
         checks = self.remote.checks(head)
@@ -555,8 +563,32 @@ class Controller:
         if not result.get("merged"):
             self.event(task, "GitHub did not permit merge; protections retained")
             return False
-        record["completed"] = {"pr": number, "merge_sha": result["sha"], "head": head, "report": pr["html_url"]}
-        self.event(task, "Merged through protected checks: " + result["sha"])
+        record["merge_intent"]["result_sha"] = result["sha"]
+        self.save()
+        return self.verify_merge(task, record, self.remote.gh("pulls/" + str(number)))
+
+    def verify_merge(self, task, record, pr):
+        if pr.get("base", {}).get("ref") != "main":
+            self.halt(task, record, "Merge target changed; refusing dependency completion outside main")
+            return False
+        intent = record["merge_intent"]
+        merged = intent.get("result_sha", pr.get("merge_commit_sha"))
+        visible = pr.get("merged") and pr.get("merge_commit_sha") == merged and pr["head"]["sha"] == intent["head"]
+        current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
+        on_main = merged == current_main
+        if visible and not on_main and isinstance(merged, str) and re.fullmatch(r"[0-9a-f]{40}", merged):
+            graph = self.remote.gh("compare/" + merged + "..." + current_main)
+            on_main = graph.get("status") in {"ahead", "identical"} and graph.get("behind_by") == 0
+        if not visible or not on_main:
+            record.setdefault("merge_verify_since", now())
+            elapsed = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(record["merge_verify_since"])).total_seconds()
+            record["waiting"] = "Await verified merge commit on main; dependencies remain blocked"
+            if elapsed > 900:
+                self.halt(task, record, "Merge response could not be verified on main within 15 minutes")
+            self.save()
+            return False
+        record["completed"] = {"pr": pr["number"], "merge_sha": merged, "head": intent["head"], "report": pr["html_url"]}
+        self.event(task, "Verified protected merge on main: " + merged)
         self.save()
         return True
 
