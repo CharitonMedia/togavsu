@@ -22,6 +22,7 @@ from contract.build import (
     render_mcp,
 )
 from contract.policy import (
+    CORE_PAGE_TARGETS,
     EXTENSIBLE_RECORDS,
     background_file_step,
     commit_concurrent_processor_creates,
@@ -35,7 +36,11 @@ from contract.policy import (
     include_views_decision,
     notification_page,
     notification_recipient_decision,
+    decide_module_permissions,
+    manifest_contributions,
+    manifest_custom_fields,
     module_ui_targets,
+    open_widget_target,
     sidebar_entries,
     background_grant_issuance,
     doc_tender_events,
@@ -470,9 +475,14 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(operation["x-togavsu-writes"])
 
     def test_guide_hides_from_clients(self):
-        for path in ("/api/v1/help/guide", "/help/guide"):
+        for path in ("/api/v1/help/guide", "/help/guide", "/api/v1/help/modules/{module_id}/pages"):
             access = self.spec["paths"][path]["get"]["x-togavsu-access"]
             self.assertEqual(access["client"], "not_found", path)
+            self.assertEqual(access["markdown"], "sanitize", path)
+            self.assertEqual(access["runtime_registration"], "pending", path)
+            self.assertEqual(access["on_update"], "replace", path)
+            self.assertEqual(access["on_disable"], "hide", path)
+            self.assertEqual(access["on_uninstall"], "remove", path)
 
     def test_editor_pin(self):
         editor = self.spec["components"]["schemas"]["EditorInfo"]
@@ -699,15 +709,28 @@ class ContractTest(unittest.TestCase):
             "name": "Matter Clock",
             "version": "0.1.0",
             "image": {"reference": "ghcr.io/example/matter-clock", "digest": "sha256:abc"},
-            "permissions": ["matters:read"],
+            "permissions": ["matters:read", {"scope": "files:write", "required": False}],
             "widgets": [
                 {
                     "id": "hours",
                     "title": "Hours this month",
                     "default_size": {"w": 3, "h": 2},
                     "allowed_sizes": [{"w": 3, "h": 2}, {"w": 4, "h": 2}],
-                    "target": {"path": "hours", "filters": {"month": "current"}, "scopes": ["matters:read"], "roles": ["staff"]},
-                }
+                    "target": {"kind": "module", "path": "hours", "filters": {"month": "current"}, "scopes": ["matters:read"], "roles": ["staff"]},
+                },
+                {
+                    "id": "deadlines",
+                    "title": "Deadlines",
+                    "default_size": {"w": 4, "h": 2},
+                    "allowed_sizes": [{"w": 4, "h": 2}],
+                    "target": {
+                        "kind": "core",
+                        "route": "deadlines",
+                        "filters": {"from_date": "2026-11-01", "to_date": "2026-11-07"},
+                        "scopes": ["deadlines:read"],
+                        "roles": ["staff"],
+                    },
+                },
             ],
             "sidebar": [
                 {
@@ -745,6 +768,45 @@ class ContractTest(unittest.TestCase):
                     {"id": "close-target", "label": "Close target", "target": "close-target", "scopes": ["matters:write"], "roles": ["staff"]},
                 ],
             },
+            "tabs": [
+                {
+                    "id": "hours-home",
+                    "title": "Hours",
+                    "placement": "home-screen",
+                    "target": "hours",
+                    "guide": "hours-guide",
+                    "scopes": ["matters:read"],
+                    "roles": ["staff"],
+                },
+                {
+                    "id": "hours-matter",
+                    "title": "Matter hours",
+                    "placement": "matter-screen",
+                    "target": "history",
+                    "guide": "matter-guide",
+                    "scopes": ["matters:read"],
+                    "roles": ["staff"],
+                },
+            ],
+            "help": {
+                "heading": "Matter Clock",
+                "pages": [
+                    {
+                        "id": "hours-guide",
+                        "title": "Hours",
+                        "markdown": "Read the hours widget.",
+                        "keywords": ["hours"],
+                        "covers": [{"kind": "widget", "id": "hours"}, {"kind": "tab", "id": "hours-home"}],
+                    },
+                    {
+                        "id": "matter-guide",
+                        "title": "Matter hours",
+                        "markdown": "The matter tab. <script>alert(1)</script>",
+                        "keywords": ["matter"],
+                        "covers": [{"kind": "tab", "id": "hours-matter"}, {"kind": "screen", "id": "history"}],
+                    },
+                ],
+            },
             "data": {
                 "migrations": [{"version": 1, "name": "targets", "checksum": "sha256:" + ("ab" * 32)}],
                 "extensions": [{"core_record": "matter", "table": "matter_targets", "primary_key": "id", "foreign_key": "id"}],
@@ -756,6 +818,24 @@ class ContractTest(unittest.TestCase):
                         "columns": ["goal_hours"],
                         "scope": "views:matter-clock.targets:read",
                     }
+                ],
+                "custom_fields": [
+                    {
+                        "record_type": "matter",
+                        "key": "matter-clock.goal_hours",
+                        "label": "Goal hours",
+                        "field_type": "number",
+                        "sort_order": 10,
+                    },
+                    {
+                        "record_type": "matter",
+                        "key": "matter-clock.stage",
+                        "label": "Stage",
+                        "field_type": "pick_list",
+                        "sort_order": 20,
+                        "options": ["intake", "active"],
+                        "practice_area_ids": ["018f1a00-7b3c-7d4e-8a11-111111111111"],
+                    },
                 ],
             },
         }
@@ -828,6 +908,141 @@ class ContractTest(unittest.TestCase):
         validator.validate(omitted)
         empty_data = {**omitted, "data": {}}
         validator.validate(empty_data)
+        no_ui = {key: value for key, value in manifest.items() if key not in ("help", "tabs")}
+        validator.validate(no_ui)
+        for label, broken_manifest in (
+            ("blank-help", {**manifest, "help": {}}),
+            ("blank-tab", {**manifest, "tabs": [{}]}),
+            ("admin-placement", {**manifest, "tabs": [{**manifest["tabs"][0], "placement": "admin"}]}),
+            ("profile-placement", {**manifest, "tabs": [{**manifest["tabs"][0], "placement": "profile"}]}),
+            ("raw-core-url", {**manifest, "widgets": [{**manifest["widgets"][1], "target": {**manifest["widgets"][1]["target"], "route": "https://evil.example/deadlines"}}]}),
+            ("other-module-widget", {**manifest, "widgets": [{**manifest["widgets"][0], "target": {**manifest["widgets"][0]["target"], "path": "/m/other-module/page"}}]}),
+        ):
+            with self.assertRaises(Exception, msg=label):
+                validator.validate(broken_manifest)
+        staff = {"role": "staff", "scopes": ["deadlines:read", "matters:read"]}
+        core_page = open_widget_target("matter-clock", manifest["widgets"][1]["target"], staff)
+        self.assertEqual(core_page["result"], "allowed")
+        self.assertEqual(core_page["route"], "deadlines")
+        self.assertEqual(core_page["operation"], "listDeadline")
+        self.assertEqual(core_page["filters"]["from_date"], "2026-11-01")
+        self.assertIsNone(core_page["path"])
+        own_page = open_widget_target("matter-clock", manifest["widgets"][0]["target"], {"role": "staff", "scopes": ["matters:read"]})
+        self.assertEqual(own_page["path"], "/m/matter-clock/hours")
+        unauthorized = open_widget_target(
+            "matter-clock",
+            {"kind": "core", "route": "ar_aging", "filters": {}, "scopes": ["reports:read"], "roles": ["staff"]},
+            {"role": "staff", "scopes": ["matters:read"]},
+        )
+        self.assertEqual(unauthorized["result"], "forbidden")
+        self.assertIsNone(unauthorized["route"])
+        walled = open_widget_target(
+            "matter-clock",
+            {**manifest["widgets"][1]["target"], "filters": {"matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333"}},
+            {**staff, "matter_walled": True, "on_wall": False},
+        )
+        self.assertEqual(walled["result"], "not_found")
+        for hostile in (
+            {"kind": "module", "path": "javascript:alert(1)", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "module", "path": "https://evil.example/page", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "module", "path": "data:text/html,hi", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "module", "path": "//evil.example/page", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "module", "path": "../other-module/secret", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "core", "route": "https://evil.example", "scopes": ["matters:read"], "roles": ["staff"]},
+            {"kind": "core", "route": "/api/v1/matters", "scopes": ["matters:read"], "roles": ["staff"]},
+        ):
+            refused_target = open_widget_target("matter-clock", hostile, staff)
+            self.assertEqual(refused_target["result"], "validation_failed", hostile)
+            self.assertIsNone(refused_target["path"], hostile)
+        for route, page in CORE_PAGE_TARGETS.items():
+            operation = _operation(self.spec, page["operation"])
+            self.assertEqual(operation["x-togavsu-access"]["roles"], page["roles"], route)
+            self.assertEqual(operation["x-togavsu-access"]["scopes"], page["scopes"], route)
+        guides = manifest_contributions(manifest, {"role": "staff"})
+        self.assertEqual(guides["result"], "allowed")
+        self.assertEqual(guides["namespace"], "matter-clock")
+        self.assertEqual(guides["heading"], "Matter Clock")
+        self.assertEqual([page["id"] for page in guides["pages"]], ["hours-guide", "matter-guide"])
+        self.assertEqual([tab["path"] for tab in guides["tabs"]], ["/m/matter-clock/hours", "/m/matter-clock/history"])
+        self.assertNotIn("script", guides["pages"][1]["markdown"])
+        self.assertIn("matter tab", guides["pages"][1]["markdown"])
+        self.assertEqual(manifest_contributions(manifest, {"role": "client"})["result"], "not_found")
+        self.assertEqual(manifest_contributions(manifest, {"role": "client"})["pages"], [])
+        dangling = copy.deepcopy(manifest)
+        dangling["tabs"][0]["guide"] = "missing-guide"
+        self.assertEqual(manifest_contributions(dangling)["result"], "validation_failed")
+        wrong_target = copy.deepcopy(manifest)
+        wrong_target["tabs"][1]["target"] = "https://evil.example/tab"
+        self.assertEqual(manifest_contributions(wrong_target)["result"], "validation_failed")
+        omitted_ui = manifest_contributions(no_ui, {"role": "staff"})
+        self.assertEqual(omitted_ui["result"], "allowed")
+        self.assertEqual(omitted_ui["pages"], [])
+        fields = manifest_custom_fields(manifest, "matter-clock")
+        self.assertEqual(fields["result"], "allowed")
+        self.assertEqual(fields["module_id"], "matter-clock")
+        self.assertEqual([field["key"] for field in fields["fields"]], ["matter-clock.goal_hours", "matter-clock.stage"])
+        self.assertEqual(fields["fields"][1]["options"], ["intake", "active"])
+        bare = {key: value for key, value in manifest.items() if key != "data"}
+        self.assertEqual(manifest_custom_fields(bare)["fields"], [])
+        self.assertEqual(manifest_custom_fields({**bare, "data": {}})["fields"], [])
+        forged = manifest_custom_fields(manifest, "other-module")
+        self.assertEqual(forged["result"], "validation_failed")
+        self.assertEqual(forged["fields"], [])
+        foreign_key = copy.deepcopy(manifest)
+        foreign_key["data"]["custom_fields"][0]["key"] = "other-module.goal_hours"
+        self.assertEqual(manifest_custom_fields(foreign_key)["result"], "validation_failed")
+        duplicate_key = copy.deepcopy(manifest)
+        duplicate_key["data"]["custom_fields"].append(dict(duplicate_key["data"]["custom_fields"][0]))
+        self.assertEqual(manifest_custom_fields(duplicate_key)["result"], "validation_failed")
+        bad_pick = copy.deepcopy(manifest)
+        bad_pick["data"]["custom_fields"][1]["options"] = ["intake", "intake"]
+        self.assertEqual(manifest_custom_fields(bad_pick)["result"], "validation_failed")
+        for label, broken_field in (
+            ("bad-type", {**manifest["data"]["custom_fields"][0], "field_type": "blob"}),
+            ("bad-record", {**manifest["data"]["custom_fields"][0], "record_type": "invoice"}),
+            ("pick-without-options", {"record_type": "matter", "key": "matter-clock.stage", "label": "Stage", "field_type": "pick_list", "sort_order": 1}),
+            ("options-on-text", {**manifest["data"]["custom_fields"][0], "options": ["a"]}),
+        ):
+            bad_fields = copy.deepcopy(manifest)
+            bad_fields["data"]["custom_fields"] = [broken_field]
+            with self.assertRaises(Exception, msg=label):
+                validator.validate(bad_fields)
+        optional = decide_module_permissions(
+            manifest,
+            [{"scope": "matters:read", "decision": "approve"}, {"scope": "files:write", "decision": "decline", "required": True}],
+            signature_verified=True,
+        )
+        self.assertEqual(optional["result"], "installed")
+        self.assertEqual(optional["token_scopes"], ["matters:read"])
+        self.assertFalse(next(row for row in optional["permissions"] if row["scope"] == "files:write")["approved"])
+        self.assertTrue(next(row for row in optional["permissions"] if row["scope"] == "matters:read")["required"])
+        required_decline = decide_module_permissions(
+            manifest,
+            [{"scope": "matters:read", "decision": "decline", "required": False}, {"scope": "files:write", "decision": "approve"}],
+            signature_verified=True,
+        )
+        self.assertEqual(required_decline["outcome"], "cancelled")
+        self.assertEqual(required_decline["token_scopes"], [])
+        waiting = decide_module_permissions(
+            {**manifest, "version": "0.2.0", "permissions": ["matters:read", "trust:read"]},
+            [],
+            signature_verified=True,
+            previous={"version": "0.1.0", "approved_scopes": ["matters:read"]},
+        )
+        self.assertEqual(waiting["outcome"], "awaiting_approval")
+        self.assertEqual(waiting["version"], "0.1.0")
+        self.assertEqual(waiting["token_scopes"], ["matters:read"])
+        self.assertEqual(decide_module_permissions(manifest, [{"scope": "matters:read", "decision": "approve"}], signature_verified=False)["result"], "unsigned_module")
+        self.assertEqual(decide_module_permissions({**manifest, "permissions": ["matters:read", "matters:read"]}, [], signature_verified=True)["result"], "validation_failed")
+        self.assertEqual(
+            decide_module_permissions(
+                {**manifest, "permissions": ["matters:read", {"scope": "matters:read", "required": False}]},
+                [],
+                signature_verified=True,
+            )["result"],
+            "validation_failed",
+        )
+        self.assertEqual(decide_module_permissions({**manifest, "permissions": ["settings:write"]}, [], signature_verified=True)["result"], "validation_failed")
 
     def test_doc_tender_result_is_readable(self):
         file_schema = self.spec["components"]["schemas"]["File"]["properties"]
@@ -1792,6 +2007,19 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["firmwide_bypass"])
         self.assertFalse(policy["ambient_payment_write"])
         self.assertEqual(policy["sequence"], ["createPayment", "updatePaymentStatus"])
+        graph = policy["status_graph"]
+        self.assertEqual(graph["transitions"]["pending"], ["completed", "failed"])
+        self.assertEqual(graph["transitions"]["completed"], [])
+        self.assertEqual(graph["transitions"]["reversed"], [])
+        self.assertEqual(graph["settled_correction"], "reversePayment")
+        self.assertEqual(graph["settled_correction_excludes"], "failed")
+        self.assertTrue(graph["reversed_terminal"])
+        status_operation = _operation(self.spec, "updatePaymentStatus")
+        self.assertEqual(status_operation["x-togavsu-access"]["payment_status"], graph)
+        self.assertIn("conflict", status_operation["x-togavsu-error-codes"])
+        status_tool = next(tool for tool in render_mcp(self.spec)["tools"] if tool["name"] == "updatePaymentStatus")
+        self.assertEqual(status_tool["payment_status"], graph)
+        self.assertIn("reversePayment", self.spec["components"]["schemas"]["PaymentStatusWrite"]["description"])
         self.assertIn("processor_authorization", self.spec["components"]["schemas"]["WebhookEvent"]["properties"])
         initiation = _operation(self.spec, "initiateProcessorPayment")
         self.assertEqual(initiation["x-togavsu-access"]["module_delegation"], "delegated_viewer")
@@ -2027,7 +2255,29 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(second_key["payment"]["id"], trust_payment)
         self.assertFalse(second_key["ledger_inserted"])
         self.assertEqual(len(store["ledger"]), 1)
+        noop_key = ("lawpay", "updatePaymentStatus", trust_grant["initialization_id"], "trust-done-2")
+        self.assertEqual(store["idempotency"][noop_key]["initialization_id"], trust_grant["initialization_id"])
+        failed_same_key = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "failed", "idempotency_key": "trust-done-2"},
+        )
+        self.assertEqual(failed_same_key["result"], "idempotency_conflict")
+        self.assertIsNone(failed_same_key["payment"])
+        self.assertEqual(store["payments"][trust_grant["initialization_id"]]["status"], "completed")
+        self.assertEqual(len(store["ledger"]), 1)
         self.assertEqual(store["ledger"][0]["trust_account_id"], trust_account)
+        late_failed = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "failed", "idempotency_key": "trust-late-failed"},
+        )
+        self.assertEqual(late_failed["result"], "conflict")
+        self.assertEqual(late_failed["payment"]["status"], "completed")
+        self.assertFalse(late_failed["ledger_inserted"])
+        self.assertEqual(len(store["ledger"]), 1)
         self.assertEqual(
             callback(
                 "updatePaymentStatus",
@@ -2035,6 +2285,17 @@ class ContractTest(unittest.TestCase):
             ),
             "original_result",
         )
+        self.assertEqual(len(store["ledger"]), 1)
+        store["payments"][trust_grant["initialization_id"]]["status"] = "reversed"
+        reopened = processor_apply(
+            store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "idempotency_key": "trust-reopen"},
+        )
+        self.assertEqual(reopened["result"], "conflict")
+        self.assertEqual(reopened["payment"]["status"], "reversed")
+        self.assertFalse(reopened["ledger_inserted"])
         self.assertEqual(len(store["ledger"]), 1)
         bare = {**trust_base, "operation": "createPayment", "status": "completed", "module_scopes": ["payments:write"], "grant": {**trust_grant, "payment_id": None}}
         self.assertEqual(callback("createPayment", bare), "scope_denied")

@@ -245,6 +245,9 @@ def render_mcp(spec: dict) -> dict:
             }
             if "transfer" in mcp:
                 tool["transfer"] = mcp["transfer"]
+            payment_status = operation["x-togavsu-access"].get("payment_status")
+            if payment_status:
+                tool["payment_status"] = payment_status
             tools.append(tool)
     return {"transport": "POST /mcp", "tools": tools}
 

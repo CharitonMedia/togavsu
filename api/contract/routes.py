@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contract.model import Contract
-from contract.policy import FILE_DOWNLOAD, finalize, version_publication
+from contract.policy import FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
 
 ADMIN = ["admin"]
 ATTORNEY = ["admin", "attorney"]
@@ -1623,7 +1623,10 @@ def _billing(api: Contract) -> None:
         operation_id="updatePaymentStatus",
         summary="Update a payment status",
         description=(
-            "Moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method. "
+            "Pending may become completed or failed. The same status is idempotent and does not write. "
+            "Completed, failed, and reversed are terminal here. A late callback that would leave a terminal status is conflict and changes neither the payment nor the ledger. "
+            "A settled correction is reversePayment, not status failed. reversed cannot become completed. "
+            "The amount does not change. "
             "A registered processor calls this with the core-issued grant and no viewer session. "
             "The payment id, matter, and amount must be the ones bound on that grant. "
             "The first completion of a trust destination needs trust:write before any ledger row is written. "
@@ -3300,7 +3303,7 @@ def _shell(api: Contract) -> None:
         scopes=["help:read"],
         response_content={"text/html": {"schema": {"type": "string"}}, "text/markdown": {"schema": {"type": "string"}}},
         writes=False,
-        extra_access={"client": "not_found"},
+        extra_access=dict(MODULE_GUIDE),
     )
     api.add(
         "get",
@@ -3314,7 +3317,7 @@ def _shell(api: Contract) -> None:
         scopes=["help:read"],
         response_content={"application/pdf": {"schema": {"type": "string", "contentMediaType": "application/pdf"}}},
         writes=False,
-        extra_access={"client": "not_found"},
+        extra_access=dict(MODULE_GUIDE),
     )
     api.add(
         "get",
@@ -3330,7 +3333,7 @@ def _shell(api: Contract) -> None:
         writes=False,
         mcp="alias",
         canonical="getHelpGuide",
-        extra_access={"client": "not_found"},
+        extra_access=dict(MODULE_GUIDE),
     )
     api.add(
         "get",
@@ -3346,14 +3349,14 @@ def _shell(api: Contract) -> None:
         writes=False,
         mcp="alias",
         canonical="getHelpGuidePdf",
-        extra_access={"client": "not_found"},
+        extra_access=dict(MODULE_GUIDE),
     )
     api.add(
         "get",
         "/api/v1/help/modules/{module_id}/pages",
         operation_id="listModuleHelpPages",
         summary="List a module's help pages",
-        description="Pages under the module heading.",
+        description="Pages under the module heading. Staff sign-in. A client receives not_found. The core sanitizes Markdown before render. Update replaces the module's pages, disable hides them, and uninstall removes them.",
         tag="Help",
         features=["module-help"],
         roles=FIRM,
@@ -3361,6 +3364,7 @@ def _shell(api: Contract) -> None:
         response_schema=_page("HelpPage"),
         paginate=True,
         writes=False,
+        extra_access=dict(MODULE_GUIDE),
     )
     api.add(
         "post",
@@ -3884,8 +3888,10 @@ def _modules(api: Contract) -> None:
         description=(
             "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). "
             "The signature is checked before anything runs. Unsigned and tampered packages are refused. "
-            "The signed package manifest is ModuleManifest, including sidebar, matter-screen, and optional data contributions. "
+            "The signed package manifest is ModuleManifest, including sidebar, matter-screen, typed help and tabs, and optional data contributions. "
             "A widget with no click-through target is refused. "
+            "A widget target is the module's own page or an allowlisted core page. "
+            "Copying manifest help pages into the help center remains pending. "
             "A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. "
             "A changed migration that already ran is refused. "
             "The response waits for permission approval when the admin has not decided."
@@ -3921,7 +3927,12 @@ def _modules(api: Contract) -> None:
         "/api/v1/modules/{module_id}/permissions",
         operation_id="decideModulePermissions",
         summary="Approve module permissions",
-        description="A declined required permission cancels the install. New permissions on an update wait here while the old version keeps running.",
+        description=(
+            "Decisions name scopes from the signed manifest. required on this body is ignored. "
+            "A declined required permission cancels the install and issues no token. "
+            "Declining an optional permission installs with a token of only the approved scopes. "
+            "New permissions on an update wait here while the old version keeps running."
+        ),
         tag="Modules",
         features=["modules"],
         roles=ADMIN,

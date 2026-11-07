@@ -9,6 +9,8 @@ recognized by response semantics, not by a path prefix.
 
 from __future__ import annotations
 
+import re
+
 FILE_DOWNLOAD = {
     "audit": True,
     "timeline": True,
@@ -123,6 +125,48 @@ PAYMENT_PROCESSOR = {
     "idempotency_replay": "original_result",
     "idempotency_conflict": "idempotency_conflict",
     "no_mutation_on_denial": True,
+}
+PAYMENT_STATUS_GRAPH = {
+    "initial": "pending",
+    "transitions": {
+        "pending": ["completed", "failed"],
+        "completed": [],
+        "failed": [],
+        "reversed": [],
+    },
+    "same_status": "original_result",
+    "illegal_transition": "conflict",
+    "settled_correction": "reversePayment",
+    "settled_correction_excludes": "failed",
+    "settled_trust_scope": "trust:withdraw",
+    "reversed_terminal": True,
+    "no_mutation_on_denial": True,
+}
+PAYMENT_PROCESSOR["status_graph"] = PAYMENT_STATUS_GRAPH
+MODULE_GUIDE = {
+    "owner_namespace": "module_id",
+    "heading_default": "module_name",
+    "staff_sign_in": True,
+    "client": "not_found",
+    "markdown": "sanitize",
+    "sanitize_rejects": ["script", "javascript:", "data:", "event_handler", "iframe"],
+    "on_update": "replace",
+    "on_disable": "hide",
+    "on_uninstall": "remove",
+    "own_heading_only": True,
+    "runtime_registration": "pending",
+}
+CORE_PAGE_TARGETS = {
+    "time_entries": {"operation": "listTimeEntry", "scopes": ["time:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "deadlines": {"operation": "listDeadline", "scopes": ["deadlines:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "calendar": {"operation": "listCalendarEvent", "scopes": ["calendar:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "trust_alerts": {"operation": "listTrustFlag", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "replenishment_requests": {"operation": "listTrustReplenishment", "scopes": ["trust:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "ar_aging": {"operation": "reportArAging", "scopes": ["reports:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
+    "activity": {"operation": "listEvents", "scopes": ["events:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "conflict_checks": {"operation": "listConflictChecks", "scopes": ["conflicts:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
+    "module_alerts": {"operation": "listModules", "scopes": ["modules:read"], "roles": ["admin"], "matter_wall": False},
 }
 
 BACKGROUND_FILE_SEQUENCE = [
@@ -381,6 +425,9 @@ def publish_payment_policy(spec: dict) -> None:
     reversal = operation_by_id(spec, "reversePayment")
     reversal["x-togavsu-access"]["payment_reversal"] = _payment_reversal()
     _ensure_code(reversal, "scope_denied")
+    status = operation_by_id(spec, "updatePaymentStatus")
+    status["x-togavsu-access"]["payment_status"] = PAYMENT_STATUS_GRAPH
+    _ensure_code(status, "conflict")
     bulk = operation_by_id(spec, "bulkPayment")
     if "trust:write" not in bulk["description"]:
         bulk["description"] = bulk["description"].rstrip() + (
@@ -797,6 +844,19 @@ def _idempotency_scope(call: dict, init_id: str | None, key: str) -> tuple:
     return (call.get("caller_module_id"), call.get("operation"), init_id, key)
 
 
+def _store_processor_receipt(store: dict, call: dict, init_id: str | None, body: tuple) -> None:
+    key = call.get("idempotency_key")
+    if not key or not init_id:
+        return
+    store["idempotency"][_idempotency_scope(call, init_id, key)] = {"body": body, "initialization_id": init_id}
+
+
+def _processor_success(store: dict, unchanged: dict, policy: dict, result: str, payment: dict | None, call: dict, init_id: str | None, body: tuple, **extra) -> dict:
+    """Record the request fingerprint, then return. Denial and conflict paths do not call this."""
+    _store_processor_receipt(store, call, init_id, body)
+    return {**unchanged, "result": result, "payment": payment, "ledger_count": len(store["ledger"]), **extra}
+
+
 def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> dict:
     """Insert at most one payment per initialization. Denial leaves payment and ledger unchanged."""
     store.setdefault("payments", {})
@@ -810,12 +870,12 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
     if existing and call.get("operation") == "createPayment":
         enriched["bound_payment"] = existing
     code = processor_callback(policy, operation, enriched)
+    body = _processor_body(call)
     if code == policy["idempotency_replay"]:
-        return {**unchanged, "result": code, "payment": existing}
+        return _processor_success(store, unchanged, policy, code, existing, call, init_id, body)
     if code != "allowed":
         return {**unchanged, "result": code}
     key = call.get("idempotency_key")
-    body = _processor_body(call)
     if key:
         scoped = _idempotency_scope(call, init_id, key)
         prior = store["idempotency"].get(scoped)
@@ -823,7 +883,7 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
             return {**unchanged, "result": policy["idempotency_conflict"]}
         if prior and prior["body"] == body:
             replayed = store["payments"].get(prior["initialization_id"])
-            return {**unchanged, "result": policy["idempotency_replay"], "payment": replayed}
+            return _processor_success(store, unchanged, policy, policy["idempotency_replay"], replayed, call, init_id, body)
     account_call = {
         "destination": call.get("destination"),
         "trust_account_id": call.get("trust_account_id", grant.get("trust_account_id")),
@@ -855,22 +915,44 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
         if init_id in store["payments"]:
             winner = store["payments"][init_id]
             if _same_processor_body(winner, call):
-                return {**unchanged, "result": policy["idempotency_replay"], "payment": winner}
+                return _processor_success(store, unchanged, policy, policy["idempotency_replay"], winner, call, init_id, body)
             return {**unchanged, "result": "conflict"}
         store["payments"][init_id] = payment
         ledger_inserted = _post_trust_once(store, payment, call)
-        if key:
-            store["idempotency"][_idempotency_scope(call, init_id, key)] = {"body": body, "initialization_id": init_id}
-        return {**unchanged, "result": "allowed", "payment_inserted": True, "ledger_inserted": ledger_inserted, "payment": payment, "ledger_count": len(store["ledger"])}
+        return _processor_success(
+            store,
+            unchanged,
+            policy,
+            "allowed",
+            payment,
+            call,
+            init_id,
+            body,
+            payment_inserted=True,
+            ledger_inserted=ledger_inserted,
+        )
     if not existing or call.get("payment_id") != existing["id"]:
         return {**unchanged, "result": policy["unrelated_payment"]}
-    if existing.get("status") == "completed" and call.get("status") == "completed":
-        return {**unchanged, "result": policy["idempotency_replay"], "payment": existing, "ledger_count": len(store["ledger"])}
-    existing["status"] = call.get("status", existing["status"])
+    requested = call.get("status") if call.get("status") is not None else existing.get("status")
+    transition = payment_status_transition(existing.get("status"), requested)
+    if transition == policy["idempotency_replay"]:
+        return _processor_success(store, unchanged, policy, transition, existing, call, init_id, body)
+    if transition != "allowed":
+        return {**unchanged, "result": transition, "payment": existing, "ledger_count": len(store["ledger"])}
+    existing["status"] = requested
     ledger_inserted = _post_trust_once(store, existing, call)
-    if key:
-        store["idempotency"][_idempotency_scope(call, init_id, key)] = {"body": body, "initialization_id": init_id}
-    return {**unchanged, "result": "allowed", "payment_inserted": False, "ledger_inserted": ledger_inserted, "payment": existing, "ledger_count": len(store["ledger"])}
+    return _processor_success(
+        store,
+        unchanged,
+        policy,
+        "allowed",
+        existing,
+        call,
+        init_id,
+        body,
+        payment_inserted=False,
+        ledger_inserted=ledger_inserted,
+    )
 
 
 def _post_trust_once(store: dict, payment: dict, call: dict) -> bool:
@@ -1664,6 +1746,16 @@ def notification_page(operation: dict, caller: dict, rows: list[dict], limit: in
     }
 
 
+def payment_status_transition(current: str | None, requested: str | None) -> str:
+    """Same status replays. Pending may complete or fail. Terminal states do not regress."""
+    if requested in (None, current):
+        return PAYMENT_STATUS_GRAPH["same_status"]
+    allowed = PAYMENT_STATUS_GRAPH["transitions"].get(current or "", [])
+    if requested in allowed:
+        return "allowed"
+    return PAYMENT_STATUS_GRAPH["illegal_transition"]
+
+
 def normalize_module_target(module_id: str, target: str) -> str | None:
     """Module-local path. Schemes, absolute URLs, traversal, and other modules' routes are refused."""
     if not isinstance(target, str) or not isinstance(module_id, str) or not module_id:
@@ -1710,6 +1802,270 @@ def sidebar_entries(module_id: str, entries: list[dict], caller: dict) -> dict:
 
 
 module_ui_targets = sidebar_entries
+
+
+def _caller_can_open(caller: dict, roles: list, scopes: list) -> bool:
+    if caller.get("role") not in set(roles):
+        return False
+    return set(scopes) <= set(caller.get("scopes") or [])
+
+
+def _matter_filter_hidden(filters: dict, caller: dict) -> bool:
+    return bool(filters.get("matter_id")) and bool(caller.get("matter_walled")) and not caller.get("on_wall")
+
+
+def open_widget_target(module_id: str, target: dict, caller: dict) -> dict:
+    """Open a widget target. Core pages use the destination operation's role, scope, and wall."""
+    denied = {"result": "validation_failed", "path": None, "route": None, "operation": None, "filters": {}}
+    if not isinstance(target, dict):
+        return denied
+    filters = target.get("filters") or {}
+    if not isinstance(filters, dict):
+        return denied
+    kind = target.get("kind")
+    if kind == "module":
+        path = normalize_module_target(module_id, target.get("path"))
+        if not path:
+            return denied
+        if not _caller_can_open(caller, target.get("roles") or [], target.get("scopes") or []):
+            return {**denied, "result": "forbidden"}
+        if _matter_filter_hidden(filters, caller):
+            return {**denied, "result": "not_found"}
+        return {"result": "allowed", "path": path, "route": None, "operation": None, "filters": filters}
+    if kind == "core":
+        page = CORE_PAGE_TARGETS.get(target.get("route"))
+        if page is None:
+            return denied
+        if not _caller_can_open(caller, page["roles"], page["scopes"]):
+            return {**denied, "result": "forbidden"}
+        if page["matter_wall"] and _matter_filter_hidden(filters, caller):
+            return {**denied, "result": "not_found"}
+        return {"result": "allowed", "path": None, "route": target["route"], "operation": page["operation"], "filters": filters}
+    return denied
+
+
+_UNSAFE_MARKDOWN = re.compile(
+    r"(?i)<\s*/?\s*script\b|javascript\s*:|data\s*:|on(?:error|load|click)\s*=|<\s*/?\s*(?:iframe|object|embed)\b"
+)
+
+
+def rendered_markdown(source: str) -> str:
+    """Core-rendered Markdown. Script, handlers, and non-http URL schemes are removed."""
+    if not isinstance(source, str):
+        return ""
+    return _UNSAFE_MARKDOWN.sub("", source)
+
+
+def _unique_ids(items: list) -> set[str] | None:
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            return None
+        ident = item.get("id")
+        if not isinstance(ident, str) or not ident or ident in seen:
+            return None
+        seen.add(ident)
+    return seen
+
+
+def manifest_contributions(manifest: dict, caller: dict | None = None) -> dict:
+    """Resolve help pages and tabs against this module's own contributions. Clients receive no guide."""
+    module_id = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    empty = {"result": "validation_failed", "namespace": module_id, "heading": None, "pages": [], "tabs": []}
+    if not module_id:
+        return empty
+    widgets = manifest.get("widgets") or []
+    tabs = manifest.get("tabs") or []
+    screen = manifest.get("matter_screen") or {}
+    panels = screen.get("panels") or [] if isinstance(screen, dict) else []
+    actions = screen.get("actions") or [] if isinstance(screen, dict) else []
+    widget_ids = _unique_ids(widgets)
+    tab_ids = _unique_ids(tabs)
+    screen_ids = _unique_ids([*panels, *actions])
+    if widget_ids is None or tab_ids is None or screen_ids is None:
+        return empty
+    opened_tabs = []
+    for tab in tabs:
+        if tab.get("placement") not in ("home-screen", "matter-screen"):
+            return empty
+        path = normalize_module_target(module_id, tab.get("target"))
+        if not path:
+            return empty
+        opened_tabs.append({"id": tab["id"], "placement": tab["placement"], "path": path, "guide": tab.get("guide")})
+    heading = manifest.get("name") if isinstance(manifest.get("name"), str) and manifest.get("name") else module_id
+    help_doc = manifest.get("help")
+    pages = []
+    page_ids: set[str] = set()
+    if help_doc is not None:
+        if not isinstance(help_doc, dict) or not help_doc.get("pages"):
+            return empty
+        if isinstance(help_doc.get("heading"), str) and help_doc["heading"].strip():
+            heading = help_doc["heading"]
+        found = _unique_ids(help_doc["pages"])
+        if found is None:
+            return empty
+        page_ids = found
+        for page in help_doc["pages"]:
+            if not page.get("title") or not isinstance(page.get("markdown"), str) or not page["markdown"].strip():
+                return empty
+            covers = page.get("covers") or []
+            if not covers:
+                return empty
+            for cover in covers:
+                kind = cover.get("kind") if isinstance(cover, dict) else None
+                ident = cover.get("id") if isinstance(cover, dict) else None
+                if kind == "widget" and ident in widget_ids:
+                    continue
+                if kind == "tab" and ident in tab_ids:
+                    continue
+                if kind == "screen" and ident in screen_ids:
+                    continue
+                return empty
+            pages.append(
+                {
+                    "id": page["id"],
+                    "title": page["title"],
+                    "markdown": rendered_markdown(page["markdown"]),
+                    "keywords": list(page.get("keywords") or []),
+                    "covers": covers,
+                    "namespace": module_id,
+                }
+            )
+    for tab in opened_tabs:
+        if tab["guide"] is not None and tab["guide"] not in page_ids:
+            return empty
+    if caller and caller.get("role") == "client":
+        return {"result": "not_found", "namespace": module_id, "heading": heading, "pages": [], "tabs": []}
+    return {"result": "allowed", "namespace": module_id, "heading": heading, "pages": pages, "tabs": opened_tabs}
+
+
+_CUSTOM_FIELD_TYPES = frozenset({"text", "long_text", "number", "money", "date", "boolean", "pick_list", "contact"})
+_CUSTOM_FIELD_RECORDS = frozenset({"matter", "contact", "time_entry", "expense"})
+
+
+def manifest_custom_fields(manifest: dict, claimed_module_id: str | None = None) -> dict:
+    """Custom fields belong to the signed manifest id. A caller-supplied module id cannot reassign them."""
+    owner = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    empty = {"result": "validation_failed", "module_id": owner, "fields": []}
+    if not owner:
+        return empty
+    if claimed_module_id not in (None, owner):
+        return empty
+    data = manifest.get("data")
+    if data is None:
+        return {"result": "allowed", "module_id": owner, "fields": []}
+    if not isinstance(data, dict):
+        return empty
+    declared = data.get("custom_fields") or []
+    if not isinstance(declared, list):
+        return empty
+    seen: set[str] = set()
+    fields = []
+    for field in declared:
+        if not isinstance(field, dict):
+            return empty
+        if field.get("record_type") not in _CUSTOM_FIELD_RECORDS or field.get("field_type") not in _CUSTOM_FIELD_TYPES:
+            return empty
+        key = field.get("key")
+        if not isinstance(key, str) or not key.startswith(owner + "."):
+            return empty
+        local = key[len(owner) + 1 :]
+        if not local or local != local.lower() or not local[0].isalpha() or not all(char.isalnum() or char == "_" for char in local):
+            return empty
+        if key in seen:
+            return empty
+        seen.add(key)
+        options = field.get("options")
+        if field["field_type"] == "pick_list":
+            if not isinstance(options, list) or not options or len(options) != len(set(options)):
+                return empty
+            if any(not isinstance(option, str) or not option.strip() for option in options):
+                return empty
+        elif options not in (None, []):
+            return empty
+        areas = field.get("practice_area_ids") or []
+        if not isinstance(areas, list):
+            return empty
+        fields.append(
+            {
+                "module_id": owner,
+                "record_type": field["record_type"],
+                "key": key,
+                "label": field.get("label"),
+                "field_type": field["field_type"],
+                "required": bool(field.get("required", False)),
+                "sort_order": field.get("sort_order", 0),
+                "options": list(options or []),
+                "practice_area_ids": list(areas),
+            }
+        )
+    return {"result": "allowed", "module_id": owner, "fields": fields}
+
+
+def normalize_manifest_permissions(permissions, *, signature_verified: bool) -> dict:
+    """Strings are required-true shorthand. Normalization runs only after the signature verifies."""
+    if not signature_verified:
+        return {"result": "unsigned_module", "permissions": []}
+    from contract.model import DELEGABLE_SCOPES
+
+    normalized = []
+    seen: dict[str, bool] = {}
+    for item in permissions or []:
+        if isinstance(item, str):
+            scope, required = item, True
+        elif isinstance(item, dict) and isinstance(item.get("scope"), str) and "required" not in item:
+            scope, required = item["scope"], True
+        elif isinstance(item, dict) and isinstance(item.get("scope"), str) and isinstance(item.get("required"), bool):
+            scope, required = item["scope"], item["required"]
+        else:
+            return {"result": "validation_failed", "permissions": []}
+        if scope not in DELEGABLE_SCOPES or scope in seen:
+            return {"result": "validation_failed", "permissions": []}
+        seen[scope] = required
+        normalized.append({"scope": scope, "required": required})
+    return {"result": "allowed", "permissions": normalized}
+
+
+def decide_module_permissions(manifest: dict, decisions: list[dict] | None, *, signature_verified: bool, previous: dict | None = None) -> dict:
+    """Required comes from the signed manifest. A required flag on the approval request is ignored."""
+    parsed = normalize_manifest_permissions(manifest.get("permissions"), signature_verified=signature_verified)
+    version = manifest.get("version")
+    kept = previous.get("version") if previous else None
+    if parsed["result"] != "allowed":
+        return {"result": parsed["result"], "outcome": parsed["result"], "token_scopes": [], "permissions": [], "version": kept, "previous_version": kept}
+    approved: set[str] = set()
+    declined: set[str] = set()
+    for decision in decisions or []:
+        if not isinstance(decision, dict):
+            continue
+        scope = decision.get("scope")
+        choice = decision.get("decision")
+        if choice == "approve":
+            approved.add(scope)
+        elif choice == "decline":
+            declined.add(scope)
+    rows = parsed["permissions"]
+    if any(row["required"] and row["scope"] in declined for row in rows):
+        listed = [{**row, "approved": False} for row in rows]
+        return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
+    previous_scopes = set((previous or {}).get("approved_scopes") or [])
+    pending = [row["scope"] for row in rows if row["scope"] not in previous_scopes and row["scope"] not in approved and row["scope"] not in declined]
+    if previous and pending:
+        listed = [{**row, "approved": row["scope"] in previous_scopes} for row in rows]
+        return {
+            "result": "awaiting_approval",
+            "outcome": "awaiting_approval",
+            "token_scopes": [scope for scope in previous.get("approved_scopes") or []],
+            "permissions": listed,
+            "version": kept,
+            "previous_version": kept,
+        }
+    if any(row["required"] and row["scope"] not in approved for row in rows):
+        listed = [{**row, "approved": False} for row in rows]
+        return {"result": "permission_declined", "outcome": "cancelled", "token_scopes": [], "permissions": listed, "version": kept, "previous_version": kept}
+    token = [row["scope"] for row in rows if row["scope"] in approved and row["scope"] not in declined]
+    listed = [{**row, "approved": row["scope"] in token} for row in rows]
+    return {"result": "installed", "outcome": "installed", "token_scopes": token, "permissions": listed, "version": version, "previous_version": kept}
 
 
 def include_views_decision(operation: dict, call: dict) -> str:

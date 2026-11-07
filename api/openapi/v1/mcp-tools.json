@@ -7571,6 +7571,25 @@
           "task_authorization",
           "body"
         ]
+      },
+      "payment_status": {
+        "initial": "pending",
+        "transitions": {
+          "pending": [
+            "completed",
+            "failed"
+          ],
+          "completed": [],
+          "failed": [],
+          "reversed": []
+        },
+        "same_status": "original_result",
+        "illegal_transition": "conflict",
+        "settled_correction": "reversePayment",
+        "settled_correction_excludes": "failed",
+        "settled_trust_scope": "trust:withdraw",
+        "reversed_terminal": true,
+        "no_mutation_on_denial": true
       }
     },
     {

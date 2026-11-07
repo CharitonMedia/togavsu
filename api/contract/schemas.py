@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 
+from contract.policy import CORE_PAGE_TARGETS
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
@@ -904,7 +905,10 @@ SCHEMAS = _register(
         "PaymentStatusWrite": _obj(
             {"status": _enum(["pending", "completed", "failed"])},
             ["status"],
-            "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was.",
+            "Pending may become completed or failed. The same status is idempotent and writes nothing. "
+            "Completed, failed, and reversed do not move through this method. "
+            "A settled correction is reversePayment, which needs trust:withdraw when the payment posted trust. "
+            "Sending failed for a completed payment is rejected. reversed cannot become completed.",
         ),
         "ProcessorInitializationWrite": {
             "description": "Asks the core to authorize one registered processor. destination trust requires trust_account_id. destination operating omits it. The grant is delivered to the module and is not in this request.",
@@ -2231,7 +2235,9 @@ SCHEMAS = _register(
         "ModulePermissions": _obj(
             {"decisions": _arr(_obj({"scope": {"type": "string"}, "decision": _enum(["approve", "decline"])}, ["scope", "decision"]))},
             ["decisions"],
-            "A declined required permission cancels the install. The previous version keeps running when a new version asks for more.",
+            "Approves or declines scopes from the signed manifest. required on this request is ignored. "
+            "A declined required permission cancels the install. Declining an optional permission leaves it off the token. "
+            "The previous version keeps running when a new version asks for more.",
         ),
         "ModuleUninstall": _obj(
             {"data": _enum(["keep", "delete"]), "confirmation": {"type": "string"}, "backup_id": _null(_uuid())},
@@ -2356,15 +2362,66 @@ SCHEMAS = _register(
             ["name", "core_record", "key_column", "columns", "scope"],
             "Published read view keyed to one core record. include= uses scope views:{module_id}.{view}:read.",
         ),
+        "ManifestCustomField": {
+            "description": (
+                "A module-owned custom field. The key is namespaced by the signed manifest id. "
+                "Ownership is that id, not a module id supplied by the caller. "
+                "Section 8.14 types and record targets. Adding a field does not change the database schema."
+            ),
+            "oneOf": [
+                _obj(
+                    {
+                        "record_type": _enum(["matter", "contact", "time_entry", "expense"]),
+                        "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]{0,62}$"},
+                        "label": {"type": "string", "minLength": 1},
+                        "field_type": _enum(["text", "long_text", "number", "money", "date", "boolean", "contact"]),
+                        "required": {"type": "boolean", "description": "Defaults to false when omitted."},
+                        "sort_order": {"type": "integer"},
+                        "practice_area_ids": _arr(_uuid(), "When present, the field shows only on those practice areas."),
+                    },
+                    ["record_type", "key", "label", "field_type", "sort_order"],
+                ),
+                _obj(
+                    {
+                        "record_type": _enum(["matter", "contact", "time_entry", "expense"]),
+                        "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]{0,62}$"},
+                        "label": {"type": "string", "minLength": 1},
+                        "field_type": {"const": "pick_list"},
+                        "required": {"type": "boolean"},
+                        "sort_order": {"type": "integer"},
+                        "options": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+                        "practice_area_ids": _arr(_uuid(), "When present, the field shows only on those practice areas."),
+                    },
+                    ["record_type", "key", "label", "field_type", "sort_order", "options"],
+                ),
+            ],
+        },
         "ManifestData": _obj(
             {
                 "migrations": _arr(_ref("ManifestMigration")),
                 "extensions": _arr(_ref("ManifestExtension")),
                 "views": _arr(_ref("ManifestView")),
+                "custom_fields": _arr(_ref("ManifestCustomField")),
             },
             [],
-            "Optional data contribution. Omit data, or send an empty object, when the module has no tables. A present declaration that breaks this shape is rejected. Migration execution remains pending.",
+            "Optional data contribution. Omit data, or send an empty object, when the module stores nothing. "
+            "Custom fields and extension tables are the two ways a module adds fields to a core record. "
+            "A present declaration that breaks this shape is rejected. Migration execution and custom-field registration remain pending.",
         ),
+        "ManifestPermission": {
+            "description": (
+                "Canonical form is scope plus required. required defaults to true. "
+                "A string is shorthand for required true. The core normalizes that shorthand only after the package signature verifies."
+            ),
+            "oneOf": [
+                {"type": "string", "minLength": 1},
+                _obj(
+                    {"scope": {"type": "string", "minLength": 1}, "required": {"type": "boolean"}},
+                    ["scope"],
+                    "required defaults to true when omitted.",
+                ),
+            ],
+        },
         "ModuleManifest": _obj(
             {
                 "id": {"type": "string"},
@@ -2375,40 +2432,127 @@ SCHEMAS = _register(
                 "license": {"type": "string"},
                 "price_note": {"type": "string"},
                 "image": _obj({"reference": {"type": "string"}, "digest": {"type": "string"}}, ["reference", "digest"]),
-                "permissions": _arr({"type": "string"}),
+                "permissions": _arr(_ref("ManifestPermission"), "Requested scopes. A string means required. An object may set required false."),
                 "widgets": _arr(_ref("ManifestWidget")),
                 "sidebar": _arr(_ref("ManifestSidebarEntry")),
                 "quick_create": _arr(_ref("ManifestQuickCreate")),
                 "search_scopes": _arr(_ref("ManifestSearchScope")),
                 "matter_screen": _ref("ManifestMatterScreen"),
-                "help": {"type": "object", "additionalProperties": True},
-                "tabs": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "help": _ref("ManifestHelp"),
+                "tabs": _arr(_ref("ManifestTab")),
                 "event_subscriptions": _arr({"type": "string"}),
                 "replaces": _null(_enum(["time", "trust", "calendar"])),
                 "settings_schema": {"type": "object", "additionalProperties": True},
                 "data": _ref("ManifestData"),
             },
             ["id", "name", "version", "image", "permissions"],
-            "Signed togavsu-module.yaml as JSON. A widget without a click-through target fails install.",
+            "Signed togavsu-module.yaml as JSON. A widget without a click-through target fails install. "
+            "help and tabs may be omitted. A present help object or tab must be a complete contribution. "
+            "Registering manifest help pages into the help center at install remains pending.",
         ),
-        "ManifestWidget": _obj(
-            {
-                "id": {"type": "string"},
-                "title": {"type": "string"},
-                "default_size": _obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"]),
-                "allowed_sizes": _arr(_obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"])),
-                "target": _obj(
+        "ManifestWidgetTarget": {
+            "description": "A module-local page, or an allowlisted core page with typed filters. Not a raw URL.",
+            "oneOf": [
+                _obj(
                     {
+                        "kind": {"const": "module"},
                         "path": _module_local_path("Module-local path. The core opens /m/{module_id}/{path}."),
-                        "filters": {"type": "object", "additionalProperties": True},
+                        "filters": {
+                            "type": "object",
+                            "additionalProperties": {"type": "string"},
+                            "description": "Filter parameters passed to the module page.",
+                        },
                         "scopes": _arr({"type": "string"}),
                         "roles": _arr(_ROLE),
                     },
-                    ["path", "scopes", "roles"],
+                    ["kind", "path", "scopes", "roles"],
+                    "The module's own page.",
                 ),
+                _obj(
+                    {
+                        "kind": {"const": "core"},
+                        "route": _enum(
+                            sorted(CORE_PAGE_TARGETS),
+                            "Allowlisted core page. The core checks that page's role, scope, and matter wall on open.",
+                        ),
+                        "filters": _obj(
+                            {
+                                "matter_id": _null(_uuid("Matter filter. A walled matter the caller cannot see is not_found.")),
+                                "from_date": _date(),
+                                "to_date": _date(),
+                                "view": _enum(["day", "week", "month"]),
+                            },
+                            [],
+                            "Typed filters for the core page. Unknown keys are rejected.",
+                        ),
+                        "scopes": _arr({"type": "string"}),
+                        "roles": _arr(_ROLE),
+                    },
+                    ["kind", "route", "scopes", "roles"],
+                    "A core page. route is an identifier, not a URL.",
+                ),
+            ],
+        },
+        "ManifestWidget": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "title": {"type": "string", "minLength": 1},
+                "default_size": _obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"]),
+                "allowed_sizes": _arr(_obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"])),
+                "target": _ref("ManifestWidgetTarget"),
             },
             ["id", "title", "default_size", "allowed_sizes", "target"],
             "target is required. Install refuses a widget that omits it. allowed_sizes lists the grid sizes the widget may take.",
+        ),
+        "ManifestHelpCover": {
+            "description": "The widget, tab, or matter-screen item this guide page covers.",
+            "oneOf": [
+                _obj({"kind": {"const": "widget"}, "id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"}}, ["kind", "id"]),
+                _obj({"kind": {"const": "tab"}, "id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"}}, ["kind", "id"]),
+                _obj({"kind": {"const": "screen"}, "id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"}}, ["kind", "id"]),
+            ],
+        },
+        "ManifestHelpPage": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "title": {"type": "string", "minLength": 1},
+                "markdown": {"type": "string", "minLength": 1, "description": "Markdown body. The core sanitizes it when rendering."},
+                "keywords": _arr({"type": "string", "minLength": 1}, "Search keywords."),
+                "covers": {"type": "array", "minItems": 1, "items": {"$ref": "#/components/schemas/ManifestHelpCover"}},
+            },
+            ["id", "title", "markdown", "keywords", "covers"],
+            "One guide page. covers names widgets, tabs, or matter-screen items in this manifest.",
+        ),
+        "ManifestHelp": _obj(
+            {
+                "heading": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Guide heading. Defaults to the module name. The owner namespace is always the module id.",
+                },
+                "pages": {"type": "array", "minItems": 1, "items": {"$ref": "#/components/schemas/ManifestHelpPage"}},
+            },
+            ["pages"],
+            "Module guide. Omit help when the module has no pages. An empty object is not a guide. "
+            "Copying these pages into the help center at install remains pending.",
+        ),
+        "ManifestTab": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "title": {"type": "string", "minLength": 1},
+                "placement": _enum(["home-screen", "matter-screen"], "Home screen or matter screen."),
+                "target": _module_local_path("Module-local path. The core opens /m/{module_id}/{target}."),
+                "guide": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "description": "Help page id in this manifest. The ? icon opens that page.",
+                },
+                "scopes": _arr({"type": "string"}),
+                "roles": _arr(_ROLE),
+            },
+            ["id", "title", "placement", "target", "scopes", "roles"],
+            "A home-screen or matter-screen tab. Placement is not an admin or profile page. target is module-local.",
         ),
         "ManifestSidebarEntry": _obj(
             {

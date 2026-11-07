@@ -25913,7 +25913,7 @@
       "post": {
         "operationId": "updatePaymentStatus",
         "summary": "Update a payment status",
-        "description": "Moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method. A registered processor calls this with the core-issued grant and no viewer session. The payment id, matter, and amount must be the ones bound on that grant. The first completion of a trust destination needs trust:write before any ledger row is written. A later completion does not post a second row. An ambient payments:write token with no viewer and no grant is forbidden.",
+        "description": "Pending may become completed or failed. The same status is idempotent and does not write. Completed, failed, and reversed are terminal here. A late callback that would leave a terminal status is conflict and changes neither the payment nor the ledger. A settled correction is reversePayment, not status failed. reversed cannot become completed. The amount does not change. A registered processor calls this with the core-issued grant and no viewer session. The payment id, matter, and amount must be the ones bound on that grant. The first completion of a trust destination needs trust:write before any ledger row is written. A later completion does not post a second row. An ambient payments:write token with no viewer and no grant is forbidden.",
         "tags": [
           "Billing"
         ],
@@ -26018,6 +26018,25 @@
               }
             }
           },
+          "payment_status": {
+            "initial": "pending",
+            "transitions": {
+              "pending": [
+                "completed",
+                "failed"
+              ],
+              "completed": [],
+              "failed": [],
+              "reversed": []
+            },
+            "same_status": "original_result",
+            "illegal_transition": "conflict",
+            "settled_correction": "reversePayment",
+            "settled_correction_excludes": "failed",
+            "settled_trust_scope": "trust:withdraw",
+            "reversed_terminal": true,
+            "no_mutation_on_denial": true
+          },
           "noninteractive_workflow": "payment_processor",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -26087,7 +26106,8 @@
           }
         },
         "x-togavsu-error-codes": [
-          "scope_denied"
+          "scope_denied",
+          "conflict"
         ]
       }
     },
@@ -49875,6 +49895,22 @@
           "public": false,
           "matter_wall": false,
           "client": "not_found",
+          "owner_namespace": "module_id",
+          "heading_default": "module_name",
+          "staff_sign_in": true,
+          "markdown": "sanitize",
+          "sanitize_rejects": [
+            "script",
+            "javascript:",
+            "data:",
+            "event_handler",
+            "iframe"
+          ],
+          "on_update": "replace",
+          "on_disable": "hide",
+          "on_uninstall": "remove",
+          "own_heading_only": true,
+          "runtime_registration": "pending",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -49980,6 +50016,22 @@
           "public": false,
           "matter_wall": false,
           "client": "not_found",
+          "owner_namespace": "module_id",
+          "heading_default": "module_name",
+          "staff_sign_in": true,
+          "markdown": "sanitize",
+          "sanitize_rejects": [
+            "script",
+            "javascript:",
+            "data:",
+            "event_handler",
+            "iframe"
+          ],
+          "on_update": "replace",
+          "on_disable": "hide",
+          "on_uninstall": "remove",
+          "own_heading_only": true,
+          "runtime_registration": "pending",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -50080,7 +50132,23 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "not_found"
+          "client": "not_found",
+          "owner_namespace": "module_id",
+          "heading_default": "module_name",
+          "staff_sign_in": true,
+          "markdown": "sanitize",
+          "sanitize_rejects": [
+            "script",
+            "javascript:",
+            "data:",
+            "event_handler",
+            "iframe"
+          ],
+          "on_update": "replace",
+          "on_disable": "hide",
+          "on_uninstall": "remove",
+          "own_heading_only": true,
+          "runtime_registration": "pending"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -50156,7 +50224,23 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "not_found"
+          "client": "not_found",
+          "owner_namespace": "module_id",
+          "heading_default": "module_name",
+          "staff_sign_in": true,
+          "markdown": "sanitize",
+          "sanitize_rejects": [
+            "script",
+            "javascript:",
+            "data:",
+            "event_handler",
+            "iframe"
+          ],
+          "on_update": "replace",
+          "on_disable": "hide",
+          "on_uninstall": "remove",
+          "own_heading_only": true,
+          "runtime_registration": "pending"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -50178,7 +50262,7 @@
       "get": {
         "operationId": "listModuleHelpPages",
         "summary": "List a module's help pages",
-        "description": "Pages under the module heading.",
+        "description": "Pages under the module heading. Staff sign-in. A client receives not_found. The core sanitizes Markdown before render. Update replaces the module's pages, disable hides them, and uninstall removes them.",
         "tags": [
           "Help"
         ],
@@ -50279,7 +50363,23 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny",
+          "client": "not_found",
+          "owner_namespace": "module_id",
+          "heading_default": "module_name",
+          "staff_sign_in": true,
+          "markdown": "sanitize",
+          "sanitize_rejects": [
+            "script",
+            "javascript:",
+            "data:",
+            "event_handler",
+            "iframe"
+          ],
+          "on_update": "replace",
+          "on_disable": "hide",
+          "on_uninstall": "remove",
+          "own_heading_only": true,
+          "runtime_registration": "pending",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -55525,7 +55625,7 @@
       "post": {
         "operationId": "installModule",
         "summary": "Install a module",
-        "description": "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). The signature is checked before anything runs. Unsigned and tampered packages are refused. The signed package manifest is ModuleManifest, including sidebar, matter-screen, and optional data contributions. A widget with no click-through target is refused. A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. A changed migration that already ran is refused. The response waits for permission approval when the admin has not decided.",
+        "description": "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). The signature is checked before anything runs. Unsigned and tampered packages are refused. The signed package manifest is ModuleManifest, including sidebar, matter-screen, typed help and tabs, and optional data contributions. A widget with no click-through target is refused. A widget target is the module's own page or an allowlisted core page. Copying manifest help pages into the help center remains pending. A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. A changed migration that already ran is refused. The response waits for permission approval when the admin has not decided.",
         "tags": [
           "Modules"
         ],
@@ -55761,7 +55861,7 @@
       "post": {
         "operationId": "decideModulePermissions",
         "summary": "Approve module permissions",
-        "description": "A declined required permission cancels the install. New permissions on an update wait here while the old version keeps running.",
+        "description": "Decisions name scopes from the signed manifest. required on this body is ignored. A declined required permission cancels the install and issues no token. Declining an optional permission installs with a token of only the approved scopes. New permissions on an update wait here while the old version keeps running.",
         "tags": [
           "Modules"
         ],
@@ -58277,7 +58377,26 @@
           },
           "idempotency_replay": "original_result",
           "idempotency_conflict": "idempotency_conflict",
-          "no_mutation_on_denial": true
+          "no_mutation_on_denial": true,
+          "status_graph": {
+            "initial": "pending",
+            "transitions": {
+              "pending": [
+                "completed",
+                "failed"
+              ],
+              "completed": [],
+              "failed": [],
+              "reversed": []
+            },
+            "same_status": "original_result",
+            "illegal_transition": "conflict",
+            "settled_correction": "reversePayment",
+            "settled_correction_excludes": "failed",
+            "settled_trust_scope": "trust:withdraw",
+            "reversed_terminal": true,
+            "no_mutation_on_denial": true
+          }
         },
         "x-togavsu-task-deliveries": {
           "malware_scan": {
@@ -58417,7 +58536,26 @@
             },
             "idempotency_replay": "original_result",
             "idempotency_conflict": "idempotency_conflict",
-            "no_mutation_on_denial": true
+            "no_mutation_on_denial": true,
+            "status_graph": {
+              "initial": "pending",
+              "transitions": {
+                "pending": [
+                  "completed",
+                  "failed"
+                ],
+                "completed": [],
+                "failed": [],
+                "reversed": []
+              },
+              "same_status": "original_result",
+              "illegal_transition": "conflict",
+              "settled_correction": "reversePayment",
+              "settled_correction_excludes": "failed",
+              "settled_trust_scope": "trust:withdraw",
+              "reversed_terminal": true,
+              "no_mutation_on_denial": true
+            }
           },
           "background_file_publication": {
             "sources": [
@@ -62081,7 +62219,7 @@
         "required": [
           "status"
         ],
-        "description": "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was."
+        "description": "Pending may become completed or failed. The same status is idempotent and writes nothing. Completed, failed, and reversed do not move through this method. A settled correction is reversePayment, which needs trust:withdraw when the payment posted trust. Sending failed for a completed payment is rejected. reversed cannot become completed."
       },
       "ProcessorInitializationWrite": {
         "description": "Asks the core to authorize one registered processor. destination trust requires trust_account_id. destination operating omits it. The grant is delivered to the module and is not in this request.",
@@ -68744,7 +68882,7 @@
         "required": [
           "decisions"
         ],
-        "description": "A declined required permission cancels the install. The previous version keeps running when a new version asks for more."
+        "description": "Approves or declines scopes from the signed manifest. required on this request is ignored. A declined required permission cancels the install. Declining an optional permission leaves it off the token. The previous version keeps running when a new version asks for more."
       },
       "ModuleUninstall": {
         "type": "object",
@@ -69206,6 +69344,126 @@
         ],
         "description": "Published read view keyed to one core record. include= uses scope views:{module_id}.{view}:read."
       },
+      "ManifestCustomField": {
+        "description": "A module-owned custom field. The key is namespaced by the signed manifest id. Ownership is that id, not a module id supplied by the caller. Section 8.14 types and record targets. Adding a field does not change the database schema.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "record_type": {
+                "type": "string",
+                "enum": [
+                  "matter",
+                  "contact",
+                  "time_entry",
+                  "expense"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]{0,62}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "field_type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "long_text",
+                  "number",
+                  "money",
+                  "date",
+                  "boolean",
+                  "contact"
+                ]
+              },
+              "required": {
+                "type": "boolean",
+                "description": "Defaults to false when omitted."
+              },
+              "sort_order": {
+                "type": "integer"
+              },
+              "practice_area_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                },
+                "description": "When present, the field shows only on those practice areas."
+              }
+            },
+            "required": [
+              "record_type",
+              "key",
+              "label",
+              "field_type",
+              "sort_order"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "record_type": {
+                "type": "string",
+                "enum": [
+                  "matter",
+                  "contact",
+                  "time_entry",
+                  "expense"
+                ]
+              },
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*\\.[a-z][a-z0-9_]{0,62}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "field_type": {
+                "const": "pick_list"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "sort_order": {
+                "type": "integer"
+              },
+              "options": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "practice_area_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                },
+                "description": "When present, the field shows only on those practice areas."
+              }
+            },
+            "required": [
+              "record_type",
+              "key",
+              "label",
+              "field_type",
+              "sort_order",
+              "options"
+            ]
+          }
+        ]
+      },
       "ManifestData": {
         "type": "object",
         "additionalProperties": false,
@@ -69227,9 +69485,41 @@
             "items": {
               "$ref": "#/components/schemas/ManifestView"
             }
+          },
+          "custom_fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestCustomField"
+            }
           }
         },
-        "description": "Optional data contribution. Omit data, or send an empty object, when the module has no tables. A present declaration that breaks this shape is rejected. Migration execution remains pending."
+        "description": "Optional data contribution. Omit data, or send an empty object, when the module stores nothing. Custom fields and extension tables are the two ways a module adds fields to a core record. A present declaration that breaks this shape is rejected. Migration execution and custom-field registration remain pending."
+      },
+      "ManifestPermission": {
+        "description": "Canonical form is scope plus required. required defaults to true. A string is shorthand for required true. The core normalizes that shorthand only after the package signature verifies.",
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "scope"
+            ],
+            "description": "required defaults to true when omitted."
+          }
+        ]
       },
       "ModuleManifest": {
         "type": "object",
@@ -69275,8 +69565,9 @@
           "permissions": {
             "type": "array",
             "items": {
-              "type": "string"
-            }
+              "$ref": "#/components/schemas/ManifestPermission"
+            },
+            "description": "Requested scopes. A string means required. An object may set required false."
           },
           "widgets": {
             "type": "array",
@@ -69306,14 +69597,12 @@
             "$ref": "#/components/schemas/ManifestMatterScreen"
           },
           "help": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/ManifestHelp"
           },
           "tabs": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": true
+              "$ref": "#/components/schemas/ManifestTab"
             }
           },
           "event_subscriptions": {
@@ -69352,17 +69641,165 @@
           "image",
           "permissions"
         ],
-        "description": "Signed togavsu-module.yaml as JSON. A widget without a click-through target fails install."
+        "description": "Signed togavsu-module.yaml as JSON. A widget without a click-through target fails install. help and tabs may be omitted. A present help object or tab must be a complete contribution. Registering manifest help pages into the help center at install remains pending."
+      },
+      "ManifestWidgetTarget": {
+        "description": "A module-local page, or an allowlisted core page with typed filters. Not a raw URL.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "module"
+              },
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+                "description": "Module-local path. The core opens /m/{module_id}/{path}."
+              },
+              "filters": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Filter parameters passed to the module page."
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "admin",
+                    "attorney",
+                    "staff",
+                    "accountant",
+                    "client"
+                  ],
+                  "description": "One role. A user may hold several."
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "path",
+              "scopes",
+              "roles"
+            ],
+            "description": "The module's own page."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "core"
+              },
+              "route": {
+                "type": "string",
+                "enum": [
+                  "activity",
+                  "ar_aging",
+                  "calendar",
+                  "conflict_checks",
+                  "deadlines",
+                  "matters",
+                  "module_alerts",
+                  "replenishment_requests",
+                  "time_entries",
+                  "trust_alerts"
+                ],
+                "description": "Allowlisted core page. The core checks that page's role, scope, and matter wall on open."
+              },
+              "filters": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "matter_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Matter filter. A walled matter the caller cannot see is not_found."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "from_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date."
+                  },
+                  "to_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Calendar date."
+                  },
+                  "view": {
+                    "type": "string",
+                    "enum": [
+                      "day",
+                      "week",
+                      "month"
+                    ]
+                  }
+                },
+                "description": "Typed filters for the core page. Unknown keys are rejected."
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "admin",
+                    "attorney",
+                    "staff",
+                    "accountant",
+                    "client"
+                  ],
+                  "description": "One role. A user may hold several."
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "route",
+              "scopes",
+              "roles"
+            ],
+            "description": "A core page. route is an identifier, not a URL."
+          }
+        ]
       },
       "ManifestWidget": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "default_size": {
             "type": "object",
@@ -69400,46 +69837,7 @@
             }
           },
           "target": {
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-              "path": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 128,
-                "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
-                "description": "Module-local path. The core opens /m/{module_id}/{path}."
-              },
-              "filters": {
-                "type": "object",
-                "additionalProperties": true
-              },
-              "scopes": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "roles": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "admin",
-                    "attorney",
-                    "staff",
-                    "accountant",
-                    "client"
-                  ],
-                  "description": "One role. A user may hold several."
-                }
-              }
-            },
-            "required": [
-              "path",
-              "scopes",
-              "roles"
-            ]
+            "$ref": "#/components/schemas/ManifestWidgetTarget"
           }
         },
         "required": [
@@ -69450,6 +69848,197 @@
           "target"
         ],
         "description": "target is required. Install refuses a widget that omits it. allowed_sizes lists the grid sizes the widget may take."
+      },
+      "ManifestHelpCover": {
+        "description": "The widget, tab, or matter-screen item this guide page covers.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "widget"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "tab"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "const": "screen"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      },
+      "ManifestHelpPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "markdown": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Markdown body. The core sanitizes it when rendering."
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Search keywords."
+          },
+          "covers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ManifestHelpCover"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "markdown",
+          "keywords",
+          "covers"
+        ],
+        "description": "One guide page. covers names widgets, tabs, or matter-screen items in this manifest."
+      },
+      "ManifestHelp": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "heading": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Guide heading. Defaults to the module name. The owner namespace is always the module id."
+          },
+          "pages": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ManifestHelpPage"
+            }
+          }
+        },
+        "required": [
+          "pages"
+        ],
+        "description": "Module guide. Omit help when the module has no pages. An empty object is not a guide. Copying these pages into the help center at install remains pending."
+      },
+      "ManifestTab": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "placement": {
+            "type": "string",
+            "enum": [
+              "home-screen",
+              "matter-screen"
+            ],
+            "description": "Home screen or matter screen."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path. The core opens /m/{module_id}/{target}."
+          },
+          "guide": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Help page id in this manifest. The ? icon opens that page."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "placement",
+          "target",
+          "scopes",
+          "roles"
+        ],
+        "description": "A home-screen or matter-screen tab. Placement is not an admin or profile page. target is module-local."
       },
       "ManifestSidebarEntry": {
         "type": "object",
@@ -72777,7 +73366,7 @@
             ]
           }
         },
-        "description": "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was. Patch: every field is optional."
+        "description": "Pending may become completed or failed. The same status is idempotent and writes nothing. Completed, failed, and reversed do not move through this method. A settled correction is reversePayment, which needs trust:withdraw when the payment posted trust. Sending failed for a completed payment is rejected. reversed cannot become completed. Patch: every field is optional."
       },
       "ProcessorInitializationWritePatch": {
         "description": "Asks the core to authorize one registered processor. destination trust requires trust_account_id. destination operating omits it. The grant is delivered to the module and is not in this request. Patch: every field is optional.",
@@ -74403,7 +74992,26 @@
         },
         "idempotency_replay": "original_result",
         "idempotency_conflict": "idempotency_conflict",
-        "no_mutation_on_denial": true
+        "no_mutation_on_denial": true,
+        "status_graph": {
+          "initial": "pending",
+          "transitions": {
+            "pending": [
+              "completed",
+              "failed"
+            ],
+            "completed": [],
+            "failed": [],
+            "reversed": []
+          },
+          "same_status": "original_result",
+          "illegal_transition": "conflict",
+          "settled_correction": "reversePayment",
+          "settled_correction_excludes": "failed",
+          "settled_trust_scope": "trust:withdraw",
+          "reversed_terminal": true,
+          "no_mutation_on_denial": true
+        }
       },
       "background_file_publication": {
         "sources": [
