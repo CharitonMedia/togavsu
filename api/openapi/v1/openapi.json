@@ -1504,7 +1504,17 @@
         "tags": [
           "Identity"
         ],
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success.",
@@ -1553,7 +1563,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "include_scope_pattern": "views:{module_id}.{view}:read"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3244,6 +3255,15 @@
               "default": 50
             },
             "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -3306,7 +3326,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3402,6 +3423,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -3469,6 +3491,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter user_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -3515,7 +3546,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3620,6 +3652,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -10023,6 +10056,15 @@
               "default": 50
             },
             "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -10089,6 +10131,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -10326,6 +10369,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Contact filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -10392,6 +10444,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -10503,6 +10556,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -10583,6 +10637,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter party_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -10633,6 +10696,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -10753,6 +10817,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -10899,6 +10964,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -12547,6 +12613,15 @@
               "type": "string"
             },
             "description": "Status filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -12613,6 +12688,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -12724,6 +12800,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -12804,6 +12881,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter fee_agreement_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -12854,6 +12940,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -12974,6 +13061,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -13142,6 +13230,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -13268,6 +13357,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -13462,6 +13552,15 @@
               "type": "string"
             },
             "description": "Status filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -13528,6 +13627,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -13639,6 +13739,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -13719,6 +13820,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter note_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -13769,6 +13879,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -13889,6 +14000,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -14031,6 +14143,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -14162,6 +14275,7 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -14280,6 +14394,15 @@
               "type": "string"
             },
             "description": "Case-insensitive substring."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -14349,6 +14472,7 @@
             "reason"
           ],
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -14463,6 +14587,7 @@
             "reason"
           ],
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -14543,6 +14668,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter conflict_record_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -14596,6 +14730,7 @@
             "reason"
           ],
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -14719,6 +14854,7 @@
             "reason"
           ],
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -14868,6 +15004,7 @@
             "reason"
           ],
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -25645,6 +25782,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "processor_issuance": "payment_processor",
+          "event_read_scopes": [
+            "payments:write"
+          ],
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -27949,6 +28089,15 @@
               "type": "boolean"
             },
             "description": "Active filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -28015,6 +28164,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -28124,6 +28274,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -28205,6 +28356,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter trust_account_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -28255,6 +28415,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -28373,6 +28534,7 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -59251,6 +59413,9 @@
           },
           "notes": {
             "type": "string"
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -59582,6 +59747,9 @@
                 "type": "null"
               }
             ]
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -59751,6 +59919,9 @@
           "rich_text": {
             "type": "boolean",
             "description": "True when an agent or module wrote the note. The server sanitizes it before display."
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -61427,6 +61598,9 @@
           },
           "active": {
             "type": "boolean"
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -64901,6 +65075,9 @@
                 "type": "null"
               }
             ]
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -66784,7 +66961,24 @@
             ]
           },
           "summary": {
-            "type": "string"
+            "description": "Plain summary, or {\"redacted\": true} when the text is attorney-only. Null is not a summary.",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "redacted"
+                ],
+                "properties": {
+                  "redacted": {
+                    "const": true
+                  }
+                }
+              }
+            ]
           },
           "task_authorization": {
             "anyOf": [
@@ -68371,6 +68565,9 @@
           },
           "source": {
             "type": "string"
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -72933,6 +73130,393 @@
         },
         "result": "not_found"
       }
+    ]
+  },
+  "x-togavsu-event-scopes": {
+    "user.created": [
+      "users:read"
+    ],
+    "auth.login_challenged": [],
+    "session.created": [],
+    "auth.enrollment_started": [],
+    "session.ended": [
+      "sessions:read"
+    ],
+    "auth.password_reset_requested": [],
+    "user.password_changed": [
+      "profile:read"
+    ],
+    "user.updated": [
+      "users:read"
+    ],
+    "user.email_change_requested": [
+      "profile:read"
+    ],
+    "user.totp_reset": [
+      "profile:read"
+    ],
+    "user.recovery_codes_regenerated": [
+      "profile:read"
+    ],
+    "user.settings_updated": [
+      "profile:read"
+    ],
+    "notification_preferences.updated": [
+      "notifications:read"
+    ],
+    "user.sidebar_updated": [
+      "profile:read"
+    ],
+    "api_token.created": [
+      "tokens:read"
+    ],
+    "api_token.revoked": [
+      "tokens:read"
+    ],
+    "contact.created": [
+      "contacts:read"
+    ],
+    "contact.updated": [
+      "contacts:read"
+    ],
+    "contact.archived": [
+      "contacts:read"
+    ],
+    "contact.merged": [
+      "contacts:read"
+    ],
+    "matter.created": [
+      "matters:read"
+    ],
+    "matter.updated": [
+      "matters:read"
+    ],
+    "matter.archived": [
+      "matters:read"
+    ],
+    "matter.closed": [
+      "matters:read"
+    ],
+    "matter.reopened": [
+      "matters:read"
+    ],
+    "matter.merged": [
+      "matters:read"
+    ],
+    "matter.wall_changed": [
+      "matters:read"
+    ],
+    "marker.created": [
+      "settings:read"
+    ],
+    "marker.updated": [
+      "settings:read"
+    ],
+    "fee_agreement.created": [
+      "matters:read"
+    ],
+    "fee_agreement.updated": [
+      "matters:read"
+    ],
+    "note.created": [
+      "notes:read"
+    ],
+    "note.updated": [
+      "notes:read"
+    ],
+    "note.archived": [
+      "notes:read"
+    ],
+    "conflict_record.created": [
+      "conflicts:read"
+    ],
+    "conflict_record.updated": [
+      "conflicts:read"
+    ],
+    "conflict_check.created": [
+      "conflicts:read"
+    ],
+    "conflict_check.decided": [
+      "conflicts:read"
+    ],
+    "setting.updated": [
+      "settings:read"
+    ],
+    "time_entry.updated": [
+      "time:read"
+    ],
+    "expense.updated": [
+      "expenses:read"
+    ],
+    "time_entry.created": [
+      "time:read"
+    ],
+    "timer.started": [
+      "time:read"
+    ],
+    "timer.paused": [
+      "time:read"
+    ],
+    "timer.resumed": [
+      "time:read"
+    ],
+    "expense.created": [
+      "expenses:read"
+    ],
+    "invoice.updated": [
+      "invoices:read"
+    ],
+    "invoice.drafted": [
+      "invoices:read"
+    ],
+    "invoice.approved": [
+      "invoices:read"
+    ],
+    "invoice.sent": [
+      "invoices:read"
+    ],
+    "file.downloaded": [
+      "files:read"
+    ],
+    "invoice.voided": [
+      "invoices:read"
+    ],
+    "payment.completed": [
+      "payments:read"
+    ],
+    "trust.entry_posted": [
+      "trust:read"
+    ],
+    "trust.replenishment_requested": [
+      "trust:read"
+    ],
+    "payment.processor_authorized": [
+      "payments:write"
+    ],
+    "payment.updated": [
+      "payments:read"
+    ],
+    "payment.reversed": [
+      "payments:read"
+    ],
+    "trust_account.created": [
+      "trust:read"
+    ],
+    "trust_account.updated": [
+      "trust:read"
+    ],
+    "trust.flag_raised": [
+      "trust:read"
+    ],
+    "trust.flag_resolved": [
+      "trust:read"
+    ],
+    "trust.replenishment_cancelled": [
+      "trust:read"
+    ],
+    "trust.replenishment_satisfied": [
+      "trust:read"
+    ],
+    "trust.reconciled": [
+      "trust:read"
+    ],
+    "calendar_event.created": [
+      "calendar:read"
+    ],
+    "calendar_event.updated": [
+      "calendar:read"
+    ],
+    "calendar_event.deleted": [
+      "calendar:read"
+    ],
+    "deadline.created": [
+      "deadlines:read"
+    ],
+    "deadline.updated": [
+      "deadlines:read"
+    ],
+    "ical_feed.created": [
+      "calendar:read"
+    ],
+    "ical_feed.revoked": [
+      "calendar:read"
+    ],
+    "file.created": [
+      "files:read"
+    ],
+    "file.version_created": [
+      "files:read"
+    ],
+    "file.updated": [
+      "files:read"
+    ],
+    "file.trashed": [
+      "files:read"
+    ],
+    "file.purged": [
+      "files:read"
+    ],
+    "file.linked": [
+      "files:read"
+    ],
+    "file.quarantine_changed": [
+      "files:read"
+    ],
+    "file_upload.created": [
+      "files:read"
+    ],
+    "file_upload.staged": [
+      "files:read"
+    ],
+    "folder.created": [
+      "files:read"
+    ],
+    "folder.updated": [
+      "files:read"
+    ],
+    "folder.deleted": [
+      "files:read"
+    ],
+    "file.lock_acquired": [
+      "files:read"
+    ],
+    "file.lock_released": [
+      "files:read"
+    ],
+    "file.lock_renewed": [
+      "files:read"
+    ],
+    "court_profile.created": [
+      "files:read"
+    ],
+    "court_profile.updated": [
+      "files:read"
+    ],
+    "court_profile.verified": [
+      "files:read"
+    ],
+    "storage_backend.created": [
+      "files:read"
+    ],
+    "storage_backend.updated": [
+      "files:read"
+    ],
+    "storage_backend.tested": [
+      "files:read"
+    ],
+    "storage_move.started": [
+      "files:read"
+    ],
+    "storage_move.confirmed": [
+      "files:read"
+    ],
+    "doc_tender.published": [
+      "doc_tender:read"
+    ],
+    "doc_tender.exception_resolved": [
+      "doc_tender:read"
+    ],
+    "doc_tender.category_updated": [
+      "doc_tender:read"
+    ],
+    "notification.created": [
+      "notifications:read"
+    ],
+    "notification.read": [
+      "notifications:read"
+    ],
+    "layout.updated": [
+      "layouts:read"
+    ],
+    "layout.created": [
+      "layouts:read"
+    ],
+    "layout.deleted": [
+      "layouts:read"
+    ],
+    "layout.default_set": [
+      "layouts:read"
+    ],
+    "layout.applied": [
+      "layouts:read"
+    ],
+    "help.updated": [
+      "help:read"
+    ],
+    "event.appended": [
+      "events:read"
+    ],
+    "ai.provider_checked": [
+      "ai:admin"
+    ],
+    "ai.call_completed": [
+      "ai:use"
+    ],
+    "mail.tested": [
+      "settings:read"
+    ],
+    "problem_report.created": [
+      "profile:read"
+    ],
+    "backup.started": [
+      "backups:admin"
+    ],
+    "backup.deleted": [
+      "backups:admin"
+    ],
+    "backup_destination.created": [
+      "backups:admin"
+    ],
+    "backup_destination.updated": [
+      "backups:admin"
+    ],
+    "backup_destination.deleted": [
+      "backups:admin"
+    ],
+    "backup_destination.tested": [
+      "backups:admin"
+    ],
+    "restore.started": [
+      "backups:admin"
+    ],
+    "backup_upload.created": [
+      "backups:admin"
+    ],
+    "update.started": [
+      "updates:admin"
+    ],
+    "module.install_requested": [
+      "modules:read"
+    ],
+    "module.permissions_decided": [
+      "modules:read"
+    ],
+    "module.enabled": [
+      "modules:read"
+    ],
+    "module.disabled": [
+      "modules:read"
+    ],
+    "module.removed": [
+      "modules:read"
+    ],
+    "module.update_requested": [
+      "modules:read"
+    ],
+    "module.context_issued": [
+      "modules:read"
+    ],
+    "signing_key.added": [
+      "modules:read"
+    ],
+    "signing_key.updated": [
+      "modules:read"
+    ],
+    "signing_key.removed": [
+      "modules:read"
+    ],
+    "domain.switched": [
+      "modules:read"
     ]
   },
   "x-togavsu-settings": [

@@ -22,14 +22,17 @@ from contract.build import (
     render_mcp,
 )
 from contract.policy import (
+    EXTENSIBLE_RECORDS,
     background_file_step,
     commit_concurrent_processor_creates,
     commit_concurrent_publishes,
     committed_events,
     custom_fields_batch,
     custom_fields_outcome,
+    event_read_scopes,
     file_download_decision,
     is_core_file_download,
+    include_views_decision,
     issue_background_file_grant,
     mcp_credential_rejection,
     payment_effect_decision,
@@ -2257,7 +2260,7 @@ class ContractTest(unittest.TestCase):
         delivered = webhook_envelope(subscriber, event)
         self.assertEqual(delivered["record_id"], event["record_id"])
         self.assertEqual(delivered["summary"], "Smith opened")
-        _component_validator(self.spec, "WebhookEvent").validate({**delivered, "task_authorization": None, "processor_authorization": None})
+        _component_validator(self.spec, "WebhookEvent").validate(delivered)
         for label, module, sample in (
             ("no-scope", {**subscriber, "approved_scopes": ["files:read"]}, event),
             ("not-subscribed", {**subscriber, "subscriptions": ["invoice.sent"]}, event),
@@ -2269,8 +2272,10 @@ class ContractTest(unittest.TestCase):
         on_wall = webhook_envelope({**subscriber, "on_wall": True}, {**event, "matter_walled": True})
         self.assertEqual(on_wall["record_id"], event["record_id"])
         redacted = webhook_envelope(subscriber, {**event, "summary_attorney_only": True, "summary": "secret reason"})
-        self.assertIsNone(redacted["summary"])
+        self.assertEqual(redacted["summary"], {"redacted": True})
         self.assertNotIn("secret reason", str(redacted))
+        _component_validator(self.spec, "WebhookEvent").validate(redacted)
+        self.assertIsNone(webhook_envelope(subscriber, {**event, "summary": None}))
         attorney_file = {**event, "type": "file.created", "record_type": "file", "attorney_only": True, "summary": "privileged"}
         file_module = {**subscriber, "approved_scopes": ["files:read"], "subscriptions": ["file.created"]}
         self.assertIsNone(webhook_envelope(file_module, attorney_file))
@@ -2281,6 +2286,132 @@ class ContractTest(unittest.TestCase):
             {**event, "type": "payment.processor_authorized", "record_type": "payment"},
         )
         self.assertEqual(processor["record_id"], event["record_id"])
+        self.assertIsNone(
+            webhook_envelope(
+                {**subscriber, "approved_scopes": ["payments:read"], "subscriptions": ["payment.processor_authorized"]},
+                {**event, "type": "payment.processor_authorized", "record_type": "payment"},
+            )
+        )
+
+    def test_every_emitted_event_uses_its_resource_read_scope(self):
+        emitted = sorted({event for _method, _path, operation in _ops(self.spec) for event in operation.get("x-togavsu-events") or []})
+        self.assertGreater(len(emitted), 100)
+        published = self.spec["x-togavsu-event-scopes"]
+        self.assertEqual(published["calendar_event.created"], ["calendar:read"])
+        self.assertEqual(published["trust_account.created"], ["trust:read"])
+        self.assertEqual(published["doc_tender.published"], ["doc_tender:read"])
+        self.assertNotIn("events:read", published["calendar_event.created"])
+        self.assertNotIn("not.a.real.event", published)
+        base = {
+            "id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeeee",
+            "occurred_at": "2026-11-07T18:00:00Z",
+            "actor_kind": "staff",
+            "record_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "summary": "ordinary",
+            "matter_walled": False,
+        }
+        catalog = [scope for scopes in published.values() for scope in scopes]
+        for event_type in emitted:
+            if event_type.startswith("custom_field."):
+                record_type = "contact"
+            elif event_type.startswith("conflict_record"):
+                record_type = "conflict_record"
+            else:
+                record_type = "matter"
+            scopes = event_read_scopes(event_type, record_type if event_type.startswith("custom_field.") else None)
+            if event_type.startswith("custom_field."):
+                self.assertNotIn(event_type, published, event_type)
+                self.assertEqual(scopes, ["contacts:read"], event_type)
+            else:
+                self.assertEqual(scopes, published.get(event_type, []), event_type)
+            sample = {**base, "type": event_type, "record_type": record_type}
+            events_only = {"installed": True, "registered": True, "approved_scopes": ["events:read"], "subscriptions": [event_type], "on_wall": True, "attorney_only": False}
+            if "events:read" not in scopes:
+                self.assertIsNone(webhook_envelope(events_only, sample), event_type)
+            if not scopes:
+                everything = {**events_only, "approved_scopes": sorted(set(catalog + ["events:read"])), "attorney_only": True}
+                self.assertIsNone(webhook_envelope(everything, sample), event_type)
+                continue
+            holder = {**events_only, "approved_scopes": [scopes[0]], "attorney_only": record_type == "conflict_record"}
+            delivered = webhook_envelope(holder, sample)
+            if record_type == "conflict_record":
+                self.assertIsNone(webhook_envelope({**holder, "attorney_only": False}, sample), event_type)
+            self.assertIsNotNone(delivered, event_type)
+            self.assertEqual(delivered["record_id"], sample["record_id"])
+            self.assertNotEqual(delivered["summary"], None)
+            _component_validator(self.spec, "WebhookEvent").validate(delivered)
+        unknown = {**base, "type": "not.a.real.event", "record_type": "matter"}
+        self.assertEqual(event_read_scopes("not.a.real.event"), [])
+        self.assertIsNone(webhook_envelope({**events_only, "subscriptions": ["not.a.real.event"], "approved_scopes": catalog + ["events:read"]}, unknown))
+        self.assertEqual(event_read_scopes("custom_field.updated", None), [])
+        self.assertEqual(event_read_scopes("custom_field.updated", "time_entry"), ["time:read"])
+
+    def test_include_views_cover_extensible_core_records(self):
+        expected = {
+            "User": "users:read",
+            "Contact": "contacts:read",
+            "Matter": "matters:read",
+            "MatterParty": "matters:read",
+            "Note": "notes:read",
+            "FeeAgreement": "matters:read",
+            "TimeEntry": "time:read",
+            "Expense": "expenses:read",
+            "Invoice": "invoices:read",
+            "Payment": "payments:read",
+            "CalendarEvent": "calendar:read",
+            "Deadline": "deadlines:read",
+            "File": "files:read",
+            "ConflictRecord": "conflicts:read",
+            "TrustAccount": "trust:read",
+        }
+        self.assertEqual(EXTENSIBLE_RECORDS, expected)
+        seen = set()
+        for _method, _path, operation in _ops(self.spec):
+            if _method != "get":
+                continue
+            matched = _response_record_schemas(operation) & set(expected)
+            if not matched:
+                continue
+            seen.update(matched)
+            schema_name = sorted(matched)[0]
+            names = [_param_name(parameter) for parameter in operation.get("parameters") or []]
+            self.assertIn("include", names, operation["operationId"])
+            self.assertEqual(operation["x-togavsu-access"]["include_scope_pattern"], "views:{module_id}.{view}:read", operation["operationId"])
+            canonical = _operation(self.spec, f"list{schema_name}")
+            self.assertEqual(canonical["x-togavsu-access"]["scopes"], [expected[schema_name]], schema_name)
+            self.assertEqual(_operation(self.spec, f"get{schema_name}")["x-togavsu-access"]["scopes"], [expected[schema_name]], schema_name)
+            schema = self.spec["components"]["schemas"][schema_name]
+            self.assertIn("included", schema["properties"], schema_name)
+            self.assertNotIn("included", schema.get("required", []), schema_name)
+            arguments = operation["x-togavsu-mcp"]["transfer"]["arguments"]
+            self.assertIn("query", arguments, operation["operationId"])
+            self.assertNotIn("roles", arguments, operation["operationId"])
+        self.assertEqual(seen, set(expected))
+        users = _operation(self.spec, "listUser")
+        approved = ["users:read", "views:clock.targets:read"]
+        self.assertEqual(include_views_decision(users, {"role": "admin", "approved_scopes": approved, "include": ["clock.targets"]}), "allowed")
+        self.assertEqual(include_views_decision(users, {"role": "staff", "approved_scopes": approved, "include": ["clock.targets"]}), "forbidden")
+        self.assertEqual(include_views_decision(users, {"role": "admin", "approved_scopes": ["users:read"], "include": ["clock.targets"]}), "forbidden")
+        self.assertEqual(include_views_decision(users, {"role": "admin", "approved_scopes": ["users:read"], "include": ["not-a-view"]}), "validation_failed")
+        self.assertEqual(
+            include_views_decision(users, {"role": "admin", "approved_scopes": ["users:read"], "caller_module_id": "clock", "include": ["other.targets"]}),
+            "forbidden",
+        )
+        matter = _operation(self.spec, "getMatter")
+        self.assertEqual(
+            include_views_decision(matter, {"role": "staff", "approved_scopes": ["matters:read", "views:clock.targets:read"], "include": ["clock.targets"], "matter_walled": True, "on_wall": False}),
+            "not_found",
+        )
+        conflict = _operation(self.spec, "getConflictRecord")
+        self.assertEqual(
+            include_views_decision(conflict, {"role": "staff", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}),
+            "not_found",
+        )
+        self.assertEqual(
+            include_views_decision(conflict, {"role": "attorney", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}),
+            "allowed",
+        )
 
     def test_background_file_publication_grant(self):
         policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["background_file_publication"]
@@ -2316,13 +2447,40 @@ class ContractTest(unittest.TestCase):
         expired = background_file_step(store, policy, _operation(self.spec, "publishFile"), {**base, "operation": "publishFile", "upload_id": upload_id, "grant": {**grant, "expired": True}})
         self.assertEqual(expired["result"], "forbidden")
         self.assertEqual(len(store["files"]), 1)
-        omitted = background_file_step(store, policy, _operation(self.spec, "bulkFile"), {**base, "operation": "bulkFile", "items": [{"upload_id": "u-missing"}]})
-        self.assertNotEqual(omitted["result"], "allowed")
-        self.assertEqual(omitted["events"], [])
-        self.assertEqual(len(store["files"]), 1)
-        failed = background_file_step(store, policy, _operation(self.spec, "bulkFile"), {**base, "operation": "bulkFile", "fail": True, "items": [{"matter_id": "matter-1"}]})
-        self.assertEqual(failed["result"], "batch_rejected")
-        self.assertEqual(failed["events"], [])
+        staged = background_file_step(store, policy, _operation(self.spec, "createFileUpload"), {**base, "operation": "createFileUpload", "upload_id": "up-staged"})
+        self.assertEqual(background_file_step(store, policy, _operation(self.spec, "completeFileUpload"), {**base, "operation": "completeFileUpload", "upload_id": staged["upload_id"]})["result"], "allowed")
+        other = background_file_step(store, policy, _operation(self.spec, "createFileUpload"), {**base, "operation": "createFileUpload", "upload_id": "up-open"})
+        before_files = len(store["files"])
+        before_events = len(store["events"])
+        bulk_op = _operation(self.spec, "bulkFile")
+        for label, items in (
+            ("missing-upload", [{"upload_id": "up-unknown", "matter_id": "matter-1"}]),
+            ("not-in-grant", [{"upload_id": "foreign", "matter_id": "matter-1"}]),
+            ("omitted-matter", [{"upload_id": staged["upload_id"]}]),
+            ("unfinished", [{"upload_id": other["upload_id"], "matter_id": "matter-1"}]),
+            ("second-item-unfinished", [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}, {"upload_id": other["upload_id"], "matter_id": "matter-1"}]),
+        ):
+            if label == "not-in-grant":
+                store["uploads"]["foreign"] = {"id": "foreign", "status": "staged", "matter_id": "matter-1", "owner": "email"}
+            denied_bulk = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": items})
+            self.assertNotEqual(denied_bulk["result"], "allowed", label)
+            self.assertEqual(denied_bulk["events"], [], label)
+            self.assertEqual(len(store["files"]), before_files, label)
+            self.assertEqual(len(store["events"]), before_events, label)
+        store["uploads"][staged["upload_id"]]["matter_id"] = "matter-9"
+        wrong_matter = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        self.assertEqual(wrong_matter["result"], "not_found")
+        self.assertEqual(len(store["files"]), before_files)
+        self.assertEqual(len(store["events"]), before_events)
+        store["uploads"][staged["upload_id"]]["matter_id"] = "matter-1"
+        store["uploads"][staged["upload_id"]]["owner"] = "zoom"
+        stolen = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        self.assertEqual(stolen["result"], "forbidden")
+        self.assertEqual(len(store["files"]), before_files)
+        store["uploads"][staged["upload_id"]]["owner"] = "email"
+        published_bulk = background_file_step(store, policy, bulk_op, {**base, "operation": "bulkFile", "items": [{"upload_id": staged["upload_id"], "matter_id": "matter-1"}]})
+        self.assertEqual(published_bulk["result"], "allowed")
+        self.assertIn("file.version_created", published_bulk["events"])
         raced = commit_concurrent_publishes(policy, _operation(self.spec, "publishFile"), grant, upload_id)
         self.assertEqual(len(raced["store"]["files"]), 1)
         self.assertEqual(raced["second"]["result"], "original_result")
@@ -2666,6 +2824,25 @@ def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type
     if all(scope in token_scopes for scope in needed):
         return "allowed"
     return "scope_denied"
+
+
+def _response_record_schemas(operation: dict) -> set[str]:
+    found: set[str] = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                found.add(ref.rsplit("/", 1)[1])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    content = operation.get("responses", {}).get("200", {}).get("content", {}).get("application/json", {})
+    walk(content.get("schema") or {})
+    return found
 
 
 def _param_name(parameter: dict) -> str:

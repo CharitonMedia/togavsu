@@ -435,7 +435,8 @@ def _identity(api: Contract) -> None:
         scopes=["profile:read"],
         response="User",
         writes=False,
-        extra_access=OWN,
+        include=True,
+        extra_access={**OWN, "include_scope_pattern": "views:{module_id}.{view}:read"},
     )
     api.add(
         "patch",
@@ -674,6 +675,7 @@ def _identity(api: Contract) -> None:
         events={"created": "user.created", "updated": "user.updated"},
         create=True,
         update=True,
+        include=True,
     )
     api.add(
         "post",
@@ -889,7 +891,8 @@ def _practice(api: Contract) -> None:
         response_schema=_page("Matter"),
         paginate=True,
         writes=False,
-        extra_access=WALL,
+        include=True,
+        extra_access={**WALL, "include_scope_pattern": "views:{module_id}.{view}:read"},
     )
     api.add(
         "get",
@@ -922,6 +925,7 @@ def _practice(api: Contract) -> None:
         bulk=True,
         filters=["matter_id", "contact_id"],
         events={"created": "matter.updated", "updated": "matter.updated"},
+        include=True,
         extra_access=WALL,
     )
     api.add(
@@ -1000,6 +1004,7 @@ def _practice(api: Contract) -> None:
         bulk=True,
         filters=["matter_id", "status"],
         events={"created": "fee_agreement.created", "updated": "fee_agreement.updated"},
+        include=True,
         extra_access=WALL,
     )
     api.resource(
@@ -1018,6 +1023,7 @@ def _practice(api: Contract) -> None:
         archive=True,
         filters=["q", "matter_id", "contact_id", "author_id", "tag", "from_date", "to_date", "pinned", "status"],
         events={"created": "note.created", "updated": "note.updated", "archived": "note.archived"},
+        include=True,
         extra_access=WALL,
     )
     api.resource(
@@ -1035,6 +1041,7 @@ def _practice(api: Contract) -> None:
         bulk=True,
         filters=["q"],
         events={"created": "conflict_record.created", "updated": "conflict_record.updated"},
+        include=True,
         extra_access={"attorney_only": ["reason"], "matter_wall": True, "access_inherits": "matter"},
     )
     api.add(
@@ -1597,7 +1604,7 @@ def _billing(api: Contract) -> None:
         events=["payment.processor_authorized"],
         error_codes=["forbidden", "scope_denied"],
         replaceable="time",
-        extra_access={**WALL, "processor_issuance": "payment_processor"},
+        extra_access={**WALL, "processor_issuance": "payment_processor", "event_read_scopes": ["payments:write"]},
     )
     api.add(
         "post",
@@ -1739,6 +1746,7 @@ def _trust(api: Contract) -> None:
         write_scope="trust:write",
         filters=["active"],
         events={"created": "trust_account.created", "updated": "trust_account.updated"},
+        include=True,
         replaceable="trust",
     )
     api.resource(
