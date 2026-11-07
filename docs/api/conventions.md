@@ -31,7 +31,11 @@ A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` post
 
 A module token calls a core operation only when `module_delegation` is set and the module's approved scopes include that operation. Interactive calls carry `X-Togavsu-Context-Token` for the viewer. The result is the intersection of the module scope, the viewer's role, and that viewer's walls. A scope does not open a walled matter or an attorney-only file the viewer cannot see, and it does not make the module an admin.
 
-Background work, such as a malware module that later quarantines the file from `file.version_created`, uses `delegated_viewer_or_noninteractive`. That call carries `X-Togavsu-Task-Authorization`, a core-issued capability for that event's resource, operation, and fields. It does not require an iframe token. An unrelated file or matter is `not_found`. A missing scope is `scope_denied`. An expired or revoked capability is `forbidden`. A revoked module token is `unauthenticated`. A field outside the capability is `field_locked`. The capability is not a firm-wide or admin grant.
+Background work uses `delegated_viewer_or_noninteractive` and does not require an iframe token. For `file.version_created`, `moduleEvent` delivers `X-Togavsu-Task-Authorization` only to an installed module whose subscription includes that event. The grant names that module, event, file, version, operations, and fields. The module then calls `getFile`, `listFileVersions`, `downloadFileVersion`, and `quarantineFileVersion` for that version. An unrelated matter, file, or version is `not_found`. A missing scope is `scope_denied`. An invalid, expired, or revoked grant, or a different module id, is `forbidden`. A revoked module token is `unauthenticated`. A field outside the grant is `field_locked`. An attorney-only field stays `not_found`. The grant is not a firm-wide or admin bypass.
+
+A client context token covers the upload sequence, including `getFileUpload`, which returns `next_offset` for the caller's own upload. Another client's upload or matter is `not_found`.
+
+Every file-byte download, including a version, a rendition, and a zip, writes `file.downloaded` to the audit log and the case timeline. A client download is highlighted. A quarantined version requires confirmation.
 
 When time is replaced, invoice and payment operations follow that module. A billing post that also moves trust still posts exactly one append-only trust row through the trust handler. The time module does not post a second row. A below-zero result still flags.
 

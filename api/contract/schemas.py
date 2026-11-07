@@ -1122,14 +1122,15 @@ SCHEMAS = _register(
         "FileUpload": _obj(
             {
                 "id": _uuid(),
+                "owner_user_id": _uuid("The caller who started the upload. The client cannot name another user."),
                 "chunk_size_bytes": {"type": "integer", "minimum": 1},
-                "next_offset": {"type": "integer", "minimum": 0},
+                "next_offset": {"type": "integer", "minimum": 0, "description": "Byte offset of the next chunk after a dropped connection."},
                 "size_bytes": {"type": "integer", "minimum": 0},
                 "expires_at": _dt(),
                 "status": _enum(["receiving", "staged", "published", "expired"]),
             },
-            ["id", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "status"],
-            "A resumable upload. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet.",
+            ["id", "owner_user_id", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "status"],
+            "A resumable upload owned by the caller. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet. getFileUpload returns next_offset.",
         ),
         "FileUploadWrite": _obj(
             {
@@ -1797,6 +1798,32 @@ SCHEMAS = _register(
             ["action", "record_type", "record_id", "summary"],
             "A module appends an event. The server sets the actor from the token.",
         ),
+        "TaskAuthorization": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1, "description": "The registered module this delivery is for."},
+                "event_id": _uuid("The event id. A different event cannot reuse the grant."),
+                "event_type": {"type": "string"},
+                "file_id": _uuid(),
+                "version_id": _uuid(),
+                "matter_id": _null(_uuid()),
+                "allowed_operations": _arr({"type": "string"}, "Operation ids the grant permits. Others are forbidden."),
+                "allowed_fields": _arr({"type": "string"}, "Metadata fields the grant permits."),
+                "expires_at": _dt("After this instant the grant is forbidden."),
+                "revoked": {"type": "boolean", "description": "A core revocation makes the grant forbidden."},
+            },
+            [
+                "module_id",
+                "event_id",
+                "event_type",
+                "file_id",
+                "version_id",
+                "allowed_operations",
+                "allowed_fields",
+                "expires_at",
+                "revoked",
+            ],
+            "Core-issued capability for one event's file and version. It is not an admin grant and it does not require an iframe token.",
+        ),
         "WebhookEvent": _obj(
             {
                 "id": _uuid(),
@@ -1808,9 +1835,10 @@ SCHEMAS = _register(
                 "record_id": {"type": "string"},
                 "matter_id": _null(_uuid()),
                 "summary": {"type": "string"},
+                "task_authorization": _null(_ref("TaskAuthorization")),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=.",
+            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module.",
         ),
         "Backup": _meta(
             {

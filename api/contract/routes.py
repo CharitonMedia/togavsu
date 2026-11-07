@@ -37,6 +37,13 @@ PERSON_LOCK = {
     "automated_actor": "field_locked",
     "blocked_actors": ["doc_tender"],
 }
+FILE_DOWNLOAD = {
+    "audit": True,
+    "timeline": True,
+    "client_download": "highlighted",
+    "event": "file.downloaded",
+    "quarantine_confirmation": "required",
+}
 TRUST_BILLING_DISPATCH = {
     "primary_domain": "time",
     "trust_entry": {
@@ -2223,6 +2230,7 @@ def _files(api: Contract) -> None:
         error_codes=["matter_mismatch", "validation_failed"],
         extra_access={
             **FILE_WALL,
+            "client": "shared",
             "authorizes": "both_files",
             "relationship_immutable": True,
             "server_owned_relationships": ["conversion_of", "grouped_photo_source"],
@@ -2240,7 +2248,11 @@ def _files(api: Contract) -> None:
         "/api/v1/files/{file_id}/versions/{version_id}/download",
         operation_id="downloadFileVersion",
         summary="Download a file version",
-        description="Checks SHA-256 before the bytes leave the core. A mismatch fails the read and emails the admins. A quarantined version requires confirm=true. The download is audited and added to the timeline.",
+        description=(
+            "Checks SHA-256 before the bytes leave the core. A mismatch fails the read and emails the admins. "
+            "A quarantined version requires confirm=true. "
+            "The download is written to the audit log and the case timeline. A client download is highlighted."
+        ),
         tag="Files",
         features=["file-versions", "quarantine"],
         roles=BILLING + ["client"],
@@ -2250,7 +2262,7 @@ def _files(api: Contract) -> None:
         writes=False,
         events=["file.downloaded"],
         error_codes=["quarantine_confirmation_required"],
-        extra_access=SHARED,
+        extra_access={**SHARED, **FILE_DOWNLOAD},
     )
     api.add(
         "post",
@@ -2307,14 +2319,22 @@ def _files(api: Contract) -> None:
         "/api/v1/files/{file_id}/renditions/{rendition_id}",
         operation_id="downloadFileRendition",
         summary="Download a rendition",
-        description="The Markdown copy uses the file's base name with .md and follows the file's walls.",
+        description=(
+            "Returns the rendition bytes: the Markdown copy, the PDF preview, or the grouped PDF. "
+            "The Markdown copy uses the file's base name with .md. "
+            "The download is written to the audit log and the case timeline. A client download is highlighted. "
+            "The file wall and the attorney-only flag apply. A rendition of a quarantined version requires confirm=true."
+        ),
         tag="Files",
         features=["file-renditions"],
         roles=BILLING + ["client"],
         scopes=["files:read"],
+        query=["confirm"],
         response_content={"application/octet-stream": {"schema": {"type": "string", "contentMediaType": "application/octet-stream"}}},
         writes=False,
-        extra_access=SHARED,
+        events=["file.downloaded"],
+        error_codes=["quarantine_confirmation_required"],
+        extra_access={**SHARED, **FILE_DOWNLOAD},
     )
     api.add(
         "post",
@@ -2330,28 +2350,49 @@ def _files(api: Contract) -> None:
         response="FileUpload",
         success="201",
         error_codes=["payload_too_large"],
-        extra_access={**WALL, "client": "shared"},
+        extra_access={
+            **WALL,
+            "client": "shared",
+            "access_cases": [
+                {"role": "client", "matter": "own_shared", "result": "allowed"},
+                {"role": "client", "matter": "other_client", "result": "not_found"},
+            ],
+        },
     )
     api.add(
         "get",
         "/api/v1/file-uploads/{upload_id}",
         operation_id="getFileUpload",
         summary="Resume an upload",
-        description="Returns next_offset so the client can continue after a dropped connection.",
+        description=(
+            "Returns the caller's upload, including next_offset, so a dropped connection can continue. "
+            "owner_user_id is the caller. Another client's upload is not_found."
+        ),
         tag="Files",
         features=["file-uploads"],
         roles=STAFF + ["client"],
         scopes=["files:write"],
         response="FileUpload",
         writes=False,
-        extra_access={"client": "own"},
+        extra_access={
+            "client": "own",
+            "owner": "self",
+            "matter_wall": True,
+            "access_cases": [
+                {"role": "client", "owner": "self", "result": "allowed"},
+                {"role": "client", "owner": "other_client", "result": "not_found"},
+            ],
+        },
     )
     api.add(
         "put",
         "/api/v1/file-uploads/{upload_id}",
         operation_id="putFileChunk",
         summary="Write an upload chunk",
-        description="Body is application/octet-stream. Content-Range selects the offset. Chunks are the configured size, starting at 8 MB.",
+        description=(
+            "Body is application/octet-stream. Content-Range selects the offset. Chunks are the configured size, starting at 8 MB. "
+            "A resumed chunk uses the next_offset from getFileUpload. Another client's upload is not_found."
+        ),
         tag="Files",
         features=["file-uploads"],
         roles=STAFF + ["client"],
@@ -2371,7 +2412,15 @@ def _files(api: Contract) -> None:
             }
         },
         response="FileUpload",
-        extra_access={"client": "own"},
+        extra_access={
+            "client": "own",
+            "owner": "self",
+            "matter_wall": True,
+            "access_cases": [
+                {"role": "client", "owner": "self", "result": "allowed"},
+                {"role": "client", "owner": "other_client", "result": "not_found"},
+            ],
+        },
     )
     api.add(
         "post",
@@ -2391,7 +2440,16 @@ def _files(api: Contract) -> None:
         response="FileUpload",
         success="200",
         events=["file_upload.staged"],
-        extra_access={**WALL, "client": "shared"},
+        extra_access={
+            **WALL,
+            "client": "shared",
+            "owner": "self",
+            "access_cases": [
+                {"role": "client", "owner": "self", "matter": "own_shared", "result": "allowed"},
+                {"role": "client", "owner": "other_client", "result": "not_found"},
+                {"role": "client", "matter": "other_client", "result": "not_found"},
+            ],
+        },
     )
     api.add(
         "post",
@@ -2410,7 +2468,16 @@ def _files(api: Contract) -> None:
         response="File",
         success="201",
         events=["file.created", "file.version_created"],
-        extra_access={**FILE_WALL, "client": "shared"},
+        extra_access={
+            **FILE_WALL,
+            "client": "shared",
+            "owner": "self",
+            "access_cases": FILE_ACCESS_CASES + [
+                {"role": "client", "owner": "self", "matter": "own_shared", "result": "allowed"},
+                {"role": "client", "owner": "other_client", "result": "not_found"},
+                {"role": "client", "matter": "other_client", "result": "not_found"},
+            ],
+        },
     )
     api.add(
         "post",
@@ -2418,7 +2485,8 @@ def _files(api: Contract) -> None:
         operation_id="createFileArchive",
         summary="Download a zip of files",
         description=(
-            "A folder or a selection. Each included file is audited as a download. "
+            "A folder or a selection. Each included file is written to the audit log and the case timeline as file.downloaded. "
+            "A client download is highlighted. "
             "If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. "
             "confirm_quarantine true includes those versions after the same confirmation a single download requires."
         ),
@@ -2432,6 +2500,7 @@ def _files(api: Contract) -> None:
         error_codes=["quarantine_confirmation_required"],
         extra_access={
             **SHARED,
+            **FILE_DOWNLOAD,
             "archive_cases": [
                 {"confirm_quarantine": False, "contains_quarantined": True, "result": "quarantine_confirmation_required"},
                 {"confirm_quarantine": True, "contains_quarantined": True, "result": "allowed"},
@@ -3822,9 +3891,20 @@ def _modules(api: Contract) -> None:
                 "client_session_authorized_by": "role",
                 "modules_read_required_for": "firm_bearer",
                 "scope_does_not_bypass_matter": True,
+                "sequence": [
+                    {"step": "obtain_context", "operation": "createModuleContextToken"},
+                    {"step": "init_upload", "operation": "createFileUpload"},
+                    {"step": "chunk", "operation": "putFileChunk"},
+                    {"step": "resume_status", "operation": "getFileUpload"},
+                    {"step": "resumed_chunk", "operation": "putFileChunk"},
+                    {"step": "complete", "operation": "completeFileUpload"},
+                    {"step": "publish", "operation": "publishFile"},
+                    {"step": "attachment", "operation": "createFileLink"},
+                ],
                 "client_allowed_operations": [
                     "createFileUpload",
                     "putFileChunk",
+                    "getFileUpload",
                     "completeFileUpload",
                     "publishFile",
                     "createFileLink",

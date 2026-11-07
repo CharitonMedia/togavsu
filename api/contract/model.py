@@ -59,12 +59,44 @@ DELEGABLE_SCOPES = {
 
 # Background calls use a core-issued task authorization instead of an iframe viewer token.
 NONINTERACTIVE_OPERATIONS = {
+    "getFile",
+    "listFileVersions",
+    "downloadFileVersion",
     "quarantineFileVersion",
     "createEvent",
     "bulkEvent",
     "createNotification",
     "createFileLink",
     "createAiCall",
+}
+
+# The core delivers this with moduleEvent for file.version_created. No iframe viewer is involved.
+MALWARE_DELIVERY = {
+    "event_type": "file.version_created",
+    "delivered_on": "moduleEvent",
+    "header": "X-Togavsu-Task-Authorization",
+    "body_field": "task_authorization",
+    "issued_by": "core",
+    "registered_module": True,
+    "subscription_match": True,
+    "viewer_context_required": False,
+    "module_identity_mismatch": "forbidden",
+    "invalid": "forbidden",
+    "expired": "forbidden",
+    "revoked": "forbidden",
+    "revoked_module_token": "unauthenticated",
+    "missing_scope": "scope_denied",
+    "unrelated_matter": "not_found",
+    "unrelated_file": "not_found",
+    "unrelated_version": "not_found",
+    "operation_outside_grant": "forbidden",
+    "field_outside_grant": "field_locked",
+    "attorney_only_field": "not_found",
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "sequence": ["getFile", "listFileVersions", "downloadFileVersion", "quarantineFileVersion"],
+    "metadata_fields": ["name", "extension", "media_type", "size_bytes", "sha256", "quarantined"],
+    "attorney_only_fields": ["note", "summary"],
 }
 
 MODULE_DELEGATION_POLICY = {
@@ -91,7 +123,11 @@ MODULE_DELEGATION_POLICY = {
         "grants_admin": False,
         "firmwide_bypass": False,
         "attorney_only_redaction": True,
+        "malware_scan": MALWARE_DELIVERY,
         "operations": [
+            "getFile",
+            "listFileVersions",
+            "downloadFileVersion",
             "quarantineFileVersion",
             "createEvent",
             "bulkEvent",

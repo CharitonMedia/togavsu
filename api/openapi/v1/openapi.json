@@ -31520,8 +31520,25 @@
               "matter_walled": true,
               "on_wall": false,
               "result": "not_found"
+            },
+            {
+              "role": "client",
+              "owner": "self",
+              "matter": "own_shared",
+              "result": "allowed"
+            },
+            {
+              "role": "client",
+              "owner": "other_client",
+              "result": "not_found"
+            },
+            {
+              "role": "client",
+              "matter": "other_client",
+              "result": "not_found"
             }
           ],
+          "owner": "self",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
@@ -31671,7 +31688,7 @@
             }
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33013,7 +33030,7 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33582,7 +33599,7 @@
           ],
           "public": false,
           "matter_wall": true,
-          "client": "deny",
+          "client": "shared",
           "access_inherits": "file",
           "attorney_only_files": "not_found",
           "access_cases": [
@@ -33693,7 +33710,7 @@
       "get": {
         "operationId": "downloadFileVersion",
         "summary": "Download a file version",
-        "description": "Checks SHA-256 before the bytes leave the core. A mismatch fails the read and emails the admins. A quarantined version requires confirm=true. The download is audited and added to the timeline.",
+        "description": "Checks SHA-256 before the bytes leave the core. A mismatch fails the read and emails the admins. A quarantined version requires confirm=true. The download is written to the audit log and the case timeline. A client download is highlighted.",
         "tags": [
           "Files"
         ],
@@ -33811,7 +33828,12 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "audit": true,
+          "timeline": true,
+          "client_download": "highlighted",
+          "event": "file.downloaded",
+          "quarantine_confirmation": "required",
+          "module_delegation": "delegated_viewer_or_noninteractive"
         },
         "x-togavsu-events": [
           "file.downloaded"
@@ -34314,7 +34336,7 @@
       "get": {
         "operationId": "downloadFileRendition",
         "summary": "Download a rendition",
-        "description": "The Markdown copy uses the file's base name with .md and follows the file's walls.",
+        "description": "Returns the rendition bytes: the Markdown copy, the PDF preview, or the grouped PDF. The Markdown copy uses the file's base name with .md. The download is written to the audit log and the case timeline. A client download is highlighted. The file wall and the attorney-only flag apply. A rendition of a quarantined version requires confirm=true.",
         "tags": [
           "Files"
         ],
@@ -34336,6 +34358,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter rendition_id."
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Must be true to download a quarantined version."
           }
         ],
         "responses": {
@@ -34409,9 +34440,16 @@
               "result": "not_found"
             }
           ],
+          "audit": true,
+          "timeline": true,
+          "client_download": "highlighted",
+          "event": "file.downloaded",
+          "quarantine_confirmation": "required",
           "module_delegation": "delegated_viewer"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "file.downloaded"
+        ],
         "x-togavsu-writes": false,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -34437,6 +34475,9 @@
           {
             "bearerAuth": []
           }
+        ],
+        "x-togavsu-error-codes": [
+          "quarantine_confirmation_required"
         ]
       }
     },
@@ -34511,6 +34552,18 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
+          "access_cases": [
+            {
+              "role": "client",
+              "matter": "own_shared",
+              "result": "allowed"
+            },
+            {
+              "role": "client",
+              "matter": "other_client",
+              "result": "not_found"
+            }
+          ],
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -34565,7 +34618,7 @@
       "get": {
         "operationId": "getFileUpload",
         "summary": "Resume an upload",
-        "description": "Returns next_offset so the client can continue after a dropped connection.",
+        "description": "Returns the caller's upload, including next_offset, so a dropped connection can continue. owner_user_id is the caller. Another client's upload is not_found.",
         "tags": [
           "Files"
         ],
@@ -34626,8 +34679,21 @@
             "files:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "own",
+          "owner": "self",
+          "access_cases": [
+            {
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "role": "client",
+              "owner": "other_client",
+              "result": "not_found"
+            }
+          ],
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -34661,7 +34727,7 @@
       "put": {
         "operationId": "putFileChunk",
         "summary": "Write an upload chunk",
-        "description": "Body is application/octet-stream. Content-Range selects the offset. Chunks are the configured size, starting at 8 MB.",
+        "description": "Body is application/octet-stream. Content-Range selects the offset. Chunks are the configured size, starting at 8 MB. A resumed chunk uses the next_offset from getFileUpload. Another client's upload is not_found.",
         "tags": [
           "Files"
         ],
@@ -34743,8 +34809,21 @@
             "files:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "own",
+          "owner": "self",
+          "access_cases": [
+            {
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "role": "client",
+              "owner": "other_client",
+              "result": "not_found"
+            }
+          ],
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -34877,6 +34956,25 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
+          "owner": "self",
+          "access_cases": [
+            {
+              "role": "client",
+              "owner": "self",
+              "matter": "own_shared",
+              "result": "allowed"
+            },
+            {
+              "role": "client",
+              "owner": "other_client",
+              "result": "not_found"
+            },
+            {
+              "role": "client",
+              "matter": "other_client",
+              "result": "not_found"
+            }
+          ],
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
@@ -34915,7 +35013,7 @@
       "post": {
         "operationId": "createFileArchive",
         "summary": "Download a zip of files",
-        "description": "A folder or a selection. Each included file is audited as a download. If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. confirm_quarantine true includes those versions after the same confirmation a single download requires.",
+        "description": "A folder or a selection. Each included file is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. If any selected version is quarantined and confirm_quarantine is false or omitted, the response is quarantine_confirmation_required and no zip is returned. confirm_quarantine true includes those versions after the same confirmation a single download requires.",
         "tags": [
           "Files"
         ],
@@ -35004,6 +35102,11 @@
               "result": "not_found"
             }
           ],
+          "audit": true,
+          "timeline": true,
+          "client_download": "highlighted",
+          "event": "file.downloaded",
+          "quarantine_confirmation": "required",
           "archive_cases": [
             {
               "confirm_quarantine": false,
@@ -51379,9 +51482,44 @@
             "client_session_authorized_by": "role",
             "modules_read_required_for": "firm_bearer",
             "scope_does_not_bypass_matter": true,
+            "sequence": [
+              {
+                "step": "obtain_context",
+                "operation": "createModuleContextToken"
+              },
+              {
+                "step": "init_upload",
+                "operation": "createFileUpload"
+              },
+              {
+                "step": "chunk",
+                "operation": "putFileChunk"
+              },
+              {
+                "step": "resume_status",
+                "operation": "getFileUpload"
+              },
+              {
+                "step": "resumed_chunk",
+                "operation": "putFileChunk"
+              },
+              {
+                "step": "complete",
+                "operation": "completeFileUpload"
+              },
+              {
+                "step": "publish",
+                "operation": "publishFile"
+              },
+              {
+                "step": "attachment",
+                "operation": "createFileLink"
+              }
+            ],
             "client_allowed_operations": [
               "createFileUpload",
               "putFileChunk",
+              "getFileUpload",
               "completeFileUpload",
               "publishFile",
               "createFileLink"
@@ -52725,7 +52863,49 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "The core POSTs the event to the module URL from the manifest subscription. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours.",
+        "description": "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass.",
+        "x-togavsu-task-delivery": {
+          "event_type": "file.version_created",
+          "delivered_on": "moduleEvent",
+          "header": "X-Togavsu-Task-Authorization",
+          "body_field": "task_authorization",
+          "issued_by": "core",
+          "registered_module": true,
+          "subscription_match": true,
+          "viewer_context_required": false,
+          "module_identity_mismatch": "forbidden",
+          "invalid": "forbidden",
+          "expired": "forbidden",
+          "revoked": "forbidden",
+          "revoked_module_token": "unauthenticated",
+          "missing_scope": "scope_denied",
+          "unrelated_matter": "not_found",
+          "unrelated_file": "not_found",
+          "unrelated_version": "not_found",
+          "operation_outside_grant": "forbidden",
+          "field_outside_grant": "field_locked",
+          "attorney_only_field": "not_found",
+          "grants_admin": false,
+          "firmwide_bypass": false,
+          "sequence": [
+            "getFile",
+            "listFileVersions",
+            "downloadFileVersion",
+            "quarantineFileVersion"
+          ],
+          "metadata_fields": [
+            "name",
+            "extension",
+            "media_type",
+            "size_bytes",
+            "sha256",
+            "quarantined"
+          ],
+          "attorney_only_fields": [
+            "note",
+            "summary"
+          ]
+        },
         "parameters": [
           {
             "name": "X-Togavsu-Signature",
@@ -52742,6 +52922,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Togavsu-Task-Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Present on file.version_created. The same claims are in task_authorization. Absent when the event has no task grant."
           }
         ],
         "requestBody": {
@@ -58074,13 +58263,19 @@
             "format": "uuid",
             "description": "UUIDv7."
           },
+          "owner_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The caller who started the upload. The client cannot name another user."
+          },
           "chunk_size_bytes": {
             "type": "integer",
             "minimum": 1
           },
           "next_offset": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "description": "Byte offset of the next chunk after a dropped connection."
           },
           "size_bytes": {
             "type": "integer",
@@ -58103,13 +58298,14 @@
         },
         "required": [
           "id",
+          "owner_user_id",
           "chunk_size_bytes",
           "next_offset",
           "size_bytes",
           "expires_at",
           "status"
         ],
-        "description": "A resumable upload. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet."
+        "description": "A resumable upload owned by the caller. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet. getFileUpload returns next_offset."
       },
       "FileUploadWrite": {
         "type": "object",
@@ -61379,6 +61575,82 @@
         ],
         "description": "A module appends an event. The server sets the actor from the token."
       },
+      "TaskAuthorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The registered module this delivery is for."
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The event id. A different event cannot reuse the grant."
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "allowed_operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Operation ids the grant permits. Others are forbidden."
+          },
+          "allowed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Metadata fields the grant permits."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "After this instant the grant is forbidden."
+          },
+          "revoked": {
+            "type": "boolean",
+            "description": "A core revocation makes the grant forbidden."
+          }
+        },
+        "required": [
+          "module_id",
+          "event_id",
+          "event_type",
+          "file_id",
+          "version_id",
+          "allowed_operations",
+          "allowed_fields",
+          "expires_at",
+          "revoked"
+        ],
+        "description": "Core-issued capability for one event's file and version. It is not an admin grant and it does not require an iframe token."
+      },
       "WebhookEvent": {
         "type": "object",
         "additionalProperties": false,
@@ -61438,6 +61710,16 @@
           },
           "summary": {
             "type": "string"
+          },
+          "task_authorization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskAuthorization"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -61449,7 +61731,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=."
+        "description": "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module."
       },
       "Backup": {
         "type": "object",
@@ -66701,7 +66983,52 @@
       "grants_admin": false,
       "firmwide_bypass": false,
       "attorney_only_redaction": true,
+      "malware_scan": {
+        "event_type": "file.version_created",
+        "delivered_on": "moduleEvent",
+        "header": "X-Togavsu-Task-Authorization",
+        "body_field": "task_authorization",
+        "issued_by": "core",
+        "registered_module": true,
+        "subscription_match": true,
+        "viewer_context_required": false,
+        "module_identity_mismatch": "forbidden",
+        "invalid": "forbidden",
+        "expired": "forbidden",
+        "revoked": "forbidden",
+        "revoked_module_token": "unauthenticated",
+        "missing_scope": "scope_denied",
+        "unrelated_matter": "not_found",
+        "unrelated_file": "not_found",
+        "unrelated_version": "not_found",
+        "operation_outside_grant": "forbidden",
+        "field_outside_grant": "field_locked",
+        "attorney_only_field": "not_found",
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "sequence": [
+          "getFile",
+          "listFileVersions",
+          "downloadFileVersion",
+          "quarantineFileVersion"
+        ],
+        "metadata_fields": [
+          "name",
+          "extension",
+          "media_type",
+          "size_bytes",
+          "sha256",
+          "quarantined"
+        ],
+        "attorney_only_fields": [
+          "note",
+          "summary"
+        ]
+      },
       "operations": [
+        "getFile",
+        "listFileVersions",
+        "downloadFileVersion",
         "quarantineFileVersion",
         "createEvent",
         "bulkEvent",

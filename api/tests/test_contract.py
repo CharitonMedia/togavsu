@@ -1098,7 +1098,6 @@ class ContractTest(unittest.TestCase):
             "listMatter",
             "updateFileMetadata",
             "publishFile",
-            "downloadFileVersion",
             "createNote",
             "createTimeEntry",
             "runEditor",
@@ -1131,6 +1130,102 @@ class ContractTest(unittest.TestCase):
         for case in policy["cases"]:
             self.assertEqual(_delegation_result(case), case["result"], case)
 
+    def test_malware_scan_uses_the_event_grant_for_the_whole_sequence(self):
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["malware_scan"]
+        webhook = self.spec["webhooks"]["moduleEvent"]["post"]
+        self.assertEqual(webhook["x-togavsu-task-delivery"], policy)
+        self.assertEqual(policy["sequence"], ["getFile", "listFileVersions", "downloadFileVersion", "quarantineFileVersion"])
+        self.assertFalse(policy["viewer_context_required"])
+        self.assertFalse(policy["grants_admin"])
+        self.assertFalse(policy["firmwide_bypass"])
+        self.assertIn("X-Togavsu-Task-Authorization", webhook["description"])
+        self.assertIn("revoked", webhook["description"])
+        self.assertIn("installed module", webhook["description"])
+        header_names = [item["name"] for item in webhook["parameters"]]
+        self.assertIn("X-Togavsu-Task-Authorization", header_names)
+        grant_schema = self.spec["components"]["schemas"]["TaskAuthorization"]
+        for field in ("module_id", "event_id", "file_id", "version_id", "allowed_operations", "allowed_fields", "expires_at", "revoked"):
+            self.assertIn(field, grant_schema["required"], field)
+        event = self.spec["components"]["schemas"]["WebhookEvent"]
+        self.assertIn("task_authorization", event["properties"])
+        module = {
+            "registered": True,
+            "subscriptions": ["file.version_created"],
+            "module_id": "malware",
+            "recipient_id": "malware",
+            "file_id": "file-1",
+            "version_id": "ver-1",
+            "matter_id": "matter-1",
+        }
+        grant = _issue_malware_grant(policy, module)
+        self.assertIsNotNone(grant)
+        self.assertIsNone(_issue_malware_grant(policy, {**module, "registered": False}))
+        self.assertIsNone(_issue_malware_grant(policy, {**module, "subscriptions": ["invoice.sent"]}))
+        self.assertIsNone(_issue_malware_grant(policy, {**module, "recipient_id": "other-module"}))
+        base = {
+            "registered": True,
+            "subscriptions": ["file.version_created"],
+            "caller_module_id": "malware",
+            "module_scopes": ["files:read", "files:write"],
+            "grant": grant,
+            "matter_id": "matter-1",
+            "file_id": "file-1",
+            "version_id": "ver-1",
+            "viewer_present": False,
+        }
+        steps = [
+            ("getFile", "name"),
+            ("listFileVersions", "sha256"),
+            ("downloadFileVersion", None),
+            ("quarantineFileVersion", "quarantined"),
+        ]
+        for operation_id, field in steps:
+            operation = _operation(self.spec, operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive", operation_id)
+            self.assertIn(operation["x-togavsu-access"]["scopes"][0], ("files:read", "files:write"), operation_id)
+            call = {**base, "operation": operation_id, "field": field}
+            self.assertEqual(_malware_call(policy, operation, call), "allowed", operation_id)
+            self.assertFalse(call["viewer_present"])
+        denied = [
+            ({"module_scopes": ["files:write"]}, "getFile", "name", "scope_denied"),
+            ({"module_scopes": ["files:read"]}, "quarantineFileVersion", "quarantined", "scope_denied"),
+            ({"grant": {**grant, "expired": True}}, "downloadFileVersion", None, "forbidden"),
+            ({"grant": {**grant, "revoked": True}}, "downloadFileVersion", None, "forbidden"),
+            ({"grant": {**grant, "invalid": True}}, "getFile", "name", "forbidden"),
+            ({"grant": None}, "downloadFileVersion", None, "forbidden"),
+            ({"token_revoked": True}, "quarantineFileVersion", "quarantined", "unauthenticated"),
+            ({"caller_module_id": "other-module"}, "getFile", "name", "forbidden"),
+            ({"matter_id": "matter-2"}, "getFile", "name", "not_found"),
+            ({"file_id": "file-2"}, "listFileVersions", "sha256", "not_found"),
+            ({"version_id": "ver-2"}, "downloadFileVersion", None, "not_found"),
+            ({"field": "note"}, "getFile", "note", "not_found"),
+            ({"field": "folder_id"}, "getFile", "folder_id", "field_locked"),
+            ({"operation": "listFile"}, "listFile", None, "forbidden"),
+        ]
+        for patch, operation_id, field, expected in denied:
+            operation = _operation(self.spec, operation_id)
+            call = {**base, "operation": operation_id, "field": field, **patch}
+            self.assertEqual(_malware_call(policy, operation, call), expected, patch)
+
+    def test_file_byte_downloads_are_audited_and_highlighted(self):
+        found = list(_file_byte_downloads(self.spec))
+        names = [operation["operationId"] for _method, _path, operation in found]
+        self.assertIn("downloadFileVersion", names)
+        self.assertIn("downloadFileRendition", names)
+        self.assertIn("createFileArchive", names)
+        self.assertGreaterEqual(len(found), 3)
+        calls = [
+            ({"role": "client", "shared": True, "attorney_only": False, "on_wall": True}, "highlighted"),
+            ({"role": "staff", "shared": True, "attorney_only": False, "on_wall": True}, "audited"),
+            ({"role": "client", "shared": False, "attorney_only": False, "on_wall": True}, "not_found"),
+            ({"role": "staff", "shared": True, "attorney_only": True, "on_wall": True}, "not_found"),
+            ({"role": "attorney", "shared": True, "attorney_only": True, "on_wall": True}, "audited"),
+            ({"role": "staff", "shared": True, "attorney_only": False, "matter_walled": True, "on_wall": False}, "not_found"),
+        ]
+        for _method, path, operation in found:
+            for call, expected in calls:
+                self.assertEqual(_download_outcome(operation, call), expected, (operation["operationId"], path, call["role"]))
+
     def test_client_context_token_is_own_matter_only(self):
         operation = _operation(self.spec, "createModuleContextToken")
         access = operation["x-togavsu-access"]
@@ -1142,10 +1237,71 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["firm_roles_unless_held"])
         self.assertEqual(policy["client_session_authorized_by"], "role")
         self.assertTrue(policy["scope_does_not_bypass_matter"])
+        sequence = policy["sequence"]
         self.assertEqual(
-            policy["client_allowed_operations"],
-            ["createFileUpload", "putFileChunk", "completeFileUpload", "publishFile", "createFileLink"],
+            [step["step"] for step in sequence],
+            [
+                "obtain_context",
+                "init_upload",
+                "chunk",
+                "resume_status",
+                "resumed_chunk",
+                "complete",
+                "publish",
+                "attachment",
+            ],
         )
+        allowed = [step["operation"] for step in sequence if step["step"] != "obtain_context"]
+        self.assertEqual(policy["client_allowed_operations"], list(dict.fromkeys(allowed)))
+        covered = set()
+        for _method, _path, operation in _ops(self.spec):
+            features = operation["x-togavsu-features"]
+            roles = operation["x-togavsu-access"]["roles"]
+            if "file-uploads" in features and "client" in roles:
+                covered.add(operation["operationId"])
+                self.assertIn(operation["operationId"], policy["client_allowed_operations"], operation["operationId"])
+        self.assertIn("getFileUpload", covered)
+        own = {"role": "client", "matter": "own_shared", "owner": "self", "from_visible": True, "to_visible": True, "same_matter": True, "relationship": "attachment"}
+        for step in sequence:
+            self.assertEqual(_upload_step_result(self.spec, policy, step, own), "allowed", step)
+            if step["step"] == "obtain_context":
+                self.assertEqual(
+                    _upload_step_result(self.spec, policy, step, {**own, "matter": "other_client"}),
+                    "not_found",
+                    step,
+                )
+                self.assertEqual(
+                    _upload_step_result(self.spec, policy, step, {**own, "requested_roles": ["admin"]}),
+                    "forbidden",
+                    step,
+                )
+                self.assertEqual(
+                    _upload_step_result(self.spec, policy, step, {**own, "impersonate": True}),
+                    "forbidden",
+                    step,
+                )
+                continue
+            self.assertTrue(operation_denies_other_client(_operation(self.spec, step["operation"])), step)
+            self.assertEqual(
+                _upload_step_result(self.spec, policy, step, {**own, "matter": "other_client", "owner": "other_client", "from_visible": False}),
+                "not_found",
+                step,
+            )
+            self.assertEqual(
+                _upload_step_result(self.spec, policy, step, {**own, "user_id": "018f1a00-7b3c-7d4e-8a11-999999999999"}),
+                "forbidden",
+                step,
+            )
+        resume = _operation(self.spec, "getFileUpload")
+        self.assertIn("next_offset", self.spec["components"]["schemas"]["FileUpload"]["required"])
+        self.assertEqual(
+            resume["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1],
+            "FileUpload",
+        )
+        upload_write = self.spec["components"]["schemas"]["FileUploadWrite"]
+        self.assertNotIn("user_id", upload_write["properties"])
+        self.assertNotIn("roles", upload_write["properties"])
+        self.assertFalse(upload_write["additionalProperties"])
         request = self.spec["components"]["schemas"]["ContextTokenRequest"]
         self.assertEqual(set(request["properties"]), {"matter_id"})
         self.assertFalse(request["additionalProperties"])
@@ -1306,6 +1462,136 @@ def _schema_name(node: dict) -> str:
 
 def _schema_name_from_page(operation: dict) -> str:
     return operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["items"]["$ref"].rsplit("/", 1)[1]
+
+
+def _issue_malware_grant(policy: dict, module: dict) -> dict | None:
+    if not module.get("registered") or not policy.get("registered_module") or not policy.get("subscription_match"):
+        return None
+    if policy["event_type"] not in module.get("subscriptions", []):
+        return None
+    if module.get("module_id") != module.get("recipient_id"):
+        return None
+    return {
+        "module_id": module["module_id"],
+        "file_id": module["file_id"],
+        "version_id": module["version_id"],
+        "matter_id": module["matter_id"],
+        "allowed_operations": list(policy["sequence"]),
+        "allowed_fields": list(policy["metadata_fields"]),
+        "issued_by": policy["issued_by"],
+        "expired": False,
+        "revoked": False,
+        "invalid": False,
+    }
+
+
+def _malware_call(policy: dict, operation: dict, call: dict) -> str:
+    if call.get("token_revoked"):
+        return policy["revoked_module_token"]
+    if not call.get("registered") or policy["event_type"] not in call.get("subscriptions", []):
+        return policy["invalid"]
+    grant = call.get("grant")
+    if not grant or grant.get("invalid"):
+        return policy["invalid"]
+    if grant.get("expired"):
+        return policy["expired"]
+    if grant.get("revoked"):
+        return policy["revoked"]
+    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
+        return policy["module_identity_mismatch"]
+    if call["operation"] not in policy["sequence"] or call["operation"] not in grant.get("allowed_operations", []):
+        return policy["operation_outside_grant"]
+    needed = operation["x-togavsu-access"]["scopes"]
+    if any(scope not in call["module_scopes"] for scope in needed):
+        return policy["missing_scope"]
+    if call.get("matter_id") != grant.get("matter_id"):
+        return policy["unrelated_matter"]
+    if call.get("file_id") != grant.get("file_id"):
+        return policy["unrelated_file"]
+    if call["operation"] != "getFile" and call.get("version_id") != grant.get("version_id"):
+        return policy["unrelated_version"]
+    field = call.get("field")
+    if field in policy["attorney_only_fields"]:
+        return policy["attorney_only_field"]
+    if field and (field not in grant.get("allowed_fields", []) or field not in policy["metadata_fields"]):
+        return policy["field_outside_grant"]
+    return "allowed"
+
+
+def _case_matches(case: dict, call: dict) -> bool:
+    for key, value in case.items():
+        if key == "result":
+            continue
+        if call.get(key) != value:
+            return False
+    return True
+
+
+def operation_denies_other_client(operation: dict) -> bool:
+    for case in operation["x-togavsu-access"].get("access_cases", []):
+        other = case.get("owner") == "other_client" or case.get("matter") == "other_client" or case.get("from_visible") is False
+        if other and case.get("result") == "not_found":
+            return True
+    return False
+
+
+def _upload_step_result(spec: dict, policy: dict, step: dict, call: dict) -> str:
+    operation = _operation(spec, step["operation"])
+    access = operation["x-togavsu-access"]
+    if call.get("user_id") or call.get("requested_roles") or call.get("impersonate"):
+        return "forbidden"
+    if step["step"] == "obtain_context":
+        return _client_context_result({**call, "role": "client"})
+    if step["operation"] not in policy["client_allowed_operations"] or "client" not in access["roles"]:
+        return "forbidden"
+    for case in access.get("access_cases", []):
+        if _case_matches(case, {**call, "role": "client"}):
+            return case["result"]
+    if call.get("matter") not in (None, "own_shared"):
+        return "not_found"
+    if call.get("owner") == "other_client":
+        return "not_found"
+    return "allowed"
+
+
+_FILE_BYTE_TYPES = {"application/octet-stream", "application/zip", "application/pdf", "text/markdown"}
+
+
+def _file_byte_downloads(spec: dict):
+    for method, path, operation in _ops(spec):
+        if not (path.startswith("/api/v1/files") or path.startswith("/api/v1/file-archives")):
+            continue
+        medias = set()
+        for response in operation.get("responses", {}).values():
+            for media, body in (response.get("content") or {}).items():
+                if media in _FILE_BYTE_TYPES or media.startswith("image/") or media.startswith("audio/") or media.startswith("video/"):
+                    medias.add(media)
+                declared = (body.get("schema") or {}).get("contentMediaType")
+                if declared in _FILE_BYTE_TYPES or (isinstance(declared, str) and declared.startswith("image/")):
+                    medias.add(declared)
+        if medias:
+            yield method, path, operation
+
+
+def _download_outcome(operation: dict, call: dict) -> str:
+    access = operation["x-togavsu-access"]
+    if "file.downloaded" not in operation.get("x-togavsu-events", []):
+        return "missing_event"
+    if access.get("event") != "file.downloaded" or not access.get("audit") or not access.get("timeline"):
+        return "missing_event"
+    if access.get("client_download") != "highlighted" or access.get("quarantine_confirmation") != "required":
+        return "missing_highlight"
+    if "quarantine_confirmation_required" not in operation.get("x-togavsu-error-codes", []):
+        return "missing_highlight"
+    if call.get("attorney_only") and call["role"] in ("staff", "client", "accountant"):
+        return "not_found"
+    if call.get("matter_walled") and not call.get("on_wall"):
+        return "not_found"
+    if call["role"] == "client" and not call.get("shared"):
+        return "not_found"
+    if access.get("attorney_only_files") != "not_found" or not access.get("matter_wall"):
+        return "missing_wall"
+    return "highlighted" if call["role"] == "client" else "audited"
 
 
 def _background_result(case: dict) -> str:

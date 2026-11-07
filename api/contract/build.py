@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from contract.model import Contract
+from contract.model import MALWARE_DELIVERY, Contract
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
 from contract.seeds import DOC_CATEGORIES, LAWCRAFT_COMMIT, NAMING_TOKENS, PARTY_ROLES
@@ -272,11 +272,22 @@ def _webhooks() -> dict:
                 "operationId": "deliverModuleEvent",
                 "summary": "Deliver a signed event to a subscribed module.",
                 "description": (
-                    "The core POSTs the event to the module URL from the manifest subscription. "
-                    "X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body. "
+                    "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. "
+                    "X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. "
                     "X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts "
-                    "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours."
+                    "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. "
+                    "For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. "
+                    "That grant is issued by the core for this delivery's module id, event, file, and version. "
+                    "It names the operations and metadata fields the module may call with no iframe and no viewer context. "
+                    "The module presents the same grant on those later calls. "
+                    "An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. "
+                    "A revoked module bearer is unauthenticated. "
+                    "A different module id is forbidden. Another matter, file, or version is not_found. "
+                    "An operation outside the grant is forbidden. A field outside the grant is field_locked. "
+                    "An attorney-only field stays not_found. The approved scopes on each operation are still required. "
+                    "The grant is not an admin or firm-wide bypass."
                 ),
+                "x-togavsu-task-delivery": MALWARE_DELIVERY,
                 "parameters": [
                     {
                         "name": "X-Togavsu-Signature",
@@ -289,6 +300,13 @@ def _webhooks() -> dict:
                         "in": "header",
                         "required": True,
                         "schema": {"type": "string"},
+                    },
+                    {
+                        "name": "X-Togavsu-Task-Authorization",
+                        "in": "header",
+                        "required": False,
+                        "schema": {"type": "string"},
+                        "description": "Present on file.version_created. The same claims are in task_authorization. Absent when the event has no task grant.",
                     },
                 ],
                 "requestBody": {
