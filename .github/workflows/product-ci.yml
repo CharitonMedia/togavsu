@@ -77,6 +77,6 @@ jobs:
       - name: Build supervisor image
         run: docker build -f Dockerfile -t togavsu-supervisor:local .
       - name: SFTP client is in the supervisor image
-        run: docker run --rm --entrypoint sftp togavsu-supervisor:local -V
+        run: docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'
       - name: Core image
         run: sh scripts/ci/build-core-image.sh

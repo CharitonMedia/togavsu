@@ -43,7 +43,12 @@ func (c *CaddyProxy) Switch(ctx context.Context, upstream string) error {
 		}
 		return c.reconcile(ctx, upstream, prevUpstream, prev, err)
 	}
-	return writeFileAtomic(c.UpstreamFile, []byte(upstream+"\n"), 0o644)
+	if err := writeFileAtomic(c.UpstreamFile, []byte(upstream+"\n"), 0o644); err != nil {
+		// /load already succeeded. A later file error must not let the
+		// updater delete the core Caddy is still serving.
+		return c.reconcile(ctx, upstream, prevUpstream, prev, err)
+	}
+	return nil
 }
 
 // reconcile runs when /load does not return a usable response. Caddy may
@@ -201,6 +206,17 @@ func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[stri
 			"body":        "ok",
 		}},
 	}
+	// Catch-all HTTP redirect matches deploy/caddy/Caddyfile. /ready stays
+	// on HTTP because its route is listed first.
+	httpRedirect := map[string]any{
+		"handle": []any{map[string]any{
+			"handler":     "static_response",
+			"status_code": 308,
+			"headers": map[string]any{
+				"Location": []string{"https://{http.request.host}{http.request.uri}"},
+			},
+		}},
+	}
 	return map[string]any{
 		"admin": map[string]any{"listen": adminListen},
 		"apps": map[string]any{
@@ -208,7 +224,7 @@ func caddyConfig(upstream, adminListen, httpListen, httpsListen string) map[stri
 				"servers": map[string]any{
 					"http": map[string]any{
 						"listen": []string{httpListen},
-						"routes": []any{ready},
+						"routes": []any{ready, httpRedirect},
 					},
 					"https": map[string]any{
 						"listen": []string{httpsListen},

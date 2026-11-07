@@ -105,10 +105,12 @@ func TestCaddyConsecutiveSwitchesPreserveAdmin(t *testing.T) {
 		HTTPSListen:  "127.0.0.1:" + httpsPort,
 		UpstreamFile: filepath.Join(dir, "upstream"),
 	}
+	checkApplicationHTTP(t, "http://127.0.0.1:"+httpPort, &logs)
 	for _, upstream := range []string{"core-a:8080", "core-b:8080"} {
 		if err := proxy.Switch(context.Background(), upstream); err != nil {
 			t.Fatalf("switch %s: %v\n%s", upstream, err, logs.String())
 		}
+		checkApplicationHTTP(t, "http://127.0.0.1:"+httpPort, &logs)
 		res, err := http.Get(adminURL + "/config/apps/http/servers/https/routes/")
 		if err != nil {
 			t.Fatalf("admin unreachable after switch to %s: %v\n%s", upstream, err, logs.String())
@@ -184,6 +186,147 @@ func TestSwitchRollsBackAppliedLoadWhenResponseIsLost(t *testing.T) {
 	mu.Unlock()
 	if strings.Contains(got, "core-next:8080") || !strings.Contains(got, "core:8080") {
 		t.Fatalf("live config after lost response: %s", got)
+	}
+}
+
+func TestPersistFailureAfterLoadDoesNotRemoveServingCore(t *testing.T) {
+	live, srv := loadServer(t, false)
+	defer srv.Close()
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "upstream")
+	if err := os.Mkdir(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Proxy = &CaddyProxy{AdminURL: srv.URL, UpstreamFile: blocked, HTTP: srv.Client()}
+	_, err := up.Apply(context.Background(), true)
+	if err == nil || errors.Is(err, ErrProxyUnreconciled) {
+		t.Fatalf("expected a reconciled file error, got %v", err)
+	}
+	if containsStep(order, "stop:old") || containsStep(order, "remove:old") {
+		t.Fatalf("removed the core Caddy rolled back to: %v", order)
+	}
+	if strings.Contains(live(), "core:8080") == false || strings.Contains(live(), ":8080") && dialIsNew(live(), order) {
+		t.Fatalf("live config %s order %v", live(), order)
+	}
+}
+
+func TestPersistFailureWithoutRollbackKeepsNewCore(t *testing.T) {
+	live, srv := loadServer(t, true)
+	defer srv.Close()
+	dir := t.TempDir()
+	blocked := filepath.Join(dir, "upstream")
+	if err := os.Mkdir(blocked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Proxy = &CaddyProxy{AdminURL: srv.URL, UpstreamFile: blocked, HTTP: srv.Client()}
+	_, err := up.Apply(context.Background(), true)
+	if !errors.Is(err, ErrProxyUnreconciled) {
+		t.Fatalf("got %v", err)
+	}
+	name := startedName(order)
+	if name == "" {
+		t.Fatalf("no new core: %v", order)
+	}
+	if containsStep(order, "stop:new-"+name) || containsStep(order, "remove:new-"+name) {
+		t.Fatalf("removed the core Caddy still serves: %v", order)
+	}
+	if !strings.Contains(live(), name+":8080") {
+		t.Fatalf("live config lost the serving upstream: %s", live())
+	}
+}
+
+func loadServer(t *testing.T, rejectRollback bool) (func() string, *httptest.Server) {
+	t.Helper()
+	var mu sync.Mutex
+	var body []byte
+	var loads int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/", "/config":
+			mu.Lock()
+			raw := append([]byte(nil), body...)
+			mu.Unlock()
+			if len(raw) == 0 {
+				raw, _ = json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443"))
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(raw)
+		case "/load":
+			raw, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			loads++
+			n := loads
+			if n == 1 || !rejectRollback {
+				body = append([]byte(nil), raw...)
+			}
+			mu.Unlock()
+			if n > 1 && rejectRollback {
+				http.Error(w, "no", http.StatusBadGateway)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	return func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return string(body)
+	}, srv
+}
+
+func startedName(order []string) string {
+	for _, step := range order {
+		if strings.HasPrefix(step, "name:") {
+			return strings.TrimPrefix(step, "name:")
+		}
+	}
+	return ""
+}
+
+func dialIsNew(live string, order []string) bool {
+	name := startedName(order)
+	return name != "" && strings.Contains(live, name+":8080")
+}
+
+func checkApplicationHTTP(t *testing.T, base string, logs *strings.Builder) {
+	t.Helper()
+	client := &http.Client{
+		Timeout: 3 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	ready, err := client.Get(base + "/ready")
+	if err != nil {
+		t.Fatalf("ready: %v\n%s", err, logs.String())
+	}
+	ready.Body.Close()
+	if ready.StatusCode != http.StatusOK {
+		t.Fatalf("ready status %d\n%s", ready.StatusCode, logs.String())
+	}
+	app, err := client.Get(base + "/matters/12")
+	if err != nil {
+		t.Fatalf("application path: %v\n%s", err, logs.String())
+	}
+	app.Body.Close()
+	if app.StatusCode != http.StatusPermanentRedirect {
+		t.Fatalf("application path status %d, want 308\n%s", app.StatusCode, logs.String())
+	}
+	loc := app.Header.Get("Location")
+	if !strings.HasPrefix(loc, "https://") || !strings.Contains(loc, "/matters/12") {
+		t.Fatalf("application redirect %q\n%s", loc, logs.String())
 	}
 }
 
