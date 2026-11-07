@@ -2398,6 +2398,13 @@ class ContractTest(unittest.TestCase):
             include_views_decision(users, {"role": "admin", "approved_scopes": ["users:read"], "caller_module_id": "clock", "include": ["other.targets"]}),
             "forbidden",
         )
+        self.assertEqual(
+            include_views_decision(
+                users,
+                {"role": "admin", "approved_scopes": ["users:read", "views:other.targets:read"], "caller_module_id": "clock", "include": ["other.targets"]},
+            ),
+            "allowed",
+        )
         matter = _operation(self.spec, "getMatter")
         self.assertEqual(
             include_views_decision(matter, {"role": "staff", "approved_scopes": ["matters:read", "views:clock.targets:read"], "include": ["clock.targets"], "matter_walled": True, "on_wall": False}),

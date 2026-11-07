@@ -1296,9 +1296,8 @@ def include_views_decision(operation: dict, call: dict) -> str:
             return "validation_failed"
         module_id, view_name = view.split(".", 1)
         needed = f"views:{module_id}.{view_name}:read"
+        # Section 9.9: another module may include this view only after the admin approves this scope.
         if needed not in approved:
-            return "forbidden"
-        if call.get("caller_module_id") and call["caller_module_id"] != module_id and needed not in approved:
             return "forbidden"
     return "allowed"
 
