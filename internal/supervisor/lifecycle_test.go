@@ -22,9 +22,11 @@ import (
 )
 
 type scriptCatalog struct {
-	present map[string]bool
-	err     error
-	calls   int
+	present  map[string]bool
+	err      error
+	calls    int
+	failDrop int
+	drops    []string
 }
 
 func (c *scriptCatalog) Observe(context.Context, string, string, string) (map[string]bool, error) {
@@ -32,7 +34,28 @@ func (c *scriptCatalog) Observe(context.Context, string, string, string) (map[st
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.present, nil
+	if c.present == nil {
+		return nil, nil
+	}
+	out := map[string]bool{}
+	for name, ok := range c.present {
+		if ok {
+			out[name] = true
+		}
+	}
+	return out, nil
+}
+
+func (c *scriptCatalog) Drop(_ context.Context, name string) error {
+	c.drops = append(c.drops, name)
+	if c.failDrop > 0 {
+		c.failDrop--
+		return errors.New("drop failed")
+	}
+	if c.present != nil {
+		c.present[name] = false
+	}
+	return nil
 }
 
 func TestBusyAdmissionDoesNotChangePassphrase(t *testing.T) {
@@ -241,6 +264,123 @@ func TestCatalogDecisionsDoNotGuess(t *testing.T) {
 	}
 }
 
+func TestSafetyBackupSyncFailureDoesNotSwap(t *testing.T) {
+	for _, kind := range []string{"archive", "checksum"} {
+		t.Run(kind, func(t *testing.T) {
+			store := testStore(t)
+			meta, err := store.Create(context.Background(), reasonManual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store.failSync = kind
+			var order []string
+			applied := false
+			ops := &Operations{
+				Store: store, Gate: &Gate{}, Now: store.Now,
+				Journal:    OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl")),
+				Runtime:    &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+				Passphrase: func() (string, error) { return store.Passphrase, nil },
+				ApplyDump: func(context.Context, io.Reader) error {
+					applied = true
+					return nil
+				},
+			}
+			rec, err := ops.Restore(context.Background(), meta.ID)
+			if err == nil || !strings.Contains(err.Error(), "sync") {
+				t.Fatalf("%+v %v", rec, err)
+			}
+			if applied {
+				t.Fatal("archive sync failure still applied the restore")
+			}
+			if rec.Status == "completed" || !containsStep(order, "restart:core-1") {
+				t.Fatalf("writers or status %+v %v", rec, order)
+			}
+			listed, err := store.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(listed) != 1 || listed[0].ID != meta.ID || listed[0].Reason == reasonSafety {
+				t.Fatalf("safety backup was published: %+v", listed)
+			}
+		})
+	}
+}
+
+func TestCleanupDropRetriesWithoutAnotherRestore(t *testing.T) {
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true, "origdb_replaced_abcd": true}, failDrop: 1}
+	var order []string
+	applied := 0
+	dir := t.TempDir()
+	journal := OpenJournal(filepath.Join(dir, "restore-journal.jsonl"))
+	rec := journalRecord{
+		Record: RestoreRecord{ID: "restore-maint", BackupID: "backup", Status: "completed", Error: "cleanup_pending", Cleanup: "pending", Started: time.Now().UTC()},
+		Phase:  phaseCompleted,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "running",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true, SwapCommitted: true},
+		Cleanup:  "pending",
+	}
+	if err := journal.Put(rec); err != nil {
+		t.Fatal(err)
+	}
+	ops := &Operations{
+		Gate: &Gate{}, Journal: journal, Catalog: cat,
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1", State: "running"}}, states: map[string]string{"core-1": "running"}},
+		ApplyDump: func(context.Context, io.Reader) error {
+			applied++
+			return nil
+		},
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 || len(cat.drops) != 1 || !cat.present["origdb_replaced_abcd"] {
+		t.Fatalf("first recovery applied %d drops %v present %v", applied, cat.drops, cat.present)
+	}
+	got, ok, err := ops.LookupRestore("restore-maint")
+	if err != nil || !ok || got.Status != "completed" || got.Cleanup != "pending" {
+		t.Fatalf("first %+v %v %v", got, ok, err)
+	}
+	if err := ops.blockUnresolved(); err != nil {
+		t.Fatalf("maintenance blocked the app: %v", err)
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 0 || len(cat.drops) != 2 || cat.present["origdb_replaced_abcd"] || !cat.present["origdb"] {
+		t.Fatalf("second recovery applied %d drops %v present %v", applied, cat.drops, cat.present)
+	}
+	got, ok, err = ops.LookupRestore("restore-maint")
+	if err != nil || !ok || got.Status != "completed" || got.Cleanup != "" || got.Error != "" {
+		t.Fatalf("cleaned %+v %v %v", got, ok, err)
+	}
+	cat.err = errors.New("catalog down")
+	cat.present["origdb_replaced_abcd"] = true
+	if err := journal.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-unread", BackupID: "backup", Status: "completed", Error: "cleanup_pending", Cleanup: "pending", Started: time.Now().UTC()},
+		Phase:  phaseCompleted, Cleanup: "pending",
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true, SwapCommitted: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before := len(cat.drops)
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(cat.drops) != before {
+		t.Fatalf("unreadable catalog dropped %v", cat.drops)
+	}
+	cat.err = nil
+	cat.present["freshdb"] = true
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(cat.drops) != before || !cat.present["origdb_replaced_abcd"] {
+		t.Fatalf("ambiguous catalog dropped %v present %v", cat.drops, cat.present)
+	}
+}
+
 func TestCleanupPendingPollIsStableAfterRestart(t *testing.T) {
 	store := testStore(t)
 	dir := t.TempDir()
@@ -431,8 +571,8 @@ func TestJournalFsyncSurvivesKill(t *testing.T) {
 					t.Fatalf("err %v order %v", err, order)
 				}
 				rec, ok, lerr := ops.LookupRestore("restore-killed")
-				if lerr != nil || !ok || rec.Status != "completed" || rec.Cleanup != "pending" {
-					t.Fatalf("%+v %v %v", rec, ok, lerr)
+				if lerr != nil || !ok || rec.Status != "completed" || rec.Cleanup != "" || len(cat.drops) != 1 || cat.drops[0] != "origdb_replaced_abcd" {
+					t.Fatalf("%+v drops %v %v %v", rec, cat.drops, ok, lerr)
 				}
 			}
 		})
@@ -1185,11 +1325,14 @@ func TestCommitUnjournaledDoesNotClaimUnchangedData(t *testing.T) {
 			return swapDatabase(ctx, bin, "postgres://example/postgres", "origdb", "freshdb", "abcd")
 		}
 		rec, err := ops.Restore(context.Background(), meta.ID)
-		if !errors.Is(err, errCommitUnjournaled) && !errors.Is(err, ErrRestoreCleanup) {
+		if err != nil && !errors.Is(err, errCommitUnjournaled) && !errors.Is(err, ErrRestoreCleanup) {
 			t.Fatalf("%+v %v", rec, err)
 		}
-		if rec.Status == "failed" || rec.Cleanup != "pending" || rec.Error != "cleanup_pending" {
+		if rec.Status == "failed" || rec.Cleanup != "" || rec.Error == "cleanup_pending" {
 			t.Fatalf("%+v", rec)
+		}
+		if len(cat.drops) != 1 || cat.drops[0] != "origdb_replaced_abcd" || cat.present["origdb_replaced_abcd"] {
+			t.Fatalf("replaced database was not the only drop: %v present %v", cat.drops, cat.present)
 		}
 		raw, readErr := os.ReadFile(log)
 		if readErr != nil || strings.Contains(string(raw), "DROP DATABASE") {

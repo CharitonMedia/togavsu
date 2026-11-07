@@ -58,6 +58,10 @@ type Store struct {
 	mu              sync.Mutex
 	receiptsMu      sync.Mutex
 	receipts        *ReceiptBook
+	// failSync, when set by tests, fails the next Sync of that file.
+	// "archive" is the encrypted tar. "checksum" is its sidecar.
+	// Empty means every Sync is attempted.
+	failSync string
 }
 
 func (s *Store) passphrase() (string, error) {
@@ -194,13 +198,18 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 	}
 	sum, err := hashFile(archive)
 	if err != nil {
+		os.Remove(archive)
 		return BackupMeta{}, err
 	}
 	info, err := os.Stat(archive)
 	if err != nil {
+		os.Remove(archive)
 		return BackupMeta{}, err
 	}
-	if err := os.WriteFile(filepath.Join(s.Dir, id+".sha256"), []byte(sum+"\n"), 0o600); err != nil {
+	side := filepath.Join(s.Dir, id+".sha256")
+	if err := s.writeSyncedFile(side, []byte(sum+"\n"), "checksum"); err != nil {
+		os.Remove(side)
+		os.Remove(archive)
 		return BackupMeta{}, err
 	}
 	meta := BackupMeta{ID: id, CreatedAt: now, Reason: reason, SHA256: sum, Bytes: info.Size()}
@@ -258,11 +267,54 @@ func (s *Store) encryptDir(work, archive, pass string) error {
 		return err
 	}
 	err = writeEncryptedTar(out, work, pass)
+	var syncErr error
+	if err == nil {
+		syncErr = s.syncRequired(out, "archive")
+	}
 	closeErr := out.Close()
 	if err != nil {
 		return err
 	}
-	return closeErr
+	if syncErr != nil {
+		return syncErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return syncDir(filepath.Dir(archive))
+}
+
+// writeSyncedFile persists data before the caller may publish success.
+// A write, close, or sync error is returned and the caller must not record
+// the backup as complete.
+func (s *Store) writeSyncedFile(path string, data []byte, kind string) error {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := s.syncRequired(f, kind); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+func (s *Store) syncRequired(f *os.File, kind string) error {
+	if s != nil && s.failSync != "" && s.failSync == kind {
+		s.failSync = ""
+		return errors.New("backup sync failed")
+	}
+	if f == nil {
+		return errors.New("backup file is not open")
+	}
+	return f.Sync()
 }
 
 // writeEncryptedTar streams the tar into the encrypted writer. The pipe reader

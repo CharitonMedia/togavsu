@@ -580,21 +580,88 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 	if startErr := o.restoreWriters(rec, stopped); startErr != nil {
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), startErr)
 	}
+	cleared, derr := o.retryReplacedDrop(rec)
 	rec.Status = "completed"
 	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
+	if cleared {
+		rec.Error = ""
+		rec.Cleanup = ""
+		saved, perr := o.persist(rec, phaseCompleted, nil)
+		if perr != nil {
+			rec.Error = "cleanup_pending"
+			rec.Cleanup = "pending"
+			return o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
+		}
+		if o.Outbox != nil {
+			body := "The restored database is live. The previous database is gone."
+			if errors.Is(err, errCommitUnjournaled) {
+				body = "The restored database is live. The commit was not recorded. The previous database is gone."
+			}
+			_ = o.Outbox.Notify(context.Background(), "Restore cleanup finished", body)
+		}
+		return saved, nil
+	}
 	if o.Outbox != nil {
 		body := "The restored database is live. The previous database could not be dropped. "
 		if errors.Is(err, errCommitUnjournaled) {
 			body = "The restored database is live. The commit was not recorded, so the previous database was left in place. "
 		}
-		_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", body+Scrub(err.Error()))
+		cause := err
+		if derr != nil {
+			cause = derr
+		}
+		if cause == nil {
+			cause = ErrRestoreCleanup
+		}
+		_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", body+Scrub(cause.Error()))
 	}
 	saved, perr := o.persist(rec, phaseCompleted, nil)
 	if perr != nil {
 		return o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
 	}
+	if err == nil {
+		err = ErrRestoreCleanup
+	}
 	return saved, err
+}
+
+// retryReplacedDrop removes only the replaced database after the catalog
+// shows the swap committed. An unreadable or ambiguous catalog drops nothing.
+// Absence, including a lost drop acknowledgment, completes cleanup. The
+// configured database is never renamed back.
+func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
+	db := o.databaseOf(rec.ID)
+	if db == nil || !db.SwapIntended || db.SwapRolledBack || db.Replaced == "" || db.Replaced == db.Configured {
+		return false, nil
+	}
+	if o.Catalog == nil {
+		return false, nil
+	}
+	st, observed := o.observeSwap(rec)
+	if !observed || !st.configured || st.fresh {
+		return false, errSwapUnobserved
+	}
+	if !st.replaced {
+		return true, nil
+	}
+	cleaner, ok := o.Catalog.(interface {
+		Drop(context.Context, string) error
+	})
+	if !ok {
+		return false, errors.New("catalog cannot drop the replaced database")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	dropErr := cleaner.Drop(ctx, db.Replaced)
+	st, observed = o.observeSwap(rec)
+	if observed && st.configured && !st.fresh && !st.replaced {
+		return true, nil
+	}
+	if dropErr != nil {
+		return false, dropErr
+	}
+	return false, errSwapUnobserved
 }
 
 // finishCommittedUnjournaled keeps a committed rename out of the ordinary
@@ -850,10 +917,32 @@ func (o *Operations) recoverLocked(ctx context.Context) error {
 			}
 		}
 	}
+	if o.Journal != nil {
+		maint, err := o.Journal.Maintenance()
+		if err != nil {
+			return err
+		}
+		for _, item := range maint {
+			if err := o.recoverMaintenance(item); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
 	if err := o.recoverUpdates(ctx); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// recoverMaintenance retries only the replaced-database drop. A failed drop
+// leaves cleanup pending and does not fail startup. Writer recovery that is
+// still unsafe does.
+func (o *Operations) recoverMaintenance(item journalRecord) error {
+	saved, err := o.finishCleanup(item.Record, nil, ErrRestoreCleanup)
+	if saved.Status == "running" {
+		return err
+	}
+	return nil
 }
 
 func (o *Operations) recoverUpdates(ctx context.Context) error {

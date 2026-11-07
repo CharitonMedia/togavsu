@@ -33,6 +33,7 @@ type scriptRuntime struct {
 	removed      map[string]bool
 	loseCreate   bool
 	failRemove   int
+	failInspect  int
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -75,6 +76,11 @@ func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
 }
 
 func (r *scriptRuntime) Inspect(_ context.Context, id string) (ContainerInfo, error) {
+	if r.failInspect > 0 {
+		r.failInspect--
+		r.add("inspect-fail:" + id)
+		return ContainerInfo{}, errors.New("inspect timeout")
+	}
 	if r.removed[id] {
 		return ContainerInfo{}, ErrNotFound
 	}

@@ -62,6 +62,17 @@ func (r journalRecord) terminal() bool {
 	return r.Record.Status == "completed" || r.Record.Status == "failed"
 }
 
+// needsMaintenance is a completed data restore whose previous database may
+// still exist. It is not an unsafe recovery: writers and the new data are
+// already confirmed, and startup must not stay down while only that drop
+// remains.
+func (r journalRecord) needsMaintenance() bool {
+	if r.Record.Status != "completed" {
+		return false
+	}
+	return r.Record.Cleanup == "pending" || r.Cleanup == "pending" || r.Record.Error == "cleanup_pending"
+}
+
 // Journal is the append-only restore lifecycle. Each record is fsynced before
 // a destructive step so a killed process can reconcile from the last complete
 // line.
@@ -209,6 +220,23 @@ func (j *Journal) Incomplete() ([]journalRecord, error) {
 	var out []journalRecord
 	for _, rec := range all {
 		if !rec.terminal() {
+			out = append(out, rec)
+		}
+	}
+	return out, nil
+}
+
+// Maintenance returns completed restores that still owe cleanup of a
+// replaced database. Those records stay out of Incomplete so they do not
+// block admission or startup.
+func (j *Journal) Maintenance() ([]journalRecord, error) {
+	all, err := j.read()
+	if err != nil {
+		return nil, err
+	}
+	var out []journalRecord
+	for _, rec := range all {
+		if rec.needsMaintenance() {
 			out = append(out, rec)
 		}
 	}

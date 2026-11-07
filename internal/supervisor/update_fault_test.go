@@ -362,4 +362,85 @@ func TestLiveRouteIsPersistedBeforeEitherCoreIsRetired(t *testing.T) {
 	}
 }
 
+func TestLostCreateInspectFailureStaysPendingUntilTheNameIsRemoved(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	rt := &scriptRuntime{order: &order, loseCreate: true, failInspect: 2, failRemove: 1, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	if _, err := ops.Update(context.Background(), true); err == nil {
+		t.Fatal("lost create was treated as success")
+	}
+	pending, err := journal.Incomplete()
+	if err != nil || len(pending) != 1 || pending[0].NextName == "" || pending[0].terminal() {
+		t.Fatalf("lost create was terminal: %+v %v", pending, err)
+	}
+	name := pending[0].NextName
+	if countStep(order, "name:"+name) != 1 {
+		t.Fatalf("create count %v", order)
+	}
+	rt.loseCreate = false
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("retry %+v %v %v", got, err, order)
+	}
+	if countStep(order, "name:"+name) != 1 {
+		t.Fatalf("name was created again: %v", order)
+	}
+	if !containsStep(order, "remove:"+name) && !containsStep(order, "remove:new-"+name) {
+		t.Fatalf("retry did not remove the named candidate: %v", order)
+	}
+}
+
+func TestCandidateCreatedJournalFailureStillRemovesTheContainer(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	journal.failPhase = "candidate_created"
+	journal.failRemaining = 1
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	if _, err := ops.Update(context.Background(), true); err == nil {
+		t.Fatal("journal failure was ignored")
+	}
+	var name string
+	for _, step := range order {
+		if strings.HasPrefix(step, "name:") {
+			name = strings.TrimPrefix(step, "name:")
+		}
+	}
+	if name == "" || countStep(order, "name:"+name) != 1 {
+		t.Fatalf("create %q %v", name, order)
+	}
+	if !containsStep(order, "remove:new-"+name) {
+		t.Fatalf("created container was left behind: %v", order)
+	}
+	if pending, err := journal.Incomplete(); err != nil || len(pending) != 0 {
+		t.Fatalf("cleanup did not finish: %+v %v", pending, err)
+	}
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("retry %+v %v %v", got, err, order)
+	}
+	if countStep(order, "name:"+name) != 1 {
+		t.Fatalf("same candidate was created twice: %v", order)
+	}
+}
+
+func countStep(steps []string, want string) int {
+	n := 0
+	for _, step := range steps {
+		if step == want {
+			n++
+		}
+	}
+	return n
+}
+
 func strPtr(s string) *string { return &s }

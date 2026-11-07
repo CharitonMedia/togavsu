@@ -41,6 +41,10 @@ type UpdateJournal struct {
 	path string
 	now  func() time.Time
 	mu   sync.Mutex
+	// failRemaining, when set by tests, fails that many later Put calls
+	// before they write. failPhase limits those failures to one phase.
+	failRemaining int
+	failPhase     string
 }
 
 func OpenUpdateJournal(path string) *UpdateJournal {
@@ -61,6 +65,10 @@ func (j *UpdateJournal) Put(rec updateIntent) error {
 	line = append(line, '\n')
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.failRemaining > 0 && (j.failPhase == "" || rec.Phase == j.failPhase) {
+		j.failRemaining--
+		return errors.New("journal persist failed")
+	}
 	return appendDurableLine(j.path, line, validateUpdateJournal)
 }
 

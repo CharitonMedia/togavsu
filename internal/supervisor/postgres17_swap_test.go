@@ -139,14 +139,14 @@ func TestPostgres17Swap(t *testing.T) {
 		if err := ops.Recover(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
-			t.Fatal("recovery renamed a committed database")
+		if note(t, psql, admin, orig) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("recovery rolled back the new database or left the replaced database")
 		}
 		if !containsStep(order, "restart:core-1") {
 			t.Fatalf("writers stayed stopped after the catalog check: %v", order)
 		}
 		got, ok, err := ops.LookupRestore(rec.Record.ID)
-		if err != nil || !ok || got.Status != "completed" || got.Error != "cleanup_pending" || got.Cleanup != "pending" {
+		if err != nil || !ok || got.Status != "completed" || got.Error != "" || got.Cleanup != "" {
 			t.Fatalf("status %+v %v %v", got, ok, err)
 		}
 	})
@@ -250,14 +250,14 @@ func TestPostgres17Swap(t *testing.T) {
 		if err := ops.Recover(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
-			t.Fatal("recovery rolled back the committed database")
+		if note(t, psql, admin, orig) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("recovery rolled back the committed database or left the replaced database")
 		}
 		if !containsStep(order, "restart:core-1") {
 			t.Fatalf("writers stayed stopped after the committed outcome: %v", order)
 		}
 		got, ok, err := ops.LookupRestore("restore-crash")
-		if err != nil || !ok || got.Status != "completed" || got.Cleanup != "pending" || got.Error != "cleanup_pending" {
+		if err != nil || !ok || got.Status != "completed" || got.Cleanup != "" || got.Error != "" {
 			t.Fatalf("outcome %+v %v %v", got, ok, err)
 		}
 	})
@@ -372,14 +372,14 @@ func TestPostgres17Swap(t *testing.T) {
 		if err := ops.Recover(ctx); err != nil && !errors.Is(err, ErrRestoreCleanup) {
 			t.Fatal(err)
 		}
-		if note(t, psql, admin, orig) != "new" || note(t, psql, admin, replaced) != "old" {
-			t.Fatal("recovery changed the committed databases")
+		if note(t, psql, admin, orig) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("recovery rolled back the new database or left the replaced database")
 		}
 		if !containsStep(order, "restart:core-1") || !containsStep(order, "health") {
 			t.Fatalf("order %v", order)
 		}
 		got, ok, lerr := ops.LookupRestore("restore-unjournaled")
-		if lerr != nil || !ok || got.Status != "completed" || got.Cleanup != "pending" || got.Status == "failed" {
+		if lerr != nil || !ok || got.Status != "completed" || got.Cleanup != "" || got.Status == "failed" {
 			t.Fatalf("%+v %v %v", got, ok, lerr)
 		}
 		notes := noticeBody(t, box)

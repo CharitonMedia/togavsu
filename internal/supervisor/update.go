@@ -226,7 +226,19 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	next, err := u.startCandidate(ctx, opID, release.Image, nextName, current, backupID)
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
-		if !u.pending(opID) {
+		if cerr := u.confirmCandidateGone(opID, next); cerr != nil {
+			_ = u.keepPending(opID, "replacement", "candidate_cleanup")
+			if next.Name != "" || next.ID != "" {
+				_ = u.note(opID, func(rec *updateIntent) {
+					if next.ID != "" {
+						rec.NextID = next.ID
+					}
+					if next.Name != "" {
+						rec.NextName = next.Name
+					}
+				})
+			}
+		} else {
 			_ = u.finalize(opID, "failed", "failed")
 		}
 		u.notify(ctx, "Update refused", "The new core container did not start. The running version was left in place.")
@@ -561,16 +573,23 @@ func (u *Updater) startCandidate(ctx context.Context, opID, image, name string, 
 	if ok {
 		info, err = factory.CreateCore(ctx, image, name)
 		if err != nil {
-			found, ferr := u.Runtime.Inspect(ctx, name)
-			if ferr != nil || found.ID == "" {
+			found, ferr := u.inspectFresh(name)
+			if ferr == nil && found.ID != "" {
+				info = found
+				err = nil
+			} else if errors.Is(ferr, ErrNotFound) {
 				return ContainerInfo{}, err
+			} else {
+				_ = u.keepPending(opID, "replacement", "candidate_intended")
+				return ContainerInfo{Name: name}, err
 			}
-			info = found
-			err = nil
 		}
 	} else {
 		info, err = u.Runtime.StartCore(ctx, image, name)
 		if err != nil {
+			if info.Name == "" {
+				info.Name = name
+			}
 			return info, err
 		}
 	}
@@ -713,6 +732,50 @@ func (u *Updater) persistObservedRoute(live string) error {
 		return nil
 	}
 	return writeFileAtomic(u.UpstreamFile, []byte(strings.TrimSpace(live)+"\n"), 0o644)
+}
+
+// confirmCandidateGone removes a container that may exist because its
+// unique name was stored before create. A nil create reply is not proof
+// the container is absent. An inspect error leaves the attempt pending.
+func (u *Updater) confirmCandidateGone(opID string, info ContainerInfo) error {
+	id, name := info.ID, info.Name
+	if u != nil && u.Journal != nil && opID != "" {
+		rec, ok, err := u.Journal.Latest(opID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			if id == "" {
+				id = rec.NextID
+			}
+			if name == "" {
+				name = rec.NextName
+			}
+			if id == "" && name == "" && strings.HasPrefix(rec.Phase, "candidate") {
+				return errors.New("candidate name was not observed")
+			}
+		}
+	}
+	target := id
+	if target == "" {
+		target = name
+	}
+	if target == "" || u == nil || u.Runtime == nil {
+		if target == "" {
+			return nil
+		}
+		return errors.New("candidate was not observed")
+	}
+	return confirmAbsent(target, u.Runtime)
+}
+
+func (u *Updater) inspectFresh(id string) (ContainerInfo, error) {
+	if u == nil || u.Runtime == nil || id == "" {
+		return ContainerInfo{}, errors.New("container was not observed")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), updateCleanupTimeout)
+	defer cancel()
+	return u.Runtime.Inspect(ctx, id)
 }
 
 func (u *Updater) pending(opID string) bool {
