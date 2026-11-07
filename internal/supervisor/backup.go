@@ -486,6 +486,24 @@ type RestoredFile struct {
 	Path   string
 }
 
+// Validate decrypts the archive and checks its manifest and file checksums.
+// It does not apply the dump or stop any writer.
+func (s *Store) Validate(id, passphrase string) (Manifest, error) {
+	if passphrase == "" {
+		var err error
+		passphrase, err = s.passphrase()
+		if err != nil {
+			return Manifest{}, err
+		}
+	}
+	payload, cleanup, err := s.openPlain(id, passphrase)
+	if err != nil {
+		return Manifest{}, err
+	}
+	cleanup()
+	return payload.Manifest, nil
+}
+
 // Restore decrypts id and calls apply with the dump and recovered file bytes.
 func (s *Store) Restore(ctx context.Context, id, passphrase string, apply func(context.Context, RestorePayload) error) error {
 	if passphrase == "" {
@@ -616,6 +634,26 @@ func compareCounts(want, got map[string]int64) error {
 		}
 	}
 	return nil
+}
+
+func backupTimeFromName(name string) (time.Time, bool) {
+	base := name
+	switch {
+	case strings.HasSuffix(base, ".tgbk"):
+		base = strings.TrimSuffix(base, ".tgbk")
+	case strings.HasSuffix(base, ".sha256"):
+		base = strings.TrimSuffix(base, ".sha256")
+	default:
+		return time.Time{}, false
+	}
+	if !validID(base) {
+		return time.Time{}, false
+	}
+	when, err := time.Parse("20060102T150405Z", base[:len("20060102T150405Z")])
+	if err != nil {
+		return time.Time{}, false
+	}
+	return when, true
 }
 
 func validID(id string) bool {

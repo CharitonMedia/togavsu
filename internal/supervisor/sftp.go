@@ -121,7 +121,11 @@ func (s *SFTPDestination) List(ctx context.Context) ([]RemoteObject, error) {
 		if err := safeName(name); err != nil {
 			continue
 		}
-		objs = append(objs, RemoteObject{Name: name})
+		obj := RemoteObject{Name: name}
+		if when, ok := backupTimeFromName(name); ok {
+			obj.Created = when
+		}
+		objs = append(objs, obj)
 	}
 	return objs, nil
 }

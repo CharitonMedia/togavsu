@@ -232,15 +232,25 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, fmtBad("backup_id"))
 		return
 	}
-	rec, err := h.ops.Restore(r.Context(), body.BackupID)
-	if err != nil {
-		writeAPI(w, err, rec, nil)
+	if err := h.ops.rejectInvalid(r.Context(), body.BackupID); err != nil {
+		rec := RestoreRecord{ID: body.BackupID + "-restore", BackupID: body.BackupID, Started: time.Now().UTC()}
+		writeAPI(w, err, h.ops.finish(rec, err), nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, rec)
+	rec := RestoreRecord{ID: body.BackupID + "-restore", BackupID: body.BackupID, Status: "accepted", Started: time.Now().UTC()}
+	h.ops.PutJob(rec)
+	go func() {
+		done, _ := h.ops.runAccepted(body.BackupID)
+		h.ops.PutJob(done)
+	}()
+	writeJSON(w, http.StatusAccepted, rec)
 }
 
 func (h *handlers) getRestore(w http.ResponseWriter, r *http.Request) {
+	if rec, ok := h.ops.Job(r.PathValue("id")); ok {
+		writeJSON(w, http.StatusOK, rec)
+		return
+	}
 	events, err := h.events("restore")
 	if err != nil {
 		writeErr(w, err)

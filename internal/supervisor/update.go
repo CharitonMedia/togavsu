@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -67,20 +68,27 @@ type UpdateResult struct {
 	BackupID     string `json:"backup_id,omitempty"`
 	MigrationRan bool   `json:"migration_ran"`
 	Restored     bool   `json:"restored"`
+	Rollback     string `json:"rollback,omitempty"`
 	StopError    string `json:"stop_error,omitempty"`
 }
 
 // Updater runs the nightly swap. It refuses a bad signature or health check
 // and leaves the previous core running.
 type Updater struct {
-	Now           func() time.Time
-	Window        Window
-	Paused        bool
-	Registry      Registry
-	Verifier      SignatureVerifier
-	Runtime       Runtime
-	Migrator      Migrator
-	Backup        func(ctx context.Context, reason string) (BackupMeta, error)
+	Now      func() time.Time
+	Window   Window
+	Paused   bool
+	Registry Registry
+	Verifier SignatureVerifier
+	Runtime  Runtime
+	Migrator Migrator
+	Backup   func(ctx context.Context, reason string) (BackupMeta, error)
+	// Rollback runs when a migration was applied and the update is aborted.
+	// It must not replay the pre-update dump over the live database.
+	// ErrPreserveWrites means the backup was kept and later commits stayed.
+	Rollback func(ctx context.Context, backupID string) error
+	// Restore is the destructive archive replay. Update rollback must not call
+	// it while the previous core is still serving.
 	Restore       func(ctx context.Context, id string) error
 	Proxy         ProxySwitcher
 	Notify        func(ctx context.Context, subject, body string)
@@ -157,35 +165,35 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	ran, err = u.Migrator.Apply(ctx, release.Image)
 	if err != nil {
-		restored := u.abort(ctx, backupID, ran, nil)
+		rolled := u.abort(ctx, backupID, ran, nil)
 		u.notify(ctx, "Update refused", "Migrations failed. The running version was left in place.")
-		return UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	nextName, err := nextCoreName(u.now())
 	if err != nil {
-		restored := u.abort(ctx, backupID, ran, nil)
-		return UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
+		rolled := u.abort(ctx, backupID, ran, nil)
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	next, err := u.Runtime.StartCore(ctx, release.Image, nextName)
 	if err != nil {
-		restored := u.abort(ctx, backupID, ran, nil)
+		rolled := u.abort(ctx, backupID, ran, nil)
 		u.notify(ctx, "Update refused", "The new core container did not start. The running version was left in place.")
-		return UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	timeout := u.HealthTimeout
 	if timeout == 0 {
 		timeout = time.Minute
 	}
 	if err := u.Runtime.WaitHealthy(ctx, next.ID, timeout); err != nil {
-		restored := u.abort(ctx, backupID, ran, &next)
+		rolled := u.abort(ctx, backupID, ran, &next)
 		u.notify(ctx, "Update refused", "The new core failed its health check. The running version was left in place.")
-		return UpdateResult{Status: "refused", Reason: "health", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, ErrHealth
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "health", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, ErrHealth)
 	}
 	upstream := next.Name + ":8080"
 	if err := u.Proxy.Switch(ctx, upstream); err != nil {
-		restored := u.abort(ctx, backupID, ran, &next)
+		rolled := u.abort(ctx, backupID, ran, &next)
 		u.notify(ctx, "Update refused", "Caddy did not switch to the new core. The running version was left in place.")
-		return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Restored: restored}, err
+		return mergeRollback(UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	result := UpdateResult{Status: "applied", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}
 	if err := u.Runtime.Stop(ctx, current.ID); err != nil {
@@ -204,19 +212,62 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	return result, nil
 }
 
-func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, started *ContainerInfo) bool {
+type rollbackOutcome struct {
+	Restored bool
+	Mode     string
+	Err      error
+}
+
+func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, started *ContainerInfo) rollbackOutcome {
+	out := rollbackOutcome{}
 	if started != nil {
 		_ = u.Runtime.Stop(ctx, started.ID)
 		_ = u.Runtime.Remove(ctx, started.ID)
 	}
-	restored := false
-	if migrated && backupID != "" && u.Restore != nil {
-		if err := u.Restore(ctx, backupID); err == nil {
-			restored = true
+	if migrated && backupID != "" {
+		out = u.rollback(ctx, backupID)
+	}
+	u.record("update", map[string]string{
+		"status":   "refused",
+		"backup":   backupID,
+		"restored": strconv.FormatBool(out.Restored),
+		"rollback": out.Mode,
+	})
+	return out
+}
+
+// rollback refuses to replay the pre-update dump while the old core is still
+// the writer. That replay would drop tables under live requests and discard
+// commits made after the snapshot. ErrPreserveWrites is the normal result.
+func (u *Updater) rollback(ctx context.Context, backupID string) rollbackOutcome {
+	fn := u.Rollback
+	if fn == nil {
+		fn = func(context.Context, string) error { return ErrPreserveWrites }
+	}
+	err := fn(ctx, backupID)
+	if errors.Is(err, ErrPreserveWrites) {
+		u.notify(ctx, "Update rollback kept later writes", "Backup "+backupID+" was not replayed. Commits made after that snapshot are still in the database. Restore it only through the quiesced restore path.")
+		return rollbackOutcome{Mode: "preserved_writes"}
+	}
+	if err != nil {
+		u.notify(ctx, "Update rollback failed", "The pre-update backup was not applied. "+Scrub(err.Error()))
+		return rollbackOutcome{Mode: "failed", Err: err}
+	}
+	u.notify(ctx, "Update rollback applied a coordinated restore", "Backup "+backupID+" was applied by the rollback coordinator.")
+	return rollbackOutcome{Restored: true, Mode: "coordinated"}
+}
+
+func mergeRollback(result UpdateResult, rolled rollbackOutcome, primary error) (UpdateResult, error) {
+	result.Restored = rolled.Restored
+	result.Rollback = rolled.Mode
+	if rolled.Err != nil {
+		if primary != nil {
+			primary = fmt.Errorf("%w; rollback failed: %v", primary, rolled.Err)
+		} else {
+			primary = rolled.Err
 		}
 	}
-	u.record("update", map[string]string{"status": "refused", "backup": backupID, "restored": strconv.FormatBool(restored)})
-	return restored
+	return result, primary
 }
 
 func (u *Updater) notify(ctx context.Context, subject, body string) {

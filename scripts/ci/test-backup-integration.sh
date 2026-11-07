@@ -21,4 +21,4 @@ else
   printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
   cd "$work"
 fi
-go test -tags=integration ./internal/supervisor/ -count=1 -run TestPostgresDumpRestoreCounts
+go test -tags=integration ./internal/supervisor/ -count=1 -run 'TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot'

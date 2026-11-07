@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSFTPRejectsInjectedRemotePath(t *testing.T) {
@@ -34,30 +35,7 @@ func TestSFTPRoundTripPathWithSpaces(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(dir, "sftp")
-	body := `#!/usr/bin/env python3
-import os, shlex, shutil, sys
-args = sys.argv[1:]
-batch = args[args.index("-b") + 1]
-for raw in open(batch):
-    line = raw.strip()
-    if not line or line == "bye":
-        continue
-    if line.startswith("!"):
-        sys.stderr.write("injected\n")
-        sys.exit(99)
-    parts = shlex.split(line)
-    cmd = parts[0]
-    if cmd == "put":
-        os.makedirs(os.path.dirname(parts[2]), exist_ok=True)
-        shutil.copy(parts[1], parts[2])
-    elif cmd == "get":
-        shutil.copy(parts[1], parts[2])
-    elif cmd == "rm":
-        os.remove(parts[1])
-    elif cmd == "ls":
-        print("\n".join(sorted(os.listdir(parts[-1]))))
-`
-	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+	if err := os.WriteFile(script, []byte(sftpPython), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	dest := sftpDest(t, dir, remote, script)
@@ -82,6 +60,67 @@ for raw in open(batch):
 		t.Fatal(err)
 	}
 }
+
+func TestSFTPRetentionRemovesExpiredArchives(t *testing.T) {
+	dir := t.TempDir()
+	remote := filepath.Join(dir, "backups")
+	if err := os.MkdirAll(remote, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "sftp")
+	if err := os.WriteFile(script, []byte(sftpPython), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldID := time.Now().Add(-40*24*time.Hour).UTC().Format("20060102T150405Z") + "-0123456789abcdef"
+	newID := time.Now().Add(-2*time.Hour).UTC().Format("20060102T150405Z") + "-fedcba9876543210"
+	for _, name := range []string{oldID + ".tgbk", oldID + ".sha256", newID + ".tgbk", newID + ".sha256"} {
+		if err := os.WriteFile(filepath.Join(remote, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dest := sftpDest(t, dir, remote, script)
+	n, err := PruneDestination(context.Background(), dest, 30*24*time.Hour, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("pruned %d", n)
+	}
+	for _, name := range []string{oldID + ".tgbk", oldID + ".sha256"} {
+		if _, err := os.Stat(filepath.Join(remote, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s still present (%v)", name, err)
+		}
+	}
+	for _, name := range []string{newID + ".tgbk", newID + ".sha256"} {
+		if _, err := os.Stat(filepath.Join(remote, name)); err != nil {
+			t.Fatalf("%s missing: %v", name, err)
+		}
+	}
+}
+
+const sftpPython = `#!/usr/bin/env python3
+import os, shlex, shutil, sys
+args = sys.argv[1:]
+batch = args[args.index("-b") + 1]
+for raw in open(batch):
+    line = raw.strip()
+    if not line or line == "bye":
+        continue
+    if line.startswith("!"):
+        sys.stderr.write("injected\n")
+        sys.exit(99)
+    parts = shlex.split(line)
+    cmd = parts[0]
+    if cmd == "put":
+        os.makedirs(os.path.dirname(parts[2]), exist_ok=True)
+        shutil.copy(parts[1], parts[2])
+    elif cmd == "get":
+        shutil.copy(parts[1], parts[2])
+    elif cmd == "rm":
+        os.remove(parts[1])
+    elif cmd == "ls":
+        print("\n".join(sorted(os.listdir(parts[-1]))))
+`
 
 func sftpDest(t *testing.T, dir, remote, command string) *SFTPDestination {
 	t.Helper()

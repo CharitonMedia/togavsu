@@ -15,7 +15,7 @@ Order when a newer release exists:
 3. Read `TOGAVSU_RELEASE_INDEX`, a JSON document `{"image":"ghcr.io/charitonmedia/togavsu-core@sha256:<64 hex>","version":"1.2.3"}`. A tag without a digest is refused.
 4. Verify that digest with `cosign verify --key $COSIGN_KEY`, pull that same digest, and migrate and start only that digest. A missing key, a failed verify, or a failed pull leaves the running core in place.
 5. Take a `pre-update` backup.
-6. Run the new image as a one-shot container with command `migrate`. The image must exit 0 and print `migrated=true` when it applied a migration. A checksum mismatch or a failed migration aborts the swap. If a migration ran, the supervisor restores the pre-update backup.
+6. Run the new image as a one-shot container with command `migrate`. The image must exit 0 and print `migrated=true` when it applied a migration. A failed migration or health check stops the new container and leaves the running core in place. The pre-update backup is kept and is not replayed while that core is still accepting writes. An operator restore uses the quiesced restore path.
 7. Start `togavsu-core-next`, wait until its Docker health check is `healthy`, and refuse a missing health check.
 8. Point Caddy at `<container>:8080` and record the dial address in `/runtime/upstream`.
 9. Stop the previous core. If that stop fails, the new core stays in service and the result includes `stop_error`.
@@ -38,7 +38,7 @@ The core image must serve the product on port 8080 and define a Docker health ch
 | POST | `/v1/backup-destinations` | Adds a `path`, `s3`, or `sftp` destination. Secrets are not returned. |
 | POST | `/v1/backup-destinations/{id}/test` | Writes and reads a probe object. |
 | DELETE | `/v1/backup-destinations/{id}` | Forgets the destination. |
-| POST | `/v1/restores` | Body `{"backup_id":"..."}`. Stops the labeled core containers, applies the dump over the existing database, and starts those same containers again only after the data is in place. File bytes in the archive are on disk for the apply callback. |
+| POST | `/v1/restores` | Body `{"backup_id":"..."}`. An invalid archive is rejected before writers stop. An accepted restore returns 202 and continues on its own timeout after the caller disconnects. Poll `GET /v1/restores/{id}`. The dump is loaded into a clean database and swapped in only after its record counts match. |
 | GET | `/v1/restores/{id}` | Last ledger event for that restore. |
 | POST | `/v1/test-restores` | Body `{"backup_id":"..."}`. Restores into a throwaway database and compares counts. |
 

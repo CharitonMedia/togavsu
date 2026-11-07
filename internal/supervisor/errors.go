@@ -20,6 +20,7 @@ var (
 	ErrHealth                   = errors.New("health check failed")
 	ErrArchive                  = errors.New("backup archive is invalid")
 	ErrDestination              = errors.New("backup destination failed")
+	ErrPreserveWrites           = errors.New("pre-update snapshot was kept so later commits stay in place")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become

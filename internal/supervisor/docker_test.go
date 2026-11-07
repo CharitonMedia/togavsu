@@ -74,7 +74,8 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1.43/images/create", func(w http.ResponseWriter, r *http.Request) {
 		pulled = r.URL.Query().Get("fromImage")
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("{\"status\":\"Status: downloaded\"}\n"))
 	})
 	mux.HandleFunc("/v1.43/containers/create", func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
@@ -109,12 +110,60 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 		"SUPERVISOR_TOKEN_FILE=/appsecrets/supervisor_token",
 		"SUPERVISOR_URL=http://supervisor:8081",
 		"togavsu_appsecrets:/appsecrets",
+		"unless-stopped",
 		image,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("create body missing %s: %s", want, body)
 		}
 	}
+}
+
+func TestPullConsumesStream(t *testing.T) {
+	image := testReleaseImage
+	t.Run("delayed completion", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("{\"status\":\"Pulling fs layer\"}\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			time.Sleep(200 * time.Millisecond)
+			_, _ = w.Write([]byte("{\"status\":\"Status: downloaded\"}\n"))
+		}))
+		defer srv.Close()
+		start := time.Now()
+		err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).Pull(context.Background(), image)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(start) < 200*time.Millisecond {
+			t.Fatal("returned before the stream finished")
+		}
+	})
+	t.Run("http 200 error", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("{\"error\":\"manifest unknown\"}\n"))
+		}))
+		defer srv.Close()
+		err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).Pull(context.Background(), image)
+		if err == nil || !strings.Contains(err.Error(), "manifest unknown") {
+			t.Fatalf("got %v", err)
+		}
+	})
+	t.Run("truncated stream", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"Pulling`))
+		}))
+		defer srv.Close()
+		err := (&DockerRuntime{Client: srv.Client(), BaseURL: srv.URL}).Pull(context.Background(), image)
+		if err == nil || !strings.Contains(err.Error(), "ended early") {
+			t.Fatalf("got %v", err)
+		}
+	})
 }
 
 func TestMigratorUnconfigured(t *testing.T) {

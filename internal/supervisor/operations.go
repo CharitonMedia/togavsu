@@ -35,16 +35,20 @@ type RestoreRecord struct {
 // Operations ties the archive store to the runtime. Restores stop the core
 // first and bring it back when the data is in place.
 type Operations struct {
-	Store      *Store
-	Updater    *Updater
-	Runtime    Runtime
-	Gate       *Gate
-	Ledger     *Ledger
-	Outbox     *Outbox
-	ApplyDump  func(ctx context.Context, r io.Reader) error
-	Measure    func(ctx context.Context, r io.Reader) (map[string]int64, error)
-	Passphrase func() (string, error)
-	Now        func() time.Time
+	Store          *Store
+	Updater        *Updater
+	Runtime        Runtime
+	Gate           *Gate
+	Ledger         *Ledger
+	Outbox         *Outbox
+	ApplyDump      func(ctx context.Context, r io.Reader) error
+	ApplyRestore   func(ctx context.Context, payload RestorePayload) error
+	Measure        func(ctx context.Context, r io.Reader) (map[string]int64, error)
+	Passphrase     func() (string, error)
+	Now            func() time.Time
+	RestoreTimeout time.Duration
+	jobs           map[string]RestoreRecord
+	jobsMu         sync.Mutex
 }
 
 func (o *Operations) now() time.Time {
@@ -103,37 +107,74 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 	return o.Updater.Apply(ctx, force)
 }
 
-// Restore stops the core, applies the dump, and starts the core again.
-//
-// ponytail: the HTTP call stays open until restore finishes, ceiling: proxy
-// timeouts on a very large archive, upgrade: a restore job id polled with
-// GET /v1/restores/{id}, trigger: a restore test runs longer than 60s.
-func (o *Operations) Restore(ctx context.Context, id string) (RestoreRecord, error) {
-	release, ok := o.Gate.Try()
-	if !ok {
-		return RestoreRecord{}, ErrBusy
+func (o *Operations) restoreTimeout() time.Duration {
+	if o.RestoreTimeout > 0 {
+		return o.RestoreTimeout
 	}
-	defer release()
-	if err := o.refreshPass(); err != nil {
-		return RestoreRecord{}, err
+	return 30 * time.Minute
+}
+
+func (o *Operations) PutJob(rec RestoreRecord) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	if o.jobs == nil {
+		o.jobs = map[string]RestoreRecord{}
 	}
-	if o.ApplyDump == nil {
-		return RestoreRecord{}, errors.New("database restore is not configured")
-	}
-	rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "running", Started: o.now().UTC()}
-	safety, err := o.Store.Create(ctx, reasonSafety)
-	if err != nil {
+	o.jobs[rec.ID] = rec
+}
+
+func (o *Operations) Job(id string) (RestoreRecord, bool) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	rec, ok := o.jobs[id]
+	return rec, ok
+}
+
+// Restore validates the archive before it stops writers or takes a recovery
+// snapshot. After the archive is accepted, work uses a timeout that is not
+// derived from the caller's context, so a disconnected client cannot cancel
+// recovery. Callers can poll Job or the ledger for status.
+func (o *Operations) Restore(caller context.Context, id string) (RestoreRecord, error) {
+	rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "accepted", Started: o.now().UTC()}
+	if err := o.rejectInvalid(caller, id); err != nil {
 		return o.finish(rec, err), err
 	}
+	return o.runAccepted(id)
+}
+
+func (o *Operations) rejectInvalid(ctx context.Context, id string) error {
+	if err := o.refreshPass(); err != nil {
+		return err
+	}
+	if o.ApplyDump == nil && o.ApplyRestore == nil {
+		return errors.New("database restore is not configured")
+	}
+	if _, err := o.Store.Validate(id, ""); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
+	opCtx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
+	defer cancel()
+	release, ok := o.Gate.Try()
+	if !ok {
+		rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "failed", Started: o.now().UTC()}
+		return o.finish(rec, ErrBusy), ErrBusy
+	}
+	defer release()
+	rec := RestoreRecord{ID: id + "-restore", BackupID: id, Status: "running", Started: o.now().UTC()}
+	o.PutJob(rec)
 	var stopped []ContainerInfo
 	if o.Runtime != nil {
-		cores, err := o.Runtime.ListCores(ctx)
+		cores, err := o.Runtime.ListCores(opCtx)
 		if err != nil {
 			return o.finish(rec, err), err
 		}
 		for _, core := range cores {
-			if err := o.Runtime.Stop(ctx, core.ID); err != nil {
-				if startErr := o.restart(ctx, stopped); startErr != nil {
+			if err := o.Runtime.Stop(opCtx, core.ID); err != nil {
+				if startErr := o.restart(opCtx, stopped); startErr != nil {
 					joined := fmt.Errorf("stop %s: %w; restart failed: %v", core.ID, err, startErr)
 					return o.finish(rec, joined), joined
 				}
@@ -142,44 +183,57 @@ func (o *Operations) Restore(ctx context.Context, id string) (RestoreRecord, err
 			stopped = append(stopped, core)
 		}
 	}
+	// Writers are stopped, so this snapshot includes commits made before shutdown.
+	safety, err := o.Store.Create(opCtx, reasonSafety)
+	if err != nil {
+		if startErr := o.restart(opCtx, stopped); startErr != nil {
+			joined := fmt.Errorf("safety backup: %w; restart failed: %v", err, startErr)
+			return o.finish(rec, joined), joined
+		}
+		return o.finish(rec, err), err
+	}
+	_ = safety
 	apply := func(ctx context.Context, payload RestorePayload) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if o.ApplyRestore != nil {
+			return o.ApplyRestore(ctx, payload)
+		}
 		return o.ApplyDump(ctx, payload.Dump)
 	}
-	err = o.Store.Restore(ctx, id, "", apply)
+	err = o.Store.Restore(opCtx, id, "", apply)
 	if err != nil {
-		recErr := o.Store.Restore(ctx, safety.ID, "", apply)
-		if recErr != nil {
-			joined := fmt.Errorf("restore failed: %w; safety restore failed: %v", err, recErr)
+		// A clean-target apply that returns an error has not replaced the
+		// live database. Restart the writers on that unchanged data.
+		if startErr := o.restart(opCtx, stopped); startErr != nil {
+			joined := fmt.Errorf("restore failed: %w; restart failed: %v", err, startErr)
 			if o.Outbox != nil {
-				_ = o.Outbox.Notify(ctx, "Restore failed", "The restore failed and the safety backup could not be applied. The core was left stopped. "+Scrub(joined.Error()))
+				_ = o.Outbox.Notify(opCtx, "Restore failed", "The database was not replaced and the core did not restart. "+Scrub(joined.Error()))
 			}
 			rec = o.finish(rec, joined)
-			return rec, joined
-		}
-		if startErr := o.restart(ctx, stopped); startErr != nil {
-			joined := fmt.Errorf("restore failed: %w; safety backup applied; restart failed: %v", err, startErr)
-			if o.Outbox != nil {
-				_ = o.Outbox.Notify(ctx, "Restore failed", Scrub(joined.Error()))
-			}
-			rec = o.finish(rec, joined)
+			o.PutJob(rec)
 			return rec, joined
 		}
 		if o.Outbox != nil {
-			_ = o.Outbox.Notify(ctx, "Restore failed", "The restore failed and the safety backup was applied. "+Scrub(err.Error()))
+			_ = o.Outbox.Notify(opCtx, "Restore failed", "The archive was not applied. Existing data was left in place and the core was restarted. "+Scrub(err.Error()))
 		}
 		rec = o.finish(rec, err)
+		o.PutJob(rec)
 		return rec, err
 	}
-	if startErr := o.restart(ctx, stopped); startErr != nil {
+	if startErr := o.restart(opCtx, stopped); startErr != nil {
 		if o.Outbox != nil {
-			_ = o.Outbox.Notify(ctx, "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
+			_ = o.Outbox.Notify(opCtx, "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
 		}
 		rec = o.finish(rec, startErr)
+		o.PutJob(rec)
 		return rec, startErr
 	}
 	rec.Status = "completed"
 	rec.Finished = o.now().UTC()
 	o.recordRestore(rec)
+	o.PutJob(rec)
 	return rec, nil
 }
 

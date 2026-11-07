@@ -18,6 +18,7 @@ type scriptRuntime struct {
 	stopID    string
 	failStart string
 	used      map[string]bool
+	stopHook  func()
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -57,6 +58,9 @@ func (r *scriptRuntime) WaitHealthy(context.Context, string, time.Duration) erro
 }
 func (r *scriptRuntime) Stop(_ context.Context, id string) error {
 	r.add("stop:" + id)
+	if r.stopHook != nil {
+		r.stopHook()
+	}
 	if id == r.stopID {
 		return errors.New("stop failed")
 	}
@@ -141,10 +145,10 @@ func TestUpdateHealthFailureRestoresBackup(t *testing.T) {
 	if !errors.Is(err, ErrHealth) {
 		t.Fatalf("got %v", err)
 	}
-	if !got.Restored || !got.MigrationRan {
+	if got.Restored || !got.MigrationRan || got.Rollback != "preserved_writes" {
 		t.Fatalf("result %+v", got)
 	}
-	if !containsStep(order, "pull:"+testReleaseImage) || !containsStep(order, "restore") {
+	if !containsStep(order, "pull:"+testReleaseImage) || containsStep(order, "restore") {
 		t.Fatalf("order %v", order)
 	}
 	stoppedNew := false
@@ -237,6 +241,17 @@ func TestTwoConsecutiveUpdatesUseDistinctNames(t *testing.T) {
 	}
 	if len(names) != 2 || names[0] == names[1] || names[0] == "togavsu-core-next" {
 		t.Fatalf("names %v", names)
+	}
+}
+
+func TestRollbackFailureIsReported(t *testing.T) {
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Labels: map[string]string{"togavsu.version": "1.0.0"}}}, health: errors.New("unhealthy")}
+	up := testUpdater(t, rt, &order)
+	up.Rollback = func(context.Context, string) error { return errors.New("restore exploded") }
+	_, err := up.Apply(context.Background(), true)
+	if err == nil || !strings.Contains(err.Error(), "restore exploded") {
+		t.Fatalf("got %v", err)
 	}
 }
 

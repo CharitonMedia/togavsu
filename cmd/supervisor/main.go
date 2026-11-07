@@ -138,7 +138,6 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	if err != nil {
 		return nil, err
 	}
-	apply := supervisor.ApplyCommand("psql", cfg.DatabaseURL)
 	updater := &supervisor.Updater{
 		Window:   sched.Window,
 		Paused:   cfg.UpdatesPaused,
@@ -154,15 +153,8 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 			store.Passphrase = pass
 			return store.Create(ctx, reason)
 		},
-		Restore: func(ctx context.Context, id string) error {
-			pass, err := cfg.ReloadPassphrase()
-			if err != nil {
-				return err
-			}
-			store.Passphrase = pass
-			return store.Restore(ctx, id, pass, func(ctx context.Context, payload supervisor.RestorePayload) error {
-				return apply(ctx, payload.Dump)
-			})
+		Rollback: func(context.Context, string) error {
+			return supervisor.ErrPreserveWrites
 		},
 		Proxy: &supervisor.CaddyProxy{AdminURL: cfg.CaddyAdminURL, UpstreamFile: cfg.UpstreamFile},
 		Notify: func(ctx context.Context, subject, body string) {
@@ -179,8 +171,10 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Ledger:     ledger,
 		Outbox:     outbox,
 		Passphrase: cfg.ReloadPassphrase,
-		ApplyDump:  apply,
-		Measure:    supervisor.MeasureCommand("psql", cfg.AdminDatabaseURL),
+		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {
+			return supervisor.RestoreIntoCleanDatabase(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload.Dump, payload.Manifest.RecordCounts)
+		},
+		Measure: supervisor.MeasureCommand("psql", cfg.AdminDatabaseURL),
 	}
 	return ops, nil
 }

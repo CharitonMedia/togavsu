@@ -34,6 +34,100 @@ func DumpCommand(bin, databaseURL string) func(context.Context, io.Writer) error
 	}
 }
 
+// RestoreIntoCleanDatabase loads dump into a new database, checks expect, and
+// only then renames it over databaseURL. An error leaves the original database
+// in place, including tables and schemas that appeared after the backup.
+func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL string, dump io.Reader, expect map[string]int64) error {
+	if bin == "" {
+		bin = "psql"
+	}
+	if adminURL == "" {
+		return fmt.Errorf("ADMIN_DATABASE_URL: %w", ErrBadRequest)
+	}
+	orig, err := databaseName(databaseURL)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp("", "togavsu-restore-*.sql")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := io.Copy(tmp, dump); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	var raw [6]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return err
+	}
+	suffix := hex.EncodeToString(raw[:])
+	fresh := "togavsu_restore_" + suffix
+	if _, err := psqlLines(ctx, bin, adminURL, "CREATE DATABASE "+fresh); err != nil {
+		return err
+	}
+	dropFresh := true
+	defer func() {
+		if dropFresh {
+			_, _ = psqlLines(context.Background(), bin, adminURL, "DROP DATABASE IF EXISTS "+fresh)
+		}
+	}()
+	target, err := withDatabase(adminURL, fresh)
+	if err != nil {
+		return err
+	}
+	f, err := os.Open(tmp.Name())
+	if err != nil {
+		return err
+	}
+	err = ApplyCommand(bin, target)(ctx, f)
+	f.Close()
+	if err != nil {
+		return err
+	}
+	got, err := CountCommand(bin, target)(ctx)
+	if err != nil {
+		return err
+	}
+	if err := compareCounts(expect, got); err != nil {
+		return err
+	}
+	if err := swapDatabase(ctx, bin, adminURL, orig, fresh, suffix); err != nil {
+		return err
+	}
+	dropFresh = false
+	return nil
+}
+
+func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string) error {
+	replaced := orig + "_replaced_" + suffix
+	_, _ = psqlLines(ctx, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+orig+"' AND pid <> pg_backend_pid()")
+	if _, err := psqlLines(ctx, bin, adminURL, "ALTER DATABASE "+orig+" RENAME TO "+replaced); err != nil {
+		return err
+	}
+	if _, err := psqlLines(ctx, bin, adminURL, "ALTER DATABASE "+fresh+" RENAME TO "+orig); err != nil {
+		_, _ = psqlLines(context.Background(), bin, adminURL, "ALTER DATABASE "+replaced+" RENAME TO "+orig)
+		return err
+	}
+	_, err := psqlLines(ctx, bin, adminURL, "DROP DATABASE "+replaced)
+	return err
+}
+
+func databaseName(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	name := strings.TrimPrefix(u.Path, "/")
+	if !ident(name) {
+		return "", fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	return name, nil
+}
+
 // ApplyCommand restores a plain SQL dump.
 func ApplyCommand(bin, databaseURL string) func(context.Context, io.Reader) error {
 	if bin == "" {

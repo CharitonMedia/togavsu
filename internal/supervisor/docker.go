@@ -117,7 +117,53 @@ func (d *DockerRuntime) Pull(ctx context.Context, image string) error {
 	}
 	q := url.Values{}
 	q.Set("fromImage", image)
-	return d.call(ctx, http.MethodPost, dockerAPI+"/images/create?"+q.Encode(), nil, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.base()+dockerAPI+"/images/create?"+q.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	client := d.Client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		msg, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
+		return fmt.Errorf("docker pull %s: %s", res.Status, strings.TrimSpace(string(msg)))
+	}
+	return readPullStream(res.Body)
+}
+
+func readPullStream(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	saw := false
+	for {
+		var msg struct {
+			Status string `json:"status"`
+			Error  string `json:"error"`
+		}
+		err := dec.Decode(&msg)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("pull stream ended early: %w", err)
+		}
+		if msg.Error != "" {
+			return fmt.Errorf("pull failed: %s", msg.Error)
+		}
+		if msg.Status == "" {
+			return fmt.Errorf("pull stream ended early: empty progress")
+		}
+		saw = true
+	}
+	if !saw {
+		return fmt.Errorf("pull stream ended early")
+	}
+	return nil
 }
 
 func (d *DockerRuntime) Start(ctx context.Context, id string) error {
@@ -135,6 +181,9 @@ func (d *DockerRuntime) StartCore(ctx context.Context, image, name string) (Cont
 		"HostConfig": map[string]any{
 			"NetworkMode": d.Network,
 			"Binds":       d.coreBinds(),
+			"RestartPolicy": map[string]any{
+				"Name": "unless-stopped",
+			},
 		},
 	}
 	var created struct {
