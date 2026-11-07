@@ -47,6 +47,7 @@ jobs:
       - name: Prepare unprivileged reviewer
         run: |
           sudo useradd --create-home --shell /bin/bash codex-reviewer
+          sudo chmod a+rx /home/runner /home/runner/work "$RUNNER_TEMP"
           sudo chmod -R a+rX "$GITHUB_WORKSPACE"
           mkdir -p "$RUNNER_TEMP/codex-review-output"
           sudo chown codex-reviewer "$RUNNER_TEMP/codex-review-output"
