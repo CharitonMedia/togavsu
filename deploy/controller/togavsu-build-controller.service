@@ -1,0 +1,14 @@
+[Unit]
+Description=Togavsu cloud build integration controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/patrick/.local/share/togavsu-controller
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+NoNewPrivileges=true
+TimeoutStartSec=900
+ExecStart=/usr/bin/python3 /home/patrick/.local/share/togavsu-controller/run_controller.py --plan /home/patrick/.local/share/togavsu-controller/controller-plan.json --state /mnt/claude-workspace/nolan-pms/togavsu/.build-state

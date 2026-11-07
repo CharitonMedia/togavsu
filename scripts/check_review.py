@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 
-def validate(report, base, head):
+def validate(report, base, head, expected_task=None):
+    if expected_task is not None and report.get("task_id") != expected_task:
+        raise ValueError("Review covers a different assignment")
     if not re.fullmatch(r"[0-9a-f]{40}", base) or not re.fullmatch(r"[0-9a-f]{40}", head):
         raise ValueError("Invalid expected revision")
     if report.get("reviewed_base") != base or report.get("reviewed_head") != head:
@@ -27,7 +29,7 @@ if __name__ == "__main__":
         with open(summary, "a") as out:
             out.write("### Codex checkpoint\n\n" + json.dumps(report, indent=2) + "\n")
     try:
-        validate(report, sys.argv[2], sys.argv[3])
+        validate(report, sys.argv[2], sys.argv[3], json.loads(Path(sys.argv[4]).read_text())["task_id"] if len(sys.argv) > 4 else None)
     except (ValueError, TypeError) as exc:
         sys.exit(str(exc))
     print("PASS: independent review covers current base/head; no findings")
