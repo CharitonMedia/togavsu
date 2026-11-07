@@ -99,7 +99,19 @@ PAYMENT_PROCESSOR = {
         "invoice_id",
         "amount_cents",
         "destination",
+        "trust_account_id",
     ],
+    "binding": {
+        "cardinality": "one_payment_per_initialization",
+        "reserved_at": "authorization",
+        "idempotency_independent": True,
+        "repeat_same_body": "original_result",
+        "repeat_different_body": "conflict",
+        "storage_constraint": (
+            "unique payments.initialization_id, payments.id equals the reserved payment id, "
+            "and the payment row plus any trust row commit in one transaction"
+        ),
+    },
     "caller_scopes": {
         "operating": ["payments:write"],
         "trust": ["payments:write", "trust:write"],
@@ -194,6 +206,27 @@ def is_core_file_download(operation: dict) -> bool:
     return bool(features & _CORE_FILE_FEATURES)
 
 
+_CONFIRM_QUERY = {
+    "name": "confirm_quarantine",
+    "in": "query",
+    "required": False,
+    "schema": {"type": "boolean"},
+    "description": "Must be true to download a quarantined file. Omitted or false returns quarantine_confirmation_required and no bytes.",
+}
+
+
+def _confirmation_input(operation: dict) -> dict | None:
+    for parameter in operation.get("parameters", []):
+        name = parameter.get("name")
+        if name in ("confirm", "confirm_quarantine"):
+            return {"in": "query", "name": name}
+    body = (operation.get("requestBody") or {}).get("content", {}).get("application/json", {}).get("schema", {})
+    ref = body.get("$ref", "")
+    if ref.endswith("/FileArchiveRequest") or "confirm_quarantine" in (body.get("properties") or {}):
+        return {"in": "body", "name": "confirm_quarantine"}
+    return None
+
+
 def apply_file_download_contract(spec: dict) -> None:
     for _method, _path, operation in iter_operations(spec):
         if not is_core_file_download(operation):
@@ -207,6 +240,11 @@ def apply_file_download_contract(spec: dict) -> None:
         codes = operation.setdefault("x-togavsu-error-codes", [])
         if "quarantine_confirmation_required" not in codes:
             codes.append("quarantine_confirmation_required")
+        confirm = _confirmation_input(operation)
+        if confirm is None:
+            operation.setdefault("parameters", []).append(dict(_CONFIRM_QUERY))
+            confirm = {"in": "query", "name": "confirm_quarantine"}
+        access["quarantine_confirmation_input"] = confirm
         if "audit log" not in operation.get("description", ""):
             operation["description"] = operation["description"].rstrip() + (
                 " The download is written to the audit log and the case timeline as file.downloaded."
@@ -381,6 +419,35 @@ def _denied(result: str) -> dict:
     return {"result": result, "payment_mutated": False, "ledger_mutated": False, "flag": False, "grant": None}
 
 
+def trust_account_failure(call: dict) -> str | None:
+    """None when the destination and account are allowed. Otherwise a denial code and no write."""
+    destination = call.get("destination")
+    if destination == "operating":
+        if call.get("trust_account_id") is not None:
+            return "validation_failed"
+        return None
+    if destination != "trust":
+        return None
+    account = call.get("trust_account_id")
+    if not account:
+        return "validation_failed"
+    grant_account = (call.get("grant") or {}).get("trust_account_id")
+    if grant_account not in (None, account):
+        return "forbidden"
+    record = None
+    for item in call.get("trust_accounts") or []:
+        if item.get("id") == account:
+            record = item
+            break
+    if record is None:
+        return "not_found"
+    if record.get("firm_id") and call.get("firm_id") and record["firm_id"] != call["firm_id"]:
+        return "not_found"
+    if record.get("active") is False or record.get("authorized") is False:
+        return "forbidden"
+    return None
+
+
 def payment_reversal_decision(operation: dict, call: dict) -> dict:
     access = operation["x-togavsu-access"]
     policy = access["payment_reversal"]
@@ -393,6 +460,14 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
     branch = policy["trust_linked"] if call.get("trust_linked") else policy["operating"]
     if any(scope not in call["token_scopes"] for scope in branch["scopes"]):
         return _denied(policy["insufficient_scopes"])
+    account_id = None
+    if call.get("trust_linked"):
+        account_id = call.get("trust_account_id")
+        failure = trust_account_failure({**call, "destination": "trust", "trust_account_id": account_id})
+        if failure:
+            return _denied(failure)
+        if call.get("reversal_account_id") not in (None, account_id):
+            return _denied("forbidden")
     entry = branch.get("trust_entry") or {}
     flag = bool(
         call.get("trust_linked")
@@ -410,6 +485,7 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         "original_trust_edited": bool(entry.get("original_edited", False)) if call.get("trust_linked") else False,
         "flag": flag,
         "trust_posted_by": entry.get("posted_by") if call.get("trust_linked") else None,
+        "trust_account_id": account_id if call.get("trust_linked") else None,
         "grant": None,
     }
 
@@ -438,8 +514,20 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
         needed = policy["trust_destination"]["scopes"] if needs_trust else policy["operating"]["scopes"]
         if any(scope not in call["token_scopes"] for scope in needed):
             return _denied(policy["insufficient_scopes"])
+        failure = trust_account_failure({**call, **item, "trust_accounts": call.get("trust_accounts"), "firm_id": call.get("firm_id")})
+        if failure:
+            return _denied(failure)
         posts_trust = posts_trust or needs_trust
     entry = policy["trust_destination"]["trust_entry"]
+    accounts = []
+    if posts_trust:
+        accounts = [
+            item.get("trust_account_id", call.get("trust_account_id"))
+            for item in _effect_items(call)
+            if item.get("destination", call.get("destination")) == "trust"
+            and item.get("status", call.get("status", "completed")) == "completed"
+            and not item.get("trust_already_posted", call.get("trust_already_posted", False))
+        ]
     return {
         "result": "allowed",
         "payment_mutated": True,
@@ -447,6 +535,7 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
         "ledger_append_only": bool(entry["append_only"]) if posts_trust else False,
         "flag": False,
         "trust_posted_by": entry["posted_by"] if posts_trust else None,
+        "trust_account_ids": accounts,
         "grant": None,
     }
 
@@ -465,17 +554,23 @@ def processor_issuance(policy: dict, module: dict, initialization: dict) -> dict
         return _denied(policy["missing_scope"])
     if any(scope not in module.get("approved_scopes", []) for scope in policy["module_scopes"][key]):
         return _denied(policy["missing_scope"])
+    if not initialization.get("reserved_payment_id"):
+        return _denied("validation_failed")
+    account_failure = trust_account_failure(initialization)
+    if account_failure:
+        return _denied(account_failure)
     if policy.get("grants_admin") or policy.get("firmwide_bypass") or policy.get("ambient_payment_write"):
         return denied
     grant = {
         "module_id": module["module_id"],
         "initialization_id": initialization["initialization_id"],
-        "payment_id": None,
+        "payment_id": initialization["reserved_payment_id"],
         "matter_id": initialization["matter_id"],
         "contact_id": initialization["contact_id"],
         "invoice_id": initialization.get("invoice_id"),
         "amount_cents": initialization["amount_cents"],
         "destination": initialization["destination"],
+        "trust_account_id": initialization.get("trust_account_id"),
         "allowed_operations": list(policy["sequence"]),
         "allowed_fields": list(policy["allowed_fields"]),
         "expires_at": initialization["expires_at"],
@@ -507,7 +602,7 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
         return policy["operation_outside_grant"]
     needed = list(operation["x-togavsu-access"]["scopes"])
     effect = operation["x-togavsu-access"].get("payment_effect")
-    if effect and call.get("destination") == "trust" and call.get("posts_trust"):
+    if effect and call.get("destination") == "trust" and call.get("status") == "completed":
         needed = list(effect["trust_destination"]["scopes"])
     if any(scope not in call.get("module_scopes", []) for scope in needed):
         return policy["missing_scope"]
@@ -521,12 +616,214 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
         return policy["amount_mismatch"]
     if call.get("destination") != grant.get("destination"):
         return policy["destination_mismatch"]
-    if call["operation"] == "updatePaymentStatus" and call.get("payment_id") != grant.get("payment_id"):
+    reserved = grant.get("payment_id")
+    if not reserved:
+        return policy["missing_grant"]
+    supplied = call.get("payment_id")
+    if call["operation"] == "createPayment" and supplied not in (None, reserved):
         return policy["unrelated_payment"]
+    if call["operation"] == "updatePaymentStatus" and supplied != reserved:
+        return policy["unrelated_payment"]
+    if grant.get("trust_account_id") != call.get("trust_account_id") and call.get("trust_account_id") is not None:
+        return "forbidden"
+    if call["operation"] == "createPayment" and call.get("bound_payment"):
+        if _same_processor_body(call["bound_payment"], call):
+            return policy["idempotency_replay"]
+        return "conflict"
     field = call.get("field")
     if field and field not in grant.get("allowed_fields", []):
         return policy["field_outside_grant"]
     return "allowed"
+
+
+def _same_processor_body(payment: dict, call: dict) -> bool:
+    for name in ("amount_cents", "matter_id", "contact_id", "destination", "invoice_id", "trust_account_id"):
+        if name in call and call.get(name) != payment.get(name):
+            return False
+    if "status" in call and call.get("status") != payment.get("status"):
+        return False
+    return True
+
+
+def _processor_body(call: dict) -> tuple:
+    names = ("amount_cents", "matter_id", "contact_id", "destination", "invoice_id", "trust_account_id", "status", "payment_id")
+    return tuple((name, call.get(name)) for name in names)
+
+
+def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> dict:
+    """Insert at most one payment per initialization. Denial leaves payment and ledger unchanged."""
+    store.setdefault("payments", {})
+    store.setdefault("ledger", [])
+    store.setdefault("idempotency", {})
+    unchanged = {"payment_inserted": False, "ledger_inserted": False, "payment": None, "ledger_count": len(store["ledger"])}
+    grant = call.get("grant") or {}
+    init_id = grant.get("initialization_id")
+    existing = store["payments"].get(init_id) if init_id else None
+    enriched = dict(call)
+    if existing and call.get("operation") == "createPayment":
+        enriched["bound_payment"] = existing
+    key = call.get("idempotency_key")
+    body = _processor_body(call)
+    if key and key in store["idempotency"] and store["idempotency"][key]["body"] != body:
+        return {"result": policy["idempotency_conflict"], **unchanged}
+    if key and key in store["idempotency"] and store["idempotency"][key]["body"] == body:
+        prior_id = store["idempotency"][key]["initialization_id"]
+        return {"result": policy["idempotency_replay"], "payment": store["payments"].get(prior_id), **unchanged}
+    code = processor_callback(policy, operation, enriched)
+    if code != "allowed":
+        return {"result": code, "payment": existing, **unchanged}
+    account_call = {
+        "destination": call.get("destination"),
+        "trust_account_id": call.get("trust_account_id", grant.get("trust_account_id")),
+        "trust_accounts": call.get("trust_accounts"),
+        "firm_id": call.get("firm_id"),
+        "grant": grant,
+    }
+    failure = trust_account_failure(account_call)
+    if failure:
+        return {"result": failure, **unchanged}
+    if call.get("operation") == "createPayment":
+        payment = {
+            "id": grant["payment_id"],
+            "initialization_id": init_id,
+            "amount_cents": call.get("amount_cents"),
+            "matter_id": call.get("matter_id"),
+            "contact_id": call.get("contact_id"),
+            "invoice_id": call.get("invoice_id"),
+            "destination": call.get("destination"),
+            "trust_account_id": grant.get("trust_account_id"),
+            "status": call.get("status", "pending"),
+            "trust_posted": False,
+        }
+        if init_id in store["payments"]:
+            winner = store["payments"][init_id]
+            if _same_processor_body(winner, call):
+                return {"result": policy["idempotency_replay"], "payment": winner, **unchanged}
+            return {"result": "conflict", **unchanged}
+        store["payments"][init_id] = payment
+        ledger_inserted = _post_trust_once(store, payment, call)
+        if key:
+            store["idempotency"][key] = {"body": body, "initialization_id": init_id}
+        return {"result": "allowed", "payment_inserted": True, "ledger_inserted": ledger_inserted, "payment": payment, "ledger_count": len(store["ledger"])}
+    if not existing or call.get("payment_id") != existing["id"]:
+        return {"result": policy["unrelated_payment"], **unchanged}
+    if existing.get("status") == "completed" and call.get("status") == "completed":
+        return {"result": policy["idempotency_replay"], "payment": existing, **unchanged, "ledger_count": len(store["ledger"])}
+    existing["status"] = call.get("status", existing["status"])
+    ledger_inserted = _post_trust_once(store, existing, call)
+    if key:
+        store["idempotency"][key] = {"body": body, "initialization_id": init_id}
+    return {"result": "allowed", "payment_inserted": False, "ledger_inserted": ledger_inserted, "payment": existing, "ledger_count": len(store["ledger"])}
+
+
+def _post_trust_once(store: dict, payment: dict, call: dict) -> bool:
+    del call
+    if payment.get("destination") != "trust" or payment.get("status") != "completed" or payment.get("trust_posted"):
+        return False
+    store["ledger"].append(
+        {
+            "payment_id": payment["id"],
+            "trust_account_id": payment.get("trust_account_id"),
+            "kind": "deposit",
+        }
+    )
+    payment["trust_posted"] = True
+    return True
+
+
+def commit_concurrent_processor_creates(policy: dict, operation: dict, calls: list[dict]) -> tuple[dict, list[dict]]:
+    """Concurrent creates share one empty store. The unique initialization key admits one insert."""
+    store = {"payments": {}, "ledger": [], "idempotency": {}}
+    results = [processor_apply(store, policy, operation, call) for call in calls]
+    return store, results
+
+
+_FIELD_VALUE_KEY = {
+    "text": "text",
+    "long_text": "long_text",
+    "number": "number",
+    "money": "money_cents",
+    "date": "date",
+    "boolean": "boolean",
+    "pick_list": "pick",
+    "contact": "contact_id",
+}
+
+
+def custom_fields_outcome(record_type: str, body: dict, definitions: list[dict], *, practice_area_id: str | None = None, visible_contact_ids: set | None = None) -> str:
+    supplied = body.get("custom_fields") or []
+    by_id = {item["id"]: item for item in definitions}
+    seen: set = set()
+    for value in supplied:
+        definition = by_id.get(value.get("definition_id"))
+        if definition is None or definition.get("key") != value.get("key"):
+            return "validation_failed"
+        if definition.get("retired") or definition.get("record_type") != record_type:
+            return "validation_failed"
+        areas = definition.get("practice_area_ids") or []
+        if areas and practice_area_id not in areas:
+            return "validation_failed"
+        value_key = _FIELD_VALUE_KEY[definition["field_type"]]
+        present = [key for key in _FIELD_VALUE_KEY.values() if key in value]
+        if present != [value_key]:
+            return "validation_failed"
+        if definition["field_type"] == "pick_list" and value.get("pick") not in (definition.get("options") or []):
+            return "validation_failed"
+        if definition["field_type"] == "contact" and value.get("contact_id") not in (visible_contact_ids or set()):
+            return "not_found"
+        seen.add(definition["id"])
+    for definition in definitions:
+        if definition.get("retired") or definition.get("record_type") != record_type or not definition.get("required"):
+            continue
+        areas = definition.get("practice_area_ids") or []
+        if areas and practice_area_id not in areas:
+            continue
+        if definition["id"] not in seen:
+            return "validation_failed"
+    return "allowed"
+
+
+def custom_fields_batch(items: list[dict]) -> str:
+    """Validate every item before any record or custom value is written."""
+    for item in items:
+        result = custom_fields_outcome(
+            item["record_type"],
+            item["body"],
+            item["definitions"],
+            practice_area_id=item.get("practice_area_id"),
+            visible_contact_ids=item.get("visible_contact_ids"),
+        )
+        if result != "allowed":
+            return "batch_rejected"
+    return "allowed"
+
+
+def file_download_decision(operation: dict, call: dict) -> str:
+    access = operation["x-togavsu-access"]
+    if "file.downloaded" not in operation.get("x-togavsu-events", []):
+        return "missing_event"
+    if access.get("quarantine_confirmation") == "required" and not access.get("quarantine_confirmation_input"):
+        return "missing_confirm_input"
+    if call.get("attorney_only") and call.get("role") in ("staff", "client", "accountant"):
+        return "not_found"
+    if call.get("matter_walled") and not call.get("on_wall"):
+        return "not_found"
+    if call.get("role") == "client" and not call.get("shared"):
+        return "not_found"
+    if call.get("owner") == "other_client":
+        return "not_found"
+    if call.get("quarantined") and call.get("confirm") is not True:
+        return "quarantine_confirmation_required"
+    return "highlighted" if call.get("role") == "client" else "audited"
+
+
+def mcp_credential_rejection(arguments: dict) -> str | None:
+    if any(name in arguments for name in ("Authorization", "Host", "roles")):
+        return "forbidden"
+    headers = arguments.get("headers") or {}
+    if any(str(name).lower() in {"authorization", "host"} for name in headers):
+        return "forbidden"
+    return None
 
 
 def published_version_events(operation: dict, *, committed: bool, version_count: int = 0) -> list[str]:
@@ -540,7 +837,3 @@ def published_version_events(operation: dict, *, committed: bool, version_count:
     if publication["event"] not in operation.get("x-togavsu-events", []):
         return []
     return [publication["event"]] * version_count
-
-
-def copy_policy() -> dict:
-    return copy.deepcopy(PAYMENT_PROCESSOR)

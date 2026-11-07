@@ -11,13 +11,14 @@
     "name": "getMatter",
     "arguments": {
       "path": {"matter_id": "018f..."},
-      "query": {"include": "matter-clock.targets"}
+      "query": {"include": "matter-clock.targets"},
+      "context_token": "signed-context"
     }
   }
 }
 ```
 
-`name` is the OpenAPI `operationId`. Arguments use one shape: `path` and `query` objects, then `idempotency_key` on writes, `headers` when the operation has header parameters, `body` for JSON, and `body_base64` for raw octets. `x-togavsu-mcp.transfer.arguments` lists those keys in that order, and `mcp-tools.json` copies the same object. A failure sets the JSON-RPC error `data` to the problem+json body.
+`name` is the OpenAPI `operationId`. Arguments use one shape: `path` and `query` objects, then `idempotency_key` on writes, `headers` when the operation has header parameters, `body` for JSON, and `body_base64` for raw octets. A delegated call adds `context_token`, forwarded only as `X-Togavsu-Context-Token`. A noninteractive call also adds `task_authorization`, forwarded only as `X-Togavsu-Task-Authorization`. Those arguments do not accept `Authorization`, `Host`, or a `roles` list. The viewer role comes from the verified context token. `x-togavsu-mcp.transfer.arguments` lists those keys in that order, and `mcp-tools.json` copies the same object. A failure sets the JSON-RPC error `data` to the problem+json body.
 
 Chunk upload:
 
@@ -33,7 +34,8 @@ Chunk upload:
       "query": {},
       "idempotency_key": "chunk-0",
       "headers": {"Content-Range": "bytes 0-8388607/9000000"},
-      "body_base64": "AAECAw=="
+      "body_base64": "AAECAw==",
+      "context_token": "signed-context"
     }
   }
 }

@@ -787,6 +787,26 @@ def _attach_mcp_transfer(operation: dict) -> None:
     if headers:
         arguments.append("headers")
         transfer["headers"] = headers
+    access = operation.get("x-togavsu-access") or {}
+    delegation = access.get("module_delegation")
+    credentials: dict = {}
+    if delegation in ("delegated_viewer", "delegated_viewer_or_noninteractive"):
+        credentials["context_token"] = {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": False,
+        }
+        arguments.append("context_token")
+    if delegation == "delegated_viewer_or_noninteractive":
+        credentials["task_authorization"] = {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": False,
+        }
+        arguments.append("task_authorization")
+    if credentials:
+        transfer["credentials"] = credentials
+        transfer["forbidden_header_overrides"] = ["Authorization", "Host"]
     content = operation.get("requestBody", {}).get("content", {})
     if "application/json" in content and "multipart/form-data" in content:
         arguments.extend(["body", "package_base64"])

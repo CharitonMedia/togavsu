@@ -687,13 +687,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -717,6 +729,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -729,6 +752,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1160,6 +1184,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -1169,7 +1204,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1192,6 +1228,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1204,6 +1251,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1227,13 +1275,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1256,6 +1316,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1268,6 +1339,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1291,6 +1363,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1298,7 +1381,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -1322,13 +1406,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1352,6 +1448,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1364,6 +1471,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1387,13 +1495,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1416,6 +1536,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1428,6 +1559,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1451,13 +1583,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1480,6 +1624,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1492,6 +1647,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1516,6 +1672,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1528,6 +1695,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1551,13 +1719,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1580,6 +1760,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1592,6 +1783,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1615,13 +1807,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1644,6 +1848,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1656,6 +1871,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1680,6 +1896,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1692,6 +1919,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1715,13 +1943,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1744,6 +1984,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1756,6 +2007,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1779,13 +2031,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1808,6 +2072,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1820,6 +2095,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1844,6 +2120,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1856,6 +2143,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1879,13 +2167,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1908,6 +2208,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1920,6 +2231,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -1943,13 +2255,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -1972,6 +2296,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -1984,6 +2319,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2008,6 +2344,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2020,6 +2367,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2043,6 +2391,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2055,6 +2414,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2080,6 +2440,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -2089,7 +2460,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2114,6 +2486,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2126,6 +2509,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2151,13 +2535,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2182,6 +2578,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2194,6 +2601,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2219,6 +2627,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2226,7 +2645,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -2252,13 +2672,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2284,6 +2716,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2296,6 +2739,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2319,13 +2763,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2348,6 +2804,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2360,6 +2827,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2382,6 +2850,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2394,6 +2873,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2417,6 +2897,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2429,6 +2920,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2452,13 +2944,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2481,13 +2985,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2510,13 +3026,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2539,6 +3067,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2551,6 +3090,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2574,13 +3114,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2603,6 +3155,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2615,6 +3178,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2639,6 +3203,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2651,6 +3226,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2672,6 +3248,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2684,6 +3271,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2705,13 +3293,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2734,13 +3334,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2763,6 +3375,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2775,6 +3398,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2798,13 +3422,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -2827,6 +3463,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2839,6 +3486,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -2862,13 +3510,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "empty"
         },
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -2892,6 +3552,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -2904,6 +3575,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3051,13 +3723,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3080,6 +3764,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3092,6 +3787,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3115,13 +3811,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3144,6 +3852,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3156,6 +3875,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3180,13 +3900,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3210,6 +3942,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3222,6 +3965,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3245,13 +3989,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3274,6 +4030,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3286,6 +4053,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3309,13 +4077,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3338,6 +4118,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3350,6 +4141,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3373,6 +4165,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3380,7 +4183,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -3404,6 +4208,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3416,6 +4231,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3439,13 +4255,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3468,6 +4296,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3480,6 +4319,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3503,13 +4343,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3532,6 +4384,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3544,6 +4407,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3568,6 +4432,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3580,6 +4455,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -3603,6 +4479,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3610,7 +4497,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -3633,13 +4521,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3662,13 +4562,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -3690,6 +4602,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -3702,6 +4625,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4745,6 +5669,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4757,6 +5692,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4780,6 +5716,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4792,6 +5739,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4815,6 +5763,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4827,6 +5786,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4854,6 +5814,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4866,6 +5837,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4889,6 +5861,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4901,6 +5884,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4925,6 +5909,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -4934,7 +5929,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -4957,6 +5953,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -4969,6 +5976,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -4993,13 +6001,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5022,6 +6042,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5034,6 +6065,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5059,13 +6091,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5089,6 +6133,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5101,6 +6156,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5124,13 +6180,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5153,6 +6221,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5165,6 +6244,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5188,13 +6268,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5217,6 +6309,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5224,7 +6327,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -5247,6 +6351,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5254,7 +6369,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -5277,6 +6393,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5284,7 +6411,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -5308,6 +6436,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -5317,7 +6456,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5340,6 +6480,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5352,6 +6503,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5376,13 +6528,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5405,6 +6569,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5417,6 +6592,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5442,13 +6618,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5472,6 +6660,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5484,6 +6683,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5509,6 +6709,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -5518,7 +6729,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5543,13 +6755,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5572,6 +6796,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5584,6 +6819,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5610,13 +6846,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5640,6 +6888,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5652,6 +6911,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5675,6 +6935,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5687,6 +6958,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5709,6 +6981,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5716,7 +6999,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -5738,6 +7022,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5750,6 +7045,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5775,13 +7071,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "base64",
           "media_type": "application/pdf"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5803,6 +7111,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5815,6 +7134,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5838,6 +7158,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5850,6 +7181,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5873,6 +7205,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5885,6 +7228,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5909,6 +7253,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5921,6 +7276,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -5946,6 +7302,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -5955,7 +7322,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -5979,6 +7347,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -5991,6 +7375,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -6016,13 +7402,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6047,6 +7445,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6059,6 +7468,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6082,6 +7492,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6094,6 +7515,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6117,6 +7539,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6129,6 +7567,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -6151,6 +7591,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6163,6 +7614,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6187,13 +7639,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6216,6 +7680,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6228,6 +7703,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6253,6 +7729,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6262,7 +7749,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6287,6 +7775,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6296,7 +7795,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6321,6 +7821,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6330,7 +7841,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6355,6 +7867,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6364,7 +7887,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6389,6 +7913,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6398,7 +7933,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6423,6 +7959,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6432,7 +7979,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6457,6 +8005,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6466,7 +8025,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6491,6 +8051,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6500,7 +8071,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6525,6 +8097,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6534,7 +8117,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6558,6 +8142,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -6567,7 +8162,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6591,13 +8187,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6618,6 +8226,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6630,6 +8249,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6654,13 +8274,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6681,6 +8313,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6693,6 +8336,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6718,13 +8362,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6749,6 +8405,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6761,6 +8428,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6786,13 +8454,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6818,6 +8498,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6830,6 +8521,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6852,6 +8544,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6864,6 +8567,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -6888,13 +8592,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6918,13 +8634,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6948,13 +8676,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -6976,6 +8716,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -6988,6 +8739,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7012,13 +8764,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7041,6 +8805,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7053,6 +8828,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7077,13 +8853,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7107,6 +8895,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7119,6 +8918,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7142,6 +8942,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7149,7 +8960,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -7172,6 +8984,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7179,7 +9002,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -7203,13 +9027,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7232,6 +9068,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7244,6 +9091,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7268,13 +9116,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7298,6 +9158,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7310,6 +9181,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7333,13 +9205,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7362,6 +9246,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7374,6 +9269,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7397,13 +9293,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7426,6 +9334,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7438,6 +9357,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7461,13 +9381,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "empty"
         },
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -7491,6 +9423,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7503,6 +9446,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7526,13 +9470,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7555,6 +9511,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7567,6 +9534,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7590,13 +9558,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7619,6 +9599,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7631,6 +9622,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7655,6 +9647,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7667,6 +9670,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7690,6 +9694,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7702,6 +9717,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7725,13 +9741,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7754,6 +9782,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7766,6 +9805,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7789,13 +9829,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7818,6 +9870,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7825,7 +9888,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -7873,6 +9937,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -7882,7 +9957,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -7907,6 +9983,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7919,6 +10006,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -7944,13 +10032,31 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token",
+          "task_authorization"
         ]
       }
     },
@@ -7973,6 +10079,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -7985,6 +10102,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8010,6 +10128,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8022,6 +10151,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8045,6 +10175,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8057,6 +10198,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8080,6 +10222,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8092,6 +10245,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8115,6 +10269,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8127,6 +10292,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8150,6 +10316,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8157,7 +10334,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8180,6 +10358,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8187,7 +10376,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8208,6 +10398,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8219,6 +10420,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8244,13 +10446,31 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token",
+          "task_authorization"
         ]
       }
     },
@@ -8274,6 +10494,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8286,6 +10517,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8312,13 +10544,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8344,13 +10588,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8374,6 +10630,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8386,6 +10658,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -8412,13 +10686,31 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "base64",
           "media_type": "application/octet-stream"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token",
+          "task_authorization"
         ]
       }
     },
@@ -8441,6 +10733,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8448,7 +10751,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8471,6 +10775,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8483,6 +10803,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -8508,13 +10830,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8539,13 +10873,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "base64",
           "media_type": "application/octet-stream"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8569,6 +10915,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8581,6 +10938,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8605,13 +10963,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8638,6 +11008,17 @@
         "headers": [
           "Content-Range"
         ],
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "base64",
           "media_type": "application/octet-stream"
@@ -8651,6 +11032,7 @@
           "query",
           "idempotency_key",
           "headers",
+          "context_token",
           "body_base64"
         ]
       }
@@ -8675,6 +11057,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8682,7 +11075,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8707,6 +11101,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8719,6 +11124,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8742,13 +11148,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8771,6 +11189,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8783,6 +11212,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8806,13 +11236,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -8835,6 +11277,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8847,6 +11300,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -8870,13 +11324,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "empty"
         },
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8900,6 +11366,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8907,7 +11384,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8930,13 +11408,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "empty"
         },
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8959,6 +11449,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -8966,7 +11467,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -8990,13 +11492,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9019,13 +11533,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9048,6 +11574,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9060,6 +11597,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9083,6 +11621,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9095,6 +11644,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9118,13 +11668,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9147,6 +11709,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9159,6 +11732,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9182,13 +11756,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9211,6 +11797,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9223,6 +11820,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9245,6 +11843,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9252,7 +11861,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -9273,13 +11883,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9300,6 +11922,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9312,6 +11945,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9333,13 +11967,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9360,6 +12006,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9372,6 +12029,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9393,6 +12051,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9400,7 +12069,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -9421,13 +12091,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9448,6 +12130,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9460,6 +12153,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9481,13 +12175,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9508,6 +12214,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9515,7 +12232,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -9538,13 +12256,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9567,13 +12297,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9595,6 +12337,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9602,7 +12355,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -9624,13 +12378,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9652,13 +12418,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9680,6 +12458,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9692,6 +12481,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9715,13 +12505,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9744,13 +12546,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9771,6 +12585,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9783,6 +12608,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9806,13 +12632,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9833,6 +12671,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9845,6 +12694,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9868,13 +12718,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9895,6 +12757,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -9907,6 +12780,7 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
           "body"
         ]
       }
@@ -9930,13 +12804,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -9991,13 +12877,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10020,6 +12918,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -10032,6 +12946,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -10057,13 +12973,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10088,6 +13016,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -10095,7 +13034,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -10120,13 +13060,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "empty"
         },
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "context_token"
         ]
       }
     },
@@ -10180,13 +13132,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10210,13 +13174,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10241,13 +13217,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10271,13 +13259,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10301,13 +13301,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10331,13 +13343,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10362,13 +13386,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10393,13 +13429,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10424,13 +13472,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10454,13 +13514,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10484,13 +13556,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10923,13 +14007,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -10986,13 +14082,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11076,13 +14184,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11139,13 +14259,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11229,13 +14361,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11260,6 +14404,17 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "per_media_type",
           "media_types": {
@@ -11269,7 +14424,8 @@
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11294,13 +14450,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "base64",
           "media_type": "application/pdf"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11324,13 +14492,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11441,13 +14621,25 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "result": {
           "encoding": "json",
           "media_type": "application/json"
         },
         "arguments": [
           "path",
-          "query"
+          "query",
+          "context_token"
         ]
       }
     },
@@ -11470,6 +14662,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -11482,6 +14690,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -11506,6 +14716,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -11518,6 +14744,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -11861,6 +15089,22 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
         "body": {
           "encoding": "json",
           "media_type": "application/json"
@@ -11873,6 +15117,8 @@
           "path",
           "query",
           "idempotency_key",
+          "context_token",
+          "task_authorization",
           "body"
         ]
       }

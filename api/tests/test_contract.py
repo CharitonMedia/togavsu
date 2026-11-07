@@ -22,9 +22,15 @@ from contract.build import (
     render_mcp,
 )
 from contract.policy import (
+    commit_concurrent_processor_creates,
+    custom_fields_batch,
+    custom_fields_outcome,
+    file_download_decision,
     is_core_file_download,
+    mcp_credential_rejection,
     payment_effect_decision,
     payment_reversal_decision,
+    processor_apply,
     processor_callback,
     processor_issuance,
     published_version_events,
@@ -902,8 +908,11 @@ class ContractTest(unittest.TestCase):
         from pathlib import Path
 
         matter = _operation(self.spec, "getMatter")["x-togavsu-mcp"]["transfer"]
-        self.assertEqual(matter["arguments"], ["path", "query"])
+        self.assertEqual(matter["arguments"], ["path", "query", "context_token"])
         self.assertNotIn("matter_id", matter["arguments"])
+        self.assertEqual(matter["credentials"]["context_token"]["header"], "X-Togavsu-Context-Token")
+        self.assertFalse(matter["credentials"]["context_token"]["roles_from_arguments"])
+        self.assertEqual(matter["forbidden_header_overrides"], ["Authorization", "Host"])
         chunk = _operation(self.spec, "putFileChunk")["x-togavsu-mcp"]["transfer"]["arguments"]
         self.assertEqual(chunk[:2], ["path", "query"])
         self.assertIn("headers", chunk)
@@ -913,7 +922,7 @@ class ContractTest(unittest.TestCase):
         blocks = [json.loads(part.split("```", 1)[0]) for part in text.split("```json\n")[1:]]
         get_args = blocks[0]["params"]["arguments"]
         put_args = blocks[1]["params"]["arguments"]
-        self.assertEqual(set(get_args), {"path", "query"})
+        self.assertEqual(set(get_args), {"path", "query", "context_token"})
         self.assertIn("matter_id", get_args["path"])
         self.assertIn("include", get_args["query"])
         self.assertEqual(set(put_args), set(chunk))
@@ -1236,6 +1245,12 @@ class ContractTest(unittest.TestCase):
             ({"role": "staff", "shared": True, "attorney_only": False, "matter_walled": True, "on_wall": False}, "not_found"),
         ]
         for _method, path, operation in found:
+            confirm = operation["x-togavsu-access"].get("quarantine_confirmation_input")
+            self.assertIsNotNone(confirm, operation["operationId"])
+            self.assertIn(confirm["name"], ("confirm", "confirm_quarantine"), operation["operationId"])
+            if confirm["in"] == "query":
+                names = [parameter.get("name") for parameter in operation.get("parameters", [])]
+                self.assertIn(confirm["name"], names, (operation["operationId"], path))
             for call, expected in calls:
                 self.assertEqual(_download_outcome(operation, call), expected, (operation["operationId"], path, call["role"]))
 
@@ -1473,9 +1488,12 @@ class ContractTest(unittest.TestCase):
         reverse = _operation(self.spec, "reversePayment")
         self.assertEqual(reverse["x-togavsu-domain-dispatch"]["applies_when"], "payment_has_trust_entry")
         self.assertEqual(reverse["x-togavsu-access"]["scopes"], ["payments:write"])
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        accounts = [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}]
+        trust_ok = {"trust_account_id": account, "trust_accounts": accounts, "firm_id": "firm-1"}
         cases = [
             ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False}, "allowed", False, False),
-            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True}, "allowed", True, True),
+            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok}, "allowed", True, True),
             ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
             ({"role": "attorney", "token_scopes": ["trust:withdraw"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
             ({"role": "staff", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False}, "forbidden", False, False),
@@ -1495,11 +1513,19 @@ class ContractTest(unittest.TestCase):
                 self.assertTrue(decision["amount_unchanged"])
         trust = payment_reversal_decision(
             reverse,
-            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True},
+            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True, **trust_ok},
         )
         self.assertTrue(trust["ledger_append_only"])
         self.assertFalse(trust["original_trust_edited"])
         self.assertEqual(trust["trust_posted_by"], "trust_handler")
+        self.assertEqual(trust["trust_account_id"], account)
+        mismatched = payment_reversal_decision(
+            reverse,
+            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "reversal_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002", **trust_ok},
+        )
+        self.assertEqual(mismatched["result"], "forbidden")
+        self.assertFalse(mismatched["payment_mutated"])
+        self.assertFalse(mismatched["ledger_mutated"])
         operating = payment_reversal_decision(
             reverse,
             {"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False},
@@ -1511,14 +1537,14 @@ class ContractTest(unittest.TestCase):
         writes = [
             (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "operating", "status": "completed"}, "allowed", False),
             (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed"}, "scope_denied", False),
-            (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed"}, "allowed", True),
-            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "pending"}, "allowed", False),
+            (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", **trust_ok}, "allowed", True),
+            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "pending", **trust_ok}, "allowed", False),
             (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "matter_walled": True, "on_wall": False}, "not_found", False),
             (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": False}, "scope_denied", False),
-            (status, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "trust_already_posted": False}, "allowed", True),
-            (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": True}, "allowed", False),
+            (status, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "trust_already_posted": False, **trust_ok}, "allowed", True),
+            (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": True, **trust_ok}, "allowed", False),
             (bulk, {"role": "staff", "token_scopes": ["payments:write"], "items": [{"destination": "operating", "status": "completed"}, {"destination": "trust", "status": "completed"}]}, "scope_denied", False),
-            (bulk, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "items": [{"destination": "operating", "status": "completed"}, {"destination": "trust", "status": "completed"}]}, "allowed", True),
+            (bulk, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "trust_accounts": accounts, "firm_id": "firm-1", "items": [{"destination": "operating", "status": "completed"}, {"destination": "trust", "status": "completed", "trust_account_id": account}]}, "allowed", True),
         ]
         for operation, call, result, ledger in writes:
             decision = payment_effect_decision(operation, call)
@@ -1558,11 +1584,13 @@ class ContractTest(unittest.TestCase):
         initialization = {
             "processor_module_id": "lawpay",
             "initialization_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa",
+            "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb",
             "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
             "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
             "invoice_id": None,
             "amount_cents": 2500,
             "destination": "operating",
+            "trust_account_id": None,
             "caller_scopes": ["payments:write"],
             "expires_at": "2026-11-07T18:00:00Z",
             "matter_walled": False,
@@ -1571,7 +1599,8 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(issued["result"], "allowed")
         self.assertFalse(issued["payment_mutated"])
         self.assertFalse(issued["ledger_mutated"])
-        self.assertIsNone(issued["grant"]["payment_id"])
+        self.assertEqual(issued["grant"]["payment_id"], initialization["reserved_payment_id"])
+        self.assertIsNone(issued["grant"]["trust_account_id"])
         Draft202012Validator(self.spec["components"]["schemas"]["ProcessorAuthorization"]).validate(issued["grant"])
         with self.assertRaises(Exception):
             Draft202012Validator(self.spec["components"]["schemas"]["ProcessorAuthorization"]).validate({**issued["grant"], "admin": True})
@@ -1594,55 +1623,34 @@ class ContractTest(unittest.TestCase):
         denied_module = processor_issuance(policy, module, {**trust_init, "caller_scopes": ["payments:write", "trust:write"]})
         self.assertEqual(denied_module["result"], "scope_denied")
         self.assertFalse(denied_module["payment_mutated"])
+        trust_account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        trust_accounts = [{"id": trust_account, "active": True, "authorized": True, "firm_id": "firm-1"}]
         trust_issued = processor_issuance(
             policy,
             trust_module,
-            {**trust_init, "caller_scopes": ["payments:write", "trust:write"]},
+            {
+                **trust_init,
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-cccccccccccc",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-dddddddddddd",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "trust_account_id": trust_account,
+                "trust_accounts": trust_accounts,
+                "firm_id": "firm-1",
+            },
         )
         self.assertEqual(trust_issued["result"], "allowed")
         self.assertFalse(trust_issued["payment_mutated"])
 
-        payments = []
-        ledger = []
-        seen = {}
+        store = {"payments": {}, "ledger": [], "idempotency": {}}
 
         def callback(operation_id, call):
             operation = _operation(self.spec, operation_id)
-            before = (len(payments), len(ledger), [dict(item) for item in payments])
-            key = call.get("idempotency_key")
-            body = tuple(sorted((name, call.get(name)) for name in ("amount_cents", "matter_id", "destination", "status", "payment_id")))
-            if key and key in seen:
-                if seen[key] != body:
-                    self.assertEqual((len(payments), len(ledger)), before[:2])
-                    return policy["idempotency_conflict"]
-                return policy["idempotency_replay"]
-            code = processor_callback(policy, operation, call)
-            if code != "allowed":
-                self.assertEqual(len(payments), before[0], call)
-                self.assertEqual(len(ledger), before[1], call)
-                self.assertEqual(payments, before[2], call)
-                return code
-            if operation_id == "createPayment":
-                payments.append(
-                    {
-                        "id": f"pay-{len(payments) + 1}",
-                        "amount_cents": call["amount_cents"],
-                        "matter_id": call["matter_id"],
-                        "destination": call["destination"],
-                        "status": call.get("status", "pending"),
-                    }
-                )
-                call["grant"]["payment_id"] = payments[-1]["id"]
-            else:
-                payment = next(item for item in payments if item["id"] == call["payment_id"])
-                payment["status"] = call["status"]
-            if call.get("posts_trust"):
-                payment_id = payments[-1]["id"] if operation_id == "createPayment" else call["payment_id"]
-                if not any(row["payment_id"] == payment_id for row in ledger):
-                    ledger.append({"payment_id": payment_id, "kind": "deposit"})
-            if key:
-                seen[key] = body
-            return code
+            before = (len(store["payments"]), len(store["ledger"]))
+            outcome = processor_apply(store, policy, operation, {**call, "operation": operation_id})
+            if outcome["result"] != "allowed":
+                self.assertEqual(len(store["payments"]), before[0], call)
+                self.assertEqual(len(store["ledger"]), before[1], call)
+            return outcome["result"]
 
         grant = issued["grant"]
         base = {
@@ -1660,23 +1668,23 @@ class ContractTest(unittest.TestCase):
             "status": "pending",
         }
         self.assertEqual(callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1"}), "allowed")
-        self.assertEqual(len(payments), 1)
-        self.assertEqual(ledger, [])
+        self.assertEqual(len(store["payments"]), 1)
+        self.assertEqual(store["ledger"], [])
         self.assertFalse(base["viewer_present"])
         self.assertEqual(callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1"}), "original_result")
-        self.assertEqual(len(payments), 1)
+        self.assertEqual(len(store["payments"]), 1)
         self.assertEqual(
             callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1", "status": "completed"}),
             "idempotency_conflict",
         )
-        self.assertEqual(len(payments), 1)
+        self.assertEqual(len(store["payments"]), 1)
         bound = grant["payment_id"]
         self.assertEqual(
             callback("updatePaymentStatus", {**base, "operation": "updatePaymentStatus", "payment_id": bound, "status": "completed", "field": "status"}),
             "allowed",
         )
-        self.assertEqual(payments[0]["status"], "completed")
-        self.assertEqual(ledger, [])
+        self.assertEqual(next(iter(store["payments"].values()))["status"], "completed")
+        self.assertEqual(store["ledger"], [])
         denied = [
             ("amount", {**base, "operation": "createPayment", "amount_cents": 1}, "forbidden"),
             ("matter", {**base, "operation": "createPayment", "matter_id": "018f1a00-7b3c-7d4e-8a11-999999999999"}, "not_found"),
@@ -1695,43 +1703,409 @@ class ContractTest(unittest.TestCase):
         ]
         for label, call, expected in denied:
             self.assertEqual(callback(call["operation"], call), expected, label)
-        self.assertEqual(len(payments), 1)
-        self.assertEqual(payments[0]["status"], "completed")
-        self.assertEqual(payments[0]["amount_cents"], 2500)
-        self.assertEqual(ledger, [])
+        self.assertEqual(len(store["payments"]), 1)
+        saved = next(iter(store["payments"].values()))
+        self.assertEqual(saved["status"], "completed")
+        self.assertEqual(saved["amount_cents"], 2500)
+        self.assertEqual(store["ledger"], [])
 
         trust_grant = trust_issued["grant"]
         trust_base = {
             **base,
             "grant": trust_grant,
             "destination": "trust",
+            "trust_account_id": trust_account,
+            "trust_accounts": trust_accounts,
+            "firm_id": "firm-1",
             "module_scopes": ["payments:write", "trust:write"],
-            "posts_trust": False,
             "status": "pending",
         }
         self.assertEqual(callback("createPayment", {**trust_base, "operation": "createPayment"}), "allowed")
-        self.assertEqual(len(ledger), 0)
+        self.assertEqual(len(store["ledger"]), 0)
         trust_payment = trust_grant["payment_id"]
         self.assertEqual(
             callback(
                 "updatePaymentStatus",
-                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "posts_trust": True},
+                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed"},
             ),
             "allowed",
         )
-        self.assertEqual(len(ledger), 1)
+        self.assertEqual(len(store["ledger"]), 1)
+        self.assertEqual(store["ledger"][0]["trust_account_id"], trust_account)
         self.assertEqual(
             callback(
                 "updatePaymentStatus",
-                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "posts_trust": False},
+                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed"},
             ),
-            "allowed",
+            "original_result",
         )
-        self.assertEqual(len(ledger), 1)
-        bare = {**trust_base, "operation": "createPayment", "posts_trust": True, "status": "completed", "module_scopes": ["payments:write"], "grant": {**trust_grant, "payment_id": None}}
+        self.assertEqual(len(store["ledger"]), 1)
+        bare = {**trust_base, "operation": "createPayment", "status": "completed", "module_scopes": ["payments:write"], "grant": {**trust_grant, "payment_id": None}}
         self.assertEqual(callback("createPayment", bare), "scope_denied")
-        self.assertEqual(len(payments), 2)
-        self.assertEqual(len(ledger), 1)
+        self.assertEqual(len(store["payments"]), 2)
+        self.assertEqual(len(store["ledger"]), 1)
+
+    def test_processor_initialization_binds_one_payment(self):
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
+        self.assertTrue(policy["binding"]["idempotency_independent"])
+        self.assertEqual(policy["binding"]["cardinality"], "one_payment_per_initialization")
+        module = {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write", "trust:write"]}
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        other = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002"
+        accounts = [
+            {"id": account, "active": True, "authorized": True, "firm_id": "firm-1"},
+            {"id": other, "active": True, "authorized": True, "firm_id": "firm-1"},
+            {"id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00003", "active": False, "authorized": True, "firm_id": "firm-1"},
+            {"id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00004", "active": True, "authorized": False, "firm_id": "firm-1"},
+            {"id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00005", "active": True, "authorized": True, "firm_id": "other-firm"},
+        ]
+        issued = processor_issuance(
+            policy,
+            module,
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeeee",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-ffffffffffff",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                "invoice_id": None,
+                "amount_cents": 4000,
+                "destination": "trust",
+                "trust_account_id": account,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        self.assertEqual(issued["result"], "allowed")
+        self.assertFalse(issued["payment_mutated"])
+        grant = issued["grant"]
+        create = _operation(self.spec, "createPayment")
+        store = {"payments": {}, "ledger": [], "idempotency": {}}
+        call = {
+            "operation": "createPayment",
+            "registered": True,
+            "caller_module_id": "lawpay",
+            "module_scopes": ["payments:write", "trust:write"],
+            "grant": grant,
+            "matter_id": grant["matter_id"],
+            "contact_id": grant["contact_id"],
+            "invoice_id": None,
+            "amount_cents": 4000,
+            "destination": "trust",
+            "trust_account_id": account,
+            "trust_accounts": accounts,
+            "firm_id": "firm-1",
+            "status": "completed",
+            "viewer_present": False,
+        }
+        first = processor_apply(store, policy, create, call)
+        self.assertEqual(first["result"], "allowed")
+        self.assertTrue(first["payment_inserted"])
+        self.assertTrue(first["ledger_inserted"])
+        self.assertEqual(len(store["payments"]), 1)
+        self.assertEqual(len(store["ledger"]), 1)
+        self.assertEqual(store["ledger"][0]["trust_account_id"], account)
+        for label, patch in (
+            ("same-key", {"idempotency_key": "same"}),
+            ("other-key", {"idempotency_key": "other"}),
+            ("omitted-key", {}),
+        ):
+            again = processor_apply(store, policy, create, {**call, **patch})
+            self.assertEqual(again["result"], "original_result", label)
+            self.assertFalse(again["payment_inserted"], label)
+            self.assertFalse(again["ledger_inserted"], label)
+            self.assertEqual(len(store["payments"]), 1, label)
+            self.assertEqual(len(store["ledger"]), 1, label)
+        changed = processor_apply(store, policy, create, {**call, "idempotency_key": "fresh", "reference_note": "x", "status": "pending"})
+        self.assertEqual(changed["result"], "conflict")
+        self.assertFalse(changed["payment_inserted"])
+        self.assertEqual(len(store["ledger"]), 1)
+        raced, results = commit_concurrent_processor_creates(
+            policy,
+            create,
+            [{**call, "idempotency_key": "race-a"}, {**call, "idempotency_key": "race-b"}],
+        )
+        self.assertEqual(len(raced["payments"]), 1)
+        self.assertEqual(len(raced["ledger"]), 1)
+        self.assertEqual(sum(1 for item in results if item["payment_inserted"]), 1)
+        status = _operation(self.spec, "updatePaymentStatus")
+        repeat = processor_apply(
+            store,
+            policy,
+            status,
+            {**call, "operation": "updatePaymentStatus", "payment_id": grant["payment_id"], "status": "completed"},
+        )
+        self.assertEqual(repeat["result"], "original_result")
+        self.assertFalse(repeat["ledger_inserted"])
+        self.assertEqual(len(store["ledger"]), 1)
+        for label, init_patch, expected in (
+            ("missing-account", {"trust_account_id": None}, "validation_failed"),
+            ("unknown-account", {"trust_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00009"}, "not_found"),
+            ("inactive", {"trust_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00003"}, "forbidden"),
+            ("unauthorized", {"trust_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00004"}, "forbidden"),
+            ("cross-firm", {"trust_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00005"}, "not_found"),
+            ("operating-with-account", {"destination": "operating", "trust_account_id": account, "caller_scopes": ["payments:write"]}, "validation_failed"),
+        ):
+            denied = processor_issuance(
+                policy,
+                module if init_patch.get("destination", "trust") == "trust" else {**module, "approved_scopes": ["payments:write"]},
+                {
+                    "processor_module_id": "lawpay",
+                    "initialization_id": "018f1a00-7b3c-7d4e-8a11-121212121212",
+                    "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-131313131313",
+                    "matter_id": grant["matter_id"],
+                    "contact_id": grant["contact_id"],
+                    "amount_cents": 4000,
+                    "destination": "trust",
+                    "trust_accounts": accounts,
+                    "firm_id": "firm-1",
+                    "caller_scopes": ["payments:write", "trust:write"],
+                    "expires_at": "2026-11-07T18:00:00Z",
+                    **init_patch,
+                },
+            )
+            self.assertEqual(denied["result"], expected, label)
+            self.assertIsNone(denied["grant"], label)
+            self.assertFalse(denied["payment_mutated"], label)
+            self.assertFalse(denied["ledger_mutated"], label)
+        second = processor_issuance(
+            policy,
+            module,
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-141414141414",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-151515151515",
+                "matter_id": grant["matter_id"],
+                "contact_id": grant["contact_id"],
+                "amount_cents": 900,
+                "destination": "trust",
+                "trust_account_id": other,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        other_store = {"payments": {}, "ledger": [], "idempotency": {}}
+        other_call = {**call, "grant": second["grant"], "amount_cents": 900, "trust_account_id": other}
+        placed = processor_apply(other_store, policy, create, other_call)
+        self.assertEqual(placed["result"], "allowed")
+        self.assertEqual(other_store["ledger"][0]["trust_account_id"], other)
+        self.assertNotEqual(store["ledger"][0]["trust_account_id"], other_store["ledger"][0]["trust_account_id"])
+        from jsonschema import Draft202012Validator
+
+        operating_body = {
+            "contact_id": grant["contact_id"],
+            "matter_id": grant["matter_id"],
+            "amount_cents": 4000,
+            "destination": "operating",
+            "method": "card",
+        }
+        trust_body = {**operating_body, "destination": "trust", "trust_account_id": account}
+        write = _component_validator(self.spec, "PaymentWrite")
+        init_write = _component_validator(self.spec, "ProcessorInitializationWrite")
+        write.validate(operating_body)
+        write.validate(trust_body)
+        init_write.validate({"processor_module_id": "lawpay", "contact_id": grant["contact_id"], "matter_id": grant["matter_id"], "amount_cents": 4000, "destination": "operating"})
+        init_write.validate({"processor_module_id": "lawpay", "contact_id": grant["contact_id"], "matter_id": grant["matter_id"], "amount_cents": 4000, "destination": "trust", "trust_account_id": account})
+        for bad in ({**operating_body, "trust_account_id": account}, {**operating_body, "destination": "trust"}, {"processor_module_id": "lawpay", "contact_id": grant["contact_id"], "matter_id": grant["matter_id"], "amount_cents": 4000, "destination": "trust"}):
+            with self.assertRaises(Exception):
+                (init_write if "processor_module_id" in bad else write).validate(bad)
+
+    def test_custom_fields_are_written_with_the_record(self):
+        from jsonschema import Draft202012Validator
+
+        area = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00011"
+        other_area = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00012"
+        contact_id = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        veteran = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00021"
+        matter_pick = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00022"
+        time_note = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00023"
+        expense_link = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00024"
+        retired = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00025"
+        definitions = [
+            {"id": veteran, "key": "veteran", "record_type": "contact", "field_type": "boolean", "required": True, "practice_area_ids": [], "retired": False, "options": []},
+            {"id": matter_pick, "key": "case_kind", "record_type": "matter", "field_type": "pick_list", "required": True, "practice_area_ids": [area], "retired": False, "options": ["civil", "criminal"]},
+            {"id": time_note, "key": "phase", "record_type": "time_entry", "field_type": "text", "required": True, "practice_area_ids": [area], "retired": False, "options": []},
+            {"id": expense_link, "key": "vendor", "record_type": "expense", "field_type": "contact", "required": True, "practice_area_ids": [area], "retired": False, "options": []},
+            {"id": retired, "key": "old_flag", "record_type": "contact", "field_type": "boolean", "required": False, "practice_area_ids": [], "retired": True, "options": []},
+        ]
+        bodies = {
+            "contact": {"kind": "person", "given_name": "Ada", "custom_fields": [{"definition_id": veteran, "key": "veteran", "boolean": True}]},
+            "matter": {"name": "Smith", "practice_area_id": area, "billing_type": "hourly", "opened_on": "2026-11-01", "custom_fields": [{"definition_id": matter_pick, "key": "case_kind", "pick": "civil"}]},
+            "time_entry": {"matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333", "worked_on": "2026-11-02", "increments": 2, "description": "Hearing", "activity_type_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00031", "custom_fields": [{"definition_id": time_note, "key": "phase", "text": "prep"}]},
+            "expense": {"matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333", "incurred_on": "2026-11-03", "description": "Filing", "amount_cents": 2500, "expense_type_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00032", "custom_fields": [{"definition_id": expense_link, "key": "vendor", "contact_id": contact_id}]},
+        }
+        schema_names = {"contact": "ContactWrite", "matter": "MatterWrite", "time_entry": "TimeEntryWrite", "expense": "ExpenseWrite"}
+        record_types = {"contact": "contact", "matter": "matter", "time_entry": "time_entry", "expense": "expense"}
+        for kind, body in bodies.items():
+            _component_validator(self.spec, schema_names[kind]).validate(body)
+            self.assertFalse(self.spec["components"]["schemas"][schema_names[kind]].get("additionalProperties", True))
+            with self.assertRaises(Exception):
+                _component_validator(self.spec, schema_names[kind]).validate({**body, "not_a_field": True})
+            self.assertEqual(
+                custom_fields_outcome(record_types[kind], body, definitions, practice_area_id=area, visible_contact_ids={contact_id}),
+                "allowed",
+                kind,
+            )
+        denied = [
+            ("contact", {**bodies["contact"], "custom_fields": []}, "validation_failed"),
+            ("contact", {**bodies["contact"], "custom_fields": [{"definition_id": retired, "key": "old_flag", "boolean": False}]}, "validation_failed"),
+            ("contact", {**bodies["contact"], "custom_fields": [{"definition_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00999", "key": "veteran", "boolean": True}]}, "validation_failed"),
+            ("matter", bodies["matter"], "validation_failed"),
+            ("matter", {**bodies["matter"], "custom_fields": [{"definition_id": matter_pick, "key": "case_kind", "pick": "family"}]}, "validation_failed"),
+            ("expense", bodies["expense"], "not_found"),
+            ("time_entry", {**bodies["time_entry"], "custom_fields": [{"definition_id": time_note, "key": "phase", "number": 1}]}, "validation_failed"),
+        ]
+        for kind, body, expected in denied:
+            practice = other_area if kind == "matter" and body is bodies["matter"] else area
+            visible = set() if kind == "expense" and expected == "not_found" else {contact_id}
+            self.assertEqual(custom_fields_outcome(record_types[kind], body, definitions, practice_area_id=practice, visible_contact_ids=visible), expected, (kind, expected))
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "CustomFieldInput").validate({"definition_id": veteran, "key": "veteran", "boolean": True, "text": "no"})
+        items = [
+            {"record_type": "contact", "body": bodies["contact"], "definitions": definitions, "visible_contact_ids": {contact_id}},
+            {"record_type": "matter", "body": {**bodies["matter"], "custom_fields": []}, "definitions": definitions, "practice_area_id": area},
+        ]
+        written: list = []
+        if custom_fields_batch(items) == "allowed":
+            written.extend(items)
+        self.assertEqual(written, [])
+        self.assertEqual(custom_fields_batch(items), "batch_rejected")
+        good = [
+            {"record_type": record_types[kind], "body": bodies[kind], "definitions": definitions, "practice_area_id": area, "visible_contact_ids": {contact_id}}
+            for kind in bodies
+        ]
+        written = []
+        self.assertEqual(custom_fields_batch(good), "allowed")
+        if custom_fields_batch(good) == "allowed":
+            written.extend(good)
+        self.assertEqual(len(written), 4)
+        for operation_id, schema_name in (
+            ("bulkContact", "ContactWrite"),
+            ("bulkMatter", "MatterWrite"),
+            ("bulkTimeEntry", "TimeEntryWrite"),
+            ("bulkExpense", "ExpenseWrite"),
+        ):
+            operation = _operation(self.spec, operation_id)
+            item_schema = operation["requestBody"]["content"]["application/json"]["schema"]["properties"]["items"]["items"]["$ref"]
+            self.assertTrue(item_schema.endswith("/" + schema_name), operation_id)
+            self.assertIn("custom_fields", self.spec["components"]["schemas"][schema_name]["properties"])
+
+    def test_mcp_forwards_context_and_task_grants(self):
+        from contract.build import render_mcp
+
+        catalog = render_mcp(self.spec)
+        get_file = next(tool for tool in catalog["tools"] if tool["name"] == "getFile")
+        create = next(tool for tool in catalog["tools"] if tool["name"] == "createPayment")
+        for tool in (get_file, create):
+            self.assertEqual(tool["transfer"]["credentials"]["context_token"]["header"], "X-Togavsu-Context-Token")
+            self.assertEqual(tool["transfer"]["credentials"]["task_authorization"]["header"], "X-Togavsu-Task-Authorization")
+            self.assertFalse(tool["transfer"]["credentials"]["context_token"]["roles_from_arguments"])
+            self.assertFalse(tool["transfer"]["credentials"]["task_authorization"]["roles_from_arguments"])
+            self.assertNotIn("Authorization", tool["transfer"].get("headers") or [])
+            self.assertNotIn("Host", tool["transfer"].get("headers") or [])
+            self.assertIn("context_token", tool["transfer"]["arguments"])
+            self.assertIn("task_authorization", tool["transfer"]["arguments"])
+        self.assertEqual(mcp_credential_rejection({"roles": ["admin"]}), "forbidden")
+        self.assertEqual(mcp_credential_rejection({"Authorization": "Bearer stolen"}), "forbidden")
+        self.assertEqual(mcp_credential_rejection({"headers": {"Host": "evil.example"}}), "forbidden")
+        self.assertIsNone(mcp_credential_rejection({"context_token": "ctx", "task_authorization": {"module_id": "malware"}}))
+        malware = self.spec["x-togavsu-module-delegation"]["noninteractive"]["malware_scan"]
+        module = {
+            "registered": True,
+            "subscriptions": ["file.version_created"],
+            "module_id": "malware",
+            "recipient_id": "malware",
+            "file_id": "file-1",
+            "version_id": "ver-1",
+            "matter_id": "matter-1",
+        }
+        grant = _issue_malware_grant(malware, module)
+        operation = _operation(self.spec, "getFile")
+
+        def mcp_get(arguments, **overrides):
+            self.assertIsNone(mcp_credential_rejection(arguments))
+            task = arguments.get("task_authorization")
+            http_call = {
+                "registered": True,
+                "subscriptions": ["file.version_created"],
+                "caller_module_id": overrides.get("caller_module_id", "malware"),
+                "module_scopes": ["files:read", "files:write"],
+                "grant": task,
+                "matter_id": "matter-1",
+                "file_id": "file-1",
+                "version_id": "ver-1",
+                "viewer_present": "context_token" in arguments and task is None,
+                "operation": "getFile",
+                "field": "name",
+            }
+            return _malware_call(malware, operation, http_call)
+
+        allowed_args = {"context_token": "ctx", "task_authorization": grant, "path": {"file_id": "file-1"}, "query": {}}
+        self.assertEqual(mcp_get(allowed_args), "allowed")
+        self.assertEqual(mcp_get({"context_token": "ctx", "path": {}, "query": {}}), "forbidden")
+        self.assertEqual(mcp_get({"task_authorization": {**grant, "expired": True}}), "forbidden")
+        self.assertEqual(mcp_get({"task_authorization": grant}, caller_module_id="other-module"), "forbidden")
+        self.assertEqual(_malware_call(malware, operation, {"registered": True, "subscriptions": ["file.version_created"], "caller_module_id": "malware", "module_scopes": ["files:read", "files:write"], "grant": grant, "matter_id": "matter-1", "file_id": "file-1", "version_id": "ver-1", "operation": "getFile", "field": "name"}), mcp_get(allowed_args))
+        payment_policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
+        pay_module = {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write"]}
+        pay_grant = processor_issuance(
+            payment_policy,
+            pay_module,
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                "invoice_id": None,
+                "amount_cents": 2500,
+                "destination": "operating",
+                "trust_account_id": None,
+                "caller_scopes": ["payments:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )["grant"]
+        pay_op = _operation(self.spec, "createPayment")
+        http_pay = {
+            "operation": "createPayment",
+            "registered": True,
+            "caller_module_id": "lawpay",
+            "module_scopes": ["payments:write"],
+            "grant": pay_grant,
+            "matter_id": pay_grant["matter_id"],
+            "contact_id": pay_grant["contact_id"],
+            "invoice_id": None,
+            "amount_cents": 2500,
+            "destination": "operating",
+            "status": "pending",
+        }
+        self.assertEqual(processor_callback(payment_policy, pay_op, http_pay), "allowed")
+        self.assertEqual(processor_callback(payment_policy, pay_op, {**http_pay, "grant": None}), "forbidden")
+        self.assertEqual(processor_callback(payment_policy, pay_op, {**http_pay, "grant": {**pay_grant, "expired": True}}), "forbidden")
+        self.assertEqual(processor_callback(payment_policy, pay_op, {**http_pay, "caller_module_id": "other"}), "forbidden")
+
+    def test_invoice_pdf_confirmation_is_a_real_input(self):
+        operation = _operation(self.spec, "getInvoicePdf")
+        confirm = operation["x-togavsu-access"]["quarantine_confirmation_input"]
+        self.assertEqual(confirm, {"in": "query", "name": "confirm_quarantine"})
+        names = [parameter.get("name") for parameter in operation["parameters"]]
+        self.assertIn("confirm_quarantine", names)
+        catalog_tool = next(tool for tool in __import__("contract.build", fromlist=["render_mcp"]).render_mcp(self.spec)["tools"] if tool["name"] == "getInvoicePdf")
+        self.assertIn("query", catalog_tool["transfer"]["arguments"])
+        own = {"role": "client", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True, "quarantined": True}
+        self.assertEqual(file_download_decision(operation, {**own, "confirm": None}), "quarantine_confirmation_required")
+        self.assertEqual(file_download_decision(operation, {**own, "confirm": False}), "quarantine_confirmation_required")
+        self.assertEqual(file_download_decision(operation, {**own, "confirm": True}), "highlighted")
+        self.assertEqual(file_download_decision(operation, {**own, "confirm": True, "shared": False}), "not_found")
+        self.assertEqual(file_download_decision(operation, {**own, "confirm": True, "owner": "other_client"}), "not_found")
+        self.assertEqual(file_download_decision(operation, {**own, "role": "staff", "confirm": True, "attorney_only": True}), "not_found")
+        self.assertEqual(file_download_decision(operation, {**own, "quarantined": False}), "highlighted")
+        for _method, _path, download in _file_byte_downloads(self.spec):
+            self.assertIn("quarantine_confirmation_input", download["x-togavsu-access"], download["operationId"])
 
     def test_client_context_reads_follow_published_access(self):
         policy = _operation(self.spec, "createModuleContextToken")["x-togavsu-access"]["client_context"]
