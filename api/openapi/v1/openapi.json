@@ -3103,7 +3103,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "user_id",
@@ -3381,7 +3381,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "include",
@@ -3989,7 +3989,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -4768,7 +4768,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "q",
@@ -5552,7 +5552,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -5878,7 +5878,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "contact_id",
@@ -6564,7 +6564,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "contact_id",
@@ -7250,7 +7250,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "contact_id",
@@ -7936,7 +7936,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "contact_id",
@@ -8763,7 +8763,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "q",
@@ -9576,7 +9576,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -10443,7 +10443,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "include",
@@ -10605,7 +10605,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -10751,7 +10751,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -11754,7 +11754,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -12566,7 +12566,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -13034,7 +13034,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -13626,7 +13626,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -13924,7 +13924,7 @@
       "get": {
         "operationId": "listNote",
         "summary": "List notes",
-        "description": "Cursor-paginated notes the caller is allowed to see.",
+        "description": "Cursor-paginated notes the caller is allowed to see. The default page size is notes.page_size.",
         "tags": [
           "Notes"
         ],
@@ -13945,10 +13945,9 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
-              "default": 50
+              "default": 25
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. The default is notes.page_size (starting value 25). The admin can change that setting, and its registry range is the allowed page size."
           },
           {
             "name": "q",
@@ -14115,7 +14114,8 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "notes.page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -14900,7 +14900,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "q",
@@ -15787,7 +15787,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -16188,7 +16188,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -16656,7 +16656,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -17124,7 +17124,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -17592,7 +17592,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -18060,7 +18060,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -18528,7 +18528,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -18996,7 +18996,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -19464,7 +19464,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "record_type",
@@ -20830,7 +20830,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -21503,7 +21503,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -21828,7 +21828,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -22596,7 +22596,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -23260,7 +23260,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -23585,7 +23585,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -23732,17 +23732,46 @@
           "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
-          "client_omitted_fields": [
-            "internal_notes"
-          ],
-          "client_csv_omitted_columns": [
-            "internal_notes"
-          ],
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "client_fields": [
+            "id",
+            "matter_id",
+            "number",
+            "issued_on",
+            "status",
+            "lines",
+            "subtotal_cents",
+            "adjustment_cents",
+            "interest_cents",
+            "total_cents",
+            "amount_paid_cents",
+            "balance_due_cents",
+            "sent_at",
+            "paid_at",
+            "client_message"
+          ],
+          "client_csv_columns": [
+            "id",
+            "matter_id",
+            "number",
+            "issued_on",
+            "status",
+            "lines",
+            "subtotal_cents",
+            "adjustment_cents",
+            "interest_cents",
+            "total_cents",
+            "amount_paid_cents",
+            "balance_due_cents",
+            "sent_at",
+            "paid_at",
+            "client_message"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23878,14 +23907,29 @@
           "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
-          "client_omitted_fields": [
-            "internal_notes"
-          ],
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "client_fields": [
+            "id",
+            "matter_id",
+            "number",
+            "issued_on",
+            "status",
+            "lines",
+            "subtotal_cents",
+            "adjustment_cents",
+            "interest_cents",
+            "total_cents",
+            "amount_paid_cents",
+            "balance_due_cents",
+            "sent_at",
+            "paid_at",
+            "client_message"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24113,7 +24157,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -24194,11 +24238,7 @@
           "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClientHistoryEntry",
           "staff_schema": "AuditEntry",
-          "client_omitted_fields": [
-            "old_value",
-            "new_value",
-            "internal_notes"
-          ],
+          "client_projection": "allowlist",
           "extension_include": {
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
@@ -24211,7 +24251,12 @@
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record"
-          }
+          },
+          "client_fields": [
+            "at",
+            "actor_kind",
+            "field"
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24408,7 +24453,7 @@
       "post": {
         "operationId": "bulkInvoice",
         "summary": "Create invoices in one batch",
-        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. internal_notes stays on the staff invoice and is omitted from a client projection.",
+        "description": "Importer write for invoice records. A draft uses the same role and invoices:write scope as createInvoiceDrafts. sent and viewed use sendInvoice. void uses voidInvoice. A write-off uses writeOffInvoice. Amount paid uses createPayment. paid also uses sendInvoice, so staff cannot mark an invoice paid. One item the caller cannot perform rejects the whole batch before any row is written. Validates every item, reconciles integer cents, and checks each matter wall. One validation, reconciliation, role, scope, or wall failure writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned.",
         "tags": [
           "Billing"
         ],
@@ -24491,14 +24536,7 @@
           "batch_authorization": "all_or_nothing",
           "reconciliation": "exact_cents",
           "idempotency": "same_body_replays",
-          "client_omitted_fields": [
-            "internal_notes",
-            "adjustment_reason",
-            "write_off_reason",
-            "void_reason",
-            "dispute_status",
-            "dispute_notes"
-          ],
+          "client_schema": "InvoiceClient",
           "events_on": "commit",
           "replay_events": false,
           "module_delegation": "delegated_viewer",
@@ -24576,7 +24614,25 @@
                 "payments:write"
               ]
             }
-          }
+          },
+          "client_projection": "allowlist",
+          "client_fields": [
+            "id",
+            "matter_id",
+            "number",
+            "issued_on",
+            "status",
+            "lines",
+            "subtotal_cents",
+            "adjustment_cents",
+            "interest_cents",
+            "total_cents",
+            "amount_paid_cents",
+            "balance_due_cents",
+            "sent_at",
+            "paid_at",
+            "client_message"
+          ]
         },
         "x-togavsu-events": [
           "invoice.created"
@@ -25948,7 +26004,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -29160,7 +29216,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -29728,7 +29784,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -30669,7 +30725,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -30836,7 +30892,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "status",
@@ -31248,7 +31304,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -32072,7 +32128,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "trust_account_id",
@@ -32625,7 +32681,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -33551,7 +33607,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -34469,7 +34525,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -35239,7 +35295,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -37513,7 +37569,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -37881,7 +37937,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -38059,7 +38115,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -38980,7 +39036,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "kind",
@@ -40108,7 +40164,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -41289,7 +41345,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -41772,7 +41828,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -42412,7 +42468,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -43043,7 +43099,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -43551,7 +43607,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "matter_id",
@@ -44006,7 +44062,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "status",
@@ -44599,7 +44655,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "active",
@@ -45571,7 +45627,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "read",
@@ -46411,7 +46467,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -48422,7 +48478,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -49224,7 +49280,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -49584,7 +49640,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -50172,7 +50228,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "section_id",
@@ -50769,7 +50825,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "q",
@@ -51362,7 +51418,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -51919,10 +51975,9 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 200,
-              "default": 50
+              "default": 100
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. The default is activity.page_size (starting value 100). The admin can change that setting, and its registry range is the allowed page size."
           },
           {
             "name": "actor_kind",
@@ -52054,7 +52109,8 @@
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record"
-          }
+          },
+          "page_size_setting": "activity.page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -52435,7 +52491,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "entity_type",
@@ -52614,7 +52670,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -52744,7 +52800,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -53406,7 +53462,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -53922,7 +53978,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "from_time",
@@ -54318,7 +54374,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -54736,7 +54792,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -55248,7 +55304,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -55915,7 +55971,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -56368,7 +56424,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -56605,7 +56661,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -58079,7 +58135,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           },
           {
             "name": "q",
@@ -58308,7 +58364,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -58524,7 +58580,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -59080,7 +59136,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so."
+            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
           }
         ],
         "responses": {
@@ -62781,7 +62837,7 @@
           "amount_paid_cents",
           "balance_due_cents"
         ],
-        "description": "Invoice fields a client may see. internal_notes is not a property."
+        "description": "The client allowlist for invoice JSON, CSV, and MCP. A field that is not here is not returned, including a field added to the staff invoice later."
       },
       "InvoiceClientHistoryEntry": {
         "type": "object",

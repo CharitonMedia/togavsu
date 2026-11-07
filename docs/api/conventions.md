@@ -69,7 +69,7 @@ Failures use `application/problem+json`:
 
 ## Lists, writes, bulk
 
-Lists take `cursor` and `limit` (default 50, max 200) and return:
+Lists take `cursor` and `limit`. The usual default is 50 and the usual maximum is 200. A list that names a page-size setting uses that setting's starting value and registry range instead: the activities feed uses `activity.page_size` (100, and the admin may set it above 200) and notes use `notes.page_size` (25, with the same adjustable range). They return:
 
 ```json
 { "data": [], "page": { "limit": 50, "next_cursor": null } }
@@ -81,7 +81,7 @@ Lists take `cursor` and `limit` (default 50, max 200) and return:
 
 Unsafe methods accept `Idempotency-Key`. The same key and body replay the stored response for `api.idempotency_retention_hours` (start 24). The same key and a different body returns `idempotency_conflict`.
 
-Bulk creates are `POST /api/v1/{collection}:bulk` with `{ "items": [ ... ] }`. The server validates every item, then writes one transaction. One failure writes nothing and returns `batch_rejected`. `bulkInvoice` is the importer write for invoice records. A draft needs the same role and `invoices:write` as drafting. sent and viewed need `sendInvoice`. void and a write-off need the attorney invoice write. Amount paid needs `payments:write`, and paid also needs `sendInvoice`, so staff cannot import a sent, paid, or void invoice or a write-off. One such item rejects the batch. Every amount is integer cents. The line sum, adjustment, interest, total, payments, write-off, and balance must match, or the whole batch is rejected. The same idempotency key and body replay the original invoices and emit nothing. A committed batch emits `invoice.created` once per item on HTTP and MCP. `internal_notes` is omitted from a client projection. The cap is `api.bulk_batch_max` (start 500). File bulk items point at finished uploads. They do not carry bytes or storage keys.
+Bulk creates are `POST /api/v1/{collection}:bulk` with `{ "items": [ ... ] }`. The server validates every item, then writes one transaction. One failure writes nothing and returns `batch_rejected`. `bulkInvoice` is the importer write for invoice records. A draft needs the same role and `invoices:write` as drafting. sent and viewed need `sendInvoice`. void and a write-off need the attorney invoice write. Amount paid needs `payments:write`, and paid also needs `sendInvoice`, so staff cannot import a sent, paid, or void invoice or a write-off. One such item rejects the batch. Every amount is integer cents. The line sum, adjustment, interest, total, payments, write-off, and balance must match, or the whole batch is rejected. The same idempotency key and body replay the original invoices and emit nothing. A committed batch emits `invoice.created` once per item on HTTP and MCP. A client invoice, in JSON, CSV, and MCP, keeps only the `InvoiceClient` fields. Dispute notes, adjustment reasons, write-offs, internal notes, and any later staff field are left out. The cap is `api.bulk_batch_max` (start 500). File bulk items point at finished uploads. They do not carry bytes or storage keys.
 
 Routers match a literal path before a parameter. `/api/v1/settings/appearance` is the appearance object, not setting key `appearance`. Colon paths such as `/api/v1/contacts:bulk` are one literal segment.
 

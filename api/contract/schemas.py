@@ -801,7 +801,7 @@ SCHEMAS = _register(
                 "client_message": {"type": "string"},
             },
             ["id", "matter_id", "number", "issued_on", "status", "lines", "subtotal_cents", "adjustment_cents", "interest_cents", "total_cents", "amount_paid_cents", "balance_due_cents"],
-            "Invoice fields a client may see. internal_notes is not a property.",
+            "The client allowlist for invoice JSON, CSV, and MCP. A field that is not here is not returned, including a field added to the staff invoice later.",
         ),
         "InvoiceClientHistoryEntry": _obj(
             {
@@ -3111,7 +3111,7 @@ QUERY = {
         "in": "query",
         "required": False,
         "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
-        "description": "Page size. Default 50. Maximum 200. A few lists default lower because a setting says so.",
+        "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers.",
     },
     "include": _query(
         "include",

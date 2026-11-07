@@ -526,6 +526,8 @@ def finalize(spec: dict) -> None:
     publish_event_scopes(spec)
     publish_matter_effect_order(spec)
     publish_invoice_item_privileges(spec)
+    publish_client_projections(spec)
+    publish_page_sizes(spec)
 
 
 def _denied(result: str) -> dict:
@@ -2607,9 +2609,8 @@ def project_record(operation: dict, caller: dict, record: dict) -> dict:
             if field in copied:
                 copied[field] = {"redacted": True}
                 redacted.append(field)
-        for field in access.get("client_omitted_fields") or []:
-            if caller.get("role") == "client":
-                copied.pop(field, None)
+        if caller.get("role") == "client" and access.get("client_fields"):
+            copied = {key: copied[key] for key in access["client_fields"] if key in copied}
     return {"result": "allowed", "record": copied, "redacted_fields": redacted}
 
 
@@ -2814,10 +2815,59 @@ def _invoice_item_denial(access: dict, item: dict, call: dict) -> str | None:
 
 
 def project_invoice_for_role(operation: dict, role: str, invoice: dict) -> dict:
+    """Client JSON, CSV, and MCP keep InvoiceClient fields. Anything else is dropped."""
     if role != "client":
         return dict(invoice)
-    omitted = set(operation["x-togavsu-access"].get("client_omitted_fields") or [])
-    return {key: value for key, value in invoice.items() if key not in omitted}
+    allow = operation["x-togavsu-access"].get("client_fields") or []
+    return {key: invoice[key] for key in allow if key in invoice}
+
+
+def publish_client_projections(spec: dict) -> None:
+    """Role projections are the client schema's properties. A short omission list is not the rule."""
+    schemas = spec["components"]["schemas"]
+    for _method, _path, operation in iter_operations(spec):
+        access = operation["x-togavsu-access"]
+        name = access.get("client_schema")
+        if not isinstance(name, str) or name not in schemas:
+            continue
+        fields = list((schemas[name].get("properties") or {}))
+        access["client_projection"] = "allowlist"
+        access["client_fields"] = fields
+        access.pop("client_omitted_fields", None)
+        content = ((operation.get("responses") or {}).get("200") or {}).get("content") or {}
+        if "text/csv" in content:
+            access["client_csv_columns"] = list(fields)
+            access.pop("client_csv_omitted_columns", None)
+
+
+def publish_page_sizes(spec: dict) -> None:
+    """A list that names a page-size setting uses that setting's default and range."""
+    from contract.settings import SETTINGS
+
+    registry = {item["key"]: item for item in SETTINGS if str(item.get("key", "")).endswith(".page_size")}
+    for _method, _path, operation in iter_operations(spec):
+        description = operation.get("description") or ""
+        named = [key for key in registry if key in description]
+        if len(named) != 1:
+            continue
+        setting = registry[named[0]]
+        for parameter in operation.get("parameters") or []:
+            if parameter.get("name") != "limit":
+                continue
+            schema = dict(parameter.get("schema") or {})
+            schema["type"] = "integer"
+            schema["minimum"] = setting.get("minimum", 1)
+            schema["default"] = setting["default"]
+            if "maximum" in setting:
+                schema["maximum"] = setting["maximum"]
+            else:
+                schema.pop("maximum", None)
+            parameter["schema"] = schema
+            parameter["description"] = (
+                f"Page size. The default is {setting['key']} (starting value {setting['default']}). "
+                "The admin can change that setting, and its registry range is the allowed page size."
+            )
+            operation["x-togavsu-access"]["page_size_setting"] = setting["key"]
 
 
 def bulk_invoice_apply(store: dict, operation: dict, call: dict) -> dict:

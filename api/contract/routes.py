@@ -1099,6 +1099,10 @@ def _practice(api: Contract) -> None:
         include=True,
         extra_access=WALL,
     )
+    api.spec["paths"]["/api/v1/notes"]["get"]["description"] = (
+        api.spec["paths"]["/api/v1/notes"]["get"]["description"].rstrip()
+        + " The default page size is notes.page_size."
+    )
     api.resource(
         collection="/api/v1/conflict-records",
         schema="ConflictRecord",
@@ -1498,7 +1502,7 @@ def _billing(api: Contract) -> None:
             "A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. "
             "A different body with that key is idempotency_conflict and writes nothing. "
             "A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. "
-            "internal_notes stays on the staff invoice and is omitted from a client projection."
+            "A client projection keeps only InvoiceClient fields, on JSON and on a later read. Staff fields are not returned."
         ),
         tag="Billing",
         features=["invoices", "bulk"],
@@ -1517,7 +1521,7 @@ def _billing(api: Contract) -> None:
             "reconciliation": "exact_cents",
             "idempotency": "same_body_replays",
             "client": "deny",
-            "client_omitted_fields": ["internal_notes", "adjustment_reason", "write_off_reason", "void_reason", "dispute_status", "dispute_notes"],
+            "client_schema": "InvoiceClient",
             "events_on": "commit",
             "replay_events": False,
         },
@@ -4407,8 +4411,7 @@ def _project_client_invoices(api: Contract) -> None:
     for operation in (list_op, get_op):
         operation["x-togavsu-access"]["client_schema"] = "InvoiceClient"
         operation["x-togavsu-access"]["staff_schema"] = "Invoice"
-        operation["x-togavsu-access"]["client_omitted_fields"] = ["internal_notes"]
-    list_op["x-togavsu-access"]["client_csv_omitted_columns"] = ["internal_notes"]
+        operation["x-togavsu-access"]["client_projection"] = "allowlist"
     history = api.spec["paths"]["/api/v1/invoices/{invoice_id}/history"]["get"]
     history["responses"]["200"]["content"]["application/json"]["schema"] = {
         "type": "object",
@@ -4429,7 +4432,7 @@ def _project_client_invoices(api: Contract) -> None:
     }
     history["x-togavsu-access"]["client_schema"] = "InvoiceClientHistoryEntry"
     history["x-togavsu-access"]["staff_schema"] = "AuditEntry"
-    history["x-togavsu-access"]["client_omitted_fields"] = ["old_value", "new_value", "internal_notes"]
+    history["x-togavsu-access"]["client_projection"] = "allowlist"
 
 
 def _slug(schema: str) -> str:

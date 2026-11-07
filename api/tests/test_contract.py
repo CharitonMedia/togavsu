@@ -469,6 +469,33 @@ class ContractTest(unittest.TestCase):
             names = [_param_name(parameter) for parameter in operation["parameters"]]
             self.assertIn("cursor", names, path)
             self.assertIn("limit", names, path)
+        from contract.settings import SETTINGS
+
+        registry = {item["key"]: item for item in SETTINGS if item["key"].endswith(".page_size")}
+        self.assertEqual(set(registry), {"activity.page_size", "notes.page_size"})
+        seen_settings = set()
+        for _method, path, operation in _ops(self.spec):
+            limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
+            if limit is None:
+                continue
+            schema = limit["schema"]
+            named = operation["x-togavsu-access"].get("page_size_setting")
+            if named:
+                setting = registry[named]
+                seen_settings.add(named)
+                self.assertIn(named, operation["description"], operation["operationId"])
+                self.assertEqual(schema["default"], setting["default"], operation["operationId"])
+                self.assertEqual(schema["minimum"], setting["minimum"], operation["operationId"])
+                if "maximum" in setting:
+                    self.assertEqual(schema["maximum"], setting["maximum"], operation["operationId"])
+                else:
+                    self.assertNotIn("maximum", schema, operation["operationId"])
+            else:
+                self.assertEqual(schema.get("default"), 50, path)
+                self.assertEqual(schema.get("maximum"), 200, path)
+        self.assertEqual(seen_settings, set(registry))
+        self.assertEqual(_operation(self.spec, "listEvents")["x-togavsu-access"]["page_size_setting"], "activity.page_size")
+        self.assertEqual(_operation(self.spec, "listNote")["x-togavsu-access"]["page_size_setting"], "notes.page_size")
 
     def test_trust_ledger_is_append_only(self):
         collection = self.spec["paths"]["/api/v1/trust-ledger"]
@@ -1830,13 +1857,79 @@ class ContractTest(unittest.TestCase):
         self.assertNotIn("old_value", history["properties"])
         self.assertNotIn("new_value", history["properties"])
         self.assertNotIn("internal_notes", history["properties"]["field"]["enum"])
-        for operation_id in ("listInvoice", "getInvoice", "historyInvoice"):
+        allow = list(client["properties"])
+        staff_invoice = {
+            "id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+            "created_at": "2026-11-01T00:00:00Z",
+            "created_by": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "updated_at": "2026-11-02T00:00:00Z",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+            "number": "1",
+            "issued_on": "2026-11-01",
+            "status": "sent",
+            "lines": [{"kind": "flat_fee", "description": "Fee", "amount_cents": 10000}],
+            "subtotal_cents": 10000,
+            "adjustment_cents": -100,
+            "adjustment_reason": "courtesy",
+            "interest_cents": 0,
+            "total_cents": 9900,
+            "amount_paid_cents": 0,
+            "balance_due_cents": 9400,
+            "write_off_cents": 500,
+            "write_off_reason": "hardship",
+            "void_reason": "entered twice",
+            "dispute_status": "open",
+            "dispute_notes": "client called",
+            "sent_at": "2026-11-01T12:00:00Z",
+            "paid_at": None,
+            "client_message": "Thank you",
+            "internal_notes": "do not share",
+            "future_staff_field": "not for the client",
+        }
+        for operation_id in ("listInvoice", "getInvoice"):
             operation = _operation(self.spec, operation_id)
-            self.assertIn("client", operation["x-togavsu-access"]["roles"])
-            self.assertIn("internal_notes", operation["x-togavsu-access"]["client_omitted_fields"])
-        self.assertEqual(_operation(self.spec, "listInvoice")["x-togavsu-access"]["client_schema"], "InvoiceClient")
-        self.assertEqual(_operation(self.spec, "historyInvoice")["x-togavsu-access"]["client_schema"], "InvoiceClientHistoryEntry")
-        self.assertEqual(_operation(self.spec, "listInvoice")["x-togavsu-access"]["client_csv_omitted_columns"], ["internal_notes"])
+            self.assertEqual(operation["x-togavsu-access"]["client_projection"], "allowlist", operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["client_fields"], allow, operation_id)
+            self.assertNotIn("client_omitted_fields", operation["x-togavsu-access"], operation_id)
+            projected = project_invoice_for_role(operation, "client", staff_invoice)
+            self.assertEqual(set(projected), set(allow) & set(staff_invoice), operation_id)
+            self.assertEqual(projected["client_message"], "Thank you", operation_id)
+            self.assertEqual(projected["adjustment_cents"], -100, operation_id)
+            self.assertEqual(projected["number"], "1", operation_id)
+            for hidden in (
+                "adjustment_reason",
+                "write_off_cents",
+                "write_off_reason",
+                "void_reason",
+                "dispute_status",
+                "dispute_notes",
+                "internal_notes",
+                "future_staff_field",
+                "created_at",
+            ):
+                self.assertNotIn(hidden, projected, hidden)
+            recorded = project_record(operation, {"role": "client", "on_wall": True}, staff_invoice)
+            self.assertEqual(recorded["record"], projected, operation_id)
+        listed = _operation(self.spec, "listInvoice")
+        self.assertEqual(listed["x-togavsu-access"]["client_csv_columns"], allow)
+        self.assertNotIn("client_csv_omitted_columns", listed["x-togavsu-access"])
+        self.assertEqual(next(tool for tool in __import__("contract.build", fromlist=["render_mcp"]).render_mcp(self.spec)["tools"] if tool["name"] == "listInvoice")["name"], "listInvoice")
+        history_operation = _operation(self.spec, "historyInvoice")
+        history_allow = list(history["properties"])
+        self.assertEqual(history_operation["x-togavsu-access"]["client_fields"], history_allow)
+        history_row = {
+            "at": "2026-11-01T00:00:00Z",
+            "actor_kind": "staff",
+            "field": "status",
+            "old_value": "draft",
+            "new_value": "sent",
+            "reason": "approved",
+            "internal_notes": "do not share",
+            "future_staff_field": "hidden",
+        }
+        history_projected = project_record(history_operation, {"role": "client", "on_wall": True}, history_row)
+        self.assertEqual(set(history_projected["record"]), {"at", "actor_kind", "field"})
+        self.assertNotIn("old_value", history_projected["record"])
 
     def test_complete_marketplace_listing_validates(self):
         import copy
@@ -3305,9 +3398,9 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(policy["firmwide_bypass"])
         self.assertEqual(policy["published_reads"]["role"], "client")
         invoice = _operation(self.spec, "getInvoice")
-        self.assertEqual(invoice["x-togavsu-access"]["client_omitted_fields"], ["internal_notes"])
+        self.assertEqual(invoice["x-togavsu-access"]["client_fields"], list(self.spec["components"]["schemas"]["InvoiceClient"]["properties"]))
         history = _operation(self.spec, "historyInvoice")
-        self.assertIn("internal_notes", history["x-togavsu-access"]["client_omitted_fields"])
+        self.assertEqual(history["x-togavsu-access"]["client_fields"], list(self.spec["components"]["schemas"]["InvoiceClientHistoryEntry"]["properties"]))
         calls = [
             ("listFile", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
             ("getFile", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
