@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -125,6 +127,63 @@ func TestCaddyConsecutiveSwitchesPreserveAdmin(t *testing.T) {
 	res.Body.Close()
 	if !strings.Contains(string(body), "127.0.0.1:"+admin) {
 		t.Fatalf("admin listen changed: %s", body)
+	}
+}
+
+func TestSwitchRollsBackAppliedLoadWhenResponseIsLost(t *testing.T) {
+	var mu sync.Mutex
+	var live []byte
+	var loads int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/config/", "/config":
+			mu.Lock()
+			body := append([]byte(nil), live...)
+			mu.Unlock()
+			if len(body) == 0 {
+				raw, _ := json.Marshal(caddyConfig("core:8080", "127.0.0.1:2019", ":80", ":443"))
+				body = raw
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(body)
+		case "/load":
+			raw, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			loads++
+			n := loads
+			live = append([]byte(nil), raw...)
+			mu.Unlock()
+			if n == 1 {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("server cannot hijack")
+				}
+				conn, _, err := hj.Hijack()
+				if err != nil {
+					t.Fatal(err)
+				}
+				conn.Close()
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	proxy := &CaddyProxy{AdminURL: srv.URL, UpstreamFile: filepath.Join(t.TempDir(), "upstream"), HTTP: srv.Client()}
+	err := proxy.Switch(context.Background(), "core-next:8080")
+	if err == nil {
+		t.Fatal("lost response was treated as success")
+	}
+	if errors.Is(err, ErrProxyUnreconciled) {
+		t.Fatalf("rollback did not reconcile the live config: %v", err)
+	}
+	mu.Lock()
+	got := string(live)
+	mu.Unlock()
+	if strings.Contains(got, "core-next:8080") || !strings.Contains(got, "core:8080") {
+		t.Fatalf("live config after lost response: %s", got)
 	}
 }
 

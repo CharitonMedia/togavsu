@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,6 +32,28 @@ func TestQuoteTableRejectsInjection(t *testing.T) {
 	got, err := quoteTable("core.matters")
 	if err != nil || got != `"core"."matters"` {
 		t.Fatalf("%s %v", got, err)
+	}
+}
+
+func TestSwapCleanupFailureIsCommitted(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "sql.log")
+	script := "#!/bin/sh\ncmd=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\nprintf '%s\\n' \"$cmd\" >> " + logPath + "\ncase \"$cmd\" in\n  \"DROP DATABASE\"*) echo drop >&2; exit 1 ;;\nesac\nexit 0\n"
+	bin := filepath.Join(dir, "psql")
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	err := swapDatabase(context.Background(), bin, "postgres://togavsu@127.0.0.1/postgres", "togavsu", "togavsu_restore_ab", "ab")
+	if !errors.Is(err, ErrRestoreCleanup) {
+		t.Fatalf("got %v", err)
+	}
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(raw)
+	if !strings.Contains(log, "ALTER DATABASE togavsu RENAME TO togavsu_replaced_ab") || !strings.Contains(log, "ALTER DATABASE togavsu_restore_ab RENAME TO togavsu") {
+		t.Fatalf("renames did not both commit before the drop failed: %s", log)
 	}
 }
 

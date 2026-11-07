@@ -191,6 +191,10 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	upstream := next.Name + ":8080"
 	if err := u.Proxy.Switch(ctx, upstream); err != nil {
+		if errors.Is(err, ErrProxyUnreconciled) {
+			u.notify(ctx, "Update needs attention", "Caddy may still route to the new core, so that container was left running.")
+			return UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: "proxy_unreconciled"}, err
+		}
 		rolled := u.abort(ctx, backupID, ran, &next)
 		u.notify(ctx, "Update refused", "Caddy did not switch to the new core. The running version was left in place.")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "proxy", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
@@ -239,6 +243,11 @@ func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, sta
 // rollback refuses to replay the pre-update dump while the old core is still
 // the writer. That replay would drop tables under live requests and discard
 // commits made after the snapshot. ErrPreserveWrites is the normal result.
+//
+// ponytail: automatic migration rollback is this preserve-writes result,
+// ceiling: a failed migration's schema changes stay, upgrade: a quiesced
+// rollback that reverses only the migration, trigger: that rollback preserves
+// rows committed after the pre-update snapshot.
 func (u *Updater) rollback(ctx context.Context, backupID string) rollbackOutcome {
 	fn := u.Rollback
 	if fn == nil {

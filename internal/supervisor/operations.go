@@ -35,20 +35,21 @@ type RestoreRecord struct {
 // Operations ties the archive store to the runtime. Restores stop the core
 // first and bring it back when the data is in place.
 type Operations struct {
-	Store          *Store
-	Updater        *Updater
-	Runtime        Runtime
-	Gate           *Gate
-	Ledger         *Ledger
-	Outbox         *Outbox
-	ApplyDump      func(ctx context.Context, r io.Reader) error
-	ApplyRestore   func(ctx context.Context, payload RestorePayload) error
-	Measure        func(ctx context.Context, r io.Reader) (map[string]int64, error)
-	Passphrase     func() (string, error)
-	Now            func() time.Time
-	RestoreTimeout time.Duration
-	jobs           map[string]RestoreRecord
-	jobsMu         sync.Mutex
+	Store           *Store
+	Updater         *Updater
+	Runtime         Runtime
+	Gate            *Gate
+	Ledger          *Ledger
+	Outbox          *Outbox
+	ApplyDump       func(ctx context.Context, r io.Reader) error
+	ApplyRestore    func(ctx context.Context, payload RestorePayload) error
+	Measure         func(ctx context.Context, r io.Reader) (map[string]int64, error)
+	Passphrase      func() (string, error)
+	Now             func() time.Time
+	RestoreTimeout  time.Duration
+	RecoveryTimeout time.Duration
+	jobs            map[string]RestoreRecord
+	jobsMu          sync.Mutex
 }
 
 func (o *Operations) now() time.Time {
@@ -114,6 +115,21 @@ func (o *Operations) restoreTimeout() time.Duration {
 	return 30 * time.Minute
 }
 
+func (o *Operations) recoveryTimeout() time.Duration {
+	if o.RecoveryTimeout > 0 {
+		return o.RecoveryTimeout
+	}
+	return time.Minute
+}
+
+// restartRecovery brings stopped cores back on a context that is not the
+// restore deadline. A timed-out restore must still be able to start them.
+func (o *Operations) restartRecovery(cores []ContainerInfo) error {
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	return o.restart(ctx, cores)
+}
+
 func (o *Operations) PutJob(rec RestoreRecord) {
 	o.jobsMu.Lock()
 	defer o.jobsMu.Unlock()
@@ -174,7 +190,7 @@ func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
 		}
 		for _, core := range cores {
 			if err := o.Runtime.Stop(opCtx, core.ID); err != nil {
-				if startErr := o.restart(opCtx, stopped); startErr != nil {
+				if startErr := o.restartRecovery(stopped); startErr != nil {
 					joined := fmt.Errorf("stop %s: %w; restart failed: %v", core.ID, err, startErr)
 					return o.finish(rec, joined), joined
 				}
@@ -186,7 +202,7 @@ func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
 	// Writers are stopped, so this snapshot includes commits made before shutdown.
 	safety, err := o.Store.Create(opCtx, reasonSafety)
 	if err != nil {
-		if startErr := o.restart(opCtx, stopped); startErr != nil {
+		if startErr := o.restartRecovery(stopped); startErr != nil {
 			joined := fmt.Errorf("safety backup: %w; restart failed: %v", err, startErr)
 			return o.finish(rec, joined), joined
 		}
@@ -203,26 +219,43 @@ func (o *Operations) runAccepted(id string) (RestoreRecord, error) {
 		return o.ApplyDump(ctx, payload.Dump)
 	}
 	err = o.Store.Restore(opCtx, id, "", apply)
+	if errors.Is(err, ErrRestoreCleanup) {
+		if startErr := o.restartRecovery(stopped); startErr != nil {
+			joined := fmt.Errorf("%w; restart failed: %v", err, startErr)
+			rec = o.finish(rec, joined)
+			o.PutJob(rec)
+			return rec, joined
+		}
+		rec.Status = "completed"
+		rec.Error = "cleanup_pending"
+		rec.Finished = o.now().UTC()
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", "The restored database is live. The previous database could not be dropped. "+Scrub(err.Error()))
+		}
+		o.recordRestore(rec)
+		o.PutJob(rec)
+		return rec, err
+	}
 	if err != nil {
 		// A clean-target apply that returns an error has not replaced the
 		// live database. Restart the writers on that unchanged data.
-		if startErr := o.restart(opCtx, stopped); startErr != nil {
+		if startErr := o.restartRecovery(stopped); startErr != nil {
 			joined := fmt.Errorf("restore failed: %w; restart failed: %v", err, startErr)
 			if o.Outbox != nil {
-				_ = o.Outbox.Notify(opCtx, "Restore failed", "The database was not replaced and the core did not restart. "+Scrub(joined.Error()))
+				_ = o.Outbox.Notify(context.Background(), "Restore failed", "The database was not replaced and the core did not restart. "+Scrub(joined.Error()))
 			}
 			rec = o.finish(rec, joined)
 			o.PutJob(rec)
 			return rec, joined
 		}
 		if o.Outbox != nil {
-			_ = o.Outbox.Notify(opCtx, "Restore failed", "The archive was not applied. Existing data was left in place and the core was restarted. "+Scrub(err.Error()))
+			_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place and the core was restarted. "+Scrub(err.Error()))
 		}
 		rec = o.finish(rec, err)
 		o.PutJob(rec)
 		return rec, err
 	}
-	if startErr := o.restart(opCtx, stopped); startErr != nil {
+	if startErr := o.restartRecovery(stopped); startErr != nil {
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(opCtx, "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
 		}

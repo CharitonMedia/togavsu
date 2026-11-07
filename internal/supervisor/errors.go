@@ -21,6 +21,8 @@ var (
 	ErrArchive                  = errors.New("backup archive is invalid")
 	ErrDestination              = errors.New("backup destination failed")
 	ErrPreserveWrites           = errors.New("pre-update snapshot was kept so later commits stay in place")
+	ErrRestoreCleanup           = errors.New("restored database is live and the previous database was not dropped")
+	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become
@@ -53,6 +55,10 @@ func PublicCode(err error) (code string, status int) {
 		return "no_core", 409
 	case errors.Is(err, ErrDestination):
 		return "destination_failed", 502
+	case errors.Is(err, ErrRestoreCleanup):
+		return "restore_cleanup_pending", 409
+	case errors.Is(err, ErrProxyUnreconciled):
+		return "proxy_unreconciled", 409
 	default:
 		return "internal", 500
 	}

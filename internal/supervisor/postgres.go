@@ -112,8 +112,10 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 		_, _ = psqlLines(context.Background(), bin, adminURL, "ALTER DATABASE "+replaced+" RENAME TO "+orig)
 		return err
 	}
-	_, err := psqlLines(ctx, bin, adminURL, "DROP DATABASE "+replaced)
-	return err
+	if _, err := psqlLines(ctx, bin, adminURL, "DROP DATABASE "+replaced); err != nil {
+		return fmt.Errorf("%w: %s", ErrRestoreCleanup, Scrub(err.Error()))
+	}
+	return nil
 }
 
 func databaseName(rawURL string) (string, error) {

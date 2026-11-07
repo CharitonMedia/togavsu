@@ -12,7 +12,11 @@ RUN printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > go.mod \
 # ceiling: one root container, upgrade: a socket proxy that exposes only the
 # engine calls this process makes, trigger: phase 7 release hardening.
 FROM postgres:17
-COPY --from=supervisor-build /out/supervisor /usr/local/bin/supervisor
 USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssh-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && command -v sftp
+COPY --from=supervisor-build /out/supervisor /usr/local/bin/supervisor
 ENTRYPOINT ["/usr/local/bin/supervisor"]
 CMD ["serve"]

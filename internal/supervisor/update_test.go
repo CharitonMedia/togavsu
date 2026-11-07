@@ -45,7 +45,10 @@ func (r *scriptRuntime) StartCore(_ context.Context, image, name string) (Contai
 	r.add("name:" + name)
 	return ContainerInfo{ID: "new-" + name, Name: name, Image: image}, nil
 }
-func (r *scriptRuntime) Start(_ context.Context, id string) error {
+func (r *scriptRuntime) Start(ctx context.Context, id string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.add("restart:" + id)
 	if id == r.failStart {
 		return errors.New("start failed")
@@ -243,6 +246,26 @@ func TestTwoConsecutiveUpdatesUseDistinctNames(t *testing.T) {
 		t.Fatalf("names %v", names)
 	}
 }
+
+func TestUnreconciledProxyLeavesNewCoreRunning(t *testing.T) {
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
+	up := testUpdater(t, rt, &order)
+	up.Proxy = errProxy{ErrProxyUnreconciled}
+	_, err := up.Apply(context.Background(), true)
+	if !errors.Is(err, ErrProxyUnreconciled) {
+		t.Fatalf("got %v", err)
+	}
+	for _, step := range order {
+		if strings.HasPrefix(step, "remove:") || strings.HasPrefix(step, "stop:new-") {
+			t.Fatalf("new core removed while caddy still routes to it: %v", order)
+		}
+	}
+}
+
+type errProxy struct{ err error }
+
+func (p errProxy) Switch(context.Context, string) error { return p.err }
 
 func TestRollbackFailureIsReported(t *testing.T) {
 	var order []string

@@ -68,4 +68,4 @@ Database URL, admin URL, field key, domain, and the supervisor token stay in Doc
 
 ## Core migrate contract
 
-The core image command `migrate` reads `DATABASE_URL`, applies embedded goose migrations, and prints `migrated=true` or `migrated=false`. A changed checksum on an applied migration exits non-zero. The supervisor then keeps the old core and restores the pre-update backup when a migration had already run.
+The core image command `migrate` reads `DATABASE_URL`, applies embedded goose migrations, and prints `migrated=true` or `migrated=false`. A changed checksum on an applied migration exits non-zero. The supervisor keeps the old core. Automatic replay of the pre-update backup is pending: the shipped rollback returns `ErrPreserveWrites` so a live core is not pointed at a restored older snapshot. An operator can restore that backup through the quiesced restore path.

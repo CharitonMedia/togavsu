@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -397,6 +398,69 @@ func TestAcceptedRestoreIsPollableAfterDisconnect(t *testing.T) {
 			t.Fatalf("still %s", polled.Status)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestRestoreTimeoutStillRestartsCores(t *testing.T) {
+	store := testStore(t)
+	var order []string
+	ops := &Operations{
+		Store:          store,
+		Gate:           &Gate{},
+		Now:            store.Now,
+		RestoreTimeout: 30 * time.Millisecond,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyDump: func(ctx context.Context, _ io.Reader) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if err == nil || rec.Status == "completed" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if strings.Contains(err.Error(), "restart failed") || !containsStep(order, "restart:core-1") {
+		t.Fatalf("restart used the expired restore context: %v %v", err, order)
+	}
+}
+
+func TestCommittedRestoreReportsCleanupFailure(t *testing.T) {
+	store := testStore(t)
+	var order []string
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyRestore: func(context.Context, RestorePayload) error {
+			return fmt.Errorf("%w: drop database: busy", ErrRestoreCleanup)
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		Outbox:  OpenOutbox(filepath.Join(store.Dir, "outbox.jsonl")),
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if !errors.Is(err, ErrRestoreCleanup) || rec.Status != "completed" || rec.Error != "cleanup_pending" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers left stopped: %v", order)
+	}
+	notes, err := ops.Outbox.List()
+	if err != nil || len(notes) != 1 || strings.Contains(notes[0].Body, "left in place") {
+		t.Fatalf("notes %+v %v", notes, err)
 	}
 }
 

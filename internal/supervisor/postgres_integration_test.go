@@ -4,6 +4,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -129,7 +130,9 @@ func TestUpdateRollbackKeepsWriteAfterSnapshot(t *testing.T) {
 		Registry: staticRegistry{Release{Image: testReleaseImage, Version: "9.0.0"}},
 		Verifier: allowVerifier{},
 		Runtime:  &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Labels: map[string]string{"togavsu.version": "1.0.0"}}}},
-		Migrator: migratorFunc(func(context.Context, string) (bool, error) {
+		Proxy:    scriptProxy{order: &order},
+		Migrator: migratorFunc(func(_ context.Context, image string) (bool, error) {
+			order = append(order, "migrate:"+image)
 			return true, errMigration
 		}),
 		Backup: func(context.Context, string) (BackupMeta, error) { return meta, nil },
@@ -140,8 +143,15 @@ func TestUpdateRollbackKeepsWriteAfterSnapshot(t *testing.T) {
 			})
 		},
 	}
-	if _, err := up.Apply(ctx, true); err == nil {
-		t.Fatal("expected the migration to fail")
+	got, err := up.Apply(ctx, true)
+	if !errors.Is(err, errMigration) {
+		t.Fatalf("got %v", err)
+	}
+	if !got.MigrationRan || got.Rollback != "preserved_writes" || got.Restored {
+		t.Fatalf("result %+v", got)
+	}
+	if !containsStep(order, "migrate:"+testReleaseImage) {
+		t.Fatalf("migration did not run: %v", order)
 	}
 	if replayed {
 		t.Fatal("update rollback replayed the pre-update dump while the old core was still the writer")
