@@ -1043,6 +1043,24 @@ func TestStalledPathRestoreRestartsWriters(t *testing.T) {
 	}
 	releaseGate()
 	release()
+	deadline := time.Now().Add(3 * time.Second)
+	var quiet time.Time
+	for {
+		temps, _ := filepath.Glob(filepath.Join(root, "*", ".togavsu-*.tmp"))
+		if len(temps) == 0 {
+			if quiet.IsZero() {
+				quiet = time.Now()
+			} else if time.Since(quiet) > 100*time.Millisecond {
+				break
+			}
+		} else {
+			quiet = time.Time{}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("path worker left %v", temps)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
