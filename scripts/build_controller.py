@@ -157,6 +157,10 @@ class Remote:
             raise ValueError("Check did not originate from the protected Codex workflow at this head")
         if provenance.get("status") != "completed":
             raise ReviewPending("Workflow attempt is still queued or running")
+        if provenance.get("conclusion") == "cancelled":
+            # A newer PR event normally owns the concurrency group. Replaying
+            # this old event would cancel its replacement and restore stale evidence.
+            raise ReviewSuperseded("Cancelled checkpoint; await the replacement review event")
         if provenance.get("conclusion") != check.get("conclusion"):
             raise ValueError("Check result contradicts the protected workflow result")
         artifacts = self.gh("actions/runs/" + run + "/artifacts?per_page=100")
