@@ -37,6 +37,7 @@ from contract.policy import (
     is_core_file_download,
     confirm_totp_reset,
     bulk_invoice_apply,
+    invoice_draft_decision,
     bulk_privilege_expansions,
     external_effect_decision,
     include_views_decision,
@@ -3708,6 +3709,16 @@ class ContractTest(unittest.TestCase):
             else:
                 self.assertEqual(scopes, published.get(event_type, []), event_type)
             sample = {**base, "type": event_type, "record_type": record_type}
+            owner_rule = self.spec.get("x-togavsu-event-owners", {}).get(event_type)
+            owner_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+            if owner_rule:
+                subject = {"recipient_user_id": owner_id} if owner_rule["binding"] == "recipient" else {"owner_user_id": owner_id}
+                if event_type.endswith(".deleted"):
+                    sample["predelete"] = subject
+                    sample["deleted"] = True
+                    sample["recipient_user_id"] = "018f1a00-7b3c-7d4e-8a11-999999999999"
+                else:
+                    sample["context"] = subject
             if event_type == "trust.flag_raised":
                 sample.update(
                     {
@@ -3726,6 +3737,9 @@ class ContractTest(unittest.TestCase):
                 self.assertIsNone(webhook_envelope(everything, sample), event_type)
                 continue
             holder = {**events_only, "approved_scopes": [scopes[0]], "attorney_only": record_type == "conflict_record"}
+            if owner_rule:
+                holder["principal_user_id"] = owner_id
+                holder["principal_role"] = "staff"
             delivered = webhook_envelope(holder, sample)
             if record_type == "conflict_record":
                 self.assertIsNone(webhook_envelope({**holder, "attorney_only": False}, sample), event_type)
@@ -3963,6 +3977,201 @@ class ContractTest(unittest.TestCase):
             ),
             "not_found",
         )
+
+    def test_owner_bound_events_follow_the_read_policy(self):
+        owners = self.spec["x-togavsu-event-owners"]
+        order = self.spec["webhooks"]["moduleEvent"]["post"]["x-togavsu-delivery-authorization"]["order"]
+        self.assertLess(order.index("owner"), order.index("serialize"))
+        families = {rule["family"] for rule in owners.values()}
+        self.assertEqual(families, {"notification", "api_token", "session", "ical_feed", "file_upload"})
+        for event_type, rule in owners.items():
+            if event_type.startswith("notification."):
+                self.assertEqual(rule["binding"], "recipient", event_type)
+                self.assertFalse(rule["admin_bypass"], event_type)
+            self.assertEqual(rule["deleted_source"], "predelete", event_type)
+            self.assertEqual(rule["asserted_recipient"], "ignored", event_type)
+            self.assertEqual(rule["missing_owner"], "fail_closed", event_type)
+        for event_type in ("notification.created", "notification.read", "notification.deleted"):
+            self.assertIn(event_type, owners, event_type)
+        self_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        other_id = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"
+        summary = "only the recipient may read this"
+        base = {
+            "id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeeee",
+            "occurred_at": "2026-11-07T18:00:00Z",
+            "actor_kind": "system",
+            "record_id": secret,
+            "summary": summary,
+            "matter_walled": False,
+        }
+
+        def subscriber(event_type, user_id, role, scopes):
+            return {
+                "installed": True,
+                "registered": True,
+                "module_id": "desk",
+                "approved_scopes": scopes,
+                "subscriptions": [event_type],
+                "on_wall": True,
+                "attorney_only": False,
+                "principal_user_id": user_id,
+                "principal_role": role,
+            }
+
+        def event_for(event_type, stored, asserted=None):
+            rule = owners[event_type]
+            subject = {"recipient_user_id": stored} if rule["binding"] == "recipient" else {"owner_user_id": stored}
+            body = {**base, "type": event_type, "record_type": rule["family"]}
+            if event_type.endswith(".deleted"):
+                body["deleted"] = True
+                body["predelete"] = subject
+                body["recipient_user_id"] = asserted or other_id
+            else:
+                body["context"] = subject
+                if asserted:
+                    body["recipient_user_id"] = asserted
+            return body
+
+        for event_type, scope in (
+            ("notification.created", "notifications:read"),
+            ("notification.read", "notifications:read"),
+            ("notification.deleted", "notifications:read"),
+            ("api_token.created", "tokens:read"),
+            ("api_token.revoked", "tokens:read"),
+            ("session.created", "sessions:read"),
+            ("session.ended", "sessions:read"),
+            ("ical_feed.created", "calendar:read"),
+            ("ical_feed.revoked", "calendar:read"),
+            ("file_upload.created", "files:read"),
+            ("file_upload.staged", "files:read"),
+        ):
+            sample = event_for(event_type, self_id, asserted=other_id)
+            own = webhook_envelope(subscriber(event_type, self_id, "staff", [scope]), sample)
+            self.assertIsNotNone(own, event_type)
+            self.assertEqual(own["record_id"], secret, event_type)
+            self.assertEqual(own["summary"], summary, event_type)
+            self.assertNotIn("predelete", own, event_type)
+            for label, module in (
+                ("other", subscriber(event_type, other_id, "staff", [scope])),
+                ("admin", subscriber(event_type, other_id, "admin", [scope])),
+                ("revoked", {**subscriber(event_type, self_id, "admin", [scope]), "principal_revoked": True}),
+            ):
+                if label == "admin" and owners[event_type]["admin_bypass"]:
+                    delivered = webhook_envelope(module, sample)
+                    self.assertEqual(delivered["record_id"], secret, event_type)
+                    continue
+                denied = webhook_envelope(module, sample)
+                self.assertIsNone(denied, (event_type, label))
+                self.assertNotIn(secret, str(denied), (event_type, label))
+                self.assertNotIn(summary, str(denied), (event_type, label))
+            missing = dict(sample)
+            missing.pop("context", None)
+            missing.pop("predelete", None)
+            missing["recipient_user_id"] = self_id
+            missing["owner_user_id"] = self_id
+            denied_missing = webhook_envelope(subscriber(event_type, self_id, "admin", [scope]), missing)
+            self.assertIsNone(denied_missing, event_type)
+            self.assertNotIn(secret, str(denied_missing), event_type)
+            self.assertNotIn(summary, str(denied_missing), event_type)
+        history = _operation(self.spec, "listWebhookDeliveries")
+        deleted = event_for("notification.deleted", self_id, asserted=other_id)
+        deleted.update({"required_scopes": ["notifications:read"], "matter_walled": False, "entity_id": secret})
+        own_page = inherited_history_rows(history, {"role": "staff", "user_id": self_id, "scopes": ["webhooks:read", "notifications:read"]}, [deleted])
+        self.assertEqual([row["record_id"] for row in own_page["rows"]], [secret])
+        self.assertNotIn("predelete", own_page["rows"][0])
+        for caller in (
+            {"role": "admin", "user_id": other_id, "scopes": ["webhooks:read", "notifications:read"]},
+            {"role": "staff", "user_id": self_id, "scopes": ["webhooks:read", "notifications:read"], "revoked": True},
+        ):
+            hidden = inherited_history_rows(history, caller, [deleted])
+            self.assertEqual(hidden["rows"], [], caller["role"])
+            self.assertNotIn(secret, str(hidden["rows"]))
+            self.assertNotIn(summary, str(hidden["rows"]))
+        no_owner = {key: value for key, value in deleted.items() if key != "predelete"}
+        no_owner["recipient_user_id"] = self_id
+        omitted = inherited_history_rows(history, {"role": "admin", "user_id": self_id, "scopes": ["webhooks:read", "notifications:read"]}, [no_owner])
+        self.assertEqual(omitted["rows"], [])
+        self.assertNotIn(summary, str(omitted["rows"]))
+
+    def test_invoice_drafts_accept_a_date_range(self):
+        operation = _operation(self.spec, "createInvoiceDrafts")
+        text = operation["description"]
+        schema = self.spec["components"]["schemas"]["InvoiceDraftRequest"]
+        self.assertNotIn("matter_id or matter_ids is required", text)
+        self.assertNotIn("matter_id or matter_ids is required", schema["description"])
+        self.assertIn("date range", text.lower())
+        self.assertIn("does not require", text)
+        self.assertFalse(operation["x-togavsu-access"]["draft_selector"]["matters_required"])
+        self.assertEqual(operation["x-togavsu-access"]["draft_selector"]["alternatives"], ["matter_id", "matter_ids", "date_range"])
+        validator = _component_validator(self.spec, "InvoiceDraftRequest")
+        matter_a = "018f1a00-7b3c-7d4e-8a11-333333333331"
+        matter_b = "018f1a00-7b3c-7d4e-8a11-333333333332"
+        matter_c = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        validator.validate({"matter_id": matter_a})
+        validator.validate({"matter_ids": [matter_a, matter_b]})
+        validator.validate({"from_date": "2026-03-01", "to_date": "2026-03-31"})
+        for body in (
+            {},
+            {"from_date": "2026-03-01"},
+            {"to_date": "2026-03-31"},
+            {"matter_id": matter_a, "from_date": "2026-03-01", "to_date": "2026-03-31"},
+            {"matter_id": matter_a, "matter_ids": [matter_b]},
+            {"matter_ids": []},
+        ):
+            with self.assertRaises(Exception):
+                validator.validate(body)
+        matters = [
+            {"matter_id": matter_a, "matter_walled": True, "unbilled_on": ["2026-03-02"]},
+            {"matter_id": matter_b, "matter_walled": True, "unbilled_on": ["2026-03-03"], "fee_on": "2026-03-03"},
+            {"matter_id": matter_c, "matter_walled": False, "unbilled_on": ["2026-03-04"]},
+        ]
+        staff = {
+            "role": "staff",
+            "token_scopes": ["invoices:write"],
+            "matter_membership": {matter_a: True, matter_b: False},
+            "on_wall": True,
+        }
+        ranged = invoice_draft_decision(operation, {**staff, "from_date": "2026-03-01", "to_date": "2026-03-31"}, matters)
+        self.assertEqual(ranged["result"], "allowed")
+        self.assertEqual(ranged["reason"], "date_range")
+        self.assertEqual(ranged["drafted"], [matter_a, matter_c])
+        self.assertNotIn(matter_b, str(ranged))
+        admin = invoice_draft_decision(
+            operation,
+            {"role": "admin", "token_scopes": ["invoices:write"], "matter_membership": {matter_a: True, matter_b: False}, "on_wall": True, "from_date": "2026-03-01", "to_date": "2026-03-31"},
+            matters,
+        )
+        self.assertEqual(admin["drafted"], [matter_a, matter_c])
+        self.assertNotIn(matter_b, str(admin))
+        outside = invoice_draft_decision(operation, {**staff, "from_date": "2026-01-01", "to_date": "2026-01-31"}, matters)
+        self.assertEqual(outside["result"], "allowed")
+        self.assertEqual(outside["drafted"], [])
+        named = invoice_draft_decision(operation, {**staff, "matter_id": matter_a}, matters)
+        self.assertEqual(named["drafted"], [matter_a])
+        hidden = invoice_draft_decision(operation, {**staff, "matter_id": matter_b}, matters)
+        self.assertEqual(hidden["result"], "not_found")
+        self.assertEqual(hidden["drafted"], [])
+        self.assertNotIn(matter_b, str(hidden))
+        mixed = invoice_draft_decision(operation, {**staff, "matter_ids": [matter_a, matter_b]}, matters)
+        self.assertEqual(mixed["result"], "not_found")
+        self.assertEqual(mixed["drafted"], [])
+        self.assertNotIn(matter_b, str(mixed))
+        for label, call, expected in (
+            ("empty", staff, "validation_failed"),
+            ("one-date", {**staff, "from_date": "2026-03-01"}, "validation_failed"),
+            ("reversed", {**staff, "from_date": "2026-04-02", "to_date": "2026-03-01"}, "validation_failed"),
+            ("both", {**staff, "matter_id": matter_a, "from_date": "2026-03-01", "to_date": "2026-03-31"}, "validation_failed"),
+            ("two-ids", {**staff, "matter_id": matter_a, "matter_ids": [matter_c]}, "validation_failed"),
+            ("blank-list", {**staff, "matter_ids": []}, "validation_failed"),
+            ("bad-day", {**staff, "from_date": "2026-13-01", "to_date": "2026-13-02"}, "validation_failed"),
+            ("accountant", {**staff, "role": "accountant", "from_date": "2026-03-01", "to_date": "2026-03-31"}, "forbidden"),
+            ("read-only", {**staff, "token_scopes": ["invoices:read"], "from_date": "2026-03-01", "to_date": "2026-03-31"}, "scope_denied"),
+        ):
+            decision = invoice_draft_decision(operation, call, matters)
+            self.assertEqual(decision["result"], expected, label)
+            self.assertEqual(decision["drafted"], [], label)
+            self.assertNotIn("required", decision.get("reason") or "", label)
 
     def test_history_inherits_the_underlying_record(self):
         covered = []

@@ -14,6 +14,7 @@ import hmac
 import html
 import json
 import re
+from datetime import date
 
 # The path parameter {module_id} uses this same pattern. Callers do not get a second, looser rule.
 MODULE_ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$"
@@ -538,9 +539,11 @@ def finalize(spec: dict) -> None:
     attach_grant_projections(spec)
     publish_extension_include(spec)
     ensure_mutation_events(spec)
+    publish_event_owners(spec)
     publish_trust_debit(spec)
     publish_inherited_history(spec)
     publish_event_scopes(spec)
+    publish_owner_read_scopes(spec)
     publish_trust_flags(spec)
     publish_matter_effect_order(spec)
     publish_invoice_item_privileges(spec)
@@ -1477,7 +1480,7 @@ EXTENSIBLE_RECORDS = {
 }
 
 WEBHOOK_DELIVERY = {
-    "order": ["installed", "subscription", "scope", "matter_wall", "attorney_only", "serialize"],
+    "order": ["installed", "subscription", "scope", "matter_wall", "attorney_only", "owner", "serialize"],
     "unauthorized_envelope": None,
     "grants_admin": False,
     "firmwide_bypass": False,
@@ -1562,7 +1565,13 @@ def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> d
         needed = list(row.get("required_scopes") or [])
         if any(scope not in set(caller.get("scopes") or []) for scope in needed):
             continue
-        copied = {key: value for key, value in row.items() if key not in {"matter_walled", "required_scopes", "attorney_only"}}
+        copied = {
+            key: value
+            for key, value in row.items()
+            if key not in {"matter_walled", "required_scopes", "attorney_only", "predelete", "context", "asserted_recipient_user_id", "deleted"}
+        }
+        if not _history_owner_visible(caller, row):
+            continue
         if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin"):
             for field in _HISTORY_REDACTED_FIELDS:
                 if field in copied and copied[field] is not None:
@@ -1619,6 +1628,26 @@ def publish_event_scopes(spec: dict) -> None:
         for event, scopes in REQUIRED_BACKGROUND_EVENTS.items()
     }
     spec["x-togavsu-event-scopes"] = registry
+    _EVENT_SCOPE_REGISTRY.clear()
+    _EVENT_SCOPE_REGISTRY.update(registry)
+
+
+def publish_owner_read_scopes(spec: dict) -> None:
+    """A public emitter does not leave an owner-bound event without its read scope."""
+    family_scopes: dict[str, list[str]] = {}
+    for method, path, operation in iter_operations(spec):
+        if method != "get":
+            continue
+        family = _path_event_family(path)
+        if not family or not _owner_binding(operation["x-togavsu-access"]):
+            continue
+        reads = [read for scope in operation["x-togavsu-access"].get("scopes") or [] if (read := _domain_read(scope))]
+        if reads:
+            family_scopes[family] = sorted(set(reads))
+    registry = spec["x-togavsu-event-scopes"]
+    for event, rule in spec.get("x-togavsu-event-owners", {}).items():
+        if not registry.get(event):
+            registry[event] = list(family_scopes.get(rule["family"]) or [])
     _EVENT_SCOPE_REGISTRY.clear()
     _EVENT_SCOPE_REGISTRY.update(registry)
 
@@ -1923,8 +1952,110 @@ def event_read_scopes(event_type: str, record_type: str | None = None) -> list[s
     return list(_EVENT_SCOPE_REGISTRY.get(event_type, []))
 
 
+_PATH_EVENT_FAMILY = {
+    "notifications": "notification",
+    "api-tokens": "api_token",
+    "sessions": "session",
+    "ical-feeds": "ical_feed",
+    "file-uploads": "file_upload",
+}
+_EVENT_OWNERS: dict[str, dict] = {}
+
+
+def _owner_binding(access: dict) -> dict | None:
+    """Read constraint for a record another user must not receive. None when scope and wall are enough."""
+    if access.get("recipient") == "self" and access.get("admin_sees_others") is False:
+        return {"binding": "recipient", "admin_bypass": False}
+    if access.get("feed_owner") == "self_or_admin" or access.get("owner") == "self_or_admin":
+        return {"binding": "owner", "admin_bypass": True}
+    if access.get("owner") == "self":
+        return {"binding": "owner", "admin_bypass": False}
+    return None
+
+
+def _path_event_family(path: str) -> str | None:
+    parts = [part for part in path.split("/") if part]
+    if len(parts) < 3 or parts[0] != "api" or parts[1] != "v1":
+        return None
+    return _PATH_EVENT_FAMILY.get(parts[2])
+
+
+def publish_event_owners(spec: dict) -> None:
+    """Owner rules come from the read of the record, then apply to every event in that family."""
+    families: dict[str, dict] = {}
+    for _method, path, operation in iter_operations(spec):
+        binding = _owner_binding(operation["x-togavsu-access"])
+        family = _path_event_family(path)
+        if not binding or not family:
+            continue
+        current = families.get(family)
+        if current is None or (current["admin_bypass"] and not binding["admin_bypass"]):
+            families[family] = binding
+    registry: dict[str, dict] = {}
+    for _method, _path, operation in iter_operations(spec):
+        for event in operation.get("x-togavsu-events") or []:
+            family = event.split(".", 1)[0]
+            binding = families.get(family)
+            if not binding:
+                continue
+            registry[event] = {
+                "family": family,
+                "binding": binding["binding"],
+                "admin_bypass": binding["admin_bypass"],
+                "deleted_source": "predelete",
+                "asserted_recipient": "ignored",
+                "missing_owner": "fail_closed",
+            }
+    spec["x-togavsu-event-owners"] = registry
+    _EVENT_OWNERS.clear()
+    _EVENT_OWNERS.update(registry)
+
+
+def _event_name(record: dict) -> str:
+    for key in ("type", "event_type", "action"):
+        value = record.get(key)
+        if isinstance(value, str) and "." in value:
+            return value
+    return ""
+
+
+def _stored_subject(record: dict, rule: dict) -> str | None:
+    """Owner stamped by the core. A recipient on the event itself is not authority, including after delete."""
+    deleted = _event_name(record).endswith(".deleted") or record.get("deleted") is True
+    source = record.get("predelete") if deleted else record.get("context")
+    if not isinstance(source, dict):
+        return None
+    field = "recipient_user_id" if rule.get("binding") == "recipient" else "owner_user_id"
+    value = source.get(field)
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _principal_can_read(rule: dict, principal: dict, record: dict) -> bool:
+    if principal.get("principal_revoked") or principal.get("revoked"):
+        return False
+    stored = _stored_subject(record, rule)
+    if not stored:
+        return False
+    viewer = principal.get("principal_user_id") or principal.get("user_id")
+    if not isinstance(viewer, str) or not viewer:
+        return False
+    if viewer == stored:
+        return True
+    role = principal.get("principal_role") or principal.get("role")
+    return bool(rule.get("admin_bypass") and role == "admin")
+
+
+def _history_owner_visible(caller: dict, row: dict) -> bool:
+    rule = _EVENT_OWNERS.get(_event_name(row))
+    if not rule:
+        return True
+    return _principal_can_read(rule, caller, row)
+
+
 def webhook_envelope(module: dict, event: dict) -> dict | None:
-    """Return the serialized body only after scope, wall, and attorney-only checks. Denial returns None."""
+    """Serialize only after the underlying read policy. Denial returns no id and no summary."""
     if not module.get("installed") or not module.get("registered"):
         return None
     if event.get("type") not in module.get("subscriptions", []):
@@ -1943,6 +2074,9 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
         or event.get("record_type") in _ATTORNEY_ONLY_RECORDS
     )
     if attorney_only_record and not module.get("attorney_only"):
+        return None
+    owner_rule = _EVENT_OWNERS.get(event.get("type") or "")
+    if owner_rule and not _principal_can_read(owner_rule, module, event):
         return None
     if event.get("summary_attorney_only"):
         summary = {"redacted": True}
@@ -3103,6 +3237,81 @@ def _exact_cents(value) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
         return None
     return value
+
+
+def _iso_day(value) -> date | None:
+    if not isinstance(value, str) or len(value) != 10:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _draft_modes(call: dict) -> tuple[str | None, str | None]:
+    """Return the one selector, or an error. A date range does not need a matter id."""
+    one = call.get("matter_id") not in (None, "")
+    many = isinstance(call.get("matter_ids"), list) and len(call.get("matter_ids") or []) > 0
+    has_from = call.get("from_date") not in (None, "")
+    has_to = call.get("to_date") not in (None, "")
+    if "matter_ids" in call and call.get("matter_ids") is not None and not many:
+        return None, "selector"
+    if (has_from or has_to) and not (has_from and has_to):
+        return None, "date_order"
+    dates = has_from and has_to
+    selected = [name for name, present in (("matter_id", one), ("matter_ids", many), ("date_range", dates)) if present]
+    if len(selected) != 1:
+        return None, "selector"
+    if dates:
+        start = _iso_day(call.get("from_date"))
+        end = _iso_day(call.get("to_date"))
+        if start is None or end is None or start > end:
+            return None, "date_order"
+    return selected[0], None
+
+
+def _matter_billable(matter: dict, start: date | None, end: date | None) -> bool:
+    if start is None or end is None:
+        return True
+    days = list(matter.get("unbilled_on") or [])
+    if matter.get("fee_on"):
+        days.append(matter["fee_on"])
+    parsed = [_iso_day(day) for day in days]
+    return any(day is not None and start <= day <= end for day in parsed)
+
+
+def invoice_draft_decision(operation: dict, call: dict, matters: list[dict]) -> dict:
+    """Draft one selector. A date range keeps only matters this caller can bill."""
+    quiet = {"drafted": [], "reason": None}
+    access = operation["x-togavsu-access"]
+    if call.get("role") not in access.get("roles", []):
+        return {"result": "forbidden", **quiet}
+    if "invoices:write" not in set(call.get("token_scopes") or []):
+        return {"result": "scope_denied", **quiet}
+    mode, reason = _draft_modes(call)
+    if mode is None:
+        return {"result": "validation_failed", "reason": reason, "drafted": []}
+    start = _iso_day(call.get("from_date")) if mode == "date_range" else None
+    end = _iso_day(call.get("to_date")) if mode == "date_range" else None
+    catalog = {row.get("matter_id"): row for row in matters}
+    if mode == "matter_id":
+        wanted = [call.get("matter_id")]
+    elif mode == "matter_ids":
+        wanted = list(call.get("matter_ids") or [])
+    else:
+        wanted = [row.get("matter_id") for row in matters if _matter_billable(row, start, end)]
+    drafted = []
+    for matter_id in wanted:
+        row = catalog.get(matter_id)
+        if row is None or not matter_visible(call, row):
+            if mode == "date_range":
+                continue
+            return {"result": "not_found", "reason": "matter", "drafted": []}
+        if mode == "date_range" and not _matter_billable(row, start, end):
+            continue
+        if matter_id not in drafted:
+            drafted.append(matter_id)
+    return {"result": "allowed", "reason": mode, "drafted": drafted}
 
 
 def invoice_reconciliation_error(item: dict) -> str | None:

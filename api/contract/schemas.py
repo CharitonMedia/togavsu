@@ -909,15 +909,26 @@ SCHEMAS = _register(
             ],
             "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile.",
         ),
-        "InvoiceDraftRequest": _obj(
-            {
-                "matter_id": _null(_uuid()),
-                "matter_ids": _arr(_uuid()),
-                "from_date": _null(_date()),
-                "to_date": _null(_date()),
-            },
-            description="Drafts invoices from unbilled time and expenses. A flat-fee matter bills the fee. One of matter_id or matter_ids is required.",
-        ),
+        "InvoiceDraftRequest": {
+            "description": (
+                "Drafts unbilled time and expenses for one matter, a list of matters, or a date range. "
+                "A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. "
+                "A date range does not require a matter id. The server drafts only matters the caller is allowed to bill."
+            ),
+            "oneOf": [
+                _obj({"matter_id": _uuid()}, ["matter_id"], "Draft the named matter."),
+                _obj(
+                    {"matter_ids": {"type": "array", "minItems": 1, "items": _uuid()}},
+                    ["matter_ids"],
+                    "Draft these matters.",
+                ),
+                _obj(
+                    {"from_date": _date("First day included."), "to_date": _date("Last day included.")},
+                    ["from_date", "to_date"],
+                    "Draft authorized matters with unbilled work on these dates. matter_id is not required.",
+                ),
+            ],
+        },
         "InvoiceSend": _obj(
             {"deliver": _enum(["email", "file"])},
             ["deliver"],

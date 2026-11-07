@@ -24812,7 +24812,7 @@
       "post": {
         "operationId": "createInvoiceDrafts",
         "summary": "Draft invoices from unbilled time",
-        "description": "Pulls unbilled time and expenses for a matter or a date range. A flat-fee matter bills the fee. Selected matters can be drafted together.",
+        "description": "Pulls unbilled time and expenses for one matter, a list of matters, or a date range. A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. A date range does not require matter_id or matter_ids. from_date must be on or before to_date. The date range drafts only matters this caller is allowed to bill, one matter id at a time. An off-wall matter is omitted even when on_wall is true for another matter, and an admin does not bypass that wall. Naming a matter the caller cannot see returns not_found and drafts nothing. An empty selector, two selectors, or a reversed date range returns validation_failed and drafts nothing.",
         "tags": [
           "Billing"
         ],
@@ -24891,6 +24891,19 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "draft_selector": {
+            "alternatives": [
+              "matter_id",
+              "matter_ids",
+              "date_range"
+            ],
+            "mutual_exclusion": true,
+            "date_order": "from_on_or_before_to",
+            "date_range_matters": "authorized_only",
+            "named_matter_hidden": "not_found",
+            "empty_selector": "validation_failed",
+            "matters_required": false
+          },
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none",
@@ -60576,6 +60589,7 @@
             "scope",
             "matter_wall",
             "attorney_only",
+            "owner",
             "serialize"
           ],
           "unauthorized_envelope": null,
@@ -64004,55 +64018,64 @@
         "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile."
       },
       "InvoiceDraftRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "matter_id": {
-            "anyOf": [
-              {
+        "description": "Drafts unbilled time and expenses for one matter, a list of matters, or a date range. A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. A date range does not require a matter id. The server drafts only matters the caller is allowed to bill.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "matter_id": {
                 "type": "string",
                 "format": "uuid",
                 "description": "UUIDv7."
-              },
-              {
-                "type": "null"
               }
-            ]
+            },
+            "required": [
+              "matter_id"
+            ],
+            "description": "Draft the named matter."
           },
-          "matter_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "description": "UUIDv7."
-            }
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "matter_ids": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                }
+              }
+            },
+            "required": [
+              "matter_ids"
+            ],
+            "description": "Draft these matters."
           },
-          "from_date": {
-            "anyOf": [
-              {
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "from_date": {
                 "type": "string",
                 "format": "date",
-                "description": "Calendar date."
+                "description": "First day included."
               },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "to_date": {
-            "anyOf": [
-              {
+              "to_date": {
                 "type": "string",
                 "format": "date",
-                "description": "Calendar date."
-              },
-              {
-                "type": "null"
+                "description": "Last day included."
               }
-            ]
+            },
+            "required": [
+              "from_date",
+              "to_date"
+            ],
+            "description": "Draft authorized matters with unbilled work on these dates. matter_id is not required."
           }
-        },
-        "description": "Drafts invoices from unbilled time and expenses. A flat-fee matter bills the fee. One of matter_id or matter_ids is required."
+        ]
       },
       "InvoiceSend": {
         "type": "object",
@@ -77933,6 +77956,96 @@
       }
     ]
   },
+  "x-togavsu-event-owners": {
+    "session.created": {
+      "family": "session",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "session.ended": {
+      "family": "session",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "api_token.created": {
+      "family": "api_token",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "api_token.revoked": {
+      "family": "api_token",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "ical_feed.created": {
+      "family": "ical_feed",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "ical_feed.revoked": {
+      "family": "ical_feed",
+      "binding": "owner",
+      "admin_bypass": true,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "file_upload.created": {
+      "family": "file_upload",
+      "binding": "owner",
+      "admin_bypass": false,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "file_upload.staged": {
+      "family": "file_upload",
+      "binding": "owner",
+      "admin_bypass": false,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "notification.created": {
+      "family": "notification",
+      "binding": "recipient",
+      "admin_bypass": false,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "notification.deleted": {
+      "family": "notification",
+      "binding": "recipient",
+      "admin_bypass": false,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    },
+    "notification.read": {
+      "family": "notification",
+      "binding": "recipient",
+      "admin_bypass": false,
+      "deleted_source": "predelete",
+      "asserted_recipient": "ignored",
+      "missing_owner": "fail_closed"
+    }
+  },
   "x-togavsu-background-events": {
     "matter.created": {
       "scopes": [
@@ -78003,7 +78116,9 @@
       "users:read"
     ],
     "auth.login_challenged": [],
-    "session.created": [],
+    "session.created": [
+      "sessions:read"
+    ],
     "auth.enrollment_started": [],
     "session.ended": [
       "sessions:read"

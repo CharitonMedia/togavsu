@@ -1560,7 +1560,27 @@ def _billing(api: Contract) -> None:
         "/api/v1/invoice-drafts",
         operation_id="createInvoiceDrafts",
         summary="Draft invoices from unbilled time",
-        description="Pulls unbilled time and expenses for a matter or a date range. A flat-fee matter bills the fee. Selected matters can be drafted together.",
+        description=(
+            "Pulls unbilled time and expenses for one matter, a list of matters, or a date range. "
+            "A flat-fee matter bills the fee. Exactly one selector is set: matter_id, or matter_ids, or from_date with to_date. "
+            "A date range does not require matter_id or matter_ids. from_date must be on or before to_date. "
+            "The date range drafts only matters this caller is allowed to bill, one matter id at a time. "
+            "An off-wall matter is omitted even when on_wall is true for another matter, and an admin does not bypass that wall. "
+            "Naming a matter the caller cannot see returns not_found and drafts nothing. "
+            "An empty selector, two selectors, or a reversed date range returns validation_failed and drafts nothing."
+        ),
+        extra_access={
+            **WALL,
+            "draft_selector": {
+                "alternatives": ["matter_id", "matter_ids", "date_range"],
+                "mutual_exclusion": True,
+                "date_order": "from_on_or_before_to",
+                "date_range_matters": "authorized_only",
+                "named_matter_hidden": "not_found",
+                "empty_selector": "validation_failed",
+                "matters_required": False,
+            },
+        },
         tag="Billing",
         features=["invoices", "billing-worklist"],
         roles=STAFF,
@@ -1570,7 +1590,6 @@ def _billing(api: Contract) -> None:
         success="201",
         events=["invoice.drafted"],
         replaceable="time",
-        extra_access=WALL,
     )
     api.add(
         "post",
