@@ -36,7 +36,12 @@ from contract.policy import (
     file_download_decision,
     is_core_file_download,
     confirm_totp_reset,
+    bulk_invoice_apply,
+    external_effect_decision,
     include_views_decision,
+    operation_names_matter,
+    project_invoice_for_role,
+    project_record,
     module_help_registration,
     rendered_markdown,
     webhook_signature,
@@ -1470,8 +1475,14 @@ class ContractTest(unittest.TestCase):
             "time-entries": "bulkTimeEntry",
             "expenses": "bulkExpense",
             "payments": "bulkPayment",
+            "invoices": "bulkInvoice",
             "files": "bulkFile",
             "events": "bulkEvent",
+            "calendar-events": "bulkCalendarEvent",
+            "deadlines": "bulkDeadline",
+            "fee-agreements": "bulkFeeAgreement",
+            "matter-parties": "bulkMatterParty",
+            "conflict-records": "bulkConflictRecord",
             "custom-field-values": "bulkCustomFieldValue",
         }
         for record_type, operation_id in required.items():
@@ -1479,6 +1490,70 @@ class ContractTest(unittest.TestCase):
             self.assertIn("bulk", operation["x-togavsu-features"], record_type)
             self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required", record_type)
             self.assertTrue(operation["x-togavsu-mcp"]["tool"], record_type)
+            text = operation["description"] + " " + " ".join(operation.get("x-togavsu-error-codes") or [])
+            self.assertTrue("batch" in text or "whole" in text, record_type)
+
+    def test_bulk_invoice_reconciles_or_writes_nothing(self):
+        operation = _operation(self.spec, "bulkInvoice")
+        self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(operation["x-togavsu-mcp"]["tool"], "bulkInvoice")
+        self.assertEqual(operation["x-togavsu-events"], ["invoice.created"])
+        self.assertEqual(operation["x-togavsu-access"]["reconciliation"], "exact_cents")
+        self.assertEqual(operation["x-togavsu-access"]["batch_authorization"], "all_or_nothing")
+        matter = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        item = {
+            "matter_id": matter,
+            "number": "2026-0001",
+            "issued_on": "2026-11-01",
+            "status": "sent",
+            "lines": [{"kind": "flat_fee", "description": "Fee", "amount_cents": 10000}],
+            "subtotal_cents": 10000,
+            "adjustment_cents": -500,
+            "interest_cents": 0,
+            "total_cents": 9500,
+            "amount_paid_cents": 2000,
+            "write_off_cents": 500,
+            "balance_due_cents": 7000,
+            "internal_notes": "staff only",
+        }
+        invoice_write = _component_validator(self.spec, "InvoiceWrite")
+        invoice_write.validate(item)
+        with self.assertRaises(Exception):
+            invoice_write.validate({**item, "total_cents": "9500"})
+        staff = {"role": "staff", "token_scopes": ["invoices:write"], "matter_walled": True, "on_wall": True}
+        store = {"invoices": [], "events": [], "idempotency": {}}
+        for channel in ("http", "mcp"):
+            first = bulk_invoice_apply(store, operation, {**staff, "channel": channel, "idempotency_key": "inv-1", "items": [item]})
+            self.assertEqual(first["result"], "allowed", channel)
+            self.assertEqual(first["events"], ["invoice.created"])
+            break
+        self.assertEqual(len(store["invoices"]), 1)
+        self.assertEqual(store["events"], ["invoice.created"])
+        self.assertIn("internal_notes", first["data"][0])
+        self.assertNotIn("internal_notes", project_invoice_for_role(operation, "client", first["data"][0]))
+        replay = bulk_invoice_apply(store, operation, {**staff, "idempotency_key": "inv-1", "items": [item]})
+        self.assertEqual(replay["result"], "original_result")
+        self.assertEqual(replay["events"], [])
+        self.assertEqual(len(store["invoices"]), 1)
+        self.assertEqual(store["events"], ["invoice.created"])
+        changed = {**item, "number": "2026-0002"}
+        conflict = bulk_invoice_apply(store, operation, {**staff, "idempotency_key": "inv-1", "items": [changed]})
+        self.assertEqual(conflict["result"], "idempotency_conflict")
+        self.assertEqual(len(store["invoices"]), 1)
+        bad = {**item, "number": "2026-0003", "total_cents": 9600}
+        rejected = bulk_invoice_apply(store, operation, {**staff, "idempotency_key": "inv-2", "items": [item, bad]})
+        self.assertEqual(rejected["result"], "batch_rejected")
+        self.assertEqual(rejected["events"], [])
+        self.assertEqual(len(store["invoices"]), 1)
+        walled = bulk_invoice_apply(store, operation, {**staff, "on_wall": False, "idempotency_key": "inv-3", "items": [{**item, "matter_walled": True}]})
+        self.assertEqual(walled["result"], "not_found")
+        self.assertFalse(walled["written"])
+        self.assertEqual(len(store["invoices"]), 1)
+        for role in ("accountant", "client"):
+            denied = bulk_invoice_apply(store, operation, {"role": role, "token_scopes": ["invoices:write"], "items": [item]})
+            self.assertEqual(denied["result"], "forbidden", role)
+            self.assertFalse(denied["written"], role)
+        self.assertEqual(len(store["invoices"]), 1)
 
     def test_expense_and_payment_includes(self):
         for operation_id, schema_name in (
@@ -1717,6 +1792,50 @@ class ContractTest(unittest.TestCase):
             "requester": "matter-clock",
         }
         Draft202012Validator(document).validate(row)
+        operation = _operation(self.spec, "createAiCall")
+        self.assertEqual(operation["x-togavsu-mcp"]["tool"], "createAiCall")
+        self.assertEqual(operation["x-togavsu-access"]["external_effects"], ["provider_invocation", "log_write"])
+        self.assertEqual(operation["x-togavsu-access"]["authorize_before"], "external_effect")
+        matter = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        allowed_call = {"role": "staff", "token_scopes": ["ai:use"], "matter_id": matter, "matter_walled": True, "on_wall": True}
+        for channel in ("http", "mcp"):
+            allowed = external_effect_decision(operation, {**allowed_call, "channel": channel})
+            self.assertEqual(allowed["result"], "allowed", channel)
+            self.assertTrue(allowed["provider_invoked"], channel)
+            self.assertTrue(allowed["log_written"], channel)
+            denied = external_effect_decision(operation, {**allowed_call, "channel": channel, "on_wall": False, "role": "admin"})
+            self.assertEqual(denied["result"], "not_found", channel)
+            self.assertFalse(denied["provider_invoked"], channel)
+            self.assertFalse(denied["log_written"], channel)
+            self.assertFalse(denied["mutated"], channel)
+        firmwide = external_effect_decision(operation, {"role": "staff", "token_scopes": ["ai:use"]})
+        self.assertEqual(firmwide["result"], "allowed")
+        self.assertTrue(firmwide["provider_invoked"])
+        move = _operation(self.spec, "createStorageMove")
+        copied = external_effect_decision(
+            move,
+            {"role": "admin", "token_scopes": ["files:write"], "scope": "matter", "matter_id": matter, "matter_walled": True, "on_wall": False},
+        )
+        self.assertEqual(copied["result"], "not_found")
+        self.assertEqual(copied["effects"]["byte_copy"], False)
+        self.assertFalse(copied["mutated"])
+        confirm = _operation(self.spec, "confirmStorageMove")
+        deleted = external_effect_decision(
+            confirm,
+            {"role": "admin", "token_scopes": ["files:write"], "matter_id": matter, "matter_walled": True, "on_wall": False},
+        )
+        self.assertEqual(deleted["result"], "not_found")
+        self.assertFalse(deleted["effects"]["byte_delete"])
+        missing = []
+        for method, path, candidate in _ops(self.spec):
+            if method == "get" or candidate.get("x-togavsu-writes") is False:
+                continue
+            if not operation_names_matter(self.spec, path, candidate):
+                continue
+            access = candidate["x-togavsu-access"]
+            if not access.get("matter_wall") or access.get("admin_bypasses_wall") or access.get("effect_order") != "authorize_before_external_effect":
+                missing.append(candidate["operationId"])
+        self.assertEqual(missing, [])
         incomplete = dict(row)
         del incomplete["cost_micro_usd"]
         with self.assertRaises(Exception):
@@ -3433,14 +3552,33 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(include_views_decision(matter, {**extension, "matter_walled": True, "on_wall": False}), "not_found")
         conflict = _operation(self.spec, "getConflictRecord")
-        self.assertEqual(
-            include_views_decision(conflict, {"role": "staff", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}),
-            "not_found",
-        )
+        staff_conflict = {"role": "staff", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}
+        self.assertEqual(include_views_decision(conflict, staff_conflict), "allowed")
+        conflict_row = project_record(conflict, staff_conflict, {"id": "row-1", "reason": "prior client", "name": "Ada"})
+        self.assertEqual(conflict_row["result"], "allowed")
+        self.assertEqual(conflict_row["record"]["reason"], {"redacted": True})
+        self.assertEqual(conflict_row["record"]["name"], "Ada")
         self.assertEqual(
             include_views_decision(conflict, {"role": "attorney", "approved_scopes": ["conflicts:read", "views:clock.targets:read"], "include": ["clock.targets"]}),
             "allowed",
         )
+        contact = _operation(self.spec, "getContact")
+        staff_contact = {"role": "staff", "approved_scopes": ["contacts:read"], "include": []}
+        self.assertEqual(include_views_decision(contact, staff_contact), "allowed")
+        shown = project_record(contact, staff_contact, {"id": "contact-1", "full_name": "Ada Lovelace", "identifier": "123-45-6789"})
+        self.assertEqual(shown["result"], "allowed")
+        self.assertEqual(shown["record"]["full_name"], "Ada Lovelace")
+        self.assertEqual(shown["record"]["identifier"], {"redacted": True})
+        self.assertNotIn("123-45-6789", str(shown))
+        attorney = project_record(contact, {"role": "attorney"}, {"id": "contact-1", "full_name": "Ada Lovelace", "identifier": "123-45-6789"})
+        self.assertEqual(attorney["record"]["identifier"], "123-45-6789")
+        hidden_file = project_record(
+            _operation(self.spec, "getFile"),
+            {"role": "staff", "on_wall": True},
+            {"id": "file-1", "name": "memo.pdf", "attorney_only": True},
+        )
+        self.assertEqual(hidden_file["result"], "not_found")
+        self.assertIsNone(hidden_file["record"])
 
     def test_notifications_are_limited_to_the_recipient(self):
         for operation_id in ("listNotification", "getNotification", "markNotificationRead", "markAllNotificationsRead", "deleteNotification"):

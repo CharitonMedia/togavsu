@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import html
+import json
 import re
 from html.parser import HTMLParser
 
@@ -519,6 +520,7 @@ def finalize(spec: dict) -> None:
     publish_trust_debit(spec)
     publish_inherited_history(spec)
     publish_event_scopes(spec)
+    publish_matter_effect_order(spec)
 
 
 def _denied(result: str) -> dict:
@@ -2402,6 +2404,107 @@ def sidebar_panel(module_id: str, panel, caller: dict | None = None) -> dict:
     return {"result": "allowed", "path": path}
 
 
+def _schema_names_matter(spec: dict, schema: dict, seen: set[str] | None = None) -> bool:
+    if not isinstance(schema, dict):
+        return False
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+        name = ref.rsplit("/", 1)[1]
+        seen = set() if seen is None else seen
+        if name in seen:
+            return False
+        seen.add(name)
+        return _schema_names_matter(spec, spec["components"]["schemas"].get(name) or {}, seen)
+    properties = schema.get("properties") or {}
+    if "matter_id" in properties or "matter_ids" in properties:
+        return True
+    for key in ("allOf", "oneOf", "anyOf"):
+        for part in schema.get(key) or []:
+            if _schema_names_matter(spec, part, seen):
+                return True
+    return False
+
+
+def operation_names_matter(spec: dict, path: str, operation: dict) -> bool:
+    """True when the caller can name a matter on this operation."""
+    if "{matter_id}" in path:
+        return True
+    for parameter in operation.get("parameters") or []:
+        name = parameter.get("name")
+        ref = parameter.get("$ref")
+        if isinstance(ref, str) and ref.startswith("#/components/parameters/"):
+            name = spec["components"]["parameters"][ref.rsplit("/", 1)[1]].get("name")
+        if name in {"matter_id", "matter_ids"}:
+            return True
+    for payload in ((operation.get("requestBody") or {}).get("content") or {}).values():
+        if _schema_names_matter(spec, payload.get("schema") or {}):
+            return True
+    return False
+
+
+def publish_matter_effect_order(spec: dict) -> None:
+    """A write that names a matter authorizes that wall before any external effect."""
+    for method, path, operation in iter_operations(spec):
+        if method == "get" or operation.get("x-togavsu-writes") is False:
+            continue
+        if not operation_names_matter(spec, path, operation):
+            continue
+        access = operation["x-togavsu-access"]
+        if not access.get("matter_wall"):
+            raise RuntimeError(f"{operation['operationId']} names a matter without a wall check")
+        access["admin_bypasses_wall"] = False
+        access.setdefault("effect_order", "authorize_before_external_effect")
+
+
+def external_effect_decision(operation: dict, call: dict) -> dict:
+    """Refuse the provider, the log, and the byte copy before they start. HTTP and MCP share this result."""
+    access = operation["x-togavsu-access"]
+    effects = list(access.get("external_effects") or [])
+    silent = {name: False for name in effects}
+    denied = {"effects": silent, "provider_invoked": False, "log_written": False, "mutated": False}
+    if call.get("role") not in access.get("roles", []):
+        return {"result": "forbidden", **denied}
+    held = set(call.get("token_scopes") or [])
+    if any(scope not in held for scope in access.get("scopes") or []):
+        return {"result": "scope_denied", **denied}
+    matter_id = call.get("matter_id")
+    scope = call.get("scope")
+    if operation["operationId"] == "createStorageMove":
+        if scope == "matter" and not matter_id:
+            return {"result": "validation_failed", **denied}
+        if scope == "all" and matter_id:
+            return {"result": "validation_failed", **denied}
+        needs_wall = scope == "matter"
+    else:
+        needs_wall = bool(matter_id)
+    if needs_wall and call.get("matter_walled") and not call.get("on_wall"):
+        return {"result": "not_found", **denied}
+    if not access.get("matter_wall") or access.get("authorize_before") != "external_effect":
+        return {"result": "forbidden", **denied}
+    return {
+        "result": "allowed",
+        "effects": {name: True for name in effects},
+        "provider_invoked": "provider_invocation" in effects,
+        "log_written": "log_write" in effects,
+        "mutated": True,
+    }
+
+
+def _attorney_only_fields(access: dict) -> list[str]:
+    value = access.get("attorney_only")
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return list(value)
+    return []
+
+
+def _hides_attorney_only_record(access: dict) -> bool:
+    """A boolean or an exclusion hides the record. A field list does not."""
+    value = access.get("attorney_only")
+    if isinstance(value, list) or value in (None, False, "redacted"):
+        return False
+    return value in (True, "excluded", "not_found")
+
+
 def include_views_decision(operation: dict, call: dict) -> str:
     """include= is the approved view scope, not a bypass of role or wall."""
     access = operation["x-togavsu-access"]
@@ -2411,7 +2514,7 @@ def include_views_decision(operation: dict, call: dict) -> str:
         return "forbidden"
     if access.get("matter_wall") and call.get("matter_walled") and not call.get("on_wall"):
         return "not_found"
-    if access.get("attorney_only") and call.get("role") not in ("attorney", "admin"):
+    if _hides_attorney_only_record(access) and call.get("role") not in ("attorney", "admin"):
         return "not_found"
     approved = set(call.get("approved_scopes") or [])
     if "current_approved_scopes" in call:
@@ -2437,6 +2540,32 @@ def include_views_decision(operation: dict, call: dict) -> str:
         if needed not in approved:
             return "forbidden"
     return "allowed"
+
+
+def project_record(operation: dict, caller: dict, record: dict) -> dict:
+    """Redact attorney-only fields. Hide the record only when the record itself is attorney-only."""
+    access = operation["x-togavsu-access"]
+    hidden = {"result": "not_found", "record": None, "redacted_fields": []}
+    if caller.get("role") not in access.get("roles", []):
+        return {"result": "forbidden", "record": None, "redacted_fields": []}
+    if access.get("matter_wall") and (record.get("matter_walled") or caller.get("matter_walled")) and not caller.get("on_wall"):
+        return hidden
+    record_hidden = record.get("attorney_only") is True and (
+        access.get("attorney_only_files") == "not_found" or _hides_attorney_only_record(access)
+    )
+    if record_hidden and caller.get("role") not in ("attorney", "admin"):
+        return hidden
+    copied = dict(record)
+    redacted: list[str] = []
+    if caller.get("role") not in ("attorney", "admin"):
+        for field in _attorney_only_fields(access):
+            if field in copied:
+                copied[field] = {"redacted": True}
+                redacted.append(field)
+        for field in access.get("client_omitted_fields") or []:
+            if caller.get("role") == "client":
+                copied.pop(field, None)
+    return {"result": "allowed", "record": copied, "redacted_fields": redacted}
 
 
 def start_totp_reset(operation: dict, call: dict) -> dict:
@@ -2526,3 +2655,86 @@ def trust_debit_decision(call: dict) -> dict:
         "amount_cents": call["amount_cents"],
         "below_zero": call.get("balance_after", 0) < 0,
     }
+
+
+def _exact_cents(value) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def invoice_reconciliation_error(item: dict) -> str | None:
+    """None when line sums and the balance identity hold. Otherwise the batch cannot start."""
+    lines = item.get("lines")
+    if not isinstance(lines, list) or not lines:
+        return "validation_failed"
+    amounts = [_exact_cents(line.get("amount_cents")) for line in lines if isinstance(line, dict)]
+    if len(amounts) != len(lines) or any(amount is None for amount in amounts):
+        return "validation_failed"
+    subtotal = _exact_cents(item.get("subtotal_cents"))
+    adjustment = _exact_cents(item.get("adjustment_cents"))
+    interest = _exact_cents(item.get("interest_cents"))
+    total = _exact_cents(item.get("total_cents"))
+    paid = _exact_cents(item.get("amount_paid_cents"))
+    write_off = _exact_cents(item.get("write_off_cents"))
+    balance = _exact_cents(item.get("balance_due_cents"))
+    if None in (subtotal, adjustment, interest, total, paid, write_off, balance):
+        return "validation_failed"
+    if interest < 0 or paid < 0 or write_off < 0:
+        return "validation_failed"
+    if subtotal != sum(amounts) or total != subtotal + adjustment + interest or balance != total - paid - write_off:
+        return "validation_failed"
+    return None
+
+
+def _invoice_off_wall(item: dict, call: dict) -> bool:
+    walled = item.get("matter_walled", call.get("matter_walled"))
+    if not walled:
+        return False
+    on_wall = item["on_wall"] if "on_wall" in item else call.get("on_wall")
+    return not on_wall
+
+
+def project_invoice_for_role(operation: dict, role: str, invoice: dict) -> dict:
+    if role != "client":
+        return dict(invoice)
+    omitted = set(operation["x-togavsu-access"].get("client_omitted_fields") or [])
+    return {key: value for key, value in invoice.items() if key not in omitted}
+
+
+def bulk_invoice_apply(store: dict, operation: dict, call: dict) -> dict:
+    """Authorize, reconcile, then write the whole batch. A replay emits no second invoice.created."""
+    store.setdefault("invoices", [])
+    store.setdefault("events", [])
+    store.setdefault("idempotency", {})
+    access = operation["x-togavsu-access"]
+    quiet = {"written": False, "data": None, "events": [], "invoice_count": len(store["invoices"])}
+    if call.get("role") not in access.get("roles", []):
+        return {"result": "forbidden", **quiet}
+    if any(scope not in set(call.get("token_scopes") or []) for scope in access.get("scopes") or []):
+        return {"result": "scope_denied", **quiet}
+    items = call.get("items")
+    if not isinstance(items, list) or not items or len(items) > int(call.get("batch_max") or 500):
+        return {"result": "validation_failed", **quiet}
+    for item in items:
+        if _invoice_off_wall(item, call):
+            return {"result": "not_found", **quiet}
+        if invoice_reconciliation_error(item):
+            return {"result": "batch_rejected", **quiet}
+    key = call.get("idempotency_key")
+    stored_items = [{key: value for key, value in item.items() if key not in {"matter_walled", "on_wall"}} for item in items]
+    body = json.dumps(stored_items, sort_keys=True, default=str)
+    if key and key in store["idempotency"]:
+        prior = store["idempotency"][key]
+        if prior["body"] != body:
+            return {"result": "idempotency_conflict", **quiet}
+        return {"result": "original_result", "written": False, "data": prior["data"], "events": [], "invoice_count": len(store["invoices"])}
+    rows = []
+    for item in stored_items:
+        rows.append({"id": f"invoice-{len(store['invoices']) + len(rows) + 1}", **item})
+    store["invoices"].extend(rows)
+    events = ["invoice.created"] * len(rows)
+    store["events"].extend(events)
+    if key:
+        store["idempotency"][key] = {"body": body, "data": rows}
+    return {"result": "allowed", "written": True, "data": rows, "events": events, "invoice_count": len(store["invoices"])}

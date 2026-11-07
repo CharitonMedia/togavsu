@@ -186,6 +186,7 @@ It does not claim the handlers or the MCP server are implemented.
 | invoices | `PATCH` | `/api/v1/invoices/{invoice_id}` | `updateInvoice` | required:updateInvoice | admin, attorney, staff | invoices:write |
 | invoices, edit-history | `GET` | `/api/v1/invoices/{invoice_id}/history` | `historyInvoice` | required:historyInvoice | admin, attorney, staff, accountant, client | invoices:read |
 | invoices, billing-worklist | `POST` | `/api/v1/invoice-drafts` | `createInvoiceDrafts` | required:createInvoiceDrafts | admin, attorney, staff | invoices:write |
+| invoices, bulk | `POST` | `/api/v1/invoices:bulk` | `bulkInvoice` | required:bulkInvoice | admin, attorney, staff | invoices:write |
 | invoices | `PUT` | `/api/v1/invoices/{invoice_id}/draft` | `updateInvoiceDraft` | required:updateInvoiceDraft | admin, attorney, staff | invoices:write |
 | invoices | `POST` | `/api/v1/invoices/{invoice_id}/approve` | `approveInvoice` | required:approveInvoice | admin, attorney | invoices:approve |
 | invoices | `POST` | `/api/v1/invoices/{invoice_id}/send` | `sendInvoice` | required:sendInvoice | admin, attorney | invoices:send |
@@ -434,4 +435,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 428.
+Operations: 429.

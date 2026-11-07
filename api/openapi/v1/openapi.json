@@ -9336,7 +9336,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -9486,7 +9488,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.archived"
@@ -10058,7 +10062,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.closed"
@@ -10199,7 +10205,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.reopened"
@@ -10341,7 +10349,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.merged"
@@ -10957,7 +10967,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11228,7 +11240,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11541,7 +11555,8 @@
           "open_matter": "may_create_wall",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.wall_changed"
@@ -11925,7 +11940,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -12175,7 +12192,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -13231,7 +13250,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "fee_agreement.created"
@@ -13502,7 +13523,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "fee_agreement.updated"
@@ -14208,7 +14231,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "note.created"
@@ -14479,7 +14504,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "note.updated"
@@ -15086,7 +15113,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "conflict_record.created"
@@ -15363,7 +15392,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "conflict_record.updated"
@@ -15677,7 +15708,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "conflict_check.created"
@@ -20069,7 +20102,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -21088,7 +21123,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -21362,7 +21399,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "time_entry.updated"
@@ -21967,7 +22006,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "timer.started"
@@ -22839,7 +22880,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "expense.created"
@@ -23113,7 +23156,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "expense.updated"
@@ -24292,7 +24337,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "invoice.drafted"
@@ -24348,6 +24395,185 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/InvoiceDraftRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invoices:bulk": {
+      "post": {
+        "operationId": "bulkInvoice",
+        "summary": "Create invoices in one batch",
+        "description": "Importer write for invoice records. Validates every item, reconciles integer cents, and checks each matter wall before any row is written. One validation, reconciliation, role, or wall failure rejects the whole batch and writes nothing. A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. A different body with that key is idempotency_conflict and writes nothing. A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. internal_notes stays on the staff invoice and is omitted from a client projection.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "data"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invoice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "invoices",
+          "bulk"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "invoices:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "admin_bypasses_wall": false,
+          "batch_authorization": "all_or_nothing",
+          "reconciliation": "exact_cents",
+          "idempotency": "same_body_replays",
+          "client_omitted_fields": [
+            "internal_notes",
+            "adjustment_reason",
+            "write_off_reason",
+            "void_reason",
+            "dispute_status",
+            "dispute_notes"
+          ],
+          "events_on": "commit",
+          "replay_events": false,
+          "module_delegation": "delegated_viewer",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "invoice.created"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "bulkInvoice",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-error-codes": [
+          "batch_rejected",
+          "validation_failed",
+          "not_found",
+          "idempotency_conflict"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/components/schemas/InvoiceWrite"
+                    }
+                  }
+                }
               }
             }
           }
@@ -25551,7 +25777,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -25954,7 +26182,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "payment.created",
@@ -26440,7 +26670,9 @@
           ],
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "payment.processor_authorized"
@@ -27195,7 +27427,9 @@
             "authorize_before": "any_mutation",
             "inactive_or_unauthorized": "forbidden",
             "wrong_client_or_account": "not_found"
-          }
+          },
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -29743,7 +29977,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "trust.entry_posted",
@@ -31133,7 +31369,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -32573,7 +32811,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "calendar_event.created"
@@ -32846,7 +33086,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "calendar_event.updated"
@@ -33481,7 +33723,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "deadline.created"
@@ -33754,7 +33998,9 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "deadline.updated"
@@ -35264,7 +35510,9 @@
           "module_delegation": "delegated_viewer_or_noninteractive",
           "noninteractive_workflow": "background_file_publication",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "file.created",
@@ -35615,7 +35863,9 @@
           },
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -36135,7 +36385,9 @@
           "existing_grant_authorizes_issuance": false,
           "module_delegation": "service_principal",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "file.background_authorized"
@@ -37450,7 +37702,9 @@
           },
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -39039,7 +39293,9 @@
           "module_delegation": "delegated_viewer_or_noninteractive",
           "noninteractive_workflow": "background_file_publication",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "file_upload.created"
@@ -39962,7 +40218,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "folder.created"
@@ -40212,7 +40470,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "folder.updated"
@@ -42813,7 +43073,7 @@
       "post": {
         "operationId": "createStorageMove",
         "summary": "Create a storage move",
-        "description": "Creates one storage move. A repeated Idempotency-Key with the same body returns the original result.",
+        "description": "Creates one storage move. A repeated Idempotency-Key with the same body returns the original result. scope matter requires matter_id. The caller must be on that wall before any byte is copied. An off-wall admin is not_found and the move does not start. scope all copies the firm and does not name a matter.",
         "tags": [
           "Storage"
         ],
@@ -42874,11 +43134,19 @@
             "files:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "module_delegation": "delegated_viewer",
+          "admin_bypasses_wall": false,
+          "authorize_before": "external_effect",
+          "external_effects": [
+            "byte_copy"
+          ],
+          "matter_id": "required_when_scope_matter",
+          "off_wall": "not_found",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "storage_move.started"
@@ -43050,7 +43318,7 @@
       "post": {
         "operationId": "confirmStorageMove",
         "summary": "Confirm a storage move",
-        "description": "Deletes the old copies only after the move has checked every SHA-256 and an admin confirms.",
+        "description": "Deletes the old copies only after the move has checked every SHA-256 and an admin confirms. A move whose scope is matter checks that wall again before any old copy is deleted. An off-wall admin is not_found and nothing is deleted.",
         "tags": [
           "Storage"
         ],
@@ -43120,8 +43388,14 @@
             "files:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
+          "admin_bypasses_wall": false,
+          "authorize_before": "external_effect",
+          "external_effects": [
+            "byte_delete"
+          ],
+          "off_wall": "not_found",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -44026,7 +44300,9 @@
           ],
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "doc_tender.exception_resolved"
@@ -51812,7 +52088,9 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer_or_noninteractive",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "event.appended"
@@ -53396,7 +53674,7 @@
       "post": {
         "operationId": "createAiCall",
         "summary": "Run an AI call",
-        "description": "A module with ai:use asks the core to call a model. The key stays in the core. A primary failure uses the secondary when one is set, and the log lists both attempts.",
+        "description": "A module with ai:use asks the core to call a model. The key stays in the core. A primary failure uses the secondary when one is set, and the log lists both attempts. When matter_id is set, the caller must be on that matter wall before any provider is invoked and before the call is logged. An off-wall caller, including an admin, is not_found. The provider is not called and no log row is written. HTTP and MCP use this same check.",
         "tags": [
           "AI"
         ],
@@ -53459,11 +53737,20 @@
             "ai:use"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
+          "admin_bypasses_wall": false,
+          "matter_id": "optional",
+          "authorize_before": "external_effect",
+          "external_effects": [
+            "provider_invocation",
+            "log_write"
+          ],
+          "off_wall": "not_found",
           "module_delegation": "delegated_viewer_or_noninteractive",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "ai.call_completed"
@@ -57634,7 +57921,9 @@
             "firmwide_bypass": false
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "admin_bypasses_wall": false,
+          "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "module.context_issued"
@@ -62509,6 +62798,110 @@
           "lines"
         ],
         "description": "Replaces the lines on a draft invoice. A line may set fee_item_id. The description and amount stay editable after the catalog fills them in. adjustment_cents and adjustment_reason are the invoice adjustment."
+      },
+      "InvoiceWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issued_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "sent",
+              "viewed",
+              "paid",
+              "void"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "adjustment_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "adjustment_reason": {
+            "type": "string"
+          },
+          "interest_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "total_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "amount_paid_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "balance_due_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "write_off_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "write_off_reason": {
+            "type": "string"
+          },
+          "void_reason": {
+            "type": "string"
+          },
+          "dispute_status": {
+            "type": "string"
+          },
+          "dispute_notes": {
+            "type": "string"
+          },
+          "client_message": {
+            "type": "string"
+          },
+          "internal_notes": {
+            "type": "string",
+            "description": "Staff invoice only. Omitted from a client projection."
+          }
+        },
+        "required": [
+          "matter_id",
+          "number",
+          "issued_on",
+          "status",
+          "lines",
+          "subtotal_cents",
+          "adjustment_cents",
+          "interest_cents",
+          "total_cents",
+          "amount_paid_cents",
+          "balance_due_cents",
+          "write_off_cents"
+        ],
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile."
       },
       "InvoiceDraftRequest": {
         "type": "object",
@@ -74057,6 +74450,96 @@
         },
         "description": "custom_fields is written in the same transaction as the expense. Definitions follow the matter's practice area. Patch: every field is optional."
       },
+      "InvoiceWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "number": {
+            "type": "string",
+            "minLength": 1
+          },
+          "issued_on": {
+            "type": "string",
+            "format": "date",
+            "description": "Calendar date."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "sent",
+              "viewed",
+              "paid",
+              "void"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotal_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "adjustment_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "adjustment_reason": {
+            "type": "string"
+          },
+          "interest_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "total_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "amount_paid_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "balance_due_cents": {
+            "type": "integer",
+            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+          },
+          "write_off_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "write_off_reason": {
+            "type": "string"
+          },
+          "void_reason": {
+            "type": "string"
+          },
+          "dispute_status": {
+            "type": "string"
+          },
+          "dispute_notes": {
+            "type": "string"
+          },
+          "client_message": {
+            "type": "string"
+          },
+          "internal_notes": {
+            "type": "string",
+            "description": "Staff invoice only. Omitted from a client projection."
+          }
+        },
+        "description": "One invoice in a bulk import. Every amount is integer cents. The batch is rejected unless subtotal, adjustment, interest, total, payments, write-off, and balance reconcile. Patch: every field is optional."
+      },
       "PaymentWritePatch": {
         "description": "Records a payment. destination trust requires trust_account_id of an active authorized firm account. destination operating omits trust_account_id. internal_transfer is reserved for apply-trust. Patch: every field is optional.",
         "oneOf": [
@@ -76423,6 +76906,9 @@
       "invoices:read"
     ],
     "invoice.drafted": [
+      "invoices:read"
+    ],
+    "invoice.created": [
       "invoices:read"
     ],
     "invoice.approved": [

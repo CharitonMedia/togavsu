@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contract.model import Contract
+from contract.model import Contract, _batch
 from contract.policy import FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
 
 ADMIN = ["admin"]
@@ -1474,6 +1474,41 @@ def _billing(api: Contract) -> None:
         extra_access=WALL,
     )
     api.add(
+        "post",
+        "/api/v1/invoices:bulk",
+        operation_id="bulkInvoice",
+        summary="Create invoices in one batch",
+        description=(
+            "Importer write for invoice records. Validates every item, reconciles integer cents, and checks each matter wall "
+            "before any row is written. One validation, reconciliation, role, or wall failure rejects the whole batch and writes nothing. "
+            "A repeated Idempotency-Key with the same body returns the original invoices and emits nothing. "
+            "A different body with that key is idempotency_conflict and writes nothing. "
+            "A committed batch emits invoice.created once per item. HTTP and MCP use this same operation. "
+            "internal_notes stays on the staff invoice and is omitted from a client projection."
+        ),
+        tag="Billing",
+        features=["invoices", "bulk"],
+        roles=STAFF,
+        scopes=["invoices:write"],
+        body_schema=_batch("InvoiceWrite"),
+        response_schema=_batch_result("Invoice"),
+        success="201",
+        events=["invoice.created"],
+        error_codes=["batch_rejected", "validation_failed", "not_found", "idempotency_conflict"],
+        replaceable="time",
+        extra_access={
+            **WALL,
+            "admin_bypasses_wall": False,
+            "batch_authorization": "all_or_nothing",
+            "reconciliation": "exact_cents",
+            "idempotency": "same_body_replays",
+            "client": "deny",
+            "client_omitted_fields": ["internal_notes", "adjustment_reason", "write_off_reason", "void_reason", "dispute_status", "dispute_notes"],
+            "events_on": "commit",
+            "replay_events": False,
+        },
+    )
+    api.add(
         "put",
         "/api/v1/invoices/{invoice_id}/draft",
         operation_id="updateInvoiceDraft",
@@ -2919,12 +2954,39 @@ def _files(api: Contract) -> None:
         update=False,
         events={"created": "storage_move.started"},
     )
+    storage_move = api.spec["paths"]["/api/v1/storage-moves"]["post"]
+    storage_move["description"] = (
+        storage_move["description"].rstrip()
+        + " scope matter requires matter_id. The caller must be on that wall before any byte is copied. "
+        "An off-wall admin is not_found and the move does not start. scope all copies the firm and does not name a matter."
+    )
+    storage_move["x-togavsu-access"].update(
+        {
+            "matter_wall": True,
+            "admin_bypasses_wall": False,
+            "authorize_before": "external_effect",
+            "external_effects": ["byte_copy"],
+            "matter_id": "required_when_scope_matter",
+            "off_wall": "not_found",
+        }
+    )
     api.add(
         "post",
         "/api/v1/storage-moves/{storage_move_id}/confirm",
         operation_id="confirmStorageMove",
         summary="Confirm a storage move",
-        description="Deletes the old copies only after the move has checked every SHA-256 and an admin confirms.",
+        description=(
+            "Deletes the old copies only after the move has checked every SHA-256 and an admin confirms. "
+            "A move whose scope is matter checks that wall again before any old copy is deleted. "
+            "An off-wall admin is not_found and nothing is deleted."
+        ),
+        extra_access={
+            "matter_wall": True,
+            "admin_bypasses_wall": False,
+            "authorize_before": "external_effect",
+            "external_effects": ["byte_delete"],
+            "off_wall": "not_found",
+        },
         tag="Storage",
         features=["storage-moves"],
         roles=ADMIN,
@@ -3743,7 +3805,13 @@ def _admin(api: Contract) -> None:
         "/api/v1/ai/calls",
         operation_id="createAiCall",
         summary="Run an AI call",
-        description="A module with ai:use asks the core to call a model. The key stays in the core. A primary failure uses the secondary when one is set, and the log lists both attempts.",
+        description=(
+            "A module with ai:use asks the core to call a model. The key stays in the core. "
+            "A primary failure uses the secondary when one is set, and the log lists both attempts. "
+            "When matter_id is set, the caller must be on that matter wall before any provider is invoked and before the call is logged. "
+            "An off-wall caller, including an admin, is not_found. The provider is not called and no log row is written. "
+            "HTTP and MCP use this same check."
+        ),
         tag="AI",
         features=["ai"],
         roles=STAFF,
@@ -3752,6 +3820,14 @@ def _admin(api: Contract) -> None:
         response="AiCall",
         success="201",
         events=["ai.call_completed"],
+        extra_access={
+            "matter_wall": True,
+            "admin_bypasses_wall": False,
+            "matter_id": "optional",
+            "authorize_before": "external_effect",
+            "external_effects": ["provider_invocation", "log_write"],
+            "off_wall": "not_found",
+        },
     )
     api.add(
         "get",
