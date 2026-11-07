@@ -635,13 +635,14 @@ A small Go service in the same repo (/marketplace), deployed separately: author 
 
 ## 11. Build plan
 
-The build runs in Claude Code from start to finish once this PRD is approved. No phase waits for approval. Each phase ends at an automated checkpoint: its tests pass, the reporter files its report, and the next phase starts. A failed checkpoint gets fixed inside the phase.
+The build runs in Cursor Cloud Agents from start to finish, with GitHub as the canonical source and Codex as the independent checkpoint reviewer. No phase waits for approval. Each phase ends at an automated checkpoint: executable tests and UI QC pass, Codex reviews the integrated revision, the reporter files its report, and ready work in the next phase starts. A failed checkpoint gets fixed inside the phase. The operational workflow is docs/build/WORKFLOW.md; assignments and ownership are in docs/build/tasks.json.
 
-**Where it runs:** the build, its tests and its test installs run in Claude Code's own sandbox, not on Patrick's machines. No client data is used anywhere; all tests use generated seed data.
+**Where it runs:** the build, its tests and its test installs run in isolated Cursor-hosted cloud VMs and GitHub-hosted CI runners, not on Patrick's machines. Each implementation agent has its own branch and workspace. Render-1 holds the control checkout and launches cloud jobs; no product build or test install runs there. No client data is used anywhere; all tests use generated seed data.
 
 **Agents:**
 
-- **Lead (orchestrator):** owns the repo, the phase plan, integration and merges. Writes no feature code itself when a sub-agent can.
+- **Lead (orchestrator):** owns the repo, shared contracts, dependency and migration allocation, phase plan, integration and merges. Starts with at most four concurrent Cursor implementation agents; increases concurrency only when assignments have independent ownership and prerequisites. Writes no feature code itself when a worker can.
+- **Codex checkpoint reviewer:** independently reviews each PR at its exact base/head SHAs, and each integrated phase. It does not author the implementation it approves. Missing, failed, stale or incomplete reviews block merges; every new commit requires another review.
 - **Platform:** Compose stack, caddy, supervisor, updater, backups, Cosign signing, CI and release.
 - **Data:** schema, migrations and the module migration checks, repository layer, settings registry, seed data generator.
 - **Identity:** auth, two-factor, roles, matter walls, API tokens, audit log.
@@ -659,15 +660,21 @@ The build runs in Claude Code from start to finish once this PRD is approved. No
 
 Sub-agents run in parallel wherever their work doesn't depend on each other, so the lead's context stays clear.
 
-**Ponytail plugin:** the build runs with the Ponytail plugin for Claude Code, ponytail@ponytail version 4.9.0 from the DietrichGebert/ponytail marketplace, the version Patrick runs on Render-1.
+**Parallel work and GitHub checkpoints:**
 
-- **Setup, before phase 1:** the lead installs it in the build's own Claude Code as Ponytail's README says, with two separate prompts: `/plugin marketplace add DietrichGebert/ponytail`, then `/plugin install ponytail@ponytail`. Node.js must be on the non-interactive PATH so its two hooks run. Mode is full (`PONYTAIL_DEFAULT_MODE=full`). `PONYTAIL_SUBAGENT_MATCHER` stays unset, so the plugin injects its rules into every sub-agent the lead starts, the reporter included. The lead runs `/ponytail` once to confirm the mode reads full.
-- **While building, every phase:** every agent follows Ponytail's ladder: build only what's needed, reuse what's in the repo, then the Go standard library, then a native platform feature, then an installed dependency, and only then write the minimum code that works. A deliberate shortcut with a known ceiling carries a `// ponytail: <ceiling>, <upgrade path>` comment.
-- **The PRD counts as the explicit request.** Ponytail never cuts what this PRD asks for: every setting on the admin page, every API and MCP endpoint, the guide topics, the repository interfaces kept for SQLite, the security rules and QA's tests. Where Ponytail would question a complex request, the agent takes this PRD's answer and keeps going; it never stops to ask Patrick.
-- **At every phase checkpoint:** the lead runs `/ponytail-review` on the phase's diff. Ponytail lists findings and applies nothing, so the lead applies each cut that removes no PRD requirement inside the phase, and QA reruns the tests. Then the lead runs `/ponytail-debt` and writes the ledger to PONYTAIL-DEBT.md in the repo; a marker with no upgrade trigger gets one before the checkpoint passes. The reporter's phase report gives the review's net line count and the ledger count.
-- **Phase 7, before the release tag:** the lead runs `/ponytail-audit` on the whole repo, applies the cuts that remove no PRD requirement, reruns every test and runs `/ponytail-debt` a last time. The final report includes the audit's net result and the ledger.
-- Ponytail's review and audit look only at over-engineering. Correctness and security still go through QA's tests and security checks. `/ponytail-gain` and `/ponytail-help` aren't part of the build.
-- None of these steps waits for approval; each runs and the build moves on.
+- Start four bounded assignments in parallel: Data/contracts, Platform scaffolding, API contracts and QA acceptance mapping. They have disjoint ownership; the Data agent owns the first shared contract PR. Integration resolves their contracts before any product phase passes.
+- Every task identifies its PRD sections, acceptance IDs, owned files and dependencies. Workers open small PRs; they never push directly to main or merge their own changes. The lead owns shared package changes and migration numbering.
+- CI runs meaningful positive and failure-path tests. Codex compares the actual diff and test evidence to the assigned requirements and emits a pass/fail report tied to both base and head. Strict branch protection requires checks again when main changes. A passing metadata check or a scaffold never establishes product acceptance.
+- The lead merges only after checks pass and findings are resolved. Each phase also runs the combined acceptance cases against its integrated revision, files its report and gets a recovery tag. All seven phases and all section 12 acceptance criteria remain required.
+
+**Simplification review (Ponytail discipline under Cursor):**
+
+- Claude Code-specific Ponytail installation commands, hooks and slash commands are replaced by an explicit equivalent review under Cursor; the build must not pretend those commands ran.
+- Every agent builds only what is needed, reuses repo code, then the Go standard library, then native platform features, then installed dependencies, and only then writes the minimum additional code. A deliberate shortcut carries a `// ponytail: <ceiling>, <upgrade path>, trigger: <condition>` comment.
+- This PRD remains the explicit request. Simplification never cuts requested settings, endpoints, interfaces, guide topics, security behavior or tests, and never stops to ask Patrick about an already settled decision.
+- At each phase checkpoint, independently review the phase diff for unnecessary complexity, apply only cuts preserving requirements, rerun QA and update PONYTAIL-DEBT.md. Every marker needs a concrete upgrade trigger. The reporter gives the review's net line count and ledger count.
+- Before the phase 7 release tag, audit the whole repository, apply only requirement-preserving cuts, rerun all tests and finalize the debt ledger. Correctness/security go through QA and Codex independently of simplification.
+- The reporter continues to post phase reports on the GitHub tracking issue mentioning Patrick. No routine checkpoint waits for approval.
 
 **Phases:**
 
@@ -718,7 +725,7 @@ The build is done when a tagged release with signed images installs on a clean D
 - With the primary AI provider unreachable, a module's AI call falls back to the secondary provider and the call log shows both.
 - Every screen and every admin tab has a guide topic, opened from its ? icon, that says what it does and where it lives; a CI check fails the build when a screen or tab has none; each role's getting-started tutorial opens from /help.
 - The sample module's guide appears in the help center under its own heading and in search after install, opens from its widget's ? icon, refreshes on update and disappears after uninstall, all without a restart.
-- Every phase report gives the Ponytail review result and the debt ledger count; the released repo holds PONYTAIL-DEBT.md, and every `ponytail:` marker in it names an upgrade trigger.
+- Every phase report gives the explicit simplification review result and the debt ledger count; the released repo holds PONYTAIL-DEBT.md, and every `ponytail:` marker in it names an upgrade trigger.
 - Every record in section 5 exists after a fresh install, and the seed data fills each one.
 - The sample module's migration creates matter\_targets in its own schema, linked to matters; the matter screen shows its target through include=; its login can't read core contacts; a staff user outside a wall gets none of its rows for a walled matter; a second module reads its published view only after the admin approves the scope.
 - A module package whose migration creates its own contacts table, writes outside its schema or adds a trigger is refused at install; a changed migration that already ran is refused on update; a failing migration rolls back and the old version keeps running.

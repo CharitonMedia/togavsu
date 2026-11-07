@@ -1,0 +1,6 @@
+---
+description: Togavsu approved scope and parallel implementation
+alwaysApply: true
+---
+Follow AGENTS.md, togavsu-core-prd.md and docs/build/WORKFLOW.md.
+Read your assignment in docs/build/tasks.json. Work only in your own cloud branch and assigned paths. Deliver tests and a PR. Never self-merge or bypass the independent Codex checkpoint.

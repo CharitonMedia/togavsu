@@ -1,0 +1,210 @@
+[
+  {
+    "id": "AC-001",
+    "requirement": "A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits."
+  },
+  {
+    "id": "AC-002",
+    "requirement": "Every core feature is reachable through /api/v1 and through /mcp, and the OpenAPI spec validates."
+  },
+  {
+    "id": "AC-003",
+    "requirement": "A staff user can't see a walled matter anywhere: list, search, widget, report or API."
+  },
+  {
+    "id": "AC-004",
+    "requirement": "An accountant can read billing and trust and can't write anything."
+  },
+  {
+    "id": "AC-005",
+    "requirement": "A trust withdrawal that takes a client below zero posts, raises a flag, and sends email to the admins and the responsible attorney."
+  },
+  {
+    "id": "AC-006",
+    "requirement": "Trust ledger entries can't be edited or deleted through any path; reversals work."
+  },
+  {
+    "id": "AC-007",
+    "requirement": "Reconciliation shows a zero difference on seeded data and the right difference when the statement balance is off."
+  },
+  {
+    "id": "AC-008",
+    "requirement": "Invoices draft from unbilled time, approve, send by system mail, accept payment, and void back to unbilled."
+  },
+  {
+    "id": "AC-009",
+    "requirement": "A matter with an unpaid invoice or a leftover trust balance closes after a warning."
+  },
+  {
+    "id": "AC-010",
+    "requirement": "Home-screen layouts save per user; a user saves a named layout and marks it default, and after a reset that layout is offered first and restores exactly; the role default the admin set stays available; an 11th saved layout is refused."
+  },
+  {
+    "id": "AC-011",
+    "requirement": "Clicking the upcoming deadlines widget opens the deadlines page with the same date range, and clicking one deadline opens it; a staff user's click never reaches a walled matter; the sample module's widget opens the tab its manifest names; a manifest with a widget that has no click-through target is refused at install."
+  },
+  {
+    "id": "AC-012",
+    "requirement": "The sample module installs from a local file, asks for its permissions, shows its widget and tab, receives events, and uninstalls, all without a core restart."
+  },
+  {
+    "id": "AC-013",
+    "requirement": "An unsigned or tampered module is refused."
+  },
+  {
+    "id": "AC-014",
+    "requirement": "A module switched in for calendar takes over calendar screens and API; switching back restores the core's."
+  },
+  {
+    "id": "AC-015",
+    "requirement": "A flagged module shows the warning on its listing and alerts installed firms by dashboard and email; a pulled module can't be installed from the marketplace and can still be installed from a local file."
+  },
+  {
+    "id": "AC-016",
+    "requirement": "An overnight update swaps the core with no failed requests during a load test; a bad image (failed signature or health check) is refused and the old version keeps running."
+  },
+  {
+    "id": "AC-017",
+    "requirement": "p95 page and API response under 300 ms on seed data of 50 users, 20,000 matters and 1,000,000 time entries."
+  },
+  {
+    "id": "AC-018",
+    "requirement": "Audit log records every write with actor and source. A backup downloads to the admin's computer, copies to an S3-compatible destination and a network path, and restores to a working system with matching record counts."
+  },
+  {
+    "id": "AC-019",
+    "requirement": "The sidebar shows only the entries a user's role and installed modules allow, with live counts; a collapsed subgroup or sidebar stays collapsed for that user on another computer."
+  },
+  {
+    "id": "AC-020",
+    "requirement": "Search finds a matter by number, a person by phone and an invoice by number in each scope and in All, and returns nothing from a walled matter to a user outside the wall."
+  },
+  {
+    "id": "AC-021",
+    "requirement": "A new trust flag raises the responsible attorney's notification count; Mark all read clears it."
+  },
+  {
+    "id": "AC-022",
+    "requirement": "/help shows the user guide in HTML and PDF for the running version and the firm's sections; an admin adds a help item from the dashboard; a client user gets a 404 on /help/guide."
+  },
+  {
+    "id": "AC-023",
+    "requirement": "Reopening a closed matter requires a reason, restores its earlier status and shows in the case timeline; a zero-fee matter carries its marker and stays out of AR aging."
+  },
+  {
+    "id": "AC-024",
+    "requirement": "The edit history card shows every change to a matter with old and new values; attorney-only values show redacted to staff."
+  },
+  {
+    "id": "AC-025",
+    "requirement": "A custom field limited to one practice area shows only on that area's matters, saves through the UI and the API, and appears in CSV export."
+  },
+  {
+    "id": "AC-026",
+    "requirement": "A flat-fee matter with the fee in trust shows Ready to apply; applying it posts the trust transfer and marks it Collected."
+  },
+  {
+    "id": "AC-027",
+    "requirement": "Available dates lists only days with no court date, block or all-day event between the dates given, in pleading and letter form, and never changes the calendar."
+  },
+  {
+    "id": "AC-028",
+    "requirement": "An Appearance change shows on the next page load with no restart; a module's AI call runs on the key in AI settings and the module never sees the key; /llms.txt loads without sign-in and holds no firm records."
+  },
+  {
+    "id": "AC-029",
+    "requirement": "Every default named in this PRD is a setting on its admin page tab with that default; changing one there takes effect on the next request with no restart and logs the old and new values; Reset to default restores it."
+  },
+  {
+    "id": "AC-030",
+    "requirement": "A CI check fails the build when core code reads an environment variable outside the bootstrap package or uses a tunable value that isn't in the settings registry; the release build passes it."
+  },
+  {
+    "id": "AC-031",
+    "requirement": "With the primary AI provider unreachable, a module's AI call falls back to the secondary provider and the call log shows both."
+  },
+  {
+    "id": "AC-032",
+    "requirement": "Every screen and every admin tab has a guide topic, opened from its ? icon, that says what it does and where it lives; a CI check fails the build when a screen or tab has none; each role's getting-started tutorial opens from /help."
+  },
+  {
+    "id": "AC-033",
+    "requirement": "The sample module's guide appears in the help center under its own heading and in search after install, opens from its widget's ? icon, refreshes on update and disappears after uninstall, all without a restart."
+  },
+  {
+    "id": "AC-034",
+    "requirement": "Every phase report gives the explicit simplification review result and the debt ledger count; the released repo holds PONYTAIL-DEBT.md, and every `ponytail:` marker in it names an upgrade trigger."
+  },
+  {
+    "id": "AC-035",
+    "requirement": "Every record in section 5 exists after a fresh install, and the seed data fills each one."
+  },
+  {
+    "id": "AC-036",
+    "requirement": "The sample module's migration creates matter\\_targets in its own schema, linked to matters; the matter screen shows its target through include=; its login can't read core contacts; a staff user outside a wall gets none of its rows for a walled matter; a second module reads its published view only after the admin approves the scope."
+  },
+  {
+    "id": "AC-037",
+    "requirement": "A module package whose migration creates its own contacts table, writes outside its schema or adds a trigger is refused at install; a changed migration that already ran is refused on update; a failing migration rolls back and the old version keeps running."
+  },
+  {
+    "id": "AC-038",
+    "requirement": "Uninstall with Delete data drops the schema only after a backup and the typed confirmation; a core record that module rows point to can't be hard-deleted."
+  },
+  {
+    "id": "AC-039",
+    "requirement": "A 1 GB upload over a connection that drops resumes and its SHA-256 matches; a file on a walled matter can't be listed, previewed, downloaded or searched from outside the wall; every save adds a version and no version changes."
+  },
+  {
+    "id": "AC-040",
+    "requirement": "Moving all files from local disk to S3-compatible storage and then to Dropbox keeps every file readable during the move, checks every SHA-256 and deletes old copies only after the admin confirms; a changed byte on a backend fails the read and emails the admins; a restored backup brings back files from every backend with matching SHA-256s."
+  },
+  {
+    "id": "AC-041",
+    "requirement": "A DOCX opens in the editor, saves as a new version and opens in Word with no repair prompt; a second user sees the edit lock, which frees 5 minutes after the editor closes without saving; New Pleading fills its caption from the matter; the Document editor tab shows commit 770a8fab12392485c0c2789fb254da7d9296df4d."
+  },
+  {
+    "id": "AC-042",
+    "requirement": "An editor run fills a document's merge fields and saves a new version; a run that tries to read a local file is refused; a conversion to PDF makes a new file linked to its source."
+  },
+  {
+    "id": "AC-043",
+    "requirement": "A staff upload, a client upload, a file written by the sample module and a drop-folder file are each processed within 10 minutes of arrival with no nightly run, and each comes out with the pattern name as its only name, a category, a summary, its folder and a saved Markdown copy."
+  },
+  {
+    "id": "AC-044",
+    "requirement": "A 120-page PDF with scanned pages processes page by page, and a failure injected at page 49 resumes at page 49."
+  },
+  {
+    "id": "AC-045",
+    "requirement": "Eight photos of a three-page letter and a five-page lease, uploaded together, come out as two PDFs and two Markdown copies with the pages in order."
+  },
+  {
+    "id": "AC-046",
+    "requirement": "An audio file and a video come out with Markdown transcripts with timestamps, and the video's report adds what's on screen."
+  },
+  {
+    "id": "AC-047",
+    "requirement": "A file on a closed matter makes no model call, and reopening the matter processes it."
+  },
+  {
+    "id": "AC-048",
+    "requirement": "A password-protected PDF, a damaged file and a low-confidence label each land in the review queue, email the admin, and stay listed, viewable and downloadable with a flag."
+  },
+  {
+    "id": "AC-049",
+    "requirement": "A name, category or matter a person set is never changed by a later reprocess; reprocessing adds a Markdown version and keeps the old one."
+  },
+  {
+    "id": "AC-050",
+    "requirement": "The Markdown copy has the original's base name with .md, follows the original's walls, is in backups and is what Files search matches."
+  },
+  {
+    "id": "AC-051",
+    "requirement": "A naming pattern edited on the Doc Tender tab names the next file, and a pattern with a status token is refused; a category added there is used for the next file."
+  },
+  {
+    "id": "AC-052",
+    "requirement": "With test keys set, the AI call log shows gpt-6.1-sol for labeling, and the AI tab offers no local endpoint for labeling or categorizing."
+  }
+]

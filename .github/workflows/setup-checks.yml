@@ -1,0 +1,14 @@
+name: Setup checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  setup:
+    name: Setup checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check_setup.py
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py'

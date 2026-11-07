@@ -10,7 +10,7 @@ __pycache__/
 *.pyc
 .next/
 dist/
-build/
+/build/
 *.mp4
 *.mov
 *.zip

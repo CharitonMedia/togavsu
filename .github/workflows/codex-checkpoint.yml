@@ -1,0 +1,72 @@
+name: Codex checkpoint
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+concurrency:
+  group: codex-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    name: Codex checkpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check trusted source
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: test "$HEAD_REPO" = "$REPO"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Prepare exact revision context
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib
+          event=json.loads(pathlib.Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          pathlib.Path("review-context.json").write_text(json.dumps({
+            "base":os.environ["BASE_SHA"],"head":os.environ["HEAD_SHA"],
+            "pr":event["pull_request"]["number"],
+            "body":event["pull_request"].get("body","")
+          }))
+          PY
+          git -C candidate diff "$BASE_SHA...$HEAD_SHA" > review.diff
+      - name: Independent Codex review
+        id: codex
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: docs/build/prompts/codex-review.md
+          output-schema-file: docs/build/review.schema.json
+          output-file: review-result.json
+          sandbox: read-only
+          safety-strategy: drop-sudo
+          effort: high
+          allow-bot-users: cursor[bot]
+      - name: Validate independent verdict
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_review.py review-result.json "$BASE_SHA" "$HEAD_SHA"
+      - name: Retain review evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: codex-review-${{ github.event.pull_request.head.sha }}
+          path: |
+            review-context.json
+            review-result.json
+          if-no-files-found: error
