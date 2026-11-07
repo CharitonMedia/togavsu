@@ -86,6 +86,10 @@ NOTIFICATION_RECIPIENT = {
     "roles_bound": ["admin", "attorney", "staff", "accountant", "client"],
     "filter_before": ["pagination", "unread_count"],
     "admin_sees_others": False,
+    "inherits": "source_record",
+    "matter_wall": True,
+    "admin_bypasses_wall": False,
+    "attorney_only": "redacted",
 }
 TOKEN_OWNERSHIP = {
     "client": "own",
@@ -2149,6 +2153,30 @@ def _files(api: Contract) -> None:
         extra_access={**FILE_WALL, **version_publication("bulk", "import"), "unique_upload_ids": True},
     )
     api.add(
+        "get",
+        "/api/v1/files/unassigned/{upload_id}",
+        operation_id="reviewUnassignedFile",
+        summary="Review an unassigned ingested file",
+        description=(
+            "Returns one file this module published with no matter. "
+            "The response matter_id is null. The module cannot supply a matter, browse another module's unassigned files, or reuse another module's upload. "
+            "Doc Tender matching is a later review. This call does not guess a matter."
+        ),
+        tag="Files",
+        features=["files", "file-uploads", "doc-tender"],
+        roles=STAFF,
+        scopes=["files:read"],
+        response="File",
+        writes=False,
+        include=True,
+        extra_access={
+            **FILE_WALL,
+            "include_scope_pattern": "views:{module_id}.{view}:read",
+            "unassigned_review": True,
+            "assigns_matter": False,
+        },
+    )
+    api.add(
         "post",
         "/api/v1/files/publication-grants",
         operation_id="issueFilePublicationGrant",
@@ -3856,6 +3884,7 @@ def _modules(api: Contract) -> None:
         description=(
             "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). "
             "The signature is checked before anything runs. Unsigned and tampered packages are refused. "
+            "The signed package manifest is ModuleManifest, including sidebar, matter-screen, and optional data contributions. "
             "A widget with no click-through target is refused. "
             "A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. "
             "A changed migration that already ran is refused. "

@@ -35161,6 +35161,156 @@
         }
       }
     },
+    "/api/v1/files/unassigned/{upload_id}": {
+      "get": {
+        "operationId": "reviewUnassignedFile",
+        "summary": "Review an unassigned ingested file",
+        "description": "Returns one file this module published with no matter. The response matter_id is null. The module cannot supply a matter, browse another module's unassigned files, or reuse another module's upload. Doc Tender matching is a later review. This call does not guess a matter.",
+        "tags": [
+          "Files"
+        ],
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter upload_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "files",
+          "file-uploads",
+          "doc-tender"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "files:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "file",
+          "attorney_only_files": "not_found",
+          "access_cases": [
+            {
+              "role": "staff",
+              "attorney_only": true,
+              "result": "not_found"
+            },
+            {
+              "role": "attorney",
+              "attorney_only": true,
+              "result": "allowed"
+            },
+            {
+              "role": "staff",
+              "matter_walled": true,
+              "on_wall": false,
+              "result": "not_found"
+            }
+          ],
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "unassigned_review": true,
+          "assigns_matter": false,
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "reviewUnassignedFile",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token",
+              "task_authorization"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/files/publication-grants": {
       "post": {
         "operationId": "issueFilePublicationGrant",
@@ -44411,7 +44561,7 @@
             "notifications:read"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "owner": "self",
           "recipient": "self",
@@ -44427,6 +44577,9 @@
             "unread_count"
           ],
           "admin_sees_others": false,
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -44535,8 +44688,11 @@
             "notifications:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer_or_noninteractive",
           "creation_separate": true,
           "recipient": "named_on_create",
@@ -44674,7 +44830,7 @@
             "notifications:read"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "owner": "self",
           "recipient": "self",
@@ -44690,6 +44846,9 @@
             "unread_count"
           ],
           "admin_sees_others": false,
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -44800,7 +44959,7 @@
             "notifications:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "owner": "self",
           "recipient": "self",
@@ -44816,6 +44975,9 @@
             "unread_count"
           ],
           "admin_sees_others": false,
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -44941,7 +45103,7 @@
             "notifications:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "owner": "self",
           "recipient": "self",
@@ -44957,6 +45119,9 @@
             "unread_count"
           ],
           "admin_sees_others": false,
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -45067,7 +45232,7 @@
             "notifications:write"
           ],
           "public": false,
-          "matter_wall": false,
+          "matter_wall": true,
           "client": "deny",
           "owner": "self",
           "recipient": "self",
@@ -45083,6 +45248,9 @@
             "unread_count"
           ],
           "admin_sees_others": false,
+          "inherits": "source_record",
+          "admin_bypasses_wall": false,
+          "attorney_only": "redacted",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -55357,7 +55525,7 @@
       "post": {
         "operationId": "installModule",
         "summary": "Install a module",
-        "description": "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). The signature is checked before anything runs. Unsigned and tampered packages are refused. A widget with no click-through target is refused. A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. A changed migration that already ran is refused. The response waits for permission approval when the admin has not decided.",
+        "description": "Installs from a marketplace listing (JSON body) or a local signed package (multipart field package). The signature is checked before anything runs. Unsigned and tampered packages are refused. The signed package manifest is ModuleManifest, including sidebar, matter-screen, and optional data contributions. A widget with no click-through target is refused. A migration that leaves the module schema, duplicates a core record, or adds a trigger, function, extension, role, or grant is refused. A changed migration that already ran is refused. The response waits for permission approval when the admin has not decided.",
         "tags": [
           "Modules"
         ],
@@ -58264,7 +58432,8 @@
               "putFileChunk",
               "completeFileUpload",
               "publishFile",
-              "bulkFile"
+              "bulkFile",
+              "reviewUnassignedFile"
             ],
             "issued_by": "core",
             "registered_module": true,
@@ -64257,6 +64426,43 @@
         ],
         "description": "A rendition. Markdown copies are kept. Reprocessing adds a version and does not overwrite."
       },
+      "FileUploadUserOwner": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "owner_kind": {
+            "const": "user"
+          },
+          "owner_user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The signed-in user who started the upload."
+          }
+        },
+        "required": [
+          "owner_kind",
+          "owner_user_id"
+        ],
+        "description": "Interactive or client upload. The server sets the user. The client cannot name another user."
+      },
+      "FileUploadModuleOwner": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "owner_kind": {
+            "const": "module"
+          },
+          "owner_module_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "owner_kind",
+          "owner_module_id"
+        ],
+        "description": "Background upload. The owner is the installed module. There is no fabricated user id."
+      },
       "FileUpload": {
         "type": "object",
         "additionalProperties": false,
@@ -64266,10 +64472,15 @@
             "format": "uuid",
             "description": "UUIDv7."
           },
-          "owner_user_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The caller who started the upload. The client cannot name another user."
+          "owner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FileUploadUserOwner"
+              },
+              {
+                "$ref": "#/components/schemas/FileUploadModuleOwner"
+              }
+            ]
           },
           "chunk_size_bytes": {
             "type": "integer",
@@ -64301,14 +64512,14 @@
         },
         "required": [
           "id",
-          "owner_user_id",
+          "owner",
           "chunk_size_bytes",
           "next_offset",
           "size_bytes",
           "expires_at",
           "status"
         ],
-        "description": "A resumable upload owned by the caller. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet. getFileUpload returns next_offset."
+        "description": "A resumable upload. owner is either a user or a module. An upload with neither is invalid. Chunks are files.upload_chunk_bytes, starting at 8 MB. status staged means the bytes are stored and no file record exists yet."
       },
       "FileUploadWrite": {
         "type": "object",
@@ -64409,94 +64620,239 @@
         "description": "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event."
       },
       "BackgroundFileGrantRequest": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "The matter the service principal can already access. Another matter is not_found."
+        "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "assignment": {
+                "const": "matter"
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "The matter the service principal can already access."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "email",
+                  "zoom",
+                  "importer",
+                  "drop_folder"
+                ]
+              }
+            },
+            "required": [
+              "assignment",
+              "matter_id",
+              "source"
+            ]
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "email",
-              "zoom",
-              "importer",
-              "drop_folder"
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "assignment": {
+                "const": "unassigned"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "email",
+                  "zoom",
+                  "importer",
+                  "drop_folder"
+                ]
+              },
+              "contact_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Optional contact already authorized for this module. Not a matter guess."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "queue": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional review queue key owned by this module."
+              }
+            },
+            "required": [
+              "assignment",
+              "source"
             ]
           }
-        },
-        "required": [
-          "matter_id",
-          "source"
-        ],
-        "description": "Asks the core for a pre-upload publication grant. The body cannot name a module id, a role, or an expiry. The core sets those."
+        ]
       },
       "BackgroundFileAuthorization": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "module_id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "email",
-              "zoom",
-              "importer",
-              "drop_folder"
+        "description": "Core-issued pre-upload grant. Matter grants name one matter. Unassigned grants create files with no matter and cannot assign one. Not an admin grant.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assignment": {
+                "const": "matter"
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "email",
+                  "zoom",
+                  "importer",
+                  "drop_folder"
+                ]
+              },
+              "allowed_operations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "After this instant the grant is forbidden."
+              },
+              "revoked": {
+                "type": "boolean"
+              },
+              "expired": {
+                "type": "boolean"
+              },
+              "issued_by": {
+                "const": "core"
+              },
+              "upload_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                },
+                "description": "Uploads created under this grant. Empty until createFileUpload."
+              },
+              "tenant_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "module_id",
+              "assignment",
+              "matter_id",
+              "source",
+              "allowed_operations",
+              "expires_at",
+              "revoked",
+              "expired",
+              "issued_by",
+              "upload_ids",
+              "tenant_id"
             ]
           },
-          "allowed_operations": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "expires_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "After this instant the grant is forbidden."
-          },
-          "revoked": {
-            "type": "boolean"
-          },
-          "expired": {
-            "type": "boolean"
-          },
-          "issued_by": {
-            "const": "core"
-          },
-          "upload_ids": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "description": "UUIDv7."
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "module_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assignment": {
+                "const": "unassigned"
+              },
+              "matter_id": {
+                "type": "null"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "email",
+                  "zoom",
+                  "importer",
+                  "drop_folder"
+                ]
+              },
+              "allowed_operations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "revoked": {
+                "type": "boolean"
+              },
+              "expired": {
+                "type": "boolean"
+              },
+              "issued_by": {
+                "const": "core"
+              },
+              "upload_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "UUIDv7."
+                }
+              },
+              "tenant_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "contact_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "queue": {
+                "type": "string"
+              }
             },
-            "description": "Uploads created under this grant. Empty until createFileUpload."
+            "required": [
+              "module_id",
+              "assignment",
+              "matter_id",
+              "source",
+              "allowed_operations",
+              "expires_at",
+              "revoked",
+              "expired",
+              "issued_by",
+              "upload_ids",
+              "tenant_id"
+            ]
           }
-        },
-        "required": [
-          "module_id",
-          "matter_id",
-          "source",
-          "allowed_operations",
-          "expires_at",
-          "revoked",
-          "expired",
-          "issued_by",
-          "upload_ids"
-        ],
-        "description": "Core-issued pre-upload grant for one installed module, one matter, and the publication sequence. It is not an admin grant."
+        ]
       },
       "FileMetadataWrite": {
         "type": "object",
@@ -68730,6 +69086,151 @@
         },
         "description": "The viewer is the authenticated caller. user_id and roles are not accepted."
       },
+      "ManifestMigration": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "checksum": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        },
+        "required": [
+          "version",
+          "name",
+          "checksum"
+        ],
+        "description": "Reference to one numbered migration. This contract records the checksum. Applying the SQL is pending and is not performed here."
+      },
+      "ManifestExtension": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "core_record": {
+            "type": "string",
+            "enum": [
+              "contact",
+              "matter",
+              "user",
+              "note",
+              "fee_agreement",
+              "time_entry",
+              "expense",
+              "invoice",
+              "payment",
+              "calendar_event",
+              "deadline",
+              "file",
+              "conflict_record",
+              "trust_account",
+              "matter_party"
+            ]
+          },
+          "table": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "primary_key": {
+            "const": "id"
+          },
+          "foreign_key": {
+            "const": "id"
+          }
+        },
+        "required": [
+          "core_record",
+          "table",
+          "primary_key",
+          "foreign_key"
+        ],
+        "description": "Extension table whose primary key is the core record id. The foreign key points at that same id."
+      },
+      "ManifestView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$"
+          },
+          "core_record": {
+            "type": "string",
+            "enum": [
+              "contact",
+              "matter",
+              "user",
+              "note",
+              "fee_agreement",
+              "time_entry",
+              "expense",
+              "invoice",
+              "payment",
+              "calendar_event",
+              "deadline",
+              "file",
+              "conflict_record",
+              "trust_account",
+              "matter_party"
+            ]
+          },
+          "key_column": {
+            "const": "id"
+          },
+          "columns": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,62}$"
+            }
+          },
+          "scope": {
+            "type": "string",
+            "pattern": "^views:[a-z0-9-]+\\.[a-z0-9_]+:read$"
+          }
+        },
+        "required": [
+          "name",
+          "core_record",
+          "key_column",
+          "columns",
+          "scope"
+        ],
+        "description": "Published read view keyed to one core record. include= uses scope views:{module_id}.{view}:read."
+      },
+      "ManifestData": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "migrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestMigration"
+            }
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestExtension"
+            }
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestView"
+            }
+          }
+        },
+        "description": "Optional data contribution. Omit data, or send an empty object, when the module has no tables. A present declaration that breaks this shape is rejected. Migration execution remains pending."
+      },
       "ModuleManifest": {
         "type": "object",
         "additionalProperties": false,
@@ -68841,8 +69342,7 @@
             "additionalProperties": true
           },
           "data": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/ManifestData"
           }
         },
         "required": [
@@ -68904,15 +69404,41 @@
             "additionalProperties": false,
             "properties": {
               "path": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+                "description": "Module-local path. The core opens /m/{module_id}/{path}."
               },
               "filters": {
                 "type": "object",
                 "additionalProperties": true
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "roles": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "admin",
+                    "attorney",
+                    "staff",
+                    "accountant",
+                    "client"
+                  ],
+                  "description": "One role. A user may hold several."
+                }
               }
             },
             "required": [
-              "path"
+              "path",
+              "scopes",
+              "roles"
             ]
           }
         },
@@ -69004,18 +69530,51 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
           "label": {
             "type": "string"
           },
           "target": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path opened by quick create."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
           }
         },
         "required": [
+          "id",
           "label",
-          "target"
+          "target",
+          "scopes",
+          "roles"
         ],
-        "description": "A quick-create item. target is the path the core opens."
+        "description": "A quick-create item. target is a module-local path. The same normalization and role and scope checks apply as sidebar entries."
       },
       "ManifestSearchScope": {
         "type": "object",
@@ -69034,6 +69593,106 @@
         ],
         "description": "A search scope the core merges into header search."
       },
+      "ManifestMatterPanel": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path this panel opens."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "target",
+          "scopes",
+          "roles"
+        ],
+        "description": "A matter-screen panel. target is required and is not derived from the id."
+      },
+      "ManifestMatterAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+          },
+          "label": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path this action opens."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            }
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "target",
+          "scopes",
+          "roles"
+        ],
+        "description": "A matter-screen action. target is required and is not derived from the id."
+      },
       "ManifestMatterScreen": {
         "type": "object",
         "additionalProperties": false,
@@ -69041,39 +69700,13 @@
           "panels": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "title"
-              ]
+              "$ref": "#/components/schemas/ManifestMatterPanel"
             }
           },
           "actions": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "id",
-                "label"
-              ]
+              "$ref": "#/components/schemas/ManifestMatterAction"
             }
           }
         },
@@ -69081,7 +69714,7 @@
           "panels",
           "actions"
         ],
-        "description": "Matter-screen panels and actions."
+        "description": "Matter-screen panels and actions. Each has its own module-local target."
       },
       "ModulePackageUpload": {
         "type": "object",
@@ -73785,7 +74418,8 @@
           "putFileChunk",
           "completeFileUpload",
           "publishFile",
-          "bulkFile"
+          "bulkFile",
+          "reviewUnassignedFile"
         ],
         "issued_by": "core",
         "registered_module": true,
@@ -73825,6 +74459,7 @@
         "publishFile",
         "putFileChunk",
         "quarantineFileVersion",
+        "reviewUnassignedFile",
         "updatePaymentStatus"
       ]
     },

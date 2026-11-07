@@ -132,6 +132,7 @@ BACKGROUND_FILE_SEQUENCE = [
     "completeFileUpload",
     "publishFile",
     "bulkFile",
+    "reviewUnassignedFile",
 ]
 BACKGROUND_FILE_PUBLICATION = {
     "sources": ["email", "zoom", "importer", "drop_folder"],
@@ -752,28 +753,43 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
         return policy["unrelated_payment"]
     if grant.get("trust_account_id") != call.get("trust_account_id") and call.get("trust_account_id") is not None:
         return "forbidden"
-    if call["operation"] == "createPayment" and call.get("bound_payment"):
-        if _same_processor_body(call["bound_payment"], call):
-            return policy["idempotency_replay"]
-        return "conflict"
     field = call.get("field")
     if field and field not in grant.get("allowed_fields", []):
         return policy["field_outside_grant"]
     return "allowed"
 
 
+_PROCESSOR_REQUEST_FIELDS = (
+    "amount_cents",
+    "matter_id",
+    "contact_id",
+    "destination",
+    "invoice_id",
+    "trust_account_id",
+    "method",
+    "reference_number",
+    "source",
+    "payment_id",
+)
+
+
+def _normalized_processor_request(call: dict) -> dict:
+    """Accepted create request. Current payment status is not part of it."""
+    return {name: call.get(name) for name in _PROCESSOR_REQUEST_FIELDS}
+
+
 def _same_processor_body(payment: dict, call: dict) -> bool:
-    for name in ("amount_cents", "matter_id", "contact_id", "destination", "invoice_id", "trust_account_id"):
-        if name in call and call.get(name) != payment.get(name):
-            return False
-    if "status" in call and call.get("status") != payment.get("status"):
-        return False
-    return True
+    stored = payment.get("accepted_request") or {name: payment.get(name) for name in _PROCESSOR_REQUEST_FIELDS}
+    return _normalized_processor_request(call) == stored
 
 
 def _processor_body(call: dict) -> tuple:
-    names = ("amount_cents", "matter_id", "contact_id", "destination", "invoice_id", "trust_account_id", "status", "payment_id")
-    return tuple((name, call.get(name)) for name in names)
+    request = _normalized_processor_request(call)
+    return tuple((name, request[name]) for name in _PROCESSOR_REQUEST_FIELDS)
+
+
+def _idempotency_scope(call: dict, init_id: str | None, key: str) -> tuple:
+    return (call.get("caller_module_id"), call.get("operation"), init_id, key)
 
 
 def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> dict:
@@ -788,16 +804,21 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
     enriched = dict(call)
     if existing and call.get("operation") == "createPayment":
         enriched["bound_payment"] = existing
+    code = processor_callback(policy, operation, enriched)
+    if code == policy["idempotency_replay"]:
+        return {**unchanged, "result": code, "payment": existing}
+    if code != "allowed":
+        return {**unchanged, "result": code}
     key = call.get("idempotency_key")
     body = _processor_body(call)
-    if key and key in store["idempotency"] and store["idempotency"][key]["body"] != body:
-        return {"result": policy["idempotency_conflict"], **unchanged}
-    if key and key in store["idempotency"] and store["idempotency"][key]["body"] == body:
-        prior_id = store["idempotency"][key]["initialization_id"]
-        return {"result": policy["idempotency_replay"], "payment": store["payments"].get(prior_id), **unchanged}
-    code = processor_callback(policy, operation, enriched)
-    if code != "allowed":
-        return {"result": code, "payment": existing, **unchanged}
+    if key:
+        scoped = _idempotency_scope(call, init_id, key)
+        prior = store["idempotency"].get(scoped)
+        if prior and prior["body"] != body:
+            return {**unchanged, "result": policy["idempotency_conflict"]}
+        if prior and prior["body"] == body:
+            replayed = store["payments"].get(prior["initialization_id"])
+            return {**unchanged, "result": policy["idempotency_replay"], "payment": replayed}
     account_call = {
         "destination": call.get("destination"),
         "trust_account_id": call.get("trust_account_id", grant.get("trust_account_id")),
@@ -807,8 +828,9 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
     }
     failure = trust_account_failure(account_call)
     if failure:
-        return {"result": failure, **unchanged}
+        return {**unchanged, "result": failure}
     if call.get("operation") == "createPayment":
+        request = _normalized_processor_request(call)
         payment = {
             "id": grant["payment_id"],
             "initialization_id": init_id,
@@ -818,28 +840,32 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
             "invoice_id": call.get("invoice_id"),
             "destination": call.get("destination"),
             "trust_account_id": grant.get("trust_account_id"),
+            "method": call.get("method"),
+            "reference_number": call.get("reference_number"),
+            "source": call.get("source"),
             "status": call.get("status", "pending"),
             "trust_posted": False,
+            "accepted_request": request,
         }
         if init_id in store["payments"]:
             winner = store["payments"][init_id]
             if _same_processor_body(winner, call):
-                return {"result": policy["idempotency_replay"], "payment": winner, **unchanged}
-            return {"result": "conflict", **unchanged}
+                return {**unchanged, "result": policy["idempotency_replay"], "payment": winner}
+            return {**unchanged, "result": "conflict"}
         store["payments"][init_id] = payment
         ledger_inserted = _post_trust_once(store, payment, call)
         if key:
-            store["idempotency"][key] = {"body": body, "initialization_id": init_id}
-        return {"result": "allowed", "payment_inserted": True, "ledger_inserted": ledger_inserted, "payment": payment, "ledger_count": len(store["ledger"])}
+            store["idempotency"][_idempotency_scope(call, init_id, key)] = {"body": body, "initialization_id": init_id}
+        return {**unchanged, "result": "allowed", "payment_inserted": True, "ledger_inserted": ledger_inserted, "payment": payment, "ledger_count": len(store["ledger"])}
     if not existing or call.get("payment_id") != existing["id"]:
-        return {"result": policy["unrelated_payment"], **unchanged}
+        return {**unchanged, "result": policy["unrelated_payment"]}
     if existing.get("status") == "completed" and call.get("status") == "completed":
-        return {"result": policy["idempotency_replay"], "payment": existing, **unchanged, "ledger_count": len(store["ledger"])}
+        return {**unchanged, "result": policy["idempotency_replay"], "payment": existing, "ledger_count": len(store["ledger"])}
     existing["status"] = call.get("status", existing["status"])
     ledger_inserted = _post_trust_once(store, existing, call)
     if key:
-        store["idempotency"][key] = {"body": body, "initialization_id": init_id}
-    return {"result": "allowed", "payment_inserted": False, "ledger_inserted": ledger_inserted, "payment": existing, "ledger_count": len(store["ledger"])}
+        store["idempotency"][_idempotency_scope(call, init_id, key)] = {"body": body, "initialization_id": init_id}
+    return {**unchanged, "result": "allowed", "payment_inserted": False, "ledger_inserted": ledger_inserted, "payment": existing, "ledger_count": len(store["ledger"])}
 
 
 def _post_trust_once(store: dict, payment: dict, call: dict) -> bool:
@@ -1349,18 +1375,28 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
         return denied
     if not job.get("expires_at"):
         return {**denied, "result": "validation_failed"}
-    if job.get("matter_walled") and not job.get("on_wall"):
-        return {**denied, "result": policy["wrong_matter"]}
-    principal_matters = job.get("principal_matter_ids")
-    if principal_matters is not None and job.get("matter_id") not in principal_matters:
-        return {**denied, "result": policy["wrong_matter"]}
-    if not job.get("matter_id"):
+    assignment = job.get("assignment") or ("matter" if job.get("matter_id") else None)
+    if assignment == "unassigned":
+        if job.get("matter_id"):
+            return {**denied, "result": "validation_failed"}
+        matter_id = None
+    elif assignment == "matter":
+        if not job.get("matter_id"):
+            return {**denied, "result": "validation_failed"}
+        if job.get("matter_walled") and not job.get("on_wall"):
+            return {**denied, "result": policy["wrong_matter"]}
+        principal_matters = job.get("principal_matter_ids")
+        if principal_matters is not None and job.get("matter_id") not in principal_matters:
+            return {**denied, "result": policy["wrong_matter"]}
+        matter_id = job["matter_id"]
+    else:
         return {**denied, "result": "validation_failed"}
     if policy.get("grants_admin") or policy.get("firmwide_bypass") or access.get("grants_admin") or access.get("firmwide_bypass"):
         return denied
     grant = {
         "module_id": module["module_id"],
-        "matter_id": job["matter_id"],
+        "assignment": assignment,
+        "matter_id": matter_id,
         "source": job["source"],
         "allowed_operations": list(policy["sequence"]),
         "expires_at": job["expires_at"],
@@ -1368,15 +1404,21 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
         "issued_by": policy["issued_by"],
         "upload_ids": [],
         "expired": False,
+        "tenant_id": module.get("tenant_id") or "firm",
     }
+    if assignment == "unassigned":
+        if job.get("contact_id"):
+            grant["contact_id"] = job["contact_id"]
+        if job.get("queue"):
+            grant["queue"] = job["queue"]
     event = {
         "id": job.get("event_id") or "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb",
         "type": "file.background_authorized",
         "occurred_at": job.get("occurred_at") or job["expires_at"],
         "actor_kind": "module",
-        "record_type": "matter",
-        "record_id": job["matter_id"],
-        "matter_id": job["matter_id"],
+        "record_type": "file" if assignment == "unassigned" else "matter",
+        "record_id": matter_id or module["module_id"],
+        "matter_id": matter_id,
         "summary": "Publication grant issued",
         "background_file_authorization": grant,
     }
@@ -1386,6 +1428,18 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
         "file_created": False,
         "events": list(operation.get("x-togavsu-events") or ["file.background_authorized"]),
         "webhook_event": event,
+    }
+
+
+def _module_upload_document(upload_id: str, grant: dict, status: str) -> dict:
+    return {
+        "id": upload_id,
+        "owner": {"owner_kind": "module", "owner_module_id": grant["module_id"]},
+        "chunk_size_bytes": 8388608,
+        "next_offset": 0,
+        "size_bytes": 0,
+        "expires_at": grant["expires_at"],
+        "status": status,
     }
 
 
@@ -1422,27 +1476,33 @@ def background_file_step(store: dict, policy: dict, operation: dict, call: dict)
         return _background_denied(store, before_files, before_events, "not_found")
     if operation_id == "createFileUpload":
         upload_id = upload_id or f"up-{len(store['uploads']) + 1}"
+        document = _module_upload_document(upload_id, grant, "receiving")
         store["uploads"][upload_id] = {
             "id": upload_id,
             "status": "receiving",
-            "matter_id": grant["matter_id"],
+            "matter_id": grant.get("matter_id"),
             "owner": grant["module_id"],
+            "document": document,
         }
         grant["upload_ids"].append(upload_id)
         emitted = committed_events(operation, committed=True)
         store["events"].extend(emitted)
-        return {"result": "allowed", "upload_id": upload_id, "file_created": False, "events": emitted}
+        return {"result": "allowed", "upload_id": upload_id, "upload": document, "file_created": False, "events": emitted}
     if operation_id == "putFileChunk":
         store["uploads"][upload_id]["status"] = "receiving"
-        return {"result": "allowed", "file_created": False, "events": []}
+        store["uploads"][upload_id]["document"]["status"] = "receiving"
+        return {"result": "allowed", "upload": store["uploads"][upload_id]["document"], "file_created": False, "events": []}
     if operation_id == "getFileUpload":
-        return {"result": "allowed", "upload": store["uploads"][upload_id], "file_created": False, "events": []}
+        return {"result": "allowed", "upload": store["uploads"][upload_id]["document"], "file_created": False, "events": []}
     if operation_id == "completeFileUpload":
         store["uploads"][upload_id]["status"] = "staged"
+        store["uploads"][upload_id]["document"]["status"] = "staged"
         emitted = committed_events(operation, committed=True)
         store["events"].extend(emitted)
-        return {"result": "allowed", "file_created": False, "events": emitted}
+        return {"result": "allowed", "upload": store["uploads"][upload_id]["document"], "file_created": False, "events": emitted}
     if operation_id == "publishFile":
+        if grant.get("assignment") == "unassigned" and call.get("assign_matter_id"):
+            return _background_denied(store, before_files, before_events, "forbidden")
         upload = store["uploads"].get(upload_id)
         if not upload or upload.get("owner") != grant.get("module_id") or upload.get("matter_id") != grant.get("matter_id"):
             return _background_denied(store, before_files, before_events, "not_found")
@@ -1485,6 +1545,20 @@ def background_file_step(store: dict, policy: dict, operation: dict, call: dict)
         if not created:
             return {"result": "original_result", "file_created": False, "events": [], "files": replayed}
         return {"result": "allowed", "file_created": True, "events": emitted, "files": created + replayed}
+    if operation_id == "reviewUnassignedFile":
+        if grant.get("assignment") != "unassigned":
+            return _background_denied(store, before_files, before_events, "forbidden")
+        upload = store["uploads"].get(upload_id)
+        published = store["files"].get(upload_id)
+        if not upload or upload.get("owner") != grant.get("module_id") or not published or published.get("matter_id") is not None:
+            return _background_denied(store, before_files, before_events, "not_found")
+        return {
+            "result": "allowed",
+            "file_created": False,
+            "events": [],
+            "file": published,
+            "matching": {"status": "unassigned", "matter_id": None},
+        }
     return _background_denied(store, before_files, before_events, policy["operation_outside_grant"])
 
 
@@ -1548,6 +1622,10 @@ def notification_recipient_decision(operation: dict, call: dict) -> str:
         return "not_found"
     if call.get("recipient_user_id") not in (None, call.get("caller_user_id")):
         return "not_found"
+    if call.get("matter_walled") and not call.get("on_wall"):
+        return "not_found"
+    if call.get("attorney_only") and call.get("role") not in ("attorney", "admin"):
+        return "not_found"
     return "allowed"
 
 
@@ -1555,7 +1633,25 @@ def notification_page(operation: dict, caller: dict, rows: list[dict], limit: in
     """Drop other users' rows before the page and the unread count."""
     if notification_recipient_decision(operation, {**caller, "owner": "self", "recipient_user_id": caller.get("user_id")}) != "allowed":
         return {"data": [], "unread_count": 0, "total": 0}
-    own = [row for row in rows if row.get("user_id") == caller.get("user_id")]
+    own = []
+    for row in rows:
+        if row.get("user_id") != caller.get("user_id"):
+            continue
+        visible = notification_recipient_decision(
+            operation,
+            {
+                **caller,
+                "owner": "self",
+                "caller_user_id": caller.get("user_id"),
+                "recipient_user_id": row.get("user_id"),
+                "matter_walled": row.get("matter_walled"),
+                "on_wall": caller.get("on_wall"),
+                "attorney_only": row.get("attorney_only"),
+            },
+        )
+        if visible != "allowed":
+            continue
+        own.append(row)
     return {
         "data": own[:limit],
         "unread_count": sum(1 for row in own if not row.get("read_at")),
@@ -1606,6 +1702,9 @@ def sidebar_entries(module_id: str, entries: list[dict], caller: dict) -> dict:
     if len(paths) != len(set(paths)):
         return {"result": "validation_failed", "pages": []}
     return {"result": "allowed", "pages": opened}
+
+
+module_ui_targets = sidebar_entries
 
 
 def include_views_decision(operation: dict, call: dict) -> str:

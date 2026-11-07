@@ -172,6 +172,16 @@ def _readable_text(description: str = "") -> dict:
     }
 
 
+def _module_local_path(description: str) -> dict:
+    return {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+        "description": description,
+    }
+
+
 def _arr(items: dict, description: str = "") -> dict:
     schema: dict = {"type": "array", "items": items}
     if description:
@@ -1317,18 +1327,28 @@ SCHEMAS = _register(
             "A rendition. Markdown copies are kept. Reprocessing adds a version and does not overwrite.",
             mutable=False,
         ),
+        "FileUploadUserOwner": _obj(
+            {"owner_kind": {"const": "user"}, "owner_user_id": _uuid("The signed-in user who started the upload.")},
+            ["owner_kind", "owner_user_id"],
+            "Interactive or client upload. The server sets the user. The client cannot name another user.",
+        ),
+        "FileUploadModuleOwner": _obj(
+            {"owner_kind": {"const": "module"}, "owner_module_id": {"type": "string", "minLength": 1}},
+            ["owner_kind", "owner_module_id"],
+            "Background upload. The owner is the installed module. There is no fabricated user id.",
+        ),
         "FileUpload": _obj(
             {
                 "id": _uuid(),
-                "owner_user_id": _uuid("The caller who started the upload. The client cannot name another user."),
+                "owner": {"oneOf": [_ref("FileUploadUserOwner"), _ref("FileUploadModuleOwner")]},
                 "chunk_size_bytes": {"type": "integer", "minimum": 1},
                 "next_offset": {"type": "integer", "minimum": 0, "description": "Byte offset of the next chunk after a dropped connection."},
                 "size_bytes": {"type": "integer", "minimum": 0},
                 "expires_at": _dt(),
                 "status": _enum(["receiving", "staged", "published", "expired"]),
             },
-            ["id", "owner_user_id", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "status"],
-            "A resumable upload owned by the caller. Chunks are files.upload_chunk_bytes, starting at 8 MB, and the last chunk may be shorter. status staged means the bytes are stored and no file record exists yet. getFileUpload returns next_offset.",
+            ["id", "owner", "chunk_size_bytes", "next_offset", "size_bytes", "expires_at", "status"],
+            "A resumable upload. owner is either a user or a module. An upload with neither is invalid. Chunks are files.upload_chunk_bytes, starting at 8 MB. status staged means the bytes are stored and no file record exists yet.",
         ),
         "FileUploadWrite": _obj(
             {
@@ -1354,29 +1374,67 @@ SCHEMAS = _register(
             ["upload_id"],
             "Publishes one staged upload. upload_id is unique in the batch. A repeated id rejects the batch. Publishing an upload that already has a file replays that file and emits no new version event.",
         ),
-        "BackgroundFileGrantRequest": _obj(
-            {
-                "matter_id": _uuid("The matter the service principal can already access. Another matter is not_found."),
-                "source": _enum(["email", "zoom", "importer", "drop_folder"]),
-            },
-            ["matter_id", "source"],
-            "Asks the core for a pre-upload publication grant. The body cannot name a module id, a role, or an expiry. The core sets those.",
-        ),
-        "BackgroundFileAuthorization": _obj(
-            {
-                "module_id": {"type": "string", "minLength": 1},
-                "matter_id": _uuid(),
-                "source": _enum(["email", "zoom", "importer", "drop_folder"]),
-                "allowed_operations": _arr({"type": "string"}),
-                "expires_at": _dt("After this instant the grant is forbidden."),
-                "revoked": {"type": "boolean"},
-                "expired": {"type": "boolean"},
-                "issued_by": {"const": "core"},
-                "upload_ids": _arr(_uuid(), "Uploads created under this grant. Empty until createFileUpload."),
-            },
-            ["module_id", "matter_id", "source", "allowed_operations", "expires_at", "revoked", "expired", "issued_by", "upload_ids"],
-            "Core-issued pre-upload grant for one installed module, one matter, and the publication sequence. It is not an admin grant.",
-        ),
+        "BackgroundFileGrantRequest": {
+            "description": "Matter publication names one authorized matter. Unassigned ingestion names no matter. The body cannot name a module id, a role, or an expiry.",
+            "oneOf": [
+                _obj(
+                    {
+                        "assignment": {"const": "matter"},
+                        "matter_id": _uuid("The matter the service principal can already access."),
+                        "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+                    },
+                    ["assignment", "matter_id", "source"],
+                ),
+                _obj(
+                    {
+                        "assignment": {"const": "unassigned"},
+                        "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+                        "contact_id": _null(_uuid("Optional contact already authorized for this module. Not a matter guess.")),
+                        "queue": {"type": "string", "minLength": 1, "description": "Optional review queue key owned by this module."},
+                    },
+                    ["assignment", "source"],
+                ),
+            ],
+        },
+        "BackgroundFileAuthorization": {
+            "description": "Core-issued pre-upload grant. Matter grants name one matter. Unassigned grants create files with no matter and cannot assign one. Not an admin grant.",
+            "oneOf": [
+                _obj(
+                    {
+                        "module_id": {"type": "string", "minLength": 1},
+                        "assignment": {"const": "matter"},
+                        "matter_id": _uuid(),
+                        "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+                        "allowed_operations": _arr({"type": "string"}),
+                        "expires_at": _dt("After this instant the grant is forbidden."),
+                        "revoked": {"type": "boolean"},
+                        "expired": {"type": "boolean"},
+                        "issued_by": {"const": "core"},
+                        "upload_ids": _arr(_uuid(), "Uploads created under this grant. Empty until createFileUpload."),
+                        "tenant_id": {"type": "string", "minLength": 1},
+                    },
+                    ["module_id", "assignment", "matter_id", "source", "allowed_operations", "expires_at", "revoked", "expired", "issued_by", "upload_ids", "tenant_id"],
+                ),
+                _obj(
+                    {
+                        "module_id": {"type": "string", "minLength": 1},
+                        "assignment": {"const": "unassigned"},
+                        "matter_id": {"type": "null"},
+                        "source": _enum(["email", "zoom", "importer", "drop_folder"]),
+                        "allowed_operations": _arr({"type": "string"}),
+                        "expires_at": _dt(),
+                        "revoked": {"type": "boolean"},
+                        "expired": {"type": "boolean"},
+                        "issued_by": {"const": "core"},
+                        "upload_ids": _arr(_uuid()),
+                        "tenant_id": {"type": "string", "minLength": 1},
+                        "contact_id": _null(_uuid()),
+                        "queue": {"type": "string"},
+                    },
+                    ["module_id", "assignment", "matter_id", "source", "allowed_operations", "expires_at", "revoked", "expired", "issued_by", "upload_ids", "tenant_id"],
+                ),
+            ],
+        },
         "FileMetadataWrite": _obj(
             {
                 "attorney_only": {"type": "boolean"},
@@ -2232,6 +2290,81 @@ SCHEMAS = _register(
             {"matter_id": _null(_uuid())},
             description="The viewer is the authenticated caller. user_id and roles are not accepted.",
         ),
+        "ManifestMigration": _obj(
+            {
+                "version": {"type": "integer", "minimum": 1},
+                "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
+                "checksum": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+            },
+            ["version", "name", "checksum"],
+            "Reference to one numbered migration. This contract records the checksum. Applying the SQL is pending and is not performed here.",
+        ),
+        "ManifestExtension": _obj(
+            {
+                "core_record": _enum(
+                    [
+                        "contact",
+                        "matter",
+                        "user",
+                        "note",
+                        "fee_agreement",
+                        "time_entry",
+                        "expense",
+                        "invoice",
+                        "payment",
+                        "calendar_event",
+                        "deadline",
+                        "file",
+                        "conflict_record",
+                        "trust_account",
+                        "matter_party",
+                    ]
+                ),
+                "table": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
+                "primary_key": {"const": "id"},
+                "foreign_key": {"const": "id"},
+            },
+            ["core_record", "table", "primary_key", "foreign_key"],
+            "Extension table whose primary key is the core record id. The foreign key points at that same id.",
+        ),
+        "ManifestView": _obj(
+            {
+                "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
+                "core_record": _enum(
+                    [
+                        "contact",
+                        "matter",
+                        "user",
+                        "note",
+                        "fee_agreement",
+                        "time_entry",
+                        "expense",
+                        "invoice",
+                        "payment",
+                        "calendar_event",
+                        "deadline",
+                        "file",
+                        "conflict_record",
+                        "trust_account",
+                        "matter_party",
+                    ]
+                ),
+                "key_column": {"const": "id"},
+                "columns": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}},
+                "scope": {"type": "string", "pattern": "^views:[a-z0-9-]+\\.[a-z0-9_]+:read$"},
+            },
+            ["name", "core_record", "key_column", "columns", "scope"],
+            "Published read view keyed to one core record. include= uses scope views:{module_id}.{view}:read.",
+        ),
+        "ManifestData": _obj(
+            {
+                "migrations": _arr(_ref("ManifestMigration")),
+                "extensions": _arr(_ref("ManifestExtension")),
+                "views": _arr(_ref("ManifestView")),
+            },
+            [],
+            "Optional data contribution. Omit data, or send an empty object, when the module has no tables. A present declaration that breaks this shape is rejected. Migration execution remains pending.",
+        ),
         "ModuleManifest": _obj(
             {
                 "id": {"type": "string"},
@@ -2253,7 +2386,7 @@ SCHEMAS = _register(
                 "event_subscriptions": _arr({"type": "string"}),
                 "replaces": _null(_enum(["time", "trust", "calendar"])),
                 "settings_schema": {"type": "object", "additionalProperties": True},
-                "data": {"type": "object", "additionalProperties": True},
+                "data": _ref("ManifestData"),
             },
             ["id", "name", "version", "image", "permissions"],
             "Signed togavsu-module.yaml as JSON. A widget without a click-through target fails install.",
@@ -2264,7 +2397,15 @@ SCHEMAS = _register(
                 "title": {"type": "string"},
                 "default_size": _obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"]),
                 "allowed_sizes": _arr(_obj({"w": {"type": "integer"}, "h": {"type": "integer"}}, ["w", "h"])),
-                "target": _obj({"path": {"type": "string"}, "filters": {"type": "object", "additionalProperties": True}}, ["path"]),
+                "target": _obj(
+                    {
+                        "path": _module_local_path("Module-local path. The core opens /m/{module_id}/{path}."),
+                        "filters": {"type": "object", "additionalProperties": True},
+                        "scopes": _arr({"type": "string"}),
+                        "roles": _arr(_ROLE),
+                    },
+                    ["path", "scopes", "roles"],
+                ),
             },
             ["id", "title", "default_size", "allowed_sizes", "target"],
             "target is required. Install refuses a widget that omits it. allowed_sizes lists the grid sizes the widget may take.",
@@ -2284,13 +2425,7 @@ SCHEMAS = _register(
                 "icon": {"type": "string"},
                 "order": {"type": "integer"},
                 "badge": _enum(["normal", "warning"]),
-                "target": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128,
-                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
-                    "description": "Module-local path. The core opens /m/{module_id}/{target}. Schemes, absolute URLs, and .. are refused.",
-                },
+                "target": _module_local_path("Module-local path. The core opens /m/{module_id}/{target}. Schemes, absolute URLs, and .. are refused."),
                 "scopes": _arr({"type": "string"}, "Approved scopes required to render the entry and to open the target."),
                 "roles": _arr(_ROLE, "Roles that may render the entry and open the target."),
             },
@@ -2298,22 +2433,50 @@ SCHEMAS = _register(
             "A sidebar entry. id is unique in the manifest. target is a module-local path, not a core route or another module's path. Two ids with different targets open two pages.",
         ),
         "ManifestQuickCreate": _obj(
-            {"label": {"type": "string"}, "target": {"type": "string"}},
-            ["label", "target"],
-            "A quick-create item. target is the path the core opens.",
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "label": {"type": "string"},
+                "target": _module_local_path("Module-local path opened by quick create."),
+                "scopes": _arr({"type": "string"}),
+                "roles": _arr(_ROLE),
+            },
+            ["id", "label", "target", "scopes", "roles"],
+            "A quick-create item. target is a module-local path. The same normalization and role and scope checks apply as sidebar entries.",
         ),
         "ManifestSearchScope": _obj(
             {"id": {"type": "string"}, "label": {"type": "string"}},
             ["id", "label"],
             "A search scope the core merges into header search.",
         ),
+        "ManifestMatterPanel": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "title": {"type": "string"},
+                "target": _module_local_path("Module-local path this panel opens."),
+                "scopes": _arr({"type": "string"}),
+                "roles": _arr(_ROLE),
+            },
+            ["id", "title", "target", "scopes", "roles"],
+            "A matter-screen panel. target is required and is not derived from the id.",
+        ),
+        "ManifestMatterAction": _obj(
+            {
+                "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+                "label": {"type": "string"},
+                "target": _module_local_path("Module-local path this action opens."),
+                "scopes": _arr({"type": "string"}),
+                "roles": _arr(_ROLE),
+            },
+            ["id", "label", "target", "scopes", "roles"],
+            "A matter-screen action. target is required and is not derived from the id.",
+        ),
         "ManifestMatterScreen": _obj(
             {
-                "panels": _arr(_obj({"id": {"type": "string"}, "title": {"type": "string"}}, ["id", "title"])),
-                "actions": _arr(_obj({"id": {"type": "string"}, "label": {"type": "string"}}, ["id", "label"])),
+                "panels": _arr(_ref("ManifestMatterPanel")),
+                "actions": _arr(_ref("ManifestMatterAction")),
             },
             ["panels", "actions"],
-            "Matter-screen panels and actions.",
+            "Matter-screen panels and actions. Each has its own module-local target.",
         ),
         "ModulePackageUpload": _obj(
             {
