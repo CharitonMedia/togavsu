@@ -36,6 +36,10 @@ from contract.policy import (
     custom_fields_outcome,
     event_read_scopes,
     file_download_decision,
+    malware_scan_decision,
+    operation_authorization,
+    require_supported_qualifiers,
+    SUPPORTED_QUALIFIERS,
     is_core_file_download,
     confirm_totp_reset,
     bulk_invoice_apply,
@@ -566,6 +570,339 @@ class ContractTest(unittest.TestCase):
         payment = _operation(self.spec, "createPayment")
         self.assertEqual(payment["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive")
         self.assertEqual(mcp_tool_dispatch(self.spec, {"tool": "createPayment", "arguments": {}})["result"], "unauthenticated")
+
+    def test_mcp_dispatch_reuses_the_operation_policy(self):
+        import copy
+
+        def bearer(**extra):
+            return {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, **extra}
+
+        require_supported_qualifiers(self.spec)
+        covered = set()
+        for _method, _path, operation in _ops(self.spec):
+            covered.update(operation["x-togavsu-access"])
+        self.assertTrue(covered)
+        self.assertTrue(covered <= SUPPORTED_QUALIFIERS)
+        mutated = copy.deepcopy(self.spec)
+        setting = _operation(mutated, "updateSetting")
+        setting["x-togavsu-access"]["unlisted_gate"] = True
+        with self.assertRaises(RuntimeError):
+            require_supported_qualifiers(mutated)
+        unknown = mcp_tool_dispatch(
+            mutated,
+            {**bearer(role="admin", token_scopes=["settings:write"]), "tool": "updateSetting", "arguments": {"path": {"setting_key": "api.page_size"}}},
+        )
+        self.assertEqual(unknown["result"], "forbidden")
+        self.assertFalse(unknown["effects"])
+        deposit = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["trust:write"]), "tool": "postTrustEntry", "arguments": {"body": {"entry_type": "deposit"}}},
+        )
+        self.assertEqual(deposit["result"], "allowed")
+        self.assertTrue(deposit["effects"])
+        for entry_type in ("withdrawal", "transfer_to_operating", "refund", "adjustment"):
+            denied_entry = mcp_tool_dispatch(
+                self.spec,
+                {**bearer(role="staff", token_scopes=["trust:write"]), "tool": "postTrustEntry", "arguments": {"body": {"entry_type": entry_type}}},
+            )
+            self.assertEqual(denied_entry["result"], "scope_denied", entry_type)
+            self.assertFalse(denied_entry["effects"], entry_type)
+        staff_withdraw = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["trust:withdraw"]), "tool": "postTrustEntry", "arguments": {"body": {"entry_type": "withdrawal"}}},
+        )
+        self.assertEqual(staff_withdraw["result"], "forbidden")
+        self.assertFalse(staff_withdraw["effects"])
+        attorney_withdraw = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="attorney", token_scopes=["trust:withdraw"]), "tool": "postTrustEntry", "arguments": {"body": {"entry_type": "withdrawal"}}},
+        )
+        self.assertEqual(attorney_withdraw["result"], "allowed")
+        self.assertTrue(attorney_withdraw["effects"])
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        accounts = [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}]
+        trust_payment = {"body": {"destination": "trust", "status": "completed", "trust_account_id": account}}
+        missing_trust = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["payments:write"], trust_accounts=accounts, firm_id="firm-1"), "tool": "createPayment", "arguments": trust_payment},
+        )
+        self.assertEqual(missing_trust["result"], "scope_denied")
+        self.assertFalse(missing_trust["effects"])
+        held_trust = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["payments:write", "trust:write"], trust_accounts=accounts, firm_id="firm-1"),
+                "tool": "createPayment",
+                "arguments": trust_payment,
+            },
+        )
+        self.assertEqual(held_trust["result"], "allowed")
+        self.assertTrue(held_trust["effects"])
+        pending = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["payments:write"]), "tool": "createPayment", "arguments": {"body": {"destination": "operating", "status": "pending"}}},
+        )
+        self.assertEqual(pending["result"], "allowed")
+        self.assertTrue(pending["effects"])
+        unavailable = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["payments:write"], domain_handlers={"time": {"replaced": True, "available": False, "module_id": "time-mod"}}),
+                "tool": "createPayment",
+                "arguments": {"body": {"destination": "operating", "status": "pending"}},
+            },
+        )
+        self.assertEqual(unavailable["result"], "forbidden")
+        self.assertFalse(unavailable["effects"])
+        routed = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["payments:write"], domain_handlers={"time": {"replaced": True, "available": True, "module_id": "time-mod"}}),
+                "tool": "createPayment",
+                "arguments": {"body": {"destination": "operating", "status": "pending"}},
+            },
+        )
+        self.assertEqual(routed["result"], "allowed")
+        self.assertFalse(routed["effects"])
+        self.assertEqual(routed["routed"], "time-mod")
+        malware = self.spec["x-togavsu-module-delegation"]["noninteractive"]["malware_scan"]
+        matter = "matter-1"
+        scan_module = {
+            "registered": True,
+            "subscriptions": ["file.version_created"],
+            "module_id": "malware",
+            "recipient_id": "malware",
+            "file_id": "file-1",
+            "version_id": "ver-1",
+            "matter_id": matter,
+        }
+        scan_grant = _issue_malware_grant(malware, scan_module)
+
+        def scan(task=scan_grant, **extra):
+            path = {"file_id": extra.pop("file_id", "file-1"), "version_id": extra.pop("version_id", "ver-1")}
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(viewer_present=False, module_id=extra.pop("module_id", "malware"), caller_module_id=extra.pop("caller_module_id", "malware")),
+                    "tool": "downloadFileVersion",
+                    "module_scopes": extra.pop("module_scopes", ["files:read"]),
+                    "registered": True,
+                    "subscriptions": ["file.version_created"],
+                    "matter_id": extra.pop("matter_id", matter),
+                    "arguments": {"task_authorization": task, "path": path},
+                    **extra,
+                },
+            )
+
+        allowed_scan = scan()
+        self.assertEqual(allowed_scan["result"], "allowed")
+        self.assertTrue(allowed_scan["effects"])
+        self.assertIsNone(allowed_scan.get("role"))
+        for label, decision in (
+            ("revoked", scan(task={**scan_grant, "revoked": True})),
+            ("expired", scan(task={**scan_grant, "expired": True})),
+            ("invalid", scan(task={**scan_grant, "invalid": True})),
+            ("other-module", scan(caller_module_id="other-module")),
+            ("missing", scan(task=None)),
+        ):
+            self.assertNotEqual(decision["result"], "allowed", label)
+            self.assertFalse(decision["effects"], label)
+        self.assertEqual(scan(version_id="ver-2")["result"], "not_found")
+        self.assertFalse(scan(version_id="ver-2")["effects"])
+        self.assertEqual(scan(module_scopes=["files:write"])["result"], "scope_denied")
+        self.assertFalse(scan(module_scopes=["files:write"])["effects"])
+        off_wall = scan(matter_walled=True, matter_membership={matter: False}, on_wall=False)
+        self.assertEqual(off_wall["result"], "not_found")
+        self.assertFalse(off_wall["effects"])
+        payment_policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
+        pay_module = {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write", "trust:write"]}
+        operating_grant = processor_issuance(
+            payment_policy,
+            pay_module,
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                "invoice_id": None,
+                "amount_cents": 2500,
+                "destination": "operating",
+                "caller_scopes": ["payments:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )["grant"]
+        trust_grant = processor_issuance(
+            payment_policy,
+            pay_module,
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb2",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+                "invoice_id": None,
+                "amount_cents": 2500,
+                "destination": "trust",
+                "trust_account_id": account,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )["grant"]
+
+        def callback(grant, **extra):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(viewer_present=False, module_id=extra.pop("module_id", "lawpay"), caller_module_id=extra.pop("caller_module_id", "lawpay")),
+                    "tool": "createPayment",
+                    "module_scopes": extra.pop("module_scopes", ["payments:write"]),
+                    "registered": True,
+                    "matter_id": grant["matter_id"] if grant else None,
+                    "contact_id": grant.get("contact_id") if grant else None,
+                    "amount_cents": grant.get("amount_cents") if grant else None,
+                    "destination": extra.pop("destination", grant.get("destination") if grant else None),
+                    "status": extra.pop("status", "pending"),
+                    "trust_accounts": accounts,
+                    "firm_id": "firm-1",
+                    "arguments": {"task_authorization": grant},
+                    **extra,
+                },
+            )
+
+        operating_callback = callback(operating_grant)
+        self.assertEqual(operating_callback["result"], "allowed")
+        self.assertTrue(operating_callback["effects"])
+        for label, decision in (
+            ("revoked", callback({**operating_grant, "revoked": True})),
+            ("expired", callback({**operating_grant, "expired": True})),
+            ("other-module", callback(operating_grant, caller_module_id="other")),
+            ("missing", callback(None)),
+        ):
+            self.assertNotEqual(decision["result"], "allowed", label)
+            self.assertFalse(decision["effects"], label)
+        trust_denied = callback(trust_grant, destination="trust", status="completed", module_scopes=["payments:write"])
+        self.assertEqual(trust_denied["result"], "scope_denied")
+        self.assertFalse(trust_denied["effects"])
+        trust_allowed = callback(trust_grant, destination="trust", status="completed", module_scopes=["payments:write", "trust:write"], trust_account_id=account)
+        self.assertEqual(trust_allowed["result"], "allowed")
+        self.assertTrue(trust_allowed["effects"])
+        marker_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        marker_body = {"marker_id": marker_id, "label": "After hours", "color": "#336699", "target": "intake/header"}
+        own_marker = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                "tool": "createModuleMarker",
+                "arguments": {"path": {"module_id": "intake"}, "body": marker_body},
+            },
+        )
+        self.assertEqual(own_marker["result"], "allowed")
+        self.assertTrue(own_marker["effects"])
+        victim_marker = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                "tool": "createModuleMarker",
+                "arguments": {"path": {"module_id": "victim"}, "body": marker_body},
+            },
+        )
+        self.assertEqual(victim_marker["result"], "forbidden")
+        self.assertFalse(victim_marker["effects"])
+        human_marker = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="admin", human_session=True, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"]),
+                "tool": "createModuleMarker",
+                "arguments": {"path": {"module_id": "intake"}, "body": marker_body},
+            },
+        )
+        self.assertEqual(human_marker["result"], "forbidden")
+        self.assertFalse(human_marker["effects"])
+        own_help = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"]),
+                "tool": "createModuleHelpPage",
+                "arguments": {"path": {"module_id": "matter-clock"}, "body": {"heading": "matter-clock"}},
+            },
+        )
+        self.assertEqual(own_help["result"], "allowed")
+        self.assertTrue(own_help["effects"])
+        other_help = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"]),
+                "tool": "createModuleHelpPage",
+                "arguments": {"path": {"module_id": "victim"}, "body": {"heading": "matter-clock"}},
+            },
+        )
+        self.assertEqual(other_help["result"], "forbidden")
+        self.assertFalse(other_help["effects"])
+        human_help = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", human_session=True, approved_scopes=["help:write"], token_scopes=["help:write"]),
+                "tool": "createModuleHelpPage",
+                "arguments": {"path": {"module_id": "matter-clock"}, "body": {"heading": "matter-clock"}},
+            },
+        )
+        self.assertEqual(human_help["result"], "forbidden")
+        self.assertFalse(human_help["effects"])
+        publication = background_grant_issuance(
+            _operation(self.spec, "issueFilePublicationGrant"),
+            {"installed": True, "registered": True, "module_id": "drop-folder", "approved_scopes": ["files:write"]},
+            {
+                "module_id": "drop-folder",
+                "source": "drop_folder",
+                "assignment": "matter",
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "expires_at": "2026-11-07T18:00:00Z",
+                "matter_walled": False,
+            },
+        )
+        self.assertEqual(publication["result"], "allowed")
+        publication["grant"]["upload_ids"] = ["up-1"]
+        owned = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder"),
+                "tool": "getFileUpload",
+                "module_scopes": ["files:write"],
+                "registered": True,
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "owner": {"type": "module", "id": "drop-folder"},
+                "arguments": {"task_authorization": publication["grant"], "path": {"upload_id": "up-1"}},
+            },
+        )
+        self.assertEqual(owned["result"], "allowed")
+        self.assertTrue(owned["effects"])
+        fabricated = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["files:write"], principal_user_id="018f1a00-7b3c-7d4e-8a11-999999999999"),
+                "tool": "getFileUpload",
+                "owner": {"type": "module", "id": "drop-folder"},
+                "arguments": {"path": {"upload_id": "up-1"}},
+            },
+        )
+        self.assertEqual(fabricated["result"], "not_found")
+        self.assertFalse(fabricated["effects"])
+        revoked_publication = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder"),
+                "tool": "getFileUpload",
+                "module_scopes": ["files:write"],
+                "registered": True,
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "arguments": {"task_authorization": {**publication["grant"], "revoked": True}, "path": {"upload_id": "up-1"}},
+            },
+        )
+        self.assertEqual(revoked_publication["result"], "forbidden")
+        self.assertFalse(revoked_publication["effects"])
 
     def test_writes_accept_idempotency_keys(self):
         for method, path, operation in _ops(self.spec):
@@ -5805,36 +6142,7 @@ def _issue_malware_grant(policy: dict, module: dict) -> dict | None:
 
 
 def _malware_call(policy: dict, operation: dict, call: dict) -> str:
-    if call.get("token_revoked"):
-        return policy["revoked_module_token"]
-    if not call.get("registered") or policy["event_type"] not in call.get("subscriptions", []):
-        return policy["invalid"]
-    grant = call.get("grant")
-    if not grant or grant.get("invalid"):
-        return policy["invalid"]
-    if grant.get("expired"):
-        return policy["expired"]
-    if grant.get("revoked"):
-        return policy["revoked"]
-    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
-        return policy["module_identity_mismatch"]
-    if call["operation"] not in policy["sequence"] or call["operation"] not in grant.get("allowed_operations", []):
-        return policy["operation_outside_grant"]
-    needed = operation["x-togavsu-access"]["scopes"]
-    if any(scope not in call["module_scopes"] for scope in needed):
-        return policy["missing_scope"]
-    if call.get("matter_id") != grant.get("matter_id"):
-        return policy["unrelated_matter"]
-    if call.get("file_id") != grant.get("file_id"):
-        return policy["unrelated_file"]
-    if call["operation"] != "getFile" and call.get("version_id") != grant.get("version_id"):
-        return policy["unrelated_version"]
-    field = call.get("field")
-    if field in policy["attorney_only_fields"]:
-        return policy["attorney_only_field"]
-    if field and (field not in grant.get("allowed_fields", []) or field not in policy["metadata_fields"]):
-        return policy["field_outside_grant"]
-    return "allowed"
+    return malware_scan_decision(policy, operation, call)
 
 
 def _case_matches(case: dict, call: dict) -> bool:

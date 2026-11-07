@@ -550,6 +550,7 @@ def finalize(spec: dict) -> None:
     publish_invoice_item_privileges(spec)
     publish_client_projections(spec)
     publish_page_sizes(spec)
+    require_supported_qualifiers(spec)
 
 
 def _denied(result: str) -> dict:
@@ -864,6 +865,8 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
         return policy["missing_scope"]
     if call.get("matter_id") != grant.get("matter_id"):
         return policy["unrelated_matter"]
+    if call.get("matter_walled") and not matter_visible(call, {"matter_id": call.get("matter_id"), "matter_walled": True}, single_record=True):
+        return policy["unrelated_matter"]
     if call.get("contact_id") not in (None, grant.get("contact_id")):
         return policy["unrelated_resource"]
     if "invoice_id" in call and call.get("invoice_id") != grant.get("invoice_id"):
@@ -884,6 +887,44 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
         return "forbidden"
     field = call.get("field")
     if field and field not in grant.get("allowed_fields", []):
+        return policy["field_outside_grant"]
+    return "allowed"
+
+
+def malware_scan_decision(policy: dict, operation: dict, call: dict) -> str:
+    """Bounded file.version_created grant. HTTP and MCP both use this decision."""
+    if call.get("token_revoked"):
+        return policy["revoked_module_token"]
+    if not call.get("registered") or policy["event_type"] not in call.get("subscriptions", []):
+        return policy["invalid"]
+    grant = call.get("grant")
+    if not isinstance(grant, dict) or grant.get("invalid"):
+        return policy["invalid"]
+    if grant.get("expired"):
+        return policy["expired"]
+    if grant.get("revoked"):
+        return policy["revoked"]
+    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
+        return policy["module_identity_mismatch"]
+    if call.get("operation") not in policy["sequence"] or call.get("operation") not in grant.get("allowed_operations", []):
+        return policy["operation_outside_grant"]
+    if operation["x-togavsu-access"].get("noninteractive_workflow") != "malware_scan":
+        return policy["operation_outside_grant"]
+    needed = operation["x-togavsu-access"]["scopes"]
+    if any(scope not in call.get("module_scopes", []) for scope in needed):
+        return policy["missing_scope"]
+    if call.get("matter_id") != grant.get("matter_id"):
+        return policy["unrelated_matter"]
+    if call.get("matter_walled") and not matter_visible(call, {"matter_id": call.get("matter_id"), "matter_walled": True}, single_record=True):
+        return policy["unrelated_matter"]
+    if call.get("file_id") != grant.get("file_id"):
+        return policy["unrelated_file"]
+    if call.get("operation") != "getFile" and call.get("version_id") != grant.get("version_id"):
+        return policy["unrelated_version"]
+    field = call.get("field")
+    if field in policy["attorney_only_fields"]:
+        return policy["attorney_only_field"]
+    if field and (field not in grant.get("allowed_fields", []) or field not in policy["metadata_fields"]):
         return policy["field_outside_grant"]
     return "allowed"
 
@@ -1230,6 +1271,441 @@ def file_download_decision(operation: dict, call: dict) -> str:
     return "highlighted" if call.get("role") == "client" else "audited"
 
 
+def trust_entry_authorization(operation: dict, call: dict) -> str:
+    """Scope and role come from the entry type. A deposit does not require trust:withdraw."""
+    access = operation["x-togavsu-access"]
+    if access.get("scope_combination") != "per_entry_type":
+        return "forbidden"
+    items = call.get("items") if isinstance(call.get("items"), list) else [call]
+    if not items:
+        return "validation_failed"
+    for item in items:
+        kind = item.get("entry_type")
+        roles = (access.get("entry_type_roles") or {}).get(kind)
+        needed = (access.get("entry_type_scopes") or {}).get(kind)
+        if not roles or not needed:
+            return "validation_failed"
+        held = set(call.get("token_scopes") or [])
+        if any(scope not in held for scope in needed):
+            return "scope_denied"
+        if call.get("role") not in roles:
+            return "forbidden"
+        row = {
+            "matter_id": item.get("matter_id", call.get("matter_id")),
+            "matter_walled": item.get("matter_walled", call.get("matter_walled")),
+        }
+        if row["matter_id"] is not None or row["matter_walled"] or call.get("matter_membership") is not None:
+            if not matter_visible(call, row, single_record=row["matter_id"] is not None):
+                return "not_found"
+    return "allowed"
+
+
+def _tagged_owner_denial(operation: dict, call: dict) -> str | None:
+    """A tagged user or module owner is the record owner. A fabricated user id does not pass for a module."""
+    access = operation["x-togavsu-access"]
+    tagged = call.get("owner") if isinstance(call.get("owner"), dict) else None
+    if tagged is None:
+        record = call.get("record") if isinstance(call.get("record"), dict) else None
+        if isinstance(record, dict) and isinstance(record.get("owner"), dict):
+            tagged = record["owner"]
+    if isinstance(tagged, dict):
+        if tagged.get("type") not in {"user", "module"} or not isinstance(tagged.get("id"), str) or not tagged["id"]:
+            return "not_found"
+        rule = {"binding": "owner", "admin_bypass": access.get("owner") == "self_or_admin" or access.get("feed_owner") == "self_or_admin"}
+        stored = {"type": "file_upload.created", "context": {"owner": {"type": tagged["type"], "id": tagged["id"]}}}
+        if not _principal_can_read(rule, call, stored):
+            return "not_found"
+        return None
+    owner = access.get("owner")
+    if owner == "self" and call.get("owner") not in (None, "self"):
+        return "not_found"
+    if owner == "self_or_admin" and call.get("owner") not in (None, "self") and call.get("role") != "admin":
+        return "not_found"
+    if access.get("feed_owner") == "self_or_admin" and call.get("owner") not in (None, "self") and call.get("role") != "admin":
+        return "not_found"
+    return None
+
+
+def _replacement_decision(operation: dict, call: dict) -> dict | None:
+    domain = operation.get("x-togavsu-replaceable-domain")
+    if not domain or not operation.get("x-togavsu-writes"):
+        return None
+    handler = (call.get("domain_handlers") or {}).get(domain) or {}
+    if not handler.get("replaced"):
+        return None
+    if not handler.get("available"):
+        return {"result": "forbidden", "effects": False}
+    return {"result": "allowed", "effects": False, "routed": handler.get("module_id")}
+
+
+def _workflow_code(spec: dict, operation: dict, call: dict) -> str | None:
+    """None when a human viewer is present. A module with no viewer must pass the bounded grant."""
+    workflow = operation["x-togavsu-access"].get("noninteractive_workflow")
+    if not workflow or call.get("role") or call.get("viewer_present"):
+        return None
+    policy = spec.get("x-togavsu-module-delegation", {}).get("noninteractive", {}).get(workflow)
+    if not policy:
+        return "forbidden"
+    if workflow == "payment_processor":
+        return processor_callback(policy, operation, call)
+    if workflow == "malware_scan":
+        return malware_scan_decision(policy, operation, call)
+    if workflow == "background_file_publication":
+        return background_grant_authorization(policy, call)
+    return "forbidden"
+
+
+def _principal_code(operation: dict, call: dict) -> str | None:
+    principal = operation["x-togavsu-access"].get("module_principal") or {}
+    if not principal:
+        return None
+    scope = principal.get("scope")
+    adapted = {
+        "actor": "module" if call.get("module_id") and not call.get("human_session") and not call.get("role") else "human",
+        "human_session": bool(call.get("human_session") or call.get("role")),
+        "role": call.get("role"),
+        "scopes": list(call.get("approved_scopes") or call.get("token_scopes") or []),
+        "module_id": call.get("module_id"),
+        "path_module_id": call.get("path_module_id"),
+        "heading": call.get("heading"),
+        "target": call.get("target"),
+        "owner_module_id": call.get("owner_module_id"),
+        "action": call.get("action"),
+        "marker_id": call.get("marker_id"),
+        "label": call.get("label"),
+        "color": call.get("color"),
+        "created_at": call.get("created_at"),
+        "created_by": call.get("created_by"),
+        "committed": True,
+    }
+    if scope == "help:write":
+        return module_help_registration(operation, adapted)
+    if scope == "markers:write":
+        return module_marker_registration(operation, {"definitions": [], "attachments": []}, adapted)["result"]
+    return "forbidden"
+
+
+def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | None:
+    """None when this operation has no conditional financial or per-item scope rule."""
+    del spec
+    access = operation["x-togavsu-access"]
+    if call.get("noninteractive_accepted"):
+        return None
+    if access.get("trust_debit"):
+        if not call.get("role"):
+            return "forbidden"
+        return trust_debit_decision(call)["result"]
+    if access.get("entry_type_scopes"):
+        return trust_entry_authorization(operation, call)
+    if access.get("payment_reversal"):
+        if not call.get("role"):
+            return "forbidden"
+        return payment_reversal_decision(operation, call)["result"]
+    if access.get("payment_effect"):
+        if not call.get("role"):
+            return "forbidden"
+        return payment_effect_decision(operation, call)["result"]
+    if access.get("record_type_domain"):
+        items = call.get("items") if isinstance(call.get("items"), list) else []
+        if not items:
+            return "validation_failed"
+        return custom_field_bulk_apply(operation, call, items, call.get("domain_handlers"))["result"]
+    if access.get("item_privileges"):
+        return bulk_invoice_apply({"invoices": [], "events": [], "idempotency": {}}, operation, call)["result"]
+    if access.get("external_effects"):
+        return external_effect_decision(operation, call)["result"]
+    if access.get("authorization_category") == "service_principal_issuance":
+        module = {
+            "installed": bool(call.get("installed", call.get("registered"))),
+            "registered": bool(call.get("registered")),
+            "module_id": call.get("module_id"),
+            "approved_scopes": list(call.get("approved_scopes") or call.get("module_scopes") or []),
+            "tenant_id": call.get("tenant_id"),
+        }
+        job = {
+            "module_id": call.get("module_id"),
+            "source": call.get("source"),
+            "assignment": call.get("assignment"),
+            "matter_id": call.get("matter_id"),
+            "matter_walled": call.get("matter_walled"),
+            "on_wall": call.get("on_wall"),
+            "matter_membership": call.get("matter_membership"),
+            "expires_at": call.get("expires_at"),
+            "principal_matter_ids": call.get("principal_matter_ids"),
+            "contact_id": call.get("contact_id"),
+            "queue": call.get("queue"),
+        }
+        return background_grant_issuance(operation, module, job)["result"]
+    if access.get("issuance") == "admin_only":
+        return issue_api_token(operation, call)["result"]
+    if access.get("recipient") == "self":
+        return notification_recipient_decision(operation, call)
+    return None
+
+
+def _module_scope_intersection(call: dict) -> dict:
+    if not call.get("module_id") or call.get("noninteractive_accepted"):
+        return call
+    if call.get("grant_revoked"):
+        return call
+    approved = set(call.get("approved_scopes") or [])
+    narrowed = dict(call)
+    narrowed["token_scopes"] = [scope for scope in call.get("token_scopes") or [] if scope in approved]
+    return narrowed
+
+
+# Every key written on x-togavsu-access. A key missing here fails the build.
+# context: the key documents post-authorization behavior and does not by itself allow a call.
+_CONTEXT_QUALIFIERS = frozenset(
+    {
+        "accountant",
+        "anonymous_when",
+        "archive_cases",
+        "assigns_matter",
+        "audit",
+        "authorizes",
+        "badge_counts",
+        "below_zero",
+        "client_context",
+        "client_csv_columns",
+        "client_download",
+        "client_fields",
+        "client_projection",
+        "client_schema",
+        "creation_separate",
+        "doc_tender_retry",
+        "download_filter",
+        "draft_selector",
+        "effect_order",
+        "email_uniqueness",
+        "event",
+        "event_exemption",
+        "event_read_scopes",
+        "events_on",
+        "events_on_failure",
+        "existing_grant_authorizes_issuance",
+        "extension_include",
+        "filter_before",
+        "firm_feed_roles",
+        "heading_default",
+        "idempotency",
+        "inherits",
+        "markdown",
+        "old_secret",
+        "on_denial",
+        "on_disable",
+        "on_failure",
+        "on_new_permissions",
+        "on_uninstall",
+        "on_update",
+        "open_matter",
+        "own_heading_only",
+        "owner_namespace",
+        "page_size_cap_setting",
+        "page_size_setting",
+        "payment_events",
+        "payment_status",
+        "person_lock",
+        "processor_issuance",
+        "quarantine_confirmation_input",
+        "reconciliation",
+        "rejected_fields",
+        "relationship_immutable",
+        "replay_events",
+        "required_status",
+        "response_projection",
+        "roles_bound",
+        "runtime_registration",
+        "sanitize_rejects",
+        "scope_cases",
+        "secret_on_read",
+        "server_owned_relationships",
+        "staff_schema",
+        "staff_sign_in",
+        "task_grant_required",
+        "timeline",
+        "token",
+        "tool_authorization",
+        "trust_flag",
+        "trust_posting",
+        "unassigned_review",
+        "unique_upload_ids",
+        "version_publication",
+        "viewer_required",
+    }
+)
+_GATE_QUALIFIERS = frozenset(
+    {
+        "access_cases",
+        "access_inherits",
+        "admin_bypasses_wall",
+        "admin_sees_others",
+        "attorney_only",
+        "attorney_only_files",
+        "authorization_category",
+        "authorize_before",
+        "batch_authorization",
+        "bearer_amplification",
+        "client",
+        "domain_routing",
+        "entry_type_roles",
+        "entry_type_scopes",
+        "external_effects",
+        "feed_owner",
+        "firmwide_bypass",
+        "grant_issuance",
+        "grants_admin",
+        "inaccessible_result",
+        "include_scope_pattern",
+        "inherited_record_access",
+        "issuance",
+        "item_privileges",
+        "matter_id",
+        "matter_wall",
+        "module_delegation",
+        "module_principal",
+        "noninteractive_workflow",
+        "off_wall",
+        "owner",
+        "owner_binding",
+        "partial_core_write",
+        "payment_effect",
+        "payment_reversal",
+        "public",
+        "quarantine_confirmation",
+        "recipient",
+        "record_type_domain",
+        "record_type_scopes",
+        "replaced_core",
+        "resolve_before_write",
+        "roles",
+        "scope_bound",
+        "scope_combination",
+        "scopes",
+        "trust_debit",
+        "unavailable_replacement",
+    }
+)
+SUPPORTED_QUALIFIERS = _CONTEXT_QUALIFIERS | _GATE_QUALIFIERS | frozenset({"replacement"})
+
+
+def require_supported_qualifiers(spec: dict) -> None:
+    """Fail the build when an operation declares a qualifier the dispatcher does not implement."""
+    unknown = []
+    for _method, _path, operation in iter_operations(spec):
+        for key in operation.get("x-togavsu-access") or {}:
+            if key not in SUPPORTED_QUALIFIERS:
+                unknown.append(f"{operation['operationId']}.{key}")
+        if operation.get("x-togavsu-replaceable-domain") and "replacement" not in SUPPORTED_QUALIFIERS:
+            unknown.append(operation["operationId"] + ".replacement")
+    if unknown:
+        raise RuntimeError("unsupported access qualifiers: " + ", ".join(sorted(unknown)))
+
+
+def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
+    """One decision for the HTTP operation. MCP tools/call uses it before effects."""
+    denied = {"effects": False, "public": False}
+    access = operation.get("x-togavsu-access") or {}
+    unknown = [key for key in access if key not in SUPPORTED_QUALIFIERS]
+    if unknown:
+        return {"result": "forbidden", **denied, "unsupported": unknown}
+    if access.get("admin_bypasses_wall") or access.get("firmwide_bypass") or access.get("grants_admin"):
+        return {"result": "forbidden", **denied}
+    subject = dict(call)
+    workflow = _workflow_code(spec, operation, subject)
+    if workflow is not None:
+        if workflow != "allowed":
+            return {"result": workflow, **denied}
+        subject["noninteractive_accepted"] = True
+    principal = _principal_code(operation, subject)
+    if principal is not None:
+        if principal != "allowed":
+            return {"result": principal, **denied}
+        subject["principal_accepted"] = True
+    if subject.get("module_id") and not subject.get("noninteractive_accepted") and not subject.get("principal_accepted"):
+        if subject.get("grant_revoked"):
+            return {"result": "forbidden", **denied}
+        subject = _module_scope_intersection(subject)
+    conditional = _conditional_scope_code(spec, operation, subject)
+    if conditional is not None and conditional != "allowed":
+        return {"result": conditional, **denied}
+    if not subject.get("noninteractive_accepted") and not subject.get("principal_accepted") and conditional is None:
+        roles = access.get("roles") or []
+        if not roles or subject.get("role") not in roles:
+            return {"result": "forbidden", **denied}
+        needed = list(access.get("scopes") or [])
+        held = set(subject.get("token_scopes") or [])
+        if any(scope not in held for scope in needed):
+            return {"result": "scope_denied", **denied}
+    if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
+        matter_id = subject.get("matter_id")
+        if matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
+            row = {"matter_id": matter_id, "matter_walled": bool(subject.get("matter_walled", subject.get("matter_membership") is not None))}
+            if not matter_visible(subject, row, single_record=matter_id is not None):
+                return {"result": "not_found", **denied}
+    owner_denial = _tagged_owner_denial(operation, subject)
+    if owner_denial:
+        return {"result": owner_denial, **denied}
+    if access.get("attorney_only_files") == "not_found" and subject.get("attorney_only") and subject.get("role") not in ("attorney", "admin"):
+        return {"result": "not_found", **denied}
+    if _hides_attorney_only_record(access) and subject.get("attorney_only") and subject.get("role") not in ("attorney", "admin"):
+        return {"result": "not_found", **denied}
+    client = access.get("client")
+    role = subject.get("role")
+    if client == "deny" and role == "client":
+        return {"result": "forbidden", **denied}
+    if client == "not_found" and role == "client":
+        return {"result": "not_found", **denied}
+    if client in {"own", "own_matter"} and role == "client" and subject.get("owner") not in (None, "self"):
+        return {"result": "not_found", **denied}
+    if client == "shared" and role == "client" and (subject.get("owner") == "other_client" or subject.get("shared") is False):
+        return {"result": "not_found", **denied}
+    if access.get("quarantine_confirmation") == "required" and not subject.get("noninteractive_accepted"):
+        download = file_download_decision(operation, subject)
+        if download in {"not_found", "missing_event", "missing_confirm_input", "quarantine_confirmation_required"}:
+            return {"result": download, **denied}
+    if "include_scope_pattern" in access and not subject.get("noninteractive_accepted") and not subject.get("principal_accepted"):
+        viewed = include_views_decision(operation, subject)
+        if viewed != "allowed":
+            return {"result": viewed, **denied}
+    for case in access.get("access_cases") or []:
+        if _access_case_matches(case, subject) and case.get("result") not in (None, "allowed"):
+            return {"result": case["result"], **denied}
+    inherited = _inherited_record_denial(operation, subject)
+    if inherited:
+        return {"result": inherited, **denied}
+    routed = _replacement_decision(operation, subject)
+    if routed:
+        return {**denied, **routed, "public": False}
+    return {"result": "allowed", "effects": True, "public": False}
+
+
+def _inherited_record_denial(operation: dict, call: dict) -> str | None:
+    """Reuse the history omission rule when the call names a record. A list with no record stays filtered by that helper."""
+    if "inherited_record_access" not in (operation.get("x-togavsu-access") or {}):
+        return None
+    rows = call.get("rows") if isinstance(call.get("rows"), list) else None
+    if rows is None and isinstance(call.get("record"), dict):
+        rows = [call["record"]]
+    if not rows:
+        return None
+    page = inherited_history_rows(operation, call, rows)
+    if page.get("result") == "forbidden":
+        return "forbidden"
+    if isinstance(call.get("record"), dict) and not page.get("rows"):
+        return "not_found"
+    return None
+
+
+def _access_case_matches(case: dict, call: dict) -> bool:
+    for key, value in case.items():
+        if key == "result":
+            continue
+        if call.get(key) != value:
+            return False
+    return True
+
+
 def mcp_credential_rejection(arguments: dict) -> str | None:
     planted = ("Authorization", "Host", "roles", "role", "on_wall", "matter_membership", "token_scopes", "scopes", "approved_scopes")
     if any(name in arguments for name in planted):
@@ -1238,6 +1714,90 @@ def mcp_credential_rejection(arguments: dict) -> str | None:
     if any(str(name).lower() in {"authorization", "host"} for name in headers):
         return "forbidden"
     return None
+
+
+def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
+    """Credential context plus path, query, and body. Arguments cannot supply a role, wall, or scope."""
+    path = arguments.get("path") if isinstance(arguments.get("path"), dict) else {}
+    query = arguments.get("query") if isinstance(arguments.get("query"), dict) else {}
+    body = arguments.get("body") if isinstance(arguments.get("body"), dict) else {}
+    items = body.get("items") if isinstance(body.get("items"), list) else None
+    grant = call.get("grant") if isinstance(call.get("grant"), dict) else None
+    task = arguments.get("task_authorization")
+    if isinstance(task, dict):
+        grant = task
+    principal = operation["x-togavsu-access"].get("module_principal") or {}
+    action = {"createModuleMarker": "create", "updateModuleMarker": "update", "revokeModuleMarker": "revoke"}.get(operation["operationId"])
+    subject = {
+        "role": call.get("role"),
+        "token_scopes": list(call.get("token_scopes") or []),
+        "approved_scopes": list(call.get("approved_scopes") or []),
+        "module_scopes": list(call.get("module_scopes") or call.get("approved_scopes") or []),
+        "module_id": call.get("module_id"),
+        "caller_module_id": call.get("caller_module_id") or call.get("module_id"),
+        "grant_revoked": call.get("grant_revoked"),
+        "human_session": bool(call.get("human_session") or call.get("role")),
+        "viewer_present": bool(call.get("viewer_present")),
+        "grant": grant,
+        "operation": operation["operationId"],
+        "registered": call.get("registered", False),
+        "subscriptions": list(call.get("subscriptions") or []),
+        "installed": call.get("installed"),
+        "token_revoked": call.get("token_revoked"),
+        "matter_id": path.get("matter_id") or body.get("matter_id") or call.get("matter_id"),
+        "matter_walled": call.get("matter_walled"),
+        "matter_membership": call.get("matter_membership"),
+        "on_wall": call.get("on_wall"),
+        "owner": call.get("owner"),
+        "record": call.get("record"),
+        "attorney_only": call.get("attorney_only"),
+        "shared": call.get("shared"),
+        "file_id": path.get("file_id") or body.get("file_id") or call.get("file_id"),
+        "version_id": path.get("version_id") or body.get("version_id") or call.get("version_id"),
+        "upload_id": path.get("upload_id") or call.get("upload_id"),
+        "field": call.get("field") or query.get("field"),
+        "path_module_id": path.get(principal.get("module_id_param") or "module_id"),
+        "heading": body.get("heading", call.get("heading")),
+        "target": body.get("target", call.get("target")),
+        "owner_module_id": body.get("owner_module_id"),
+        "action": action or call.get("action"),
+        "marker_id": path.get("marker_id") or body.get("marker_id") or call.get("marker_id"),
+        "label": body.get("label", call.get("label")),
+        "color": body.get("color", call.get("color")),
+        "created_at": call.get("created_at"),
+        "created_by": call.get("created_by"),
+        "entry_type": body.get("entry_type", call.get("entry_type")),
+        "destination": body.get("destination", call.get("destination")),
+        "trust_account_id": body.get("trust_account_id", call.get("trust_account_id")),
+        "trust_accounts": call.get("trust_accounts"),
+        "firm_id": call.get("firm_id"),
+        "amount_cents": body.get("amount_cents", call.get("amount_cents")),
+        "contact_id": body.get("contact_id", call.get("contact_id")),
+        "method": body.get("method", call.get("method")),
+        "payment_id": path.get("payment_id") or call.get("payment_id"),
+        "trust_linked": call.get("trust_linked"),
+        "domain_handlers": call.get("domain_handlers"),
+        "include": query.get("include") if isinstance(query.get("include"), list) else call.get("include"),
+        "confirm": query.get("confirm", query.get("confirm_quarantine", call.get("confirm"))),
+        "quarantined": call.get("quarantined"),
+        "principal_user_id": call.get("principal_user_id") or call.get("user_id"),
+        "user_id": call.get("user_id"),
+        "source": body.get("source", call.get("source")),
+        "assignment": body.get("assignment", call.get("assignment")),
+        "expires_at": call.get("expires_at") or body.get("expires_at"),
+        "tenant_id": call.get("tenant_id"),
+        "principal_matter_ids": call.get("principal_matter_ids"),
+        "queue": body.get("queue", call.get("queue")),
+    }
+    if items is not None:
+        subject["items"] = items
+    elif isinstance(call.get("items"), list):
+        subject["items"] = call["items"]
+    if "status" in body or "status" in call:
+        subject["status"] = body["status"] if "status" in body else call.get("status")
+    if "invoice_id" in body or "invoice_id" in call:
+        subject["invoice_id"] = body["invoice_id"] if "invoice_id" in body else call.get("invoice_id")
+    return subject
 
 
 def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
@@ -1269,38 +1829,8 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
         return {"result": "allowed", "effects": True, "public": True}
     if not presented_bearer and not presented_cookie:
         return {"result": "unauthenticated", **denied}
-    access = operation["x-togavsu-access"]
-    role = call.get("role")
-    roles = access.get("roles") or []
-    if roles and role not in roles:
-        return {"result": "forbidden", **denied}
-    needed = list(access.get("scopes") or [])
-    if call.get("module_id"):
-        approved = set(call.get("approved_scopes") or [])
-        if any(scope not in approved for scope in needed) or call.get("grant_revoked"):
-            return {"result": "scope_denied" if not call.get("grant_revoked") else "forbidden", **denied}
-    held = set(call.get("token_scopes") or [])
-    if any(scope not in held for scope in needed):
-        return {"result": "scope_denied", **denied}
-    if access.get("matter_wall"):
-        path_args = arguments.get("path") if isinstance(arguments.get("path"), dict) else {}
-        matter_id = path_args.get("matter_id") or call.get("matter_id")
-        if matter_id is not None or call.get("matter_walled") or call.get("matter_membership") is not None:
-            row = {"matter_id": matter_id, "matter_walled": bool(call.get("matter_walled", call.get("matter_membership") is not None))}
-            if not matter_visible(call, row, single_record=matter_id is not None):
-                return {"result": "not_found", **denied}
-    if access.get("owner") == "self" and call.get("owner") not in (None, "self"):
-        return {"result": "not_found", **denied}
-    if access.get("attorney_only_files") == "not_found" and call.get("attorney_only") and role not in ("attorney", "admin"):
-        return {"result": "not_found", **denied}
-    domain = operation.get("x-togavsu-replaceable-domain")
-    if domain and operation.get("x-togavsu-writes"):
-        handler = (call.get("domain_handlers") or {}).get(domain) or {}
-        if handler.get("replaced"):
-            if not handler.get("available"):
-                return {"result": "forbidden", **denied}
-            return {"result": "allowed", "effects": False, "public": False, "routed": handler.get("module_id")}
-    return {"result": "allowed", "effects": True, "public": False}
+    decision = operation_authorization(spec, operation, _mcp_operation_call(call, arguments, operation))
+    return {"result": decision["result"], "effects": decision.get("effects", False), "public": False, **({"routed": decision["routed"]} if decision.get("routed") else {})}
 
 
 def published_version_events(operation: dict, *, committed: bool, version_count: int = 0) -> list[str]:
@@ -2438,31 +2968,43 @@ def _background_denied(store: dict, before_files: int, before_events: int, resul
     return {"result": result, "file_created": False, "events": []}
 
 
+def background_grant_authorization(policy: dict, call: dict) -> str:
+    """Bounded publication grant. The same checks admit a background file step and its MCP tool."""
+    grant = call.get("grant")
+    if not isinstance(grant, dict):
+        return "forbidden"
+    if grant.get("expired"):
+        return policy["expired"]
+    if grant.get("revoked"):
+        return policy["revoked"]
+    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
+        return policy["wrong_module"]
+    if any(scope not in call.get("module_scopes", []) for scope in policy["scopes"]):
+        return policy["missing_scope"]
+    if call.get("operation") not in grant.get("allowed_operations", []):
+        return policy["operation_outside_grant"]
+    if call.get("matter_id") != grant.get("matter_id"):
+        return policy["wrong_matter"]
+    if call.get("matter_walled") and not matter_visible(call, {"matter_id": call.get("matter_id"), "matter_walled": True}, single_record=True):
+        return policy["wrong_matter"]
+    operation_id = call.get("operation")
+    if operation_id not in {"createFileUpload", "bulkFile"} and call.get("upload_id") not in grant.get("upload_ids", []):
+        return "not_found"
+    return "allowed"
+
+
 def background_file_step(store: dict, policy: dict, operation: dict, call: dict) -> dict:
     store.setdefault("uploads", {})
     store.setdefault("files", {})
     store.setdefault("events", [])
     before_files = len(store["files"])
     before_events = len(store["events"])
-    grant = call.get("grant")
-    if not grant:
-        return _background_denied(store, before_files, before_events, "forbidden")
-    if grant.get("expired"):
-        return _background_denied(store, before_files, before_events, policy["expired"])
-    if grant.get("revoked"):
-        return _background_denied(store, before_files, before_events, policy["revoked"])
-    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
-        return _background_denied(store, before_files, before_events, policy["wrong_module"])
-    if any(scope not in call.get("module_scopes", []) for scope in policy["scopes"]):
-        return _background_denied(store, before_files, before_events, policy["missing_scope"])
-    if call.get("operation") not in grant.get("allowed_operations", []):
-        return _background_denied(store, before_files, before_events, policy["operation_outside_grant"])
-    if call.get("matter_id") != grant.get("matter_id"):
-        return _background_denied(store, before_files, before_events, policy["wrong_matter"])
+    admitted = background_grant_authorization(policy, call)
+    if admitted != "allowed":
+        return _background_denied(store, before_files, before_events, admitted)
+    grant = call["grant"]
     operation_id = call["operation"]
     upload_id = call.get("upload_id")
-    if operation_id != "createFileUpload" and operation_id != "bulkFile" and upload_id not in grant.get("upload_ids", []):
-        return _background_denied(store, before_files, before_events, "not_found")
     if operation_id == "createFileUpload":
         upload_id = upload_id or f"up-{len(store['uploads']) + 1}"
         document = _module_upload_document(upload_id, grant, "receiving")
