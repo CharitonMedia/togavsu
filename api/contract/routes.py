@@ -1192,6 +1192,7 @@ def _practice(api: Contract) -> None:
         },
         success="201",
         response_schema={"type": "object", "additionalProperties": False, "required": ["updated"], "properties": {"updated": {"type": "integer", "minimum": 0}}},
+        events=["custom_field.updated"],
         error_codes=["batch_rejected", "not_found"],
     )
     api.add(
@@ -1907,12 +1908,13 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust-replenishment-requests/{replenishment_id}/cancel",
         operation_id="cancelTrustReplenishment",
         summary="Cancel a replenishment request",
-        description="Sets status cancelled. The request's matter wall applies.",
+        description="Sets status cancelled. The request's matter wall applies. The event is emitted only after the status commit. A denied call writes nothing and emits nothing.",
         tag="Trust",
         features=["trust-replenishment"],
         roles=STAFF,
         scopes=["trust:write"],
         response="TrustReplenishment",
+        events=["trust.replenishment_cancelled"],
         replaceable="trust",
         extra_access=WALL,
     )
@@ -1921,12 +1923,13 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy",
         operation_id="satisfyTrustReplenishment",
         summary="Satisfy a replenishment request",
-        description="Sets status satisfied. The request's matter wall applies.",
+        description="Sets status satisfied. The request's matter wall applies. The event is emitted only after the status commit. A denied call writes nothing and emits nothing.",
         tag="Trust",
         features=["trust-replenishment"],
         roles=STAFF,
         scopes=["trust:write"],
         response="TrustReplenishment",
+        events=["trust.replenishment_satisfied"],
         replaceable="trust",
         extra_access=WALL,
     )

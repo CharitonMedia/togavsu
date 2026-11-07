@@ -125,6 +125,33 @@ PAYMENT_PROCESSOR = {
     "no_mutation_on_denial": True,
 }
 
+BACKGROUND_FILE_SEQUENCE = [
+    "createFileUpload",
+    "getFileUpload",
+    "putFileChunk",
+    "completeFileUpload",
+    "publishFile",
+    "bulkFile",
+]
+BACKGROUND_FILE_PUBLICATION = {
+    "sources": ["email", "zoom", "importer", "drop_folder"],
+    "sequence": list(BACKGROUND_FILE_SEQUENCE),
+    "issued_by": "core",
+    "registered_module": True,
+    "viewer_context_required": False,
+    "scopes": ["files:write"],
+    "grants_admin": False,
+    "firmwide_bypass": False,
+    "expired": "forbidden",
+    "revoked": "forbidden",
+    "missing_scope": "scope_denied",
+    "wrong_module": "forbidden",
+    "wrong_matter": "not_found",
+    "unregistered": "forbidden",
+    "operation_outside_grant": "forbidden",
+    "on_failure": "no_file_no_event",
+    "publish_events": ["file.created", "file.version_created"],
+}
 GENERIC_NONINTERACTIVE = frozenset(
     {
         "createEvent",
@@ -134,7 +161,9 @@ GENERIC_NONINTERACTIVE = frozenset(
         "createAiCall",
     }
 )
-NONINTERACTIVE_OPERATIONS = GENERIC_NONINTERACTIVE | frozenset(MALWARE_SEQUENCE) | frozenset(PAYMENT_PROCESSOR["sequence"])
+NONINTERACTIVE_OPERATIONS = (
+    GENERIC_NONINTERACTIVE | frozenset(MALWARE_SEQUENCE) | frozenset(PAYMENT_PROCESSOR["sequence"]) | frozenset(BACKGROUND_FILE_SEQUENCE)
+)
 
 _TRUST_POST = {
     "posted_by": "trust_handler",
@@ -362,6 +391,8 @@ def tag_noninteractive_workflows(spec: dict) -> None:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_processor"
         elif operation_id in MALWARE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
+        elif operation_id in BACKGROUND_FILE_SEQUENCE:
+            operation["x-togavsu-access"]["noninteractive_workflow"] = "background_file_publication"
 
 
 def _json_schema_slot(operation: dict) -> dict:
@@ -413,6 +444,8 @@ def finalize(spec: dict) -> None:
     publish_payment_policy(spec)
     tag_noninteractive_workflows(spec)
     attach_grant_projections(spec)
+    ensure_mutation_events(spec)
+    publish_trust_debit(spec)
 
 
 def _denied(result: str) -> dict:
@@ -837,3 +870,373 @@ def published_version_events(operation: dict, *, committed: bool, version_count:
     if publication["event"] not in operation.get("x-togavsu-events", []):
         return []
     return [publication["event"]] * version_count
+
+
+# Byte transport only. The upload record is created by createFileUpload and staged by completeFileUpload.
+EVENT_EXEMPTIONS = {
+    "putFileChunk": (
+        "Transports bytes of an upload that is not yet a file. "
+        "completeFileUpload emits file_upload.staged. "
+        "A file and file.version_created are emitted only after publish commits. "
+        "A failed chunk emits nothing."
+    ),
+}
+
+MUTATION_EVENTS = {
+    "login": ["auth.login_challenged"],
+    "verifyTotp": ["session.created"],
+    "startTotpEnrollment": ["auth.enrollment_started"],
+    "confirmTotpEnrollment": ["session.created"],
+    "verifyRecoveryCode": ["session.created"],
+    "logout": ["session.ended"],
+    "requestPasswordReset": ["auth.password_reset_requested"],
+    "confirmPasswordReset": ["user.password_changed"],
+    "requestEmailChange": ["user.email_change_requested"],
+    "changePassword": ["user.password_changed"],
+    "resetTotp": ["user.totp_reset"],
+    "regenerateRecoveryCodes": ["user.recovery_codes_regenerated"],
+    "updateMeSettings": ["user.settings_updated"],
+    "putNotificationPreferences": ["notification_preferences.updated"],
+    "putSidebarState": ["user.sidebar_updated"],
+    "deleteSession": ["session.ended"],
+    "createApiToken": ["api_token.created"],
+    "revokeApiToken": ["api_token.revoked"],
+    "createMarkerDefinition": ["marker.created"],
+    "updateMarkerDefinition": ["marker.updated"],
+    "bulkCustomFieldValue": ["custom_field.updated"],
+    "pauseTimer": ["timer.paused"],
+    "resumeTimer": ["timer.resumed"],
+    "cancelTrustReplenishment": ["trust.replenishment_cancelled"],
+    "satisfyTrustReplenishment": ["trust.replenishment_satisfied"],
+    "createIcalFeed": ["ical_feed.created"],
+    "revokeIcalFeed": ["ical_feed.revoked"],
+    "createFileUpload": ["file_upload.created"],
+    "acquireEditLock": ["file.lock_acquired"],
+    "renewEditLock": ["file.lock_renewed"],
+    "testStorageBackend": ["storage_backend.tested"],
+    "markNotificationRead": ["notification.read"],
+    "markAllNotificationsRead": ["notification.read"],
+    "putCurrentLayout": ["layout.updated"],
+    "setDefaultLayout": ["layout.default_set"],
+    "applyLayout": ["layout.applied"],
+    "createModuleHelpPage": ["help.updated"],
+    "replaceModuleHelpPages": ["help.updated"],
+    "deleteModuleHelpPage": ["help.updated"],
+    "createEvent": ["event.appended"],
+    "bulkEvent": ["event.appended"],
+    "checkAiProvider": ["ai.provider_checked"],
+    "testMail": ["mail.tested"],
+    "testBackupDestination": ["backup_destination.tested"],
+    "createBackupUpload": ["backup_upload.created"],
+    "createModuleContextToken": ["module.context_issued"],
+    "updateTrustedKey": ["signing_key.updated"],
+}
+
+
+def ensure_mutation_events(spec: dict) -> None:
+    missing = []
+    for _method, _path, operation in iter_operations(spec):
+        if not operation.get("x-togavsu-writes"):
+            continue
+        operation_id = operation["operationId"]
+        access = operation["x-togavsu-access"]
+        if operation_id in EVENT_EXEMPTIONS:
+            access["event_exemption"] = EVENT_EXEMPTIONS[operation_id]
+            access["events_on_failure"] = "none"
+            continue
+        if not operation.get("x-togavsu-events"):
+            events = MUTATION_EVENTS.get(operation_id)
+            if not events:
+                missing.append(operation_id)
+                continue
+            operation["x-togavsu-events"] = list(events)
+        access["events_on"] = "commit"
+        access["events_on_failure"] = "none"
+    if missing:
+        raise RuntimeError("writes without events: " + ", ".join(sorted(missing)))
+
+
+def committed_events(operation: dict, *, committed: bool, count: int = 1) -> list[str]:
+    if not committed or operation["operationId"] in EVENT_EXEMPTIONS:
+        return []
+    events = list(operation.get("x-togavsu-events") or [])
+    publication = operation["x-togavsu-access"].get("version_publication")
+    if publication and publication.get("cardinality") == "one_per_published_version":
+        expanded = []
+        for event in events:
+            expanded.extend([event] * count if event == publication["event"] else [event])
+        return expanded
+    return events
+
+
+_EVENT_SCOPE_PREFIXES = (
+    ("matter.", ["matters:read"]),
+    ("contact.", ["contacts:read"]),
+    ("file_upload.", ["files:read"]),
+    ("file.", ["files:read"]),
+    ("invoice.", ["invoices:read"]),
+    ("payment.", ["payments:read"]),
+    ("trust.", ["trust:read"]),
+    ("time_entry.", ["time:read"]),
+    ("timer.", ["time:read"]),
+    ("expense.", ["expenses:read"]),
+    ("note.", ["notes:read"]),
+    ("ical_feed.", ["calendar:read"]),
+    ("calendar.", ["calendar:read"]),
+    ("deadline.", ["deadlines:read"]),
+    ("conflict", ["conflicts:read"]),
+    ("custom_field.", ["matters:read"]),
+    ("session.", ["sessions:read"]),
+    ("user.", ["profile:read"]),
+    ("auth.", ["profile:read"]),
+    ("api_token.", ["tokens:read"]),
+    ("notification", ["notifications:read"]),
+    ("layout.", ["layouts:read"]),
+    ("help.", ["help:read"]),
+    ("event.", ["events:read"]),
+    ("module.", ["modules:read"]),
+    ("signing_key.", ["modules:read"]),
+    ("marker.", ["settings:read"]),
+    ("storage_backend.", ["files:read"]),
+    ("backup", ["backups:admin"]),
+    ("mail.", ["settings:read"]),
+    ("ai.", ["ai:use"]),
+)
+
+_ATTORNEY_ONLY_RECORDS = {"conflict_record", "conflict_review"}
+
+WEBHOOK_DELIVERY = {
+    "order": ["installed", "subscription", "scope", "matter_wall", "attorney_only", "serialize"],
+    "unauthorized_envelope": None,
+    "grants_admin": False,
+    "firmwide_bypass": False,
+}
+
+
+def event_read_scopes(event_type: str, record_type: str | None = None) -> list[str]:
+    if event_type == "payment.processor_authorized":
+        return ["payments:write"]
+    if event_type.startswith("custom_field."):
+        return {
+            "contact": ["contacts:read"],
+            "matter": ["matters:read"],
+            "time_entry": ["time:read"],
+            "expense": ["expenses:read"],
+        }.get(record_type or "", [])
+    for prefix, scopes in _EVENT_SCOPE_PREFIXES:
+        if prefix == "custom_field.":
+            continue
+        if event_type.startswith(prefix):
+            return list(scopes)
+    return ["events:read"]
+
+
+def webhook_envelope(module: dict, event: dict) -> dict | None:
+    """Return the serialized body only after scope, wall, and attorney-only checks. Denial returns None."""
+    if not module.get("installed") or not module.get("registered"):
+        return None
+    if event.get("type") not in module.get("subscriptions", []):
+        return None
+    needed = event_read_scopes(event["type"], event.get("record_type"))
+    if not needed or any(scope not in module.get("approved_scopes", []) for scope in needed):
+        return None
+    if event.get("matter_walled") and not module.get("on_wall"):
+        return None
+    attorney_only_record = (
+        event.get("attorney_only")
+        or event.get("attorney_only_record")
+        or event.get("record_type") in _ATTORNEY_ONLY_RECORDS
+    )
+    if attorney_only_record and not module.get("attorney_only"):
+        return None
+    summary = None if event.get("summary_attorney_only") else event.get("summary")
+    return {
+        "id": event["id"],
+        "type": event["type"],
+        "occurred_at": event["occurred_at"],
+        "actor_kind": event.get("actor_kind", "system"),
+        "record_type": event["record_type"],
+        "record_id": event["record_id"],
+        "matter_id": event.get("matter_id"),
+        "summary": summary,
+    }
+
+
+def issue_background_file_grant(policy: dict, module: dict, job: dict) -> dict:
+    denied = {"result": "forbidden", "grant": None, "file_created": False, "events": []}
+    if not module.get("registered") or not policy.get("registered_module"):
+        return {**denied, "result": policy["unregistered"]}
+    if module.get("module_id") != job.get("module_id"):
+        return {**denied, "result": policy["wrong_module"]}
+    if job.get("source") not in policy["sources"]:
+        return denied
+    if any(scope not in module.get("approved_scopes", []) for scope in policy["scopes"]):
+        return {**denied, "result": policy["missing_scope"]}
+    if job.get("matter_walled") and not job.get("on_wall"):
+        return {**denied, "result": policy["wrong_matter"]}
+    if policy.get("grants_admin") or policy.get("firmwide_bypass"):
+        return denied
+    return {
+        "result": "allowed",
+        "grant": {
+            "module_id": module["module_id"],
+            "matter_id": job["matter_id"],
+            "source": job["source"],
+            "allowed_operations": list(policy["sequence"]),
+            "expires_at": job["expires_at"],
+            "revoked": False,
+            "expired": False,
+            "issued_by": policy["issued_by"],
+            "upload_ids": [],
+        },
+        "file_created": False,
+        "events": [],
+    }
+
+
+def _background_denied(store: dict, before_files: int, before_events: int, result: str) -> dict:
+    if len(store["files"]) != before_files or len(store["events"]) != before_events:
+        raise RuntimeError("background file denial changed state")
+    return {"result": result, "file_created": False, "events": []}
+
+
+def background_file_step(store: dict, policy: dict, operation: dict, call: dict) -> dict:
+    store.setdefault("uploads", {})
+    store.setdefault("files", {})
+    store.setdefault("events", [])
+    before_files = len(store["files"])
+    before_events = len(store["events"])
+    grant = call.get("grant")
+    if not grant:
+        return _background_denied(store, before_files, before_events, "forbidden")
+    if grant.get("expired"):
+        return _background_denied(store, before_files, before_events, policy["expired"])
+    if grant.get("revoked"):
+        return _background_denied(store, before_files, before_events, policy["revoked"])
+    if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
+        return _background_denied(store, before_files, before_events, policy["wrong_module"])
+    if any(scope not in call.get("module_scopes", []) for scope in policy["scopes"]):
+        return _background_denied(store, before_files, before_events, policy["missing_scope"])
+    if call.get("operation") not in grant.get("allowed_operations", []):
+        return _background_denied(store, before_files, before_events, policy["operation_outside_grant"])
+    if call.get("matter_id") != grant.get("matter_id"):
+        return _background_denied(store, before_files, before_events, policy["wrong_matter"])
+    operation_id = call["operation"]
+    upload_id = call.get("upload_id")
+    if operation_id != "createFileUpload" and operation_id != "bulkFile" and upload_id not in grant.get("upload_ids", []):
+        return _background_denied(store, before_files, before_events, "not_found")
+    if call.get("fail"):
+        return _background_denied(store, before_files, before_events, "batch_rejected" if operation_id == "bulkFile" else "validation_failed")
+    if operation_id == "createFileUpload":
+        upload_id = upload_id or f"up-{len(store['uploads']) + 1}"
+        store["uploads"][upload_id] = {"id": upload_id, "status": "receiving", "matter_id": grant["matter_id"]}
+        grant["upload_ids"].append(upload_id)
+        emitted = committed_events(operation, committed=True)
+        store["events"].extend(emitted)
+        return {"result": "allowed", "upload_id": upload_id, "file_created": False, "events": emitted}
+    if operation_id == "putFileChunk":
+        store["uploads"][upload_id]["status"] = "receiving"
+        return {"result": "allowed", "file_created": False, "events": []}
+    if operation_id == "getFileUpload":
+        return {"result": "allowed", "upload": store["uploads"][upload_id], "file_created": False, "events": []}
+    if operation_id == "completeFileUpload":
+        store["uploads"][upload_id]["status"] = "staged"
+        emitted = committed_events(operation, committed=True)
+        store["events"].extend(emitted)
+        return {"result": "allowed", "file_created": False, "events": emitted}
+    if operation_id == "publishFile":
+        if store["uploads"][upload_id]["status"] != "staged":
+            return _background_denied(store, before_files, before_events, "validation_failed")
+        if upload_id in store["files"]:
+            return {"result": "original_result", "file_created": False, "events": [], "file": store["files"][upload_id]}
+        file_row = {"id": f"file-{upload_id}", "matter_id": grant["matter_id"], "upload_id": upload_id}
+        store["files"][upload_id] = file_row
+        emitted = committed_events(operation, committed=True, count=1)
+        store["events"].extend(emitted)
+        return {"result": "allowed", "file_created": True, "events": emitted, "file": file_row}
+    if operation_id == "bulkFile":
+        items = call.get("items") or []
+        if not items or any(item.get("matter_id") != grant["matter_id"] for item in items):
+            return _background_denied(store, before_files, before_events, policy["wrong_matter"] if items else "validation_failed")
+        created = []
+        for index, item in enumerate(items):
+            key = item.get("upload_id") or f"bulk-{grant['matter_id']}-{index}"
+            if key in store["files"]:
+                created.append(store["files"][key])
+                continue
+            row = {"id": f"file-{key}", "matter_id": grant["matter_id"], "upload_id": key}
+            store["files"][key] = row
+            created.append(row)
+        emitted = committed_events(operation, committed=True, count=len(created))
+        store["events"].extend(emitted)
+        return {"result": "allowed", "file_created": True, "events": emitted, "files": created}
+    return _background_denied(store, before_files, before_events, policy["operation_outside_grant"])
+
+
+def commit_concurrent_publishes(policy: dict, operation: dict, grant: dict, upload_id: str) -> dict:
+    store = {
+        "uploads": {upload_id: {"id": upload_id, "status": "staged", "matter_id": grant["matter_id"]}},
+        "files": {},
+        "events": [],
+    }
+    grant = {**grant, "upload_ids": [upload_id]}
+    call = {
+        "operation": "publishFile",
+        "grant": grant,
+        "caller_module_id": grant["module_id"],
+        "module_scopes": ["files:write"],
+        "matter_id": grant["matter_id"],
+        "upload_id": upload_id,
+    }
+    first = background_file_step(store, policy, operation, call)
+    second = background_file_step(store, policy, operation, call)
+    return {"store": store, "first": first, "second": second}
+
+
+def publish_trust_debit(spec: dict) -> None:
+    rule = {
+        "client_id": "required",
+        "trust_account_id": "required",
+        "selection": "explicit",
+        "other_accounts": "unchanged",
+        "authorize_before": "any_mutation",
+        "inactive_or_unauthorized": "forbidden",
+        "wrong_client_or_account": "not_found",
+    }
+    for operation_id in ("applyTrustToInvoice", "applyFlatFee"):
+        operation_by_id(spec, operation_id)["x-togavsu-access"]["trust_debit"] = dict(rule)
+
+
+def trust_debit_decision(call: dict) -> dict:
+    """Select the client and trust account before any ledger post. Denial changes nothing."""
+    denied = {"ledger_mutated": False, "debited_account_id": None, "amount_cents": 0}
+    if call.get("role") not in ("admin", "attorney"):
+        return {"result": "forbidden", **denied}
+    if call.get("matter_walled") and not call.get("on_wall"):
+        return {"result": "not_found", **denied}
+    if "trust:withdraw" not in call.get("token_scopes", []):
+        return {"result": "scope_denied", **denied}
+    if not call.get("client_id") or not call.get("trust_account_id"):
+        return {"result": "validation_failed", **denied}
+    matches = [
+        row
+        for row in call.get("balances") or []
+        if row.get("trust_account_id") == call["trust_account_id"]
+        and row.get("client_id") == call["client_id"]
+        and row.get("matter_id") == call.get("matter_id")
+    ]
+    if not matches:
+        return {"result": "not_found", **denied}
+    row = matches[0]
+    if row.get("firm_id") and call.get("firm_id") and row["firm_id"] != call["firm_id"]:
+        return {"result": "not_found", **denied}
+    if row.get("active") is False or row.get("authorized") is False:
+        return {"result": "forbidden", **denied}
+    return {
+        "result": "allowed",
+        "ledger_mutated": True,
+        "debited_account_id": row["trust_account_id"],
+        "client_id": row["client_id"],
+        "amount_cents": call["amount_cents"],
+        "below_zero": call.get("balance_after", 0) < 0,
+    }

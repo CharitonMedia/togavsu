@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, Contract
+from contract.policy import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
 from contract.seeds import DOC_CATEGORIES, LAWCRAFT_COMMIT, NAMING_TOKENS, PARTY_ROLES
@@ -272,7 +273,11 @@ def _webhooks() -> dict:
                 "operationId": "deliverModuleEvent",
                 "summary": "Deliver a signed event to a subscribed module.",
                 "description": (
-                    "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. "
+                    "Before any WebhookEvent body is serialized, the core checks that the module is installed, "
+                    "subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. "
+                    "An attorney-only conflict record is not serialized. "
+                    "A module that fails any check receives no POST and no record id or summary. "
+                    "The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. "
                     "X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. "
                     "X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts "
                     "across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. "
@@ -296,7 +301,9 @@ def _webhooks() -> dict:
                 "x-togavsu-task-deliveries": {
                     "malware_scan": MALWARE_DELIVERY,
                     "payment_processor": PAYMENT_PROCESSOR,
+                    "background_file_publication": BACKGROUND_FILE_PUBLICATION,
                 },
+                "x-togavsu-delivery-authorization": WEBHOOK_DELIVERY,
                 "parameters": [
                     {
                         "name": "X-Togavsu-Signature",

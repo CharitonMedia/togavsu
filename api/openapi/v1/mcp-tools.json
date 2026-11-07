@@ -9988,6 +9988,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -10007,6 +10012,7 @@
           "query",
           "idempotency_key",
           "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -10133,6 +10139,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -10152,6 +10163,7 @@
           "query",
           "idempotency_key",
           "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -10920,6 +10932,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -10939,6 +10956,7 @@
           "query",
           "idempotency_key",
           "context_token",
+          "task_authorization",
           "body"
         ]
       }
@@ -10968,6 +10986,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -10981,7 +11004,8 @@
         "arguments": [
           "path",
           "query",
-          "context_token"
+          "context_token",
+          "task_authorization"
         ]
       }
     },
@@ -11013,6 +11037,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -11033,6 +11062,7 @@
           "idempotency_key",
           "headers",
           "context_token",
+          "task_authorization",
           "body_base64"
         ]
       }
@@ -11062,6 +11092,11 @@
             "header": "X-Togavsu-Context-Token",
             "argument": "context_token",
             "roles_from_arguments": false
+          },
+          "task_authorization": {
+            "header": "X-Togavsu-Task-Authorization",
+            "argument": "task_authorization",
+            "roles_from_arguments": false
           }
         },
         "forbidden_header_overrides": [
@@ -11076,7 +11111,8 @@
           "path",
           "query",
           "idempotency_key",
-          "context_token"
+          "context_token",
+          "task_authorization"
         ]
       }
     },

@@ -22,11 +22,15 @@ from contract.build import (
     render_mcp,
 )
 from contract.policy import (
+    background_file_step,
     commit_concurrent_processor_creates,
+    commit_concurrent_publishes,
+    committed_events,
     custom_fields_batch,
     custom_fields_outcome,
     file_download_decision,
     is_core_file_download,
+    issue_background_file_grant,
     mcp_credential_rejection,
     payment_effect_decision,
     payment_reversal_decision,
@@ -34,6 +38,8 @@ from contract.policy import (
     processor_callback,
     processor_issuance,
     published_version_events,
+    trust_debit_decision,
+    webhook_envelope,
 )
 
 PRD_PATHS = [
@@ -1114,7 +1120,6 @@ class ContractTest(unittest.TestCase):
             "getMatter",
             "listMatter",
             "updateFileMetadata",
-            "publishFile",
             "createNote",
             "createTimeEntry",
             "runEditor",
@@ -2229,6 +2234,176 @@ class ContractTest(unittest.TestCase):
         download = _operation(self.spec, "downloadFileVersion")
         self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["encoding"], "base64")
         self.assertNotIn("response_projection", download["x-togavsu-access"])
+
+    def test_webhook_delivery_is_authorized_before_serialization(self):
+        webhook = self.spec["webhooks"]["moduleEvent"]["post"]
+        order = webhook["x-togavsu-delivery-authorization"]["order"]
+        self.assertEqual(order[-1], "serialize")
+        self.assertLess(order.index("scope"), order.index("serialize"))
+        self.assertLess(order.index("matter_wall"), order.index("serialize"))
+        self.assertLess(order.index("attorney_only"), order.index("serialize"))
+        event = {
+            "id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeeee",
+            "type": "matter.created",
+            "occurred_at": "2026-11-07T18:00:00Z",
+            "actor_kind": "staff",
+            "record_type": "matter",
+            "record_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "summary": "Smith opened",
+            "matter_walled": False,
+        }
+        subscriber = {"installed": True, "registered": True, "approved_scopes": ["matters:read"], "subscriptions": ["matter.created"], "on_wall": False, "attorney_only": False}
+        delivered = webhook_envelope(subscriber, event)
+        self.assertEqual(delivered["record_id"], event["record_id"])
+        self.assertEqual(delivered["summary"], "Smith opened")
+        _component_validator(self.spec, "WebhookEvent").validate({**delivered, "task_authorization": None, "processor_authorization": None})
+        for label, module, sample in (
+            ("no-scope", {**subscriber, "approved_scopes": ["files:read"]}, event),
+            ("not-subscribed", {**subscriber, "subscriptions": ["invoice.sent"]}, event),
+            ("not-installed", {**subscriber, "installed": False}, event),
+            ("wall", subscriber, {**event, "matter_walled": True}),
+            ("conflict", {**subscriber, "approved_scopes": ["conflicts:read"], "subscriptions": ["conflict_review.decided"]}, {"id": event["id"], "type": "conflict_review.decided", "occurred_at": event["occurred_at"], "record_type": "conflict_review", "record_id": "018f1a00-7b3c-7d4e-8a11-999999999999", "matter_id": event["matter_id"], "summary": "attorney reason", "attorney_only_record": True}),
+        ):
+            self.assertIsNone(webhook_envelope(module, sample), label)
+        on_wall = webhook_envelope({**subscriber, "on_wall": True}, {**event, "matter_walled": True})
+        self.assertEqual(on_wall["record_id"], event["record_id"])
+        redacted = webhook_envelope(subscriber, {**event, "summary_attorney_only": True, "summary": "secret reason"})
+        self.assertIsNone(redacted["summary"])
+        self.assertNotIn("secret reason", str(redacted))
+        attorney_file = {**event, "type": "file.created", "record_type": "file", "attorney_only": True, "summary": "privileged"}
+        file_module = {**subscriber, "approved_scopes": ["files:read"], "subscriptions": ["file.created"]}
+        self.assertIsNone(webhook_envelope(file_module, attorney_file))
+        self.assertIsNone(webhook_envelope({k: v for k, v in subscriber.items() if k != "registered"}, event))
+        self.assertIsNone(webhook_envelope({**subscriber, "approved_scopes": ["events:read"], "subscriptions": ["custom_field.updated"]}, {**event, "type": "custom_field.updated", "record_type": None, "summary": "contact field"}))
+        processor = webhook_envelope(
+            {**subscriber, "approved_scopes": ["payments:write"], "subscriptions": ["payment.processor_authorized"]},
+            {**event, "type": "payment.processor_authorized", "record_type": "payment"},
+        )
+        self.assertEqual(processor["record_id"], event["record_id"])
+
+    def test_background_file_publication_grant(self):
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["background_file_publication"]
+        self.assertFalse(policy["viewer_context_required"])
+        self.assertFalse(policy["grants_admin"])
+        for operation_id in ("createFileUpload", "putFileChunk", "completeFileUpload", "publishFile", "bulkFile"):
+            operation = _operation(self.spec, operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive", operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["noninteractive_workflow"], "background_file_publication", operation_id)
+        module = {"registered": True, "module_id": "email", "approved_scopes": ["files:write"]}
+        job = {"module_id": "email", "source": "email", "matter_id": "matter-1", "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False}
+        issued = issue_background_file_grant(policy, module, job)
+        self.assertEqual(issued["result"], "allowed")
+        self.assertFalse(issued["file_created"])
+        self.assertIsNone(issue_background_file_grant(policy, {**module, "approved_scopes": ["matters:read"]}, job)["grant"])
+        self.assertIsNone(issue_background_file_grant(policy, module, {**job, "matter_walled": True, "on_wall": False})["grant"])
+        grant = issued["grant"]
+        store = {"uploads": {}, "files": {}, "events": []}
+        base = {"grant": grant, "caller_module_id": "email", "module_scopes": ["files:write"], "matter_id": "matter-1", "viewer_present": False}
+        created = background_file_step(store, policy, _operation(self.spec, "createFileUpload"), {**base, "operation": "createFileUpload"})
+        self.assertEqual(created["result"], "allowed")
+        upload_id = created["upload_id"]
+        self.assertEqual(background_file_step(store, policy, _operation(self.spec, "putFileChunk"), {**base, "operation": "putFileChunk", "upload_id": upload_id})["events"], [])
+        self.assertEqual(background_file_step(store, policy, _operation(self.spec, "completeFileUpload"), {**base, "operation": "completeFileUpload", "upload_id": upload_id})["result"], "allowed")
+        published = background_file_step(store, policy, _operation(self.spec, "publishFile"), {**base, "operation": "publishFile", "upload_id": upload_id})
+        self.assertEqual(published["result"], "allowed")
+        self.assertTrue(published["file_created"])
+        self.assertIn("file.version_created", published["events"])
+        self.assertEqual(len(store["files"]), 1)
+        denied = background_file_step(store, policy, _operation(self.spec, "publishFile"), {**base, "operation": "publishFile", "upload_id": upload_id, "matter_id": "matter-2"})
+        self.assertEqual(denied["result"], "not_found")
+        self.assertEqual(len(store["files"]), 1)
+        expired = background_file_step(store, policy, _operation(self.spec, "publishFile"), {**base, "operation": "publishFile", "upload_id": upload_id, "grant": {**grant, "expired": True}})
+        self.assertEqual(expired["result"], "forbidden")
+        self.assertEqual(len(store["files"]), 1)
+        omitted = background_file_step(store, policy, _operation(self.spec, "bulkFile"), {**base, "operation": "bulkFile", "items": [{"upload_id": "u-missing"}]})
+        self.assertNotEqual(omitted["result"], "allowed")
+        self.assertEqual(omitted["events"], [])
+        self.assertEqual(len(store["files"]), 1)
+        failed = background_file_step(store, policy, _operation(self.spec, "bulkFile"), {**base, "operation": "bulkFile", "fail": True, "items": [{"matter_id": "matter-1"}]})
+        self.assertEqual(failed["result"], "batch_rejected")
+        self.assertEqual(failed["events"], [])
+        raced = commit_concurrent_publishes(policy, _operation(self.spec, "publishFile"), grant, upload_id)
+        self.assertEqual(len(raced["store"]["files"]), 1)
+        self.assertEqual(raced["second"]["result"], "original_result")
+        self.assertFalse(raced["second"]["file_created"])
+        for source in ("zoom", "importer", "drop_folder"):
+            other = issue_background_file_grant(policy, {**module, "module_id": source}, {**job, "module_id": source, "source": source})
+            self.assertEqual(other["result"], "allowed", source)
+            self.assertFalse(other["file_created"], source)
+
+    def test_trust_application_selects_the_account_and_client(self):
+        from jsonschema import Draft202012Validator
+
+        apply = _component_validator(self.spec, "ApplyTrust")
+        flat = _component_validator(self.spec, "FlatFeeApply")
+        client = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        other_client = "018f1a00-7b3c-7d4e-8a11-222222222223"
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        account_a = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        account_b = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002"
+        body = {"client_id": client, "trust_account_id": account_a, "amount_cents": 1500}
+        apply.validate(body)
+        flat.validate(body)
+        with self.assertRaises(Exception):
+            apply.validate({"client_id": client, "amount_cents": 1500})
+        with self.assertRaises(Exception):
+            flat.validate({"amount_cents": 1500})
+        balances = [
+            {"trust_account_id": account_a, "client_id": client, "matter_id": matter, "balance_cents": 5000, "active": True, "authorized": True, "firm_id": "firm-1"},
+            {"trust_account_id": account_b, "client_id": client, "matter_id": matter, "balance_cents": 8000, "active": True, "authorized": True, "firm_id": "firm-1"},
+        ]
+        call = {"role": "attorney", "token_scopes": ["trust:withdraw"], "client_id": client, "trust_account_id": account_a, "matter_id": matter, "amount_cents": 1500, "balances": balances, "firm_id": "firm-1", "matter_walled": False}
+        chosen = trust_debit_decision(call)
+        self.assertEqual(chosen["result"], "allowed")
+        self.assertEqual(chosen["debited_account_id"], account_a)
+        self.assertNotEqual(chosen["debited_account_id"], account_b)
+        other = trust_debit_decision({**call, "trust_account_id": account_b, "client_id": other_client})
+        self.assertEqual(other["result"], "not_found")
+        self.assertFalse(other["ledger_mutated"])
+        for label, patch, expected in (
+            ("missing-account", {"trust_account_id": None}, "validation_failed"),
+            ("missing-client", {"client_id": None}, "validation_failed"),
+            ("scope", {"token_scopes": ["trust:read"]}, "scope_denied"),
+            ("wall", {"matter_walled": True, "on_wall": False}, "not_found"),
+            ("staff", {"role": "staff"}, "forbidden"),
+            ("inactive", {"balances": [{**balances[0], "active": False}, balances[1]]}, "forbidden"),
+        ):
+            decision = trust_debit_decision({**call, **patch})
+            self.assertEqual(decision["result"], expected, label)
+            self.assertFalse(decision["ledger_mutated"], label)
+        self.assertEqual(trust_debit_decision({**call, "trust_account_id": account_b})["debited_account_id"], account_b)
+        for operation_id in ("applyTrustToInvoice", "applyFlatFee"):
+            rule = _operation(self.spec, operation_id)["x-togavsu-access"]["trust_debit"]
+            self.assertEqual(rule["trust_account_id"], "required", operation_id)
+            self.assertEqual(rule["client_id"], "required", operation_id)
+            self.assertEqual(rule["other_accounts"], "unchanged", operation_id)
+            self.assertEqual(rule["authorize_before"], "any_mutation", operation_id)
+
+    def test_record_mutations_emit_events_only_after_commit(self):
+        exempt = []
+        uncovered = []
+        for _method, _path, operation in _ops(self.spec):
+            if not operation.get("x-togavsu-writes"):
+                continue
+            if operation["x-togavsu-access"].get("event_exemption"):
+                exempt.append(operation["operationId"])
+                self.assertEqual(committed_events(operation, committed=False), [])
+                self.assertEqual(committed_events(operation, committed=True), [])
+                continue
+            self.assertTrue(operation["x-togavsu-events"], operation["operationId"])
+            self.assertEqual(operation["x-togavsu-access"].get("events_on_failure"), "none", operation["operationId"])
+            self.assertEqual(committed_events(operation, committed=False), [], operation["operationId"])
+            self.assertEqual(committed_events(operation, committed=True), operation["x-togavsu-events"], operation["operationId"])
+            if not operation["x-togavsu-events"]:
+                uncovered.append(operation["operationId"])
+        self.assertEqual(uncovered, [])
+        self.assertEqual(exempt, ["putFileChunk"])
+        self.assertEqual(_operation(self.spec, "cancelTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_cancelled"])
+        self.assertEqual(_operation(self.spec, "satisfyTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_satisfied"])
+        self.assertEqual(_operation(self.spec, "bulkCustomFieldValue")["x-togavsu-events"], ["custom_field.updated"])
+        self.assertNotIn("postMcp", exempt)
+        self.assertFalse(_operation(self.spec, "postMcp")["x-togavsu-writes"])
 
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]

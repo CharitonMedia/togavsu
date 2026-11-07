@@ -35,7 +35,8 @@ Chunk upload:
       "idempotency_key": "chunk-0",
       "headers": {"Content-Range": "bytes 0-8388607/9000000"},
       "body_base64": "AAECAw==",
-      "context_token": "signed-context"
+      "context_token": "signed-context",
+      "task_authorization": "signed-task"
     }
   }
 }

@@ -8,7 +8,7 @@ Trigger: the core serves /api/v1/openapi.json.
 
 from __future__ import annotations
 
-from contract.policy import MALWARE_DELIVERY, NONINTERACTIVE_OPERATIONS, PAYMENT_PROCESSOR
+from contract.policy import BACKGROUND_FILE_PUBLICATION, MALWARE_DELIVERY, NONINTERACTIVE_OPERATIONS, PAYMENT_PROCESSOR
 from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
 
 PUBLIC_SECURITY: list = []
@@ -94,6 +94,7 @@ MODULE_DELEGATION_POLICY = {
         "attorney_only_redaction": True,
         "malware_scan": MALWARE_DELIVERY,
         "payment_processor": PAYMENT_PROCESSOR,
+        "background_file_publication": BACKGROUND_FILE_PUBLICATION,
         "operations": sorted(NONINTERACTIVE_OPERATIONS),
     },
     "cases": [

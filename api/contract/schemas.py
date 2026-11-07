@@ -775,9 +775,13 @@ SCHEMAS = _register(
         ),
         "Reason": _obj({"reason": {"type": "string", "minLength": 1}}, ["reason"]),
         "ApplyTrust": _obj(
-            {"client_id": _uuid(), "amount_cents": _cents("Explicit amount. The server does not substitute the balance.")},
-            ["client_id", "amount_cents"],
-            "Moves trust funds to operating, posts the ledger entry, and applies a payment to the invoice.",
+            {
+                "client_id": _uuid("The client whose trust is debited. A matter can have more than one client."),
+                "trust_account_id": _uuid("The active firm account that holds this client's matter balance. The server does not pick another account."),
+                "amount_cents": _cents("Explicit amount. The server does not substitute the balance."),
+            },
+            ["client_id", "trust_account_id", "amount_cents"],
+            "Moves trust funds from the named account to operating, posts one ledger entry, and applies a payment to the invoice.",
         ),
         "WriteOff": _obj({"amount_cents": _cents(), "reason": {"type": "string", "minLength": 1}}, ["amount_cents", "reason"]),
         "Payment": _meta(
@@ -2476,8 +2480,13 @@ SCHEMAS = _register(
             ["matter_id", "unbilled_cents"],
         ),
         "FlatFeeApply": _obj(
-            {"amount_cents": _cents("Explicit amount. The UI may prefill the matter flat fee; the server does not.")},
-            ["amount_cents"],
+            {
+                "client_id": _uuid("Which client's trust is debited when the matter has more than one client."),
+                "trust_account_id": _uuid("The active firm account that holds that client's matter balance."),
+                "amount_cents": _cents("Explicit amount. The UI may prefill the matter flat fee; the server does not."),
+            },
+            ["client_id", "trust_account_id", "amount_cents"],
+            "Applies the flat fee from the named client and trust account. A different account on the same matter is not debited.",
         ),
         "LoginRequest": _obj({"email": {"type": "string", "format": "email"}, "password": {"type": "string"}}, ["email", "password"]),
         "LoginResponse": _obj(

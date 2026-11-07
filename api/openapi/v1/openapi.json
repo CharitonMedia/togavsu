@@ -605,7 +605,9 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.created"
@@ -724,9 +726,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "auth.login_challenged"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -831,9 +837,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "session.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -935,9 +945,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "auth.enrollment_started"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1042,9 +1056,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "session.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1148,9 +1166,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "session.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1251,9 +1273,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "session.ended"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1337,9 +1363,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "auth.password_reset_requested"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1423,9 +1453,13 @@
           "scopes": [],
           "public": true,
           "matter_wall": false,
-          "client": "public"
+          "client": "public",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.password_changed"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1626,7 +1660,9 @@
             "default_hourly_rate_cents",
             "bar_number",
             "bar_state"
-          ]
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.updated"
@@ -1745,9 +1781,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.email_change_requested"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -1866,7 +1906,9 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "email_uniqueness": "confirmed_address"
+          "email_uniqueness": "confirmed_address",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.updated"
@@ -1978,9 +2020,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.password_changed"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -2103,9 +2149,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.totp_reset"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -2205,9 +2255,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.recovery_codes_regenerated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -2393,9 +2447,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.settings_updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -2608,9 +2666,13 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "notification_preferences.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -2824,9 +2886,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "user.sidebar_updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -3114,9 +3180,13 @@
               "owner": "other_user",
               "result": "allowed"
             }
-          ]
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "session.ended"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -3331,7 +3401,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.created"
@@ -3547,7 +3619,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.updated"
@@ -3671,7 +3745,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "user.updated"
@@ -3992,9 +4068,13 @@
               "owner": "other_user",
               "result": "forbidden"
             }
-          ]
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "api_token.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -4300,9 +4380,13 @@
               "owner": "other_user",
               "result": "forbidden"
             }
-          ]
+          ],
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "api_token.revoked"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -4623,7 +4707,9 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.created"
@@ -4886,7 +4972,9 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5029,7 +5117,9 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.archived"
@@ -5312,7 +5402,9 @@
             "identifier"
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.created"
@@ -5603,7 +5695,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5849,7 +5943,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5992,7 +6088,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6283,7 +6381,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6529,7 +6629,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6672,7 +6774,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6963,7 +7067,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7209,7 +7315,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7352,7 +7460,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7643,7 +7753,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7889,7 +8001,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -8032,7 +8146,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -8188,7 +8304,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.merged"
@@ -8566,7 +8684,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.created"
@@ -8829,7 +8949,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -8972,7 +9094,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.archived"
@@ -9255,7 +9379,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.created"
@@ -9522,7 +9648,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.closed"
@@ -9661,7 +9789,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.reopened"
@@ -9801,7 +9931,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.merged"
@@ -10371,7 +10503,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10619,7 +10753,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10763,7 +10899,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10917,7 +11055,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.wall_changed"
@@ -11299,7 +11439,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11547,7 +11689,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11678,7 +11822,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11806,7 +11952,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -12081,9 +12229,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "marker.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -12297,9 +12449,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "marker.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -12568,7 +12724,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "fee_agreement.created"
@@ -12816,7 +12974,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "fee_agreement.updated"
@@ -13108,7 +13268,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "fee_agreement.created"
@@ -13477,7 +13639,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "note.created"
@@ -13725,7 +13889,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "note.updated"
@@ -13865,7 +14031,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "note.archived"
@@ -13994,7 +14162,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "note.created"
@@ -14293,7 +14463,9 @@
             "reason"
           ],
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "conflict_record.created"
@@ -14547,7 +14719,9 @@
             "reason"
           ],
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "conflict_record.updated"
@@ -14694,7 +14868,9 @@
             "reason"
           ],
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "conflict_record.created"
@@ -14851,7 +15027,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "conflict_check.created"
@@ -15235,7 +15413,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "conflict_check.decided"
@@ -15493,7 +15673,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -15711,7 +15893,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -15957,7 +16141,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -16175,7 +16361,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -16421,7 +16609,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -16639,7 +16829,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -16885,7 +17077,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -17103,7 +17297,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -17349,7 +17545,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -17567,7 +17765,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -17813,7 +18013,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -18031,7 +18233,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -18277,7 +18481,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -18495,7 +18701,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -18750,7 +18958,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -18968,7 +19178,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -19092,7 +19304,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -19205,7 +19419,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -19345,7 +19561,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "time_entry.updated"
@@ -19486,7 +19704,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "expense.updated"
@@ -19649,9 +19869,13 @@
               "expenses:write"
             ]
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "custom_field.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -19829,7 +20053,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -20202,7 +20428,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -20464,7 +20692,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "time_entry.updated"
@@ -20761,7 +20991,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -21047,7 +21279,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "timer.started"
@@ -21299,9 +21533,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "timer.paused"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -21423,7 +21661,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -21549,9 +21789,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "timer.resumed"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -21897,7 +22141,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "expense.created"
@@ -22159,7 +22405,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "expense.updated"
@@ -22456,7 +22704,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "expense.created"
@@ -22975,7 +23225,9 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -23286,7 +23538,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.drafted"
@@ -23428,7 +23682,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "required_status": "draft",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -23571,7 +23827,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.approved"
@@ -23696,7 +23954,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.sent"
@@ -23993,7 +24253,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.voided"
@@ -24228,7 +24490,18 @@
           ],
           "below_zero": "posts",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none",
+          "trust_debit": {
+            "client_id": "required",
+            "trust_account_id": "required",
+            "selection": "explicit",
+            "other_accounts": "unchanged",
+            "authorize_before": "any_mutation",
+            "inactive_or_unauthorized": "forbidden",
+            "wrong_client_or_account": "not_found"
+          }
         },
         "x-togavsu-events": [
           "payment.completed",
@@ -24380,7 +24653,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -24522,7 +24797,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -24905,7 +25182,9 @@
               }
             }
           },
-          "noninteractive_workflow": "payment_processor"
+          "noninteractive_workflow": "payment_processor",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -25213,7 +25492,9 @@
                 "entry_type": "deposit"
               }
             }
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -25364,7 +25645,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "processor_issuance": "payment_processor",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "payment.processor_authorized"
@@ -25539,7 +25822,9 @@
               }
             }
           },
-          "noninteractive_workflow": "payment_processor"
+          "noninteractive_workflow": "payment_processor",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "payment.updated"
@@ -25718,7 +26003,9 @@
                 "flag": "trust.flag_raised"
               }
             }
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "payment.reversed"
@@ -26069,7 +26356,18 @@
           ],
           "below_zero": "posts",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none",
+          "trust_debit": {
+            "client_id": "required",
+            "trust_account_id": "required",
+            "selection": "explicit",
+            "other_accounts": "unchanged",
+            "authorize_before": "any_mutation",
+            "inactive_or_unauthorized": "forbidden",
+            "wrong_client_or_account": "not_found"
+          }
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -27826,7 +28124,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust_account.created"
@@ -28073,7 +28373,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust_account.updated"
@@ -28489,7 +28791,9 @@
           ],
           "below_zero": "posts",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.entry_posted",
@@ -28848,7 +29152,9 @@
           ],
           "below_zero": "posts",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -29006,7 +29312,9 @@
           "client": "deny",
           "below_zero": "posts",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -29583,7 +29891,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.flag_resolved"
@@ -29871,7 +30181,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -30128,7 +30440,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -30211,7 +30525,7 @@
       "post": {
         "operationId": "cancelTrustReplenishment",
         "summary": "Cancel a replenishment request",
-        "description": "Sets status cancelled. The request's matter wall applies.",
+        "description": "Sets status cancelled. The request's matter wall applies. The event is emitted only after the status commit. A denied call writes nothing and emits nothing.",
         "tags": [
           "Trust"
         ],
@@ -30286,9 +30600,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "trust.replenishment_cancelled"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -30335,7 +30653,7 @@
       "post": {
         "operationId": "satisfyTrustReplenishment",
         "summary": "Satisfy a replenishment request",
-        "description": "Sets status satisfied. The request's matter wall applies.",
+        "description": "Sets status satisfied. The request's matter wall applies. The event is emitted only after the status commit. A denied call writes nothing and emits nothing.",
         "tags": [
           "Trust"
         ],
@@ -30410,9 +30728,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "trust.replenishment_satisfied"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -30670,7 +30992,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.reconciled"
@@ -30925,7 +31249,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "trust.reconciled"
@@ -31285,7 +31611,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "calendar_event.created"
@@ -31546,7 +31874,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "calendar_event.updated"
@@ -31679,7 +32009,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "calendar_event.deleted"
@@ -31809,7 +32141,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "calendar_event.created"
@@ -32155,7 +32489,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "deadline.created"
@@ -32416,7 +32752,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "deadline.updated"
@@ -32562,7 +32900,9 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "deadline.created"
@@ -33050,9 +33390,13 @@
               "result": "omitted"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "ical_feed.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -33372,9 +33716,13 @@
               "result": "omitted"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "ical_feed.revoked"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -33903,7 +34251,10 @@
             "staged_bytes_emit": false
           },
           "owner": "self",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.created",
@@ -33921,6 +34272,11 @@
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
                 "roles_from_arguments": false
               }
             },
@@ -33941,6 +34297,7 @@
               "query",
               "idempotency_key",
               "context_token",
+              "task_authorization",
               "body"
             ]
           }
@@ -34241,7 +34598,9 @@
               "doc_tender"
             ]
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -34416,7 +34775,10 @@
             "on_failure": "no_event_no_grant",
             "staged_bytes_emit": false
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.created",
@@ -34434,6 +34796,11 @@
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
                 "roles_from_arguments": false
               }
             },
@@ -34454,6 +34821,7 @@
               "query",
               "idempotency_key",
               "context_token",
+              "task_authorization",
               "body"
             ]
           }
@@ -34605,7 +34973,9 @@
             "blocked_actors": [
               "doc_tender"
             ]
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -34764,7 +35134,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -34923,7 +35295,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -35082,7 +35456,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.trashed"
@@ -35226,7 +35602,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -35361,7 +35739,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.purged"
@@ -35728,7 +36108,9 @@
             "on_failure": "no_event_no_grant",
             "staged_bytes_emit": false
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -36259,7 +36641,9 @@
             "conversion_of",
             "grouped_photo_source"
           ],
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.linked"
@@ -36633,7 +37017,9 @@
             "on_failure": "no_event_no_grant",
             "staged_bytes_emit": false
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -36807,7 +37193,9 @@
             ],
             "additional_properties": false,
             "required_subset_of_grant": true
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.quarantine_changed"
@@ -37300,9 +37688,14 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "file_upload.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -37315,6 +37708,11 @@
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
                 "roles_from_arguments": false
               }
             },
@@ -37335,6 +37733,7 @@
               "query",
               "idempotency_key",
               "context_token",
+              "task_authorization",
               "body"
             ]
           }
@@ -37442,7 +37841,8 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37458,6 +37858,11 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
+                "roles_from_arguments": false
               }
             },
             "forbidden_header_overrides": [
@@ -37471,7 +37876,8 @@
             "arguments": [
               "path",
               "query",
-              "context_token"
+              "context_token",
+              "task_authorization"
             ]
           }
         },
@@ -37584,7 +37990,10 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication",
+          "event_exemption": "Transports bytes of an upload that is not yet a file. completeFileUpload emits file_upload.staged. A file and file.version_created are emitted only after publish commits. A failed chunk emits nothing.",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -37602,6 +38011,11 @@
               "context_token": {
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
+                "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
                 "roles_from_arguments": false
               }
             },
@@ -37623,6 +38037,7 @@
               "idempotency_key",
               "headers",
               "context_token",
+              "task_authorization",
               "body_base64"
             ]
           }
@@ -37747,7 +38162,10 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "background_file_publication",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file_upload.staged"
@@ -37765,6 +38183,11 @@
                 "header": "X-Togavsu-Context-Token",
                 "argument": "context_token",
                 "roles_from_arguments": false
+              },
+              "task_authorization": {
+                "header": "X-Togavsu-Task-Authorization",
+                "argument": "task_authorization",
+                "roles_from_arguments": false
               }
             },
             "forbidden_header_overrides": [
@@ -37779,7 +38202,8 @@
               "path",
               "query",
               "idempotency_key",
-              "context_token"
+              "context_token",
+              "task_authorization"
             ]
           }
         },
@@ -37907,7 +38331,9 @@
           "quarantine_confirmation_input": {
             "in": "body",
             "name": "confirm_quarantine"
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.downloaded"
@@ -38186,7 +38612,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "folder.created"
@@ -38434,7 +38862,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "folder.updated"
@@ -38565,7 +38995,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "folder.deleted"
@@ -38709,9 +39141,13 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "file.lock_acquired"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -38845,7 +39281,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.lock_released"
@@ -38988,9 +39426,13 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "file.lock_renewed"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -39377,7 +39819,9 @@
             "on_failure": "no_event_no_grant",
             "staged_bytes_emit": false
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -39549,7 +39993,9 @@
             "on_failure": "no_event_no_grant",
             "staged_bytes_emit": false
           },
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "file.created",
@@ -39815,7 +40261,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "court_profile.created"
@@ -40061,7 +40509,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "court_profile.updated"
@@ -40199,7 +40649,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "court_profile.verified"
@@ -40445,7 +40897,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "storage_backend.created"
@@ -40687,7 +41141,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "storage_backend.updated"
@@ -40824,9 +41280,13 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "storage_backend.tested"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -41068,7 +41528,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "storage_move.started"
@@ -41312,7 +41774,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "storage_move.confirmed"
@@ -41759,7 +42223,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "doc_tender.published"
@@ -42204,7 +42670,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "doc_tender.exception_resolved"
@@ -42605,7 +43073,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "doc_tender.category_updated"
@@ -42849,7 +43319,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "doc_tender.category_updated"
@@ -43074,7 +43546,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -43559,7 +44033,9 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "notification.created"
@@ -43817,9 +44293,13 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "notification.read"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -43925,9 +44405,13 @@
           "public": false,
           "matter_wall": false,
           "client": "own",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "notification.read"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -45832,9 +46316,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "layout.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -46071,7 +46559,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "layout.created"
@@ -46296,7 +46786,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "layout.updated"
@@ -46414,7 +46906,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "layout.deleted"
@@ -46525,9 +47019,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "layout.default_set"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -46635,9 +47133,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "layout.applied"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -46976,7 +47478,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -47227,7 +47731,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -47459,7 +47965,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -47574,7 +48082,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -47818,7 +48328,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -48050,7 +48562,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -48165,7 +48679,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "help.updated"
@@ -48945,9 +49461,13 @@
             "module_id_param": "module_id",
             "own_heading_only": true,
             "grants_admin": false
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "help.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -49084,9 +49604,13 @@
             "module_id_param": "module_id",
             "own_heading_only": true,
             "grants_admin": false
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "help.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -49228,9 +49752,13 @@
             "module_id_param": "module_id",
             "own_heading_only": true,
             "grants_admin": false
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "help.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -49522,9 +50050,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "event.appended"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -49672,9 +50204,13 @@
           "access_inherits": "matter",
           "batch_authorization": "all_or_nothing",
           "inaccessible_result": "not_found",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "event.appended"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -50336,7 +50872,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -50466,7 +51004,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -50654,7 +51194,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -50906,7 +51448,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -51036,9 +51580,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "ai.provider_checked"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -51137,7 +51685,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "ai.call_completed"
@@ -51414,7 +51964,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -51537,9 +52089,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "mail.tested"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -51773,7 +52329,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "problem_report.created"
@@ -52186,7 +52744,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "backup.started"
@@ -52380,7 +52940,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "backup.deleted"
@@ -52694,7 +53256,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "backup_destination.created"
@@ -52910,7 +53474,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "backup_destination.updated"
@@ -53025,7 +53591,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "backup_destination.deleted"
@@ -53133,9 +53701,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "backup_destination.tested"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -53351,7 +53923,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "restore.started"
@@ -53564,9 +54138,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "backup_upload.created"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -53798,7 +54376,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "update.started"
@@ -54034,7 +54614,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.install_requested"
@@ -54278,7 +54860,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.permissions_decided"
@@ -54407,7 +54991,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.enabled"
@@ -54518,7 +55104,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.disabled"
@@ -54629,7 +55217,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.removed"
@@ -54760,7 +55350,9 @@
           "matter_wall": false,
           "client": "deny",
           "on_new_permissions": "awaiting_approval_keep_running",
-          "on_failure": "keep_previous_version"
+          "on_failure": "keep_previous_version",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "module.update_requested"
@@ -55003,7 +55595,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -55256,9 +55850,13 @@
             ],
             "grants_admin": false,
             "firmwide_bypass": false
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "module.context_issued"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -55934,7 +56532,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "signing_key.added"
@@ -56150,9 +56750,13 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "signing_key.updated"
+        ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -56263,7 +56867,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "signing_key.removed"
@@ -56504,7 +57110,9 @@
             "exactly_once": true,
             "append_only": true,
             "time_module_also_posts": false
-          }
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
         },
         "x-togavsu-events": [
           "domain.switched"
@@ -56559,7 +57167,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
+        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -56838,7 +57446,56 @@
             "idempotency_replay": "original_result",
             "idempotency_conflict": "idempotency_conflict",
             "no_mutation_on_denial": true
+          },
+          "background_file_publication": {
+            "sources": [
+              "email",
+              "zoom",
+              "importer",
+              "drop_folder"
+            ],
+            "sequence": [
+              "createFileUpload",
+              "getFileUpload",
+              "putFileChunk",
+              "completeFileUpload",
+              "publishFile",
+              "bulkFile"
+            ],
+            "issued_by": "core",
+            "registered_module": true,
+            "viewer_context_required": false,
+            "scopes": [
+              "files:write"
+            ],
+            "grants_admin": false,
+            "firmwide_bypass": false,
+            "expired": "forbidden",
+            "revoked": "forbidden",
+            "missing_scope": "scope_denied",
+            "wrong_module": "forbidden",
+            "wrong_matter": "not_found",
+            "unregistered": "forbidden",
+            "operation_outside_grant": "forbidden",
+            "on_failure": "no_file_no_event",
+            "publish_events": [
+              "file.created",
+              "file.version_created"
+            ]
           }
+        },
+        "x-togavsu-delivery-authorization": {
+          "order": [
+            "installed",
+            "subscription",
+            "scope",
+            "matter_wall",
+            "attorney_only",
+            "serialize"
+          ],
+          "unauthorized_envelope": null,
+          "grants_admin": false,
+          "firmwide_bypass": false
         },
         "parameters": [
           {
@@ -60096,7 +60753,12 @@
           "client_id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUIDv7."
+            "description": "The client whose trust is debited. A matter can have more than one client."
+          },
+          "trust_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The active firm account that holds this client's matter balance. The server does not pick another account."
           },
           "amount_cents": {
             "type": "integer",
@@ -60106,9 +60768,10 @@
         },
         "required": [
           "client_id",
+          "trust_account_id",
           "amount_cents"
         ],
-        "description": "Moves trust funds to operating, posts the ledger entry, and applies a payment to the invoice."
+        "description": "Moves trust funds from the named account to operating, posts one ledger entry, and applies a payment to the invoice."
       },
       "WriteOff": {
         "type": "object",
@@ -69015,6 +69678,16 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "client_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Which client's trust is debited when the matter has more than one client."
+          },
+          "trust_account_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The active firm account that holds that client's matter balance."
+          },
           "amount_cents": {
             "type": "integer",
             "minimum": 0,
@@ -69022,8 +69695,11 @@
           }
         },
         "required": [
+          "client_id",
+          "trust_account_id",
           "amount_cents"
-        ]
+        ],
+        "description": "Applies the flat fee from the named client and trust account. A different account on the same matter is not debited."
       },
       "LoginRequest": {
         "type": "object",
@@ -71950,16 +72626,58 @@
         "idempotency_conflict": "idempotency_conflict",
         "no_mutation_on_denial": true
       },
+      "background_file_publication": {
+        "sources": [
+          "email",
+          "zoom",
+          "importer",
+          "drop_folder"
+        ],
+        "sequence": [
+          "createFileUpload",
+          "getFileUpload",
+          "putFileChunk",
+          "completeFileUpload",
+          "publishFile",
+          "bulkFile"
+        ],
+        "issued_by": "core",
+        "registered_module": true,
+        "viewer_context_required": false,
+        "scopes": [
+          "files:write"
+        ],
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "expired": "forbidden",
+        "revoked": "forbidden",
+        "missing_scope": "scope_denied",
+        "wrong_module": "forbidden",
+        "wrong_matter": "not_found",
+        "unregistered": "forbidden",
+        "operation_outside_grant": "forbidden",
+        "on_failure": "no_file_no_event",
+        "publish_events": [
+          "file.created",
+          "file.version_created"
+        ]
+      },
       "operations": [
         "bulkEvent",
+        "bulkFile",
+        "completeFileUpload",
         "createAiCall",
         "createEvent",
         "createFileLink",
+        "createFileUpload",
         "createNotification",
         "createPayment",
         "downloadFileVersion",
         "getFile",
+        "getFileUpload",
         "listFileVersions",
+        "publishFile",
+        "putFileChunk",
         "quarantineFileVersion",
         "updatePaymentStatus"
       ]

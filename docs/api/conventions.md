@@ -103,4 +103,10 @@ A draft invoice's lines, fee-item selection, line description, line amount, and 
 
 ## Events
 
-A successful write lists its event types on `x-togavsu-events`. Modules subscribe in the manifest. Delivery is the webhook `moduleEvent`: HMAC-SHA256 of the raw body in `X-Togavsu-Signature` (`sha256=` + hex) and `X-Togavsu-Timestamp`. Retries use `webhooks.retry_attempts` and `webhooks.retry_window_hours` (start 8 attempts over 24 hours).
+A successful record mutation lists its event types on `x-togavsu-events`. Those events are emitted only after the transaction commits. A denied or rolled-back call emits nothing. `putFileChunk` is the one write exemption: it transports bytes and does not commit a file. `completeFileUpload` emits `file_upload.staged`, and publish emits `file.version_created`.
+
+Modules subscribe in their manifest. Delivery is the webhook `moduleEvent`. Scope, matter wall, and attorney-only checks run before the body is serialized. A module without the event's read scope, or off the matter wall, or facing an attorney-only conflict record, receives no POST. HMAC-SHA256 of the raw body is `X-Togavsu-Signature` (`sha256=` + hex), with `X-Togavsu-Timestamp`. Retries use `webhooks.retry_attempts` and `webhooks.retry_window_hours` (start 8 attempts over 24 hours).
+
+Email, Zoom, drop-folder, and importer modules publish files with a core-issued background grant after the viewer context expires. The grant is `files:write` for one matter and the upload sequence through `publishFile` or `bulkFile`. It is not an admin grant. An expired grant or another matter creates no file and emits no event.
+
+`applyTrustToInvoice` and `applyFlatFee` name `client_id` and `trust_account_id`. The ledger entry debits that account for that client. Another account on the same matter is left alone.
