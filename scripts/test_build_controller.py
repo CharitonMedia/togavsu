@@ -237,6 +237,29 @@ class ControllerTests(unittest.TestCase):
         launches = [c for c in self.remote.calls if c[1] == "/agents"]
         self.assertEqual(launches[0][2]["repos"][0]["startingRef"], BASE)
 
+    def test_recovered_merge_refreshes_main_before_dependent_launch(self):
+        for response_recorded in (False, True):
+            with self.subTest(response_recorded=response_recorded):
+                self.setUp()
+                self.controller.plan["tasks"] = [SPEC, {"id": "two", "depends_on": ["one"]}]
+                self.record["merge_intent"] = {"head": HEAD, "base": BASE}
+                if response_recorded:
+                    self.record["merge_intent"]["result_sha"] = NEW
+                self.remote.pr.update(merged=True, merge_commit_sha=NEW, state="closed")
+                original = self.remote.gh
+                def gh(path, method="GET", payload=None, **kwargs):
+                    if path == "pulls/7":
+                        self.remote.main = NEW  # Merge becomes visible after tick read BASE.
+                    return original(path, method, payload, **kwargs)
+                self.remote.gh = gh
+                self.controller.tick()
+                self.assertIn("completed", self.record)
+                self.assertNotIn("two", self.controller.tasks)
+                self.controller.tick()
+                launches = [c for c in self.remote.calls if c[1] == "/agents"]
+                self.assertEqual(len(launches), 1)
+                self.assertEqual(launches[0][2]["repos"][0]["startingRef"], NEW)
+
     def test_dry_run_does_not_send_or_persist(self):
         self.failed_review()
         self.controller.dry = True

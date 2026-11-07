@@ -374,15 +374,13 @@ class Controller:
             return False
         head, number = pr["head"]["sha"], pr["number"]
         if record.get("merge_intent", {}).get("result_sha"):
-            self.verify_merge(task, record, pr)
-            return False  # Accepted merge responses are reconciled, never submitted again.
+            return self.verify_merge(task, record, pr)  # Reconcile, never resubmit an accepted merge.
         if pr.get("merged"):
             # Merged work is a bounded dependency, never a declaration of product/phase acceptance.
             if not record.get("merge_intent") or record["merge_intent"]["head"] != head:
                 self.halt(task, record, "PR merged outside this controller; verify evidence before adopting completion")
                 return False
-            self.verify_merge(task, record, pr)
-            return False
+            return self.verify_merge(task, record, pr)
         if pr["state"] != "open":
             self.halt(task, record, "Assignment PR closed without merge")
             return False
