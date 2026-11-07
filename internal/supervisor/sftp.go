@@ -3,6 +3,7 @@ package supervisor
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,11 +100,32 @@ func (s *SFTPDestination) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	return s.batch(ctx, "rm "+remote)
+	err = s.batch(ctx, "rm "+remote)
+	if remoteObjectAbsent(err) {
+		return nil
+	}
+	return err
+}
+
+// remoteObjectAbsent is true only for a missing owned object. Permission and
+// network failures stay errors so a retry is not reported as finished.
+func remoteObjectAbsent(err error) bool {
+	if err == nil || errors.Is(err, ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "permission denied") || strings.Contains(msg, "connection refused") || strings.Contains(msg, "network is unreachable") || strings.Contains(msg, "timed out") || strings.Contains(msg, "timeout") {
+		return false
+	}
+	return strings.Contains(msg, "no such file")
 }
 
 func (s *SFTPDestination) List(ctx context.Context) ([]RemoteObject, error) {
-	quoted, err := quoteSFTP(s.Spec.RemotePath)
+	root, err := s.remoteRoot()
+	if err != nil {
+		return nil, err
+	}
+	quoted, err := quoteSFTP(root)
 	if err != nil {
 		return nil, err
 	}
@@ -135,10 +157,25 @@ func (s *SFTPDestination) Test(ctx context.Context) error {
 }
 
 func (s *SFTPDestination) remote(name string) (string, error) {
-	if err := validSFTPPath(s.Spec.RemotePath); err != nil {
+	root, err := s.remoteRoot()
+	if err != nil {
 		return "", err
 	}
-	return quoteSFTP(strings.TrimRight(s.Spec.RemotePath, "/") + "/" + name)
+	return quoteSFTP(root + "/" + name)
+}
+
+func (s *SFTPDestination) remoteRoot() (string, error) {
+	base := strings.TrimRight(s.Spec.RemotePath, "/")
+	if err := validSFTPPath(base); err != nil {
+		return "", err
+	}
+	if s.Spec.Namespace == "" {
+		return base, nil
+	}
+	if err := validNamespace(s.Spec.Namespace); err != nil {
+		return "", err
+	}
+	return base + "/" + s.Spec.Namespace, nil
 }
 
 // quoteSFTP wraps a batch argument. Control characters are rejected because
@@ -196,18 +233,9 @@ func (s *SFTPDestination) output(ctx context.Context, commands string) (string, 
 	if err := batch.Close(); err != nil {
 		return "", err
 	}
-	port := s.Spec.Port
-	if port == 0 {
-		port = 22
-	}
-	args := []string{
-		"-b", batch.Name(),
-		"-i", s.Spec.IdentityFile,
-		"-P", fmt.Sprintf("%d", port),
-		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=yes",
-		"-o", "UserKnownHostsFile=" + s.Spec.KnownHosts,
-		s.Spec.User + "@" + s.Spec.Host,
+	args, err := s.argv(batch.Name())
+	if err != nil {
+		return "", err
 	}
 	cmd := exec.CommandContext(ctx, s.Command, args...)
 	var stdout, stderr bytes.Buffer
@@ -217,6 +245,63 @@ func (s *SFTPDestination) output(ctx context.Context, commands string) (string, 
 		return "", fmt.Errorf("sftp: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// argv builds the OpenSSH sftp argument vector. The destination is a single
+// operand after "--", so a username or host cannot select -D or -oProxyCommand.
+func (s *SFTPDestination) argv(batchPath string) ([]string, error) {
+	port := s.Spec.Port
+	if port == 0 {
+		port = 22
+	}
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("%w: sftp port", ErrBadRequest)
+	}
+	if err := validSFTPOperand("user", s.Spec.User); err != nil {
+		return nil, err
+	}
+	if err := validSFTPOperand("host", s.Spec.Host); err != nil {
+		return nil, err
+	}
+	if err := validSFTPOperand("identity file", s.Spec.IdentityFile); err != nil {
+		return nil, err
+	}
+	if err := validSFTPOperand("known hosts", s.Spec.KnownHosts); err != nil {
+		return nil, err
+	}
+	if err := validSFTPOperand("batch", batchPath); err != nil {
+		return nil, err
+	}
+	return []string{
+		"-b", batchPath,
+		"-i", s.Spec.IdentityFile,
+		"-P", fmt.Sprintf("%d", port),
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=yes",
+		"-o", "UserKnownHostsFile=" + s.Spec.KnownHosts,
+		"--",
+		s.Spec.User + "@" + s.Spec.Host,
+	}, nil
+}
+
+func validSFTPOperand(label, value string) error {
+	if value == "" {
+		return fmt.Errorf("%w: empty sftp %s", ErrBadRequest, label)
+	}
+	if strings.HasPrefix(value, "-") {
+		return fmt.Errorf("%w: sftp %s starts with '-'", ErrBadRequest, label)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("%w: control character in sftp %s", ErrBadRequest, label)
+		}
+	}
+	if label == "user" || label == "host" {
+		if strings.ContainsAny(value, " @") {
+			return fmt.Errorf("%w: sftp %s", ErrBadRequest, label)
+		}
+	}
+	return nil
 }
 
 type unlinkFile struct{ *os.File }

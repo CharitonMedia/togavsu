@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const updateCleanupTimeout = 30 * time.Second
+
 // Release is one signed core image advertised by the release index.
 type Release struct {
 	Image   string
@@ -98,6 +100,10 @@ type Updater struct {
 	Notify        func(ctx context.Context, subject, body string)
 	Ledger        *Ledger
 	HealthTimeout time.Duration
+	// unreconciled holds replacement containers whose Stop or Remove did not
+	// finish. They are not the serving core, and another update is refused
+	// until that cleanup succeeds.
+	unreconciled map[string]ContainerInfo
 }
 
 func (u *Updater) now() time.Time {
@@ -120,10 +126,14 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	if u.Registry == nil || u.Verifier == nil || u.Runtime == nil || u.Proxy == nil {
 		return UpdateResult{Status: "refused", Reason: "not_configured"}, ErrReleaseIndexUnconfigured
 	}
+	if len(u.unreconciled) > 0 {
+		return UpdateResult{Status: "refused", Reason: "cleanup_unreconciled", Rollback: "cleanup_unreconciled"}, ErrCleanupUnreconciled
+	}
 	cores, err := u.Runtime.ListCores(ctx)
 	if err != nil {
 		return UpdateResult{}, err
 	}
+	cores = u.withoutUnreconciled(cores)
 	if len(cores) == 0 {
 		return UpdateResult{Status: "refused", Reason: "no_core"}, ErrNoCore
 	}
@@ -227,13 +237,36 @@ type rollbackOutcome struct {
 }
 
 func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, started *ContainerInfo) rollbackOutcome {
+	// The HTTP request may already be canceled. Cleanup and the rollback
+	// notice use a fresh bounded context so Stop and Remove still run.
+	cleanCtx, cancel := context.WithTimeout(context.Background(), updateCleanupTimeout)
+	defer cancel()
 	out := rollbackOutcome{}
 	if started != nil {
-		_ = u.Runtime.Stop(ctx, started.ID)
-		_ = u.Runtime.Remove(ctx, started.ID)
+		stopErr := u.Runtime.Stop(cleanCtx, started.ID)
+		var removeErr error
+		if stopErr == nil {
+			removeErr = u.Runtime.Remove(cleanCtx, started.ID)
+		}
+		if stopErr != nil || removeErr != nil {
+			if u.unreconciled == nil {
+				u.unreconciled = map[string]ContainerInfo{}
+			}
+			u.unreconciled[started.ID] = *started
+			out.Mode = "cleanup_unreconciled"
+			out.Err = fmt.Errorf("%w: %v", ErrCleanupUnreconciled, errors.Join(stopErr, removeErr))
+			u.notify(cleanCtx, "Update needs attention", "The aborted core container was not removed. It is not the serving version, and another update is refused until cleanup finishes.")
+		}
 	}
 	if migrated && backupID != "" {
-		out = u.rollback(ctx, backupID)
+		rolled := u.rollback(cleanCtx, backupID)
+		if out.Mode == "cleanup_unreconciled" {
+			if rolled.Err != nil {
+				out.Err = errors.Join(out.Err, rolled.Err)
+			}
+		} else {
+			out = rolled
+		}
 	}
 	u.record("update", map[string]string{
 		"status":   "refused",
@@ -252,6 +285,20 @@ func (u *Updater) abort(ctx context.Context, backupID string, migrated bool, sta
 // ceiling: a failed migration's schema changes stay, upgrade: a quiesced
 // rollback that reverses only the migration, trigger: that rollback preserves
 // rows committed after the pre-update snapshot.
+func (u *Updater) withoutUnreconciled(cores []ContainerInfo) []ContainerInfo {
+	if len(u.unreconciled) == 0 {
+		return cores
+	}
+	out := make([]ContainerInfo, 0, len(cores))
+	for _, core := range cores {
+		if _, skip := u.unreconciled[core.ID]; skip {
+			continue
+		}
+		out = append(out, core)
+	}
+	return out
+}
+
 func (u *Updater) rollback(ctx context.Context, backupID string) rollbackOutcome {
 	fn := u.Rollback
 	if fn == nil {

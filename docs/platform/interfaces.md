@@ -48,9 +48,11 @@ A missing passphrase returns `409 passphrase_required`. Copy failures keep the l
 
 Destination kinds:
 
-- `path`: absolute directory, including a mounted SMB or NFS path. Checksum is verified after the copy.
-- `s3`: path-style AWS Signature Version 4. Fields: `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`, `retention_days`.
-- `sftp`: OpenSSH `sftp` in batch mode with `StrictHostKeyChecking=yes`. Fields: `host`, `port`, `user`, `identity_file`, `known_hosts`, `remote_path`, `retention_days`.
+- `path`: absolute directory, including a mounted SMB or NFS path. Copies go in a generated `namespace` directory under that path. Checksum is verified after the copy.
+- `s3`: path-style AWS Signature Version 4. Fields: `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`, `retention_days`. The installation `namespace` is appended to `prefix`.
+- `sftp`: OpenSSH `sftp` in batch mode with `StrictHostKeyChecking=yes`. The destination argument is a single `user@host` operand after `--`. Fields: `host`, `port`, `user`, `identity_file`, `known_hosts`, `remote_path`, `retention_days`. The installation `namespace` is a directory under `remote_path`.
+
+Retention deletes only names in this installation's receipt file. Archives already stored in the shared directory, bucket prefix, or remote directory stay there.
 
 ## Settings the registry must take over
 

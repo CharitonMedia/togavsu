@@ -27,6 +27,10 @@ type scriptRuntime struct {
 	loseStop     map[string]bool
 	cancelStops  bool
 	onList       func()
+	afterStart   func()
+	trackStarted bool
+	started      []ContainerInfo
+	removed      map[string]bool
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -35,7 +39,21 @@ func (r *scriptRuntime) add(step string) {
 
 func (r *scriptRuntime) ListCores(context.Context) ([]ContainerInfo, error) {
 	r.add("list")
-	return r.cores, nil
+	if !r.trackStarted {
+		return r.cores, nil
+	}
+	var out []ContainerInfo
+	for _, core := range r.started {
+		if !r.removed[core.ID] {
+			out = append(out, core)
+		}
+	}
+	for _, core := range r.cores {
+		if !r.removed[core.ID] {
+			out = append(out, core)
+		}
+	}
+	return out, nil
 }
 
 func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
@@ -88,7 +106,14 @@ func (r *scriptRuntime) StartCore(_ context.Context, image, name string) (Contai
 	r.used[name] = true
 	r.add("start:" + image)
 	r.add("name:" + name)
-	return ContainerInfo{ID: "new-" + name, Name: name, Image: image}, nil
+	info := ContainerInfo{ID: "new-" + name, Name: name, Image: image, Labels: map[string]string{"togavsu.version": "1.1.0"}, State: "running", Running: true}
+	if r.trackStarted {
+		r.started = append(r.started, info)
+	}
+	if r.afterStart != nil {
+		r.afterStart()
+	}
+	return info, nil
 }
 func (r *scriptRuntime) Start(ctx context.Context, id string) error {
 	if ctx.Err() != nil {
@@ -107,11 +132,18 @@ func (r *scriptRuntime) Start(ctx context.Context, id string) error {
 	r.states[id] = "running"
 	return nil
 }
-func (r *scriptRuntime) WaitHealthy(context.Context, string, time.Duration) error {
+func (r *scriptRuntime) WaitHealthy(ctx context.Context, _ string, _ time.Duration) error {
 	r.add("health")
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	return r.health
 }
 func (r *scriptRuntime) Stop(ctx context.Context, id string) error {
+	if ctx.Err() != nil {
+		r.add("stop-canceled:" + id)
+		return ctx.Err()
+	}
 	r.add("stop:" + id)
 	if r.states == nil {
 		r.states = map[string]string{}
@@ -131,8 +163,16 @@ func (r *scriptRuntime) Stop(ctx context.Context, id string) error {
 	}
 	return nil
 }
-func (r *scriptRuntime) Remove(_ context.Context, id string) error {
+func (r *scriptRuntime) Remove(ctx context.Context, id string) error {
+	if ctx.Err() != nil {
+		r.add("remove-canceled:" + id)
+		return ctx.Err()
+	}
 	r.add("remove:" + id)
+	if r.removed == nil {
+		r.removed = map[string]bool{}
+	}
+	r.removed[id] = true
 	return nil
 }
 func (r *scriptRuntime) StartModule(context.Context, string) error { return nil }
@@ -306,6 +346,42 @@ func TestTwoConsecutiveUpdatesUseDistinctNames(t *testing.T) {
 	}
 	if len(names) != 2 || names[0] == names[1] || names[0] == "togavsu-core-next" {
 		t.Fatalf("names %v", names)
+	}
+}
+
+func TestCanceledHealthCleansUpOnALiveContext(t *testing.T) {
+	var order []string
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rt := &scriptRuntime{
+		order:        &order,
+		trackStarted: true,
+		cores: []ContainerInfo{{
+			ID: "old", Name: "core", Image: "togavsu-core:1.0.0",
+			Labels: map[string]string{"togavsu.version": "1.0.0"}, State: "running", Running: true,
+		}},
+	}
+	rt.afterStart = cancel
+	up := testUpdater(t, rt, &order)
+	got, err := up.Apply(ctx, true)
+	if !errors.Is(err, ErrHealth) || got.Status != "refused" || got.Reason != "health" || got.Status == "up_to_date" {
+		t.Fatalf("%+v %v", got, err)
+	}
+	var candidate string
+	for _, step := range order {
+		if strings.HasPrefix(step, "stop:new-") {
+			candidate = strings.TrimPrefix(step, "stop:")
+		}
+		if strings.HasPrefix(step, "stop-canceled:") || strings.HasPrefix(step, "remove-canceled:") {
+			t.Fatalf("cleanup used the canceled request: %v", order)
+		}
+	}
+	if candidate == "" || !containsStep(order, "remove:"+candidate) {
+		t.Fatalf("candidate was not removed: %v", order)
+	}
+	again, err := up.Apply(context.Background(), true)
+	if err != nil || again.Status == "up_to_date" || again.From == testReleaseImage {
+		t.Fatalf("aborted candidate was treated as the serving core: %+v %v order %v", again, err, order)
 	}
 }
 

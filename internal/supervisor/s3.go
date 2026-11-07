@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -87,6 +88,9 @@ func (s *S3Destination) Get(ctx context.Context, name string) (io.ReadCloser, er
 
 func (s *S3Destination) Delete(ctx context.Context, name string) error {
 	res, err := s.do(ctx, http.MethodDelete, s.objectKey(name), nil, nil, emptySHA256)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -97,8 +101,8 @@ func (s *S3Destination) Delete(ctx context.Context, name string) error {
 func (s *S3Destination) List(ctx context.Context) ([]RemoteObject, error) {
 	q := url.Values{}
 	q.Set("list-type", "2")
-	if s.Spec.Prefix != "" {
-		q.Set("prefix", strings.Trim(s.Spec.Prefix, "/"))
+	if prefix := strings.Trim(s.objectPrefix(), "/"); prefix != "" {
+		q.Set("prefix", prefix)
 	}
 	res, err := s.do(ctx, http.MethodGet, "", q, nil, emptySHA256)
 	if err != nil {
@@ -131,11 +135,17 @@ func (s *S3Destination) Test(ctx context.Context) error {
 }
 
 func (s *S3Destination) objectPrefix() string {
-	p := strings.Trim(s.Spec.Prefix, "/")
-	if p == "" {
+	var parts []string
+	if p := strings.Trim(s.Spec.Prefix, "/"); p != "" {
+		parts = append(parts, p)
+	}
+	if s.Spec.Namespace != "" {
+		parts = append(parts, s.Spec.Namespace)
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	return p + "/"
+	return strings.Join(parts, "/") + "/"
 }
 
 func (s *S3Destination) objectKey(name string) string {

@@ -23,6 +23,7 @@ var (
 	ErrPreserveWrites           = errors.New("pre-update snapshot was kept so later commits stay in place")
 	ErrRestoreCleanup           = errors.New("restored database is live and the previous database was not dropped")
 	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
+	ErrCleanupUnreconciled      = errors.New("aborted update container was not stopped and removed")
 	ErrShuttingDown             = errors.New("supervisor is shutting down")
 	ErrRecoveryRequired         = errors.New("a restore is waiting for recovery")
 	ErrFileRestoreUnsupported   = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
@@ -68,6 +69,8 @@ func PublicCode(err error) (code string, status int) {
 		return "restore_cleanup_pending", 409
 	case errors.Is(err, ErrProxyUnreconciled):
 		return "proxy_unreconciled", 409
+	case errors.Is(err, ErrCleanupUnreconciled):
+		return "cleanup_unreconciled", 409
 	default:
 		return "internal", 500
 	}

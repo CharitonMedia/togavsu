@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -396,6 +397,50 @@ func TestS3ReservedKeyOnWire(t *testing.T) {
 	const wantQuery = "list-type=2&prefix=100%25%2Bpre%3Afix%2F%2F..%2Fkeep"
 	if listQuery != wantQuery {
 		t.Fatalf("list query %s", listQuery)
+	}
+}
+
+func TestS3DeleteMissingIsIdempotentAndDeniedIsNot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "method", http.StatusMethodNotAllowed)
+			return
+		}
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/missing.tgbk"), strings.HasSuffix(r.URL.Path, "/missing.sha256"):
+			http.NotFound(w, r)
+		case strings.HasSuffix(r.URL.Path, "/denied.tgbk"):
+			http.Error(w, "AccessDenied", http.StatusForbidden)
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
+	}))
+	defer srv.Close()
+	dest := &S3Destination{
+		Spec: DestinationSpec{
+			ID: "obj", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+			Bucket: "backups", Prefix: "firm", Namespace: "nsowned01",
+			AccessKey: "AKID", SecretKey: "secret",
+		},
+		HTTP: srv.Client(),
+		Now:  func() time.Time { return time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC) },
+	}
+	if err := dest.Delete(context.Background(), "missing.tgbk"); err != nil {
+		t.Fatalf("missing owned archive: %v", err)
+	}
+	if err := dest.Delete(context.Background(), "missing.sha256"); err != nil {
+		t.Fatalf("missing owned sidecar: %v", err)
+	}
+	if err := dest.Delete(context.Background(), "denied.tgbk"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("permission error was treated as absence: %v", err)
+	}
+	closed := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	closedURL := closed.URL
+	closed.Close()
+	down := *dest
+	down.Spec.Endpoint = closedURL
+	if err := down.Delete(context.Background(), "missing.tgbk"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("network error was treated as absence: %v", err)
 	}
 }
 

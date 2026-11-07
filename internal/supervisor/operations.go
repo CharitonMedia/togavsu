@@ -663,14 +663,20 @@ func (o *Operations) stopWriters(rec RestoreRecord) ([]ContainerInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, core := range cores {
+		if _, reject := writerQuiescence(core); reject {
+			return nil, fmt.Errorf("stop %s: state %q is not a quiescent writer", core.ID, core.State)
+		}
+	}
 	var restart []ContainerInfo
 	for _, core := range cores {
-		prior := core.State
+		prior := strings.ToLower(strings.TrimSpace(core.State))
 		if prior == "" {
 			prior = "running"
 		}
 		intent := containerIntent{ID: core.ID, Name: core.Name, Prior: prior}
-		if prior != "running" {
+		stop, _ := writerQuiescence(core)
+		if !stop {
 			_, _ = o.persist(rec, phaseStopping, func(cur *journalRecord) {
 				cur.Containers = append(cur.Containers, intent)
 			})
@@ -691,7 +697,7 @@ func (o *Operations) stopWriters(rec RestoreRecord) ([]ContainerInfo, error) {
 			return restart, err
 		}
 		switch {
-		case inspectErr != nil || observed == "unknown":
+		case inspectErr != nil || observed == "unknown" || observed == "restarting" || observed == "paused":
 			return restart, fmt.Errorf("stop %s: container state was not observed: %v", core.ID, inspectErr)
 		case observed != "running":
 			restart = append(restart, core)
@@ -978,7 +984,7 @@ func (o *Operations) reconcileWriters(ctx context.Context, item journalRecord) e
 	}
 	var errs []error
 	for _, c := range item.Containers {
-		if c.Prior != "running" || !c.StopIntended {
+		if !c.StopIntended || !writerShouldReturn(c.Prior) {
 			continue
 		}
 		info, err := o.Runtime.Inspect(ctx, c.ID)
@@ -1017,6 +1023,26 @@ func writerRecoveryReason(err error) string {
 		return "container_unobserved"
 	}
 	return "restart_failed"
+}
+
+func writerQuiescence(info ContainerInfo) (stop, reject bool) {
+	switch strings.ToLower(strings.TrimSpace(info.State)) {
+	case "", "running", "restarting", "paused":
+		return true, false
+	case "exited", "dead", "created":
+		return false, false
+	default:
+		return false, true
+	}
+}
+
+func writerShouldReturn(prior string) bool {
+	switch strings.ToLower(strings.TrimSpace(prior)) {
+	case "running", "restarting", "paused":
+		return true
+	default:
+		return false
+	}
 }
 
 func stopWasIntended(item journalRecord) bool {

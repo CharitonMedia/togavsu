@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,27 +74,145 @@ func TestSFTPRetentionRemovesExpiredArchives(t *testing.T) {
 	}
 	oldID := time.Now().Add(-40*24*time.Hour).UTC().Format("20060102T150405Z") + "-0123456789abcdef"
 	newID := time.Now().Add(-2*time.Hour).UTC().Format("20060102T150405Z") + "-fedcba9876543210"
-	for _, name := range []string{oldID + ".tgbk", oldID + ".sha256", newID + ".tgbk", newID + ".sha256"} {
-		if err := os.WriteFile(filepath.Join(remote, name), []byte("x"), 0o600); err != nil {
+	dest := sftpDest(t, dir, remote, script)
+	dest.Spec.Namespace = "nsowned01"
+	if err := os.MkdirAll(filepath.Join(remote, dest.Spec.Namespace), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	other := "20200101T000000Z-abcdefabcdefabcd"
+	for _, name := range []string{oldID + ".tgbk", oldID + ".sha256", newID + ".tgbk", newID + ".sha256", other + ".tgbk", other + ".sha256"} {
+		if err := os.WriteFile(filepath.Join(remote, dest.Spec.Namespace, name), []byte("x"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	dest := sftpDest(t, dir, remote, script)
-	n, err := PruneDestination(context.Background(), dest, 30*24*time.Hour, time.Now())
+	for _, name := range []string{"notes.txt", other + ".tgbk", other + ".sha256"} {
+		if err := os.WriteFile(filepath.Join(remote, name), []byte("keep"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deleted, err := PruneDestination(context.Background(), dest, 30*24*time.Hour, time.Now(), []OwnedObject{{
+		DestinationID: dest.ID(), Name: oldID + ".tgbk", Created: time.Now().Add(-40 * 24 * time.Hour),
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 1 {
-		t.Fatalf("pruned %d", n)
+	if len(deleted) != 1 || deleted[0] != oldID+".tgbk" {
+		t.Fatalf("pruned %v", deleted)
 	}
 	for _, name := range []string{oldID + ".tgbk", oldID + ".sha256"} {
-		if _, err := os.Stat(filepath.Join(remote, name)); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(remote, dest.Spec.Namespace, name)); !os.IsNotExist(err) {
 			t.Fatalf("%s still present (%v)", name, err)
 		}
 	}
-	for _, name := range []string{newID + ".tgbk", newID + ".sha256"} {
+	for _, name := range []string{newID + ".tgbk", newID + ".sha256", other + ".tgbk", other + ".sha256"} {
+		if _, err := os.Stat(filepath.Join(remote, dest.Spec.Namespace, name)); err != nil {
+			t.Fatalf("%s missing from namespace: %v", name, err)
+		}
+	}
+	for _, name := range []string{"notes.txt", other + ".tgbk", other + ".sha256"} {
 		if _, err := os.Stat(filepath.Join(remote, name)); err != nil {
-			t.Fatalf("%s missing: %v", name, err)
+			t.Fatalf("%s missing from shared root: %v", name, err)
+		}
+	}
+}
+
+func TestSFTPDeleteMissingIsIdempotentAndPermissionIsNot(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "sftp")
+	body := `#!/bin/sh
+cmd=
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--command" ] || [ "$prev" = "-b" ]; then batch=$arg; fi
+  prev=$arg
+done
+# The supervisor passes the batch file with -b. Read the rm operand.
+while IFS= read -r line; do
+  case "$line" in
+    *missing*) echo "Couldn't delete file: No such file or directory" >&2; exit 1 ;;
+    *denied*) echo "Couldn't delete file: Permission denied" >&2; exit 1 ;;
+    *down*) echo "ssh: connect to host files.example port 22: Connection refused" >&2; exit 255 ;;
+  esac
+done < "$batch"
+exit 0
+`
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dest := sftpDest(t, dir, "/backups", script)
+	if err := dest.Delete(context.Background(), "missing.tgbk"); err != nil {
+		t.Fatalf("missing owned archive: %v", err)
+	}
+	if err := dest.Delete(context.Background(), "missing.sha256"); err != nil {
+		t.Fatalf("missing owned sidecar: %v", err)
+	}
+	if err := dest.Delete(context.Background(), "denied.tgbk"); err == nil || remoteObjectAbsent(err) {
+		t.Fatalf("permission error was treated as absence: %v", err)
+	}
+	if err := dest.Delete(context.Background(), "down.tgbk"); err == nil || remoteObjectAbsent(err) {
+		t.Fatalf("network error was treated as absence: %v", err)
+	}
+}
+
+func TestSFTPHostileArgumentsDoNotStart(t *testing.T) {
+	dir := t.TempDir()
+	flag := filepath.Join(dir, "argv")
+	script := filepath.Join(dir, "sftp")
+	body := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + flag + "\nexit 99\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	base := sftpDest(t, dir, "/backups", script)
+	cases := []DestinationSpec{
+		{User: "-D/tmp/evil", Host: "files.example"},
+		{User: "-oProxyCommand=touch /tmp/x", Host: "files.example"},
+		{User: "backup", Host: "-oProxyCommand=id"},
+		{User: "backup\n-oProxyCommand=id", Host: "files.example"},
+		{User: "backup@elsewhere", Host: "files.example"},
+		{User: "backup", Host: "files.example", Port: 65536},
+		{User: "backup", Host: "files.example", IdentityFile: "-oProxyCommand=id"},
+		{User: "backup", Host: "files.example", KnownHosts: "known\n-oProxyCommand=id"},
+	}
+	for _, tc := range cases {
+		spec := base.Spec
+		if tc.User != "" {
+			spec.User = tc.User
+		}
+		if tc.Host != "" {
+			spec.Host = tc.Host
+		}
+		if tc.Port != 0 {
+			spec.Port = tc.Port
+		}
+		if tc.IdentityFile != "" {
+			spec.IdentityFile = tc.IdentityFile
+		}
+		if tc.KnownHosts != "" {
+			spec.KnownHosts = tc.KnownHosts
+		}
+		dest := &SFTPDestination{Spec: spec, Command: script}
+		if _, err := dest.argv("batch"); err == nil || !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("%+v argv err %v", tc, err)
+		}
+		err := dest.Put(context.Background(), "one.tgbk", bytes.NewReader([]byte("x")), "")
+		if !errors.Is(err, ErrBadRequest) {
+			t.Fatalf("%+v put %v", tc, err)
+		}
+		if _, statErr := os.Stat(flag); !os.IsNotExist(statErr) {
+			t.Fatalf("%+v started sftp", tc)
+		}
+	}
+	ok := base.Spec
+	args, err := (&SFTPDestination{Spec: ok}).argv("/tmp/batch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(args) < 2 || args[len(args)-2] != "--" || args[len(args)-1] != "backup@files.example" {
+		t.Fatalf("argv %q", args)
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-D") || strings.Contains(arg, "ProxyCommand") {
+			t.Fatalf("option selected by destination text: %q", args)
 		}
 	}
 }

@@ -1324,6 +1324,76 @@ func (d *dropCatalog) Drop(_ context.Context, name string) error {
 	return nil
 }
 
+func TestRestoreQuiescesRestartingAndRejectsUnknown(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newOps := func(path string, rt *scriptRuntime) *Operations {
+		return &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal:    OpenJournal(path),
+			Passphrase: func() (string, error) { return store.Passphrase, nil },
+			Runtime:    rt,
+		}
+	}
+	t.Run("restarting is stopped before the safety backup and started again", func(t *testing.T) {
+		var order []string
+		path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1", State: "restarting"}}}
+		ops := newOps(path, rt)
+		ops.ApplyDump = func(context.Context, io.Reader) error {
+			order = append(order, "apply")
+			return nil
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err != nil || rec.Status != "completed" {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		stopAt, applyAt := -1, -1
+		for i, step := range order {
+			if step == "stop:core-1" && stopAt < 0 {
+				stopAt = i
+			}
+			if step == "apply" {
+				applyAt = i
+			}
+		}
+		if stopAt < 0 || applyAt < 0 || stopAt > applyAt || !containsStep(order, "restart:core-1") {
+			t.Fatalf("order %v", order)
+		}
+		item, ok, err := OpenJournal(path).Latest(rec.ID)
+		if err != nil || !ok || len(item.Containers) == 0 || item.Containers[0].Prior != "restarting" || !item.Containers[0].StopIntended {
+			t.Fatalf("%+v %v %v", item, ok, err)
+		}
+	})
+	t.Run("unknown state is rejected before a safety backup", func(t *testing.T) {
+		var order []string
+		before, err := store.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1", State: "unknown"}}}
+		ops := newOps(filepath.Join(t.TempDir(), "restore-journal.jsonl"), rt)
+		ops.ApplyDump = func(context.Context, io.Reader) error {
+			t.Fatal("database swap started")
+			return nil
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err == nil || rec.Status != "failed" {
+			t.Fatalf("%+v %v", rec, err)
+		}
+		if containsStep(order, "stop:core-1") || containsStep(order, "restart:core-1") {
+			t.Fatalf("order %v", order)
+		}
+		after, err := store.List()
+		if err != nil || len(after) != len(before) {
+			t.Fatalf("safety backup was written: %d %d %v", len(before), len(after), err)
+		}
+	})
+}
+
 func noticeBody(t *testing.T, box *Outbox) string {
 	t.Helper()
 	notes, err := box.List()

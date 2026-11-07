@@ -185,7 +185,11 @@ func TestBackupPathDestinationCopyFailureNotifies(t *testing.T) {
 	if len(meta.DestinationErrors) != 0 {
 		t.Fatalf("errors = %v", meta.DestinationErrors)
 	}
-	copied, err := os.ReadFile(filepath.Join(destDir, meta.ID+".tgbk"))
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 || specs[0].Namespace == "" {
+		t.Fatal(specs, err)
+	}
+	copied, err := os.ReadFile(filepath.Join(destDir, specs[0].Namespace, meta.ID+".tgbk"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,14 +305,15 @@ func (d listDest) List(context.Context) ([]RemoteObject, error) {
 func (d listDest) Test(context.Context) error { return nil }
 
 func TestPruneSkipsUnknownSFTPTime(t *testing.T) {
-	n, err := PruneDestination(context.Background(), listDest{objs: []RemoteObject{
-		{Name: "old.tgbk"},
-	}}, time.Hour, time.Now())
+	deleted, err := PruneDestination(context.Background(), listDest{objs: []RemoteObject{
+		{Name: "20200101T000000Z-0123456789abcdef.tgbk"},
+		{Name: "notes.txt"},
+	}}, time.Hour, time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n != 0 {
-		t.Fatalf("pruned %d", n)
+	if len(deleted) != 0 {
+		t.Fatalf("pruned %v", deleted)
 	}
 }
 
@@ -325,7 +330,11 @@ func TestLocalPruneKeepsLongerDestinationCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	remote := filepath.Join(destDir, meta.ID+".tgbk")
+	specs, err := s.Book.Specs()
+	if err != nil || len(specs) != 1 || specs[0].Namespace == "" {
+		t.Fatal(specs, err)
+	}
+	remote := filepath.Join(destDir, specs[0].Namespace, meta.ID+".tgbk")
 	if err := os.Chtimes(remote, old, old); err != nil {
 		t.Fatal(err)
 	}
@@ -352,6 +361,98 @@ func TestLocalPruneKeepsLongerDestinationCopy(t *testing.T) {
 	}
 	if _, err := os.Stat(remote); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDeleteRetriesAfterRemoteFailure(t *testing.T) {
+	s := testStore(t)
+	rootA := filepath.Join(t.TempDir(), "a")
+	rootB := filepath.Join(t.TempDir(), "b")
+	book := &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := book.Put(DestinationSpec{ID: "a", Kind: "path", Path: rootA, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	specB, err := book.Put(DestinationSpec{ID: "b", Kind: "path", Path: rootB, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Book = book
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(rootA, "other-firm.tgbk")
+	if err := os.WriteFile(unrelated, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootA, "other-firm.sha256"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nsB := filepath.Join(rootB, specB.Namespace)
+	if err := os.Chmod(nsB, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(context.Background(), meta.ID); !errors.Is(err, ErrDestination) {
+		_ = os.Chmod(nsB, 0o700)
+		t.Fatalf("got %v", err)
+	}
+	if err := os.Chmod(nsB, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(nsB, meta.ID+".tgbk")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	kept, err := s.lookup(meta.ID)
+	if err != nil || !kept.Deleting {
+		t.Fatalf("metadata was dropped before remote cleanup: %+v %v", kept, err)
+	}
+	if _, err := os.Stat(filepath.Join(rootB, specB.Namespace, meta.ID+".sha256")); err != nil {
+		t.Fatalf("checksum sidecar was removed before the failed delete could be retried: %v", err)
+	}
+	s.Now = func() time.Time { return time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) }
+	if n, err := s.Prune(context.Background(), time.Hour); err != nil || n != 0 {
+		t.Fatalf("local prune removed a deleting archive: %d %v", n, err)
+	}
+	if _, err := s.lookup(meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	reopened := &Store{Dir: s.Dir, Book: book, Passphrase: s.Passphrase}
+	if err := reopened.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("metadata remained after confirmed delete: %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Fatalf("unrelated archive removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootA, "other-firm.sha256")); err != nil {
+		t.Fatalf("unrelated checksum removed: %v", err)
+	}
+}
+
+func TestPathDeleteMissingIsIdempotentAndPermissionIsNot(t *testing.T) {
+	root := t.TempDir()
+	dest := &PathDestination{Spec: DestinationSpec{ID: "path", Kind: "path", Path: root, Namespace: "nsowned01"}}
+	if err := os.MkdirAll(dest.dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Delete(context.Background(), "missing.tgbk"); err != nil {
+		t.Fatalf("missing owned archive: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dest.dir(), "kept.tgbk"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dest.dir(), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	err := dest.Delete(context.Background(), "kept.tgbk")
+	_ = os.Chmod(dest.dir(), 0o700)
+	if err == nil || os.IsNotExist(err) {
+		t.Fatalf("permission error was treated as absence: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dest.dir(), "kept.tgbk")); statErr != nil {
+		t.Fatalf("permission failure removed the archive: %v", statErr)
 	}
 }
 

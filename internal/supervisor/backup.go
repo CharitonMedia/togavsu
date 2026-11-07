@@ -39,6 +39,7 @@ type BackupMeta struct {
 	SHA256            string    `json:"sha256"`
 	Bytes             int64     `json:"bytes"`
 	DestinationErrors []string  `json:"destination_errors,omitempty"`
+	Deleting          bool      `json:"deleting,omitempty"`
 }
 
 // Store writes encrypted backups under Dir.
@@ -50,6 +51,9 @@ type Store struct {
 	Now        func() time.Time
 	Book       *DestinationBook
 	Outbox     *Outbox
+	// OpenDestination, when set, replaces the real destination opener. Tests
+	// use it to fail one remote delete and then retry.
+	OpenDestination func(DestinationSpec) (Destination, error)
 }
 
 func (s *Store) passphrase() (string, error) {
@@ -297,6 +301,11 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
 		return err
 	}
+	if receipts := s.receipts(); receipts != nil {
+		if err := receipts.Add(OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt}); err != nil {
+			return err
+		}
+	}
 	rc, err := dest.Get(ctx, name)
 	if err != nil {
 		return err
@@ -382,30 +391,68 @@ func (s *Store) List() ([]BackupMeta, error) {
 	return out, nil
 }
 
-// Delete removes the local archive and every configured destination copy.
+// Delete removes every owned destination copy, including the checksum
+// sidecar, and only then removes the local archive and metadata. A remote
+// failure leaves the metadata in place so the same call can be retried.
 // Retention pruning uses removeLocal so a longer remote retention survives.
 func (s *Store) Delete(ctx context.Context, id string) error {
-	if err := s.removeLocal(id); err != nil {
+	meta, err := s.lookup(id)
+	if err != nil {
 		return err
 	}
+	meta.Deleting = true
+	if err := writeFileAtomic(filepath.Join(s.Dir, id+".json"), mustJSON(meta), 0o600); err != nil {
+		return err
+	}
+	if err := s.deleteRemotes(ctx, id); err != nil {
+		return err
+	}
+	return s.removeLocal(id)
+}
+
+func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 	if s.Book == nil {
 		return nil
 	}
-	dests, err := s.Book.List()
+	specs, err := s.Book.Specs()
 	if err != nil {
 		return err
 	}
 	var failed []string
-	for _, dest := range dests {
-		if err := dest.Delete(ctx, id+".tgbk"); err != nil {
-			failed = append(failed, err.Error())
+	for _, spec := range specs {
+		dest, err := s.openDest(spec)
+		if err != nil {
+			failed = append(failed, spec.ID+": "+err.Error())
+			continue
 		}
-		_ = dest.Delete(ctx, id+".sha256")
+		archiveErr := dest.Delete(ctx, id+".tgbk")
+		sideErr := dest.Delete(ctx, id+".sha256")
+		if archiveErr != nil || sideErr != nil {
+			failed = append(failed, spec.ID+": "+errors.Join(archiveErr, sideErr).Error())
+			continue
+		}
+		if receipts := s.receipts(); receipts != nil {
+			_ = receipts.Remove(spec.ID, id+".tgbk")
+		}
 	}
 	if len(failed) > 0 {
 		return fmt.Errorf("%w: %s", ErrDestination, strings.Join(failed, "; "))
 	}
 	return nil
+}
+
+func (s *Store) openDest(spec DestinationSpec) (Destination, error) {
+	if s.OpenDestination != nil {
+		return s.OpenDestination(spec)
+	}
+	return OpenDestination(spec)
+}
+
+func (s *Store) receipts() *ReceiptBook {
+	if s.Book == nil || s.Book.Path == "" {
+		return nil
+	}
+	return &ReceiptBook{Path: filepath.Join(filepath.Dir(s.Book.Path), "destination-receipts.json")}
 }
 
 func (s *Store) removeLocal(id string) error {
@@ -433,6 +480,9 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int, error)
 	cutoff := s.now().Add(-retention)
 	n := 0
 	for _, meta := range all {
+		if meta.Deleting {
+			continue
+		}
 		if meta.CreatedAt.Before(cutoff) {
 			if err := s.removeLocal(meta.ID); err != nil {
 				return n, err
@@ -458,11 +508,24 @@ func (s *Store) PruneDestinations(ctx context.Context) (int, error) {
 		if days == 0 {
 			days = 30
 		}
-		dest, err := OpenDestination(spec)
+		dest, err := s.openDest(spec)
 		if err != nil {
 			return n, err
 		}
-		removed, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now())
+		var owned []OwnedObject
+		if receipts := s.receipts(); receipts != nil {
+			owned, err = receipts.List(spec.ID)
+			if err != nil {
+				return n, err
+			}
+		}
+		deleted, err := PruneDestination(ctx, dest, time.Duration(days)*24*time.Hour, s.now(), owned)
+		if receipts := s.receipts(); receipts != nil {
+			for _, name := range deleted {
+				_ = receipts.Remove(spec.ID, name)
+			}
+		}
+		removed := len(deleted)
 		n += removed
 		if err != nil {
 			return n, err
