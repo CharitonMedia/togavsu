@@ -5643,6 +5643,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -9680,6 +9715,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -10705,6 +10775,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -14174,6 +14279,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -20949,7 +21089,7 @@
       "post": {
         "operationId": "bulkCustomFieldValue",
         "summary": "Write custom field values in one batch",
-        "description": "Each item names a record. The bearer token needs that record type's write scope, not all four scopes at once. Every referenced record is authorized, including its matter wall, before any write. One inaccessible matter rejects the batch with not_found and writes nothing.",
+        "description": "Each item names a record. The bearer token needs that record type's write scope, not all four scopes at once. time_entry items follow putTimeEntryCustomFields and expense items follow putExpenseCustomFields, including the time replacement domain. matter and contact items stay on the core. Every item is authorized and its domain is resolved before any write. When time is replaced, the core does not write time_entry or expense values. An unavailable replacement rejects the batch, including any core matter or contact item in the same batch. One inaccessible matter rejects the batch with not_found and writes nothing.",
         "tags": [
           "Custom fields"
         ],
@@ -21046,6 +21186,17 @@
               "expenses:write"
             ]
           },
+          "record_type_domain": {
+            "matter": null,
+            "contact": null,
+            "time_entry": "time",
+            "expense": "time"
+          },
+          "domain_routing": "per_item",
+          "resolve_before_write": true,
+          "replaced_core": "read_only",
+          "unavailable_replacement": "batch_rejected",
+          "partial_core_write": false,
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -22078,6 +22229,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -23842,6 +24028,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -24755,6 +24976,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -28426,6 +28682,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -28591,6 +28882,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -28736,6 +29062,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -28892,6 +29253,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29048,6 +29444,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29191,6 +29622,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29343,6 +29809,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29508,6 +30009,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29651,6 +30187,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -29815,6 +30386,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -31660,6 +32266,29 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Matter filter."
+          },
+          {
+            "name": "trust_account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Trust account filter."
+          },
+          {
+            "name": "flag_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "matter",
+                "client",
+                "account"
+              ]
+            },
+            "description": "Trust flag scope. matter, client, or account."
           }
         ],
         "responses": {
@@ -38799,6 +39428,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -46248,6 +46912,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -47455,6 +48154,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -47597,6 +48331,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -47740,6 +48509,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -47882,6 +48686,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48024,6 +48863,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48166,6 +49040,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48309,6 +49218,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48452,6 +49396,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48595,6 +49574,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48737,6 +49751,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -48879,6 +49928,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -49018,6 +50102,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           }
@@ -52927,6 +54046,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -53430,6 +54584,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -53563,6 +54752,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -54909,6 +56133,41 @@
             "admin_bypasses_wall": false,
             "unreadable_row": "omitted",
             "attorney_only_values": "redacted",
+            "record_restrictions": [
+              {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": [
+                  "staff",
+                  "accountant",
+                  "client"
+                ]
+              }
+            ],
+            "field_redactions": [
+              {
+                "record_type": "contact",
+                "fields": [
+                  "identifier"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_record",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              },
+              {
+                "record_type": "conflict_review",
+                "fields": [
+                  "reason"
+                ],
+                "effect": "redact_field"
+              }
+            ],
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
           },
@@ -65287,7 +66546,7 @@
           "balances",
           "flags"
         ],
-        "description": "The entry is posted. flags is non-empty when a client balance went below zero."
+        "description": "The entry is posted. flags is non-empty when the matter, client, or account balance went below zero."
       },
       "TrustBalances": {
         "type": "object",
@@ -65400,103 +66659,279 @@
         ]
       },
       "TrustFlag": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC timestamp."
-          },
-          "created_by": {
-            "type": "string",
-            "format": "uuid",
-            "description": "User who created the row, or the nil id for System."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC timestamp."
-          },
-          "trust_entry_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "client_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "balance_cents": {
-            "type": "integer",
-            "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
-          },
-          "scope": {
-            "type": "string",
-            "enum": [
-              "matter",
-              "client"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "open",
-              "resolved"
-            ]
-          },
-          "resolution_note": {
-            "type": "string"
-          },
-          "resolved_by": {
-            "anyOf": [
-              {
+        "description": "A below-zero flag for a matter, a client, or a trust account. Email goes to the admins and the responsible attorney.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
                 "type": "string",
                 "format": "uuid",
                 "description": "UUIDv7."
               },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "resolved_at": {
-            "anyOf": [
-              {
+              "created_at": {
                 "type": "string",
                 "format": "date-time",
                 "description": "UTC timestamp."
               },
-              {
-                "type": "null"
+              "created_by": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User who created the row, or the nil id for System."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "trust_entry_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "balance_cents": {
+                "type": "integer",
+                "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+              },
+              "scope": {
+                "const": "matter"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "resolved"
+                ]
+              },
+              "resolution_note": {
+                "type": "string"
+              },
+              "resolved_by": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "UTC timestamp."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
               }
+            },
+            "required": [
+              "id",
+              "created_at",
+              "created_by",
+              "updated_at",
+              "trust_entry_id",
+              "client_id",
+              "matter_id",
+              "balance_cents",
+              "scope",
+              "status"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "created_by": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User who created the row, or the nil id for System."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "trust_entry_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "balance_cents": {
+                "type": "integer",
+                "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+              },
+              "scope": {
+                "const": "client"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "resolved"
+                ]
+              },
+              "resolution_note": {
+                "type": "string"
+              },
+              "resolved_by": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "UTC timestamp."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              }
+            },
+            "required": [
+              "id",
+              "created_at",
+              "created_by",
+              "updated_at",
+              "trust_entry_id",
+              "client_id",
+              "balance_cents",
+              "scope",
+              "status"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "created_by": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User who created the row, or the nil id for System."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "trust_entry_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "balance_cents": {
+                "type": "integer",
+                "description": "Integer cents. Negative is a balance or an adjustment, not a ledger amount."
+              },
+              "scope": {
+                "const": "account"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "resolved"
+                ]
+              },
+              "resolution_note": {
+                "type": "string"
+              },
+              "resolved_by": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resolved_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "UTC timestamp."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              }
+            },
+            "required": [
+              "id",
+              "created_at",
+              "created_by",
+              "updated_at",
+              "trust_entry_id",
+              "trust_account_id",
+              "balance_cents",
+              "scope",
+              "status"
             ]
           }
-        },
-        "required": [
-          "id",
-          "created_at",
-          "created_by",
-          "updated_at",
-          "trust_entry_id",
-          "client_id",
-          "matter_id",
-          "balance_cents",
-          "scope",
-          "status"
-        ],
-        "description": "A below-zero flag. Email goes to the admins and the responsible attorney."
+        ]
       },
       "TrustFlagResolve": {
         "type": "object",
@@ -77963,7 +79398,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "session.ended": {
       "family": "session",
@@ -77971,7 +79407,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "api_token.created": {
       "family": "api_token",
@@ -77979,7 +79416,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "api_token.revoked": {
       "family": "api_token",
@@ -77987,7 +79425,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "ical_feed.created": {
       "family": "ical_feed",
@@ -77995,7 +79434,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "ical_feed.revoked": {
       "family": "ical_feed",
@@ -78003,7 +79443,8 @@
       "admin_bypass": true,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "file_upload.created": {
       "family": "file_upload",
@@ -78011,7 +79452,8 @@
       "admin_bypass": false,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "tagged"
     },
     "file_upload.staged": {
       "family": "file_upload",
@@ -78019,7 +79461,8 @@
       "admin_bypass": false,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "tagged"
     },
     "notification.created": {
       "family": "notification",
@@ -78027,7 +79470,8 @@
       "admin_bypass": false,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "notification.deleted": {
       "family": "notification",
@@ -78035,7 +79479,8 @@
       "admin_bypass": false,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     },
     "notification.read": {
       "family": "notification",
@@ -78043,7 +79488,8 @@
       "admin_bypass": false,
       "deleted_source": "predelete",
       "asserted_recipient": "ignored",
-      "missing_owner": "fail_closed"
+      "missing_owner": "fail_closed",
+      "owner_form": "user"
     }
   },
   "x-togavsu-background-events": {

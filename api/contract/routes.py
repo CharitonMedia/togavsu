@@ -1321,7 +1321,11 @@ def _practice(api: Contract) -> None:
         summary="Write custom field values in one batch",
         description=(
             "Each item names a record. The bearer token needs that record type's write scope, not all four scopes at once. "
-            "Every referenced record is authorized, including its matter wall, before any write. "
+            "time_entry items follow putTimeEntryCustomFields and expense items follow putExpenseCustomFields, including the time replacement domain. "
+            "matter and contact items stay on the core. "
+            "Every item is authorized and its domain is resolved before any write. "
+            "When time is replaced, the core does not write time_entry or expense values. "
+            "An unavailable replacement rejects the batch, including any core matter or contact item in the same batch. "
             "One inaccessible matter rejects the batch with not_found and writes nothing."
         ),
         tag="Custom fields",
@@ -1337,6 +1341,12 @@ def _practice(api: Contract) -> None:
                 "time_entry": ["time:write"],
                 "expense": ["expenses:write"],
             },
+            "record_type_domain": {"matter": None, "contact": None, "time_entry": "time", "expense": "time"},
+            "domain_routing": "per_item",
+            "resolve_before_write": True,
+            "replaced_core": "read_only",
+            "unavailable_replacement": "batch_rejected",
+            "partial_core_write": False,
         },
         body_schema={
             "type": "object",
@@ -2140,7 +2150,7 @@ def _trust(api: Contract) -> None:
         write_scope="trust:write",
         create=False,
         update=False,
-        filters=["status", "matter_id"],
+        filters=["status", "matter_id", "trust_account_id", "flag_scope"],
         replaceable="trust",
         extra_access=WALL,
     )

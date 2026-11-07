@@ -263,6 +263,26 @@ _VERSION_HOW = _enum(["upload", "editor", "editor_run", "conversion", "grouping"
 _ACTOR = _enum(["staff", "client", "agent", "module", "system"])
 _FONTS = ["Lora", "Merriweather", "Libre Baskerville", "Source Serif", "Inter", "IBM Plex Sans", "Source Sans", "Atkinson Hyperlegible"]
 
+def _trust_flag_schema(scope: str, owners: list[str]) -> dict:
+    """One flag shape. scope is const so matter, client, and account do not overlap."""
+    properties = {
+        "trust_entry_id": _uuid(),
+        "balance_cents": _signed_cents(),
+        "scope": {"const": scope},
+        "status": _enum(["open", "resolved"]),
+        "resolution_note": {"type": "string"},
+        "resolved_by": _null(_uuid()),
+        "resolved_at": _null(_dt()),
+    }
+    if "client_id" in owners:
+        properties["client_id"] = _uuid()
+    if "matter_id" in owners:
+        properties["matter_id"] = _uuid()
+    if "trust_account_id" in owners:
+        properties["trust_account_id"] = _uuid()
+    return _meta(properties, ["trust_entry_id", *owners, "balance_cents", "scope", "status"])
+
+
 SCHEMAS = _register(
     {
         "RedactedText": _obj(
@@ -1133,7 +1153,7 @@ SCHEMAS = _register(
                 "flags": _arr(_ref("TrustFlag")),
             },
             ["entry", "balances", "flags"],
-            "The entry is posted. flags is non-empty when a client balance went below zero.",
+            "The entry is posted. flags is non-empty when the matter, client, or account balance went below zero.",
         ),
         "TrustBalances": _obj(
             {
@@ -1175,21 +1195,14 @@ SCHEMAS = _register(
                 ),
             ],
         },
-        "TrustFlag": _meta(
-            {
-                "trust_entry_id": _uuid(),
-                "client_id": _uuid(),
-                "matter_id": _uuid(),
-                "balance_cents": _signed_cents(),
-                "scope": _enum(["matter", "client"]),
-                "status": _enum(["open", "resolved"]),
-                "resolution_note": {"type": "string"},
-                "resolved_by": _null(_uuid()),
-                "resolved_at": _null(_dt()),
-            },
-            ["trust_entry_id", "client_id", "matter_id", "balance_cents", "scope", "status"],
-            "A below-zero flag. Email goes to the admins and the responsible attorney.",
-        ),
+        "TrustFlag": {
+            "description": "A below-zero flag for a matter, a client, or a trust account. Email goes to the admins and the responsible attorney.",
+            "oneOf": [
+                _trust_flag_schema("matter", ["client_id", "matter_id"]),
+                _trust_flag_schema("client", ["client_id"]),
+                _trust_flag_schema("account", ["trust_account_id"]),
+            ],
+        },
         "TrustFlagResolve": _obj({"note": {"type": "string", "minLength": 1}}, ["note"], "An attorney or admin resolves the flag with a note."),
         "TrustReplenishment": _meta(
             {
@@ -3190,6 +3203,7 @@ QUERY = {
     "billable": _query("billable", {"type": "boolean"}, "Billable filter."),
     "invoice_id": _query("invoice_id", _ref("Uuid"), "Invoice filter."),
     "trust_account_id": _query("trust_account_id", _ref("Uuid"), "Trust account filter."),
+    "flag_scope": _query("flag_scope", _enum(["matter", "client", "account"]), "Trust flag scope. matter, client, or account."),
     "client_id": _query("client_id", _ref("Uuid"), "Client contact filter."),
     "actor_kind": _query("actor_kind", _ACTOR, "Activity actor kind."),
     "actor_id": _query("actor_id", _ref("Uuid"), "Activity actor id."),

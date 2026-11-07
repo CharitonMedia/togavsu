@@ -31,6 +31,8 @@ from contract.policy import (
     committed_events,
     payment_lifecycle_events,
     custom_fields_batch,
+    custom_field_bulk_apply,
+    trust_flag_rows,
     custom_fields_outcome,
     event_read_scopes,
     file_download_decision,
@@ -4172,6 +4174,226 @@ class ContractTest(unittest.TestCase):
             self.assertEqual(decision["result"], expected, label)
             self.assertEqual(decision["drafted"], [], label)
             self.assertNotIn("required", decision.get("reason") or "", label)
+
+    def test_attorney_only_files_are_omitted_from_aggregates(self):
+        rule = _operation(self.spec, "search")["x-togavsu-access"]["inherited_record_access"]
+        self.assertEqual(rule["record_restrictions"][0]["effect"], "omit_row")
+        self.assertEqual(rule["record_restrictions"][0]["record_type"], "file")
+        self.assertEqual(rule["field_redactions"][0]["effect"], "redact_field")
+        self.assertEqual(rule["attorney_only_values"], "redacted")
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        contact_id = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1"
+        file_row = {
+            "id": file_id,
+            "record_id": file_id,
+            "entity_id": file_id,
+            "record_type": "file",
+            "record_restriction": {"type": "file", "visibility": "attorney_only"},
+            "attorney_only": True,
+            "title": "privileged motion",
+            "link": "/files/privileged-motion",
+            "summary": "privileged motion",
+            "matter_walled": False,
+            "required_scopes": ["files:read"],
+            "count": 4,
+        }
+        contact_row = {
+            "id": contact_id,
+            "record_type": "contact",
+            "attorney_only": True,
+            "identifier": "123-45-6789",
+            "summary": "Ada Lovelace",
+            "matter_walled": False,
+            "required_scopes": ["contacts:read"],
+        }
+        staff = {"role": "staff", "on_wall": True, "scopes": ["search:use", "files:read", "contacts:read", "events:read", "audit:read"], "next_cursor": file_id}
+        for operation_id in ("search", "listEvents", "widgetRecentActivity", "historyFile", "reportArAging", "listAuditLog"):
+            page = inherited_history_rows(_operation(self.spec, operation_id), staff, [file_row, contact_row])
+            self.assertEqual(page["total"], 1, operation_id)
+            self.assertEqual([row["id"] for row in page["rows"]], [contact_id], operation_id)
+            self.assertIsNone(page["next_cursor"], operation_id)
+            self.assertEqual(page["rows"][0]["identifier"], {"redacted": True}, operation_id)
+            self.assertEqual(page["rows"][0]["summary"], {"redacted": True}, operation_id)
+            rendered = str(page)
+            self.assertNotIn(file_id, rendered, operation_id)
+            self.assertNotIn("privileged motion", rendered, operation_id)
+            self.assertNotIn("/files/privileged-motion", rendered, operation_id)
+            self.assertNotIn("123-45-6789", rendered, operation_id)
+        attorney = inherited_history_rows(_operation(self.spec, "search"), {**staff, "role": "attorney"}, [file_row])
+        self.assertEqual(attorney["rows"][0]["title"], "privileged motion")
+        client = inherited_history_rows(_operation(self.spec, "search"), {**staff, "role": "client"}, [file_row])
+        self.assertEqual(client["rows"], [])
+        self.assertEqual(client["total"], 0)
+        self.assertNotIn(file_id, str(client))
+
+    def test_bulk_custom_fields_follow_the_time_domain(self):
+        operation = _operation(self.spec, "bulkCustomFieldValue")
+        access = operation["x-togavsu-access"]
+        self.assertEqual(access["record_type_domain"], {"matter": None, "contact": None, "time_entry": "time", "expense": "time"})
+        self.assertEqual(_operation(self.spec, "putTimeEntryCustomFields").get("x-togavsu-replaceable-domain"), "time")
+        self.assertEqual(_operation(self.spec, "putExpenseCustomFields").get("x-togavsu-replaceable-domain"), "time")
+        self.assertEqual(access["record_type_scopes"]["time_entry"], _operation(self.spec, "putTimeEntryCustomFields")["x-togavsu-access"]["scopes"])
+        self.assertEqual(access["record_type_scopes"]["expense"], _operation(self.spec, "putExpenseCustomFields")["x-togavsu-access"]["scopes"])
+        self.assertTrue(access["resolve_before_write"])
+        self.assertFalse(access["partial_core_write"])
+        self.assertEqual(access["replaced_core"], "read_only")
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333331"
+        other = "018f1a00-7b3c-7d4e-8a11-333333333332"
+        caller = {"role": "staff", "token_scopes": ["matters:write", "time:write", "expenses:write"], "matter_membership": {matter: True, other: False}, "on_wall": True}
+        core = {"time": {"replaced": False, "available": True, "module_id": "time-mod"}}
+        items = [
+            {"record_type": "matter", "record_id": matter, "matter_id": matter, "matter_walled": True},
+            {"record_type": "time_entry", "record_id": "time-1", "matter_id": matter, "matter_walled": True},
+        ]
+        allowed = custom_field_bulk_apply(operation, caller, items, core)
+        self.assertEqual(allowed["result"], "allowed")
+        self.assertEqual(allowed["written"], [matter, "time-1"])
+        self.assertEqual(allowed["events"], ["custom_field.updated"])
+        replaced = {"time": {"replaced": True, "available": True, "module_id": "time-mod"}}
+        routed = custom_field_bulk_apply(operation, caller, items, replaced)
+        self.assertEqual(routed["result"], "allowed")
+        self.assertEqual(routed["written"], [matter])
+        self.assertEqual(routed["routed"], ["time-1"])
+        self.assertNotIn("time-1", routed["written"])
+        down = custom_field_bulk_apply(operation, caller, items, {"time": {"replaced": True, "available": False, "module_id": "time-mod"}})
+        self.assertEqual(down["result"], "batch_rejected")
+        self.assertEqual(down["written"], [])
+        self.assertEqual(down["routed"], [])
+        self.assertEqual(down["events"], [])
+        hidden = custom_field_bulk_apply(
+            operation,
+            caller,
+            [{"record_type": "matter", "record_id": matter, "matter_id": matter, "matter_walled": True}, {"record_type": "expense", "record_id": "expense-1", "matter_id": other, "matter_walled": True}],
+            replaced,
+        )
+        self.assertEqual(hidden["result"], "not_found")
+        self.assertEqual(hidden["written"], [])
+        self.assertEqual(hidden["events"], [])
+        denied = custom_field_bulk_apply(operation, {**caller, "token_scopes": ["matters:write"]}, items, core)
+        self.assertEqual(denied["result"], "scope_denied")
+        self.assertEqual(denied["written"], [])
+
+    def test_module_owned_upload_events_use_the_tagged_owner(self):
+        owners = self.spec["x-togavsu-event-owners"]
+        self.assertEqual(owners["file_upload.created"]["owner_form"], "tagged")
+        self.assertEqual(owners["file_upload.staged"]["owner_form"], "tagged")
+        secret = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        summary = "module staged the upload"
+        event = {
+            "id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee9",
+            "type": "file_upload.staged",
+            "occurred_at": "2026-11-07T18:00:00Z",
+            "actor_kind": "module",
+            "record_type": "file_upload",
+            "record_id": secret,
+            "matter_id": matter,
+            "summary": summary,
+            "matter_walled": True,
+            "context": {"owner": {"type": "module", "id": "drop-folder"}, "owner_user_id": "018f1a00-7b3c-7d4e-8a11-999999999999"},
+        }
+        owner = {
+            "installed": True,
+            "registered": True,
+            "module_id": "drop-folder",
+            "approved_scopes": ["files:read"],
+            "subscriptions": ["file_upload.staged"],
+            "on_wall": True,
+            "matter_id": matter,
+            "matter_membership": {matter: True},
+            "attorney_only": False,
+        }
+        delivered = webhook_envelope(owner, event)
+        self.assertEqual(delivered["record_id"], secret)
+        self.assertNotIn("owner_user_id", delivered)
+        for label, module in (
+            ("other-module", {**owner, "module_id": "other-mod"}),
+            ("fabricated-user", {**owner, "module_id": "other-mod", "principal_user_id": "018f1a00-7b3c-7d4e-8a11-999999999999"}),
+            ("revoked-grant", {**owner, "grant_revoked": True}),
+            ("off-wall", {**owner, "on_wall": False, "matter_membership": {matter: False}}),
+            ("wrong-scope", {**owner, "approved_scopes": ["matters:read"]}),
+        ):
+            denied = webhook_envelope(module, event)
+            self.assertIsNone(denied, label)
+            self.assertNotIn(secret, str(denied), label)
+            self.assertNotIn(summary, str(denied), label)
+        history = _operation(self.spec, "listWebhookDeliveries")
+        row = {**event, "required_scopes": ["files:read"], "action": "file_upload.staged"}
+        own_page = inherited_history_rows(history, {"module_id": "drop-folder", "role": "staff", "scopes": ["webhooks:read", "files:read"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        self.assertEqual([item["record_id"] for item in own_page["rows"]], [secret])
+        other_page = inherited_history_rows(history, {"module_id": "other-mod", "principal_user_id": "018f1a00-7b3c-7d4e-8a11-999999999999", "role": "admin", "scopes": ["webhooks:read", "files:read"], "matter_membership": {matter: True}, "on_wall": True}, [row])
+        self.assertEqual(other_page["rows"], [])
+        self.assertNotIn(secret, str(other_page["rows"]))
+
+    def test_account_trust_flags_match_the_emitted_scope(self):
+        operation = _operation(self.spec, "postTrustEntry")
+        self.assertEqual(set(self.spec["components"]["schemas"]["TrustFlag"]["oneOf"][i]["properties"]["scope"]["const"] for i in range(3)), {"matter", "client", "account"})
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        client = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        other = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002"
+        entry = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4"
+        events = trust_ledger_events(
+            operation,
+            [
+                {
+                    "amount_cents": -10,
+                    "opening": {"matter_cents": 100, "client_cents": 100, "account_cents": 5},
+                    "matter_id": matter,
+                    "client_id": client,
+                    "trust_account_id": account,
+                    "trust_entry_id": entry,
+                }
+            ],
+            committed=True,
+        )
+        self.assertEqual([event["type"] for event in events], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(events[1]["balance_scope"], "account")
+        self.assertEqual(events[1]["balance_cents"], -5)
+        stamp = "2026-11-07T18:00:00Z"
+        actor = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        flag = {
+            "id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa5",
+            "created_at": stamp,
+            "created_by": actor,
+            "updated_at": stamp,
+            "trust_entry_id": entry,
+            "trust_account_id": account,
+            "balance_cents": events[1]["balance_cents"],
+            "scope": "account",
+            "status": "open",
+        }
+        _component_validator(self.spec, "TrustFlag").validate(flag)
+        posted = {
+            "entry": {
+                "id": entry,
+                "created_at": stamp,
+                "created_by": actor,
+                "trust_account_id": account,
+                "client_id": client,
+                "matter_id": matter,
+                "entry_type": "withdrawal",
+                "amount_cents": 10,
+                "method": "check",
+                "description": "Account shortfall",
+            },
+            "balances": {"matter_cents": 90, "client_cents": 90, "account_cents": -5},
+            "flags": [flag],
+        }
+        _component_validator(self.spec, "TrustPostResult").validate(posted)
+        accounts = [
+            {"id": account, "active": True, "authorized": True, "firm_id": "firm-1"},
+            {"id": other, "active": False, "authorized": True, "firm_id": "firm-1"},
+        ]
+        caller = {"role": "staff", "token_scopes": ["trust:read"], "firm_id": "firm-1", "matter_walled": False}
+        stale = {**flag, "id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa6", "trust_account_id": other}
+        foreign = {**flag, "id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa7", "trust_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00009"}
+        rows = trust_flag_rows(caller, [flag, stale, foreign], accounts, {"flag_scope": "account"})
+        self.assertEqual(rows["result"], "allowed")
+        self.assertEqual([row["id"] for row in rows["rows"]], [flag["id"]])
+        self.assertEqual(rows["total"], 1)
+        self.assertNotIn(other, str(rows["rows"]))
+        self.assertEqual(trust_flag_rows({**caller, "token_scopes": ["trust:withdraw"]}, [flag], accounts)["result"], "scope_denied")
 
     def test_history_inherits_the_underlying_record(self):
         covered = []

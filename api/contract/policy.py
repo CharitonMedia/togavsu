@@ -1128,6 +1128,46 @@ def custom_fields_outcome(record_type: str, body: dict, definitions: list[dict],
     return "allowed"
 
 
+def custom_field_bulk_apply(operation: dict, call: dict, items: list[dict], handlers: dict | None = None) -> dict:
+    """Authorize every item and resolve its domain before a write. A replaced time item is not a core write."""
+    quiet = {"written": [], "routed": [], "events": []}
+    access = operation["x-togavsu-access"]
+    if not access.get("resolve_before_write") or access.get("partial_core_write"):
+        return {"result": "forbidden", **quiet}
+    if call.get("role") not in access.get("roles", []):
+        return {"result": "forbidden", **quiet}
+    scopes = set(call.get("token_scopes") or [])
+    domains = access.get("record_type_domain") or {}
+    planned = []
+    for item in items:
+        record_type = item.get("record_type")
+        needed = (access.get("record_type_scopes") or {}).get(record_type)
+        if not needed or any(scope not in scopes for scope in needed):
+            return {"result": "scope_denied", **quiet}
+        if item.get("matter_id") or item.get("matter_walled"):
+            if not matter_visible(call, {"matter_id": item.get("matter_id"), "matter_walled": item.get("matter_walled")}):
+                return {"result": "not_found", **quiet}
+        domain = domains.get(record_type)
+        handler = (handlers or {}).get(domain) if domain else None
+        if domain == "time":
+            if not handler or handler.get("replaced") is not True:
+                planned.append({"record_id": item.get("record_id"), "record_type": record_type, "writer": "core"})
+                continue
+            if not handler.get("available") or not handler.get("module_id"):
+                return {"result": "batch_rejected", **quiet}
+            planned.append({"record_id": item.get("record_id"), "record_type": record_type, "writer": "module", "module_id": handler["module_id"]})
+            continue
+        planned.append({"record_id": item.get("record_id"), "record_type": record_type, "writer": "core"})
+    if any(item["writer"] == "core" and item["record_type"] in {"time_entry", "expense"} and (handlers or {}).get("time", {}).get("replaced") for item in planned):
+        return {"result": "batch_rejected", **quiet}
+    return {
+        "result": "allowed",
+        "written": [item["record_id"] for item in planned if item["writer"] == "core"],
+        "routed": [item["record_id"] for item in planned if item["writer"] == "module"],
+        "events": ["custom_field.updated"] if planned else [],
+    }
+
+
 def custom_fields_batch(items: list[dict]) -> str:
     """Validate every item before any record or custom value is written."""
     for item in items:
@@ -1540,6 +1580,19 @@ def publish_inherited_history(spec: dict) -> None:
         "admin_bypasses_wall": False,
         "unreadable_row": "omitted",
         "attorney_only_values": "redacted",
+        "record_restrictions": [
+            {
+                "record_type": "file",
+                "visibility": "attorney_only",
+                "effect": "omit_row",
+                "roles_denied": ["staff", "accountant", "client"],
+            }
+        ],
+        "field_redactions": [
+            {"record_type": "contact", "fields": ["identifier"], "effect": "redact_field"},
+            {"record_type": "conflict_record", "fields": ["reason"], "effect": "redact_field"},
+            {"record_type": "conflict_review", "fields": ["reason"], "effect": "redact_field"},
+        ],
         "scopes_from": "underlying_record",
         "membership": "per_matter_id",
     }
@@ -1554,12 +1607,31 @@ def publish_inherited_history(spec: dict) -> None:
         access["inherited_record_access"] = dict(rule)
 
 
+def _row_record_type(row: dict) -> str | None:
+    value = row.get("record_type") or row.get("entity_type")
+    return value if isinstance(value, str) else None
+
+
+def _attorney_only_file(row: dict) -> bool:
+    """A file hidden from staff and clients. A contact identifier is not this restriction."""
+    restriction = row.get("record_restriction")
+    if isinstance(restriction, dict) and restriction.get("type") == "file" and restriction.get("visibility") == "attorney_only":
+        return True
+    return _row_record_type(row) == "file" and row.get("attorney_only") is True
+
+
 def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> dict:
     rule = operation["x-togavsu-access"].get("inherited_record_access")
     if not rule or rule.get("admin_bypasses_wall") or not operation["x-togavsu-access"].get("matter_wall"):
         return {"result": "forbidden", "rows": []}
     visible = []
+    hidden_tokens: set[str] = set()
     for row in rows:
+        if _attorney_only_file(row) and caller.get("role") not in ("attorney", "admin"):
+            for key in ("id", "record_id", "entity_id", "title", "link", "name"):
+                if isinstance(row.get(key), str):
+                    hidden_tokens.add(row[key])
+            continue
         if not matter_visible(caller, row):
             continue
         needed = list(row.get("required_scopes") or [])
@@ -1568,16 +1640,35 @@ def inherited_history_rows(operation: dict, caller: dict, rows: list[dict]) -> d
         copied = {
             key: value
             for key, value in row.items()
-            if key not in {"matter_walled", "required_scopes", "attorney_only", "predelete", "context", "asserted_recipient_user_id", "deleted"}
+            if key
+            not in {
+                "matter_walled",
+                "required_scopes",
+                "attorney_only",
+                "predelete",
+                "context",
+                "asserted_recipient_user_id",
+                "deleted",
+                "record_restriction",
+            }
         }
         if not _history_owner_visible(caller, row):
             continue
-        if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin"):
+        if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin") and not _attorney_only_file(row):
             for field in _HISTORY_REDACTED_FIELDS:
                 if field in copied and copied[field] is not None:
                     copied[field] = {"redacted": True}
+            for spec in rule.get("field_redactions") or []:
+                if _row_record_type(row) != spec["record_type"]:
+                    continue
+                for field in spec["fields"]:
+                    if field in copied and copied[field] is not None:
+                        copied[field] = {"redacted": True}
         visible.append(copied)
-    return {"result": "allowed", "rows": visible}
+    cursor = caller.get("next_cursor")
+    if not isinstance(cursor, str) or cursor in hidden_tokens:
+        cursor = None
+    return {"result": "allowed", "rows": visible, "total": len(visible), "next_cursor": cursor}
 
 
 REQUIRED_BACKGROUND_EVENTS = {
@@ -2005,6 +2096,7 @@ def publish_event_owners(spec: dict) -> None:
                 "deleted_source": "predelete",
                 "asserted_recipient": "ignored",
                 "missing_owner": "fail_closed",
+                "owner_form": "tagged" if family == "file_upload" else "user",
             }
     spec["x-togavsu-event-owners"] = registry
     _EVENT_OWNERS.clear()
@@ -2019,29 +2111,37 @@ def _event_name(record: dict) -> str:
     return ""
 
 
-def _stored_subject(record: dict, rule: dict) -> str | None:
-    """Owner stamped by the core. A recipient on the event itself is not authority, including after delete."""
+def _stored_subject(record: dict, rule: dict) -> dict | None:
+    """Tagged owner from core metadata. A user id on the event is not a module owner."""
     deleted = _event_name(record).endswith(".deleted") or record.get("deleted") is True
     source = record.get("predelete") if deleted else record.get("context")
     if not isinstance(source, dict):
         return None
+    tagged = source.get("owner")
+    if isinstance(tagged, dict) and tagged.get("type") in {"user", "module"} and isinstance(tagged.get("id"), str) and tagged["id"]:
+        return {"type": tagged["type"], "id": tagged["id"]}
     field = "recipient_user_id" if rule.get("binding") == "recipient" else "owner_user_id"
     value = source.get(field)
     if isinstance(value, str) and value:
-        return value
+        return {"type": "user", "id": value}
     return None
 
 
 def _principal_can_read(rule: dict, principal: dict, record: dict) -> bool:
-    if principal.get("principal_revoked") or principal.get("revoked"):
+    if principal.get("principal_revoked") or principal.get("revoked") or principal.get("grant_revoked"):
         return False
     stored = _stored_subject(record, rule)
     if not stored:
         return False
+    if stored["type"] == "module":
+        module_id = principal.get("module_id")
+        return isinstance(module_id, str) and module_id == stored["id"]
+    if stored["type"] != "user":
+        return False
     viewer = principal.get("principal_user_id") or principal.get("user_id")
     if not isinstance(viewer, str) or not viewer:
         return False
-    if viewer == stored:
+    if viewer == stored["id"]:
         return True
     role = principal.get("principal_role") or principal.get("role")
     return bool(rule.get("admin_bypass") and role == "admin")
@@ -3312,6 +3412,42 @@ def invoice_draft_decision(operation: dict, call: dict, matters: list[dict]) -> 
         if matter_id not in drafted:
             drafted.append(matter_id)
     return {"result": "allowed", "reason": mode, "drafted": drafted}
+
+
+def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query: dict | None = None) -> dict:
+    """Account flags stay on a current authorized account at this firm. Other scopes keep the matter wall."""
+    if caller.get("role") not in {"admin", "attorney", "staff", "accountant"}:
+        return {"result": "forbidden", "rows": [], "total": 0}
+    if "trust:read" not in set(caller.get("token_scopes") or caller.get("scopes") or []):
+        return {"result": "scope_denied", "rows": [], "total": 0}
+    query = query or {}
+    current = {
+        row.get("id"): row
+        for row in accounts
+        if row.get("active") is True and row.get("authorized") is True and row.get("firm_id") == caller.get("firm_id")
+    }
+    visible = []
+    for flag in flags:
+        scope = flag.get("scope")
+        if query.get("flag_scope") not in (None, scope):
+            continue
+        if query.get("matter_id") not in (None, flag.get("matter_id")):
+            continue
+        if query.get("trust_account_id") not in (None, flag.get("trust_account_id")):
+            continue
+        if query.get("status") not in (None, flag.get("status")):
+            continue
+        if scope == "account":
+            account = current.get(flag.get("trust_account_id"))
+            if account is None:
+                continue
+        elif scope == "matter":
+            if not matter_visible(caller, flag):
+                continue
+        elif scope != "client":
+            continue
+        visible.append({key: value for key, value in flag.items() if key != "matter_walled"})
+    return {"result": "allowed", "rows": visible, "total": len(visible)}
 
 
 def invoice_reconciliation_error(item: dict) -> str | None:
