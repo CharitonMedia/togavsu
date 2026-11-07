@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -282,6 +283,65 @@ func TestRejectedRestoreLeavesWritersAndData(t *testing.T) {
 	}
 	if marker != 1 || len(order) != 0 {
 		t.Fatalf("marker %d order %v", marker, order)
+	}
+}
+
+func TestFileBearingArchiveDoesNotReplaceTheDatabase(t *testing.T) {
+	store := testStore(t)
+	body := []byte("synthetic-file-bytes")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.Files = func(context.Context) ([]FileBlob, error) {
+		return []FileBlob{{
+			Name:   "matter/note.txt",
+			SHA256: sum,
+			Open:   func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil },
+		}}, nil
+	}
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var marker int
+	var order []string
+	marker = 1
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyRestore: func(ctx context.Context, payload RestorePayload) error {
+			marker = 2
+			return ApplyProductRestore(ctx, "psql", "postgres://togavsu@127.0.0.1/postgres", "postgres://togavsu@127.0.0.1/togavsu", payload)
+		},
+		Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if !errors.Is(err, ErrFileRestoreUnsupported) || rec.Status == "completed" {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if marker != 1 || len(order) != 0 {
+		t.Fatalf("marker %d order %v", marker, order)
+	}
+	err = store.Restore(context.Background(), meta.ID, "", func(_ context.Context, payload RestorePayload) error {
+		if len(payload.Files) != 1 || payload.Files[0].SHA256 != sum {
+			t.Fatalf("payload files %+v", payload.Files)
+		}
+		got, err := os.ReadFile(payload.Files[0].Path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(got, body) {
+			t.Fatalf("bytes %q", got)
+		}
+		return ApplyProductRestore(context.Background(), "/bin/false", "postgres://example/postgres", "postgres://example/togavsu", payload)
+	})
+	if !errors.Is(err, ErrFileRestoreUnsupported) {
+		t.Fatalf("shipped restore %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -492,6 +493,350 @@ func TestSwapHookIsDurableBeforeRename(t *testing.T) {
 	if _, err := os.Stat(log); err == nil {
 		t.Fatal("rename started")
 	}
+}
+
+func TestJournalTornTailDoesNotSwallowTheNextRecord(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "restore-journal.jsonl")
+	j := OpenJournal(path)
+	first := journalRecord{
+		Record: RestoreRecord{ID: "restore-committed", BackupID: "backup-a", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseWritersStopped,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+	}
+	if err := j.Put(first); err != nil {
+		t.Fatal(err)
+	}
+	committed, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasSuffix(committed, []byte("\n")) {
+		t.Fatal("committed record was not newline terminated")
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"record":{"id":"torn"`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := OpenJournal(path)
+	if _, ok, err := reopened.Latest("torn"); err != nil || ok {
+		t.Fatalf("unterminated tail was treated as committed: ok %v err %v", ok, err)
+	}
+	got, ok, err := reopened.Latest("restore-committed")
+	if err != nil || !ok || got.Record.BackupID != "backup-a" {
+		t.Fatalf("committed record %+v %v %v", got, ok, err)
+	}
+	recovery := journalRecord{
+		Record: RestoreRecord{ID: "restore-recovery", BackupID: "backup-a", Status: "failed", Recovery: "restarted_writers", Started: time.Now().UTC()},
+		Phase:  phaseFailed,
+	}
+	later := journalRecord{
+		Record: RestoreRecord{ID: "restore-later", BackupID: "backup-b", Status: "accepted", Started: time.Now().UTC()},
+		Phase:  phaseAccepted,
+	}
+	if err := reopened.Put(recovery); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.Put(later); err != nil {
+		t.Fatal(err)
+	}
+	again := OpenJournal(path)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(raw, committed) {
+		t.Fatal("repair rewrote committed journal bytes")
+	}
+	if bytes.Contains(raw, []byte(`"id":"torn"`)) {
+		t.Fatal("torn tail was kept or concatenated")
+	}
+	for _, id := range []string{"restore-committed", "restore-recovery", "restore-later"} {
+		rec, ok, err := again.Latest(id)
+		if err != nil || !ok || rec.Record.ID != id {
+			t.Fatalf("record %s after reopen: %+v %v %v", id, rec, ok, err)
+		}
+	}
+}
+
+func TestValidUnterminatedTailIsNotCommitted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "restore-journal.jsonl")
+	body, err := json.Marshal(journalRecord{
+		Record: RestoreRecord{ID: "restore-open", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseRunning,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j := OpenJournal(path)
+	if _, ok, err := j.Latest("restore-open"); err != nil || ok {
+		t.Fatalf("unterminated JSON was committed: ok %v err %v", ok, err)
+	}
+	next := journalRecord{
+		Record: RestoreRecord{ID: "restore-next", BackupID: "backup", Status: "accepted", Started: time.Now().UTC()},
+		Phase:  phaseAccepted,
+	}
+	if err := j.Put(next); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte("restore-open")) {
+		t.Fatal("unterminated record survived the next append")
+	}
+	got, ok, err := OpenJournal(path).Latest("restore-next")
+	if err != nil || !ok || got.Record.ID != "restore-next" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
+func TestTerminatedCorruptJournalFailsRecovery(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "restore-journal.jsonl")
+	j := OpenJournal(path)
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-live", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseSwapIntended,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd", SwapIntended: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{not-json}\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if _, _, err := OpenJournal(path).Latest("restore-live"); !errors.Is(err, errJournalCorrupt) {
+		t.Fatalf("read err %v", err)
+	}
+	var order []string
+	ops := &Operations{
+		Gate:    &Gate{},
+		Journal: OpenJournal(path),
+		Runtime: &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}},
+		Catalog: &scriptCatalog{present: map[string]bool{"origdb": true, "origdb_replaced_abcd": true}},
+	}
+	if err := ops.Recover(context.Background()); !errors.Is(err, errJournalCorrupt) {
+		t.Fatalf("recover err %v", err)
+	}
+	if containsStep(order, "restart:core-1") {
+		t.Fatalf("recovery ran against a corrupt journal: %v", order)
+	}
+	if err := OpenJournal(path).Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-hidden", BackupID: "backup", Status: "accepted", Started: time.Now().UTC()},
+		Phase:  phaseAccepted,
+	}); !errors.Is(err, errJournalCorrupt) {
+		t.Fatalf("append after corruption err %v", err)
+	}
+}
+
+func TestFailedJournalPersistDoesNotStopOrSwap(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("stop", func(t *testing.T) {
+		var order []string
+		dir := t.TempDir()
+		ops := &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal: OpenJournal(filepath.Join(dir, "restore-journal.jsonl")),
+			Passphrase: func() (string, error) {
+				return store.Passphrase, nil
+			},
+			ApplyDump: func(context.Context, io.Reader) error {
+				t.Fatal("apply ran after the journal refused the stop")
+				return nil
+			},
+			Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		}
+		ops.Runtime.(*scriptRuntime).onList = func() {
+			ops.Journal = OpenJournal(t.TempDir())
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); err == nil {
+			t.Fatal("restore succeeded without a durable stop intent")
+		}
+		if containsStep(order, "stop:core-1") || containsStep(order, "restart:core-1") {
+			t.Fatalf("destructive runtime work after a failed persist: %v", order)
+		}
+	})
+	t.Run("swap", func(t *testing.T) {
+		var order []string
+		log := filepath.Join(t.TempDir(), "psql.log")
+		bin := filepath.Join(t.TempDir(), "psql")
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\necho ran >> "+log+"\nexit 1\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		ops := &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal: OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl")),
+			Passphrase: func() (string, error) {
+				return store.Passphrase, nil
+			},
+			Runtime: &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		}
+		ops.ApplyRestore = func(ctx context.Context, _ RestorePayload) error {
+			ops.Journal = OpenJournal(t.TempDir())
+			return swapDatabase(ctx, bin, "postgres://example", "origdb", "freshdb", "abcd")
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); err == nil {
+			t.Fatal("swap continued after the journal refused the intent")
+		}
+		if _, err := os.Stat(log); err == nil {
+			t.Fatal("rename started after the journal persist failed")
+		}
+	})
+}
+
+func TestStoppedWritersStayRecoverable(t *testing.T) {
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("journal failure after stop", func(t *testing.T) {
+		var order []string
+		dir := t.TempDir()
+		path := filepath.Join(dir, "restore-journal.jsonl")
+		rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}, {ID: "idle", State: "exited"}}}
+		ops := &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal:    OpenJournal(path),
+			Passphrase: func() (string, error) { return store.Passphrase, nil },
+			ApplyDump: func(_ context.Context, r io.Reader) error {
+				_, err := io.Copy(io.Discard, r)
+				return err
+			},
+			Runtime: rt,
+		}
+		rt.stopHook = func() { ops.Journal.failRemaining = 4 }
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err == nil {
+			t.Fatal("persist failure was ignored")
+		}
+		if !containsStep(order, "restart:core-1") {
+			t.Fatalf("writers were not recovered: %v", order)
+		}
+		if containsStep(order, "restart:idle") || containsStep(order, "stop:idle") {
+			t.Fatalf("idle container was changed: %v", order)
+		}
+		got, ok, rerr := OpenJournal(path).Latest(rec.ID)
+		if rerr != nil || !ok {
+			t.Fatalf("journal lost the job: %+v %v %v", got, ok, rerr)
+		}
+		if (got.Record.Status == "failed" || got.Record.Status == "completed") && rt.states["core-1"] != "running" {
+			t.Fatalf("terminal while core-1 is down: %+v state %s", got.Record, rt.states["core-1"])
+		}
+		if got.Record.Status != "failed" && got.Record.Status != "completed" {
+			pending, perr := OpenJournal(path).Incomplete()
+			if perr != nil || len(pending) == 0 || pending[0].Record.ID != rec.ID {
+				t.Fatalf("pending job vanished: %+v %v", pending, perr)
+			}
+		}
+	})
+	t.Run("startup retries the same container", func(t *testing.T) {
+		var order []string
+		dir := t.TempDir()
+		path := filepath.Join(dir, "restore-journal.jsonl")
+		rt := &scriptRuntime{
+			order:     &order,
+			cores:     []ContainerInfo{{ID: "core-1"}, {ID: "idle", State: "exited"}},
+			failStart: "core-1",
+		}
+		ops := &Operations{
+			Store: store, Gate: &Gate{}, Now: store.Now,
+			Journal:    OpenJournal(path),
+			Passphrase: func() (string, error) { return store.Passphrase, nil },
+			ApplyDump: func(_ context.Context, r io.Reader) error {
+				_, err := io.Copy(io.Discard, r)
+				return err
+			},
+			Runtime: rt,
+		}
+		rec, err := ops.Restore(context.Background(), meta.ID)
+		if err == nil || rec.Status == "completed" || rec.Status == "failed" {
+			t.Fatalf("stranded as terminal %+v %v", rec, err)
+		}
+		if _, err := ops.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+			t.Fatalf("new destructive job while unresolved: %v", err)
+		}
+		rt.failStart = ""
+		rt.states["core-1"] = "exited"
+		next := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+		if err := next.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(order, "restart:core-1") || containsStep(order, "restart:idle") {
+			t.Fatalf("order %v", order)
+		}
+		got, ok, err := next.LookupRestore(rec.ID)
+		if err != nil || !ok || got.ID != rec.ID || got.Status != "completed" {
+			t.Fatalf("%+v %v %v", got, ok, err)
+		}
+	})
+	t.Run("recovery fails once then succeeds", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "restore-journal.jsonl")
+		j := OpenJournal(path)
+		if err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-retry", BackupID: meta.ID, Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseWritersStopped,
+			Containers: []containerIntent{
+				{ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited"},
+				{ID: "idle", Prior: "exited"},
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var order []string
+		rt := &scriptRuntime{order: &order, failStart: "core-1", states: map[string]string{"core-1": "exited", "idle": "exited"}}
+		first := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+		if err := first.Recover(context.Background()); err == nil {
+			t.Fatal("first recovery succeeded while start was failing")
+		}
+		got, ok, err := OpenJournal(path).Latest("restore-retry")
+		if err != nil || !ok || got.Record.Status == "failed" || got.Record.Status == "completed" {
+			t.Fatalf("first recovery closed the job: %+v %v %v", got, ok, err)
+		}
+		if _, err := first.Restore(context.Background(), meta.ID); !errors.Is(err, ErrRecoveryRequired) {
+			t.Fatalf("admission while unresolved: %v", err)
+		}
+		rt.failStart = ""
+		rt.states["core-1"] = "exited"
+		second := &Operations{Gate: &Gate{}, Journal: OpenJournal(path), Runtime: rt}
+		if err := second.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(order, "restart:core-1") || containsStep(order, "restart:idle") {
+			t.Fatalf("order %v", order)
+		}
+		done, ok, err := second.LookupRestore("restore-retry")
+		if err != nil || !ok || done.Status == "running" {
+			t.Fatalf("second startup did not finish the same job: %+v %v %v", done, ok, err)
+		}
+	})
 }
 
 func TestRecoverHoldsAdmission(t *testing.T) {

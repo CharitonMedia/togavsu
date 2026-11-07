@@ -23,6 +23,7 @@ type scriptRuntime struct {
 	inspectErr  map[string]error
 	loseStop    map[string]bool
 	cancelStops bool
+	onList      func()
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -35,6 +36,9 @@ func (r *scriptRuntime) ListCores(context.Context) ([]ContainerInfo, error) {
 }
 
 func (r *scriptRuntime) ListAllCores(context.Context) ([]ContainerInfo, error) {
+	if r.onList != nil {
+		r.onList()
+	}
 	r.add("list-all")
 	out := make([]ContainerInfo, len(r.cores))
 	copy(out, r.cores)

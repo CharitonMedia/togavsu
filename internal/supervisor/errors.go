@@ -25,6 +25,7 @@ var (
 	ErrProxyUnreconciled        = errors.New("caddy kept the new upstream and it could not be rolled back")
 	ErrShuttingDown             = errors.New("supervisor is shutting down")
 	ErrRecoveryRequired         = errors.New("a restore is waiting for recovery")
+	ErrFileRestoreUnsupported   = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become
@@ -47,6 +48,8 @@ func PublicCode(err error) (code string, status int) {
 		return "shutting_down", 409
 	case errors.Is(err, ErrRecoveryRequired):
 		return "recovery_required", 409
+	case errors.Is(err, ErrFileRestoreUnsupported):
+		return "file_restore_unsupported", 409
 	case errors.Is(err, ErrBadRequest):
 		return "bad_request", 400
 	case errors.Is(err, ErrDecrypt):

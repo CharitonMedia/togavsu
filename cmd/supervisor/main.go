@@ -176,7 +176,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Outbox:     outbox,
 		Passphrase: cfg.ReloadPassphrase,
 		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {
-			return supervisor.RestoreIntoCleanDatabase(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload.Dump, payload.Manifest.RecordCounts)
+			return supervisor.ApplyProductRestore(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload)
 		},
 		Measure: supervisor.MeasureCommand("psql", cfg.AdminDatabaseURL),
 	}

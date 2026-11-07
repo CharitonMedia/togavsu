@@ -36,6 +36,22 @@ func DumpCommand(bin, databaseURL string) func(context.Context, io.Writer) error
 	}
 }
 
+// ApplyProductRestore is the callback cmd/supervisor ships. A database-only
+// archive is loaded into a clean database and swapped in one transaction.
+// File bytes, module volumes, and remote storage objects are not written
+// back. An archive that carries file bytes is refused before that swap.
+//
+// ponytail: database-only restore, ceiling: file-bearing archives are rejected,
+// upgrade: a storage-backend adapter that writes each verified RestoredFile,
+// trigger: the files task registers that adapter and a restore test reads the
+// bytes back from the backend.
+func ApplyProductRestore(ctx context.Context, bin, adminURL, databaseURL string, payload RestorePayload) error {
+	if len(payload.Files) > 0 || len(payload.Manifest.Files) > 0 {
+		return ErrFileRestoreUnsupported
+	}
+	return RestoreIntoCleanDatabase(ctx, bin, adminURL, databaseURL, payload.Dump, payload.Manifest.RecordCounts)
+}
+
 // RestoreIntoCleanDatabase loads dump into a new database, checks expect, and
 // only then renames it over databaseURL. The two renames commit or roll back
 // together. An error before that commit leaves the original database in place,

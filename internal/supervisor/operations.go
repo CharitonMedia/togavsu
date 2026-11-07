@@ -339,9 +339,15 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 		rec, ferr := o.failedRestore(backupID, errors.New("database restore is not configured"))
 		return rec, nil, ferr
 	}
-	if _, err := o.Store.Validate(backupID, pass); err != nil {
+	man, err := o.Store.Validate(backupID, pass)
+	if err != nil {
 		release()
 		rec, ferr := o.failedRestore(backupID, err)
+		return rec, nil, ferr
+	}
+	if len(man.Files) > 0 {
+		release()
+		rec, ferr := o.failedRestore(backupID, ErrFileRestoreUnsupported)
 		return rec, nil, ferr
 	}
 	if err := ctx.Err(); err != nil {
@@ -397,29 +403,21 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 	rec = o.current(rec.ID, rec)
 	if stopErr != nil {
 		if strings.Contains(stopErr.Error(), "was not observed") {
-			rec.Status = "running"
-			rec.Recovery = "container_unobserved"
-			rec, _ = o.persist(rec, phaseStopping, nil)
-			_ = o.restartConfirmed(stopped)
-			return rec, stopErr
+			_ = o.restoreWriters(rec, stopped)
+			return o.keepPending(rec, phaseStopping, "container_unobserved", stopErr)
 		}
-		if startErr := o.restartConfirmed(stopped); startErr != nil {
-			joined := fmt.Errorf("%w; restart failed: %v", stopErr, startErr)
-			return o.finish(rec, joined), joined
+		if len(stopped) == 0 && !o.stopIntended(rec.ID) {
+			return o.finish(rec, stopErr), stopErr
 		}
-		return o.finish(rec, stopErr), stopErr
+		return o.closeStopped(rec, stopped, stopErr, "")
 	}
 	rec, err = o.persist(rec, phaseWritersStopped, nil)
 	if err != nil {
-		return o.finish(rec, err), err
+		return o.closeStopped(rec, stopped, err, "journal_unpersisted")
 	}
 	safety, err := o.Store.Create(opCtx, reasonSafety)
 	if err != nil {
-		if startErr := o.restartConfirmed(stopped); startErr != nil {
-			joined := fmt.Errorf("safety backup: %w; restart failed: %v", err, startErr)
-			return o.finish(rec, joined), joined
-		}
-		return o.finish(rec, err), err
+		return o.closeStopped(rec, stopped, err, "")
 	}
 	_ = safety
 	apply := func(ctx context.Context, payload RestorePayload) error {
@@ -454,48 +452,52 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		return o.finishCleanup(rec, stopped, err)
 	}
 	if err != nil {
-		if startErr := o.restartConfirmed(stopped); startErr != nil {
-			joined := fmt.Errorf("restore failed: %w; restart failed: %v", err, startErr)
-			if o.Outbox != nil {
-				_ = o.Outbox.Notify(context.Background(), "Restore failed", "The database was not replaced and the core did not restart. "+Scrub(joined.Error()))
-			}
-			rec = o.finish(rec, joined)
-			return rec, joined
-		}
 		if o.Outbox != nil {
-			_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place and the core was restarted. "+Scrub(err.Error()))
+			_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. "+Scrub(err.Error()))
 		}
-		rec = o.finish(rec, err)
-		return rec, err
+		return o.closeStopped(rec, stopped, err, "")
 	}
-	if startErr := o.restartConfirmed(stopped); startErr != nil {
+	if _, err := o.persist(rec, phaseApplied, nil); err != nil {
+		return o.finishApplied(rec, stopped, err)
+	}
+	rec = o.current(rec.ID, rec)
+	return o.finishApplied(rec, stopped, nil)
+}
+
+func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, persistErr error) (RestoreRecord, error) {
+	if startErr := o.restoreWriters(rec, stopped); startErr != nil {
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
 		}
-		rec = o.finish(rec, startErr)
-		return rec, startErr
+		return o.keepPending(rec, phaseApplied, "restart_failed", errors.Join(persistErr, startErr))
 	}
 	rec.Status = "completed"
+	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
-	rec, _ = o.persist(rec, phaseCompleted, nil)
-	return rec, nil
+	saved, perr := o.persist(rec, phaseCompleted, nil)
+	if perr != nil {
+		return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(persistErr, perr))
+	}
+	return saved, nil
 }
 
 func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, err error) (RestoreRecord, error) {
-	if startErr := o.restartConfirmed(stopped); startErr != nil {
-		joined := fmt.Errorf("%w; restart failed: %v", err, startErr)
-		rec = o.finish(rec, joined)
-		return rec, joined
-	}
-	rec.Status = "completed"
 	rec.Error = "cleanup_pending"
 	rec.Cleanup = "pending"
+	if startErr := o.restoreWriters(rec, stopped); startErr != nil {
+		return o.keepPending(rec, phaseApplied, "restart_failed", startErr)
+	}
+	rec.Status = "completed"
+	rec.Recovery = ""
 	rec.Finished = o.now().UTC()
 	if o.Outbox != nil {
 		_ = o.Outbox.Notify(context.Background(), "Restore cleanup failed", "The restored database is live. The previous database could not be dropped. "+Scrub(err.Error()))
 	}
-	rec, _ = o.persist(rec, phaseCompleted, nil)
-	return rec, err
+	saved, perr := o.persist(rec, phaseCompleted, nil)
+	if perr != nil {
+		return o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
+	}
+	return saved, err
 }
 
 func (o *Operations) finishUncertain(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
@@ -505,17 +507,10 @@ func (o *Operations) finishUncertain(rec RestoreRecord, stopped []ContainerInfo,
 		rec.Recovery = ""
 		return o.finishCleanup(rec, stopped, ErrRestoreCleanup)
 	case decisionOldIntact:
-		if startErr := o.restartConfirmed(stopped); startErr != nil {
-			joined := fmt.Errorf("%w; restart failed: %v", cause, startErr)
-			rec = o.finish(rec, joined)
-			return rec, joined
-		}
-		rec.Recovery = "catalog_old_intact"
 		if o.Outbox != nil {
-			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The live catalog still has the previous database. Writers were restarted only after that check.")
+			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The live catalog still has the previous database. Writers are restarted only after that check.")
 		}
-		rec = o.finish(rec, cause)
-		return rec, cause
+		return o.closeStopped(rec, stopped, cause, "catalog_old_intact")
 	case decisionMissing:
 		rec.Status = "running"
 		rec.Recovery = "configured_database_absent"
@@ -602,9 +597,11 @@ func (o *Operations) stopWriters(rec RestoreRecord) ([]ContainerInfo, error) {
 		stopErr := o.Runtime.Stop(ctx, core.ID)
 		observed, inspectErr := o.observeContainer(core.ID)
 		intent.Observed = observed
-		_, _ = o.persist(rec, phaseStopping, func(cur *journalRecord) {
+		if _, err := o.persist(rec, phaseStopping, func(cur *journalRecord) {
 			cur.Containers = upsertContainer(cur.Containers, intent)
-		})
+		}); err != nil {
+			return restart, err
+		}
 		switch {
 		case inspectErr != nil || observed == "unknown":
 			return restart, fmt.Errorf("stop %s: container state was not observed: %v", core.ID, inspectErr)
@@ -683,6 +680,32 @@ func (o *Operations) Recover(ctx context.Context) error {
 
 func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 	rec := item.Record
+	if item.Phase == phaseApplied || rec.Cleanup == "pending" || rec.Error == "cleanup_pending" {
+		if err := o.restoreWriters(rec, nil); err != nil {
+			_, perr := o.keepPending(rec, phaseApplied, "restart_failed", err)
+			return errors.Join(err, perr)
+		}
+		if o.leftUnobserved(ctx, item) {
+			cause := errors.New("container state was not observed")
+			_, perr := o.keepPending(rec, phaseApplied, "container_unobserved", cause)
+			return errors.Join(cause, perr)
+		}
+		if rec.Cleanup == "pending" || rec.Error == "cleanup_pending" {
+			_, err := o.finishCleanup(rec, nil, ErrRestoreCleanup)
+			if err != nil && !errors.Is(err, ErrRestoreCleanup) {
+				return err
+			}
+			return nil
+		}
+		rec.Status = "completed"
+		rec.Recovery = ""
+		rec.Finished = o.now().UTC()
+		if _, err := o.persist(rec, phaseCompleted, nil); err != nil {
+			_, perr := o.keepPending(rec, phaseApplied, "journal_unpersisted", err)
+			return errors.Join(err, perr)
+		}
+		return nil
+	}
 	if item.Database == nil || !item.Database.SwapIntended {
 		switch rec.Recovery {
 		case "catalog_unobserved", "catalog_ambiguous", "configured_database_absent":
@@ -691,57 +714,102 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 	}
 	if !stopWasIntended(item) && (item.Database == nil || !item.Database.SwapIntended) {
 		rec.Recovery = "interrupted"
-		rec = o.finish(rec, errors.New("restore interrupted before it changed writers or the database"))
-		o.PutJob(rec)
+		saved, err := o.markFailed(rec, errors.New("restore interrupted before it changed writers or the database"))
+		if err != nil {
+			o.PutJob(rec)
+			return err
+		}
+		o.PutJob(saved)
 		return nil
 	}
 	if item.Database != nil && item.Database.SwapIntended {
 		decision, _ := o.classifyDatabase(rec)
 		switch decision {
 		case decisionCleanup:
-			stopped := o.confirmedStopped(ctx, item)
-			if _, err := o.finishCleanup(rec, stopped, ErrRestoreCleanup); err != nil && !errors.Is(err, ErrRestoreCleanup) {
+			if _, err := o.finishCleanup(rec, nil, ErrRestoreCleanup); err != nil && !errors.Is(err, ErrRestoreCleanup) {
 				return err
 			}
 			return nil
 		case decisionOldIntact:
-			stopped := o.confirmedStopped(ctx, item)
-			if err := o.restartConfirmed(stopped); err != nil {
-				rec.Recovery = "restart_failed"
-				o.finish(rec, err)
+			saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted before the database rename committed"), "catalog_old_intact")
+			if saved.Status == "running" {
 				return err
 			}
-			rec.Recovery = "catalog_old_intact"
-			o.finish(rec, errors.New("restore interrupted before the database rename committed"))
 			return nil
 		case decisionMissing:
-			rec.Recovery = "configured_database_absent"
-			o.persistRunning(rec)
-			return fmt.Errorf("restore %s: configured database is absent; writers were not restarted", rec.ID)
+			_, err := o.keepPending(rec, phaseSwapIntended, "configured_database_absent", errConfiguredDatabaseAbsent)
+			return err
 		default:
+			reason := "catalog_unobserved"
 			if decision == decisionAmbiguous {
-				rec.Recovery = "catalog_ambiguous"
-			} else {
-				rec.Recovery = "catalog_unobserved"
+				reason = "catalog_ambiguous"
 			}
-			o.persistRunning(rec)
-			return fmt.Errorf("restore %s: database catalog was not confirmed; writers were not restarted", rec.ID)
+			_, err := o.keepPending(rec, phaseSwapIntended, reason, errSwapUnobserved)
+			return err
 		}
 	}
-	stopped := o.confirmedStopped(ctx, item)
-	if err := o.restartConfirmed(stopped); err != nil {
-		rec.Recovery = "restart_failed"
-		o.finish(rec, err)
+	saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted after writers stopped and before the database rename"), "restarted_writers")
+	if saved.Status == "running" {
 		return err
 	}
-	if o.leftUnobserved(ctx, item) {
-		rec.Recovery = "container_unobserved"
-		o.persistRunning(rec)
-		return fmt.Errorf("restore %s: a container state was not observed; it was not started", rec.ID)
-	}
-	rec.Recovery = "restarted_writers"
-	o.finish(rec, errors.New("restore interrupted after writers stopped and before the database rename"))
 	return nil
+}
+
+// closeStopped terminal-fails only after every previously running writer is
+// healthy again. A restart or journal failure leaves the same job pending.
+func (o *Operations) closeStopped(rec RestoreRecord, stopped []ContainerInfo, cause error, recovery string) (RestoreRecord, error) {
+	if err := o.restoreWriters(rec, stopped); err != nil {
+		return o.keepPending(rec, phaseWritersStopped, "restart_failed", errors.Join(cause, err))
+	}
+	if recovery != "" {
+		rec.Recovery = recovery
+	}
+	saved, err := o.markFailed(rec, cause)
+	if err != nil {
+		return o.keepPending(rec, phaseWritersStopped, "journal_unpersisted", errors.Join(cause, err))
+	}
+	return saved, cause
+}
+
+// keepPending leaves a durable non-terminal record so the next startup
+// retries the same operation. It does not roll a database back.
+func (o *Operations) keepPending(rec RestoreRecord, phase, recovery string, cause error) (RestoreRecord, error) {
+	rec.Status = "running"
+	rec.Recovery = recovery
+	rec.Finished = time.Time{}
+	saved, err := o.persist(rec, phase, nil)
+	if err != nil {
+		o.PutJob(rec)
+		return rec, errors.Join(cause, err)
+	}
+	return saved, cause
+}
+
+func (o *Operations) stopIntended(id string) bool {
+	item, ok := o.journalItem(id)
+	return ok && stopWasIntended(item)
+}
+
+func (o *Operations) journalItem(id string) (journalRecord, bool) {
+	if o.Journal == nil {
+		return journalRecord{}, false
+	}
+	got, ok, err := o.Journal.Latest(id)
+	if err != nil || !ok {
+		return journalRecord{}, false
+	}
+	return got, true
+}
+
+// restoreWriters starts every container this restore stopped, and only those.
+func (o *Operations) restoreWriters(rec RestoreRecord, fallback []ContainerInfo) error {
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	item, ok := o.journalItem(rec.ID)
+	if ok && stopWasIntended(item) {
+		return o.restart(ctx, o.confirmedStopped(ctx, item))
+	}
+	return o.restart(ctx, fallback)
 }
 
 func stopWasIntended(item journalRecord) bool {
@@ -914,7 +982,7 @@ func (o *Operations) startOne(ctx context.Context, id string) error {
 	return nil
 }
 
-func (o *Operations) finish(rec RestoreRecord, err error) RestoreRecord {
+func (o *Operations) markFailed(rec RestoreRecord, err error) (RestoreRecord, error) {
 	rec.Status = "failed"
 	if rec.Error == "" || rec.Error == "cleanup_pending" {
 		code, _ := PublicCode(err)
@@ -923,12 +991,16 @@ func (o *Operations) finish(rec RestoreRecord, err error) RestoreRecord {
 		}
 	}
 	rec.Finished = o.now().UTC()
-	saved, perr := o.persist(rec, phaseFailed, nil)
-	if perr == nil {
-		return saved
+	return o.persist(rec, phaseFailed, nil)
+}
+
+func (o *Operations) finish(rec RestoreRecord, err error) RestoreRecord {
+	saved, perr := o.markFailed(rec, err)
+	if perr != nil {
+		o.PutJob(rec)
+		return rec
 	}
-	o.recordRestore(rec)
-	return rec
+	return saved
 }
 
 func (o *Operations) recordRestore(rec RestoreRecord) {
