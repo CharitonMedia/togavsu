@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 // API error codes are the stable contract for HTTP and MCP handlers.
 const (
@@ -33,23 +36,23 @@ func (e *APIError) Error() string {
 // HTTPStatus maps the code to the status the API serves.
 func (e *APIError) HTTPStatus() int {
 	if e == nil {
-		return 500
+		return http.StatusInternalServerError
 	}
 	switch e.Code {
 	case CodeUnauthenticated:
-		return 401
+		return http.StatusUnauthorized
 	case CodeForbidden:
-		return 403
+		return http.StatusForbidden
 	case CodeNotFound:
-		return 404
+		return http.StatusNotFound
 	case CodeValidation:
-		return 400
+		return http.StatusBadRequest
 	case CodeConflict, CodeAppendOnly:
-		return 409
+		return http.StatusConflict
 	case CodeRateLimited:
-		return 429
+		return http.StatusTooManyRequests
 	default:
-		return 500
+		return http.StatusInternalServerError
 	}
 }
 

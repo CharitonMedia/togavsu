@@ -127,9 +127,27 @@ func TestCents(t *testing.T) {
 	if _, err := Cents(0).Sub(min); err != ErrOverflow {
 		t.Fatal(err)
 	}
+	if _, err := Cents(1).Sub(min); err != ErrOverflow {
+		t.Fatal(err)
+	}
+	if _, err := max.Sub(min); err != ErrOverflow {
+		t.Fatal(err)
+	}
 	got, err := min.Sub(min)
 	if err != nil || got != 0 {
 		t.Fatal(got, err)
+	}
+	got, err = Cents(-1).Sub(min)
+	if err != nil || got != max {
+		t.Fatalf("(-1) - MinInt64 = %v err %v", got, err)
+	}
+	got, err = Cents(-2).Sub(min)
+	if err != nil || got != max-1 {
+		t.Fatalf("(-2) - MinInt64 = %v err %v", got, err)
+	}
+	got, err = Cents(math.MinInt64 + 1).Sub(min)
+	if err != nil || got != 1 {
+		t.Fatalf("(MinInt64+1) - MinInt64 = %v err %v", got, err)
 	}
 	if _, err := min.Add(-1); err != ErrOverflow {
 		t.Fatal(err)

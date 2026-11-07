@@ -1,6 +1,6 @@
 # Migration numbers
 
-Core migrations live in `internal/db/migrations` and are embedded in the binary. Each file is `NNNN_name.sql` with goose Up and Down sections. Goose applies them in version order, one transaction each, through a custom store that records `owner`, `version`, `checksum`, and `applied_at` in `schema_migrations`. Goose's own version table cannot store the owner or the checksum, so the store is the PRD ledger and goose still parses and runs the SQL.
+Core migrations live in `internal/db/migrations` and are embedded in the binary. Each file is `NNNN_name.sql` with goose Up and Down sections. Goose applies them in version order, one transaction each, through a custom store that records `owner`, `version`, `checksum`, and `applied_at` in `schema_migrations`. Goose's own version table cannot store the owner or the checksum, so the store is the PRD ledger and goose still parses and runs the SQL. `db.Apply` rejects a `-- +goose NO TRANSACTION` directive, in any letter case, before running the file. A migration cannot commit a successful statement and then fail a later one.
 
 Core rows use owner `core`. A module uses its own owner. The same version number may exist for two owners. A changed checksum on a version that already ran stops the update.
 

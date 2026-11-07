@@ -96,6 +96,48 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	}
 }
 
+func TestRegistryAdminOnly(t *testing.T) {
+	ctx := context.Background()
+	mem := settings.NewMemory()
+	audit := &recordAudit{}
+	reg, err := settings.New(mem, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Set(ctx, "security.lockout_attempts", "4", actor()); err != nil {
+		t.Fatal(err)
+	}
+	denied := []domain.Principal{
+		{UserID: "staff", Roles: []domain.Role{domain.RoleStaff}, Source: domain.SourceUI},
+		{UserID: "accountant", Roles: []domain.Role{domain.RoleAccountant}, Source: domain.SourceUI},
+		{UserID: "client", Roles: []domain.Role{domain.RoleClient}, Source: domain.SourceUI},
+		{UserID: "attorney", Roles: []domain.Role{domain.RoleAttorney}, Source: domain.SourceUI},
+		{UserID: "roleless", Source: domain.SourceAPIToken},
+		{UserID: "staff-client", Roles: []domain.Role{domain.RoleStaff, domain.RoleClient}, Source: domain.SourceUI},
+	}
+	for _, who := range denied {
+		if _, err := reg.Set(ctx, "security.lockout_attempts", "9", who); !errors.Is(err, settings.ErrForbidden) {
+			t.Fatalf("set %+v: %v", who.Roles, err)
+		}
+		if _, err := reg.Reset(ctx, "security.lockout_attempts", who); !errors.Is(err, settings.ErrForbidden) {
+			t.Fatalf("reset %+v: %v", who.Roles, err)
+		}
+	}
+	if got, err := reg.Get(ctx, "security.lockout_attempts"); err != nil || got != "4" {
+		t.Fatalf("value changed: %s %v", got, err)
+	}
+	if len(audit.changes) != 1 || audit.changes[0].New != "4" {
+		t.Fatalf("audits changed: %+v", audit.changes)
+	}
+	mixed := domain.Principal{UserID: "both", Roles: []domain.Role{domain.RoleStaff, domain.RoleAdmin}, Source: domain.SourceUI}
+	if _, err := reg.Set(ctx, "security.lockout_attempts", "3", mixed); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reg.Get(ctx, "security.lockout_attempts"); err != nil || got != "3" {
+		t.Fatalf("admin union: %s %v", got, err)
+	}
+}
+
 func TestRegistryAtomicAudit(t *testing.T) {
 	ctx := context.Background()
 	mem := settings.NewMemory()

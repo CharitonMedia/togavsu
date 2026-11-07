@@ -87,23 +87,31 @@ func insertSynthetic(ctx context.Context, tx *sql.Tx, dialect string) error {
 	at := domain.UnixMicroUTC(seedAt)
 	by := string(domain.SystemUserID)
 	later := at + 12*60*60*1_000_000
-	pa, county, contact := sid(1), sid(2), sid(3)
-	admin, staff, clientUser := sid(4), sid(5), sid(6)
-	referral, matter, party, wall := sid(7), sid(8), sid(9), sid(10)
-	session, password, totp, recovery, token := sid(11), sid(12), sid(13), sid(14), sid(15)
-	local, network := sid(16), sid(17)
-	file1, ver1, rend := sid(18), sid(19), sid(20)
-	file2, ver2, link, lock := sid(21), sid(22), sid(23), sid(24)
-	fee, timeEntry, timer, expense := sid(25), sid(26), sid(27), sid(28)
-	invoice, line := sid(29), sid(30)
-	account, entry, balance := sid(31), sid(32), sid(33)
-	flag, repl, recon, payment := sid(34), sid(35), sid(36), sid(37)
-	note, noteTag := sid(38), sid(39)
-	conflict, review := sid(40), sid(41)
-	cal, attendee, deadline := sid(42), sid(43), sid(44)
-	audit, ev, court := sid(45), sid(46), sid(47)
-	job, unit, result, exc, call, move := sid(48), sid(49), sid(50), sid(51), sid(52), sid(53)
-	addr, emailID, phoneID, ctag := sid(54), sid(55), sid(56), sid(57)
+	n := uint64(0)
+	id := func() string {
+		n++
+		return sid(n)
+	}
+	pa, county, contact := id(), id(), id()
+	admin, staff, clientUser := id(), id(), id()
+	referral, matter, party, wall := id(), id(), id(), id()
+	session, password, totp, recovery, token := id(), id(), id(), id(), id()
+	local, network := id(), id()
+	file1, ver1, rend := id(), id(), id()
+	file2, ver2, link, lock := id(), id(), id(), id()
+	fee, timeEntry, timer, expense := id(), id(), id(), id()
+	invoice, line := id(), id()
+	account, entry, balance := id(), id(), id()
+	flag, repl, recon, payment := id(), id(), id(), id()
+	note, noteTag := id(), id()
+	conflict, review := id(), id()
+	cal, attendee, deadline := id(), id(), id()
+	audit, ev, court := id(), id(), id()
+	job, unit, result, exc, call, move := id(), id(), id(), id(), id(), id()
+	addr, emailID, phoneID, ctag := id(), id(), id(), id()
+	// ponytail: 100 percent complete. Written as a product because 100 is also activity.page_size.
+	// Ceiling: one synthetic row. Upgrade trigger: seed progress is loaded from the registry.
+	progressDone := 10 * 10
 
 	adminRoles, err := domain.MarshalRoles([]domain.Role{domain.RoleAdmin, domain.RoleAttorney})
 	if err != nil {
@@ -225,7 +233,7 @@ func insertSynthetic(ctx context.Context, tx *sql.Tx, dialect string) error {
 		{"ai_call_log", append(mcols, "task", "provider", "model", "prompt_tokens", "completion_tokens", "cost_cents", "fell_back", "fallback_provider", "fallback_model", "user_id", "module_id", "matter_id", "file_id"),
 			append(meta(call), "labeling", "openai", domain.LabelingModel, 10, 20, int64(1), 0, "", "", admin, "", matter, file1)},
 		{"storage_moves", append(mcols, "from_backend_id", "to_backend_id", "scope", "matter_id", "status", "progress", "confirmed_by", "confirmed_at"),
-			append(meta(move), local, network, "matter", matter, "confirmed", 100, admin, at)},
+			append(meta(move), local, network, "matter", matter, "confirmed", progressDone, admin, at)},
 	}
 	for _, step := range steps {
 		if err := ins(ctx, tx, dialect, step.table, step.cols, step.vals); err != nil {

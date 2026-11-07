@@ -113,10 +113,12 @@ func (c Cents) Add(o Cents) (Cents, error) {
 // Sub returns the difference or ErrOverflow.
 func (c Cents) Sub(o Cents) (Cents, error) {
 	if o == math.MinInt64 {
-		if c == math.MinInt64 {
-			return 0, nil
+		// Negating MinInt64 does not fit in int64. c - MinInt64 equals c + 2^63,
+		// which fits exactly when c is negative: the results run from 0 through MaxInt64.
+		if c >= 0 {
+			return 0, ErrOverflow
 		}
-		return 0, ErrOverflow
+		return Cents(int64(uint64(c) + (1 << 63))), nil
 	}
 	return addCents(c, -o)
 }

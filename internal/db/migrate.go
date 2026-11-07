@@ -31,6 +31,8 @@ var (
 	ErrChecksum = errors.New("db: migration checksum changed")
 	// ErrVersion means a migration version is missing, duplicated, or outside its range.
 	ErrVersion = errors.New("db: migration version")
+	// ErrTransaction means a migration asked to run outside a transaction.
+	ErrTransaction = errors.New("db: NO TRANSACTION is not allowed")
 )
 
 // Migration is one numbered SQL file.
@@ -155,6 +157,9 @@ func Apply(ctx context.Context, db *sql.DB, spec ApplySpec) error {
 			return fmt.Errorf("%w: %d", ErrVersion, m.Version)
 		}
 		seen[m.Version] = true
+		if gooseNoTransaction(m.SQL) {
+			return fmt.Errorf("%w: version %d", ErrTransaction, m.Version)
+		}
 	}
 	files, sums, err := gooseFS(spec.Migrations)
 	if err != nil {
@@ -331,6 +336,30 @@ func ensureGoose(sqlText string) string {
 		return sqlText
 	}
 	return "-- +goose Up\n" + sqlText + "\n-- +goose Down\nSELECT 1;\n"
+}
+
+// gooseNoTransaction reports whether goose would disable the per-migration transaction.
+// The match follows goose's annotation rule: a full line "-- +goose NO TRANSACTION", case-insensitive,
+// with no leading whitespace. Apply rejects that directive before any statement runs.
+func gooseNoTransaction(sqlText string) bool {
+	for _, line := range strings.Split(sqlText, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		cmd := strings.ReplaceAll(line, "--", "")
+		if !strings.Contains(cmd, "+goose") {
+			continue
+		}
+		cmd = strings.Replace(cmd, "+goose", "", 1)
+		if strings.Contains(cmd, "+goose") {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(cmd), "NO TRANSACTION") {
+			return true
+		}
+	}
+	return false
 }
 
 // schemaSession pins search_path to the migration connection goose checks out, then resets it.

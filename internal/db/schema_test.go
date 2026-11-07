@@ -216,6 +216,33 @@ func TestMigrationRunner(t *testing.T) {
 	}
 }
 
+func TestMigrationRejectsNoTransaction(t *testing.T) {
+	forms := []string{
+		"-- +goose NO TRANSACTION\n-- +goose Up\nCREATE TABLE kept (id TEXT);\nINSERT INTO missing_table (id) VALUES ('x');\n",
+		"-- +goose no transaction\nCREATE TABLE kept (id TEXT);\nINSERT INTO missing_table (id) VALUES ('x');\n",
+	}
+	for i, sqlText := range forms {
+		t.Run(fmt.Sprintf("form%d", i), func(t *testing.T) {
+			ctx := context.Background()
+			db := openDB(t)
+			err := Apply(ctx, db, ApplySpec{
+				Owner: CoreOwner, Dialect: "postgres",
+				Migrations: []Migration{{Version: 11, SQL: sqlText}},
+			})
+			if !errors.Is(err, ErrTransaction) || !strings.Contains(err.Error(), "NO TRANSACTION") {
+				t.Fatalf("expected the directive to be rejected, got %v", err)
+			}
+			var n int
+			if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'kept'`).Scan(&n); err != nil || n != 0 {
+				t.Fatal("NO TRANSACTION migration left a table", n, err)
+			}
+			if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'schema_migrations'`).Scan(&n); err != nil || n != 0 {
+				t.Fatal("rejected migration created the ledger", n, err)
+			}
+		})
+	}
+}
+
 func TestMigrationRollback(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)
@@ -534,6 +561,42 @@ func TestSettingsStoreRoundTrip(t *testing.T) {
 	}
 	if role != "admin,attorney" || source != "api_token" || !strings.Contains(reason, "token=tok-1") || !strings.Contains(reason, "module=matter-clock") {
 		t.Fatalf("role=%q source=%q reason=%q", role, source, reason)
+	}
+
+	var beforeValue string
+	var beforeAt int64
+	var auditsBefore int
+	if err := db.QueryRowContext(ctx, `SELECT value, updated_at FROM settings WHERE key = 'security.lockout_attempts'`).Scan(&beforeValue, &beforeAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log`).Scan(&auditsBefore); err != nil {
+		t.Fatal(err)
+	}
+	denied := []domain.Principal{
+		{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleStaff}, Source: domain.SourceUI},
+		{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAccountant}, Source: domain.SourceUI},
+		{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleClient}, Source: domain.SourceUI},
+		{UserID: domain.SystemUserID, Source: domain.SourceAPIToken},
+	}
+	for _, who := range denied {
+		if _, err := reg.Set(ctx, "security.lockout_attempts", "8", who); !errors.Is(err, settings.ErrForbidden) {
+			t.Fatalf("set %+v: %v", who.Roles, err)
+		}
+		if _, err := reg.Reset(ctx, "security.lockout_attempts", who); !errors.Is(err, settings.ErrForbidden) {
+			t.Fatalf("reset %+v: %v", who.Roles, err)
+		}
+	}
+	var afterValue string
+	var afterAt int64
+	var auditsAfter int
+	if err := db.QueryRowContext(ctx, `SELECT value, updated_at FROM settings WHERE key = 'security.lockout_attempts'`).Scan(&afterValue, &afterAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log`).Scan(&auditsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if afterValue != beforeValue || afterAt != beforeAt || auditsAfter != auditsBefore {
+		t.Fatalf("denied write changed settings or audits: value %s->%s at %d->%d audits %d->%d", beforeValue, afterValue, beforeAt, afterAt, auditsBefore, auditsAfter)
 	}
 }
 

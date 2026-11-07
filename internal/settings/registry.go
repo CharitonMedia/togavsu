@@ -48,10 +48,11 @@ const (
 )
 
 var (
-	ErrUnknown  = errors.New("settings: unknown key")
-	ErrInvalid  = errors.New("settings: invalid value")
-	ErrReadOnly = errors.New("settings: read only")
-	ErrActor    = errors.New("settings: actor required")
+	ErrUnknown   = errors.New("settings: unknown key")
+	ErrInvalid   = errors.New("settings: invalid value")
+	ErrReadOnly  = errors.New("settings: read only")
+	ErrActor     = errors.New("settings: actor required")
+	ErrForbidden = errors.New("settings: admin role required")
 )
 
 // Definition is one registry entry: key, type, default, range, tab, and help.
@@ -204,6 +205,7 @@ func (r *Registry) List(ctx context.Context) ([]Entry, error) {
 
 // Set validates and stores a value, then audits the old and new values.
 // who supplies the actor id, roles, and source written to the audit log.
+// Only an admin may write. Any other principal returns before the store or the audit log changes.
 func (r *Registry) Set(ctx context.Context, key, value string, who domain.Principal) (Change, error) {
 	def, err := r.definition(key)
 	if err != nil {
@@ -211,6 +213,9 @@ func (r *Registry) Set(ctx context.Context, key, value string, who domain.Princi
 	}
 	if who.UserID.IsZero() {
 		return Change{}, ErrActor
+	}
+	if !who.HasRole(domain.RoleAdmin) {
+		return Change{}, ErrForbidden
 	}
 	if def.Locked && value != def.Default {
 		return Change{}, fmt.Errorf("%w: %s", ErrReadOnly, key)

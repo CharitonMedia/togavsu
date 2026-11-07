@@ -83,18 +83,14 @@ func ScanSource(path, src string) []string {
 			}
 			return false
 		}
-		var parent ast.Node
-		if len(stack) > 0 {
-			parent = stack[len(stack)-1]
-		}
-		out = append(out, violations(path, fset, n, parent, aliases)...)
+		out = append(out, violations(path, fset, n, stack, aliases)...)
 		stack = append(stack, n)
 		return true
 	})
 	return out
 }
 
-func violations(path string, fset *token.FileSet, n, parent ast.Node, aliases map[string]string) []string {
+func violations(path string, fset *token.FileSet, n ast.Node, ancestors []ast.Node, aliases map[string]string) []string {
 	var out []string
 	if sel, ok := n.(*ast.SelectorExpr); ok {
 		ident, ok := sel.X.(*ast.Ident)
@@ -126,7 +122,7 @@ func violations(path string, fset *token.FileSet, n, parent ast.Node, aliases ma
 				out = append(out, fmt.Sprintf("%s:%d: tunable %q belongs in the settings registry", pos.Filename, pos.Line, val))
 			}
 		}
-		if lit.Kind == token.INT && hardCodedNumber(lit, parent) {
+		if lit.Kind == token.INT && hardCodedNumber(lit, ancestors) {
 			pos := fset.Position(lit.Pos())
 			out = append(out, fmt.Sprintf("%s:%d: tunable number %s belongs in the settings registry", pos.Filename, pos.Line, lit.Value))
 		}
@@ -134,10 +130,8 @@ func violations(path string, fset *token.FileSet, n, parent ast.Node, aliases ma
 	return out
 }
 
-func hardCodedNumber(lit *ast.BasicLit, parent ast.Node) bool {
-	switch parent.(type) {
-	case *ast.ValueSpec, *ast.AssignStmt:
-	default:
+func hardCodedNumber(lit *ast.BasicLit, ancestors []ast.Node) bool {
+	if !standaloneNumber(ancestors) {
 		return false
 	}
 	n, err := strconv.ParseInt(lit.Value, 0, 64)
@@ -146,6 +140,25 @@ func hardCodedNumber(lit *ast.BasicLit, parent ast.Node) bool {
 	}
 	_, ok := numericDefaults()[n]
 	return ok
+}
+
+// standaloneNumber is true when the literal is the value in ordinary code:
+// a declaration, assignment, composite literal, return, call argument, send, index, or slice bound.
+// Parentheses and unary operators are transparent. Arithmetic operands are not, so a cents scale
+// or a bit shift is not treated as a copy of a registry default.
+func standaloneNumber(ancestors []ast.Node) bool {
+	for i := len(ancestors) - 1; i >= 0; i-- {
+		switch ancestors[i].(type) {
+		case *ast.ParenExpr, *ast.UnaryExpr:
+			continue
+		case *ast.ValueSpec, *ast.AssignStmt, *ast.KeyValueExpr, *ast.ReturnStmt,
+			*ast.CallExpr, *ast.CompositeLit, *ast.SendStmt, *ast.IndexExpr, *ast.SliceExpr:
+			return true
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func numericDefaults() map[int64]string {
@@ -201,13 +214,26 @@ func envAllowed(path string) bool {
 	return strings.HasSuffix(filepath.ToSlash(filepath.Dir(path)), "internal/bootstrap")
 }
 
-// defaultFile is the only place named defaults and their duration expressions may appear.
+// defaultFile is where a registry default, a domain default, or the migration-version
+// allocation may appear as a literal. ranges.go publishes the version bands; those
+// integers are not settings.
+// ponytail: the exemption is that one file. Ceiling: it stays an allocation table.
+// Upgrade trigger: a tunable literal is added to ranges.go. Remove the exemption.
 func defaultFile(path string) bool {
 	slash := filepath.ToSlash(path)
 	if strings.HasSuffix(slash, "_test.go") {
 		return true
 	}
-	return strings.HasSuffix(slash, "internal/settings/definitions.go") || strings.HasSuffix(slash, "internal/domain/defaults.go")
+	switch {
+	case strings.HasSuffix(slash, "internal/settings/definitions.go"):
+		return true
+	case strings.HasSuffix(slash, "internal/domain/defaults.go"):
+		return true
+	case strings.HasSuffix(slash, "internal/db/ranges.go"):
+		return true
+	default:
+		return false
+	}
 }
 
 func anchored(value string) bool {
