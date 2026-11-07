@@ -1,0 +1,2 @@
+# Raster corpus generation; OCR executable and fonts are provisioned separately.
+Pillow==12.0.0
