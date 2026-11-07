@@ -44,6 +44,12 @@ jobs:
           }))
           PY
           git -C candidate diff "$BASE_SHA...$HEAD_SHA" > review.diff
+      - name: Prepare unprivileged reviewer
+        run: |
+          sudo useradd --create-home --shell /bin/bash codex-reviewer
+          sudo chmod -R a+rX "$GITHUB_WORKSPACE"
+          mkdir -p "$RUNNER_TEMP/codex-review-output"
+          sudo chown codex-reviewer "$RUNNER_TEMP/codex-review-output"
       - name: Independent Codex review
         id: codex
         uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
@@ -51,16 +57,17 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: docs/build/prompts/codex-review.md
           output-schema-file: docs/build/review.schema.json
-          output-file: review-result.json
+          output-file: ${{ runner.temp }}/codex-review-output/review-result.json
           sandbox: read-only
-          safety-strategy: drop-sudo
+          safety-strategy: unprivileged-user
+          codex-user: codex-reviewer
           effort: high
           allow-bot-users: cursor[bot]
       - name: Validate independent verdict
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/check_review.py review-result.json "$BASE_SHA" "$HEAD_SHA"
+        run: python3 scripts/check_review.py "$RUNNER_TEMP/codex-review-output/review-result.json" "$BASE_SHA" "$HEAD_SHA"
       - name: Retain review evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -68,5 +75,5 @@ jobs:
           name: codex-review-${{ github.event.pull_request.head.sha }}
           path: |
             review-context.json
-            review-result.json
+            ${{ runner.temp }}/codex-review-output/review-result.json
           if-no-files-found: error
