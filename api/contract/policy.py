@@ -1162,6 +1162,48 @@ def ensure_mutation_events(spec: dict) -> None:
         raise RuntimeError("writes without events: " + ", ".join(sorted(missing)))
 
 
+def authorized_badge_counts(operation: dict, caller: dict, rows: list[dict]) -> dict:
+    """Sum sidebar badges from records the viewer can read. Filter before the count."""
+    access = operation["x-togavsu-access"]
+    if not access.get("matter_wall") or access.get("admin_bypasses_wall") or access.get("badge_counts", {}).get("filter_before") != "count":
+        return {"result": "forbidden", "badges": {}}
+    totals: dict[str, int] = {}
+    for row in rows:
+        if row.get("matter_walled") and not caller.get("on_wall"):
+            continue
+        if row.get("attorney_only") and caller.get("role") not in ("attorney", "admin"):
+            continue
+        needed = list(row.get("required_scopes") or [])
+        if any(scope not in set(caller.get("scopes") or []) for scope in needed):
+            continue
+        badge = row.get("badge")
+        if not isinstance(badge, str) or not badge:
+            continue
+        totals[badge] = totals.get(badge, 0) + int(row.get("count") or 0)
+    return {"result": "allowed", "badges": totals}
+
+
+def payment_lifecycle_events(operation: dict, items: list[dict], *, committed: bool, replay: bool = False) -> list[str]:
+    """Emit from the resulting status. A replay of the same transition emits nothing."""
+    if not committed or replay or operation["x-togavsu-access"].get("payment_events", {}).get("selection") != "resulting_state":
+        return []
+    catalog = set(operation.get("x-togavsu-events") or [])
+    emitted: list[str] = []
+    for item in items:
+        previous = item.get("previous_status")
+        status = item.get("status")
+        inserted = bool(item.get("inserted", previous is None))
+        if inserted and "payment.created" in catalog:
+            emitted.append("payment.created")
+        if status == "completed" and previous != "completed" and "payment.completed" in catalog:
+            emitted.append("payment.completed")
+        elif status == "reversed" and previous != "reversed" and "payment.reversed" in catalog:
+            emitted.append("payment.reversed")
+        elif not inserted and previous is not None and status != previous and status != "completed" and "payment.updated" in catalog:
+            emitted.append("payment.updated")
+    return emitted
+
+
 def committed_events(operation: dict, *, committed: bool, count: int = 1) -> list[str]:
     if not committed or operation["operationId"] in EVENT_EXEMPTIONS:
         return []

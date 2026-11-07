@@ -1978,7 +1978,11 @@ SCHEMAS = _register(
                 "staff_portal_label": {"type": "string"},
                 "sidebar_collapsed": {"type": "boolean"},
                 "subgroups": _arr(_obj({"id": {"type": "string"}, "collapsed": {"type": "boolean"}}, ["id", "collapsed"])),
-                "badges": {"type": "object", "additionalProperties": {"type": "integer"}},
+                "badges": {
+                    "type": "object",
+                    "additionalProperties": {"type": "integer", "minimum": 0},
+                    "description": "Counts of records the viewer can read. Walled matters and unreadable attorney-only rows are excluded before the count.",
+                },
                 "entries": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
                 "modules": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
             },

@@ -25282,7 +25282,7 @@
       "post": {
         "operationId": "createPayment",
         "summary": "Create a payment",
-        "description": "Records a payment. A repeated Idempotency-Key with the same body returns the original payment. A different body with that key returns idempotency_conflict and writes nothing. destination operating needs payments:write. A completed trust destination also needs trust:write, and that check runs before any payment or ledger row is written. A registered processor records this without a viewer by presenting the grant from initiateProcessorPayment. payments:write alone, with no viewer and no grant, is forbidden.",
+        "description": "Records a payment. A repeated Idempotency-Key with the same body returns the original payment. A different body with that key returns idempotency_conflict and writes nothing. destination operating needs payments:write. A completed trust destination also needs trust:write, and that check runs before any payment or ledger row is written. A registered processor records this without a viewer by presenting the grant from initiateProcessorPayment. payments:write alone, with no viewer and no grant, is forbidden. payment.created is emitted when the row is inserted. payment.completed is emitted only when that row's resulting status is completed. A pending or failed create does not emit payment.completed. A replay emits nothing.",
         "tags": [
           "Billing"
         ],
@@ -25351,6 +25351,14 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer_or_noninteractive",
+          "payment_events": {
+            "selection": "resulting_state",
+            "created_when": "row_inserted",
+            "completed_when": "status_becomes_completed",
+            "updated_when": "status_changes_without_completion",
+            "replay": "no_event",
+            "bulk": "per_item"
+          },
           "payment_effect": {
             "authorize_before": "any_mutation",
             "insufficient_scopes": "scope_denied",
@@ -25385,6 +25393,7 @@
           "events_on_failure": "none"
         },
         "x-togavsu-events": [
+          "payment.created",
           "payment.completed"
         ],
         "x-togavsu-writes": true,
@@ -25662,6 +25671,14 @@
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "payment_events": {
+            "selection": "resulting_state",
+            "created_when": "row_inserted",
+            "completed_when": "status_becomes_completed",
+            "updated_when": "status_changes_without_completion",
+            "replay": "no_event",
+            "bulk": "per_item"
+          },
           "payment_effect": {
             "authorize_before": "any_mutation",
             "insufficient_scopes": "scope_denied",
@@ -25695,6 +25712,7 @@
           "events_on_failure": "none"
         },
         "x-togavsu-events": [
+          "payment.created",
           "payment.completed"
         ],
         "x-togavsu-writes": true,
@@ -25918,7 +25936,7 @@
       "post": {
         "operationId": "updatePaymentStatus",
         "summary": "Update a payment status",
-        "description": "Pending may become completed or failed. The same status is idempotent and does not write. Completed, failed, and reversed are terminal here. A late callback that would leave a terminal status is conflict and changes neither the payment nor the ledger. A settled correction is reversePayment, not status failed. reversed cannot become completed. The amount does not change. A registered processor calls this with the core-issued grant and no viewer session. The payment id, matter, and amount must be the ones bound on that grant. The first completion of a trust destination needs trust:write before any ledger row is written. A later completion does not post a second row. An ambient payments:write token with no viewer and no grant is forbidden.",
+        "description": "Pending may become completed or failed. The same status is idempotent and does not write. Completed, failed, and reversed are terminal here. A late callback that would leave a terminal status is conflict and changes neither the payment nor the ledger. A settled correction is reversePayment, not status failed. reversed cannot become completed. The amount does not change. A registered processor calls this with the core-issued grant and no viewer session. The payment id, matter, and amount must be the ones bound on that grant. The first completion of a trust destination needs trust:write before any ledger row is written. A later completion does not post a second row. An ambient payments:write token with no viewer and no grant is forbidden. payment.completed is emitted when pending becomes completed. A change to failed emits payment.updated and not payment.completed. A same-status replay emits nothing.",
         "tags": [
           "Billing"
         ],
@@ -25993,6 +26011,14 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "payment_events": {
+            "selection": "resulting_state",
+            "created_when": "row_inserted",
+            "completed_when": "status_becomes_completed",
+            "updated_when": "status_changes_without_completion",
+            "replay": "no_event",
+            "bulk": "per_item"
+          },
           "module_delegation": "delegated_viewer_or_noninteractive",
           "payment_effect": {
             "authorize_before": "any_mutation",
@@ -26047,7 +26073,8 @@
           "events_on_failure": "none"
         },
         "x-togavsu-events": [
-          "payment.updated"
+          "payment.updated",
+          "payment.completed"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -26194,6 +26221,12 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "payment_events": {
+            "selection": "resulting_state",
+            "replay": "no_event",
+            "completed_when": "status_becomes_completed",
+            "updated_when": "status_changes_without_completion"
+          },
           "module_delegation": "delegated_viewer",
           "payment_reversal": {
             "authorize_before": "any_mutation",
@@ -44400,7 +44433,7 @@
       "get": {
         "operationId": "getNavContext",
         "summary": "Sidebar context",
-        "description": "Admin flag, firm short name and label, installed modules, badge counts, and the entries this user's role can see.",
+        "description": "Admin flag, firm short name and label, installed modules, badge counts, and the entries this user's role can see. Each badge count uses only records that viewer can read. A walled matter is excluded before the count, including for an admin who is off that wall. Attorney-only records are excluded for a role that cannot read them. Hiding a sidebar entry is not the access check.",
         "tags": [
           "Shell"
         ],
@@ -44451,8 +44484,16 @@
             "profile:read"
           ],
           "public": false,
-          "matter_wall": false,
-          "client": "deny"
+          "matter_wall": true,
+          "client": "deny",
+          "admin_bypasses_wall": false,
+          "access_inherits": "underlying_record",
+          "badge_counts": {
+            "source": "viewer_authorized_records",
+            "filter_before": "count",
+            "off_wall": "excluded",
+            "attorney_only": "excluded"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -67697,8 +67738,10 @@
           "badges": {
             "type": "object",
             "additionalProperties": {
-              "type": "integer"
-            }
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Counts of records the viewer can read. Walled matters and unreadable attorney-only rows are excluded before the count."
           },
           "entries": {
             "type": "array",
@@ -75507,6 +75550,9 @@
     ],
     "trust.replenishment_requested": [
       "trust:read"
+    ],
+    "payment.created": [
+      "payments:read"
     ],
     "payment.processor_authorized": [
       "payments:write"

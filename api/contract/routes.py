@@ -1588,7 +1588,7 @@ def _billing(api: Contract) -> None:
         include=True,
         csv=True,
         filters=["matter_id", "invoice_id", "from_date", "to_date", "status"],
-        events={"created": "payment.completed"},
+        events={"created": "payment.created"},
         replaceable="time",
         extra_access=WALL,
         extra_features=["collections"],
@@ -1599,8 +1599,22 @@ def _billing(api: Contract) -> None:
         "destination operating needs payments:write. "
         "A completed trust destination also needs trust:write, and that check runs before any payment or ledger row is written. "
         "A registered processor records this without a viewer by presenting the grant from initiateProcessorPayment. "
-        "payments:write alone, with no viewer and no grant, is forbidden."
+        "payments:write alone, with no viewer and no grant, is forbidden. "
+        "payment.created is emitted when the row is inserted. payment.completed is emitted only when that row's resulting status is completed. "
+        "A pending or failed create does not emit payment.completed. A replay emits nothing."
     )
+    for payment_path in ("/api/v1/payments", "/api/v1/payments:bulk"):
+        payment_operation = api.spec["paths"][payment_path]["post"]
+        if "payment.completed" not in payment_operation["x-togavsu-events"]:
+            payment_operation["x-togavsu-events"].append("payment.completed")
+        payment_operation["x-togavsu-access"]["payment_events"] = {
+            "selection": "resulting_state",
+            "created_when": "row_inserted",
+            "completed_when": "status_becomes_completed",
+            "updated_when": "status_changes_without_completion",
+            "replay": "no_event",
+            "bulk": "per_item",
+        }
     api.add(
         "post",
         "/api/v1/payments/processor-initializations",
@@ -1643,7 +1657,10 @@ def _billing(api: Contract) -> None:
             "The payment id, matter, and amount must be the ones bound on that grant. "
             "The first completion of a trust destination needs trust:write before any ledger row is written. "
             "A later completion does not post a second row. "
-            "An ambient payments:write token with no viewer and no grant is forbidden."
+            "An ambient payments:write token with no viewer and no grant is forbidden. "
+            "payment.completed is emitted when pending becomes completed. "
+            "A change to failed emits payment.updated and not payment.completed. "
+            "A same-status replay emits nothing."
         ),
         tag="Billing",
         features=["payments"],
@@ -1651,9 +1668,19 @@ def _billing(api: Contract) -> None:
         scopes=["payments:write"],
         body="PaymentStatusWrite",
         response="Payment",
-        events=["payment.updated"],
+        events=["payment.updated", "payment.completed"],
         replaceable="time",
-        extra_access=WALL,
+        extra_access={
+            **WALL,
+            "payment_events": {
+                "selection": "resulting_state",
+                "created_when": "row_inserted",
+                "completed_when": "status_becomes_completed",
+                "updated_when": "status_changes_without_completion",
+                "replay": "no_event",
+                "bulk": "per_item",
+            },
+        },
     )
     api.add(
         "post",
@@ -1679,7 +1706,15 @@ def _billing(api: Contract) -> None:
         error_codes=["scope_denied"],
         replaceable="time",
         domain_dispatch=REVERSAL_DISPATCH,
-        extra_access=WALL,
+        extra_access={
+            **WALL,
+            "payment_events": {
+                "selection": "resulting_state",
+                "replay": "no_event",
+                "completed_when": "status_becomes_completed",
+                "updated_when": "status_changes_without_completion",
+            },
+        },
     )
     api.add(
         "get",
@@ -3039,13 +3074,30 @@ def _shell(api: Contract) -> None:
         "/api/v1/nav/context",
         operation_id="getNavContext",
         summary="Sidebar context",
-        description="Admin flag, firm short name and label, installed modules, badge counts, and the entries this user's role can see.",
+        description=(
+            "Admin flag, firm short name and label, installed modules, badge counts, and the entries this user's role can see. "
+            "Each badge count uses only records that viewer can read. "
+            "A walled matter is excluded before the count, including for an admin who is off that wall. "
+            "Attorney-only records are excluded for a role that cannot read them. "
+            "Hiding a sidebar entry is not the access check."
+        ),
         tag="Shell",
         features=["nav"],
         roles=FIRM,
         scopes=["profile:read"],
         response="NavContext",
         writes=False,
+        extra_access={
+            "matter_wall": True,
+            "admin_bypasses_wall": False,
+            "access_inherits": "underlying_record",
+            "badge_counts": {
+                "source": "viewer_authorized_records",
+                "filter_before": "count",
+                "off_wall": "excluded",
+                "attorney_only": "excluded",
+            },
+        },
     )
     api.resource(
         collection="/api/v1/notifications",

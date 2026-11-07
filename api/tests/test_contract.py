@@ -27,7 +27,9 @@ from contract.policy import (
     background_file_step,
     commit_concurrent_processor_creates,
     commit_concurrent_publishes,
+    authorized_badge_counts,
     committed_events,
+    payment_lifecycle_events,
     custom_fields_batch,
     custom_fields_outcome,
     event_read_scopes,
@@ -611,6 +613,26 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(opened["result"], "allowed")
         self.assertTrue(opened["mutated"])
+        nav = _operation(self.spec, "getNavContext")
+        self.assertTrue(nav["x-togavsu-access"]["matter_wall"])
+        self.assertFalse(nav["x-togavsu-access"]["admin_bypasses_wall"])
+        self.assertEqual(nav["x-togavsu-access"]["badge_counts"]["filter_before"], "count")
+        for operation_id in ("getBillingWorklist", "widgetMyOpenMatters", "reportArAging", "search", "listEvents"):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertTrue(access["matter_wall"], operation_id)
+            self.assertFalse(access.get("admin_bypasses_wall", False), operation_id)
+        contributions = [
+            {"badge": "active_matters", "count": 3, "matter_walled": True, "required_scopes": ["matters:read"]},
+            {"badge": "active_matters", "count": 2, "matter_walled": False, "required_scopes": ["matters:read"]},
+            {"badge": "draft_invoices", "count": 4, "matter_walled": True, "required_scopes": ["invoices:read"]},
+            {"badge": "draft_invoices", "count": 1, "matter_walled": False, "required_scopes": ["invoices:read"]},
+        ]
+        off_wall_admin = authorized_badge_counts(nav, {"role": "admin", "on_wall": False, "scopes": ["matters:read", "invoices:read"]}, contributions)
+        self.assertEqual(off_wall_admin["badges"], {"active_matters": 2, "draft_invoices": 1})
+        on_wall_admin = authorized_badge_counts(nav, {"role": "admin", "on_wall": True, "scopes": ["matters:read", "invoices:read"]}, contributions)
+        self.assertEqual(on_wall_admin["badges"], {"active_matters": 5, "draft_invoices": 5})
+        staff = authorized_badge_counts(nav, {"role": "staff", "on_wall": True, "scopes": ["matters:read"]}, contributions)
+        self.assertEqual(staff["badges"], {"active_matters": 5})
 
     def test_first_admin_enrolls_totp_before_a_session(self):
         setup = self.spec["paths"]["/api/v1/setup"]["post"]
@@ -3569,6 +3591,9 @@ class ContractTest(unittest.TestCase):
             self.assertTrue(operation["x-togavsu-events"], operation["operationId"])
             self.assertEqual(operation["x-togavsu-access"].get("events_on_failure"), "none", operation["operationId"])
             self.assertEqual(committed_events(operation, committed=False), [], operation["operationId"])
+            if operation["x-togavsu-access"].get("payment_events", {}).get("selection") == "resulting_state":
+                self.assertEqual(payment_lifecycle_events(operation, [{"status": "completed"}], committed=False), [], operation["operationId"])
+                continue
             self.assertEqual(committed_events(operation, committed=True), operation["x-togavsu-events"], operation["operationId"])
             if not operation["x-togavsu-events"]:
                 uncovered.append(operation["operationId"])
@@ -3577,6 +3602,60 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(_operation(self.spec, "cancelTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_cancelled"])
         self.assertEqual(_operation(self.spec, "satisfyTrustReplenishment")["x-togavsu-events"], ["trust.replenishment_satisfied"])
         self.assertEqual(_operation(self.spec, "bulkCustomFieldValue")["x-togavsu-events"], ["custom_field.updated"])
+        create_payment = _operation(self.spec, "createPayment")
+        bulk_payment = _operation(self.spec, "bulkPayment")
+        update_payment = _operation(self.spec, "updatePaymentStatus")
+        reverse_payment = _operation(self.spec, "reversePayment")
+        self.assertEqual(create_payment["x-togavsu-events"], ["payment.created", "payment.completed"])
+        self.assertEqual(bulk_payment["x-togavsu-events"], ["payment.created", "payment.completed"])
+        self.assertEqual(
+            payment_lifecycle_events(create_payment, [{"status": "pending", "inserted": True}], committed=True),
+            ["payment.created"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(create_payment, [{"status": "failed", "inserted": True}], committed=True),
+            ["payment.created"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(create_payment, [{"status": "completed", "inserted": True}], committed=True),
+            ["payment.created", "payment.completed"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(create_payment, [{"status": "completed", "inserted": True}], committed=True, replay=True),
+            [],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(
+                bulk_payment,
+                [{"status": "pending", "inserted": True}, {"status": "completed", "inserted": True}, {"status": "failed", "inserted": True}],
+                committed=True,
+            ),
+            ["payment.created", "payment.created", "payment.completed", "payment.created"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(update_payment, [{"previous_status": "pending", "status": "completed"}], committed=True),
+            ["payment.completed"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(update_payment, [{"previous_status": "pending", "status": "failed"}], committed=True),
+            ["payment.updated"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(update_payment, [{"previous_status": "completed", "status": "completed"}], committed=True, replay=True),
+            [],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(update_payment, [{"previous_status": "completed", "status": "failed"}], committed=False),
+            [],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(reverse_payment, [{"previous_status": "completed", "status": "reversed"}], committed=True),
+            ["payment.reversed"],
+        )
+        self.assertEqual(
+            payment_lifecycle_events(reverse_payment, [{"previous_status": "reversed", "status": "reversed"}], committed=True, replay=True),
+            [],
+        )
         self.assertNotIn("postMcp", exempt)
         self.assertFalse(_operation(self.spec, "postMcp")["x-togavsu-writes"])
 
