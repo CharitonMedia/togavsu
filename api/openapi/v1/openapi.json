@@ -1675,6 +1675,246 @@
         }
       }
     },
+    "/api/v1/me/email-change": {
+      "post": {
+        "operationId": "requestEmailChange",
+        "summary": "Request an email change",
+        "description": "Starts a verified change of the caller's own email. The address is not saved yet. A verification message goes to the new address. An address that belongs to another user returns duplicate_email. roles and linked_contact_id remain rejected on updateMe.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailChangePending"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "scopes": [
+            "profile:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "requestEmailChange",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "duplicate_email"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me/email-change/confirm": {
+      "post": {
+        "operationId": "confirmEmailChange",
+        "summary": "Confirm an email change",
+        "description": "Consumes the verification token and sets only the caller's email. A token issued for another user is forbidden. Until this call succeeds, getMe still returns the previous email.",
+        "tags": [
+          "Identity"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "profile"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "scopes": [
+            "profile:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "own",
+          "email_uniqueness": "confirmed_address"
+        },
+        "x-togavsu-events": [
+          "user.updated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "confirmEmailChange",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailChangeConfirm"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/password": {
       "post": {
         "operationId": "changePassword",
@@ -2256,7 +2496,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -2354,7 +2595,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -2709,7 +2951,25 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "owner": "self_or_admin",
+          "access_cases": [
+            {
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -2812,7 +3072,25 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "owner": "self_or_admin",
+          "access_cases": [
+            {
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -3499,7 +3777,53 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "own",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "owner": "other_user",
+              "result": "forbidden"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3598,7 +3922,53 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "owner": "other_user",
+              "result": "forbidden"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -3713,7 +4083,53 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "own",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "owner": "other_user",
+              "result": "forbidden"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3814,7 +4230,53 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "owner": "self_or_admin",
+          "secret_on_read": false,
+          "access_cases": [
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "client",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "read",
+              "role": "staff",
+              "owner": "self",
+              "result": "allowed"
+            },
+            {
+              "action": "read",
+              "role": "admin",
+              "owner": "other_user",
+              "result": "allowed"
+            },
+            {
+              "action": "revoke",
+              "role": "staff",
+              "owner": "other_user",
+              "result": "not_found"
+            },
+            {
+              "action": "create",
+              "role": "client",
+              "owner": "other_user",
+              "result": "forbidden"
+            }
+          ]
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -4019,7 +4481,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4123,7 +4586,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.created"
@@ -4250,7 +4714,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4360,7 +4825,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -4490,7 +4956,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.archived"
@@ -4631,7 +5098,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4747,7 +5215,8 @@
           "attorney_only": [
             "identifier"
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.created"
@@ -4915,7 +5384,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5012,7 +5482,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5126,7 +5597,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5232,7 +5704,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5362,7 +5835,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5530,7 +6004,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5627,7 +6102,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5741,7 +6217,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5847,7 +6324,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -5977,7 +6455,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6145,7 +6624,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -6242,7 +6722,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6356,7 +6837,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -6462,7 +6944,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6592,7 +7075,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6760,7 +7244,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -6857,7 +7342,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -6971,7 +7457,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -7077,7 +7564,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7207,7 +7695,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -7350,7 +7839,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.merged"
@@ -7598,7 +8088,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -7702,7 +8193,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.created"
@@ -7829,7 +8321,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -7939,7 +8432,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -8069,7 +8563,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.archived"
@@ -8210,7 +8705,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -8326,7 +8822,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.created"
@@ -8458,7 +8955,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -8567,7 +9065,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.closed"
@@ -8693,7 +9192,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.reopened"
@@ -8820,7 +9320,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.merged"
@@ -8963,7 +9464,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9097,7 +9599,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9240,7 +9743,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9338,7 +9842,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -9453,7 +9958,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9560,7 +10066,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -9691,7 +10198,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -9832,7 +10340,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.wall_changed"
@@ -9943,7 +10452,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10077,7 +10587,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10175,7 +10686,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10290,7 +10802,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10397,7 +10910,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10515,7 +11029,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -10630,7 +11145,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -11268,7 +11784,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -11366,7 +11883,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "fee_agreement.created"
@@ -11481,7 +11999,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -11588,7 +12107,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "fee_agreement.updated"
@@ -11741,7 +12261,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -11854,7 +12375,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "fee_agreement.created"
@@ -12099,7 +12621,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12197,7 +12720,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "note.created"
@@ -12312,7 +12836,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12419,7 +12944,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "note.updated"
@@ -12546,7 +13072,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "note.archived"
@@ -12662,7 +13189,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "note.created"
@@ -12834,7 +13362,8 @@
           "attorney_only": [
             "reason"
           ],
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12935,7 +13464,8 @@
           "attorney_only": [
             "reason"
           ],
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "conflict_record.created"
@@ -13053,7 +13583,8 @@
           "attorney_only": [
             "reason"
           ],
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13163,7 +13694,8 @@
           "attorney_only": [
             "reason"
           ],
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "conflict_record.updated"
@@ -13297,7 +13829,8 @@
           "attorney_only": [
             "reason"
           ],
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "conflict_record.created"
@@ -13441,7 +13974,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "conflict_check.created"
@@ -13578,7 +14112,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13678,7 +14213,8 @@
           "access_inherits": "matter",
           "attorney_only": [
             "reason"
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13786,7 +14322,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "conflict_check.decided"
@@ -17743,7 +18280,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "matter.updated"
@@ -17870,7 +18408,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "time_entry.updated"
@@ -17998,7 +18537,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "expense.updated"
@@ -18148,7 +18688,8 @@
             "expense": [
               "expenses:write"
             ]
-          }
+          },
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -18315,7 +18856,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "contact.updated"
@@ -18559,7 +19101,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -18662,7 +19205,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -18789,7 +19333,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -18898,7 +19443,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "time_entry.updated"
@@ -19054,7 +19600,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -19168,7 +19715,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -19329,7 +19877,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -19428,7 +19977,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "timer.started"
@@ -19544,7 +20094,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -19654,7 +20205,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -19765,7 +20317,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "time_entry.created"
@@ -19878,7 +20431,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -20097,7 +20651,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20200,7 +20755,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "expense.created"
@@ -20327,7 +20883,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20436,7 +20993,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "expense.updated"
@@ -20592,7 +21150,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20706,7 +21265,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "expense.created"
@@ -20945,6 +21505,7 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
           "client_omitted_fields": [
@@ -21072,6 +21633,7 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClient",
           "staff_schema": "Invoice",
           "client_omitted_fields": [
@@ -21184,7 +21746,8 @@
           "matter_wall": true,
           "client": "shared",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -21348,6 +21911,7 @@
           "client": "shared",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
           "client_schema": "InvoiceClientHistoryEntry",
           "staff_schema": "AuditEntry",
           "client_omitted_fields": [
@@ -21467,7 +22031,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.drafted"
@@ -21595,7 +22160,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "required_status": "draft"
+          "required_status": "draft",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -21724,7 +22290,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.approved"
@@ -21835,7 +22402,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.sent"
@@ -21973,7 +22541,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -22081,7 +22650,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.voided"
@@ -22302,7 +22872,8 @@
             }
           ],
           "below_zero": "posts",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "payment.completed",
@@ -22430,7 +23001,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "invoice.updated"
@@ -22558,7 +23130,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -22780,7 +23353,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -22883,7 +23457,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -23010,7 +23585,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23125,7 +23701,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -23269,7 +23846,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "payment.updated"
@@ -23395,7 +23973,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "payment.reversed"
@@ -23501,7 +24080,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23704,7 +24284,8 @@
             }
           ],
           "below_zero": "posts",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -23869,7 +24450,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24010,7 +24592,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24131,7 +24714,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24263,7 +24847,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24395,7 +24980,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24515,7 +25101,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24645,7 +25232,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24788,7 +25376,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24909,7 +25498,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25051,7 +25641,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25188,7 +25779,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25284,7 +25876,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust_account.created"
@@ -25400,7 +25993,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25505,7 +26099,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust_account.updated"
@@ -25700,7 +26295,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -25734,7 +26330,7 @@
       "post": {
         "operationId": "postTrustEntry",
         "summary": "Post a trust ledger entry",
-        "description": "Appends a deposit, withdrawal, transfer to operating, refund, or adjustment. The bearer scope comes from entry_type_scopes: deposit needs trust:write, and a withdrawal, transfer, refund, or adjustment needs trust:withdraw. A token that holds only trust:write is scope_denied on those four types. A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. Staff may post a deposit. An entry that leaves a negative client balance, per matter or overall, still posts. The core raises a trust flag and emails the admins and the responsible attorney. The balance is never a reason to reject the post.",
+        "description": "Appends a deposit, withdrawal, transfer to operating, refund, or adjustment. The bearer scope comes from entry_type_scopes: deposit needs trust:write, and a withdrawal, transfer, refund, or adjustment needs trust:withdraw. A token that holds only trust:write is scope_denied on those four types. A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. Staff may post a deposit. An adjustment amount is signed: positive credits the client and negative debits the client, with adjustment_direction set to match. An entry that leaves a negative client balance, per matter or overall, still posts. The core raises a trust flag and emails the admins and the responsible attorney. The balance is never a reason to reject the post.",
         "tags": [
           "Trust"
         ],
@@ -25895,7 +26491,8 @@
             }
           ],
           "below_zero": "posts",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.entry_posted",
@@ -26018,7 +26615,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -26228,7 +26826,8 @@
             }
           ],
           "below_zero": "posts",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -26373,7 +26972,8 @@
           "matter_wall": true,
           "client": "deny",
           "below_zero": "posts",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.entry_posted"
@@ -26545,7 +27145,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -26690,7 +27291,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -26789,7 +27391,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -26898,7 +27501,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.flag_resolved"
@@ -27061,7 +27665,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -27160,7 +27765,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -27277,7 +27883,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -27391,7 +27998,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.replenishment_requested"
@@ -27536,7 +28144,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -27647,7 +28256,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -27783,7 +28393,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -27881,7 +28492,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.reconciled"
@@ -27997,7 +28609,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -28110,7 +28723,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "trust.reconciled"
@@ -28344,7 +28958,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -28444,7 +29059,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "calendar_event.created"
@@ -28570,7 +29186,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -28679,7 +29296,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "calendar_event.updated"
@@ -28799,7 +29417,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "calendar_event.deleted"
@@ -28916,7 +29535,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "calendar_event.created"
@@ -29136,7 +29756,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29236,7 +29857,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "deadline.created"
@@ -29362,7 +29984,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29471,7 +30094,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "deadline.updated"
@@ -29604,7 +30228,8 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "deadline.created"
@@ -29740,7 +30365,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29918,7 +30544,8 @@
               "event_on_walled_matter": true,
               "result": "omitted"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30053,7 +30680,8 @@
               "event_on_walled_matter": true,
               "result": "omitted"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -30203,7 +30831,8 @@
               "event_on_walled_matter": true,
               "result": "omitted"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30349,7 +30978,8 @@
               "event_on_walled_matter": true,
               "result": "omitted"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -30705,7 +31335,8 @@
               "result": "not_found"
             }
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30827,7 +31458,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.created",
@@ -30975,7 +31607,8 @@
               "result": "not_found"
             }
           ],
-          "include_scope_pattern": "views:{module_id}.{view}:read"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -31114,7 +31747,8 @@
             "blocked_actors": [
               "doc_tender"
             ]
-          }
+          },
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -31265,7 +31899,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.created"
@@ -31428,6 +32063,7 @@
               "result": "not_found"
             }
           ],
+          "module_delegation": "delegated_viewer",
           "person_lock": {
             "fields": [
               "name",
@@ -31586,7 +32222,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -31732,7 +32369,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -31878,7 +32516,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.trashed"
@@ -32009,7 +32648,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.updated"
@@ -32131,7 +32771,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.purged"
@@ -32308,7 +32949,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32435,7 +33077,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -32610,7 +33253,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32767,7 +33411,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32796,6 +33441,189 @@
             "bearerAuth": []
           }
         ]
+      },
+      "post": {
+        "operationId": "createFileLink",
+        "summary": "Link an attachment",
+        "description": "Creates an attachment link from this file to to_file_id. Both files are authorized. If either file is behind a wall or attorney-only for the caller, the result is not_found. If both files name a matter and the matters differ, the result is matter_mismatch and no link is written. conversion_of and grouped_photo_source cannot be created or edited here. The relationship does not change after create.",
+        "tags": [
+          "Files"
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter file_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileLink"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "files"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff",
+            "client"
+          ],
+          "scopes": [
+            "files:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "file",
+          "attorney_only_files": "not_found",
+          "access_cases": [
+            {
+              "role": "staff",
+              "attorney_only": true,
+              "result": "not_found"
+            },
+            {
+              "role": "attorney",
+              "attorney_only": true,
+              "result": "allowed"
+            },
+            {
+              "role": "staff",
+              "matter_walled": true,
+              "on_wall": false,
+              "result": "not_found"
+            },
+            {
+              "from_visible": false,
+              "to_visible": true,
+              "result": "not_found"
+            },
+            {
+              "from_visible": true,
+              "to_visible": false,
+              "result": "not_found"
+            },
+            {
+              "from_visible": true,
+              "to_visible": true,
+              "same_matter": false,
+              "result": "matter_mismatch"
+            },
+            {
+              "from_visible": true,
+              "to_visible": true,
+              "same_matter": true,
+              "relationship": "attachment",
+              "result": "allowed"
+            },
+            {
+              "relationship": "conversion_of",
+              "result": "validation_failed"
+            }
+          ],
+          "authorizes": "both_files",
+          "relationship_immutable": true,
+          "server_owned_relationships": [
+            "conversion_of",
+            "grouped_photo_source"
+          ],
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [
+          "file.linked"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "createFileLink",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "matter_mismatch",
+          "validation_failed"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FileLinkWrite"
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/files/{file_id}/versions/{version_id}/download": {
@@ -32919,7 +33747,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.downloaded"
@@ -33061,7 +33890,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -33201,7 +34031,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.quarantine_changed"
@@ -33384,7 +34215,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33513,7 +34345,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33614,7 +34447,8 @@
           "public": false,
           "matter_wall": true,
           "client": "shared",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -33730,7 +34564,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33846,7 +34681,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -33977,7 +34813,8 @@
           "public": false,
           "matter_wall": true,
           "client": "shared",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file_upload.staged"
@@ -34115,7 +34952,8 @@
               "contains_quarantined": true,
               "result": "allowed"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.downloaded"
@@ -34270,7 +35108,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -34368,7 +35207,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "folder.created"
@@ -34483,7 +35323,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -34590,7 +35431,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "folder.updated"
@@ -34708,7 +35550,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "folder.deleted"
@@ -34839,7 +35682,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -34962,7 +35806,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.lock_released"
@@ -35092,7 +35937,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -35180,7 +36026,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -35304,7 +36151,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -35432,7 +36280,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.version_created"
@@ -35581,7 +36430,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "file.created"
@@ -35723,7 +36573,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -35820,7 +36671,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "court_profile.created"
@@ -35934,7 +36786,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -36040,7 +36893,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "court_profile.updated"
@@ -36165,7 +37019,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "court_profile.verified"
@@ -36290,7 +37145,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -36385,7 +37241,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "storage_backend.created"
@@ -36497,7 +37354,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -36601,7 +37459,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "storage_backend.updated"
@@ -36725,7 +37584,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -36848,7 +37708,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -36943,7 +37804,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "storage_move.started"
@@ -37055,7 +37917,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37161,7 +38024,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "storage_move.confirmed"
@@ -37326,7 +38190,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37442,7 +38307,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37569,7 +38435,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "doc_tender.published"
@@ -37733,7 +38600,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37848,7 +38716,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37975,7 +38844,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "doc_tender.exception_resolved"
@@ -38109,7 +38979,8 @@
               "on_wall": false,
               "result": "not_found"
             }
-          ]
+          ],
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -38242,7 +39113,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -38337,7 +39209,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "doc_tender.category_updated"
@@ -38451,7 +39324,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -38555,7 +39429,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "doc_tender.category_updated"
@@ -38659,7 +39534,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -38754,7 +39630,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "setting.updated"
@@ -38881,7 +39758,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39103,7 +39981,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39200,7 +40079,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "notification.created"
@@ -39316,7 +40196,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39426,7 +40307,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -39521,7 +40403,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -39766,7 +40649,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39886,7 +40770,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40007,7 +40892,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40127,7 +41013,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40247,7 +41134,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40367,7 +41255,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40488,7 +41377,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40609,7 +41499,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40730,7 +41621,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40850,7 +41742,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40970,7 +41863,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -42560,7 +43454,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -42770,7 +43665,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43125,7 +44021,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43335,7 +44232,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43699,7 +44597,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43792,7 +44691,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "not_found"
+          "client": "not_found",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43884,7 +44784,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "not_found"
+          "client": "not_found",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -44171,7 +45072,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -44747,7 +45649,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -44845,7 +45748,8 @@
           "public": false,
           "matter_wall": true,
           "client": "deny",
-          "access_inherits": "matter"
+          "access_inherits": "matter",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -44976,7 +45880,8 @@
           "client": "deny",
           "access_inherits": "matter",
           "batch_authorization": "all_or_nothing",
-          "inaccessible_result": "not_found"
+          "inaccessible_result": "not_found",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": true,
@@ -46422,7 +47327,8 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
           "ai.call_completed"
@@ -51934,7 +52840,9 @@
               "use_provider_endpoint",
               "setting_locked",
               "scope_denied",
-              "field_locked"
+              "field_locked",
+              "matter_mismatch",
+              "duplicate_email"
             ]
           },
           "detail": {
@@ -55243,155 +56151,342 @@
         ]
       },
       "TrustEntry": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "UTC timestamp."
-          },
-          "created_by": {
-            "type": "string",
-            "format": "uuid",
-            "description": "User who created the row, or the nil id for System."
-          },
-          "trust_account_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "client_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "entry_type": {
-            "type": "string",
-            "enum": [
-              "deposit",
-              "withdrawal",
-              "transfer_to_operating",
-              "refund",
-              "adjustment"
-            ]
-          },
-          "amount_cents": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Positive amount. Direction comes from entry_type."
-          },
-          "method": {
-            "type": "string",
-            "enum": [
-              "cash",
-              "check",
-              "card",
-              "ach",
-              "internal_transfer",
-              "other"
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "reverses_entry_id": {
-            "anyOf": [
-              {
+        "description": "Append-only ledger row. Deposit, withdrawal, transfer, and refund amounts are zero or greater. An adjustment amount is signed: positive credits the client and negative debits the client. A debit that leaves a negative balance still posts and raises a flag.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
                 "type": "string",
                 "format": "uuid",
                 "description": "UUIDv7."
               },
-              {
-                "type": "null"
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "created_by": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User who posted the row."
+              },
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "type": "string",
+                "enum": [
+                  "deposit",
+                  "withdrawal",
+                  "transfer_to_operating",
+                  "refund"
+                ]
+              },
+              "amount_cents": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero or greater. Direction comes from entry_type, not from the sign."
               }
+            },
+            "required": [
+              "id",
+              "created_at",
+              "created_by",
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "UTC timestamp."
+              },
+              "created_by": {
+                "type": "string",
+                "format": "uuid",
+                "description": "User who posted the row."
+              },
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "const": "adjustment"
+              },
+              "amount_cents": {
+                "type": "integer",
+                "not": {
+                  "const": 0
+                },
+                "description": "Signed cents. Positive credits the client. Negative debits the client."
+              },
+              "adjustment_direction": {
+                "type": "string",
+                "enum": [
+                  "credit",
+                  "debit"
+                ],
+                "description": "credit matches a positive amount. debit matches a negative amount."
+              }
+            },
+            "required": [
+              "id",
+              "created_at",
+              "created_by",
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description",
+              "adjustment_direction"
             ]
           }
-        },
-        "required": [
-          "id",
-          "created_at",
-          "created_by",
-          "trust_account_id",
-          "client_id",
-          "matter_id",
-          "entry_type",
-          "amount_cents",
-          "method",
-          "description"
-        ],
-        "description": "Append-only trust ledger row. No update and no delete exist."
+        ]
       },
       "TrustEntryWrite": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "trust_account_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "client_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "entry_type": {
-            "type": "string",
-            "enum": [
-              "deposit",
-              "withdrawal",
-              "transfer_to_operating",
-              "refund",
-              "adjustment"
+        "description": "Posts one append-only row. Non-adjustment amounts are nonnegative. An adjustment requires adjustment_direction and a signed amount_cents.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "type": "string",
+                "enum": [
+                  "deposit",
+                  "withdrawal",
+                  "transfer_to_operating",
+                  "refund"
+                ]
+              },
+              "amount_cents": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero or greater. Direction comes from entry_type, not from the sign."
+              }
+            },
+            "required": [
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description"
             ]
           },
-          "amount_cents": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Integer cents, zero or greater."
-          },
-          "method": {
-            "type": "string",
-            "enum": [
-              "cash",
-              "check",
-              "card",
-              "ach",
-              "internal_transfer",
-              "other"
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "const": "adjustment"
+              },
+              "amount_cents": {
+                "type": "integer",
+                "not": {
+                  "const": 0
+                },
+                "description": "Signed cents. Positive credits the client. Negative debits the client."
+              },
+              "adjustment_direction": {
+                "type": "string",
+                "enum": [
+                  "credit",
+                  "debit"
+                ],
+                "description": "credit matches a positive amount. debit matches a negative amount."
+              }
+            },
+            "required": [
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description",
+              "adjustment_direction"
             ]
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1
           }
-        },
-        "required": [
-          "trust_account_id",
-          "client_id",
-          "matter_id",
-          "entry_type",
-          "amount_cents",
-          "method",
-          "description"
-        ],
-        "description": "Posts a ledger entry. A negative resulting balance still posts and raises a flag."
+        ]
       },
       "TrustPostResult": {
         "type": "object",
@@ -57088,7 +58183,26 @@
           "to_file_id",
           "relationship"
         ],
-        "description": "A typed link. conversion_of: to_file was converted from from_file. grouped_photo_source: from_file is a photo in the grouped to_file. attachment: to_file is attached to from_file. A caller who cannot read either file does not receive the link."
+        "description": "A typed link. conversion_of: to_file was converted from from_file. grouped_photo_source: from_file is a photo in the grouped to_file. attachment: to_file is attached to from_file. A caller who cannot read either file does not receive the link. The relationship does not change after create."
+      },
+      "FileLinkWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "to_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "relationship": {
+            "const": "attachment"
+          }
+        },
+        "required": [
+          "to_file_id",
+          "relationship"
+        ],
+        "description": "Creates an attachment link only. conversion_of and grouped_photo_source are produced by conversion and Doc Tender and are rejected here."
       },
       "ConversionResult": {
         "type": "object",
@@ -58570,7 +59684,53 @@
             ]
           }
         },
-        "description": "Fields the signed-in user may change. roles, email, and linked_contact_id are absent, so additionalProperties false rejects them."
+        "description": "Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange."
+      },
+      "EmailChangeRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "description": "The address the caller wants. It is not saved until confirmEmailChange."
+      },
+      "EmailChangePending": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "const": "verification_sent"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "status",
+          "email"
+        ],
+        "description": "A verification message was sent to the new address. The current email is unchanged."
+      },
+      "EmailChangeConfirm": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "description": "Token from the verification message. It changes only the caller's email."
       },
       "Session": {
         "type": "object",
@@ -64023,56 +65183,156 @@
         "description": "TrustAccountWrite Patch: every field is optional."
       },
       "TrustEntryWritePatch": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "trust_account_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "client_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "matter_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": "UUIDv7."
-          },
-          "entry_type": {
-            "type": "string",
-            "enum": [
-              "deposit",
-              "withdrawal",
-              "transfer_to_operating",
-              "refund",
-              "adjustment"
+        "description": "Posts one append-only row. Non-adjustment amounts are nonnegative. An adjustment requires adjustment_direction and a signed amount_cents. Patch: every field is optional.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "type": "string",
+                "enum": [
+                  "deposit",
+                  "withdrawal",
+                  "transfer_to_operating",
+                  "refund"
+                ]
+              },
+              "amount_cents": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Zero or greater. Direction comes from entry_type, not from the sign."
+              }
+            },
+            "required": [
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description"
             ]
           },
-          "amount_cents": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Integer cents, zero or greater."
-          },
-          "method": {
-            "type": "string",
-            "enum": [
-              "cash",
-              "check",
-              "card",
-              "ach",
-              "internal_transfer",
-              "other"
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "trust_account_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "client_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "matter_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "cash",
+                  "check",
+                  "card",
+                  "ach",
+                  "internal_transfer",
+                  "other"
+                ]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reverses_entry_id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "UUIDv7."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_type": {
+                "const": "adjustment"
+              },
+              "amount_cents": {
+                "type": "integer",
+                "not": {
+                  "const": 0
+                },
+                "description": "Signed cents. Positive credits the client. Negative debits the client."
+              },
+              "adjustment_direction": {
+                "type": "string",
+                "enum": [
+                  "credit",
+                  "debit"
+                ],
+                "description": "credit matches a positive amount. debit matches a negative amount."
+              }
+            },
+            "required": [
+              "trust_account_id",
+              "client_id",
+              "matter_id",
+              "entry_type",
+              "amount_cents",
+              "method",
+              "description",
+              "adjustment_direction"
             ]
-          },
-          "description": {
-            "type": "string",
-            "minLength": 1
           }
-        },
-        "description": "Posts a ledger entry. A negative resulting balance still posts and raises a flag. Patch: every field is optional."
+        ]
       },
       "TrustReplenishmentWritePatch": {
         "type": "object",
@@ -64367,6 +65627,21 @@
         },
         "description": "Metadata a person may edit without a new file version. Doc Tender still cannot replace a person-locked name, category, matter, or grouping. Name stays on the rename method. Folder stays on the move method. Patch: every field is optional."
       },
+      "FileLinkWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "to_file_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "relationship": {
+            "const": "attachment"
+          }
+        },
+        "description": "Creates an attachment link only. conversion_of and grouped_photo_source are produced by conversion and Doc Tender and are rejected here. Patch: every field is optional."
+      },
       "QuarantineWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -64602,7 +65877,7 @@
             ]
           }
         },
-        "description": "Fields the signed-in user may change. roles, email, and linked_contact_id are absent, so additionalProperties false rejects them. Patch: every field is optional."
+        "description": "Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange. Patch: every field is optional."
       },
       "ApiTokenWritePatch": {
         "type": "object",
@@ -65223,6 +66498,91 @@
     "auth": [
       "session_cookie",
       "bearer_token"
+    ]
+  },
+  "x-togavsu-module-delegation": {
+    "mode": "delegated_viewer",
+    "context_header": "X-Togavsu-Context-Token",
+    "context_required_for_actor": "module",
+    "intersection": [
+      "approved_scopes",
+      "viewer_role",
+      "matter_wall",
+      "attorney_only",
+      "client_shared"
+    ],
+    "scope_bypasses_wall": false,
+    "scope_bypasses_viewer_role": false,
+    "grants_admin": false,
+    "viewer_mismatch": "forbidden",
+    "missing_context": "forbidden",
+    "cases": [
+      {
+        "operation_scope": "ai:use",
+        "module_scopes": [
+          "ai:use"
+        ],
+        "viewer_role": "staff",
+        "result": "allowed"
+      },
+      {
+        "operation_scope": "ai:use",
+        "module_scopes": [
+          "files:read"
+        ],
+        "viewer_role": "admin",
+        "result": "scope_denied"
+      },
+      {
+        "operation_scope": "matters:read",
+        "module_scopes": [
+          "matters:read"
+        ],
+        "viewer_role": "staff",
+        "matter_walled": true,
+        "on_wall": false,
+        "result": "not_found"
+      },
+      {
+        "operation_scope": "matters:read",
+        "module_scopes": [
+          "matters:read"
+        ],
+        "viewer_role": "staff",
+        "matter_walled": true,
+        "on_wall": true,
+        "result": "allowed"
+      },
+      {
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "viewer_role": "client",
+        "attorney_only": true,
+        "result": "not_found"
+      },
+      {
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "viewer_role": "client",
+        "attorney_only": false,
+        "shared_with_client": true,
+        "result": "allowed"
+      },
+      {
+        "operation_scope": "files:write",
+        "module_scopes": [
+          "files:write"
+        ],
+        "viewer_role": "staff",
+        "operation_roles": [
+          "admin"
+        ],
+        "result": "forbidden"
+      }
     ]
   },
   "x-togavsu-settings": [

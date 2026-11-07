@@ -23,6 +23,8 @@ It does not claim the handlers or the MCP server are implemented.
 | auth | `POST` | `/api/v1/auth/password-resets/confirm` | `confirmPasswordReset` | required:confirmPasswordReset | public | none |
 | profile | `GET` | `/api/v1/me` | `getMe` | required:getMe | admin, attorney, staff, accountant, client | profile:read |
 | profile | `PATCH` | `/api/v1/me` | `updateMe` | required:updateMe | admin, attorney, staff, accountant, client | profile:write |
+| profile | `POST` | `/api/v1/me/email-change` | `requestEmailChange` | required:requestEmailChange | admin, attorney, staff, accountant, client | profile:write |
+| profile | `POST` | `/api/v1/me/email-change/confirm` | `confirmEmailChange` | required:confirmEmailChange | admin, attorney, staff, accountant, client | profile:write |
 | profile | `POST` | `/api/v1/me/password` | `changePassword` | required:changePassword | admin, attorney, staff, accountant, client | profile:write |
 | auth | `POST` | `/api/v1/me/totp/reset` | `resetTotp` | required:resetTotp | admin, attorney, staff, accountant, client | profile:write |
 | auth | `POST` | `/api/v1/me/recovery-codes` | `regenerateRecoveryCodes` | required:regenerateRecoveryCodes | admin, attorney, staff, accountant, client | profile:write |
@@ -264,6 +266,7 @@ It does not claim the handlers or the MCP server are implemented.
 | file-versions, file-uploads | `POST` | `/api/v1/files/{file_id}/versions` | `addFileVersion` | required:addFileVersion | admin, attorney, staff | files:write |
 | files, edit-history | `GET` | `/api/v1/files/{file_id}/history` | `historyFile` | required:historyFile | admin, attorney, staff, accountant, client | files:read |
 | files, conversions | `GET` | `/api/v1/files/{file_id}/links` | `listFileLinks` | required:listFileLinks | admin, attorney, staff, accountant, client | files:read |
+| files | `POST` | `/api/v1/files/{file_id}/links` | `createFileLink` | required:createFileLink | admin, attorney, staff, client | files:write |
 | file-versions, quarantine | `GET` | `/api/v1/files/{file_id}/versions/{version_id}/download` | `downloadFileVersion` | required:downloadFileVersion | admin, attorney, staff, accountant, client | files:read |
 | file-versions | `POST` | `/api/v1/files/{file_id}/versions/{version_id}/restore` | `restoreFileVersion` | required:restoreFileVersion | admin, attorney, staff | files:write |
 | quarantine | `POST` | `/api/v1/files/{file_id}/versions/{version_id}/quarantine` | `quarantineFileVersion` | required:quarantineFileVersion | admin, attorney, staff | files:write |
@@ -426,4 +429,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 420.
+Operations: 423.

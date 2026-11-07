@@ -426,6 +426,80 @@
       }
     },
     {
+      "name": "requestEmailChange",
+      "method": "POST",
+      "path": "/api/v1/me/email-change",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "confirmEmailChange",
+      "method": "POST",
+      "path": "/api/v1/me/email-change/confirm",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
       "name": "changePassword",
       "method": "POST",
       "path": "/api/v1/me/password",
@@ -8237,6 +8311,42 @@
         "arguments": [
           "path",
           "query"
+        ]
+      }
+    },
+    {
+      "name": "createFileLink",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/links",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
         ]
       }
     },

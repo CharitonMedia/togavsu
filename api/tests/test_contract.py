@@ -1087,6 +1087,109 @@ class ContractTest(unittest.TestCase):
         with self.assertRaises(Exception):
             Draft202012Validator(document).validate(incomplete)
 
+    def test_module_delegation_does_not_escalate_the_viewer(self):
+        policy = self.spec["x-togavsu-module-delegation"]
+        self.assertFalse(policy["scope_bypasses_wall"])
+        self.assertFalse(policy["scope_bypasses_viewer_role"])
+        self.assertFalse(policy["grants_admin"])
+        self.assertEqual(policy["context_header"], "X-Togavsu-Context-Token")
+        for operation_id in (
+            "createAiCall",
+            "getMatter",
+            "listMatter",
+            "updateFileMetadata",
+            "publishFile",
+            "downloadFileVersion",
+            "createNote",
+            "createTimeEntry",
+            "createEvent",
+            "runEditor",
+            "postTrustEntry",
+        ):
+            self.assertEqual(
+                _operation(self.spec, operation_id)["x-togavsu-access"]["module_delegation"],
+                "delegated_viewer",
+                operation_id,
+            )
+        for operation_id in ("updateSetting", "listAuditLog", "createUser", "listApiToken", "updateMe", "requestEmailChange"):
+            self.assertNotEqual(
+                _operation(self.spec, operation_id)["x-togavsu-access"].get("module_delegation"),
+                "delegated_viewer",
+                operation_id,
+            )
+        for case in policy["cases"]:
+            self.assertEqual(_delegation_result(case), case["result"], case)
+
+    def test_api_token_reads_are_self_or_admin(self):
+        for operation_id in ("listApiToken", "getApiToken", "createApiToken", "revokeApiToken"):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertEqual(access["owner"], "self_or_admin", operation_id)
+            self.assertEqual(access["client"], "own", operation_id)
+            self.assertFalse(access["secret_on_read"], operation_id)
+        self.assertNotIn("secret", self.spec["components"]["schemas"]["ApiToken"]["properties"])
+        self.assertIn("secret", self.spec["components"]["schemas"]["ApiTokenCreated"]["properties"])
+        cases = {
+            (case["action"], case["role"], case["owner"]): case["result"]
+            for case in _operation(self.spec, "listApiToken")["x-togavsu-access"]["access_cases"]
+        }
+        self.assertEqual(cases[("read", "client", "self")], "allowed")
+        self.assertEqual(cases[("read", "client", "other_user")], "not_found")
+        self.assertEqual(cases[("read", "staff", "other_user")], "not_found")
+        self.assertEqual(cases[("read", "admin", "other_user")], "allowed")
+
+    def test_trust_adjustment_credit_and_debit(self):
+        from jsonschema import Draft202012Validator
+
+        write = self.spec["components"]["schemas"]["TrustEntryWrite"]
+        read = self.spec["components"]["schemas"]["TrustEntry"]
+        credit = _adjustment_body(5000, "credit")
+        debit = _adjustment_body(-5000, "debit")
+        Draft202012Validator(write).validate(credit)
+        Draft202012Validator(write).validate(debit)
+        Draft202012Validator(read).validate(_adjustment_row(credit))
+        Draft202012Validator(read).validate(_adjustment_row(debit))
+        deposit = dict(credit)
+        deposit["entry_type"] = "deposit"
+        deposit["amount_cents"] = -1
+        deposit.pop("adjustment_direction")
+        with self.assertRaises(Exception):
+            Draft202012Validator(write).validate(deposit)
+        missing_direction = dict(credit)
+        del missing_direction["adjustment_direction"]
+        with self.assertRaises(Exception):
+            Draft202012Validator(write).validate(missing_direction)
+        post = _operation(self.spec, "postTrustEntry")
+        self.assertEqual(post["x-togavsu-access"]["below_zero"], "posts")
+        self.assertNotIn("put", self.spec["paths"]["/api/v1/trust-ledger"])
+        self.assertNotIn("delete", self.spec["paths"]["/api/v1/trust-ledger"])
+
+    def test_attachment_link_authorizes_both_files(self):
+        operation = _operation(self.spec, "createFileLink")
+        self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(operation["x-togavsu-access"]["authorizes"], "both_files")
+        self.assertTrue(operation["x-togavsu-access"]["relationship_immutable"])
+        link = self.spec["components"]["schemas"]["FileLinkWrite"]
+        self.assertEqual(link["properties"]["relationship"]["const"], "attachment")
+        cases = {(case.get("result")) for case in operation["x-togavsu-access"]["access_cases"]}
+        self.assertIn("not_found", cases)
+        self.assertIn("matter_mismatch", cases)
+        self.assertIn("validation_failed", cases)
+        self.assertIn("allowed", cases)
+        hidden = [case for case in operation["x-togavsu-access"]["access_cases"] if case.get("to_visible") is False]
+        self.assertEqual(hidden[0]["result"], "not_found")
+
+    def test_verified_email_change_keeps_privileged_fields_rejected(self):
+        request = _operation(self.spec, "requestEmailChange")
+        confirm = _operation(self.spec, "confirmEmailChange")
+        self.assertEqual(request["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(confirm["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(request["x-togavsu-access"]["client"], "own")
+        self.assertEqual(confirm["x-togavsu-access"]["client"], "own")
+        self.assertIn("duplicate_email", request["x-togavsu-error-codes"])
+        self.assertEqual(_schema_name(request), "EmailChangeRequest")
+        self.assertIn("email", _operation(self.spec, "updateMe")["x-togavsu-access"]["rejected_fields"])
+        self.assertNotIn("email", self.spec["components"]["schemas"]["MeProfileWrite"]["properties"])
+
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]
         self.assertIn("/v1/operator/listings/{listing_id}/flag", paths)
@@ -1110,6 +1213,42 @@ def _schema_name(node: dict) -> str:
 
 def _schema_name_from_page(operation: dict) -> str:
     return operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["items"]["$ref"].rsplit("/", 1)[1]
+
+
+def _delegation_result(case: dict) -> str:
+    scopes = case["module_scopes"]
+    needed = case["operation_scope"]
+    if needed not in scopes:
+        return "scope_denied"
+    if case.get("operation_roles") and case["viewer_role"] not in case["operation_roles"]:
+        return "forbidden"
+    if case.get("attorney_only") and case["viewer_role"] == "client":
+        return "not_found"
+    if case.get("matter_walled") and not case.get("on_wall"):
+        return "not_found"
+    return "allowed"
+
+
+def _adjustment_body(amount: int, direction: str) -> dict:
+    return {
+        "trust_account_id": "018f1a00-7b3c-7d4e-8a11-111111111111",
+        "client_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+        "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+        "entry_type": "adjustment",
+        "amount_cents": amount,
+        "adjustment_direction": direction,
+        "method": "check",
+        "description": "Paper adjustment",
+    }
+
+
+def _adjustment_row(body: dict) -> dict:
+    return {
+        "id": "018f1a00-7b3c-7d4e-8a11-444444444444",
+        "created_at": "2026-11-07T12:00:00Z",
+        "created_by": "018f1a00-7b3c-7d4e-8a11-555555555555",
+        **body,
+    }
 
 
 def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type: str) -> str:

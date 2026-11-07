@@ -39,7 +39,46 @@ PROBLEM_CODES = [
     "setting_locked",
     "scope_denied",
     "field_locked",
+    "matter_mismatch",
+    "duplicate_email",
 ]
+
+
+def _trust_entry_schema(*, read: bool, adjustment: bool) -> dict:
+    non_adjust = ["deposit", "withdrawal", "transfer_to_operating", "refund"]
+    properties = {
+        "trust_account_id": _uuid(),
+        "client_id": _uuid(),
+        "matter_id": _uuid(),
+        "method": _PAY_METHOD,
+        "description": {"type": "string", "minLength": 1} if not read else {"type": "string"},
+        "reverses_entry_id": _null(_uuid()),
+    }
+    required = ["trust_account_id", "client_id", "matter_id", "entry_type", "amount_cents", "method", "description"]
+    if adjustment:
+        properties["entry_type"] = {"const": "adjustment"}
+        properties["amount_cents"] = {
+            "type": "integer",
+            "not": {"const": 0},
+            "description": "Signed cents. Positive credits the client. Negative debits the client.",
+        }
+        properties["adjustment_direction"] = _enum(
+            ["credit", "debit"],
+            "credit matches a positive amount. debit matches a negative amount.",
+        )
+        required.append("adjustment_direction")
+    else:
+        properties["entry_type"] = _enum(non_adjust)
+        properties["amount_cents"] = _cents("Zero or greater. Direction comes from entry_type, not from the sign.")
+    if read:
+        properties = {
+            "id": _uuid(),
+            "created_at": _dt(),
+            "created_by": _uuid("User who posted the row."),
+            **properties,
+        }
+        required = ["id", "created_at", "created_by", *required]
+    return _obj(properties, required)
 
 
 def _obj(properties: dict, required: list[str] | None = None, description: str = "") -> dict:
@@ -793,34 +832,20 @@ SCHEMAS = _register(
             },
             ["bank", "name", "last_four"],
         ),
-        "TrustEntry": _meta(
-            {
-                "trust_account_id": _uuid(),
-                "client_id": _uuid(),
-                "matter_id": _uuid(),
-                "entry_type": _TRUST_TYPE,
-                "amount_cents": _cents("Positive amount. Direction comes from entry_type."),
-                "method": _PAY_METHOD,
-                "description": {"type": "string"},
-                "reverses_entry_id": _null(_uuid()),
-            },
-            ["trust_account_id", "client_id", "matter_id", "entry_type", "amount_cents", "method", "description"],
-            "Append-only trust ledger row. No update and no delete exist.",
-            mutable=False,
-        ),
-        "TrustEntryWrite": _obj(
-            {
-                "trust_account_id": _uuid(),
-                "client_id": _uuid(),
-                "matter_id": _uuid(),
-                "entry_type": _TRUST_TYPE,
-                "amount_cents": _cents(),
-                "method": _PAY_METHOD,
-                "description": {"type": "string", "minLength": 1},
-            },
-            ["trust_account_id", "client_id", "matter_id", "entry_type", "amount_cents", "method", "description"],
-            "Posts a ledger entry. A negative resulting balance still posts and raises a flag.",
-        ),
+        "TrustEntry": {
+            "description": "Append-only ledger row. Deposit, withdrawal, transfer, and refund amounts are zero or greater. An adjustment amount is signed: positive credits the client and negative debits the client. A debit that leaves a negative balance still posts and raises a flag.",
+            "oneOf": [
+                _trust_entry_schema(read=True, adjustment=False),
+                _trust_entry_schema(read=True, adjustment=True),
+            ],
+        },
+        "TrustEntryWrite": {
+            "description": "Posts one append-only row. Non-adjustment amounts are nonnegative. An adjustment requires adjustment_direction and a signed amount_cents.",
+            "oneOf": [
+                _trust_entry_schema(read=False, adjustment=False),
+                _trust_entry_schema(read=False, adjustment=True),
+            ],
+        },
         "TrustPostResult": _obj(
             {
                 "entry": _ref("TrustEntry"),
@@ -1147,8 +1172,16 @@ SCHEMAS = _register(
                 "relationship": _enum(["conversion_of", "grouped_photo_source", "attachment"]),
             },
             ["from_file_id", "to_file_id", "relationship"],
-            "A typed link. conversion_of: to_file was converted from from_file. grouped_photo_source: from_file is a photo in the grouped to_file. attachment: to_file is attached to from_file. A caller who cannot read either file does not receive the link.",
+            "A typed link. conversion_of: to_file was converted from from_file. grouped_photo_source: from_file is a photo in the grouped to_file. attachment: to_file is attached to from_file. A caller who cannot read either file does not receive the link. The relationship does not change after create.",
             mutable=False,
+        ),
+        "FileLinkWrite": _obj(
+            {
+                "to_file_id": _uuid(),
+                "relationship": {"const": "attachment"},
+            },
+            ["to_file_id", "relationship"],
+            "Creates an attachment link only. conversion_of and grouped_photo_source are produced by conversion and Doc Tender and are rejected here.",
         ),
         "ConversionResult": _obj(
             {"file": _ref("File"), "link": _ref("FileLink")},
@@ -1459,7 +1492,22 @@ SCHEMAS = _register(
                 "initials": {"type": "string"},
                 "profile_file_id": _null(_uuid("Profile picture file record.")),
             },
-            description="Fields the signed-in user may change. roles, email, and linked_contact_id are absent, so additionalProperties false rejects them.",
+            description="Fields the signed-in user may change on PATCH /api/v1/me. roles, email, and linked_contact_id are absent. Email changes use requestEmailChange and confirmEmailChange.",
+        ),
+        "EmailChangeRequest": _obj(
+            {"email": {"type": "string", "format": "email"}},
+            ["email"],
+            "The address the caller wants. It is not saved until confirmEmailChange.",
+        ),
+        "EmailChangePending": _obj(
+            {"status": {"const": "verification_sent"}, "email": {"type": "string", "format": "email"}},
+            ["status", "email"],
+            "A verification message was sent to the new address. The current email is unchanged.",
+        ),
+        "EmailChangeConfirm": _obj(
+            {"token": {"type": "string", "minLength": 1}},
+            ["token"],
+            "Token from the verification message. It changes only the caller's email.",
         ),
         "Session": _obj(
             {"id": _uuid(), "user_id": _uuid(), "created_at": _dt(), "expires_at": _dt(), "current": {"type": "boolean"}},

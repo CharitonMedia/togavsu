@@ -68,6 +68,29 @@ MODULE_HELP = {
     },
 }
 OWN = {"client": "own"}
+TOKEN_OWNERSHIP = {
+    "client": "own",
+    "owner": "self_or_admin",
+    "secret_on_read": False,
+    "access_cases": [
+        {"action": "read", "role": "client", "owner": "self", "result": "allowed"},
+        {"action": "read", "role": "client", "owner": "other_user", "result": "not_found"},
+        {"action": "read", "role": "staff", "owner": "other_user", "result": "not_found"},
+        {"action": "read", "role": "staff", "owner": "self", "result": "allowed"},
+        {"action": "read", "role": "admin", "owner": "other_user", "result": "allowed"},
+        {"action": "revoke", "role": "staff", "owner": "other_user", "result": "not_found"},
+        {"action": "create", "role": "client", "owner": "other_user", "result": "forbidden"},
+    ],
+}
+SESSION_OWNERSHIP = {
+    "client": "own",
+    "owner": "self_or_admin",
+    "access_cases": [
+        {"role": "staff", "owner": "other_user", "result": "not_found"},
+        {"role": "client", "owner": "self", "result": "allowed"},
+        {"role": "admin", "owner": "other_user", "result": "allowed"},
+    ],
+}
 
 ENTRY_TYPE_SCOPES = {
     "deposit": ["trust:write"],
@@ -428,6 +451,45 @@ def _identity(api: Contract) -> None:
     )
     api.add(
         "post",
+        "/api/v1/me/email-change",
+        operation_id="requestEmailChange",
+        summary="Request an email change",
+        description=(
+            "Starts a verified change of the caller's own email. The address is not saved yet. "
+            "A verification message goes to the new address. "
+            "An address that belongs to another user returns duplicate_email. "
+            "roles and linked_contact_id remain rejected on updateMe."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=ANY,
+        scopes=["profile:write"],
+        body="EmailChangeRequest",
+        response="EmailChangePending",
+        error_codes=["duplicate_email"],
+        extra_access=OWN,
+    )
+    api.add(
+        "post",
+        "/api/v1/me/email-change/confirm",
+        operation_id="confirmEmailChange",
+        summary="Confirm an email change",
+        description=(
+            "Consumes the verification token and sets only the caller's email. "
+            "A token issued for another user is forbidden. "
+            "Until this call succeeds, getMe still returns the previous email."
+        ),
+        tag="Identity",
+        features=["profile"],
+        roles=ANY,
+        scopes=["profile:write"],
+        body="EmailChangeConfirm",
+        response="User",
+        events=["user.updated"],
+        extra_access={**OWN, "email_uniqueness": "confirmed_address"},
+    )
+    api.add(
+        "post",
         "/api/v1/me/password",
         operation_id="changePassword",
         summary="Change password",
@@ -567,7 +629,7 @@ def _identity(api: Contract) -> None:
         paginate=True,
         query=["user_id"],
         writes=False,
-        extra_access=OWN,
+        extra_access=SESSION_OWNERSHIP,
     )
     api.add(
         "delete",
@@ -581,7 +643,7 @@ def _identity(api: Contract) -> None:
         scopes=["sessions:write"],
         success="204",
         response_content={},
-        extra_access=OWN,
+        extra_access=SESSION_OWNERSHIP,
     )
     api.resource(
         collection="/api/v1/users",
@@ -629,6 +691,7 @@ def _identity(api: Contract) -> None:
         create=False,
         update=False,
         extra_features=["profile"],
+        extra_access=TOKEN_OWNERSHIP,
     )
     api.add(
         "post",
@@ -643,7 +706,7 @@ def _identity(api: Contract) -> None:
         body="ApiTokenWrite",
         response="ApiTokenCreated",
         success="201",
-        extra_access=OWN,
+        extra_access=TOKEN_OWNERSHIP,
     )
     api.add(
         "delete",
@@ -657,7 +720,7 @@ def _identity(api: Contract) -> None:
         scopes=["tokens:write"],
         success="204",
         response_content={},
-        extra_access=OWN,
+        extra_access=TOKEN_OWNERSHIP,
     )
 
 
@@ -1615,6 +1678,7 @@ def _trust(api: Contract) -> None:
             "A token that holds only trust:write is scope_denied on those four types. "
             "A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. "
             "Staff may post a deposit. "
+            "An adjustment amount is signed: positive credits the client and negative debits the client, with adjustment_direction set to match. "
             "An entry that leaves a negative client balance, per matter or overall, still posts. "
             "The core raises a trust flag and emails the admins and the responsible attorney. "
             "The balance is never a reason to reject the post."
@@ -2094,6 +2158,40 @@ def _files(api: Contract) -> None:
         paginate=True,
         writes=False,
         extra_access=SHARED,
+    )
+    api.add(
+        "post",
+        "/api/v1/files/{file_id}/links",
+        operation_id="createFileLink",
+        summary="Link an attachment",
+        description=(
+            "Creates an attachment link from this file to to_file_id. "
+            "Both files are authorized. If either file is behind a wall or attorney-only for the caller, the result is not_found. "
+            "If both files name a matter and the matters differ, the result is matter_mismatch and no link is written. "
+            "conversion_of and grouped_photo_source cannot be created or edited here. The relationship does not change after create."
+        ),
+        tag="Files",
+        features=["files"],
+        roles=STAFF + ["client"],
+        scopes=["files:write"],
+        body="FileLinkWrite",
+        response="FileLink",
+        success="201",
+        events=["file.linked"],
+        error_codes=["matter_mismatch", "validation_failed"],
+        extra_access={
+            **FILE_WALL,
+            "authorizes": "both_files",
+            "relationship_immutable": True,
+            "server_owned_relationships": ["conversion_of", "grouped_photo_source"],
+            "access_cases": FILE_ACCESS_CASES + [
+                {"from_visible": False, "to_visible": True, "result": "not_found"},
+                {"from_visible": True, "to_visible": False, "result": "not_found"},
+                {"from_visible": True, "to_visible": True, "same_matter": False, "result": "matter_mismatch"},
+                {"from_visible": True, "to_visible": True, "same_matter": True, "relationship": "attachment", "result": "allowed"},
+                {"relationship": "conversion_of", "result": "validation_failed"},
+            ],
+        },
     )
     api.add(
         "get",

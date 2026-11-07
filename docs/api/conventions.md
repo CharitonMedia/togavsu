@@ -27,7 +27,9 @@ A person with `files:write` may still rename a file or correct category and matt
 
 Module help writes accept the module's own `help:write` token for its heading. That token is not an admin. A human session is forbidden on those three writes.
 
-A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` posts a deposit. A withdrawal, transfer to operating, refund, or adjustment needs `trust:withdraw`. A deposit-only token is `scope_denied` on those types, including inside a bulk batch, and the batch writes nothing. Role checks still apply.
+A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` posts a deposit. A withdrawal, transfer to operating, refund, or adjustment needs `trust:withdraw`. A deposit-only token is `scope_denied` on those types, including inside a bulk batch, and the batch writes nothing. Role checks still apply. An adjustment amount is signed cents: positive credits the client and negative debits the client. Other entry types stay zero or greater.
+
+A module token calls a core operation only when `module_delegation` is `delegated_viewer` and the module's approved scopes include that operation. The call also carries `X-Togavsu-Context-Token` for the viewer. The result is the intersection of the module scope, the viewer's role, and that viewer's walls. A scope does not open a walled matter or an attorney-only file the viewer cannot see, and it does not make the module an admin.
 
 Replaceable domains are time, trust, and calendar (`x-togavsu-replaceable-domain`). Switching the handler does not change these paths. Core rows stay readable. A trust module still posts a below-zero entry and raises `trust.flag_raised`.
 

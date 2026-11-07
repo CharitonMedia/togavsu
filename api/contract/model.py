@@ -13,6 +13,111 @@ from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
 PUBLIC_SECURITY: list = []
 AUTH_SECURITY = [{"sessionCookie": []}, {"bearerAuth": []}]
 
+# Scopes a module manifest may be granted for core records and AI.
+# Profile, token, settings, user, backup, update, and module-admin scopes are not delegated.
+DELEGABLE_SCOPES = {
+    "contacts:read",
+    "contacts:write",
+    "matters:read",
+    "matters:write",
+    "notes:read",
+    "notes:write",
+    "files:read",
+    "files:write",
+    "time:read",
+    "time:write",
+    "expenses:read",
+    "expenses:write",
+    "invoices:read",
+    "invoices:write",
+    "invoices:approve",
+    "invoices:send",
+    "payments:read",
+    "payments:write",
+    "trust:read",
+    "trust:write",
+    "trust:withdraw",
+    "calendar:read",
+    "calendar:write",
+    "deadlines:read",
+    "deadlines:write",
+    "conflicts:read",
+    "conflicts:write",
+    "conflicts:decide",
+    "editor:run",
+    "doc_tender:read",
+    "doc_tender:write",
+    "ai:use",
+    "events:read",
+    "events:write",
+    "notifications:read",
+    "notifications:write",
+    "search:use",
+    "reports:read",
+    "help:read",
+}
+
+MODULE_DELEGATION_POLICY = {
+    "mode": "delegated_viewer",
+    "context_header": "X-Togavsu-Context-Token",
+    "context_required_for_actor": "module",
+    "intersection": ["approved_scopes", "viewer_role", "matter_wall", "attorney_only", "client_shared"],
+    "scope_bypasses_wall": False,
+    "scope_bypasses_viewer_role": False,
+    "grants_admin": False,
+    "viewer_mismatch": "forbidden",
+    "missing_context": "forbidden",
+    "cases": [
+        {"operation_scope": "ai:use", "module_scopes": ["ai:use"], "viewer_role": "staff", "result": "allowed"},
+        {"operation_scope": "ai:use", "module_scopes": ["files:read"], "viewer_role": "admin", "result": "scope_denied"},
+        {
+            "operation_scope": "matters:read",
+            "module_scopes": ["matters:read"],
+            "viewer_role": "staff",
+            "matter_walled": True,
+            "on_wall": False,
+            "result": "not_found",
+        },
+        {
+            "operation_scope": "matters:read",
+            "module_scopes": ["matters:read"],
+            "viewer_role": "staff",
+            "matter_walled": True,
+            "on_wall": True,
+            "result": "allowed",
+        },
+        {
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "viewer_role": "client",
+            "attorney_only": True,
+            "result": "not_found",
+        },
+        {
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "viewer_role": "client",
+            "attorney_only": False,
+            "shared_with_client": True,
+            "result": "allowed",
+        },
+        {
+            "operation_scope": "files:write",
+            "module_scopes": ["files:write"],
+            "viewer_role": "staff",
+            "operation_roles": ["admin"],
+            "result": "forbidden",
+        },
+    ],
+}
+
+
+def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
+    if public or mcp != "required" or access.get("module_principal") or access.get("module_delegation"):
+        return False
+    scopes = access.get("scopes") or []
+    return bool(scopes) and all(scope in DELEGABLE_SCOPES for scope in scopes)
+
 UNSAFE = {"post", "put", "patch", "delete"}
 
 
@@ -109,6 +214,8 @@ class Contract:
         if extra_access:
             for key, value in extra_access.items():
                 access[key] = value
+        if _delegated_viewer(access, public, mcp):
+            access["module_delegation"] = "delegated_viewer"
 
         mcp_block: dict = {"parity": mcp}
         if mcp == "required":
@@ -391,6 +498,7 @@ def _skeleton() -> dict:
             "timestamps": "utc",
             "auth": ["session_cookie", "bearer_token"],
         },
+        "x-togavsu-module-delegation": MODULE_DELEGATION_POLICY,
     }
 
 
