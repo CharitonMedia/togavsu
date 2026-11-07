@@ -1,0 +1,41 @@
+name: QA bootstrap
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  harness:
+    name: QA bootstrap tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Detect QA scaffold
+        id: scaffold
+        run: |
+          if [ -d tests/harness ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "QA scaffold pending; this infrastructure check accepts no product criterion."
+          fi
+      - name: Install OCR and font tools
+        if: steps.scaffold.outputs.ready == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng fonts-dejavu-core python3-venv
+      - name: Create clean Python environment
+        if: steps.scaffold.outputs.ready == 'true'
+        run: |
+          python3 -m venv /tmp/togavsu-qa-venv
+          /tmp/togavsu-qa-venv/bin/python -m pip install -r tests/requirements-dev.txt
+      - name: Run harness unit and OCR regression tests
+        if: steps.scaffold.outputs.ready == 'true'
+        run: /tmp/togavsu-qa-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+      - name: Verify generated maps and pending acceptance
+        if: steps.scaffold.outputs.ready == 'true'
+        run: /tmp/togavsu-qa-venv/bin/python -m tests.harness
