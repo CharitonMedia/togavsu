@@ -18,7 +18,7 @@ Result of the check on this branch:
 
 ```text
 python3 -m unittest discover -s tests -p 'test_*.py'
-Ran 56 tests
+Ran 58 tests
 OK
 
 python3 -m tests.harness
@@ -46,19 +46,35 @@ Run both commands again after a change and replace this block with the new outpu
 
 ## Evidence shape
 
+A record is accepted only when it is bound to one case and its assertions repeat that case's expected lines. The harness does not run product code and does not invent these records. `python3 -m tests.harness` submits none, so accepted stays 0.
+
 ```json
 {
+  "case_id": "AC-007-P2",
   "kind": "command",
-  "command": "go test ./internal/trust/...",
+  "command": "go test ./internal/trust -run TestReconciliationOffBy125",
   "exit_code": 0,
   "outcome": "passed",
-  "observation": "difference_cents=125"
+  "observation": "AC-007-P2 result: The stored difference is 125 cents.",
+  "assertions": [
+    {
+      "expect": "The stored difference is 125 cents.",
+      "ok": true,
+      "detail": "AC-007-P2: The stored difference is 125 cents."
+    }
+  ],
+  "provenance": {
+    "command": "go test ./internal/trust -run TestReconciliationOffBy125",
+    "runner": "domain:trust"
+  }
 }
 ```
 
-`kind` is one of `command`, `http`, `sql`, `file_hash`, `log`, or `clean_install`. `command` and `observation` must be non-empty. `exit_code` must equal the case's expected exit code. A positive case needs `outcome` `passed`. A failure case needs `outcome` `rejected`, meaning the test observed the refusal. `file_hash` must not be the SHA-256 of `legacy/old.doc` or `legacy/password.pdf`. `summarize` loads that denylist itself and refuses `doubles: true` or a mock, double, or fake `backend_mode` on every case. It also refuses a matrix whose case ids do not match the canonical inventory.
+`exit_code` must be a real int, not `true`, `false`, a float, or a numeric string. `command` must not be the bare `go test ./...` stub, and `observation` must not be `observed`. `assertions` must cover every expected line for that case id, with `ok` a boolean and `detail` naming the case. The same record submitted for another case is refused. `provenance.command` must equal `command`, and `runner` must name the domain run, not `scaffold` or `generic`.
 
-The Docker Desktop attestation is separate:
+A positive case needs `outcome` `passed`. A failure case needs `outcome` `rejected`. `file_hash` must not be the SHA-256 of `legacy/old.doc` or `legacy/password.pdf`. `summarize` loads that denylist itself and refuses `doubles: true` or a mock, double, or fake `backend_mode` on every case. It also refuses a matrix whose case ids, polarities, or exit codes do not match the canonical inventory.
+
+The Docker Desktop attestation is separate and needs the same provenance rule. `exit_code` 0 must be an int. A generic suite stub cannot stand in for the install.
 
 ```json
 {
@@ -67,9 +83,12 @@ The Docker Desktop attestation is separate:
   "outcome": "passed",
   "command": "docker compose up",
   "exit_code": 0,
-  "observation": "first-run form"
+  "observation": "first-run form on a clean Docker Desktop install",
+  "provenance": {"command": "docker compose up", "runner": "release-clean-install"}
 }
 ```
+
+Limitation: this gate checks the shape and the binding. It does not execute the command. A later domain runner has to actually run the command and put that run's output in `detail`. The scaffold never does that for them.
 
 ## Adding a case
 

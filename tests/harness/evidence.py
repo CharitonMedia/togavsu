@@ -17,6 +17,9 @@ REFUSED_KINDS = frozenset({
     "oracle",
     "synthetic_fixture",
 })
+GENERIC_COMMANDS = frozenset({"go test ./..."})
+GENERIC_OBSERVATIONS = frozenset({"observed"})
+GENERIC_RUNNERS = frozenset({"scaffold", "generic", "filled"})
 
 
 def _nonempty(value) -> bool:
@@ -27,6 +30,49 @@ def _real_exit_code(value):
     """bool is an int subclass, and False == 0. Only a real int counts."""
     if type(value) is int:
         return value
+    return None
+
+
+def _generic(value, banned: frozenset[str]) -> bool:
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in {item.lower() for item in banned}
+
+
+def _binding_error(case: dict, evidence: dict) -> str | None:
+    """Case id plus one assertion per expected line. A shared go-test stub does not qualify."""
+    if evidence.get("case_id") != case["id"]:
+        return "evidence is not bound to this case id"
+    if _generic(evidence.get("command"), GENERIC_COMMANDS) or _generic(evidence.get("observation"), GENERIC_OBSERVATIONS):
+        return "generic suite output is not case evidence"
+    provenance = evidence.get("provenance")
+    if not isinstance(provenance, dict):
+        return "evidence has no command provenance"
+    if provenance.get("command") != evidence.get("command") or not _nonempty(provenance.get("runner")):
+        return "command provenance does not match the evidence command"
+    if _generic(provenance.get("runner"), GENERIC_RUNNERS):
+        return "scaffold provenance is not a domain run"
+    assertions = evidence.get("assertions")
+    if not isinstance(assertions, list) or not assertions:
+        return "evidence has no structured assertions"
+    expects = list(case.get("expect") or [])
+    seen = []
+    for item in assertions:
+        if not isinstance(item, dict):
+            return "assertion is malformed"
+        if type(item.get("ok")) is not bool:
+            return "assertion ok must be a boolean"
+        if item.get("ok") is not True:
+            return "assertion was not observed"
+        expect = item.get("expect")
+        detail = item.get("detail")
+        if not isinstance(expect, str) or expect not in expects:
+            return "assertion does not match this case"
+        if not _nonempty(detail) or _generic(detail, GENERIC_OBSERVATIONS) or case["id"] not in detail:
+            return "assertion detail is not bound to this case"
+        seen.append(expect)
+    if sorted(seen) != sorted(expects) or len(seen) != len(expects):
+        return "assertions do not cover this case"
     return None
 
 
@@ -56,6 +102,9 @@ def decide(case: dict, evidence: dict | None, standins: frozenset[str], denylist
             "accepted": False,
             "reason": "a structural stand-in hash is not product evidence",
         }
+    binding = _binding_error(case, evidence)
+    if binding:
+        return {"status": "refused", "accepted": False, "reason": binding}
     exit_code = _real_exit_code(evidence.get("exit_code"))
     if not _nonempty(evidence.get("command")) or not _nonempty(evidence.get("observation")) or exit_code is None:
         return {
@@ -96,6 +145,12 @@ def docker_desktop_ok(attestation: dict | None) -> bool:
         and _real_exit_code(attestation.get("exit_code")) == 0
         and _nonempty(attestation.get("command"))
         and _nonempty(attestation.get("observation"))
+        and not _generic(attestation.get("command"), GENERIC_COMMANDS)
+        and not _generic(attestation.get("observation"), GENERIC_OBSERVATIONS)
+        and isinstance(attestation.get("provenance"), dict)
+        and attestation["provenance"].get("command") == attestation.get("command")
+        and _nonempty(attestation["provenance"].get("runner"))
+        and not _generic(attestation["provenance"].get("runner"), GENERIC_RUNNERS)
     )
 
 

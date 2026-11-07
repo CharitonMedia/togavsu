@@ -533,6 +533,7 @@ def build_files() -> tuple[dict, dict[str, bytes]]:
     )
     add(
         "legacy/old.doc",
+        # ponytail: ceiling: OLE magic, a v3 header, and the WordDocument stream name. Word and wordcraft-cli are not expected to open it. Upgrade path: replace these bytes with a document wordcraft-cli opens at the pinned LawCraft commit, then set product_ready true. trigger: The doc-tender or editor package can shell out to wordcraft-cli and this file is rejected as an unreadable .doc rather than converted and checked.
         _ole_doc_standin(),
         legacy_id="old_doc",
         acceptance_evidence=False,
@@ -542,6 +543,7 @@ def build_files() -> tuple[dict, dict[str, bytes]]:
         upgrade="Replace these bytes with a document wordcraft-cli opens at the pinned LawCraft commit, then set product_ready true.",
         trigger="The doc-tender or editor package can shell out to wordcraft-cli and this file is rejected as an unreadable .doc rather than converted and checked.",
     )
+    # ponytail: ceiling: The trailer points at a Standard encrypt dictionary. The streams are still plaintext, so a reader that ignores /Encrypt will open the page. Upgrade path: write a real Standard-security encrypted PDF once the product PDF library reports encryption, then set product_ready true. trigger: The doc-tender package opens this file as an ordinary one-page PDF instead of an encrypted file.
     password = _pdf(["PASSWORD STANDIN"], mode="text", encrypt_standin=True)
     add(
         "legacy/password.pdf",

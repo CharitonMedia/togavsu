@@ -38,12 +38,12 @@ This branch does not edit workflows or shared packages. `scripts/check_setup.py`
 
 ## Harness ceilings
 
-Two corpus files are structural stand-ins. Their hashes are refused as acceptance evidence.
+Two corpus files are structural stand-ins. Their hashes are refused as acceptance evidence. Each has a `ponytail:` marker in `tests/harness/corpus.py` and a matching entry in `PONYTAIL-DEBT.md`. Neither is product-ready.
 
 - `legacy/old.doc` has the OLE magic, a v3 header, and the `WordDocument` stream name. Word and wordcraft-cli are not expected to open it. Replace it when wordcraft-cli at the pinned LawCraft commit can convert a real `.doc` and check word and page counts.
 - `legacy/password.pdf` has a Standard encrypt dictionary in the trailer. The streams are still plaintext. Replace it when the product PDF library reports the file as encrypted.
 
-The 120-page scanned PDF is a real image-only PDF. The eight photo pages paint LETTER or LEASE and PAGE n OF m into the pixels, so grouping and order can be read from the page. The manifest records the ceiling and the upgrade trigger on the two stand-ins. `PONYTAIL-DEBT.md` is outside this task's paths and was not edited. Debt ledger count on that file is unchanged: no product markers.
+The 120-page scanned PDF is a real image-only PDF. Each page is a DejaVu raster reading SCAN and that page number. The eight photo pages paint LETTER or LEASE and PAGE n OF m into the pixels. The two stand-ins are the only debt entries. The ledger count is 2, and both name a trigger. They do not accept the product.
 
 ## Storage move
 

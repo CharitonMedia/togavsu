@@ -111,6 +111,27 @@ class CorpusTests(unittest.TestCase):
         self.assertTrue(old["trigger"])
         self.assertTrue(password["ceiling"])
         self.assertTrue(password["trigger"])
+        self._assert_ponytail_ledger(old, "legacy/old.doc")
+        self._assert_ponytail_ledger(password, "legacy/password.pdf")
+
+    def _assert_ponytail_ledger(self, item, name):
+        from harness.catalog import build_matrix, repo_root
+        from harness.evidence import summarize
+        from harness.oracles import debt_marker_errors
+
+        root = repo_root()
+        corpus = (root / "tests/harness/corpus.py").read_text()
+        ledger = (root / "PONYTAIL-DEBT.md").read_text()
+        self.assertEqual(debt_marker_errors(corpus), [])
+        self.assertEqual(debt_marker_errors(ledger), [])
+        self.assertIn(item["trigger"], corpus)
+        self.assertIn(item["trigger"], ledger)
+        self.assertIn(name, ledger)
+        self.assertIn("ponytail:", corpus)
+        self.assertIn("ponytail:", ledger)
+        report = summarize(build_matrix(root))
+        self.assertEqual(report["accepted_count"], 0)
+        self.assertFalse(report["app_complete"])
 
     def test_damaged_audio_video_and_sources(self):
         damaged = self.files["exceptions/damaged.pdf"]
