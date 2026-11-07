@@ -15,9 +15,9 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-003 | 6 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 8 | pending |
 | AC-004 | 7 | none | identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 9 | pending |
 | AC-005 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
-| AC-006 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-006 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 7 | pending |
 | AC-007 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
-| AC-008 | 3 | 7 | integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-008 | 3 | 7 | integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 9 | pending |
 | AC-009 | 3 | 7 | practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-010 | 5 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
 | AC-011 | 6 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
@@ -33,14 +33,14 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-021 | 5 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, ui, integrate-extensions | 4 | pending |
 | AC-022 | 7 | none | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 4 | pending |
 | AC-023 | 3 | 7 | practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
-| AC-024 | 5 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
+| AC-024 | 5 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 6 | pending |
 | AC-025 | 5 | 7 | practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-026 | 3 | 7 | integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
 | AC-027 | 4 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-028 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, modules, integrate-extensions | 6 | pending |
 | AC-029 | 5 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 367 | pending |
-| AC-030 | 7 | none | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
-| AC-031 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 3 | pending |
+| AC-030 | 7 | none | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 7 | pending |
+| AC-031 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
 | AC-032 | 7 | none | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
 | AC-033 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 5 | pending |
 | AC-034 | 7 | none | integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
@@ -48,7 +48,7 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-036 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
 | AC-037 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
 | AC-038 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
-| AC-039 | 4 | 7 | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
+| AC-039 | 4 | 7 | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-040 | 7 | none | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
 | AC-041 | 4 | 7 | integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions | 7 | pending |
 | AC-042 | 4 | 7 | integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions | 4 | pending |
@@ -521,7 +521,7 @@ Pending dependencies: integrate-practice, trust, integrate-finance, integrate-do
 Legacy Doc Tender failures: none.
 Status: pending.
 
-No path may edit or delete a ledger row. A reversal is a new row. The original row stays byte for byte.
+No path may edit or delete a ledger row. A reversal is a new row. The original row and its history stay byte for byte. API, MCP, and UI are not the only paths: the trust service, the trust repository, and direct SQL as the application role must refuse UPDATE and DELETE. A repository interface that omits those methods is not acceptance. PONYTAIL-DEBT.md contracts entry 4 stays pending until the trust task shows that SQL rejection. No database trigger carries the rule.
 
 ### Positive
 
@@ -534,6 +534,18 @@ Arrange: One posted synthetic deposit.
 Action: Reverse it.
 
 Expect: A new reversal row exists.; The original id, amount, client, matter, and description are unchanged.; The balance includes both rows.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-006-P2 Reversal is a new row below the transports
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: A posted withdrawal. The trust service and the trust repository, not HTTP, MCP, or the UI.
+
+Action: Reverse the withdrawal through the service.
+
+Expect: The reversal is a new row.; The original row and every earlier history row are byte-for-byte unchanged.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -572,6 +584,30 @@ Arrange: Posted ledger row.
 Action: Submit the ledger form for edit and for delete.
 
 Expect: Both are denied.; The row is unchanged.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-006-F4 Service and repository UPDATE and DELETE
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: A posted trust row and its history. Calls go to the trust service and the trust repository, not through HTTP, MCP, or the UI.
+
+Action: Update the amount, then delete the row, on the service and again on the repository.
+
+Expect: Each update and each delete is refused.; The original row and its history are unchanged.; A repository interface that simply has no update or delete method is not this proof.; No database trigger carries the rule.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-006-F5 Application-role SQL UPDATE and DELETE
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: The same posted row. A SQL session as the application role, not the table owner.
+
+Action: Run UPDATE and DELETE against trust_ledger.
+
+Expect: Both statements are refused or change no row.; The original row and its history are unchanged.; An authorized reversal, if one is posted in the same session, is a new row.; The database-immutability debt stays pending until this rejection is shown.; No database trigger carries the rule.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -655,7 +691,7 @@ Pending dependencies: integrate-practice, billing, integrate-finance, integrate-
 Legacy Doc Tender failures: none.
 Status: pending.
 
-Draft from unbilled time, attorney approves, system mail sends, payment applies, void returns the time to unbilled.
+Draft from unbilled time and unbilled expenses, attorney approves, system mail sends, payment applies, and void returns both to unbilled. Each eligible expense is included once and leaves the unbilled set when the draft consumes it. A time-only draft does not satisfy the expense cases.
 
 ### Positive
 
@@ -668,6 +704,30 @@ Arrange: Synthetic unbilled time on an open matter. System mail catches the mess
 Action: Draft the invoice, approve it as an attorney, send it, record a payment, then void it.
 
 Expect: The draft lines match the unbilled time.; System mail has the invoice.; The payment reduces the balance.; After void the time is unbilled again and the invoice is void.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-008-P2 Draft includes each eligible expense once
+
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Open matter with two unbilled expenses and one expense already on another invoice.
+
+Action: Generate one draft for that matter.
+
+Expect: Each unbilled expense appears on exactly one line.; The already invoiced expense is not on the draft.; The two drafted expenses are no longer unbilled.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-008-P3 Void returns the expenses to unbilled
+
+Phase 3. Kind: e2e. Status: pending. Expected exit code: 0.
+
+Arrange: Invoice whose draft consumed those two expenses.
+
+Action: Void the invoice and read unbilled expenses.
+
+Expect: Both expenses are unbilled again.; Neither stays billed on the void invoice.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -706,6 +766,42 @@ Arrange: Draft invoice. Staff user.
 Action: Staff calls approve.
 
 Expect: Approve is denied.; The invoice stays draft.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-008-F4 Expense drafted twice
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: One unbilled expense.
+
+Action: Draft it, then draft again without voiding.
+
+Expect: The expense on a second draft, or on two lines of one draft, fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-008-F5 Void leaves the expense billed
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: Invoice that consumed one expense.
+
+Action: Void it and read unbilled expenses.
+
+Expect: The expense still billed, or missing from unbilled, fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-008-F6 Already invoiced expense is drafted again
+
+Phase 3. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: An expense that is already on an invoice.
+
+Action: Generate a new draft for that matter.
+
+Expect: That expense on the new draft fails the criterion.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -1874,6 +1970,18 @@ Arrange: Known set of matter changes.
 Action: Compare the card to the audit rows.
 
 Expect: A missing change fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-024-F4 SQL UPDATE and DELETE of audit and timeline rows
+
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: A stored audit_log row and an events row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.
+
+Action: Update and delete each row through the service, the repository, and SQL.
+
+Expect: Each update and each delete is refused or changes no row.; The original row and its history are unchanged.; A repository interface that omits update and delete is not this proof.; The database-immutability debt stays pending until this rejection is shown.; No database trigger carries the rule.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -6617,7 +6725,7 @@ Pending dependencies: contracts, integrate-practice, integrate-finance, integrat
 Legacy Doc Tender failures: none.
 Status: pending.
 
-The product CI fails a core env read outside bootstrap and a tunable that is not in the registry. The release build passes. A green harness fixture is not that CI log.
+The product CI fails a core env read outside bootstrap and a tunable that is not in the registry. The release build passes. settings.CheckModule is a source heuristic, not full AC-030 acceptance: it flags an integer literal used as configuration even when the number is not a current registry default, and it does not treat arithmetic, shifts, a leading minus, empty len or cap, loop counters, or return 0, err as configuration. fixedSite exclusions are debt. A settings.Get lookup of a registry key is not this proof. A green harness fixture is not that CI log.
 
 ### Positive
 
@@ -6645,6 +6753,30 @@ Expect: The check exits 0.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
+#### AC-030-P3 Hardcoded timeout, limit, or threshold fails the check
+
+Phase 1. Kind: integration. Status: pending. Expected exit code: 1.
+
+Arrange: Isolated file internal/practice/limits.go, outside every fixedSite function: const sessionTimeoutSeconds = 45, const uploadLimit = 3, and return failures >= 4. None of those numbers is excused by matching a registry default. The file does not call settings.Get.
+
+Action: Run settings.ScanSource on that file, the check product CI runs via go test ./internal/settings/.
+
+Expect: The check exits 1.; The report names 45, 3, and 4 as tunable numbers.; A registry-key lookup does not satisfy this case.; This scan is not full AC-030 acceptance of the release build.
+
+Evidence: Product CI or ScanSource log for the isolated fixture. The harness scanner is not this evidence.
+
+#### AC-030-P4 Registered setting control passes the check
+
+Phase 1. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: Isolated file that reads one registered setting through settings.Registry and contains no configuration integer literal.
+
+Action: Run settings.ScanSource on that file alone.
+
+Expect: The check exits 0.; The file is not reported as a hardcoded tunable.; A passing registry-key lookup on a different file does not cover the hardcoded fixture.
+
+Evidence: ScanSource log for the control file. The harness scanner is not this evidence.
+
 ### Failure
 
 #### AC-030-F1 Core env read outside bootstrap
@@ -6670,6 +6802,18 @@ Action: Run the CI check.
 Expect: The CI check exits non-zero. A green release with that read fails the criterion.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-030-F3 Hardcoded tunable is not reported
+
+Phase 1. Kind: integration. Status: pending. Expected exit code: 1.
+
+Arrange: The same isolated limits.go file, with sessionTimeoutSeconds = 45, uploadLimit = 3, and failures >= 4.
+
+Action: Run settings.ScanSource on that file.
+
+Expect: An exit of 0 fails the criterion.; A report that omits 45, 3, or 4 fails the criterion.; Passing because those numbers are absent from the settings registry fails the criterion.
+
+Evidence: ScanSource log for the isolated fixture. The harness scanner is not this evidence.
 
 ## AC-031
 
@@ -6723,6 +6867,18 @@ Arrange: Primary unreachable. Secondary configured.
 Action: Run the call.
 
 Expect: An error that never calls the secondary fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-031-F3 SQL UPDATE and DELETE of a call-log row
+
+Phase 6. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: A stored ai_call_log row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.
+
+Action: Update and delete the row through the service, the repository, and SQL.
+
+Expect: Each update and each delete is refused or changes no row.; The original row is unchanged.; A repository interface that omits update and delete is not this proof.; The database-immutability debt stays pending until this rejection is shown.; No database trigger carries the rule.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -7343,6 +7499,18 @@ Arrange: Stored version hash.
 Action: Save the file, then re-read the old version.
 
 Expect: A changed hash fails the criterion.
+
+Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
+
+#### AC-039-F3 SQL UPDATE and DELETE of a saved version
+
+Phase 4. Kind: integration. Status: pending. Expected exit code: 0.
+
+Arrange: A stored file_versions row and its file_renditions row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.
+
+Action: Update and delete each row through the service, the repository, and SQL.
+
+Expect: Each update and each delete is refused or changes no row.; The original bytes and hash are unchanged.; A new save, if one is posted, is a new row.; A repository interface that omits update and delete is not this proof.; The database-immutability debt stays pending until this rejection is shown.; No database trigger carries the rule.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 

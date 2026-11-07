@@ -850,7 +850,7 @@
       "integrate-documents",
       "integrate-extensions"
     ],
-    "note": "No path may edit or delete a ledger row. A reversal is a new row. The original row stays byte for byte.",
+    "note": "No path may edit or delete a ledger row. A reversal is a new row. The original row and its history stay byte for byte. API, MCP, and UI are not the only paths: the trust service, the trust repository, and direct SQL as the application role must refuse UPDATE and DELETE. A repository interface that omits those methods is not acceptance. PONYTAIL-DEBT.md contracts entry 4 stays pending until the trust task shows that SQL rejection. No database trigger carries the rule.",
     "legacy_failures": [],
     "positive": [
       {
@@ -870,6 +870,26 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-006-P1",
+        "criterion": "AC-006",
+        "polarity": "positive",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Reversal is a new row below the transports",
+        "arrange": "A posted withdrawal. The trust service and the trust repository, not HTTP, MCP, or the UI.",
+        "action": "Reverse the withdrawal through the service.",
+        "expect": [
+          "The reversal is a new row.",
+          "The original row and every earlier history row are byte-for-byte unchanged."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-006-P2",
         "criterion": "AC-006",
         "polarity": "positive",
         "expected_exit_code": 0
@@ -932,6 +952,51 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-006-F3",
+        "criterion": "AC-006",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Service and repository UPDATE and DELETE",
+        "arrange": "A posted trust row and its history. Calls go to the trust service and the trust repository, not through HTTP, MCP, or the UI.",
+        "action": "Update the amount, then delete the row, on the service and again on the repository.",
+        "expect": [
+          "Each update and each delete is refused.",
+          "The original row and its history are unchanged.",
+          "A repository interface that simply has no update or delete method is not this proof.",
+          "No database trigger carries the rule."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-006-F4",
+        "criterion": "AC-006",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Application-role SQL UPDATE and DELETE",
+        "arrange": "The same posted row. A SQL session as the application role, not the table owner.",
+        "action": "Run UPDATE and DELETE against trust_ledger.",
+        "expect": [
+          "Both statements are refused or change no row.",
+          "The original row and its history are unchanged.",
+          "An authorized reversal, if one is posted in the same session, is a new row.",
+          "The database-immutability debt stays pending until this rejection is shown.",
+          "No database trigger carries the rule."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-006-F5",
         "criterion": "AC-006",
         "polarity": "failure",
         "expected_exit_code": 0
@@ -1093,7 +1158,7 @@
       "integrate-documents",
       "integrate-extensions"
     ],
-    "note": "Draft from unbilled time, attorney approves, system mail sends, payment applies, void returns the time to unbilled.",
+    "note": "Draft from unbilled time and unbilled expenses, attorney approves, system mail sends, payment applies, and void returns both to unbilled. Each eligible expense is included once and leaves the unbilled set when the draft consumes it. A time-only draft does not satisfy the expense cases.",
     "legacy_failures": [],
     "positive": [
       {
@@ -1114,6 +1179,47 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-008-P1",
+        "criterion": "AC-008",
+        "polarity": "positive",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "e2e",
+        "title": "Draft includes each eligible expense once",
+        "arrange": "Open matter with two unbilled expenses and one expense already on another invoice.",
+        "action": "Generate one draft for that matter.",
+        "expect": [
+          "Each unbilled expense appears on exactly one line.",
+          "The already invoiced expense is not on the draft.",
+          "The two drafted expenses are no longer unbilled."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-008-P2",
+        "criterion": "AC-008",
+        "polarity": "positive",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "e2e",
+        "title": "Void returns the expenses to unbilled",
+        "arrange": "Invoice whose draft consumed those two expenses.",
+        "action": "Void the invoice and read unbilled expenses.",
+        "expect": [
+          "Both expenses are unbilled again.",
+          "Neither stays billed on the void invoice."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-008-P3",
         "criterion": "AC-008",
         "polarity": "positive",
         "expected_exit_code": 0
@@ -1174,6 +1280,63 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-008-F3",
+        "criterion": "AC-008",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Expense drafted twice",
+        "arrange": "One unbilled expense.",
+        "action": "Draft it, then draft again without voiding.",
+        "expect": [
+          "The expense on a second draft, or on two lines of one draft, fails the criterion."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-008-F4",
+        "criterion": "AC-008",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Void leaves the expense billed",
+        "arrange": "Invoice that consumed one expense.",
+        "action": "Void it and read unbilled expenses.",
+        "expect": [
+          "The expense still billed, or missing from unbilled, fails the criterion."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-008-F5",
+        "criterion": "AC-008",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 3,
+        "kind": "integration",
+        "title": "Already invoiced expense is drafted again",
+        "arrange": "An expense that is already on an invoice.",
+        "action": "Generate a new draft for that matter.",
+        "expect": [
+          "That expense on the new draft fails the criterion."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-008-F6",
         "criterion": "AC-008",
         "polarity": "failure",
         "expected_exit_code": 0
@@ -3282,6 +3445,29 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-024-F3",
+        "criterion": "AC-024",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 1,
+        "kind": "integration",
+        "title": "SQL UPDATE and DELETE of audit and timeline rows",
+        "arrange": "A stored audit_log row and an events row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.",
+        "action": "Update and delete each row through the service, the repository, and SQL.",
+        "expect": [
+          "Each update and each delete is refused or changes no row.",
+          "The original row and its history are unchanged.",
+          "A repository interface that omits update and delete is not this proof.",
+          "The database-immutability debt stays pending until this rejection is shown.",
+          "No database trigger carries the rule."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-024-F4",
         "criterion": "AC-024",
         "polarity": "failure",
         "expected_exit_code": 0
@@ -11079,7 +11265,7 @@
       "integrate-extensions",
       "platform"
     ],
-    "note": "The product CI fails a core env read outside bootstrap and a tunable that is not in the registry. The release build passes. A green harness fixture is not that CI log.",
+    "note": "The product CI fails a core env read outside bootstrap and a tunable that is not in the registry. The release build passes. settings.CheckModule is a source heuristic, not full AC-030 acceptance: it flags an integer literal used as configuration even when the number is not a current registry default, and it does not treat arithmetic, shifts, a leading minus, empty len or cap, loop counters, or return 0, err as configuration. fixedSite exclusions are debt. A settings.Get lookup of a registry key is not this proof. A green harness fixture is not that CI log.",
     "legacy_failures": [],
     "positive": [
       {
@@ -11122,6 +11308,49 @@
         "criterion": "AC-030",
         "polarity": "positive",
         "expected_exit_code": 0
+      },
+      {
+        "phase": 1,
+        "kind": "integration",
+        "title": "Hardcoded timeout, limit, or threshold fails the check",
+        "arrange": "Isolated file internal/practice/limits.go, outside every fixedSite function: const sessionTimeoutSeconds = 45, const uploadLimit = 3, and return failures >= 4. None of those numbers is excused by matching a registry default. The file does not call settings.Get.",
+        "action": "Run settings.ScanSource on that file, the check product CI runs via go test ./internal/settings/.",
+        "expect": [
+          "The check exits 1.",
+          "The report names 45, 3, and 4 as tunable numbers.",
+          "A registry-key lookup does not satisfy this case.",
+          "This scan is not full AC-030 acceptance of the release build."
+        ],
+        "evidence": [
+          "Product CI or ScanSource log for the isolated fixture. The harness scanner is not this evidence."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "expected_exit_code": 1,
+        "id": "AC-030-P3",
+        "criterion": "AC-030",
+        "polarity": "positive"
+      },
+      {
+        "phase": 1,
+        "kind": "integration",
+        "title": "Registered setting control passes the check",
+        "arrange": "Isolated file that reads one registered setting through settings.Registry and contains no configuration integer literal.",
+        "action": "Run settings.ScanSource on that file alone.",
+        "expect": [
+          "The check exits 0.",
+          "The file is not reported as a hardcoded tunable.",
+          "A passing registry-key lookup on a different file does not cover the hardcoded fixture."
+        ],
+        "evidence": [
+          "ScanSource log for the control file. The harness scanner is not this evidence."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "expected_exit_code": 0,
+        "id": "AC-030-P4",
+        "criterion": "AC-030",
+        "polarity": "positive"
       }
     ],
     "failure": [
@@ -11160,6 +11389,27 @@
         "mocks_accepted": false,
         "expected_exit_code": 1,
         "id": "AC-030-F2",
+        "criterion": "AC-030",
+        "polarity": "failure"
+      },
+      {
+        "phase": 1,
+        "kind": "integration",
+        "title": "Hardcoded tunable is not reported",
+        "arrange": "The same isolated limits.go file, with sessionTimeoutSeconds = 45, uploadLimit = 3, and failures >= 4.",
+        "action": "Run settings.ScanSource on that file.",
+        "expect": [
+          "An exit of 0 fails the criterion.",
+          "A report that omits 45, 3, or 4 fails the criterion.",
+          "Passing because those numbers are absent from the settings registry fails the criterion."
+        ],
+        "evidence": [
+          "ScanSource log for the isolated fixture. The harness scanner is not this evidence."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "expected_exit_code": 1,
+        "id": "AC-030-F3",
         "criterion": "AC-030",
         "polarity": "failure"
       }
@@ -11260,6 +11510,29 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-031-F2",
+        "criterion": "AC-031",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 6,
+        "kind": "integration",
+        "title": "SQL UPDATE and DELETE of a call-log row",
+        "arrange": "A stored ai_call_log row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.",
+        "action": "Update and delete the row through the service, the repository, and SQL.",
+        "expect": [
+          "Each update and each delete is refused or changes no row.",
+          "The original row is unchanged.",
+          "A repository interface that omits update and delete is not this proof.",
+          "The database-immutability debt stays pending until this rejection is shown.",
+          "No database trigger carries the rule."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-031-F3",
         "criterion": "AC-031",
         "polarity": "failure",
         "expected_exit_code": 0
@@ -12355,6 +12628,30 @@
         "status": "pending",
         "mocks_accepted": false,
         "id": "AC-039-F2",
+        "criterion": "AC-039",
+        "polarity": "failure",
+        "expected_exit_code": 0
+      },
+      {
+        "phase": 4,
+        "kind": "integration",
+        "title": "SQL UPDATE and DELETE of a saved version",
+        "arrange": "A stored file_versions row and its file_renditions row. Calls go to the service and the repository, then to SQL as the application role, not the table owner.",
+        "action": "Update and delete each row through the service, the repository, and SQL.",
+        "expect": [
+          "Each update and each delete is refused or changes no row.",
+          "The original bytes and hash are unchanged.",
+          "A new save, if one is posted, is a new row.",
+          "A repository interface that omits update and delete is not this proof.",
+          "The database-immutability debt stays pending until this rejection is shown.",
+          "No database trigger carries the rule."
+        ],
+        "evidence": [
+          "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
+        ],
+        "status": "pending",
+        "mocks_accepted": false,
+        "id": "AC-039-F3",
         "criterion": "AC-039",
         "polarity": "failure",
         "expected_exit_code": 0

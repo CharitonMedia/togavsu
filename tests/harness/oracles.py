@@ -127,13 +127,16 @@ def withdraw_below_zero(ledger: TrustLedger, balance_cents: int, amount_cents: i
     })
     new_balance = balance_cents - amount_cents
     flagged = new_balance < 0
+    # Flag mail goes out only when the resulting balance is below zero.
+    # Zero and any positive balance post with no flag-email recipients.
+    emails = list(admins) + [attorney] if flagged else []
     return {
         "posted": True,
         "blocked": False,
         "entry_id": entry["id"],
         "balance_cents": new_balance,
         "flag": flagged,
-        "emails": list(admins) + [attorney],
+        "emails": emails,
     }
 
 

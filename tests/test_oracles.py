@@ -86,6 +86,18 @@ class OracleTests(unittest.TestCase):
         quiet = withdraw_below_zero(TrustLedger(), 500, 100, ["admin-a"], "attorney-1")
         self.assertFalse(quiet["flag"])
         self.assertTrue(quiet["posted"])
+        self.assertEqual(quiet["balance_cents"], 400)
+        self.assertEqual(quiet["emails"], [])
+        exact = withdraw_below_zero(TrustLedger(), 100, 100, ["admin-a", "admin-b"], "attorney-1")
+        self.assertEqual(exact["balance_cents"], 0)
+        self.assertFalse(exact["flag"])
+        self.assertTrue(exact["posted"])
+        self.assertFalse(exact["blocked"])
+        self.assertEqual(exact["emails"], [])
+        with self.assertRaises(ValueError):
+            withdraw_below_zero(TrustLedger(), 100, 250, [], "attorney-1")
+        with self.assertRaises(ValueError):
+            withdraw_below_zero(TrustLedger(), 100, 250, ["admin-a"], "")
 
     def test_locked_fields_and_closed_matter(self):
         updated = apply_reprocess(

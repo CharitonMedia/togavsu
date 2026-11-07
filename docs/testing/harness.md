@@ -36,7 +36,7 @@ Result of the check on this branch:
 
 ```text
 python3 -m unittest discover -s tests -p 'test_*.py'
-Ran 58 tests
+Ran 67 tests in 4.835s
 OK
 
 python3 -m tests.harness
