@@ -14,6 +14,10 @@ import hmac
 import html
 import json
 import re
+
+# The path parameter {module_id} uses this same pattern. Callers do not get a second, looser rule.
+MODULE_ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$"
+_MODULE_ID_SLUG = re.compile(MODULE_ID_PATTERN)
 from html.parser import HTMLParser
 
 FILE_DOWNLOAD = {
@@ -750,6 +754,8 @@ def processor_issuance(policy: dict, module: dict, initialization: dict) -> dict
     if not policy.get("registered_module") or not module.get("registered"):
         return _denied(policy["unregistered"])
     recipient = module.get("recipient_id", module.get("module_id"))
+    if not module_id_slug(module.get("module_id")) or not module_id_slug(initialization.get("processor_module_id")):
+        return _denied("validation_failed")
     if recipient != module.get("module_id") or module.get("module_id") != initialization.get("processor_module_id"):
         return _denied(policy["module_identity_mismatch"])
     key = "trust" if initialization.get("destination") == "trust" else "operating"
@@ -1525,7 +1531,7 @@ def issue_api_token(operation: dict, call: dict) -> dict:
         return {"result": "scope_denied", "token": None, "secret": None}
     owner = call.get("owner_user_id")
     module_id = call.get("module_id")
-    if bool(owner) == bool(module_id):
+    if bool(owner) == bool(module_id) or (module_id is not None and not module_id_slug(module_id)):
         return {"result": "validation_failed", "token": None, "secret": None}
     if owner:
         if any(scope not in set(call.get("owner_role_scopes") or []) for scope in requested):
@@ -1555,6 +1561,8 @@ def module_help_registration(operation: dict, call: dict) -> str:
         return "forbidden"
     if "help:write" not in set(call.get("scopes") or []):
         return "scope_denied"
+    if not module_id_slug(call.get("module_id")) or not module_id_slug(call.get("path_module_id")):
+        return "forbidden"
     if call.get("target") == "firm" or call.get("module_id") != call.get("path_module_id"):
         return "forbidden"
     if call.get("heading") not in (None, call.get("module_id")):
@@ -1635,6 +1643,8 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
     policy = BACKGROUND_FILE_PUBLICATION
     if not module.get("installed") or not module.get("registered") or not policy.get("registered_module"):
         return {**denied, "result": policy["unregistered"]}
+    if not module_id_slug(module.get("module_id")) or not module_id_slug(job.get("module_id")):
+        return {**denied, "result": "validation_failed"}
     if module.get("module_id") != job.get("module_id"):
         return {**denied, "result": policy["wrong_module"]}
     if job.get("source") not in policy["sources"]:
@@ -1947,9 +1957,14 @@ def payment_status_transition(current: str | None, requested: str | None) -> str
     return PAYMENT_STATUS_GRAPH["illegal_transition"]
 
 
+def module_id_slug(value) -> bool:
+    """True only for the path slug. Traversal and confusable characters are rejected, not rewritten."""
+    return isinstance(value, str) and _MODULE_ID_SLUG.fullmatch(value) is not None
+
+
 def normalize_module_target(module_id: str, target: str) -> str | None:
     """Module-local path. Schemes, absolute URLs, traversal, and other modules' routes are refused."""
-    if not isinstance(target, str) or not isinstance(module_id, str) or not module_id:
+    if not module_id_slug(module_id) or not isinstance(target, str):
         return None
     lowered = target.strip().lower()
     if lowered.startswith(("javascript:", "data:", "http:", "https:", "file:", "ftp:", "net:")):
@@ -2141,7 +2156,7 @@ def _unique_ids(items: list) -> set[str] | None:
 
 def manifest_contributions(manifest: dict, caller: dict | None = None) -> dict:
     """Resolve help pages and tabs against this module's own contributions. Clients receive no guide."""
-    module_id = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    module_id = manifest.get("id") if module_id_slug(manifest.get("id")) else ""
     empty = {"result": "validation_failed", "namespace": module_id, "heading": None, "pages": [], "tabs": []}
     if not module_id:
         return empty
@@ -2216,7 +2231,7 @@ _CUSTOM_FIELD_RECORDS = frozenset({"matter", "contact", "time_entry", "expense"}
 
 def manifest_custom_fields(manifest: dict, claimed_module_id: str | None = None) -> dict:
     """Custom fields belong to the signed manifest id. A caller-supplied module id cannot reassign them."""
-    owner = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    owner = manifest.get("id") if module_id_slug(manifest.get("id")) else ""
     empty = {"result": "validation_failed", "module_id": owner, "fields": []}
     if not owner:
         return empty
@@ -2273,14 +2288,14 @@ def manifest_custom_fields(manifest: dict, claimed_module_id: str | None = None)
     return {"result": "allowed", "module_id": owner, "fields": fields}
 
 
-_VIEW_SCOPE = re.compile(r"^views:([a-z0-9][a-z0-9-]*)\.([a-z][a-z0-9_]{0,62}):read$")
+_VIEW_SCOPE = re.compile(r"^views:(" + MODULE_ID_PATTERN[1:-1] + r")\.([a-z][a-z0-9_]{0,62}):read$")
 
 
 def _registered_view_names(manifest: dict | None, published_views: list[str] | None) -> set[str]:
     names = {name for name in (published_views or []) if isinstance(name, str)}
     if not manifest:
         return names
-    module_id = manifest.get("id") if isinstance(manifest.get("id"), str) else ""
+    module_id = manifest.get("id") if module_id_slug(manifest.get("id")) else ""
     data = manifest.get("data") if isinstance(manifest.get("data"), dict) else {}
     for view in data.get("views") or []:
         if isinstance(view, dict) and isinstance(view.get("name"), str) and module_id:
@@ -2555,7 +2570,7 @@ def include_views_decision(operation: dict, call: dict) -> str:
         if "*" in view or "?" in view:
             return "validation_failed"
         module_id, name = view.split(".", 1)
-        if not module_id or not name:
+        if not module_id_slug(module_id) or not name:
             return "validation_failed"
         key = f"{module_id}.{name}"
         extensions = set(call.get("extensions") or [])

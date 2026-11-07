@@ -63414,7 +63414,8 @@
             "properties": {
               "processor_module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "contact_id": {
                 "type": "string",
@@ -63461,7 +63462,8 @@
             "properties": {
               "processor_module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "contact_id": {
                 "type": "string",
@@ -63525,7 +63527,9 @@
             "description": "Reserved at authorization. createPayment must use this id and cannot insert a second payment for this initialization."
           },
           "processor_module_id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
           },
           "contact_id": {
             "type": "string",
@@ -65776,7 +65780,9 @@
           },
           "owner_module_id": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "The installed module that owns this upload."
           }
         },
         "required": [
@@ -66022,7 +66028,8 @@
             "properties": {
               "module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "assignment": {
                 "const": "matter"
@@ -66095,7 +66102,8 @@
             "properties": {
               "module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "assignment": {
                 "const": "unassigned"
@@ -67923,7 +67931,16 @@
             ]
           },
           "module_id": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "scopes": {
             "type": "array",
@@ -67987,7 +68004,9 @@
               },
               "module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                "description": "The installed module this token is bound to."
               },
               "scopes": {
                 "type": "array",
@@ -69115,7 +69134,10 @@
             "type": "string"
           },
           "module_id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Owner namespace. Always the module slug, not a path."
           },
           "title": {
             "type": "string"
@@ -69449,6 +69471,7 @@
           "module_id": {
             "type": "string",
             "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
             "description": "The registered module this delivery is for."
           },
           "event_id": {
@@ -70545,7 +70568,7 @@
           },
           "scope": {
             "type": "string",
-            "pattern": "^views:[a-z0-9-]+\\.[a-z0-9_]+:read$"
+            "pattern": "^views:[a-z0-9][a-z0-9-]{0,63}\\.[a-z0-9_]+:read$"
           }
         },
         "required": [
@@ -70739,7 +70762,10 @@
         "additionalProperties": false,
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Module slug. The same pattern as the {module_id} path parameter. Not a path."
           },
           "name": {
             "type": "string"
@@ -74792,7 +74818,8 @@
             "properties": {
               "processor_module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "contact_id": {
                 "type": "string",
@@ -74839,7 +74866,8 @@
             "properties": {
               "processor_module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
               },
               "contact_id": {
                 "type": "string",
@@ -75651,7 +75679,9 @@
               },
               "module_id": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                "description": "The installed module this token is bound to."
               },
               "scopes": {
                 "type": "array",

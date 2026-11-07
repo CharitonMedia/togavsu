@@ -55,6 +55,8 @@ from contract.policy import (
     decide_module_permissions,
     replace_matter_wall,
     manifest_contributions,
+    module_id_slug,
+    normalize_module_target,
     manifest_custom_fields,
     module_ui_targets,
     open_widget_target,
@@ -1004,6 +1006,71 @@ class ContractTest(unittest.TestCase):
             },
         }
         validator.validate(manifest)
+        from contract.policy import MODULE_ID_PATTERN
+
+        self.assertEqual(self.spec["components"]["schemas"]["ModuleManifest"]["properties"]["id"]["pattern"], MODULE_ID_PATTERN)
+        module_parameter = next(parameter for parameter in _operation(self.spec, "getModule")["parameters"] if parameter.get("name") == "module_id")
+        self.assertEqual(module_parameter["schema"]["pattern"], MODULE_ID_PATTERN)
+        self.assertEqual(normalize_module_target("matter-clock", "hours"), "/m/matter-clock/hours")
+        self.assertTrue(module_id_slug("ab-c"))
+        hostile_ids = (
+            "foo/../victim",
+            "foo/bar",
+            "foo\\bar",
+            "..",
+            ".",
+            "foo/./bar",
+            "%2e%2e",
+            "%2f",
+            "foo%2fbar",
+            "a?b",
+            "a#b",
+            "foo\u0000bar",
+            "matter\u2044clock",
+            "foo\u2215bar",
+            "foo\uff0fbar",
+            "Foo",
+            "-leading",
+        )
+        for hostile_id in hostile_ids:
+            self.assertFalse(module_id_slug(hostile_id), hostile_id)
+            self.assertIsNone(normalize_module_target(hostile_id, "hours"), hostile_id)
+            hostile_manifest = copy.deepcopy(manifest)
+            hostile_manifest["id"] = hostile_id
+            with self.assertRaises(Exception, msg=hostile_id):
+                validator.validate(hostile_manifest)
+            contributed = manifest_contributions(hostile_manifest, {"role": "staff"})
+            self.assertEqual(contributed["result"], "validation_failed", hostile_id)
+            self.assertEqual(contributed["pages"], [], hostile_id)
+            self.assertEqual(contributed["tabs"], [], hostile_id)
+            self.assertNotIn("/m/victim", str(contributed), hostile_id)
+            self.assertNotIn("/m/foo", str(contributed), hostile_id)
+            self.assertEqual(
+                sidebar_entries(hostile_id, manifest["sidebar"], {"role": "staff", "scopes": ["matters:read"]})["result"],
+                "validation_failed",
+                hostile_id,
+            )
+            self.assertEqual(
+                manifest_custom_fields(hostile_manifest)["result"],
+                "validation_failed",
+                hostile_id,
+            )
+            help_call = {"actor": "module", "module_id": hostile_id, "path_module_id": hostile_id, "scopes": ["help:write"], "heading": hostile_id}
+            self.assertEqual(module_help_registration(_operation(self.spec, "createModuleHelpPage"), help_call), "forbidden", hostile_id)
+            bound = issue_api_token(
+                _operation(self.spec, "createApiToken"),
+                {
+                    "role": "admin",
+                    "credential": "session",
+                    "caller_scopes": ["tokens:write", "files:write"],
+                    "name": "importer",
+                    "module_id": hostile_id,
+                    "scopes": ["files:write"],
+                    "module_approved_scopes": ["files:write"],
+                },
+            )
+            self.assertEqual(bound["result"], "validation_failed", hostile_id)
+            self.assertIsNone(bound["token"], hostile_id)
         widget = self.spec["components"]["schemas"]["ManifestWidget"]
         self.assertIn("allowed_sizes", widget["required"])
         for field in ("sidebar", "quick_create", "search_scopes", "matter_screen"):
@@ -4016,7 +4083,8 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(raced["second"]["result"], "original_result")
         self.assertFalse(raced["second"]["file_created"])
         for source in ("zoom", "importer", "drop_folder"):
-            other = background_grant_issuance(issuance, {**module, "module_id": source}, {**job, "module_id": source, "source": source})
+            slug = "drop-folder" if source == "drop_folder" else source
+            other = background_grant_issuance(issuance, {**module, "module_id": slug}, {**job, "module_id": slug, "source": source})
             self.assertEqual(other["result"], "allowed", source)
             self.assertFalse(other["file_created"], source)
         unassigned_job = {"module_id": "email", "assignment": "unassigned", "source": "importer", "expires_at": "2026-11-07T20:00:00Z", "viewer_present": False}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 
-from contract.policy import CORE_PAGE_TARGETS
+from contract.policy import CORE_PAGE_TARGETS, MODULE_ID_PATTERN
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
@@ -171,6 +171,14 @@ def _readable_text(description: str = "") -> dict:
         "description": description or 'Plain text, or {"redacted": true} when the caller cannot read an attorney-only value.',
         "anyOf": [{"type": "string"}, _ref("RedactedText")],
     }
+
+
+def _module_id(description: str | None = None) -> dict:
+    """The same slug as the {module_id} path parameter."""
+    schema = {"type": "string", "minLength": 1, "pattern": MODULE_ID_PATTERN}
+    if description:
+        schema["description"] = description
+    return schema
 
 
 def _module_local_path(description: str) -> dict:
@@ -953,7 +961,7 @@ SCHEMAS = _register(
             "oneOf": [
                 _obj(
                     {
-                        "processor_module_id": {"type": "string", "minLength": 1},
+                        "processor_module_id": _module_id(),
                         "contact_id": _uuid(),
                         "matter_id": _uuid(),
                         "amount_cents": _cents(),
@@ -964,7 +972,7 @@ SCHEMAS = _register(
                 ),
                 _obj(
                     {
-                        "processor_module_id": {"type": "string", "minLength": 1},
+                        "processor_module_id": _module_id(),
                         "contact_id": _uuid(),
                         "matter_id": _uuid(),
                         "amount_cents": _cents(),
@@ -980,7 +988,7 @@ SCHEMAS = _register(
             {
                 "id": _uuid(),
                 "payment_id": _uuid("Reserved at authorization. createPayment must use this id and cannot insert a second payment for this initialization."),
-                "processor_module_id": {"type": "string"},
+                "processor_module_id": _module_id(),
                 "contact_id": _uuid(),
                 "matter_id": _uuid(),
                 "amount_cents": _cents(),
@@ -1375,7 +1383,7 @@ SCHEMAS = _register(
             "Interactive or client upload. The server sets the user. The client cannot name another user.",
         ),
         "FileUploadModuleOwner": _obj(
-            {"owner_kind": {"const": "module"}, "owner_module_id": {"type": "string", "minLength": 1}},
+            {"owner_kind": {"const": "module"}, "owner_module_id": _module_id("The installed module that owns this upload.")},
             ["owner_kind", "owner_module_id"],
             "Background upload. The owner is the installed module. There is no fabricated user id.",
         ),
@@ -1443,7 +1451,7 @@ SCHEMAS = _register(
             "oneOf": [
                 _obj(
                     {
-                        "module_id": {"type": "string", "minLength": 1},
+                        "module_id": _module_id(),
                         "assignment": {"const": "matter"},
                         "matter_id": _uuid(),
                         "source": _enum(["email", "zoom", "importer", "drop_folder"]),
@@ -1459,7 +1467,7 @@ SCHEMAS = _register(
                 ),
                 _obj(
                     {
-                        "module_id": {"type": "string", "minLength": 1},
+                        "module_id": _module_id(),
                         "assignment": {"const": "unassigned"},
                         "matter_id": {"type": "null"},
                         "source": _enum(["email", "zoom", "importer", "drop_folder"]),
@@ -1840,7 +1848,7 @@ SCHEMAS = _register(
             {
                 "name": {"type": "string"},
                 "owner_user_id": _null(_uuid()),
-                "module_id": {"type": "string"},
+                "module_id": _null(_module_id()),
                 "scopes": _arr({"type": "string"}),
                 "revoked": {"type": "boolean"},
             },
@@ -1865,7 +1873,7 @@ SCHEMAS = _register(
                 _obj(
                     {
                         "name": {"type": "string", "minLength": 1},
-                        "module_id": {"type": "string", "minLength": 1},
+                        "module_id": _module_id("The installed module this token is bound to."),
                         "scopes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
                     },
                     ["name", "module_id", "scopes"],
@@ -2070,7 +2078,7 @@ SCHEMAS = _register(
         "HelpPage": _obj(
             {
                 "id": {"type": "string"},
-                "module_id": {"type": "string"},
+                "module_id": _module_id("Owner namespace. Always the module slug, not a path."),
                 "title": {"type": "string"},
                 "markdown": {"type": "string"},
                 "keywords": _arr({"type": "string"}),
@@ -2142,7 +2150,7 @@ SCHEMAS = _register(
         ),
         "TaskAuthorization": _obj(
             {
-                "module_id": {"type": "string", "minLength": 1, "description": "The registered module this delivery is for."},
+                "module_id": _module_id("The registered module this delivery is for."),
                 "event_id": _uuid("The event id. A different event cannot reuse the grant."),
                 "event_type": {"type": "string"},
                 "file_id": _uuid(),
@@ -2415,7 +2423,7 @@ SCHEMAS = _register(
                 ),
                 "key_column": {"const": "id"},
                 "columns": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}},
-                "scope": {"type": "string", "pattern": "^views:[a-z0-9-]+\\.[a-z0-9_]+:read$"},
+                "scope": {"type": "string", "pattern": "^views:" + MODULE_ID_PATTERN[1:-1] + r"\.[a-z0-9_]+:read$"},
             },
             ["name", "core_record", "key_column", "columns", "scope"],
             "Published read view keyed to one core record. include= uses scope views:{module_id}.{view}:read.",
@@ -2482,7 +2490,7 @@ SCHEMAS = _register(
         },
         "ModuleManifest": _obj(
             {
-                "id": {"type": "string"},
+                "id": _module_id("Module slug. The same pattern as the {module_id} path parameter. Not a path."),
                 "name": {"type": "string"},
                 "version": {"type": "string"},
                 "author": {"type": "string"},
@@ -3164,7 +3172,7 @@ QUERY = {
 
 PARAM_SCHEMA = {
     "setting_key": _ref("SettingKey"),
-    "module_id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"},
+    "module_id": _module_id(),
     "domain": _enum(["time", "trust", "calendar"]),
     "provider": _enum(["anthropic", "openai", "openai_compatible", "local"]),
     "role": _ROLE,
