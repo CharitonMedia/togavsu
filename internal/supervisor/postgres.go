@@ -25,6 +25,8 @@ func DumpCommand(bin, databaseURL string) func(context.Context, io.Writer) error
 		if databaseURL == "" {
 			return fmt.Errorf("DATABASE_URL: %w", ErrBadRequest)
 		}
+		ctx, cancel := boundDocker(ctx, databaseIOTimeout)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, bin, "--format=plain", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--dbname", databaseURL)
 		cmd.Stdout = w
 		var stderr bytes.Buffer
@@ -91,7 +93,9 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	dropFresh := true
 	defer func() {
 		if dropFresh {
-			_, _ = psqlLines(context.Background(), bin, adminURL, "DROP DATABASE IF EXISTS "+fresh)
+			clean, cancel := recoveryContext()
+			defer cancel()
+			_, _ = psqlLines(clean, bin, adminURL, "DROP DATABASE IF EXISTS "+fresh)
 		}
 	}()
 	target, err := withDatabase(adminURL, fresh)
@@ -148,6 +152,14 @@ var errCommitUnjournaled = errors.New("committed restore was not recorded")
 var errRollbackUnjournaled = errors.New("rolled-back restore was not recorded")
 
 const swapRecoveryTimeout = 30 * time.Second
+
+// cleanupIOTimeout bounds a database cleanup that must run after the caller's
+// context is already canceled. It is a fresh deadline, not the canceled one.
+var cleanupIOTimeout = swapRecoveryTimeout
+
+// databaseIOTimeout caps psql and pg_dump when the caller has no deadline.
+// A scheduled backup uses the process lifetime context.
+var databaseIOTimeout = 30 * time.Minute
 
 type swapHookFunc func(configured, fresh, replaced string) error
 
@@ -227,7 +239,11 @@ func recordSwapRolledBack(ctx context.Context, configured, fresh, replaced strin
 }
 
 func recoveryContext() (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), swapRecoveryTimeout)
+	limit := cleanupIOTimeout
+	if limit <= 0 {
+		limit = swapRecoveryTimeout
+	}
+	return context.WithTimeout(context.Background(), limit)
 }
 
 // PostgresCatalog reads pg_database through the admin connection. It does not
@@ -428,6 +444,8 @@ func dropDatabase(ctx context.Context, bin, adminURL, name string) error {
 }
 
 func psqlExec(ctx context.Context, bin, databaseURL, sql string) error {
+	ctx, cancel := boundDocker(ctx, databaseIOTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--set", "ON_ERROR_STOP=1", "--dbname", databaseURL, "--command", sql)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -458,6 +476,8 @@ func ApplyCommand(bin, databaseURL string) func(context.Context, io.Reader) erro
 		if databaseURL == "" {
 			return fmt.Errorf("DATABASE_URL: %w", ErrBadRequest)
 		}
+		ctx, cancel := boundDocker(ctx, databaseIOTimeout)
+		defer cancel()
 		cmd := exec.CommandContext(ctx, bin, "--set", "ON_ERROR_STOP=1", "--dbname", databaseURL)
 		cmd.Stdin = r
 		var stderr bytes.Buffer
@@ -545,7 +565,11 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		if _, err := psqlLines(ctx, bin, adminURL, "CREATE DATABASE "+name); err != nil {
 			return nil, err
 		}
-		defer psqlLines(context.Background(), bin, adminURL, "DROP DATABASE "+name)
+		defer func() {
+			clean, cancel := recoveryContext()
+			defer cancel()
+			_, _ = psqlLines(clean, bin, adminURL, "DROP DATABASE "+name)
+		}()
 		target, err := withDatabase(adminURL, name)
 		if err != nil {
 			return nil, err
@@ -573,6 +597,8 @@ func withDatabase(rawURL, name string) (string, error) {
 }
 
 func psqlLines(ctx context.Context, bin, databaseURL, sql string) ([]string, error) {
+	ctx, cancel := boundDocker(ctx, databaseIOTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--tuples-only", "--no-align", "--dbname", databaseURL, "--command", sql)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

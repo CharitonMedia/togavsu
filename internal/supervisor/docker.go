@@ -89,11 +89,25 @@ func (d *DockerRuntime) coreBinds() []string {
 }
 
 func DockerSocketClient(socketPath string) *http.Client {
-	return &http.Client{Transport: &http.Transport{
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+	return &http.Client{
+		Timeout: dockerWaitLimit,
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: dockerWaitLimit,
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
+			},
 		},
-	}}
+	}
+}
+
+func dockerHTTPClient(client *http.Client) *http.Client {
+	if client != nil {
+		return client
+	}
+	return &http.Client{
+		Timeout:   dockerWaitLimit,
+		Transport: &http.Transport{ResponseHeaderTimeout: dockerWaitLimit},
+	}
 }
 
 func (d *DockerRuntime) base() string {
@@ -178,11 +192,7 @@ func (d *DockerRuntime) Pull(ctx context.Context, image string) error {
 	if err != nil {
 		return err
 	}
-	client := d.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	res, err := client.Do(req)
+	res, err := dockerHTTPClient(d.Client).Do(req)
 	if err != nil {
 		return err
 	}
@@ -490,11 +500,7 @@ func (d *DockerRuntime) call(ctx context.Context, method, path string, body any,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	client := d.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	res, err := client.Do(req)
+	res, err := dockerHTTPClient(d.Client).Do(req)
 	if err != nil {
 		return err
 	}
@@ -642,7 +648,7 @@ func (m DockerMigrator) logs(ctx context.Context, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	res, err := m.Docker.Client.Do(req)
+	res, err := dockerHTTPClient(m.Docker.Client).Do(req)
 	if err != nil {
 		return "", err
 	}

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -184,6 +186,114 @@ exit 0
 	}
 	if err := dest.Delete(context.Background(), "down.tgbk"); err == nil || remoteObjectAbsent(err) {
 		t.Fatalf("network error was treated as absence: %v", err)
+	}
+}
+
+func TestSFTPGetMissingIsNotFoundAndFailuresStayErrors(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "sftp")
+	body := `#!/bin/sh
+prev=
+batch=
+for arg in "$@"; do
+  if [ "$prev" = "-b" ]; then batch=$arg; fi
+  prev=$arg
+done
+while IFS= read -r line; do
+  case "$line" in
+    *missing*) echo "Couldn't stat remote file: No such file or directory" >&2; exit 1 ;;
+    *denied*) echo "Couldn't stat remote file: Permission denied" >&2; exit 1 ;;
+    *down*) echo "ssh: connect to host files.example port 22: Connection refused" >&2; exit 255 ;;
+  esac
+done < "$batch"
+exit 0
+`
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dest := sftpDest(t, dir, "/backups", script)
+	if _, err := dest.Get(context.Background(), "missing.tgbk"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing get = %v", err)
+	}
+	if _, err := dest.Get(context.Background(), "denied.tgbk"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("permission get = %v", err)
+	}
+	if _, err := dest.Get(context.Background(), "down.tgbk"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("connection get = %v", err)
+	}
+}
+
+func TestSFTPDeleteConfirmsAbsenceAndRetriesAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+	mode := filepath.Join(dir, "mode")
+	if err := os.WriteFile(mode, []byte("denied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := filepath.Join(dir, "sftp")
+	body := "#!/bin/sh\nprev=\nbatch=\nfor arg in \"$@\"; do\n" +
+		"  if [ \"$prev\" = \"-b\" ]; then batch=$arg; fi\n  prev=$arg\ndone\n" +
+		"mode=$(cat " + mode + ")\n" +
+		"while IFS= read -r line; do\n  case \"$line\" in\n" +
+		"    get*)\n" +
+		"      if [ \"$mode\" = denied ]; then echo \"Couldn't stat remote file: Permission denied\" >&2; exit 1; fi\n" +
+		"      echo \"Couldn't stat remote file: No such file or directory\" >&2; exit 1 ;;\n" +
+		"    rm*) exit 0 ;;\n" +
+		"  esac\ndone < \"$batch\"\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "sftp", Host: "files.example", User: "backup", Port: 22,
+		IdentityFile: filepath.Join(dir, "id"), KnownHosts: filepath.Join(dir, "known"),
+		RemotePath: "/backups", RetentionDays: 30,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "id"), []byte("synthetic"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &SFTPDestination{Spec: spec, Command: script}, nil
+	}
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: meta.ID + ".tgbk", Created: meta.CreatedAt}); err != nil {
+		t.Fatal(err)
+	}
+	ops := &Operations{Store: s, Gate: &Gate{}, Passphrase: func() (string, error) { return s.Passphrase, nil }}
+	req := httptest.NewRequest(http.MethodDelete, "/v1/backups/"+meta.ID, nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rec := httptest.NewRecorder()
+	NewMux("secret", ops, nil).ServeHTTP(rec, req)
+	if rec.Code == http.StatusNoContent {
+		t.Fatal("delete succeeded before absence was confirmed")
+	}
+	kept, err := s.lookup(meta.ID)
+	if err != nil || !kept.Deleting {
+		t.Fatalf("deleting record dropped: %+v %v", kept, err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 1 {
+		t.Fatalf("receipt dropped: %+v %v", owned, err)
+	}
+	if err := os.WriteFile(mode, []byte("missing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	ops.Store = restarted
+	rec = httptest.NewRecorder()
+	NewMux("secret", ops, nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("retry status %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := restarted.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("metadata remained: %v", err)
+	}
+	if owned, err := restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt remained: %+v %v", owned, err)
 	}
 }
 

@@ -1741,6 +1741,58 @@ func TestRestoreQuiescesRestartingAndRejectsUnknown(t *testing.T) {
 	})
 }
 
+func TestStalledPostgresCleanupStillRestartsWriters(t *testing.T) {
+	old := cleanupIOTimeout
+	cleanupIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { cleanupIOTimeout = old })
+	dir := t.TempDir()
+	dropped := filepath.Join(dir, "dropped")
+	script := filepath.Join(dir, "psql")
+	body := "#!/bin/sh\n" +
+		"sql=\nprev=\n" +
+		"for arg in \"$@\"; do\n" +
+		"  if [ \"$prev\" = \"--command\" ]; then sql=$arg; fi\n" +
+		"  prev=$arg\n" +
+		"done\n" +
+		"case \"$sql\" in\n" +
+		"  \"CREATE DATABASE \"*) exit 0 ;;\n" +
+		"  \"DROP DATABASE \"*) echo dropped > " + dropped + "; exec sleep 30 ;;\n" +
+		"esac\n" +
+		"exec sleep 30\n"
+	if err := os.WriteFile(script, []byte(body), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	ops := &Operations{
+		Store: store, Gate: &Gate{}, Now: store.Now,
+		RestoreTimeout: 2 * time.Second,
+		Runtime:        &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1"}}},
+		Passphrase:     func() (string, error) { return store.Passphrase, nil },
+		ApplyRestore: func(ctx context.Context, payload RestorePayload) error {
+			return RestoreIntoCleanDatabase(ctx, script, "postgres://togavsu@127.0.0.1/postgres", "postgres://togavsu@127.0.0.1/togavsu", payload.Dump, payload.Manifest.RecordCounts)
+		},
+	}
+	start := time.Now()
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("restore held writers for %s", elapsed)
+	}
+	if err == nil || rec.Status == "completed" {
+		t.Fatalf("stalled load was applied: %+v %v", rec, err)
+	}
+	if _, statErr := os.Stat(dropped); statErr != nil {
+		t.Fatalf("cleanup did not start: %v", statErr)
+	}
+	if !containsStep(order, "stop:core-1") || !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers were not recovered: %v", order)
+	}
+}
+
 func noticeBody(t *testing.T, box *Outbox) string {
 	t.Helper()
 	notes, err := box.List()

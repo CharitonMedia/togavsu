@@ -86,6 +86,9 @@ func (s *SFTPDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 	}
 	if err := s.batch(ctx, "get "+remote+" "+local); err != nil {
 		os.Remove(tmp.Name())
+		if remoteObjectAbsent(err) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	f, err := os.Open(tmp.Name())

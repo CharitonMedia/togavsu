@@ -628,6 +628,14 @@ func (u *Updater) startCandidate(ctx context.Context, opID, image, name string, 
 }
 
 func (u *Updater) finishSwitch(ctx context.Context, opID string, current, next ContainerInfo, upstream string, switchErr error) (string, error) {
+	if errors.Is(switchErr, ErrProxyUnreconciled) {
+		_ = u.note(opID, func(rec *updateIntent) {
+			rec.Status = "running"
+			rec.Cleanup = "proxy_unreconciled"
+			rec.Phase = "proxy_unknown"
+		})
+		return "proxy_unreconciled", switchErr
+	}
 	if switchErr != nil && !errors.Is(switchErr, ErrProxyUnreconciled) {
 		live, lerr := u.readLive(ctx)
 		if lerr != nil || live == "" {

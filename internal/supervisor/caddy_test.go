@@ -627,6 +627,56 @@ func TestAcceptedLoadIsDurableBeforeThePreviousCoreIsRetired(t *testing.T) {
 	}
 }
 
+func TestStalledCaddyAdminKeepsTheRouteUncertain(t *testing.T) {
+	old := caddyAdminTimeout
+	caddyAdminTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { caddyAdminTimeout = old })
+	for _, mode := range []string{"headers", "body"} {
+		t.Run(mode, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					http.Error(w, "no hijack", http.StatusInternalServerError)
+					return
+				}
+				conn, buf, err := hj.Hijack()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				_, _ = io.Copy(io.Discard, buf)
+				if mode == "body" {
+					_, _ = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 32\r\nConnection: close\r\n\r\n")
+				}
+				one := make([]byte, 1)
+				_, _ = conn.Read(one)
+			}))
+			defer srv.Close()
+			proxy := &CaddyProxy{AdminURL: srv.URL, HTTP: &http.Client{}, UpstreamFile: filepath.Join(t.TempDir(), "upstream")}
+			start := time.Now()
+			err := proxy.Switch(context.Background(), "new-core:8080")
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Fatalf("%s wait held the caller for %s", mode, elapsed)
+			}
+			if !errors.Is(err, ErrProxyUnreconciled) {
+				t.Fatalf("%s switch = %v", mode, err)
+			}
+			var order []string
+			up := &Updater{Runtime: &scriptRuntime{order: &order}, Now: func() time.Time { return time.Unix(1, 0).UTC() }}
+			got, rerr := up.finishSwitch(context.Background(), "op-1",
+				ContainerInfo{ID: "old", Name: "old"},
+				ContainerInfo{ID: "new", Name: "new"},
+				"new-core:8080", err)
+			if got != "proxy_unreconciled" || !errors.Is(rerr, ErrProxyUnreconciled) {
+				t.Fatalf("route %s %v", got, rerr)
+			}
+			if containsStep(order, "stop:old") || containsStep(order, "stop:new") {
+				t.Fatalf("retired a core while the route was uncertain: %v", order)
+			}
+		})
+	}
+}
+
 func freePort(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

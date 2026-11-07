@@ -22,13 +22,18 @@ func (r IndexRegistry) Latest(ctx context.Context) (Release, error) {
 	if r.URL == "" {
 		return Release{}, ErrReleaseIndexUnconfigured
 	}
+	ctx, cancel := boundDocker(ctx, dockerWaitLimit)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.URL, nil)
 	if err != nil {
 		return Release{}, err
 	}
 	client := r.HTTP
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{
+			Timeout:   dockerWaitLimit,
+			Transport: &http.Transport{ResponseHeaderTimeout: dockerWaitLimit},
+		}
 	}
 	res, err := client.Do(req)
 	if err != nil {

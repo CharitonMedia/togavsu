@@ -11,7 +11,12 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
+
+// caddyAdminTimeout bounds one admin request, including the response headers
+// and the body. Scheduled updates pass a context with no deadline.
+var caddyAdminTimeout = 30 * time.Second
 
 var errLoadRejected = errors.New("caddy rejected the load")
 
@@ -79,6 +84,8 @@ func (c *CaddyProxy) post(ctx context.Context, upstream string) error {
 	if err != nil {
 		return err
 	}
+	ctx, cancel := boundDocker(ctx, caddyAdminTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(c.AdminURL, "/")+"/load", bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -90,14 +97,19 @@ func (c *CaddyProxy) post(ctx context.Context, upstream string) error {
 		return err
 	}
 	defer res.Body.Close()
+	msg, err := readLimited(ctx, res.Body, 2048)
+	if err != nil {
+		return err
+	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		msg, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		return fmt.Errorf("%w: %s %s", errLoadRejected, res.Status, strings.TrimSpace(string(msg)))
 	}
 	return nil
 }
 
 func (c *CaddyProxy) activeDials(ctx context.Context) ([]string, error) {
+	ctx, cancel := boundDocker(ctx, caddyAdminTimeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.AdminURL, "/")+"/config/", nil)
 	if err != nil {
 		return nil, err
@@ -107,11 +119,15 @@ func (c *CaddyProxy) activeDials(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	defer res.Body.Close()
+	raw, err := readLimited(ctx, res.Body, 1<<20)
+	if err != nil {
+		return nil, err
+	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("caddy config %s", res.Status)
 	}
 	var cfg any
-	if err := json.NewDecoder(res.Body).Decode(&cfg); err != nil {
+	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
 	var dials []string
@@ -119,16 +135,40 @@ func (c *CaddyProxy) activeDials(ctx context.Context) ([]string, error) {
 	return dials, nil
 }
 
+// readLimited waits for the body only until ctx ends, then closes it and
+// waits for that read to return. The caller does not keep a goroutine.
+func readLimited(ctx context.Context, rc io.ReadCloser, limit int64) ([]byte, error) {
+	done := make(chan struct{})
+	var buf bytes.Buffer
+	var err error
+	go func() {
+		_, err = io.Copy(&buf, io.LimitReader(rc, limit))
+		close(done)
+	}()
+	select {
+	case <-done:
+		if err != nil {
+			return nil, err
+		}
+		return buf.Bytes(), nil
+	case <-ctx.Done():
+		_ = rc.Close()
+		<-done
+		return nil, ctx.Err()
+	}
+}
+
 func (c *CaddyProxy) client() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
+	transport := &http.Transport{ResponseHeaderTimeout: caddyAdminTimeout}
 	if sock := c.socketPath(); sock != "" {
-		return &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
-		}}}
+		}
 	}
-	return http.DefaultClient
+	return &http.Client{Timeout: caddyAdminTimeout, Transport: transport}
 }
 
 func (c *CaddyProxy) ActiveUpstream(ctx context.Context) (string, error) {
