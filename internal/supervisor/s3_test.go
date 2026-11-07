@@ -756,6 +756,98 @@ func wireSigV4OK(r *http.Request, secret string) bool {
 	return auth[i+len(mark):] == want
 }
 
+func TestS3RejectedPutClearsAfterPermissionRecovery(t *testing.T) {
+	var mu sync.Mutex
+	allowed := false
+	stored := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		open := allowed
+		mu.Unlock()
+		if !open && (r.Method == http.MethodPut || r.Method == http.MethodDelete || r.Method == http.MethodGet) && !strings.Contains(r.URL.Path, "other-firm") {
+			http.Error(w, "denied", http.StatusForbidden)
+			return
+		}
+		switch r.Method {
+		case http.MethodPut:
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			stored[r.URL.Path] = body
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		case http.MethodDelete:
+			mu.Lock()
+			delete(stored, r.URL.Path)
+			mu.Unlock()
+			w.WriteHeader(http.StatusNoContent)
+		case http.MethodGet:
+			mu.Lock()
+			body, ok := stored[r.URL.Path]
+			mu.Unlock()
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{Spec: spec, HTTP: srv.Client(), Now: s.Now}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 {
+		t.Fatalf("%+v %v", meta.DestinationErrors, err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptRejected {
+		t.Fatalf("S3 403 was not a durable rejection: %+v %v", owned, err)
+	}
+	if err := s.DeleteDestination("share"); err == nil {
+		t.Fatal("destination removed while the rejected upload was unresolved")
+	}
+	mu.Lock()
+	allowed = true
+	keep := string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if keep != "keep" {
+		t.Fatal(keep)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := s.openDest(specs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("GET 404 left the rejected receipt: %+v %v", owned, err)
+	}
+	if err := s.DeleteDestination("share"); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	keep = string(stored["/backups/other-firm/keep"])
+	mu.Unlock()
+	if keep != "keep" {
+		t.Fatalf("other firm %q", keep)
+	}
+}
+
 func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 	for _, err := range []error{
 		io.EOF,

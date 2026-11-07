@@ -745,7 +745,12 @@ func roundTripTest(ctx context.Context, dest Destination) error {
 const (
 	receiptPending   = "pending"
 	receiptUncertain = "uncertain"
+	receiptRejected  = "rejected"
 )
+
+// maxChecksumSidecar is the most a checksum sidecar may contain. A SHA-256
+// hex digest is 64 characters. Anything larger is not a sidecar.
+const maxChecksumSidecar = 128
 
 // An uncertain receipt is not aged out. A lost PUT that never publishes leaves
 // the tombstone in place so a later copy can still be deleted. That is the
@@ -778,7 +783,7 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 		if dest.ID() != "" && obj.DestinationID != "" && obj.DestinationID != dest.ID() {
 			continue
 		}
-		if obj.State == receiptUncertain || obj.State == receiptPending || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
+		if obj.State == receiptUncertain || obj.State == receiptPending || obj.State == receiptRejected || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
 			continue
 		}
 		when := obj.Created

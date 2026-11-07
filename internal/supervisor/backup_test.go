@@ -4,6 +4,9 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -849,12 +852,13 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 	if err != nil || len(owned) != 1 || owned[0].State != receiptPending {
 		t.Fatalf("ownership before the upload finished: %+v %v", owned, err)
 	}
+	archiveName := owned[0].Name
 	again := &PathDestination{Spec: spec}
-	err = again.Put(context.Background(), owned[0].Name, bytes.NewReader([]byte("x")), "")
+	err = again.Put(context.Background(), archiveName, bytes.NewReader([]byte("x")), "")
 	if !errors.Is(err, ErrRemoteUncertain) || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("second put = %v", err)
 	}
-	partial := filepath.Join(root, spec.Namespace, owned[0].Name+".partial")
+	partial := filepath.Join(root, spec.Namespace, archiveName+".partial")
 	if _, err := os.Stat(partial); err != nil {
 		t.Fatalf("partial archive: %v", err)
 	}
@@ -874,12 +878,12 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 		t.Fatal("operation gate stayed held after the wait ended")
 	}
 	releaseGate()
-	if !remoteBusy(remoteKey("share", owned[0].Name)) {
+	if !remoteBusy(remoteKey("share", archiveName)) {
 		t.Fatal("filesystem operation was dropped while the syscall was still running")
 	}
 	release()
 	deadline := time.Now().Add(2 * time.Second)
-	for remoteBusy(remoteKey("share", owned[0].Name)) {
+	for remoteBusy(remoteKey("share", archiveName)) {
 		if time.Now().After(deadline) {
 			t.Fatal("path worker did not finish after the syscall returned")
 		}
@@ -893,11 +897,15 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	owned, err = s.receiptBook().List("share")
-	if err != nil || len(owned) != 1 || owned[0].State != "" {
+	sideName := strings.TrimSuffix(archiveName, ".tgbk") + ".sha256"
+	if err != nil || !receiptState(owned, archiveName, "") || !receiptState(owned, sideName, "") {
 		t.Fatalf("receipt after the upload finished: %+v %v", owned, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, spec.Namespace, owned[0].Name)); err != nil {
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace, archiveName)); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace, sideName)); err != nil {
+		t.Fatalf("checksum sidecar missing: %v", err)
 	}
 }
 
@@ -1109,11 +1117,14 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 		t.Fatal(err)
 	}
 	owned, err = receipts.List("share")
-	if err != nil || len(owned) != 1 || owned[0].State != "" {
-		t.Fatalf("lost ack was not confirmed: %+v %v", owned, err)
+	if err != nil || !receiptState(owned, name, "") || !receiptState(owned, meta.ID+".sha256", "") {
+		t.Fatalf("archive completed without a valid sidecar: %+v %v", owned, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, meta.ID+".sha256")); err != nil {
+		t.Fatalf("sidecar was not stored: %v", err)
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, name), []byte("not-the-archive"), 0o600); err != nil {
@@ -1131,9 +1142,308 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 	if _, err := os.Stat(foreign); err != nil {
 		t.Fatalf("unreceipted object removed: %v", err)
 	}
-	if owned, err := receipts.List("share"); err != nil || len(owned) != 0 {
-		t.Fatalf("mismatched receipt remained: %+v %v", owned, err)
+	if owned, err := receipts.List("share"); err != nil || receiptState(owned, name, "") || receiptState(owned, name, receiptPending) {
+		t.Fatalf("mismatched archive receipt remained: %+v %v", owned, err)
 	}
+}
+
+func TestRejectedUploadClearsWhenAbsenceIsConfirmed(t *testing.T) {
+	s := testStore(t)
+	d := &scriptDest{id: "share", objects: map[string][]byte{"other-firm.tgbk": []byte("keep")}}
+	d.archivePut = &remoteStatusError{Status: http.StatusForbidden, Detail: "denied"}
+	d.denyDelete = true
+	d.denyRead = true
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	// The first Create had no destination. This one is refused before any object exists.
+	copied, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(copied.DestinationErrors) != 1 {
+		t.Fatalf("%+v %v", copied.DestinationErrors, err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptRejected || owned[0].Name != copied.ID+".tgbk" {
+		t.Fatalf("rejection was not durable: %+v %v", owned, err)
+	}
+	if _, ok := d.objects[copied.ID+".tgbk"]; ok {
+		t.Fatal("rejected put stored an object")
+	}
+	if err := s.DeleteDestination("share"); err == nil {
+		t.Fatal("destination removed while the rejected receipt remained")
+	}
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: s.OpenDestination}
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = restarted.receiptBook().List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptRejected {
+		t.Fatalf("403 cleanup became uncertain: %+v %v", owned, err)
+	}
+	d.denyDelete = false
+	d.denyRead = false
+	if err := restarted.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("confirmed absence left the rejected receipt: %+v %v", owned, err)
+	}
+	if string(d.objects["other-firm.tgbk"]) != "keep" {
+		t.Fatalf("other firm %q", d.objects["other-firm.tgbk"])
+	}
+	if err := restarted.DeleteDestination("share"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCrashBeforeSidecarReceiptUploadsAndValidates(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := bytes.Repeat([]byte("archive-bytes-"), 16000)
+	sum := sha256.Sum256(payload)
+	digest := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(filepath.Join(s.Dir, meta.ID+".tgbk"), payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Dir, meta.ID+".sha256"), []byte(digest+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored BackupMeta
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		t.Fatal(err)
+	}
+	stored.SHA256 = digest
+	stored.Bytes = int64(len(payload))
+	if err := os.WriteFile(filepath.Join(s.Dir, meta.ID+".json"), append(mustJSON(stored), '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stream := &chunkReader{b: payload}
+	d := &scriptDest{id: "share", objects: map[string][]byte{meta.ID + ".tgbk": payload}, stream: stream}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: meta.ID + ".tgbk", Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if stream.max > 32*1024 {
+		t.Fatalf("archive hash asked for %d bytes at once", stream.max)
+	}
+	if stream.err != nil {
+		t.Fatal(stream.err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || !receiptState(owned, meta.ID+".tgbk", "") || !receiptState(owned, meta.ID+".sha256", "") {
+		t.Fatalf("copy completed without a validated sidecar: %+v %v", owned, err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(d.objects[meta.ID+".sha256"]), []byte(digest)) {
+		t.Fatalf("sidecar %q", d.objects[meta.ID+".sha256"])
+	}
+	if len(d.puts) != 1 || d.puts[0] != meta.ID+".sha256" {
+		t.Fatalf("sidecar puts %v", d.puts)
+	}
+}
+
+func TestMalformedSidecarDoesNotCompleteTheArchive(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &scriptDest{
+		id:       "share",
+		objects:  map[string][]byte{meta.ID + ".tgbk": raw},
+		override: map[string][]byte{meta.ID + ".sha256": bytes.Repeat([]byte("x"), 4096)},
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.receiptBook().Add(OwnedObject{DestinationID: "share", Name: meta.ID + ".tgbk", Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err := s.receiptBook().List("share")
+	if err != nil || receiptState(owned, meta.ID+".tgbk", "") || receiptState(owned, meta.ID+".sha256", "") {
+		t.Fatalf("malformed sidecar completed the copy: %+v %v", owned, err)
+	}
+}
+
+func TestUploadOutcomeBoundaries(t *testing.T) {
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(s.Dir, meta.ID+".tgbk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	archive := meta.ID + ".tgbk"
+	side := meta.ID + ".sha256"
+	d := &scriptDest{id: "share", objects: map[string][]byte{}}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
+	receipts := s.receiptBook()
+
+	d.archivePut = io.EOF
+	if _, err := s.Create(context.Background(), reasonManual); err != nil {
+		t.Fatal(err)
+	}
+	d.archivePut = nil
+	// The copy above is a second backup. Use the fresh id from the book by listing.
+	// The EOF case is asserted through the receipt of that new backup below.
+	owned, err := receipts.List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain {
+		t.Fatalf("lost archive ack: %+v %v", owned, err)
+	}
+	lostName := owned[0].Name
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = receipts.List("share")
+	if err != nil || len(owned) != 1 || owned[0].State != receiptUncertain || owned[0].Name != lostName {
+		t.Fatalf("404 cleared a lost upload: %+v %v", owned, err)
+	}
+
+	d.putErr = map[string]error{side: io.EOF}
+	d.objects[archive] = raw
+	if err := receipts.Add(OwnedObject{DestinationID: "share", Name: archive, Created: meta.CreatedAt, State: receiptPending}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	owned, err = receipts.List("share")
+	if err != nil || receiptState(owned, archive, "") || !receiptState(owned, side, receiptUncertain) {
+		t.Fatalf("sidecar eof completed the archive: %+v %v", owned, err)
+	}
+	delete(d.objects, side)
+	if err := s.reconcileDestination(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err = receipts.List("share"); err != nil || !receiptState(owned, side, receiptUncertain) {
+		t.Fatalf("sidecar 404 cleared a lost checksum: %+v %v", owned, err)
+	}
+}
+
+type scriptDest struct {
+	id         string
+	objects    map[string][]byte
+	putErr     map[string]error
+	delErr     map[string]error
+	override   map[string][]byte
+	archivePut error
+	denyDelete bool
+	denyRead   bool
+	stream     *chunkReader
+	puts       []string
+}
+
+func (d *scriptDest) ID() string                 { return d.id }
+func (d *scriptDest) Kind() string               { return "script" }
+func (d *scriptDest) Test(context.Context) error { return nil }
+func (d *scriptDest) List(context.Context) ([]RemoteObject, error) {
+	return nil, nil
+}
+func (d *scriptDest) Put(_ context.Context, name string, r io.Reader, _ string) error {
+	d.puts = append(d.puts, name)
+	if err := d.putErr[name]; err != nil {
+		return err
+	}
+	if d.archivePut != nil && strings.HasSuffix(name, ".tgbk") {
+		return d.archivePut
+	}
+	body, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	if d.objects == nil {
+		d.objects = map[string][]byte{}
+	}
+	d.objects[name] = body
+	return nil
+}
+func (d *scriptDest) Get(_ context.Context, name string) (io.ReadCloser, error) {
+	if d.denyRead {
+		return nil, &remoteStatusError{Status: http.StatusForbidden, Detail: "denied"}
+	}
+	if d.stream != nil && strings.HasSuffix(name, ".tgbk") {
+		return io.NopCloser(d.stream), nil
+	}
+	if body, ok := d.override[name]; ok {
+		return io.NopCloser(bytes.NewReader(body)), nil
+	}
+	body, ok := d.objects[name]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return io.NopCloser(bytes.NewReader(body)), nil
+}
+func (d *scriptDest) Delete(_ context.Context, name string) error {
+	if err := d.delErr[name]; err != nil {
+		return err
+	}
+	if d.denyDelete {
+		return &remoteStatusError{Status: http.StatusForbidden, Detail: "denied"}
+	}
+	delete(d.objects, name)
+	delete(d.override, name)
+	return nil
+}
+
+type chunkReader struct {
+	b   []byte
+	off int
+	max int
+	err error
+}
+
+func (c *chunkReader) Read(p []byte) (int, error) {
+	if len(p) > 32*1024 {
+		c.err = errors.New("whole-buffer read")
+		return 0, c.err
+	}
+	if len(p) > c.max {
+		c.max = len(p)
+	}
+	if c.off >= len(c.b) {
+		return 0, io.EOF
+	}
+	n := copy(p, c.b[c.off:])
+	c.off += n
+	return n, nil
+}
+
+func receiptState(owned []OwnedObject, name, state string) bool {
+	for _, obj := range owned {
+		if obj.Name == name && obj.State == state {
+			return true
+		}
+	}
+	return false
 }
 
 func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) {
