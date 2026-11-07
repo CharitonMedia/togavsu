@@ -197,6 +197,7 @@ It does not claim the handlers or the MCP server are implemented.
 | payments, collections | `POST` | `/api/v1/payments` | `createPayment` | required:createPayment | admin, attorney, staff | payments:write |
 | payments, collections | `GET` | `/api/v1/payments/{payment_id}` | `getPayment` | required:getPayment | admin, attorney, staff, accountant | payments:read |
 | payments, collections, bulk | `POST` | `/api/v1/payments:bulk` | `bulkPayment` | required:bulkPayment | admin, attorney, staff | payments:write |
+| payments | `POST` | `/api/v1/payments/processor-initializations` | `initiateProcessorPayment` | required:initiateProcessorPayment | admin, attorney, staff | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/status` | `updatePaymentStatus` | required:updatePaymentStatus | admin, attorney, staff | payments:write |
 | payments | `POST` | `/api/v1/payments/{payment_id}/reverse` | `reversePayment` | required:reversePayment | admin, attorney | payments:write |
 | billing-worklist | `GET` | `/api/v1/billing/worklist` | `getBillingWorklist` | required:getBillingWorklist | admin, attorney, staff, accountant | invoices:read |
@@ -429,4 +430,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 423.
+Operations: 424.

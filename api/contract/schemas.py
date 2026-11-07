@@ -811,6 +811,65 @@ SCHEMAS = _register(
             ["status"],
             "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was.",
         ),
+        "ProcessorInitializationWrite": _obj(
+            {
+                "processor_module_id": {"type": "string", "minLength": 1},
+                "contact_id": _uuid(),
+                "matter_id": _uuid(),
+                "amount_cents": _cents(),
+                "destination": _PAY_DEST,
+                "invoice_id": _null(_uuid()),
+            },
+            ["processor_module_id", "contact_id", "matter_id", "amount_cents", "destination"],
+            "Asks the core to authorize one registered processor for this matter, contact, amount, and destination. The grant is delivered to that module. It is not in this response.",
+        ),
+        "ProcessorInitialization": _obj(
+            {
+                "id": _uuid(),
+                "processor_module_id": {"type": "string"},
+                "contact_id": _uuid(),
+                "matter_id": _uuid(),
+                "amount_cents": _cents(),
+                "destination": _PAY_DEST,
+                "invoice_id": _null(_uuid()),
+                "status": _enum(["authorized", "denied"]),
+                "expires_at": _dt(),
+            },
+            ["id", "processor_module_id", "contact_id", "matter_id", "amount_cents", "destination", "status", "expires_at"],
+            "Core authorization record. No payment row is created here. processor_authorization is delivered on moduleEvent.",
+        ),
+        "ProcessorAuthorization": _obj(
+            {
+                "module_id": {"type": "string", "minLength": 1},
+                "initialization_id": _uuid(),
+                "payment_id": _null(_uuid("Null until createPayment binds the payment. A later status update must use that id.")),
+                "matter_id": _uuid(),
+                "contact_id": _uuid(),
+                "invoice_id": _null(_uuid()),
+                "amount_cents": _cents(),
+                "destination": _PAY_DEST,
+                "allowed_operations": _arr({"type": "string"}),
+                "allowed_fields": _arr({"type": "string"}),
+                "expires_at": _dt(),
+                "revoked": {"type": "boolean"},
+                "issued_by": {"const": "core"},
+            },
+            [
+                "module_id",
+                "initialization_id",
+                "payment_id",
+                "matter_id",
+                "contact_id",
+                "amount_cents",
+                "destination",
+                "allowed_operations",
+                "allowed_fields",
+                "expires_at",
+                "revoked",
+                "issued_by",
+            ],
+            "Bounded processor capability issued by the core. It is not an admin grant and it does not require a signed-in viewer.",
+        ),
         "TrustAccount": _meta(
             {
                 "bank": {"type": "string"},
@@ -1105,6 +1164,32 @@ SCHEMAS = _register(
             ["file_id", "number", "storage_backend_id", "size_bytes", "sha256", "media_type", "saved_by", "how", "quarantined"],
             "An immutable file version. The storage key is not in the API.",
             mutable=False,
+        ),
+        "FileGrantView": _obj(
+            {
+                "name": {"type": "string"},
+                "extension": {"type": "string"},
+            },
+            ["name", "extension"],
+            "Complete file metadata for a file.version_created task grant. origin, created_by, and every other file field are absent.",
+        ),
+        "FileVersionGrantView": _obj(
+            {
+                "media_type": {"type": "string"},
+                "size_bytes": {"type": "integer", "minimum": 0},
+                "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+                "quarantined": {"type": "boolean"},
+            },
+            ["media_type", "size_bytes", "sha256", "quarantined"],
+            "Complete version metadata for a file.version_created task grant. storage_backend_id, saved_by, and created_by are absent.",
+        ),
+        "FileVersionGrantPage": _obj(
+            {
+                "data": _arr(_ref("FileVersionGrantView")),
+                "page": _ref("Page"),
+            },
+            ["data", "page"],
+            "One page of grant version projections.",
         ),
         "FileRendition": _meta(
             {
@@ -1836,9 +1921,10 @@ SCHEMAS = _register(
                 "matter_id": _null(_uuid()),
                 "summary": {"type": "string"},
                 "task_authorization": _null(_ref("TaskAuthorization")),
+                "processor_authorization": _null(_ref("ProcessorAuthorization")),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module.",
+            "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. Other events set both to null.",
         ),
         "Backup": _meta(
             {

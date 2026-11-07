@@ -21,6 +21,14 @@ from contract.build import (
     render_coverage,
     render_mcp,
 )
+from contract.policy import (
+    is_core_file_download,
+    payment_effect_decision,
+    payment_reversal_decision,
+    processor_callback,
+    processor_issuance,
+    published_version_events,
+)
 
 PRD_PATHS = [
     "/api/v1/openapi.json",
@@ -1213,7 +1221,12 @@ class ContractTest(unittest.TestCase):
         self.assertIn("downloadFileVersion", names)
         self.assertIn("downloadFileRendition", names)
         self.assertIn("createFileArchive", names)
-        self.assertGreaterEqual(len(found), 3)
+        self.assertIn("getInvoicePdf", names)
+        self.assertGreaterEqual(len(found), 4)
+        outside_files = [path for _method, path, _operation in found if not (path.startswith("/api/v1/files") or path.startswith("/api/v1/file-archives"))]
+        self.assertTrue(outside_files, names)
+        for operation_id in ("downloadBackup", "getHelpGuidePdf", "getHelpGuide", "getLlmsTxt", "putFileChunk"):
+            self.assertNotIn(operation_id, names, operation_id)
         calls = [
             ({"role": "client", "shared": True, "attorney_only": False, "on_wall": True}, "highlighted"),
             ({"role": "staff", "shared": True, "attorney_only": False, "on_wall": True}, "audited"),
@@ -1252,7 +1265,24 @@ class ContractTest(unittest.TestCase):
             ],
         )
         allowed = [step["operation"] for step in sequence if step["step"] != "obtain_context"]
-        self.assertEqual(policy["client_allowed_operations"], list(dict.fromkeys(allowed)))
+        for operation_id in dict.fromkeys(allowed):
+            self.assertIn(operation_id, policy["client_allowed_operations"], operation_id)
+        for operation_id in (
+            "listFile",
+            "getFile",
+            "listFileVersions",
+            "downloadFileVersion",
+            "downloadFileRendition",
+            "createFileArchive",
+            "listInvoice",
+            "getInvoice",
+            "getInvoicePdf",
+            "historyInvoice",
+            "getFileUpload",
+        ):
+            self.assertIn(operation_id, policy["client_allowed_operations"], operation_id)
+        for operation_id in ("updateMe", "createUser", "postTrustEntry", "reversePayment", "listAuditLog", "updateSetting"):
+            self.assertNotIn(operation_id, policy["client_allowed_operations"], operation_id)
         covered = set()
         for _method, _path, operation in _ops(self.spec):
             features = operation["x-togavsu-features"]
@@ -1439,6 +1469,393 @@ class ContractTest(unittest.TestCase):
         self.assertIn("email", _operation(self.spec, "updateMe")["x-togavsu-access"]["rejected_fields"])
         self.assertNotIn("email", self.spec["components"]["schemas"]["MeProfileWrite"]["properties"])
 
+    def test_trust_moving_payments_are_scoped_before_mutation(self):
+        reverse = _operation(self.spec, "reversePayment")
+        self.assertEqual(reverse["x-togavsu-domain-dispatch"]["applies_when"], "payment_has_trust_entry")
+        self.assertEqual(reverse["x-togavsu-access"]["scopes"], ["payments:write"])
+        cases = [
+            ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False}, "allowed", False, False),
+            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True}, "allowed", True, True),
+            ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
+            ({"role": "attorney", "token_scopes": ["trust:withdraw"], "trust_linked": True, "matter_walled": False}, "scope_denied", False, False),
+            ({"role": "staff", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False}, "forbidden", False, False),
+            ({"role": "accountant", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": False, "matter_walled": False}, "forbidden", False, False),
+            ({"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": True, "on_wall": False}, "not_found", False, False),
+        ]
+        for call, result, ledger, flag in cases:
+            decision = payment_reversal_decision(reverse, call)
+            self.assertEqual(decision["result"], result, call)
+            self.assertEqual(decision["ledger_mutated"], ledger, call)
+            self.assertEqual(decision["flag"], flag, call)
+            if result != "allowed":
+                self.assertFalse(decision["payment_mutated"], call)
+            else:
+                self.assertTrue(decision["payment_mutated"], call)
+                self.assertEqual(decision["payment_status"], "reversed")
+                self.assertTrue(decision["amount_unchanged"])
+        trust = payment_reversal_decision(
+            reverse,
+            {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "below_zero": True},
+        )
+        self.assertTrue(trust["ledger_append_only"])
+        self.assertFalse(trust["original_trust_edited"])
+        self.assertEqual(trust["trust_posted_by"], "trust_handler")
+        operating = payment_reversal_decision(
+            reverse,
+            {"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False},
+        )
+        self.assertFalse(operating["ledger_mutated"])
+        create = _operation(self.spec, "createPayment")
+        status = _operation(self.spec, "updatePaymentStatus")
+        bulk = _operation(self.spec, "bulkPayment")
+        writes = [
+            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "operating", "status": "completed"}, "allowed", False),
+            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed"}, "scope_denied", False),
+            (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed"}, "allowed", True),
+            (create, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "pending"}, "allowed", False),
+            (create, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "matter_walled": True, "on_wall": False}, "not_found", False),
+            (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": False}, "scope_denied", False),
+            (status, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "destination": "trust", "status": "completed", "trust_already_posted": False}, "allowed", True),
+            (status, {"role": "staff", "token_scopes": ["payments:write"], "destination": "trust", "status": "completed", "trust_already_posted": True}, "allowed", False),
+            (bulk, {"role": "staff", "token_scopes": ["payments:write"], "items": [{"destination": "operating", "status": "completed"}, {"destination": "trust", "status": "completed"}]}, "scope_denied", False),
+            (bulk, {"role": "staff", "token_scopes": ["payments:write", "trust:write"], "items": [{"destination": "operating", "status": "completed"}, {"destination": "trust", "status": "completed"}]}, "allowed", True),
+        ]
+        for operation, call, result, ledger in writes:
+            decision = payment_effect_decision(operation, call)
+            self.assertEqual(decision["result"], result, (operation["operationId"], call))
+            self.assertEqual(decision["ledger_mutated"], ledger, (operation["operationId"], call))
+            if result != "allowed":
+                self.assertFalse(decision["payment_mutated"], call)
+
+    def test_processor_callback_records_and_finishes_without_a_viewer(self):
+        from jsonschema import Draft202012Validator
+
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
+        webhook = self.spec["webhooks"]["moduleEvent"]["post"]
+        self.assertEqual(webhook["x-togavsu-processor-delivery"], policy)
+        self.assertEqual(webhook["x-togavsu-task-deliveries"]["payment_processor"], policy)
+        self.assertFalse(policy["viewer_context_required"])
+        self.assertFalse(policy["callback_requires_viewer"])
+        self.assertTrue(policy["initialization_requires_viewer"])
+        self.assertFalse(policy["grants_admin"])
+        self.assertFalse(policy["firmwide_bypass"])
+        self.assertFalse(policy["ambient_payment_write"])
+        self.assertEqual(policy["sequence"], ["createPayment", "updatePaymentStatus"])
+        self.assertIn("processor_authorization", self.spec["components"]["schemas"]["WebhookEvent"]["properties"])
+        initiation = _operation(self.spec, "initiateProcessorPayment")
+        self.assertEqual(initiation["x-togavsu-access"]["module_delegation"], "delegated_viewer")
+        self.assertNotIn("allowed_operations", self.spec["components"]["schemas"]["ProcessorInitialization"]["properties"])
+        for operation_id in policy["sequence"]:
+            operation = _operation(self.spec, operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["module_delegation"], "delegated_viewer_or_noninteractive", operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["noninteractive_workflow"], "payment_processor", operation_id)
+        module = {
+            "registered": True,
+            "module_id": "lawpay",
+            "recipient_id": "lawpay",
+            "approved_scopes": ["payments:write"],
+        }
+        initialization = {
+            "processor_module_id": "lawpay",
+            "initialization_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "contact_id": "018f1a00-7b3c-7d4e-8a11-222222222222",
+            "invoice_id": None,
+            "amount_cents": 2500,
+            "destination": "operating",
+            "caller_scopes": ["payments:write"],
+            "expires_at": "2026-11-07T18:00:00Z",
+            "matter_walled": False,
+        }
+        issued = processor_issuance(policy, module, initialization)
+        self.assertEqual(issued["result"], "allowed")
+        self.assertFalse(issued["payment_mutated"])
+        self.assertFalse(issued["ledger_mutated"])
+        self.assertIsNone(issued["grant"]["payment_id"])
+        Draft202012Validator(self.spec["components"]["schemas"]["ProcessorAuthorization"]).validate(issued["grant"])
+        with self.assertRaises(Exception):
+            Draft202012Validator(self.spec["components"]["schemas"]["ProcessorAuthorization"]).validate({**issued["grant"], "admin": True})
+        for label, bad_module, bad_init in (
+            ("unregistered", {**module, "registered": False}, initialization),
+            ("recipient", {**module, "recipient_id": "other"}, initialization),
+            ("other-module", {**module, "module_id": "other", "recipient_id": "other"}, initialization),
+            ("wall", module, {**initialization, "matter_walled": True, "on_wall": False}),
+        ):
+            denied = processor_issuance(policy, bad_module, bad_init)
+            self.assertNotEqual(denied["result"], "allowed", label)
+            self.assertIsNone(denied["grant"], label)
+            self.assertFalse(denied["payment_mutated"], label)
+            self.assertFalse(denied["ledger_mutated"], label)
+        trust_init = {**initialization, "destination": "trust", "caller_scopes": ["payments:write"]}
+        trust_module = {**module, "approved_scopes": ["payments:write", "trust:write"]}
+        denied_caller = processor_issuance(policy, trust_module, trust_init)
+        self.assertEqual(denied_caller["result"], "scope_denied")
+        self.assertIsNone(denied_caller["grant"])
+        denied_module = processor_issuance(policy, module, {**trust_init, "caller_scopes": ["payments:write", "trust:write"]})
+        self.assertEqual(denied_module["result"], "scope_denied")
+        self.assertFalse(denied_module["payment_mutated"])
+        trust_issued = processor_issuance(
+            policy,
+            trust_module,
+            {**trust_init, "caller_scopes": ["payments:write", "trust:write"]},
+        )
+        self.assertEqual(trust_issued["result"], "allowed")
+        self.assertFalse(trust_issued["payment_mutated"])
+
+        payments = []
+        ledger = []
+        seen = {}
+
+        def callback(operation_id, call):
+            operation = _operation(self.spec, operation_id)
+            before = (len(payments), len(ledger), [dict(item) for item in payments])
+            key = call.get("idempotency_key")
+            body = tuple(sorted((name, call.get(name)) for name in ("amount_cents", "matter_id", "destination", "status", "payment_id")))
+            if key and key in seen:
+                if seen[key] != body:
+                    self.assertEqual((len(payments), len(ledger)), before[:2])
+                    return policy["idempotency_conflict"]
+                return policy["idempotency_replay"]
+            code = processor_callback(policy, operation, call)
+            if code != "allowed":
+                self.assertEqual(len(payments), before[0], call)
+                self.assertEqual(len(ledger), before[1], call)
+                self.assertEqual(payments, before[2], call)
+                return code
+            if operation_id == "createPayment":
+                payments.append(
+                    {
+                        "id": f"pay-{len(payments) + 1}",
+                        "amount_cents": call["amount_cents"],
+                        "matter_id": call["matter_id"],
+                        "destination": call["destination"],
+                        "status": call.get("status", "pending"),
+                    }
+                )
+                call["grant"]["payment_id"] = payments[-1]["id"]
+            else:
+                payment = next(item for item in payments if item["id"] == call["payment_id"])
+                payment["status"] = call["status"]
+            if call.get("posts_trust"):
+                payment_id = payments[-1]["id"] if operation_id == "createPayment" else call["payment_id"]
+                if not any(row["payment_id"] == payment_id for row in ledger):
+                    ledger.append({"payment_id": payment_id, "kind": "deposit"})
+            if key:
+                seen[key] = body
+            return code
+
+        grant = issued["grant"]
+        base = {
+            "registered": True,
+            "caller_module_id": "lawpay",
+            "module_scopes": ["payments:write"],
+            "grant": grant,
+            "matter_id": initialization["matter_id"],
+            "contact_id": initialization["contact_id"],
+            "invoice_id": None,
+            "amount_cents": 2500,
+            "destination": "operating",
+            "viewer_present": False,
+            "posts_trust": False,
+            "status": "pending",
+        }
+        self.assertEqual(callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1"}), "allowed")
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(ledger, [])
+        self.assertFalse(base["viewer_present"])
+        self.assertEqual(callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1"}), "original_result")
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(
+            callback("createPayment", {**base, "operation": "createPayment", "idempotency_key": "pay-1", "status": "completed"}),
+            "idempotency_conflict",
+        )
+        self.assertEqual(len(payments), 1)
+        bound = grant["payment_id"]
+        self.assertEqual(
+            callback("updatePaymentStatus", {**base, "operation": "updatePaymentStatus", "payment_id": bound, "status": "completed", "field": "status"}),
+            "allowed",
+        )
+        self.assertEqual(payments[0]["status"], "completed")
+        self.assertEqual(ledger, [])
+        denied = [
+            ("amount", {**base, "operation": "createPayment", "amount_cents": 1}, "forbidden"),
+            ("matter", {**base, "operation": "createPayment", "matter_id": "018f1a00-7b3c-7d4e-8a11-999999999999"}, "not_found"),
+            ("contact", {**base, "operation": "createPayment", "contact_id": "018f1a00-7b3c-7d4e-8a11-888888888888"}, "not_found"),
+            ("invoice", {**base, "operation": "createPayment", "invoice_id": "018f1a00-7b3c-7d4e-8a11-777777777777"}, "not_found"),
+            ("destination", {**base, "operation": "createPayment", "destination": "trust"}, "forbidden"),
+            ("module", {**base, "operation": "createPayment", "caller_module_id": "other"}, "forbidden"),
+            ("scopes", {**base, "operation": "createPayment", "module_scopes": ["invoices:read"]}, "scope_denied"),
+            ("expired", {**base, "operation": "createPayment", "grant": {**grant, "expired": True}}, "forbidden"),
+            ("revoked", {**base, "operation": "createPayment", "grant": {**grant, "revoked": True}}, "forbidden"),
+            ("missing", {**base, "operation": "createPayment", "grant": None}, "forbidden"),
+            ("token", {**base, "operation": "updatePaymentStatus", "payment_id": bound, "token_revoked": True}, "unauthenticated"),
+            ("other-payment", {**base, "operation": "updatePaymentStatus", "payment_id": "pay-other", "status": "failed"}, "not_found"),
+            ("outside", {**base, "operation": "listPayment"}, "forbidden"),
+            ("field", {**base, "operation": "updatePaymentStatus", "payment_id": bound, "field": "amount_cents"}, "field_locked"),
+        ]
+        for label, call, expected in denied:
+            self.assertEqual(callback(call["operation"], call), expected, label)
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(payments[0]["status"], "completed")
+        self.assertEqual(payments[0]["amount_cents"], 2500)
+        self.assertEqual(ledger, [])
+
+        trust_grant = trust_issued["grant"]
+        trust_base = {
+            **base,
+            "grant": trust_grant,
+            "destination": "trust",
+            "module_scopes": ["payments:write", "trust:write"],
+            "posts_trust": False,
+            "status": "pending",
+        }
+        self.assertEqual(callback("createPayment", {**trust_base, "operation": "createPayment"}), "allowed")
+        self.assertEqual(len(ledger), 0)
+        trust_payment = trust_grant["payment_id"]
+        self.assertEqual(
+            callback(
+                "updatePaymentStatus",
+                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "posts_trust": True},
+            ),
+            "allowed",
+        )
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(
+            callback(
+                "updatePaymentStatus",
+                {**trust_base, "operation": "updatePaymentStatus", "payment_id": trust_payment, "status": "completed", "posts_trust": False},
+            ),
+            "allowed",
+        )
+        self.assertEqual(len(ledger), 1)
+        bare = {**trust_base, "operation": "createPayment", "posts_trust": True, "status": "completed", "module_scopes": ["payments:write"], "grant": {**trust_grant, "payment_id": None}}
+        self.assertEqual(callback("createPayment", bare), "scope_denied")
+        self.assertEqual(len(payments), 2)
+        self.assertEqual(len(ledger), 1)
+
+    def test_client_context_reads_follow_published_access(self):
+        policy = _operation(self.spec, "createModuleContextToken")["x-togavsu-access"]["client_context"]
+        self.assertFalse(policy["grants_admin"])
+        self.assertFalse(policy["firmwide_bypass"])
+        self.assertEqual(policy["published_reads"]["role"], "client")
+        invoice = _operation(self.spec, "getInvoice")
+        self.assertEqual(invoice["x-togavsu-access"]["client_omitted_fields"], ["internal_notes"])
+        history = _operation(self.spec, "historyInvoice")
+        self.assertIn("internal_notes", history["x-togavsu-access"]["client_omitted_fields"])
+        calls = [
+            ("listFile", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
+            ("getFile", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
+            ("downloadFileVersion", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
+            ("getInvoice", {"matter": "own_shared", "owner": "self", "on_wall": True}, "allowed"),
+            ("getInvoicePdf", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True}, "allowed"),
+            ("listInvoice", {"matter": "own_shared", "owner": "self", "on_wall": True}, "allowed"),
+            ("getFile", {"matter": "other_client", "shared": True, "owner": "other_client", "on_wall": True}, "not_found"),
+            ("getInvoice", {"matter": "other_client", "owner": "other_client", "on_wall": True}, "not_found"),
+            ("getInvoicePdf", {"matter": "other_client", "shared": True, "owner": "other_client", "on_wall": True}, "not_found"),
+            ("getFile", {"matter": "own_unshared", "shared": False, "owner": "self", "on_wall": True}, "not_found"),
+            ("downloadFileVersion", {"matter": "own_shared", "shared": False, "owner": "self", "attorney_only": False, "on_wall": True}, "not_found"),
+            ("getFile", {"matter": "own_shared", "shared": True, "owner": "self", "attorney_only": True, "on_wall": True}, "not_found"),
+            ("listFile", {"matter": "own_shared", "shared": True, "owner": "self", "matter_walled": True, "on_wall": False}, "not_found"),
+            ("getInvoice", {"matter": "own_shared", "owner": "self", "matter_walled": True, "on_wall": False}, "not_found"),
+            ("getFileUpload", {"owner": "self", "matter": "own_shared"}, "allowed"),
+            ("getFileUpload", {"owner": "other_client", "matter": "own_shared"}, "not_found"),
+            ("updateMe", {"owner": "self", "matter": "own_shared"}, "forbidden"),
+            ("listFile", {"matter": "own_shared", "shared": True, "owner": "self", "on_wall": True, "module_scopes": ["invoices:read"]}, "scope_denied"),
+        ]
+        for operation_id, call, expected in calls:
+            self.assertEqual(_client_portal_result(self.spec, policy, operation_id, call), expected, (operation_id, call))
+
+    def test_published_versions_emit_after_commit(self):
+        found = {}
+        publishers = []
+        for _method, _path, operation in _ops(self.spec):
+            publication = operation["x-togavsu-access"].get("version_publication")
+            if not publication:
+                continue
+            publishers.append(operation)
+            self.assertIn("file.version_created", operation["x-togavsu-events"], operation["operationId"])
+            self.assertEqual(publication["emit_after"], "commit", operation["operationId"])
+            self.assertEqual(publication["on_failure"], "no_event_no_grant", operation["operationId"])
+            self.assertFalse(publication["staged_bytes_emit"], operation["operationId"])
+            self.assertEqual(published_version_events(operation, committed=False, version_count=3), [], operation["operationId"])
+            self.assertEqual(
+                published_version_events(operation, committed=True, version_count=2),
+                ["file.version_created", "file.version_created"],
+                operation["operationId"],
+            )
+            for path_name in publication["paths"]:
+                found[path_name] = operation["operationId"]
+        self.assertGreaterEqual(len(publishers), 6)
+        self.assertEqual(
+            found,
+            {
+                "bulk": "bulkFile",
+                "import": "bulkFile",
+                "conversion": "convertFile",
+                "upload": "publishFile",
+                "new_version": "addFileVersion",
+                "copy": "restoreFileVersion",
+                "editor": "runEditor",
+            },
+        )
+        for operation_id in ("completeFileUpload", "putFileChunk", "createFileUpload", "updateFileMetadata"):
+            operation = _operation(self.spec, operation_id)
+            self.assertNotIn("file.version_created", operation["x-togavsu-events"], operation_id)
+            self.assertNotIn("version_publication", operation["x-togavsu-access"], operation_id)
+            self.assertEqual(published_version_events(operation, committed=True, version_count=1), [], operation_id)
+
+    def test_malware_grant_responses_match_projection_schemas(self):
+        from jsonschema import Draft202012Validator
+
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["malware_scan"]
+        private = {"origin", "created_by", "storage_backend_id", "saved_by"}
+        file_schema = self.spec["components"]["schemas"]["FileGrantView"]
+        version_schema = self.spec["components"]["schemas"]["FileVersionGrantView"]
+        self.assertTrue(set(file_schema["required"]) <= set(policy["metadata_fields"]))
+        self.assertTrue(set(version_schema["required"]) <= set(policy["metadata_fields"]))
+        self.assertFalse(private & set(file_schema["properties"]))
+        self.assertFalse(private & set(version_schema["properties"]))
+        self.assertFalse(file_schema["additionalProperties"])
+        self.assertFalse(version_schema["additionalProperties"])
+        file_body = {"name": "smith-motion.pdf", "extension": "pdf"}
+        version_body = {
+            "media_type": "application/pdf",
+            "size_bytes": 1200,
+            "sha256": "ab" * 32,
+            "quarantined": False,
+        }
+        page_validator = _component_validator(self.spec, "FileVersionGrantPage")
+        Draft202012Validator(file_schema).validate(file_body)
+        Draft202012Validator(version_schema).validate(version_body)
+        page_validator.validate({"data": [version_body], "page": {"limit": 50, "next_cursor": None}})
+        for extra in ({"origin": "firm"}, {"created_by": "018f1a00-7b3c-7d4e-8a11-555555555555"}):
+            with self.assertRaises(Exception):
+                Draft202012Validator(file_schema).validate({**file_body, **extra})
+        for extra in (
+            {"storage_backend_id": "018f1a00-7b3c-7d4e-8a11-555555555555"},
+            {"saved_by": "018f1a00-7b3c-7d4e-8a11-555555555555"},
+            {"created_by": "018f1a00-7b3c-7d4e-8a11-555555555555"},
+            {"note": "hidden"},
+        ):
+            with self.assertRaises(Exception):
+                Draft202012Validator(version_schema).validate({**version_body, **extra})
+        projections = {
+            "getFile": ("FileGrantView", file_body),
+            "listFileVersions": ("FileVersionGrantPage", {"data": [version_body], "page": {"limit": 50, "next_cursor": None}}),
+            "quarantineFileVersion": ("FileVersionGrantView", version_body),
+        }
+        for operation_id, (schema_name, body) in projections.items():
+            operation = _operation(self.spec, operation_id)
+            projection = operation["x-togavsu-access"]["response_projection"]
+            self.assertEqual(projection["schema"], schema_name, operation_id)
+            self.assertEqual(projection["when"], "task_authorization", operation_id)
+            self.assertTrue(set(projection["fields"]) <= set(policy["metadata_fields"]), operation_id)
+            self.assertFalse(private & set(projection["fields"]), operation_id)
+            _component_validator(self.spec, schema_name).validate(body)
+        download = _operation(self.spec, "downloadFileVersion")
+        self.assertEqual(download["x-togavsu-mcp"]["transfer"]["result"]["encoding"], "base64")
+        self.assertNotIn("response_projection", download["x-togavsu-access"])
+
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]
         self.assertIn("/v1/operator/listings/{listing_id}/flag", paths)
@@ -1554,23 +1971,54 @@ def _upload_step_result(spec: dict, policy: dict, step: dict, call: dict) -> str
     return "allowed"
 
 
-_FILE_BYTE_TYPES = {"application/octet-stream", "application/zip", "application/pdf", "text/markdown"}
-
-
 def _file_byte_downloads(spec: dict):
     for method, path, operation in _ops(spec):
-        if not (path.startswith("/api/v1/files") or path.startswith("/api/v1/file-archives")):
-            continue
-        medias = set()
-        for response in operation.get("responses", {}).values():
-            for media, body in (response.get("content") or {}).items():
-                if media in _FILE_BYTE_TYPES or media.startswith("image/") or media.startswith("audio/") or media.startswith("video/"):
-                    medias.add(media)
-                declared = (body.get("schema") or {}).get("contentMediaType")
-                if declared in _FILE_BYTE_TYPES or (isinstance(declared, str) and declared.startswith("image/")):
-                    medias.add(declared)
-        if medias:
+        if is_core_file_download(operation):
             yield method, path, operation
+
+
+def _client_portal_result(spec: dict, policy: dict, operation_id: str, call: dict) -> str:
+    operation = _operation(spec, operation_id)
+    access = operation["x-togavsu-access"]
+    if operation_id not in policy["client_allowed_operations"] or "client" not in access.get("roles", []):
+        return "forbidden"
+    if call.get("module_scopes") is not None and any(scope not in call["module_scopes"] for scope in access.get("scopes", [])):
+        return "scope_denied"
+    if call.get("attorney_only") and access.get("attorney_only_files") == "not_found":
+        return "not_found"
+    if access.get("matter_wall") and call.get("matter_walled") and not call.get("on_wall"):
+        return "not_found"
+    client = access.get("client")
+    if client == "shared":
+        if call.get("matter") in ("other_client", "own_unshared") or call.get("owner") == "other_client":
+            return "not_found"
+        if access.get("access_inherits") == "file" and call.get("shared") is False:
+            return "not_found"
+    if client == "own" and call.get("owner") not in (None, "self"):
+        return "not_found"
+    return "allowed"
+
+
+def _component_validator(spec: dict, schema_name: str):
+    import copy
+
+    from jsonschema import Draft202012Validator
+
+    schemas = copy.deepcopy(spec["components"]["schemas"])
+
+    def rewrite(node):
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+                node["$ref"] = "#/$defs/" + ref.rsplit("/", 1)[1]
+            for value in node.values():
+                rewrite(value)
+        elif isinstance(node, list):
+            for value in node:
+                rewrite(value)
+
+    rewrite(schemas)
+    return Draft202012Validator({"$defs": schemas, "$ref": "#/$defs/" + schema_name})
 
 
 def _download_outcome(operation: dict, call: dict) -> str:

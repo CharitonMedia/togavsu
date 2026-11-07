@@ -6064,6 +6064,41 @@
       }
     },
     {
+      "name": "initiateProcessorPayment",
+      "method": "POST",
+      "path": "/api/v1/payments/processor-initializations",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
       "name": "updatePaymentStatus",
       "method": "POST",
       "path": "/api/v1/payments/{payment_id}/status",

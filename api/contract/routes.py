@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contract.model import Contract
+from contract.policy import FILE_DOWNLOAD, finalize, version_publication
 
 ADMIN = ["admin"]
 ATTORNEY = ["admin", "attorney"]
@@ -37,13 +38,6 @@ PERSON_LOCK = {
     "automated_actor": "field_locked",
     "blocked_actors": ["doc_tender"],
 }
-FILE_DOWNLOAD = {
-    "audit": True,
-    "timeline": True,
-    "client_download": "highlighted",
-    "event": "file.downloaded",
-    "quarantine_confirmation": "required",
-}
 TRUST_BILLING_DISPATCH = {
     "primary_domain": "time",
     "trust_entry": {
@@ -54,6 +48,7 @@ TRUST_BILLING_DISPATCH = {
         "below_zero": "posts",
     },
 }
+REVERSAL_DISPATCH = {**TRUST_BILLING_DISPATCH, "applies_when": "payment_has_trust_entry"}
 BATCH_WALL = {
     "matter_wall": True,
     "access_inherits": "matter",
@@ -154,6 +149,7 @@ def add_routes(api: Contract) -> None:
     _shell(api)
     _admin(api)
     _modules(api)
+    finalize(api.spec)
 
 
 def _platform(api: Contract) -> None:
@@ -1566,12 +1562,55 @@ def _billing(api: Contract) -> None:
         extra_access=WALL,
         extra_features=["collections"],
     )
+    api.spec["paths"]["/api/v1/payments"]["post"]["description"] = (
+        "Records a payment. A repeated Idempotency-Key with the same body returns the original payment. "
+        "A different body with that key returns idempotency_conflict and writes nothing. "
+        "destination operating needs payments:write. "
+        "A completed trust destination also needs trust:write, and that check runs before any payment or ledger row is written. "
+        "A registered processor records this without a viewer by presenting the grant from initiateProcessorPayment. "
+        "payments:write alone, with no viewer and no grant, is forbidden."
+    )
+    api.add(
+        "post",
+        "/api/v1/payments/processor-initializations",
+        operation_id="initiateProcessorPayment",
+        summary="Authorize a registered payment processor",
+        description=(
+            "A staff session asks the core to authorize one installed processor for this matter, contact, amount, and destination. "
+            "The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. "
+            "This call does not create a payment and does not post trust. "
+            "The initiation response does not contain the grant. "
+            "An unregistered module, a different recipient, or a module id that is not the processor receives no grant. "
+            "A walled matter the caller cannot see is not_found and issues nothing. "
+            "Operating needs payments:write on the caller and on the module. "
+            "Trust also needs trust:write on both, checked before delivery. "
+            "The grant is not an admin or firm-wide token. The later callback does not need an iframe or a signed-in viewer."
+        ),
+        tag="Billing",
+        features=["payments"],
+        roles=STAFF,
+        scopes=["payments:write"],
+        body="ProcessorInitializationWrite",
+        response="ProcessorInitialization",
+        success="201",
+        events=["payment.processor_authorized"],
+        error_codes=["forbidden", "scope_denied"],
+        replaceable="time",
+        extra_access={**WALL, "processor_issuance": "payment_processor"},
+    )
     api.add(
         "post",
         "/api/v1/payments/{payment_id}/status",
         operation_id="updatePaymentStatus",
         summary="Update a payment status",
-        description="A processor module moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method.",
+        description=(
+            "Moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method. "
+            "A registered processor calls this with the core-issued grant and no viewer session. "
+            "The payment id, matter, and amount must be the ones bound on that grant. "
+            "The first completion of a trust destination needs trust:write before any ledger row is written. "
+            "A later completion does not post a second row. "
+            "An ambient payments:write token with no viewer and no grant is forbidden."
+        ),
         tag="Billing",
         features=["payments"],
         roles=STAFF,
@@ -1588,9 +1627,13 @@ def _billing(api: Contract) -> None:
         operation_id="reversePayment",
         summary="Reverse a payment",
         description=(
-            "Posts a reversal. The original payment is not edited. "
-            "When the payment posted a trust entry, the trust handler posts exactly one reversal. "
-            "The time module does not post another."
+            "Posts a reversal. The original payment amount is not edited and the original trust row is not edited. "
+            "An operating payment, one with no trust entry, needs payments:write. "
+            "A trust-linked payment also needs trust:withdraw. "
+            "That scope check runs before any payment status change and before any ledger write. "
+            "Insufficient scopes, the wrong role, or a walled matter write nothing. "
+            "When the scopes and the wall allow it, the trust handler appends exactly one reversal. "
+            "The time module does not post another. A below-zero balance still posts and raises a flag."
         ),
         tag="Billing",
         features=["payments"],
@@ -1599,8 +1642,9 @@ def _billing(api: Contract) -> None:
         body="Reason",
         response="Payment",
         events=["payment.reversed"],
+        error_codes=["scope_denied"],
         replaceable="time",
-        domain_dispatch=TRUST_BILLING_DISPATCH,
+        domain_dispatch=REVERSAL_DISPATCH,
         extra_access=WALL,
     )
     api.add(
@@ -2063,8 +2107,10 @@ def _files(api: Contract) -> None:
         summary="Publish staged uploads as files in one batch",
         description=(
             "Each item names a staged upload. The batch has no bytes and no storage key. "
+            "Importer modules publish through this operation. "
             "Publication is one transaction: every file and first version is created, or none are. "
-            "A failed item returns batch_rejected and leaves every upload staged."
+            "After that transaction commits, each published version emits file.version_created. "
+            "A failed item returns batch_rejected, leaves every upload staged, and emits no file.created, no file.version_created, and no scan grant."
         ),
         tag="Files",
         features=["files", "file-uploads", "bulk"],
@@ -2078,9 +2124,9 @@ def _files(api: Contract) -> None:
         },
         response_schema=_batch_result("File"),
         success="201",
-        events=["file.created"],
+        events=["file.created", "file.version_created"],
         error_codes=["batch_rejected"],
-        extra_access=FILE_WALL,
+        extra_access={**FILE_WALL, **version_publication("bulk", "import")},
     )
     for method, path, op, summary, body, event, desc in (
         ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
@@ -2176,7 +2222,7 @@ def _files(api: Contract) -> None:
         response="FileVersion",
         success="201",
         events=["file.version_created"],
-        extra_access=FILE_WALL,
+        extra_access={**FILE_WALL, **version_publication("new_version")},
     )
     api.add(
         "get",
@@ -2277,7 +2323,7 @@ def _files(api: Contract) -> None:
         response="FileVersion",
         success="201",
         events=["file.version_created"],
-        extra_access=FILE_WALL,
+        extra_access={**FILE_WALL, **version_publication("copy")},
     )
     api.add(
         "post",
@@ -2458,7 +2504,8 @@ def _files(api: Contract) -> None:
         summary="Publish a staged upload as a file",
         description=(
             "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. "
-            "completeFileUpload must have run first. A failed publish leaves the upload staged and creates no file and no Doc Tender job."
+            "completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. "
+            "After the transaction commits, the new first version emits file.version_created."
         ),
         tag="Files",
         features=["files", "file-uploads"],
@@ -2470,6 +2517,7 @@ def _files(api: Contract) -> None:
         events=["file.created", "file.version_created"],
         extra_access={
             **FILE_WALL,
+            **version_publication("upload"),
             "client": "shared",
             "owner": "self",
             "access_cases": FILE_ACCESS_CASES + [
@@ -2608,14 +2656,19 @@ def _files(api: Contract) -> None:
         success="201",
         events=["file.version_created"],
         error_codes=["command_refused"],
-        extra_access=FILE_WALL,
+        extra_access={**FILE_WALL, **version_publication("editor")},
     )
     api.add(
         "post",
         "/api/v1/files/{file_id}/conversions",
         operation_id="convertFile",
         summary="Convert a file",
-        description="Creates a new file in the requested format and a conversion_of link to the source, returned together. Staff are not_found for an attorney-only source or a walled matter.",
+        description=(
+            "Creates a new file in the requested format and a conversion_of link to the source, returned together. "
+            "The new file's first version emits file.version_created after the transaction commits. "
+            "A failed conversion writes no file, emits no file.version_created, and issues no scan grant. "
+            "Staff are not_found for an attorney-only source or a walled matter."
+        ),
         tag="Editor",
         features=["conversions"],
         roles=STAFF,
@@ -2623,8 +2676,8 @@ def _files(api: Contract) -> None:
         body="Conversion",
         response="ConversionResult",
         success="201",
-        events=["file.created"],
-        extra_access=FILE_WALL,
+        events=["file.created", "file.version_created"],
+        extra_access={**FILE_WALL, **version_publication("conversion")},
     )
     api.resource(
         collection="/api/v1/court-profiles",
@@ -3871,7 +3924,11 @@ def _modules(api: Contract) -> None:
             "The module does not receive the session cookie. "
             "When matter_id is set, the viewer's matter wall is checked before the token is signed. "
             "A walled matter the viewer cannot see returns not_found and no token. "
-            "A client can obtain a token only for their own shared matter, and only for upload operations. "
+            "A client can obtain a token only for their own shared matter. "
+            "The token then allows the upload sequence, including resume through getFileUpload, and every published client read: "
+            "shared files, file downloads, and the client's own invoices. "
+            "Other clients, unshared files, walled matters, and attorney-only files stay not_found. "
+            "Approved module scopes still intersect the viewer's role, walls, ownership, sharing, and field restrictions. "
             "The token's roles are the caller's roles. A client cannot name another client or request a firm role."
         ),
         tag="Modules",
@@ -3900,14 +3957,6 @@ def _modules(api: Contract) -> None:
                     {"step": "complete", "operation": "completeFileUpload"},
                     {"step": "publish", "operation": "publishFile"},
                     {"step": "attachment", "operation": "createFileLink"},
-                ],
-                "client_allowed_operations": [
-                    "createFileUpload",
-                    "putFileChunk",
-                    "getFileUpload",
-                    "completeFileUpload",
-                    "publishFile",
-                    "createFileLink",
                 ],
                 "access_cases": [
                     {"role": "client", "matter": "own_shared", "modules_read": False, "result": "allowed"},

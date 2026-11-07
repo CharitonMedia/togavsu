@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from contract.model import MALWARE_DELIVERY, Contract
+from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, Contract
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
 from contract.seeds import DOC_CATEGORIES, LAWCRAFT_COMMIT, NAMING_TOKENS, PARTY_ROLES
@@ -285,9 +285,18 @@ def _webhooks() -> dict:
                     "A different module id is forbidden. Another matter, file, or version is not_found. "
                     "An operation outside the grant is forbidden. A field outside the grant is field_locked. "
                     "An attorney-only field stays not_found. The approved scopes on each operation are still required. "
-                    "The grant is not an admin or firm-wide bypass."
+                    "The grant is not an admin or firm-wide bypass. "
+                    "payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. "
+                    "That grant binds the initialization, payment, matter, contact, amount, and destination. "
+                    "createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. "
+                    "An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment."
                 ),
                 "x-togavsu-task-delivery": MALWARE_DELIVERY,
+                "x-togavsu-processor-delivery": PAYMENT_PROCESSOR,
+                "x-togavsu-task-deliveries": {
+                    "malware_scan": MALWARE_DELIVERY,
+                    "payment_processor": PAYMENT_PROCESSOR,
+                },
                 "parameters": [
                     {
                         "name": "X-Togavsu-Signature",
@@ -306,7 +315,7 @@ def _webhooks() -> dict:
                         "in": "header",
                         "required": False,
                         "schema": {"type": "string"},
-                        "description": "Present on file.version_created. The same claims are in task_authorization. Absent when the event has no task grant.",
+                        "description": "Present on file.version_created and payment.processor_authorized. The same claims are in the matching body field. Absent when the event has no task grant.",
                     },
                 ],
                 "requestBody": {

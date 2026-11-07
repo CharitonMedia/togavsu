@@ -22466,7 +22466,7 @@
       "get": {
         "operationId": "getInvoicePdf",
         "summary": "Download an invoice PDF",
-        "description": "Renders the PDF from the firm logo and settings. Does not change status.",
+        "description": "Renders the PDF from the firm logo and settings. Does not change status. The download is written to the audit log and the case timeline as file.downloaded. A client download is highlighted. A quarantined file requires confirmation.",
         "tags": [
           "Billing"
         ],
@@ -22552,9 +22552,16 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "audit": true,
+          "timeline": true,
+          "client_download": "highlighted",
+          "event": "file.downloaded",
+          "quarantine_confirmation": "required"
         },
-        "x-togavsu-events": [],
+        "x-togavsu-events": [
+          "file.downloaded"
+        ],
         "x-togavsu-writes": false,
         "x-togavsu-mcp": {
           "parity": "required",
@@ -22581,7 +22588,10 @@
             "bearerAuth": []
           }
         ],
-        "x-togavsu-replaceable-domain": "time"
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-error-codes": [
+          "quarantine_confirmation_required"
+        ]
       }
     },
     "/api/v1/invoices/{invoice_id}/void": {
@@ -23416,7 +23426,7 @@
       "post": {
         "operationId": "createPayment",
         "summary": "Create a payment",
-        "description": "Creates one payment. A repeated Idempotency-Key with the same body returns the original result.",
+        "description": "Records a payment. A repeated Idempotency-Key with the same body returns the original payment. A different body with that key returns idempotency_conflict and writes nothing. destination operating needs payments:write. A completed trust destination also needs trust:write, and that check runs before any payment or ledger row is written. A registered processor records this without a viewer by presenting the grant from initiateProcessorPayment. payments:write alone, with no viewer and no grant, is forbidden.",
         "tags": [
           "Billing"
         ],
@@ -23484,7 +23494,37 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "payment_effect": {
+            "authorize_before": "any_mutation",
+            "insufficient_scopes": "scope_denied",
+            "no_mutation_on_denial": true,
+            "operating": {
+              "scopes": [
+                "payments:write"
+              ],
+              "trust_posted": false
+            },
+            "trust_destination": {
+              "scopes": [
+                "payments:write",
+                "trust:write"
+              ],
+              "when": "first_completed_trust_destination",
+              "entry_type": "deposit",
+              "trust_entry": {
+                "posted_by": "trust_handler",
+                "append_only": true,
+                "exactly_once": true,
+                "time_module_also_posts": false,
+                "below_zero": "posts",
+                "below_zero_blocks": false,
+                "original_edited": false,
+                "entry_type": "deposit"
+              }
+            }
+          },
+          "noninteractive_workflow": "payment_processor"
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -23531,7 +23571,10 @@
               }
             }
           }
-        }
+        },
+        "x-togavsu-error-codes": [
+          "scope_denied"
+        ]
       }
     },
     "/api/v1/payments/{payment_id}": {
@@ -23649,7 +23692,7 @@
       "post": {
         "operationId": "bulkPayment",
         "summary": "Create payments in one batch",
-        "description": "Validates every item, then writes the batch in one transaction. Any validation or reconciliation failure rejects the whole batch and writes nothing. The maximum number of items is the setting api.bulk_batch_max (starting value 500).",
+        "description": "Validates every item, then writes the batch in one transaction. Any validation or reconciliation failure rejects the whole batch and writes nothing. The maximum number of items is the setting api.bulk_batch_max (starting value 500). A completed trust destination also needs trust:write. The scope check runs before any payment or ledger write. One item that fails the check rejects the batch and writes nothing.",
         "tags": [
           "Billing"
         ],
@@ -23730,7 +23773,36 @@
           "client": "deny",
           "access_inherits": "matter",
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "payment_effect": {
+            "authorize_before": "any_mutation",
+            "insufficient_scopes": "scope_denied",
+            "no_mutation_on_denial": true,
+            "operating": {
+              "scopes": [
+                "payments:write"
+              ],
+              "trust_posted": false
+            },
+            "trust_destination": {
+              "scopes": [
+                "payments:write",
+                "trust:write"
+              ],
+              "when": "first_completed_trust_destination",
+              "entry_type": "deposit",
+              "trust_entry": {
+                "posted_by": "trust_handler",
+                "append_only": true,
+                "exactly_once": true,
+                "time_module_also_posts": false,
+                "below_zero": "posts",
+                "below_zero_blocks": false,
+                "original_edited": false,
+                "entry_type": "deposit"
+              }
+            }
+          }
         },
         "x-togavsu-events": [
           "payment.completed"
@@ -23770,7 +23842,8 @@
         "x-togavsu-replaceable-domain": "time",
         "x-togavsu-error-codes": [
           "batch_rejected",
-          "validation_failed"
+          "validation_failed",
+          "scope_denied"
         ],
         "requestBody": {
           "required": true,
@@ -23797,11 +23870,136 @@
         }
       }
     },
+    "/api/v1/payments/processor-initializations": {
+      "post": {
+        "operationId": "initiateProcessorPayment",
+        "summary": "Authorize a registered payment processor",
+        "description": "A staff session asks the core to authorize one installed processor for this matter, contact, amount, and destination. The core delivers processor_authorization on moduleEvent payment.processor_authorized to that module only. This call does not create a payment and does not post trust. The initiation response does not contain the grant. An unregistered module, a different recipient, or a module id that is not the processor receives no grant. A walled matter the caller cannot see is not_found and issues nothing. Operating needs payments:write on the caller and on the module. Trust also needs trust:write on both, checked before delivery. The grant is not an admin or firm-wide token. The later callback does not need an iframe or a signed-in viewer.",
+        "tags": [
+          "Billing"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessorInitialization"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "payments"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "payments:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "matter",
+          "processor_issuance": "payment_processor",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [
+          "payment.processor_authorized"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "initiateProcessorPayment",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-replaceable-domain": "time",
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessorInitializationWrite"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payments/{payment_id}/status": {
       "post": {
         "operationId": "updatePaymentStatus",
         "summary": "Update a payment status",
-        "description": "A processor module moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method.",
+        "description": "Moves pending, completed, or failed. The amount does not change. reversed comes only from the reverse method. A registered processor calls this with the core-issued grant and no viewer session. The payment id, matter, and amount must be the ones bound on that grant. The first completion of a trust destination needs trust:write before any ledger row is written. A later completion does not post a second row. An ambient payments:write token with no viewer and no grant is forbidden.",
         "tags": [
           "Billing"
         ],
@@ -23876,7 +24074,37 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "payment_effect": {
+            "authorize_before": "any_mutation",
+            "insufficient_scopes": "scope_denied",
+            "no_mutation_on_denial": true,
+            "operating": {
+              "scopes": [
+                "payments:write"
+              ],
+              "trust_posted": false
+            },
+            "trust_destination": {
+              "scopes": [
+                "payments:write",
+                "trust:write"
+              ],
+              "when": "first_completed_trust_destination",
+              "entry_type": "deposit",
+              "trust_entry": {
+                "posted_by": "trust_handler",
+                "append_only": true,
+                "exactly_once": true,
+                "time_module_also_posts": false,
+                "below_zero": "posts",
+                "below_zero_blocks": false,
+                "original_edited": false,
+                "entry_type": "deposit"
+              }
+            }
+          },
+          "noninteractive_workflow": "payment_processor"
         },
         "x-togavsu-events": [
           "payment.updated"
@@ -23923,14 +24151,17 @@
               }
             }
           }
-        }
+        },
+        "x-togavsu-error-codes": [
+          "scope_denied"
+        ]
       }
     },
     "/api/v1/payments/{payment_id}/reverse": {
       "post": {
         "operationId": "reversePayment",
         "summary": "Reverse a payment",
-        "description": "Posts a reversal. The original payment is not edited. When the payment posted a trust entry, the trust handler posts exactly one reversal. The time module does not post another.",
+        "description": "Posts a reversal. The original payment amount is not edited and the original trust row is not edited. An operating payment, one with no trust entry, needs payments:write. A trust-linked payment also needs trust:withdraw. That scope check runs before any payment status change and before any ledger write. Insufficient scopes, the wrong role, or a walled matter write nothing. When the scopes and the wall allow it, the trust handler appends exactly one reversal. The time module does not post another. A below-zero balance still posts and raises a flag.",
         "tags": [
           "Billing"
         ],
@@ -24004,7 +24235,37 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "payment_reversal": {
+            "authorize_before": "any_mutation",
+            "insufficient_scopes": "scope_denied",
+            "no_mutation_on_denial": true,
+            "operating": {
+              "when": "no_trust_entry",
+              "scopes": [
+                "payments:write"
+              ],
+              "trust_posted": false
+            },
+            "trust_linked": {
+              "when": "payment_has_trust_entry",
+              "scopes": [
+                "payments:write",
+                "trust:withdraw"
+              ],
+              "trust_entry": {
+                "posted_by": "trust_handler",
+                "append_only": true,
+                "exactly_once": true,
+                "time_module_also_posts": false,
+                "below_zero": "posts",
+                "below_zero_blocks": false,
+                "original_edited": false,
+                "entry_type": "reversal",
+                "flag": "trust.flag_raised"
+              }
+            }
+          }
         },
         "x-togavsu-events": [
           "payment.reversed"
@@ -24050,8 +24311,12 @@
             "exactly_once": true,
             "time_module_also_posts": false,
             "below_zero": "posts"
-          }
+          },
+          "applies_when": "payment_has_trust_entry"
         },
+        "x-togavsu-error-codes": [
+          "scope_denied"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -31435,7 +31700,7 @@
       "post": {
         "operationId": "publishFile",
         "summary": "Publish a staged upload as a file",
-        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged and creates no file and no Doc Tender job.",
+        "description": "Creates the file and its first version from one staged upload in one transaction, then marks the upload published. completeFileUpload must have run first. A failed publish leaves the upload staged, creates no file, and emits no file.version_created. After the transaction commits, the new first version emits file.version_created.",
         "tags": [
           "Files"
         ],
@@ -31538,6 +31803,16 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "upload"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "owner": "self",
           "module_delegation": "delegated_viewer"
         },
@@ -31628,7 +31903,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/File"
+                  "description": "A viewer receives the full record. A file.version_created task grant receives FileGrantView and no ungranted field.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/File"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FileGrantView"
+                    }
+                  ]
                 }
               }
             }
@@ -31688,7 +31971,18 @@
             }
           ],
           "include_scope_pattern": "views:{module_id}.{view}:read",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "malware_scan",
+          "response_projection": {
+            "when": "task_authorization",
+            "schema": "FileGrantView",
+            "fields": [
+              "name",
+              "extension"
+            ],
+            "additional_properties": false,
+            "required_subset_of_grant": true
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -31881,7 +32175,7 @@
       "post": {
         "operationId": "bulkFile",
         "summary": "Publish staged uploads as files in one batch",
-        "description": "Each item names a staged upload. The batch has no bytes and no storage key. Publication is one transaction: every file and first version is created, or none are. A failed item returns batch_rejected and leaves every upload staged.",
+        "description": "Each item names a staged upload. The batch has no bytes and no storage key. Importer modules publish through this operation. Publication is one transaction: every file and first version is created, or none are. After that transaction commits, each published version emits file.version_created. A failed item returns batch_rejected, leaves every upload staged, and emits no file.created, no file.version_created, and no scan grant.",
         "tags": [
           "Files"
         ],
@@ -31980,10 +32274,22 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "bulk",
+              "import"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
-          "file.created"
+          "file.created",
+          "file.version_created"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -32955,23 +33261,31 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "required": [
-                    "data",
-                    "page"
-                  ],
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/FileVersion"
+                  "description": "A viewer receives the full record. A file.version_created task grant receives FileVersionGrantPage and no ungranted field.",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "data",
+                        "page"
+                      ],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/FileVersion"
+                          }
+                        },
+                        "page": {
+                          "$ref": "#/components/schemas/Page"
+                        }
                       }
                     },
-                    "page": {
-                      "$ref": "#/components/schemas/Page"
+                    {
+                      "$ref": "#/components/schemas/FileVersionGrantPage"
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -33030,7 +33344,20 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "malware_scan",
+          "response_projection": {
+            "when": "task_authorization",
+            "schema": "FileVersionGrantPage",
+            "fields": [
+              "media_type",
+              "size_bytes",
+              "sha256",
+              "quarantined"
+            ],
+            "additional_properties": false,
+            "required_subset_of_grant": true
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33158,6 +33485,16 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "new_version"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
@@ -33833,7 +34170,8 @@
           "client_download": "highlighted",
           "event": "file.downloaded",
           "quarantine_confirmation": "required",
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "malware_scan"
         },
         "x-togavsu-events": [
           "file.downloaded"
@@ -33976,6 +34314,16 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "copy"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
@@ -34055,7 +34403,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FileVersion"
+                  "description": "A viewer receives the full record. A file.version_created task grant receives FileVersionGrantView and no ungranted field.",
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FileVersion"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FileVersionGrantView"
+                    }
+                  ]
                 }
               }
             }
@@ -34117,7 +34473,20 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer_or_noninteractive"
+          "module_delegation": "delegated_viewer_or_noninteractive",
+          "noninteractive_workflow": "malware_scan",
+          "response_projection": {
+            "when": "task_authorization",
+            "schema": "FileVersionGrantView",
+            "fields": [
+              "media_type",
+              "size_bytes",
+              "sha256",
+              "quarantined"
+            ],
+            "additional_properties": false,
+            "required_subset_of_grant": true
+          }
         },
         "x-togavsu-events": [
           "file.quarantine_changed"
@@ -36447,6 +36816,16 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "editor"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
@@ -36503,7 +36882,7 @@
       "post": {
         "operationId": "convertFile",
         "summary": "Convert a file",
-        "description": "Creates a new file in the requested format and a conversion_of link to the source, returned together. Staff are not_found for an attorney-only source or a walled matter.",
+        "description": "Creates a new file in the requested format and a conversion_of link to the source, returned together. The new file's first version emits file.version_created after the transaction commits. A failed conversion writes no file, emits no file.version_created, and issues no scan grant. Staff are not_found for an attorney-only source or a walled matter.",
         "tags": [
           "Editor"
         ],
@@ -36597,10 +36976,21 @@
               "result": "not_found"
             }
           ],
+          "version_publication": {
+            "paths": [
+              "conversion"
+            ],
+            "event": "file.version_created",
+            "cardinality": "one_per_published_version",
+            "emit_after": "commit",
+            "on_failure": "no_event_no_grant",
+            "staged_bytes_emit": false
+          },
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [
-          "file.created"
+          "file.created",
+          "file.version_created"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -51396,7 +51786,7 @@
       "post": {
         "operationId": "createModuleContextToken",
         "summary": "Issue an iframe context token",
-        "description": "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. The module does not receive the session cookie. When matter_id is set, the viewer's matter wall is checked before the token is signed. A walled matter the viewer cannot see returns not_found and no token. A client can obtain a token only for their own shared matter, and only for upload operations. The token's roles are the caller's roles. A client cannot name another client or request a firm role.",
+        "description": "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. The module does not receive the session cookie. When matter_id is set, the viewer's matter wall is checked before the token is signed. A walled matter the viewer cannot see returns not_found and no token. A client can obtain a token only for their own shared matter. The token then allows the upload sequence, including resume through getFileUpload, and every published client read: shared files, file downloads, and the client's own invoices. Other clients, unshared files, walled matters, and attorney-only files stay not_found. Approved module scopes still intersect the viewer's role, walls, ownership, sharing, and field restrictions. The token's roles are the caller's roles. A client cannot name another client or request a firm role.",
         "tags": [
           "Modules"
         ],
@@ -51516,14 +51906,6 @@
                 "operation": "createFileLink"
               }
             ],
-            "client_allowed_operations": [
-              "createFileUpload",
-              "putFileChunk",
-              "getFileUpload",
-              "completeFileUpload",
-              "publishFile",
-              "createFileLink"
-            ],
             "access_cases": [
               {
                 "role": "client",
@@ -51559,7 +51941,50 @@
                 "impersonate": true,
                 "result": "forbidden"
               }
-            ]
+            ],
+            "published_reads": {
+              "role": "client",
+              "client_access": [
+                "shared",
+                "own"
+              ],
+              "non_writes": true,
+              "file_byte_downloads": true,
+              "exclude_transport": true,
+              "exclude_operations": [
+                "createModuleContextToken"
+              ]
+            },
+            "client_allowed_operations": [
+              "createFileUpload",
+              "putFileChunk",
+              "getFileUpload",
+              "completeFileUpload",
+              "publishFile",
+              "createFileLink",
+              "getMe",
+              "getMeSettings",
+              "listSessions",
+              "listApiToken",
+              "getApiToken",
+              "listInvoice",
+              "getInvoice",
+              "historyInvoice",
+              "getInvoicePdf",
+              "listFile",
+              "getFile",
+              "listFileVersions",
+              "historyFile",
+              "listFileLinks",
+              "downloadFileVersion",
+              "listFileRenditions",
+              "downloadFileRendition",
+              "createFileArchive",
+              "listNotification",
+              "getNotification"
+            ],
+            "grants_admin": false,
+            "firmwide_bypass": false
           }
         },
         "x-togavsu-events": [],
@@ -52863,7 +53288,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass.",
+        "description": "The core POSTs the event only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the hex HMAC-SHA256 of the raw body, so the module can trust the body. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -52879,6 +53304,7 @@
           "revoked": "forbidden",
           "revoked_module_token": "unauthenticated",
           "missing_scope": "scope_denied",
+          "missing_grant": "forbidden",
           "unrelated_matter": "not_found",
           "unrelated_file": "not_found",
           "unrelated_version": "not_found",
@@ -52901,10 +53327,229 @@
             "sha256",
             "quarantined"
           ],
+          "response_fields": {
+            "getFile": [
+              "name",
+              "extension"
+            ],
+            "listFileVersions": [
+              "media_type",
+              "size_bytes",
+              "sha256",
+              "quarantined"
+            ],
+            "quarantineFileVersion": [
+              "media_type",
+              "size_bytes",
+              "sha256",
+              "quarantined"
+            ]
+          },
           "attorney_only_fields": [
             "note",
             "summary"
           ]
+        },
+        "x-togavsu-processor-delivery": {
+          "event_type": "payment.processor_authorized",
+          "delivered_on": "moduleEvent",
+          "header": "X-Togavsu-Task-Authorization",
+          "body_field": "processor_authorization",
+          "issued_by": "core",
+          "registered_module": true,
+          "initialization_requires_viewer": true,
+          "viewer_context_required": false,
+          "callback_requires_viewer": false,
+          "module_identity_mismatch": "forbidden",
+          "invalid": "forbidden",
+          "unregistered": "forbidden",
+          "expired": "forbidden",
+          "revoked": "forbidden",
+          "revoked_module_token": "unauthenticated",
+          "missing_scope": "scope_denied",
+          "missing_grant": "forbidden",
+          "unrelated_matter": "not_found",
+          "unrelated_payment": "not_found",
+          "unrelated_resource": "not_found",
+          "amount_mismatch": "forbidden",
+          "destination_mismatch": "forbidden",
+          "operation_outside_grant": "forbidden",
+          "field_outside_grant": "field_locked",
+          "grants_admin": false,
+          "firmwide_bypass": false,
+          "ambient_payment_write": false,
+          "sequence": [
+            "createPayment",
+            "updatePaymentStatus"
+          ],
+          "allowed_fields": [
+            "status",
+            "method",
+            "reference_number"
+          ],
+          "binds": [
+            "module_id",
+            "initialization_id",
+            "payment_id",
+            "matter_id",
+            "contact_id",
+            "invoice_id",
+            "amount_cents",
+            "destination"
+          ],
+          "caller_scopes": {
+            "operating": [
+              "payments:write"
+            ],
+            "trust": [
+              "payments:write",
+              "trust:write"
+            ]
+          },
+          "module_scopes": {
+            "operating": [
+              "payments:write"
+            ],
+            "trust": [
+              "payments:write",
+              "trust:write"
+            ]
+          },
+          "idempotency_replay": "original_result",
+          "idempotency_conflict": "idempotency_conflict",
+          "no_mutation_on_denial": true
+        },
+        "x-togavsu-task-deliveries": {
+          "malware_scan": {
+            "event_type": "file.version_created",
+            "delivered_on": "moduleEvent",
+            "header": "X-Togavsu-Task-Authorization",
+            "body_field": "task_authorization",
+            "issued_by": "core",
+            "registered_module": true,
+            "subscription_match": true,
+            "viewer_context_required": false,
+            "module_identity_mismatch": "forbidden",
+            "invalid": "forbidden",
+            "expired": "forbidden",
+            "revoked": "forbidden",
+            "revoked_module_token": "unauthenticated",
+            "missing_scope": "scope_denied",
+            "missing_grant": "forbidden",
+            "unrelated_matter": "not_found",
+            "unrelated_file": "not_found",
+            "unrelated_version": "not_found",
+            "operation_outside_grant": "forbidden",
+            "field_outside_grant": "field_locked",
+            "attorney_only_field": "not_found",
+            "grants_admin": false,
+            "firmwide_bypass": false,
+            "sequence": [
+              "getFile",
+              "listFileVersions",
+              "downloadFileVersion",
+              "quarantineFileVersion"
+            ],
+            "metadata_fields": [
+              "name",
+              "extension",
+              "media_type",
+              "size_bytes",
+              "sha256",
+              "quarantined"
+            ],
+            "response_fields": {
+              "getFile": [
+                "name",
+                "extension"
+              ],
+              "listFileVersions": [
+                "media_type",
+                "size_bytes",
+                "sha256",
+                "quarantined"
+              ],
+              "quarantineFileVersion": [
+                "media_type",
+                "size_bytes",
+                "sha256",
+                "quarantined"
+              ]
+            },
+            "attorney_only_fields": [
+              "note",
+              "summary"
+            ]
+          },
+          "payment_processor": {
+            "event_type": "payment.processor_authorized",
+            "delivered_on": "moduleEvent",
+            "header": "X-Togavsu-Task-Authorization",
+            "body_field": "processor_authorization",
+            "issued_by": "core",
+            "registered_module": true,
+            "initialization_requires_viewer": true,
+            "viewer_context_required": false,
+            "callback_requires_viewer": false,
+            "module_identity_mismatch": "forbidden",
+            "invalid": "forbidden",
+            "unregistered": "forbidden",
+            "expired": "forbidden",
+            "revoked": "forbidden",
+            "revoked_module_token": "unauthenticated",
+            "missing_scope": "scope_denied",
+            "missing_grant": "forbidden",
+            "unrelated_matter": "not_found",
+            "unrelated_payment": "not_found",
+            "unrelated_resource": "not_found",
+            "amount_mismatch": "forbidden",
+            "destination_mismatch": "forbidden",
+            "operation_outside_grant": "forbidden",
+            "field_outside_grant": "field_locked",
+            "grants_admin": false,
+            "firmwide_bypass": false,
+            "ambient_payment_write": false,
+            "sequence": [
+              "createPayment",
+              "updatePaymentStatus"
+            ],
+            "allowed_fields": [
+              "status",
+              "method",
+              "reference_number"
+            ],
+            "binds": [
+              "module_id",
+              "initialization_id",
+              "payment_id",
+              "matter_id",
+              "contact_id",
+              "invoice_id",
+              "amount_cents",
+              "destination"
+            ],
+            "caller_scopes": {
+              "operating": [
+                "payments:write"
+              ],
+              "trust": [
+                "payments:write",
+                "trust:write"
+              ]
+            },
+            "module_scopes": {
+              "operating": [
+                "payments:write"
+              ],
+              "trust": [
+                "payments:write",
+                "trust:write"
+              ]
+            },
+            "idempotency_replay": "original_result",
+            "idempotency_conflict": "idempotency_conflict",
+            "no_mutation_on_denial": true
+          }
         },
         "parameters": [
           {
@@ -52930,7 +53575,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Present on file.version_created. The same claims are in task_authorization. Absent when the event has no task grant."
+            "description": "Present on file.version_created and payment.processor_authorized. The same claims are in the matching body field. Absent when the event has no task grant."
           }
         ],
         "requestBody": {
@@ -56377,6 +57022,228 @@
         ],
         "description": "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was."
       },
+      "ProcessorInitializationWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "processor_module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "operating",
+              "trust"
+            ]
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "processor_module_id",
+          "contact_id",
+          "matter_id",
+          "amount_cents",
+          "destination"
+        ],
+        "description": "Asks the core to authorize one registered processor for this matter, contact, amount, and destination. The grant is delivered to that module. It is not in this response."
+      },
+      "ProcessorInitialization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "processor_module_id": {
+            "type": "string"
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "operating",
+              "trust"
+            ]
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "authorized",
+              "denied"
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          }
+        },
+        "required": [
+          "id",
+          "processor_module_id",
+          "contact_id",
+          "matter_id",
+          "amount_cents",
+          "destination",
+          "status",
+          "expires_at"
+        ],
+        "description": "Core authorization record. No payment row is created here. processor_authorization is delivered on moduleEvent."
+      },
+      "ProcessorAuthorization": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "initialization_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "payment_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "Null until createPayment binds the payment. A later status update must use that id."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "operating",
+              "trust"
+            ]
+          },
+          "allowed_operations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "issued_by": {
+            "const": "core"
+          }
+        },
+        "required": [
+          "module_id",
+          "initialization_id",
+          "payment_id",
+          "matter_id",
+          "contact_id",
+          "amount_cents",
+          "destination",
+          "allowed_operations",
+          "allowed_fields",
+          "expires_at",
+          "revoked",
+          "issued_by"
+        ],
+        "description": "Bounded processor capability issued by the core. It is not an admin grant and it does not require a signed-in viewer."
+      },
       "TrustAccount": {
         "type": "object",
         "additionalProperties": false,
@@ -58192,6 +59059,70 @@
           "quarantined"
         ],
         "description": "An immutable file version. The storage key is not in the API."
+      },
+      "FileGrantView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "extension": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "extension"
+        ],
+        "description": "Complete file metadata for a file.version_created task grant. origin, created_by, and every other file field are absent."
+      },
+      "FileVersionGrantView": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "media_type": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "quarantined": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "media_type",
+          "size_bytes",
+          "sha256",
+          "quarantined"
+        ],
+        "description": "Complete version metadata for a file.version_created task grant. storage_backend_id, saved_by, and created_by are absent."
+      },
+      "FileVersionGrantPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileVersionGrantView"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/Page"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ],
+        "description": "One page of grant version projections."
       },
       "FileRendition": {
         "type": "object",
@@ -61720,6 +62651,16 @@
                 "type": "null"
               }
             ]
+          },
+          "processor_authorization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessorAuthorization"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -61731,7 +62672,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module."
+        "description": "Signed webhook body. Signature header X-Togavsu-Signature is sha256 of the raw body, hex, prefixed with sha256=. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. Other events set both to null."
       },
       "Backup": {
         "type": "object",
@@ -65603,6 +66544,51 @@
         },
         "description": "Processor status transition. reversed is only produced by the reverse method. Amount stays as it was. Patch: every field is optional."
       },
+      "ProcessorInitializationWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "processor_module_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "amount_cents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Integer cents, zero or greater."
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "operating",
+              "trust"
+            ]
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "description": "Asks the core to authorize one registered processor for this matter, contact, amount, and destination. The grant is delivered to that module. It is not in this response. Patch: every field is optional."
+      },
       "TrustAccountWritePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -66955,8 +67941,10 @@
       "approved_scopes",
       "viewer_role",
       "matter_wall",
+      "ownership",
+      "client_shared",
       "attorney_only",
-      "client_shared"
+      "field_restrictions"
     ],
     "scope_bypasses_wall": false,
     "scope_bypasses_viewer_role": false,
@@ -66998,6 +67986,7 @@
         "revoked": "forbidden",
         "revoked_module_token": "unauthenticated",
         "missing_scope": "scope_denied",
+        "missing_grant": "forbidden",
         "unrelated_matter": "not_found",
         "unrelated_file": "not_found",
         "unrelated_version": "not_found",
@@ -67020,21 +68009,110 @@
           "sha256",
           "quarantined"
         ],
+        "response_fields": {
+          "getFile": [
+            "name",
+            "extension"
+          ],
+          "listFileVersions": [
+            "media_type",
+            "size_bytes",
+            "sha256",
+            "quarantined"
+          ],
+          "quarantineFileVersion": [
+            "media_type",
+            "size_bytes",
+            "sha256",
+            "quarantined"
+          ]
+        },
         "attorney_only_fields": [
           "note",
           "summary"
         ]
       },
+      "payment_processor": {
+        "event_type": "payment.processor_authorized",
+        "delivered_on": "moduleEvent",
+        "header": "X-Togavsu-Task-Authorization",
+        "body_field": "processor_authorization",
+        "issued_by": "core",
+        "registered_module": true,
+        "initialization_requires_viewer": true,
+        "viewer_context_required": false,
+        "callback_requires_viewer": false,
+        "module_identity_mismatch": "forbidden",
+        "invalid": "forbidden",
+        "unregistered": "forbidden",
+        "expired": "forbidden",
+        "revoked": "forbidden",
+        "revoked_module_token": "unauthenticated",
+        "missing_scope": "scope_denied",
+        "missing_grant": "forbidden",
+        "unrelated_matter": "not_found",
+        "unrelated_payment": "not_found",
+        "unrelated_resource": "not_found",
+        "amount_mismatch": "forbidden",
+        "destination_mismatch": "forbidden",
+        "operation_outside_grant": "forbidden",
+        "field_outside_grant": "field_locked",
+        "grants_admin": false,
+        "firmwide_bypass": false,
+        "ambient_payment_write": false,
+        "sequence": [
+          "createPayment",
+          "updatePaymentStatus"
+        ],
+        "allowed_fields": [
+          "status",
+          "method",
+          "reference_number"
+        ],
+        "binds": [
+          "module_id",
+          "initialization_id",
+          "payment_id",
+          "matter_id",
+          "contact_id",
+          "invoice_id",
+          "amount_cents",
+          "destination"
+        ],
+        "caller_scopes": {
+          "operating": [
+            "payments:write"
+          ],
+          "trust": [
+            "payments:write",
+            "trust:write"
+          ]
+        },
+        "module_scopes": {
+          "operating": [
+            "payments:write"
+          ],
+          "trust": [
+            "payments:write",
+            "trust:write"
+          ]
+        },
+        "idempotency_replay": "original_result",
+        "idempotency_conflict": "idempotency_conflict",
+        "no_mutation_on_denial": true
+      },
       "operations": [
+        "bulkEvent",
+        "createAiCall",
+        "createEvent",
+        "createFileLink",
+        "createNotification",
+        "createPayment",
+        "downloadFileVersion",
         "getFile",
         "listFileVersions",
-        "downloadFileVersion",
         "quarantineFileVersion",
-        "createEvent",
-        "bulkEvent",
-        "createNotification",
-        "createFileLink",
-        "createAiCall"
+        "updatePaymentStatus"
       ]
     },
     "cases": [
@@ -67103,6 +68181,33 @@
           "admin"
         ],
         "result": "forbidden"
+      },
+      {
+        "operation_scope": "files:read",
+        "module_scopes": [
+          "files:read"
+        ],
+        "viewer_role": "client",
+        "matter_walled": true,
+        "on_wall": false,
+        "result": "not_found"
+      },
+      {
+        "operation_scope": "files:read",
+        "module_scopes": [
+          "invoices:read"
+        ],
+        "viewer_role": "client",
+        "result": "scope_denied"
+      },
+      {
+        "operation_scope": "invoices:read",
+        "module_scopes": [
+          "invoices:read"
+        ],
+        "viewer_role": "client",
+        "attorney_only": false,
+        "result": "allowed"
       }
     ],
     "noninteractive_cases": [

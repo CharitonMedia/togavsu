@@ -8,6 +8,7 @@ Trigger: the core serves /api/v1/openapi.json.
 
 from __future__ import annotations
 
+from contract.policy import MALWARE_DELIVERY, NONINTERACTIVE_OPERATIONS, PAYMENT_PROCESSOR
 from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
 
 PUBLIC_SECURITY: list = []
@@ -57,54 +58,22 @@ DELEGABLE_SCOPES = {
     "help:read",
 }
 
-# Background calls use a core-issued task authorization instead of an iframe viewer token.
-NONINTERACTIVE_OPERATIONS = {
-    "getFile",
-    "listFileVersions",
-    "downloadFileVersion",
-    "quarantineFileVersion",
-    "createEvent",
-    "bulkEvent",
-    "createNotification",
-    "createFileLink",
-    "createAiCall",
-}
-
-# The core delivers this with moduleEvent for file.version_created. No iframe viewer is involved.
-MALWARE_DELIVERY = {
-    "event_type": "file.version_created",
-    "delivered_on": "moduleEvent",
-    "header": "X-Togavsu-Task-Authorization",
-    "body_field": "task_authorization",
-    "issued_by": "core",
-    "registered_module": True,
-    "subscription_match": True,
-    "viewer_context_required": False,
-    "module_identity_mismatch": "forbidden",
-    "invalid": "forbidden",
-    "expired": "forbidden",
-    "revoked": "forbidden",
-    "revoked_module_token": "unauthenticated",
-    "missing_scope": "scope_denied",
-    "unrelated_matter": "not_found",
-    "unrelated_file": "not_found",
-    "unrelated_version": "not_found",
-    "operation_outside_grant": "forbidden",
-    "field_outside_grant": "field_locked",
-    "attorney_only_field": "not_found",
-    "grants_admin": False,
-    "firmwide_bypass": False,
-    "sequence": ["getFile", "listFileVersions", "downloadFileVersion", "quarantineFileVersion"],
-    "metadata_fields": ["name", "extension", "media_type", "size_bytes", "sha256", "quarantined"],
-    "attorney_only_fields": ["note", "summary"],
-}
+# Background calls use a core-issued workflow grant. The set is the union of those workflows.
 
 MODULE_DELEGATION_POLICY = {
     "mode": "delegated_viewer",
     "context_header": "X-Togavsu-Context-Token",
     "context_required_for_actor": "module",
     "missing_context": "forbidden_for_delegated_viewer",
-    "intersection": ["approved_scopes", "viewer_role", "matter_wall", "attorney_only", "client_shared"],
+    "intersection": [
+        "approved_scopes",
+        "viewer_role",
+        "matter_wall",
+        "ownership",
+        "client_shared",
+        "attorney_only",
+        "field_restrictions",
+    ],
     "scope_bypasses_wall": False,
     "scope_bypasses_viewer_role": False,
     "grants_admin": False,
@@ -124,17 +93,8 @@ MODULE_DELEGATION_POLICY = {
         "firmwide_bypass": False,
         "attorney_only_redaction": True,
         "malware_scan": MALWARE_DELIVERY,
-        "operations": [
-            "getFile",
-            "listFileVersions",
-            "downloadFileVersion",
-            "quarantineFileVersion",
-            "createEvent",
-            "bulkEvent",
-            "createNotification",
-            "createFileLink",
-            "createAiCall",
-        ],
+        "payment_processor": PAYMENT_PROCESSOR,
+        "operations": sorted(NONINTERACTIVE_OPERATIONS),
     },
     "cases": [
         {"operation_scope": "ai:use", "module_scopes": ["ai:use"], "viewer_role": "staff", "result": "allowed"},
@@ -176,6 +136,27 @@ MODULE_DELEGATION_POLICY = {
             "viewer_role": "staff",
             "operation_roles": ["admin"],
             "result": "forbidden",
+        },
+        {
+            "operation_scope": "files:read",
+            "module_scopes": ["files:read"],
+            "viewer_role": "client",
+            "matter_walled": True,
+            "on_wall": False,
+            "result": "not_found",
+        },
+        {
+            "operation_scope": "files:read",
+            "module_scopes": ["invoices:read"],
+            "viewer_role": "client",
+            "result": "scope_denied",
+        },
+        {
+            "operation_scope": "invoices:read",
+            "module_scopes": ["invoices:read"],
+            "viewer_role": "client",
+            "attorney_only": False,
+            "result": "allowed",
         },
     ],
     "noninteractive_cases": [
