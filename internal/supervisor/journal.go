@@ -102,13 +102,26 @@ func (j *Journal) Put(rec journalRecord) error {
 		j.failRemaining--
 		return errors.New("journal persist failed")
 	}
-	if err := os.MkdirAll(filepath.Dir(j.path), 0o700); err != nil {
+	return appendDurableLine(j.path, line, func(raw []byte) error {
+		_, err := parseCommitted(raw)
+		return err
+	})
+}
+
+// appendDurableLine repairs an unterminated tail, then appends one
+// newline-terminated record and fsyncs the file and its directory. A
+// newline-terminated corrupt record is left in place and returned.
+func appendDurableLine(path string, line []byte, committed func([]byte) error) error {
+	if len(line) == 0 || line[len(line)-1] != '\n' {
+		return errors.New("journal line is not terminated")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	if err := j.repairTailLocked(); err != nil {
+	if err := repairDurableTail(path, committed); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(j.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -124,15 +137,14 @@ func (j *Journal) Put(rec journalRecord) error {
 	if cerr != nil {
 		return cerr
 	}
-	return syncDir(filepath.Dir(j.path))
+	return syncDir(filepath.Dir(path))
 }
 
-// repairTailLocked discards only an unterminated suffix. Bytes through the
+// repairDurableTail discards only an unterminated suffix. Bytes through the
 // last newline are a committed prefix and are not rewritten. A corrupt
-// newline-terminated record is returned as an error so a later append cannot
-// hide it.
-func (j *Journal) repairTailLocked() error {
-	raw, err := os.ReadFile(j.path)
+// newline-terminated record is returned so a later append cannot hide it.
+func repairDurableTail(path string, committed func([]byte) error) error {
+	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -142,7 +154,7 @@ func (j *Journal) repairTailLocked() error {
 	if len(raw) == 0 {
 		return nil
 	}
-	if _, err := parseCommitted(raw); err != nil {
+	if err := committed(raw); err != nil {
 		return err
 	}
 	if raw[len(raw)-1] == '\n' {
@@ -152,7 +164,7 @@ func (j *Journal) repairTailLocked() error {
 	if i := bytes.LastIndexByte(raw, '\n'); i >= 0 {
 		keep = i + 1
 	}
-	f, err := os.OpenFile(j.path, os.O_RDWR, 0)
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return err
 	}
@@ -168,7 +180,7 @@ func (j *Journal) repairTailLocked() error {
 	if cerr != nil {
 		return cerr
 	}
-	return syncDir(filepath.Dir(j.path))
+	return syncDir(filepath.Dir(path))
 }
 
 func syncDir(dir string) error {

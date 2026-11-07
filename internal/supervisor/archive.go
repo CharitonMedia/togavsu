@@ -153,6 +153,10 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		f.Close()
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
 	if err := f.Close(); err != nil {
 		return err
 	}
@@ -160,6 +164,9 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 		return err
 	}
 	done = true
+	if err := syncDir(dir); err != nil {
+		return err
+	}
 	return nil
 }
 

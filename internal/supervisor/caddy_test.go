@@ -514,6 +514,119 @@ func caddyBinary(t *testing.T) string {
 	return cached
 }
 
+func TestAcceptedLoadIsDurableBeforeThePreviousCoreIsRetired(t *testing.T) {
+	bin := caddyBinary(t)
+	dir := t.TempDir()
+	upstream := filepath.Join(dir, "upstream")
+	if err := os.WriteFile(upstream, []byte("old:8080\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	admin := freePort(t)
+	httpPort := freePort(t)
+	caddyfile := filepath.Join(dir, "Caddyfile")
+	if err := os.WriteFile(caddyfile, []byte(fmt.Sprintf("{\n\tadmin 127.0.0.1:%s\n}\nhttp://127.0.0.1:%s {\n\treverse_proxy {$CORE_UPSTREAM:core:8080}\n}\n", admin, httpPort)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", "deploy", "caddy", "entrypoint.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := strings.ReplaceAll(string(raw), "/run/caddy-admin", filepath.Join(dir, "admin"))
+	script = strings.ReplaceAll(script, "/runtime/upstream", upstream)
+	script = strings.ReplaceAll(script, "/etc/caddy/Caddyfile", caddyfile)
+	script = strings.ReplaceAll(script, "exec caddy ", "exec "+bin+" ")
+	entry := filepath.Join(dir, "entrypoint.sh")
+	if err := os.WriteFile(entry, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var logs strings.Builder
+	start := func() *exec.Cmd {
+		cmd := exec.Command(entry)
+		cmd.Stdout = &logs
+		cmd.Stderr = &logs
+		if err := cmd.Start(); err != nil {
+			t.Fatalf("caddy: %v\n%s", err, logs.String())
+		}
+		return cmd
+	}
+	waitAdmin := func() {
+		t.Helper()
+		deadline := time.Now().Add(8 * time.Second)
+		var last error
+		for time.Now().Before(deadline) {
+			res, err := http.Get("http://127.0.0.1:" + admin + "/config/")
+			if err == nil {
+				res.Body.Close()
+				if res.StatusCode == http.StatusOK {
+					return
+				}
+			}
+			last = err
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.Fatalf("caddy admin: %v\n%s", last, logs.String())
+	}
+	cmd := start()
+	defer func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}
+	}()
+	waitAdmin()
+	candidate := "togavsu-core-abcdef123456:8080"
+	proxy := &CaddyProxy{
+		AdminURL:    "http://127.0.0.1:" + admin,
+		AdminListen: "127.0.0.1:" + admin,
+		HTTPListen:  "127.0.0.1:" + httpPort,
+		HTTPSListen: "127.0.0.1:" + freePort(t),
+		Domain:      "localhost",
+	}
+	if err := proxy.post(context.Background(), candidate); err != nil {
+		t.Fatalf("load: %v\n%s", err, logs.String())
+	}
+	body, _ := os.ReadFile(upstream)
+	if strings.TrimSpace(string(body)) != "old:8080" {
+		t.Fatalf("file changed before recovery: %q", body)
+	}
+	live, err := proxy.ActiveUpstream(context.Background())
+	if err != nil || live != candidate {
+		t.Fatalf("live %q %v", live, err)
+	}
+	current := ContainerInfo{ID: "old", Name: "old"}
+	next := ContainerInfo{ID: "new-core", Name: "togavsu-core-abcdef123456"}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{current, next}}
+	rt.stopHook = func() {
+		got, _ := os.ReadFile(upstream)
+		if strings.TrimSpace(string(got)) != candidate {
+			t.Errorf("retired a core before the restart file matched the live candidate: %q", got)
+		}
+	}
+	journal := OpenUpdateJournal(filepath.Join(dir, "update-journal.jsonl"))
+	if err := journal.Put(updateIntent{
+		ID: "op", Status: "running", Phase: "switch_intended",
+		CurrentID: current.ID, CurrentName: current.Name, NextID: next.ID, NextName: next.Name, SwitchTo: candidate,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	up := &Updater{Runtime: rt, Journal: journal, UpstreamFile: upstream, Proxy: proxy}
+	if err := up.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if containsStep(order, "stop:new-core") || !containsStep(order, "stop:old") {
+		t.Fatalf("recovery retired the wrong core: %v", order)
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+	cmd = start()
+	waitAdmin()
+	live, err = proxy.ActiveUpstream(context.Background())
+	if err != nil || live != candidate {
+		t.Fatalf("restarted caddy serves %q: %v\n%s", live, err, logs.String())
+	}
+}
+
 func freePort(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

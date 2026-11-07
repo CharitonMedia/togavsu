@@ -103,6 +103,7 @@ type Updater struct {
 	Ledger        *Ledger
 	HealthTimeout time.Duration
 	Journal       *UpdateJournal
+	UpstreamFile  string
 }
 
 type migrationStatus struct {
@@ -208,17 +209,26 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
+		if rolled.Mode == "cleanup_unreconciled" {
+			_ = u.keepPending(opID, "migration", "migration_cleanup")
+		} else {
+			_ = u.finalize(opID, "failed", "failed")
+		}
 		u.notify(ctx, "Update refused", "Migrations failed. The running version was left in place.")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "migration", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	nextName, err := nextCoreName(u.now())
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
+		_ = u.finalize(opID, "failed", "failed")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
 	next, err := u.startCandidate(ctx, opID, release.Image, nextName, current, backupID)
 	if err != nil {
 		rolled := u.abort(ctx, backupID, ran, nil)
+		if !u.pending(opID) {
+			_ = u.finalize(opID, "failed", "failed")
+		}
 		u.notify(ctx, "Update refused", "The new core container did not start. The running version was left in place.")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "start", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran}, rolled, err)
 	}
@@ -229,16 +239,9 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	if err := u.Runtime.WaitHealthy(ctx, next.ID, timeout); err != nil {
 		rolled := u.abort(ctx, backupID, ran, &next)
 		if rolled.Mode == "cleanup_unreconciled" {
-			_ = u.note(opID, func(rec *updateIntent) {
-				rec.Status = "running"
-				rec.Cleanup = "replacement"
-				rec.Phase = "candidate_started"
-				rec.NextID = next.ID
-				rec.NextName = next.Name
-				rec.CurrentID = current.ID
-				rec.CurrentName = current.Name
-				rec.BackupID = backupID
-			})
+			_ = u.keepPending(opID, "replacement", "candidate_started")
+		} else {
+			_ = u.finalize(opID, "failed", "failed")
 		}
 		u.notify(ctx, "Update refused", "The new core failed its health check. The running version was left in place.")
 		return mergeRollback(UpdateResult{Status: "refused", Reason: "health", From: current.Image, To: release.Image, BackupID: backupID, MigrationRan: ran, Rollback: rolled.Mode}, rolled, ErrHealth)
@@ -651,6 +654,10 @@ func (u *Updater) route(ctx context.Context, opID string, current, next Containe
 	hit := hits[0]
 	switch {
 	case sameCore(hit, next):
+		if err := u.persistObservedRoute(live); err != nil {
+			_ = u.keepPending(opID, "route_file", "route_unpersisted")
+			return "route_unpersisted", err
+		}
 		if err := confirmAbsent(current.ID, u.Runtime); err != nil {
 			_ = u.note(opID, func(rec *updateIntent) {
 				rec.Status = "running"
@@ -668,6 +675,10 @@ func (u *Updater) route(ctx context.Context, opID string, current, next Containe
 		})
 		return "", nil
 	case sameCore(hit, current):
+		if err := u.persistObservedRoute(live); err != nil {
+			_ = u.keepPending(opID, "route_file", "route_unpersisted")
+			return "route_unpersisted", err
+		}
 		if err := confirmAbsent(next.ID, u.Runtime); err != nil {
 			_ = u.note(opID, func(rec *updateIntent) {
 				rec.Status = "running"
@@ -695,6 +706,39 @@ func (u *Updater) route(ctx context.Context, opID string, current, next Containe
 		})
 		return "proxy_unknown", ErrProxyUnknown
 	}
+}
+
+func (u *Updater) persistObservedRoute(live string) error {
+	if u == nil || u.UpstreamFile == "" {
+		return nil
+	}
+	return writeFileAtomic(u.UpstreamFile, []byte(strings.TrimSpace(live)+"\n"), 0o644)
+}
+
+func (u *Updater) pending(opID string) bool {
+	if u == nil || u.Journal == nil || opID == "" {
+		return false
+	}
+	rec, ok, err := u.Journal.Latest(opID)
+	return err == nil && ok && rec.Cleanup != "" && !rec.terminal()
+}
+
+func (u *Updater) finalize(opID, status, phase string) error {
+	return u.note(opID, func(rec *updateIntent) {
+		rec.Status = status
+		rec.Phase = phase
+		rec.Cleanup = ""
+		rec.Finished = u.now().UTC()
+	})
+}
+
+func (u *Updater) keepPending(opID, cleanup, phase string) error {
+	return u.note(opID, func(rec *updateIntent) {
+		rec.Status = "running"
+		rec.Phase = phase
+		rec.Cleanup = cleanup
+		rec.Finished = time.Time{}
+	})
 }
 
 func (u *Updater) readLive(ctx context.Context) (string, error) {
@@ -758,6 +802,13 @@ func (u *Updater) reconcileUpdate(ctx context.Context, item updateIntent) error 
 		hit := hits[0]
 		switch {
 		case hit.ID == item.NextID || (item.NextName != "" && hit.Name == item.NextName):
+			if err := u.persistObservedRoute(live); err != nil {
+				item.Status = "running"
+				item.Cleanup = "route_file"
+				item.Phase = "route_unpersisted"
+				_ = u.Journal.Put(item)
+				return err
+			}
 			if item.CurrentID != "" {
 				if err := confirmAbsent(item.CurrentID, u.Runtime); err != nil {
 					item.Cleanup = "previous"
@@ -771,6 +822,13 @@ func (u *Updater) reconcileUpdate(ctx context.Context, item updateIntent) error 
 			item.Finished = u.now().UTC()
 			return u.Journal.Put(item)
 		case hit.ID == item.CurrentID || (item.CurrentName != "" && (hit.Name == item.CurrentName || containerMatchesHost(hit, item.CurrentName))):
+			if err := u.persistObservedRoute(live); err != nil {
+				item.Status = "running"
+				item.Cleanup = "route_file"
+				item.Phase = "route_unpersisted"
+				_ = u.Journal.Put(item)
+				return err
+			}
 			id := item.NextID
 			if id == "" {
 				id = item.NextName

@@ -495,6 +495,58 @@ func TestSwapHookIsDurableBeforeRename(t *testing.T) {
 	}
 }
 
+func TestUpdateJournalTornTailDoesNotSwallowTheNextRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "update-journal.jsonl")
+	j := OpenUpdateJournal(path)
+	if err := j.Put(updateIntent{ID: "upd-1", Status: "running", Phase: "migration_intended"}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"id":"torn"`); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if _, ok, err := OpenUpdateJournal(path).Latest("torn"); err != nil || ok {
+		t.Fatalf("unterminated tail was committed: ok %v err %v", ok, err)
+	}
+	if err := j.Put(updateIntent{ID: "upd-2", Status: "failed", Phase: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Put(updateIntent{ID: "upd-3", Status: "completed", Phase: "completed"}); err != nil {
+		t.Fatal(err)
+	}
+	reopened := OpenUpdateJournal(path)
+	for _, id := range []string{"upd-1", "upd-2", "upd-3"} {
+		if _, ok, err := reopened.Latest(id); err != nil || !ok {
+			t.Fatalf("%s missing after torn tail: ok %v err %v", id, ok, err)
+		}
+	}
+	if _, ok, err := reopened.Latest("torn"); err != nil || ok {
+		t.Fatalf("torn id reappeared: ok %v err %v", ok, err)
+	}
+	f2, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f2.WriteString(`{"id":"unterminated","status":"running","phase":"candidate_intended"}`); err != nil {
+		t.Fatal(err)
+	}
+	f2.Close()
+	if _, ok, err := OpenUpdateJournal(path).Latest("unterminated"); err != nil || ok {
+		t.Fatalf("valid JSON without a newline was committed: ok %v err %v", ok, err)
+	}
+	raw, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, append(raw, []byte(`{"id":""}`+"\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := OpenUpdateJournal(path).Put(updateIntent{ID: "upd-4", Status: "failed", Phase: "failed"}); !errors.Is(err, errJournalCorrupt) {
+		t.Fatalf("corrupt committed record: %v", err)
+	}
+}
+
 func TestJournalTornTailDoesNotSwallowTheNextRecord(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "restore-journal.jsonl")
@@ -1001,13 +1053,13 @@ func TestUpdateBlockedWhileRestoreIsPending(t *testing.T) {
 	ops := &Operations{
 		Gate: &Gate{}, Journal: journal,
 		Updater: &Updater{},
-		Runtime: &scriptRuntime{order: &order},
+		Runtime: &scriptRuntime{order: &order, health: errors.New("unhealthy")},
 	}
 	if _, err := ops.Update(context.Background(), true); !errors.Is(err, ErrRecoveryRequired) {
 		t.Fatalf("update while recovery is pending: %v", err)
 	}
-	if len(order) != 0 {
-		t.Fatalf("update touched the runtime: %v", order)
+	if containsStep(order, "start:") || containsStep(order, "switch:") {
+		t.Fatalf("update started a release while recovery is pending: %v", order)
 	}
 	if _, err := ops.Restore(context.Background(), "backup"); !errors.Is(err, ErrRecoveryRequired) {
 		t.Fatalf("restore while recovery is pending: %v", err)

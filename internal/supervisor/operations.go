@@ -145,7 +145,10 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 		return UpdateResult{}, ErrBusy
 	}
 	defer release()
-	if err := o.blockUnresolved(); err != nil {
+	if o.Updater != nil && o.Updater.Journal == nil {
+		o.Updater.Journal = o.UpdateJournal
+	}
+	if err := o.admit(ctx); err != nil {
 		return UpdateResult{}, err
 	}
 	if o.Updater == nil {
@@ -183,7 +186,7 @@ func (o *Operations) DeleteBackup(ctx context.Context, id string) error {
 		return ErrBusy
 	}
 	defer release()
-	if err := o.blockUnresolved(); err != nil {
+	if err := o.admit(ctx); err != nil {
 		return err
 	}
 	return o.Store.Delete(ctx, id)
@@ -201,7 +204,7 @@ func (o *Operations) Prune(ctx context.Context, local time.Duration) error {
 		return ErrBusy
 	}
 	defer release()
-	if err := o.blockUnresolved(); err != nil {
+	if err := o.admit(ctx); err != nil {
 		return err
 	}
 	var errs []error
@@ -380,7 +383,7 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 		release()
 		return RestoreRecord{}, nil, ErrShuttingDown
 	}
-	if err := o.blockUnresolved(); err != nil {
+	if err := o.admit(ctx); err != nil {
 		release()
 		return RestoreRecord{}, nil, err
 	}
@@ -819,6 +822,22 @@ func (o *Operations) Recover(ctx context.Context) error {
 		return ErrBusy
 	}
 	defer release()
+	return o.recoverLocked(ctx)
+}
+
+// admit retries durable pending work while the operation gate is already
+// held, then refuses a new destructive operation when that work is still
+// unresolved. A failed recovery that leaves a record pending is the same
+// refusal as finding the record before the attempt.
+func (o *Operations) admit(ctx context.Context) error {
+	err := o.recoverLocked(ctx)
+	if blocked := o.blockUnresolved(); blocked != nil {
+		return blocked
+	}
+	return err
+}
+
+func (o *Operations) recoverLocked(ctx context.Context) error {
 	var errs []error
 	if o.Journal != nil {
 		pending, err := o.Journal.Incomplete()

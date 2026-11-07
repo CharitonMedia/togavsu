@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -40,6 +40,7 @@ func (r updateIntent) terminal() bool {
 type UpdateJournal struct {
 	path string
 	now  func() time.Time
+	mu   sync.Mutex
 }
 
 func OpenUpdateJournal(path string) *UpdateJournal {
@@ -58,31 +59,41 @@ func (j *UpdateJournal) Put(rec updateIntent) error {
 		return err
 	}
 	line = append(line, '\n')
-	if err := os.MkdirAll(filepath.Dir(j.path), 0o700); err != nil {
-		return err
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return appendDurableLine(j.path, line, validateUpdateJournal)
+}
+
+func validateUpdateJournal(raw []byte) error {
+	_, err := parseUpdateCommitted(raw)
+	return err
+}
+
+func parseUpdateCommitted(raw []byte) (map[string]updateIntent, error) {
+	out := map[string]updateIntent{}
+	if len(raw) == 0 {
+		return out, nil
 	}
-	f, err := os.OpenFile(j.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
+	body := raw
+	if raw[len(raw)-1] != '\n' {
+		i := bytes.LastIndexByte(raw, '\n')
+		if i < 0 {
+			return out, nil
+		}
+		body = raw[:i+1]
 	}
-	_, werr := f.Write(line)
-	serr := f.Sync()
-	cerr := f.Close()
-	if werr != nil {
-		return werr
+	parts := bytes.Split(body, []byte("\n"))
+	for _, part := range parts[:len(parts)-1] {
+		if len(bytes.TrimSpace(part)) == 0 {
+			continue
+		}
+		var rec updateIntent
+		if err := json.Unmarshal(part, &rec); err != nil || rec.ID == "" {
+			return nil, errJournalCorrupt
+		}
+		out[rec.ID] = rec
 	}
-	if serr != nil {
-		return serr
-	}
-	if cerr != nil {
-		return cerr
-	}
-	df, err := os.Open(filepath.Dir(j.path))
-	if err != nil {
-		return err
-	}
-	defer df.Close()
-	return df.Sync()
+	return out, nil
 }
 
 func (j *UpdateJournal) Latest(id string) (updateIntent, bool, error) {
@@ -112,6 +123,8 @@ func (j *UpdateJournal) read() (map[string]updateIntent, error) {
 	if j == nil || j.path == "" {
 		return map[string]updateIntent{}, nil
 	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
 	raw, err := os.ReadFile(j.path)
 	if os.IsNotExist(err) {
 		return map[string]updateIntent{}, nil
@@ -119,28 +132,5 @@ func (j *UpdateJournal) read() (map[string]updateIntent, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]updateIntent{}
-	if len(raw) == 0 {
-		return out, nil
-	}
-	body := raw
-	if raw[len(raw)-1] != '\n' {
-		i := bytes.LastIndexByte(raw, '\n')
-		if i < 0 {
-			return out, nil
-		}
-		body = raw[:i+1]
-	}
-	parts := bytes.Split(body, []byte("\n"))
-	for _, part := range parts[:len(parts)-1] {
-		if len(bytes.TrimSpace(part)) == 0 {
-			continue
-		}
-		var rec updateIntent
-		if err := json.Unmarshal(part, &rec); err != nil || rec.ID == "" {
-			return nil, errJournalCorrupt
-		}
-		out[rec.ID] = rec
-	}
-	return out, nil
+	return parseUpdateCommitted(raw)
 }

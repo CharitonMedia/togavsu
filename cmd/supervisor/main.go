@@ -166,6 +166,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Ledger:        ledger,
 		HealthTimeout: time.Minute,
 		Journal:       updateJournal,
+		UpstreamFile:  cfg.UpstreamFile,
 	}
 	ops := &supervisor.Operations{
 		Store:         store,

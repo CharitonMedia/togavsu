@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -214,6 +216,149 @@ func TestAliasStillServingPreviousRetiresOnlyTheCandidate(t *testing.T) {
 	}
 	if !containsStep(order, "stop:new-core") || !containsStep(order, "remove:new-core") || containsStep(order, "stop:old") {
 		t.Fatalf("order %v", order)
+	}
+}
+
+func TestHealthFailureThenRetryDoesNotNeedRestart(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	rt := &scriptRuntime{order: &order, health: errors.New("unhealthy"), cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	rt.stopHook = func() {
+		if release, ok := ops.Gate.Try(); ok {
+			release()
+			t.Error("operation gate was released while cleanup was running")
+		}
+	}
+	if _, err := ops.Update(context.Background(), true); !errors.Is(err, ErrHealth) {
+		t.Fatalf("first %v", err)
+	}
+	if err := ops.blockUnresolved(); err != nil {
+		t.Fatalf("cleaned health failure stayed pending: %v", err)
+	}
+	rt.health = nil
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("retry %+v %v", got, err)
+	}
+}
+
+func TestKnownMigrationFailureThenRetry(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	up.Migrator = &countingMigrator{}
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	if _, err := ops.Update(context.Background(), true); err == nil || errors.Is(err, ErrMigrationUnknown) {
+		t.Fatalf("first %v", err)
+	}
+	if err := ops.blockUnresolved(); err != nil {
+		t.Fatalf("known migration failure stayed pending: %v", err)
+	}
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("retry %+v %v", got, err)
+	}
+}
+
+func TestCleanupFailureStaysPendingUntilRetry(t *testing.T) {
+	var order []string
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	rt := &scriptRuntime{order: &order, health: errors.New("unhealthy"), failRemove: 1, cores: []ContainerInfo{{
+		ID: "old", Name: "core", Labels: map[string]string{"togavsu.version": "1.0.0"},
+	}}}
+	up := testUpdater(t, rt, &order)
+	up.Journal = journal
+	ops := &Operations{Gate: &Gate{}, Updater: up, UpdateJournal: journal, Passphrase: func() (string, error) { return "synthetic", nil }}
+	if _, err := ops.Update(context.Background(), true); !errors.Is(err, ErrHealth) {
+		t.Fatalf("first %v", err)
+	}
+	if err := ops.blockUnresolved(); !errors.Is(err, ErrRecoveryRequired) {
+		t.Fatalf("cleanup failure was not pending: %v", err)
+	}
+	rt.health = nil
+	got, err := ops.Update(context.Background(), true)
+	if err != nil || got.Status != "applied" {
+		t.Fatalf("reconcile retry %+v %v order %v", got, err, order)
+	}
+}
+
+type countingMigrator struct{ n int }
+
+func (m *countingMigrator) Apply(context.Context, string) (bool, error) {
+	m.n++
+	if m.n == 1 {
+		return false, errors.New("migrate failed")
+	}
+	return true, nil
+}
+
+func TestLiveRouteIsPersistedBeforeEitherCoreIsRetired(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "upstream")
+	if err := os.WriteFile(file, []byte("core:8080\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current := ContainerInfo{ID: "old", Name: "togavsu-core-1", Aliases: []string{"core"}}
+	next := ContainerInfo{ID: "new-core", Name: "togavsu-core-abcdef123456"}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{current, next}}
+	rt.stopHook = func() {
+		body, err := os.ReadFile(file)
+		if err != nil || strings.TrimSpace(string(body)) != next.Name+":8080" {
+			t.Errorf("stopped a core before the restart file named the live candidate: %q %v", body, err)
+		}
+	}
+	live := next.Name + ":8080"
+	up := &Updater{Runtime: rt, UpstreamFile: file, Proxy: &scriptProxy{order: &order, live: &live}}
+	if _, err := up.route(context.Background(), "op", current, next, live, nil); err != nil {
+		t.Fatal(err)
+	}
+	if containsStep(order, "stop:old") == false || containsStep(order, "stop:new-core") {
+		t.Fatalf("candidate route retired the wrong core: %v", order)
+	}
+	file = filepath.Join(t.TempDir(), "upstream")
+	if err := os.WriteFile(file, []byte(next.Name+":8080\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	order = nil
+	rt = &scriptRuntime{order: &order, cores: []ContainerInfo{current, next}}
+	rt.stopHook = func() {
+		body, _ := os.ReadFile(file)
+		if strings.TrimSpace(string(body)) != "core:8080" {
+			t.Errorf("stopped a core before the file was repaired to the live previous route: %q", body)
+		}
+	}
+	old := "core:8080"
+	up = &Updater{Runtime: rt, UpstreamFile: file, Proxy: &scriptProxy{order: &order, live: &old}}
+	if _, err := up.route(context.Background(), "op", current, next, old, nil); err == nil || !containsStep(order, "stop:new-core") || containsStep(order, "stop:old") {
+		t.Fatalf("previous route err %v order %v", err, order)
+	}
+	blocker := filepath.Join(t.TempDir(), "not-dir")
+	if err := os.WriteFile(blocker, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	journal := OpenUpdateJournal(t.TempDir() + "/update-journal.jsonl")
+	_ = journal.Put(updateIntent{ID: "op", Status: "running", Phase: "switch_intended", CurrentID: current.ID, CurrentName: current.Name, NextID: next.ID, NextName: next.Name})
+	order = nil
+	rt = &scriptRuntime{order: &order, cores: []ContainerInfo{current, next}}
+	up = &Updater{Runtime: rt, Journal: journal, UpstreamFile: filepath.Join(blocker, "upstream"), Proxy: &scriptProxy{order: &order, live: &live}}
+	if _, err := up.route(context.Background(), "op", current, next, live, nil); err == nil {
+		t.Fatal("file failure was ignored")
+	}
+	if containsStep(order, "stop:old") || containsStep(order, "stop:new-core") || containsStep(order, "remove:old") || containsStep(order, "remove:new-core") {
+		t.Fatalf("file failure retired a core: %v", order)
+	}
+	rec, ok, err := journal.Latest("op")
+	if err != nil || !ok || rec.terminal() || rec.Cleanup != "route_file" {
+		t.Fatalf("file failure was not pending: %+v %v %v", rec, ok, err)
 	}
 }
 

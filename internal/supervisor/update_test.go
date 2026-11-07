@@ -32,6 +32,7 @@ type scriptRuntime struct {
 	started      []ContainerInfo
 	removed      map[string]bool
 	loseCreate   bool
+	failRemove   int
 }
 
 func (r *scriptRuntime) add(step string) {
@@ -180,6 +181,11 @@ func (r *scriptRuntime) Remove(ctx context.Context, id string) error {
 	if ctx.Err() != nil {
 		r.add("remove-canceled:" + id)
 		return ctx.Err()
+	}
+	if r.failRemove > 0 {
+		r.failRemove--
+		r.add("remove-fail:" + id)
+		return errors.New("remove failed")
 	}
 	r.add("remove:" + id)
 	if r.removed == nil {
