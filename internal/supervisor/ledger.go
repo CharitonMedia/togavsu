@@ -1,12 +1,17 @@
 package supervisor
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync"
 	"time"
 )
+
+// errLedgerCorrupt means a newline-terminated ledger record is not valid.
+// The tail was committed. Callers must not treat it as a torn write.
+var errLedgerCorrupt = errors.New("ledger contains a corrupt committed record")
 
 // Event is one append-only supervisor action. It is the control-plane
 // history for updates and backups. It is not the product audit log: that
@@ -39,15 +44,7 @@ func (l *Ledger) Append(kind, actor string, fields map[string]string) (Event, er
 	line = append(line, '\n')
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	f, err := os.OpenFile(l.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return Event{}, err
-	}
-	defer f.Close()
-	if _, err := f.Write(line); err != nil {
-		return Event{}, err
-	}
-	if err := f.Sync(); err != nil {
+	if err := appendDurableLine(l.path, line, validateLedger); err != nil {
 		return Event{}, err
 	}
 	return ev, nil
@@ -56,27 +53,62 @@ func (l *Ledger) Append(kind, actor string, fields map[string]string) (Event, er
 func (l *Ledger) List(kind string) ([]Event, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	f, err := os.Open(l.path)
+	if err := repairDurableTail(l.path, validateLedger); err != nil {
+		return nil, err
+	}
+	raw, err := os.ReadFile(l.path)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	all, err := readLedger(raw)
+	if err != nil {
+		return nil, err
+	}
+	if kind == "" {
+		return all, nil
+	}
 	var out []Event
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 64*1024), 2<<20)
-	for sc.Scan() {
-		var ev Event
-		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
-			return nil, err
-		}
-		if kind == "" || ev.Kind == kind {
+	for _, ev := range all {
+		if ev.Kind == kind {
 			out = append(out, ev)
 		}
 	}
-	return out, sc.Err()
+	return out, nil
+}
+
+func validateLedger(raw []byte) error {
+	_, err := readLedger(raw)
+	return err
+}
+
+func readLedger(raw []byte) ([]Event, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	body := raw
+	if raw[len(raw)-1] != '\n' {
+		i := bytes.LastIndexByte(raw, '\n')
+		if i < 0 {
+			return nil, nil
+		}
+		body = raw[:i+1]
+	}
+	parts := bytes.Split(body, []byte("\n"))
+	var out []Event
+	for _, part := range parts[:len(parts)-1] {
+		if len(bytes.TrimSpace(part)) == 0 {
+			continue
+		}
+		var ev Event
+		if err := json.Unmarshal(part, &ev); err != nil {
+			return nil, errLedgerCorrupt
+		}
+		out = append(out, ev)
+	}
+	return out, nil
 }
 
 // Latest scans the ledger from the start.

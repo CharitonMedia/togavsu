@@ -255,6 +255,8 @@ func (s *SFTPDestination) batch(ctx context.Context, commands string) error {
 }
 
 func (s *SFTPDestination) output(ctx context.Context, commands string) (string, error) {
+	ctx, cancel := destinationContext(ctx)
+	defer cancel()
 	if s.Command == "" {
 		s.Command = "sftp"
 	}

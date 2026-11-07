@@ -15,6 +15,36 @@ import (
 	"time"
 )
 
+// destinationIOTimeout bounds one destination read or write. A nightly
+// backup otherwise uses the supervisor's lifetime context and would hold
+// the operation gate until process shutdown.
+const destinationIOTimeout = 2 * time.Minute
+
+func destinationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithTimeout(ctx, destinationIOTimeout)
+}
+
+func copyContext(ctx context.Context, dst io.Writer, src io.Reader) error {
+	if ctx == nil {
+		_, err := io.Copy(dst, src)
+		return err
+	}
+	errc := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(dst, src)
+		errc <- err
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errc:
+		return err
+	}
+}
+
 // Destination copies an encrypted archive off the local volume.
 type Destination interface {
 	ID() string
@@ -258,7 +288,12 @@ func (p *PathDestination) dir() string {
 	return filepath.Join(p.Spec.Path, p.Spec.Namespace)
 }
 
-func (p *PathDestination) Put(_ context.Context, name string, r io.Reader, sha string) error {
+func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha string) error {
+	ctx, cancel := destinationContext(ctx)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := safeName(name); err != nil {
 		return err
 	}
@@ -271,7 +306,7 @@ func (p *PathDestination) Put(_ context.Context, name string, r io.Reader, sha s
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(f, r); err != nil {
+	if err := copyContext(ctx, f, r); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
@@ -293,7 +328,10 @@ func (p *PathDestination) Put(_ context.Context, name string, r io.Reader, sha s
 	return os.Rename(tmp, target)
 }
 
-func (p *PathDestination) Get(_ context.Context, name string) (io.ReadCloser, error) {
+func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := safeName(name); err != nil {
 		return nil, err
 	}
@@ -307,7 +345,10 @@ func (p *PathDestination) Get(_ context.Context, name string) (io.ReadCloser, er
 	return f, nil
 }
 
-func (p *PathDestination) Delete(_ context.Context, name string) error {
+func (p *PathDestination) Delete(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := safeName(name); err != nil {
 		return err
 	}
@@ -532,6 +573,27 @@ func (b *ReceiptBook) write(all []OwnedObject) error {
 		return err
 	}
 	return writeFileAtomic(b.Path, raw, 0o600)
+}
+
+// errDestinationRelocation means a destination still has copied archives,
+// so its storage location cannot be replaced. Retention and credentials
+// can change. The historical path would otherwise be abandoned.
+var errDestinationRelocation = fmt.Errorf("%w: destination location cannot change while copies remain", ErrBadRequest)
+
+func sameStorage(a, b DestinationSpec) bool {
+	if a.Kind != b.Kind {
+		return false
+	}
+	switch a.Kind {
+	case "path":
+		return filepath.Clean(a.Path) == filepath.Clean(b.Path) && a.Namespace == b.Namespace
+	case "s3":
+		return a.Endpoint == b.Endpoint && a.Region == b.Region && a.Bucket == b.Bucket && a.Prefix == b.Prefix && a.Namespace == b.Namespace
+	case "sftp":
+		return a.Host == b.Host && a.Port == b.Port && a.User == b.User && a.RemotePath == b.RemotePath && a.Namespace == b.Namespace
+	default:
+		return false
+	}
 }
 
 func prepareSpec(spec DestinationSpec, previousNamespace string) (DestinationSpec, error) {

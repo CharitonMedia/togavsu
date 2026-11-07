@@ -201,6 +201,7 @@ func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operat
 		case now := <-tick.C:
 			events, err := ops.Ledger.List("")
 			if err != nil {
+				slog.Error("scheduled tasks were not run because the ledger could not be read", "err", err)
 				continue
 			}
 			due := sched.Due(now, supervisor.StateFromLedger(events), cfg.UpdatesPaused)

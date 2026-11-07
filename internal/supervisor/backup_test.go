@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +222,132 @@ func TestBackupPruneAndDelete(t *testing.T) {
 	}
 	if _, err := s.lookup(recent.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStalledDestinationReleasesTheGateAndKeepsTheLocalBackup(t *testing.T) {
+	stall := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hj, ok := w.(http.Hijacker)
+		if !ok {
+			http.Error(w, "no hijack", http.StatusInternalServerError)
+			return
+		}
+		conn, buf, err := hj.Hijack()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.Copy(io.Discard, buf)
+		// Stay open until the client timeout closes the connection.
+		one := make([]byte, 1)
+		_, _ = conn.Read(one)
+	}))
+	defer stall.Close()
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{
+		ID: "stall", Kind: "s3", Endpoint: stall.URL, Region: "us-east-1",
+		Bucket: "bucket", AccessKey: "key", SecretKey: "secret", RetentionDays: 7,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+		return &S3Destination{Spec: spec, HTTP: &http.Client{Timeout: 200 * time.Millisecond}}, nil
+	}
+	ops := &Operations{Store: s, Gate: &Gate{}, Passphrase: func() (string, error) { return s.Passphrase, nil }}
+	meta, err := ops.CreateBackup(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(meta.DestinationErrors) == 0 {
+		t.Fatal("stalled copy was reported as success")
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+".tgbk")); err != nil {
+		t.Fatalf("local backup was not kept: %v", err)
+	}
+	release, ok := ops.Gate.Try()
+	if !ok {
+		t.Fatal("operation gate stayed held after the stalled copy")
+	}
+	release()
+	if s3HTTPClient.Timeout <= 0 {
+		t.Fatal("default S3 client has no timeout")
+	}
+}
+
+func TestDestinationRelocationKeepsTheCopyLocation(t *testing.T) {
+	s := testStore(t)
+	dirA := filepath.Join(t.TempDir(), "a")
+	dirB := filepath.Join(t.TempDir(), "b")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	saved, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirA, RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("%+v %v", meta, err)
+	}
+	archive := filepath.Join(dirA, saved.Namespace, meta.ID+".tgbk")
+	if _, err := os.Stat(archive); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirA, Namespace: saved.Namespace, RetentionDays: 9}); err != nil {
+		t.Fatalf("retention change: %v", err)
+	}
+	if _, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirB, Namespace: saved.Namespace, RetentionDays: 9}); !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("relocation %v", err)
+	}
+	specs, err := s.Book.Specs()
+	if err != nil || specs[0].Path != dirA {
+		t.Fatalf("%+v %v", specs, err)
+	}
+	if err := s.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(archive); !os.IsNotExist(err) {
+		t.Fatalf("archive left at the original location: %v", err)
+	}
+
+	started := make(chan struct{})
+	releaseCopy := make(chan struct{})
+	var once sync.Once
+	base, err := OpenDestination(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(DestinationSpec) (Destination, error) {
+		return blockOnceDest{Destination: base, started: started, release: releaseCopy, once: &once}, nil
+	}
+	created := make(chan error, 1)
+	go func() {
+		_, err := s.Create(context.Background(), reasonManual)
+		created <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("copy did not start")
+	}
+	if s.mu.TryLock() {
+		s.mu.Unlock()
+		t.Fatal("store lock was not held while the copy was blocked")
+	}
+	relocated := make(chan error, 1)
+	go func() {
+		_, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirB, Namespace: saved.Namespace, RetentionDays: 9})
+		relocated <- err
+	}()
+	close(releaseCopy)
+	if err := <-created; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-relocated; !errors.Is(err, ErrBadRequest) {
+		t.Fatalf("concurrent relocation %v", err)
+	}
+	specs, err = s.Book.Specs()
+	if err != nil || specs[0].Path != dirA {
+		t.Fatalf("path changed during copy %+v %v", specs, err)
 	}
 }
 

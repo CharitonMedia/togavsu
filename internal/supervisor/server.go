@@ -166,7 +166,7 @@ func (h *handlers) postDestination(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, errors.New("destinations are not configured"))
 		return
 	}
-	saved, err := h.ops.Store.Book.Put(spec)
+	saved, err := h.ops.Store.PutDestination(spec)
 	if err != nil {
 		writeErr(w, err)
 		return

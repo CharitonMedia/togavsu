@@ -339,6 +339,46 @@ func writeEncryptedTar(dst io.Writer, work, pass string) error {
 	return nil
 }
 
+// PutDestination updates a destination under the same lock as copy and
+// delete. A storage move is refused while this installation still has a
+// receipt for that destination, so delete and retention keep using the
+// location that holds the archive.
+func (s *Store) PutDestination(spec DestinationSpec) (DestinationSpec, error) {
+	if s == nil || s.Book == nil {
+		return DestinationSpec{}, errors.New("destinations are not configured")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	specs, err := s.Book.Specs()
+	if err != nil {
+		return DestinationSpec{}, err
+	}
+	var previous *DestinationSpec
+	for i := range specs {
+		if specs[i].ID == spec.ID {
+			previous = &specs[i]
+			break
+		}
+	}
+	prepared, err := prepareSpec(spec, "")
+	if previous != nil {
+		prepared, err = prepareSpec(spec, previous.Namespace)
+	}
+	if err != nil {
+		return DestinationSpec{}, err
+	}
+	if previous != nil && !sameStorage(*previous, prepared) {
+		owned, err := s.receiptBook().List(spec.ID)
+		if err != nil {
+			return DestinationSpec{}, err
+		}
+		if len(owned) > 0 {
+			return DestinationSpec{}, errDestinationRelocation
+		}
+	}
+	return s.Book.Put(prepared)
+}
+
 func (s *Store) copyOut(ctx context.Context, meta BackupMeta) []string {
 	if s.Book == nil {
 		return nil

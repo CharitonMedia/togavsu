@@ -38,7 +38,16 @@ func (s *S3Destination) client() *http.Client {
 	if s.HTTP != nil {
 		return s.HTTP
 	}
-	return http.DefaultClient
+	return s3HTTPClient
+}
+
+// s3HTTPClient bounds a stalled response. http.DefaultClient has no timeout,
+// and a nightly backup would otherwise hold the operation gate indefinitely.
+var s3HTTPClient = &http.Client{
+	Timeout: destinationIOTimeout,
+	Transport: &http.Transport{
+		ResponseHeaderTimeout: destinationIOTimeout,
+	},
 }
 
 func (s *S3Destination) now() time.Time {
@@ -49,6 +58,8 @@ func (s *S3Destination) now() time.Time {
 }
 
 func (s *S3Destination) Put(ctx context.Context, name string, r io.Reader, sha string) error {
+	ctx, cancel := destinationContext(ctx)
+	defer cancel()
 	key := s.objectKey(name)
 	if seeker, ok := r.(io.ReadSeeker); ok && sha != "" {
 		if _, err := seeker.Seek(0, io.SeekStart); err != nil {
@@ -79,14 +90,29 @@ func (s *S3Destination) Put(ctx context.Context, name string, r io.Reader, sha s
 }
 
 func (s *S3Destination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
+	ctx, cancel := destinationContext(ctx)
 	res, err := s.do(ctx, http.MethodGet, s.objectKey(name), nil, nil, emptySHA256)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
-	return res.Body, nil
+	return &cancelReadCloser{ReadCloser: res.Body, cancel: cancel}, nil
+}
+
+type cancelReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *cancelReadCloser) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }
 
 func (s *S3Destination) Delete(ctx context.Context, name string) error {
+	ctx, cancel := destinationContext(ctx)
+	defer cancel()
 	res, err := s.do(ctx, http.MethodDelete, s.objectKey(name), nil, nil, emptySHA256)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -99,6 +125,8 @@ func (s *S3Destination) Delete(ctx context.Context, name string) error {
 }
 
 func (s *S3Destination) List(ctx context.Context) ([]RemoteObject, error) {
+	ctx, cancel := destinationContext(ctx)
+	defer cancel()
 	q := url.Values{}
 	q.Set("list-type", "2")
 	if prefix := strings.Trim(s.objectPrefix(), "/"); prefix != "" {
