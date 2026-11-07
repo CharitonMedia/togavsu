@@ -34,6 +34,15 @@ func CheckModule(root string) error {
 			return err
 		}
 		if d.IsDir() {
+			// These exact module-relative packages belong to the separate
+			// supervisor executable, not the core checked by AC-030.
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			if rel == filepath.Join("cmd", "supervisor") || rel == filepath.Join("internal", "supervisor") {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
 			case ".git", "vendor", "testdata":
 				return filepath.SkipDir
