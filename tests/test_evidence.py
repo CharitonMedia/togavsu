@@ -31,6 +31,8 @@ def _bound(case, outcome=None):
     observation = f"{case['id']} result: " + " | ".join(case["expect"])
     return {
         "case_id": case["id"],
+        "phase": 7,
+        "tested_revision": "a" * 40,
         "kind": "command",
         "command": command,
         "exit_code": case["expected_exit_code"],
@@ -49,6 +51,8 @@ def _install(**overrides):
     item = {
         "kind": "clean_install",
         "host": "docker_desktop",
+        "phase": 7,
+        "tested_revision": "a" * 40,
         "outcome": "passed",
         "command": command,
         "exit_code": 0,
@@ -251,6 +255,46 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(by_id[self.failure["id"]]["status"], "refused")
         self.assertFalse(report["app_complete"])
         self.assertEqual(report["accepted_count"], 0)
+
+    def test_incomplete_supplied_denylist_cannot_allow_canonical_standins(self):
+        for legacy_id in ("old_doc", "password_pdf"):
+            with self.subTest(legacy_id=legacy_id):
+                fixture = next(item for item in self.manifest["files"] if item["legacy_id"] == legacy_id)
+                evidence = self._bound_matrix()
+                evidence[self.case["id"]]["file_hash"] = fixture["sha256"]
+                report = summarize(self.matrix, evidence, _install(), frozenset({"unrelated-hash"}))
+                decision = next(item for item in report["cases"] if item["id"] == self.case["id"])
+                self.assertEqual(decision["status"], "refused")
+                self.assertIn("stand-in", decision["reason"])
+                self.assertFalse(report["app_complete"])
+
+    def test_canonical_denylist_unavailable_cannot_use_caller_substitute(self):
+        from unittest.mock import patch
+        with patch("harness.corpus.standin_hashes", side_effect=RuntimeError("unavailable")):
+            report = summarize(self.matrix, self._bound_matrix(), _install(), self.standins)
+        self.assertEqual(report["accepted_count"], 0)
+        self.assertFalse(report["app_complete"])
+
+    def test_missing_or_stale_release_rechecks_cannot_complete(self):
+        for field, value in (("phase", None), ("phase", 1), ("phase", True),
+                             ("tested_revision", None), ("tested_revision", "b" * 40)):
+            with self.subTest(field=field, value=value):
+                evidence = self._bound_matrix()
+                evidence[self.case["id"]][field] = value
+                report = summarize(self.matrix, evidence, _install(), self.standins)
+                self.assertFalse(report["app_complete"])
+                self.assertFalse(report["release_rechecks_complete"])
+        for attestation in (_install(phase=1), _install(tested_revision="b" * 40),
+                            _install(tested_revision="not-a-revision")):
+            self.assertFalse(summarize(self.matrix, self._bound_matrix(), attestation, self.standins)["app_complete"])
+
+    def test_recheck_policy_cannot_be_removed_from_the_matrix(self):
+        changed = copy.deepcopy(self.matrix)
+        target = next(item for item in changed if item["recheck_phases"])
+        target["recheck_phases"] = []
+        report = summarize(changed, self._bound_matrix(), _install(), self.standins)
+        self.assertTrue(report["inventory_errors"])
+        self.assertFalse(report["app_complete"])
 
     def test_empty_denylist_fails_closed(self):
         evidence = {self.case["id"]: _evidence("passed")}
