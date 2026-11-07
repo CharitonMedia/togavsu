@@ -352,3 +352,44 @@ func (a *recordAudit) SettingChanged(_ context.Context, c settings.Change) error
 	a.changes = append(a.changes, c)
 	return nil
 }
+
+func TestGeneralPaginationSettingsReloadBoundsAndReset(t *testing.T) {
+	ctx := context.Background()
+	mem := settings.NewMemory()
+	audit := &recordAudit{}
+	writer, err := settings.New(mem, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := settings.New(mem, audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, initial := range map[string]string{"api.page_size": "50", "api.max_page_size": "200"} {
+		if got, err := reader.Get(ctx, key); err != nil || got != initial {
+			t.Fatalf("%s default = %q, %v", key, got, err)
+		}
+		for _, bad := range []string{"0", "10001", "1.5"} {
+			if _, err := writer.Set(ctx, key, bad, actor()); !errors.Is(err, settings.ErrInvalid) {
+				t.Fatalf("%s accepted %q: %v", key, bad, err)
+			}
+		}
+		for _, valid := range []string{"1", "10000"} {
+			if _, err := writer.Set(ctx, key, valid, actor()); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := reader.Get(ctx, key); err != nil || got != valid {
+				t.Fatalf("%s next reader = %q, %v", key, got, err)
+			}
+		}
+		if _, err := writer.Reset(ctx, key, actor()); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := reader.Get(ctx, key); err != nil || got != initial {
+			t.Fatalf("%s reset = %q, %v", key, got, err)
+		}
+	}
+	if len(audit.changes) != 6 {
+		t.Fatalf("want 6 accepted changes, got %d", len(audit.changes))
+	}
+}
