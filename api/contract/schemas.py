@@ -357,11 +357,12 @@ SCHEMAS = _register(
                 "zero_fee": {"type": "boolean", "description": "Zero fee is not pro bono. These matters drop out of AR aging and collections."},
                 "also_asked_about_practice_area_id": _null(_uuid()),
                 "unchecked_conflicts": {"type": "boolean", "description": "True until every party has a conflict check."},
+                "archived": {"type": "boolean", "description": "Set by archiveMatter. Distinct from closed."},
                 "custom_fields": _arr(_ref("CustomFieldValue")),
                 "glance": _ref("MatterGlance"),
                 "included": _ref("Included"),
             },
-            ["number", "name", "practice_area_id", "status", "billing_type", "opened_on", "pro_bono", "zero_fee", "unchecked_conflicts", "custom_fields", "glance"],
+            ["number", "name", "practice_area_id", "status", "billing_type", "opened_on", "pro_bono", "zero_fee", "unchecked_conflicts", "archived", "custom_fields", "glance"],
             "A matter. Walled matters are omitted for a caller who is not on the wall.",
         ),
         "MatterWrite": _obj(
@@ -580,12 +581,17 @@ SCHEMAS = _register(
                 "matter_id": _uuid(),
                 "user_id": _uuid(),
                 "started_at": _dt(),
+                "accumulated_seconds": {"type": "integer", "minimum": 0, "description": "Seconds already counted. Pause stores them. Resume does not zero them."},
                 "status": _enum(["running", "paused"]),
             },
-            ["matter_id", "user_id", "started_at", "status"],
-            "One running or paused timer per user per matter.",
+            ["matter_id", "user_id", "started_at", "accumulated_seconds", "status"],
+            "One running or paused timer per user per matter. accumulated_seconds survives pause and resume.",
         ),
-        "TimerWrite": _obj({"matter_id": _uuid()}, ["matter_id"], "Starts a timer for the caller on this matter."),
+        "TimerWrite": _obj(
+            {"matter_id": _uuid()},
+            ["matter_id"],
+            "Starts a timer for the caller on this matter. If a paused timer already exists for that user and matter, the server resumes it and keeps accumulated_seconds instead of creating a second timer.",
+        ),
         "TimerStopResult": _obj({"timer": _ref("Timer"), "time_entry": _ref("TimeEntry")}, ["timer", "time_entry"], "Stopping a timer creates a draft time entry."),
         "Expense": _meta(
             {
@@ -600,6 +606,7 @@ SCHEMAS = _register(
                 "invoice_id": _null(_uuid()),
                 "source": {"type": "string"},
                 "custom_fields": _arr(_ref("CustomFieldValue")),
+                "included": _ref("Included"),
             },
             ["matter_id", "incurred_on", "description", "amount_cents", "expense_type_id", "billable", "markup_percent", "source", "custom_fields"],
             "An expense. The receipt is a core file record.",
@@ -710,6 +717,7 @@ SCHEMAS = _register(
                 "invoice_id": _null(_uuid()),
                 "trust_entry_id": _null(_uuid()),
                 "source": {"type": "string", "description": "manual, api, or a module id."},
+                "included": _ref("Included"),
             },
             ["contact_id", "matter_id", "amount_cents", "destination", "method", "status", "source"],
             "A payment. Amount and destination do not change after create. A correction is a reversal.",
@@ -799,8 +807,39 @@ SCHEMAS = _register(
                 "account_cents": _signed_cents(),
             },
             ["matter_cents", "client_cents", "account_cents"],
-            "Balances computed from the ledger.",
+            "Snapshot returned with one posted entry. The entry already names the client, matter, and account. The list endpoint uses TrustBalanceRow.",
         ),
+        "TrustBalanceRow": {
+            "description": "One balance the caller can tie to an owner. matter sets client_id and matter_id. client sets client_id. account sets trust_account_id.",
+            "oneOf": [
+                _obj(
+                    {
+                        "scope": {"const": "matter"},
+                        "client_id": _uuid(),
+                        "matter_id": _uuid(),
+                        "trust_account_id": _uuid(),
+                        "balance_cents": _signed_cents(),
+                    },
+                    ["scope", "client_id", "matter_id", "trust_account_id", "balance_cents"],
+                ),
+                _obj(
+                    {
+                        "scope": {"const": "client"},
+                        "client_id": _uuid(),
+                        "balance_cents": _signed_cents(),
+                    },
+                    ["scope", "client_id", "balance_cents"],
+                ),
+                _obj(
+                    {
+                        "scope": {"const": "account"},
+                        "trust_account_id": _uuid(),
+                        "balance_cents": _signed_cents(),
+                    },
+                    ["scope", "trust_account_id", "balance_cents"],
+                ),
+            ],
+        },
         "TrustFlag": _meta(
             {
                 "trust_entry_id": _uuid(),
@@ -1069,7 +1108,36 @@ SCHEMAS = _register(
                 "matter_id": _null(_uuid()),
                 "contact_id": _null(_uuid()),
             },
-            description="Metadata edited without a new file version. A field listed in locked_fields is refused with field_locked. Name stays on the rename method. Folder stays on the move method.",
+            description="Metadata a person may edit without a new file version. Doc Tender still cannot replace a person-locked name, category, matter, or grouping. Name stays on the rename method. Folder stays on the move method.",
+        ),
+        "FileLink": _meta(
+            {
+                "from_file_id": _uuid(),
+                "to_file_id": _uuid(),
+                "relationship": _enum(["conversion_of", "grouped_photo_source", "attachment"]),
+            },
+            ["from_file_id", "to_file_id", "relationship"],
+            "A typed link. conversion_of: to_file was converted from from_file. grouped_photo_source: from_file is a photo in the grouped to_file. attachment: to_file is attached to from_file. A caller who cannot read either file does not receive the link.",
+            mutable=False,
+        ),
+        "ConversionResult": _obj(
+            {"file": _ref("File"), "link": _ref("FileLink")},
+            ["file", "link"],
+            "The new file and the conversion_of link back to the source.",
+        ),
+        "FileHistoryEntry": _obj(
+            {
+                "at": _dt(),
+                "actor_id": _null(_uuid()),
+                "actor_kind": _enum(["staff", "client", "agent", "module", "system"]),
+                "kind": _enum(["field_edit", "version_save"]),
+                "field": {"type": "string"},
+                "old_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
+                "new_value": {"description": "JSON. Attorney-only values the caller cannot read are {\"redacted\": true}."},
+                "version_id": _null(_uuid("Set when kind is version_save.")),
+            },
+            ["at", "actor_kind", "kind"],
+            "One file history row: a field edit or a version save. Visible to anyone who can read the file.",
         ),
         "FileArchiveRequest": _obj(
             {"file_ids": _arr(_uuid()), "folder_id": _null(_uuid())},
@@ -1332,7 +1400,16 @@ SCHEMAS = _register(
                 "linked_contact_id": _null(_uuid()),
                 "initials": {"type": "string"},
             },
-            description="Profile and admin edits. Password changes use the password method.",
+            description="Admin edits to a user. Self-service profile edits use MeProfileWrite.",
+        ),
+        "MeProfileWrite": _obj(
+            {
+                "name": {"type": "string"},
+                "phone": {"type": "string"},
+                "initials": {"type": "string"},
+                "profile_file_id": _null(_uuid("Profile picture file record.")),
+            },
+            description="Fields the signed-in user may change. roles, email, and linked_contact_id are absent, so additionalProperties false rejects them.",
         ),
         "Session": _obj(
             {"id": _uuid(), "user_id": _uuid(), "created_at": _dt(), "expires_at": _dt(), "current": {"type": "boolean"}},
@@ -1724,7 +1801,24 @@ SCHEMAS = _register(
         "ModuleInstall": _obj(
             {"source": _enum(["local", "marketplace"]), "listing_id": {"type": "string"}, "version": {"type": "string"}},
             ["source"],
-            "Marketplace install. A local package is multipart on the same path and is documented beside this JSON body.",
+            "Marketplace install. A local package is multipart on the same path.",
+        ),
+        "ModuleUpdate": _obj(
+            {
+                "source": _enum(["marketplace", "local"]),
+                "version": {"type": "string", "description": "Required when source is marketplace. The package manifest supplies it for a local upload."},
+            },
+            ["source"],
+            "Selects the next version. A local package is the multipart alternative on the same path.",
+        ),
+        "ModuleUpdateResult": _obj(
+            {
+                "module": _ref("Module"),
+                "previous_version": {"type": "string"},
+                "outcome": _enum(["updated", "awaiting_approval", "kept_previous"]),
+            },
+            ["module", "previous_version", "outcome"],
+            "awaiting_approval means new permissions are waiting and the old version keeps running. kept_previous means a failed signature, migration, or health check left the installed version in place.",
         ),
         "ModulePermissions": _obj(
             {"decisions": _arr(_obj({"scope": {"type": "string"}, "decision": _enum(["approve", "decline"])}, ["scope", "decision"]))},

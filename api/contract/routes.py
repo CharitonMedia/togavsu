@@ -12,8 +12,47 @@ FIRM = ["admin", "attorney", "staff", "accountant"]
 ANY = ["admin", "attorney", "staff", "accountant", "client"]
 
 WALL = {"matter_wall": True, "access_inherits": "matter"}
-FILE_WALL = {"matter_wall": True, "access_inherits": "file"}
-SHARED = {"matter_wall": True, "access_inherits": "file", "client": "shared", "accountant": "receipts-and-invoice-pdfs"}
+FILE_ACCESS_CASES = [
+    {"role": "staff", "attorney_only": True, "result": "not_found"},
+    {"role": "attorney", "attorney_only": True, "result": "allowed"},
+    {"role": "staff", "matter_walled": True, "on_wall": False, "result": "not_found"},
+]
+FILE_WALL = {
+    "matter_wall": True,
+    "access_inherits": "file",
+    "attorney_only_files": "not_found",
+    "access_cases": FILE_ACCESS_CASES,
+}
+SHARED = {
+    "matter_wall": True,
+    "access_inherits": "file",
+    "client": "shared",
+    "accountant": "receipts-and-invoice-pdfs",
+    "attorney_only_files": "not_found",
+    "access_cases": FILE_ACCESS_CASES,
+}
+PERSON_LOCK = {
+    "fields": ["name", "category", "matter", "grouping"],
+    "human_edit": "allowed",
+    "automated_actor": "field_locked",
+    "blocked_actors": ["doc_tender"],
+}
+BATCH_WALL = {
+    "matter_wall": True,
+    "access_inherits": "matter",
+    "batch_authorization": "all_or_nothing",
+    "inaccessible_result": "not_found",
+}
+MODULE_HELP = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "help:write",
+        "module_id_param": "module_id",
+        "own_heading_only": True,
+        "grants_admin": False,
+    },
+}
 OWN = {"client": "own"}
 
 ENTRY_TYPE_SCOPES = {
@@ -353,15 +392,25 @@ def _identity(api: Contract) -> None:
         "/api/v1/me",
         operation_id="updateMe",
         summary="Update current profile",
-        description="Name, phone, initials, and profile picture file. Email and roles are admin edits on the user record.",
+        description="Name, phone, initials, and profile_file_id only. roles, email, linked_contact_id, rates, and bar fields are rejected by MeProfileWrite. Those are admin edits on the user record.",
         tag="Identity",
         features=["profile"],
         roles=ANY,
         scopes=["profile:write"],
-        body="UserWritePatch",
+        body="MeProfileWrite",
         response="User",
         events=["user.updated"],
-        extra_access=OWN,
+        extra_access={
+            **OWN,
+            "rejected_fields": [
+                "roles",
+                "email",
+                "linked_contact_id",
+                "default_hourly_rate_cents",
+                "bar_number",
+                "bar_state",
+            ],
+        },
     )
     api.add(
         "post",
@@ -672,8 +721,9 @@ def _practice(api: Contract) -> None:
         history=True,
         include=True,
         csv=True,
-        filters=["q", "status", "practice_area_id", "responsible_user_id", "billing_type", "custom"],
-        events={"created": "matter.created", "updated": "matter.updated"},
+        filters=["q", "status", "practice_area_id", "responsible_user_id", "billing_type", "archived", "custom"],
+        archive=True,
+        events={"created": "matter.created", "updated": "matter.updated", "archived": "matter.archived"},
         extra_access=WALL,
         extra_features=["matter-glance", "include-extensions"],
     )
@@ -827,6 +877,7 @@ def _practice(api: Contract) -> None:
         filters=["matter_id"],
         events={"created": "matter.updated", "updated": "matter.updated", "deleted": "matter.updated"},
         delete=True,
+        bulk=True,
         extra_access=WALL,
     )
     api.resource(
@@ -1009,12 +1060,17 @@ def _practice(api: Contract) -> None:
         "/api/v1/custom-field-values:bulk",
         operation_id="bulkCustomFieldValue",
         summary="Write custom field values in one batch",
-        description="Each item names a record. The bearer token needs that record type's write scope, not all four scopes at once. Any failed item writes nothing.",
+        description=(
+            "Each item names a record. The bearer token needs that record type's write scope, not all four scopes at once. "
+            "Every referenced record is authorized, including its matter wall, before any write. "
+            "One inaccessible matter rejects the batch with not_found and writes nothing."
+        ),
         tag="Custom fields",
         features=["custom-fields", "bulk"],
         roles=STAFF,
         scopes=["contacts:write", "matters:write", "time:write", "expenses:write"],
         extra_access={
+            **BATCH_WALL,
             "scope_combination": "per_item",
             "record_type_scopes": {
                 "matter": ["matters:write"],
@@ -1046,7 +1102,7 @@ def _practice(api: Contract) -> None:
         },
         success="201",
         response_schema={"type": "object", "additionalProperties": False, "required": ["updated"], "properties": {"updated": {"type": "integer", "minimum": 0}}},
-        error_codes=["batch_rejected"],
+        error_codes=["batch_rejected", "not_found"],
     )
     api.add(
         "put",
@@ -1176,6 +1232,25 @@ def _billing(api: Contract) -> None:
         replaceable="time",
         extra_access=WALL,
     )
+    api.spec["paths"]["/api/v1/timers"]["post"]["description"] = (
+        "Starts a timer for the caller on this matter. "
+        "If a paused timer already exists for that user and matter, that timer resumes and accumulated_seconds is kept. "
+        "A second timer is not created."
+    )
+    api.add(
+        "post",
+        "/api/v1/timers/{timer_id}/resume",
+        operation_id="resumeTimer",
+        summary="Resume a paused timer",
+        description="Sets a paused timer back to running. accumulated_seconds is kept, so elapsed time is not reset. The matter wall applies.",
+        tag="Billing",
+        features=["timers"],
+        roles=STAFF,
+        scopes=["time:write"],
+        response="Timer",
+        replaceable="time",
+        extra_access=WALL,
+    )
     api.resource(
         collection="/api/v1/expenses",
         schema="Expense",
@@ -1190,6 +1265,7 @@ def _billing(api: Contract) -> None:
         write_scope="expenses:write",
         bulk=True,
         history=True,
+        include=True,
         csv=True,
         filters=["matter_id", "from_date", "to_date", "billable", "invoice_id", "custom"],
         events={"created": "expense.created", "updated": "expense.updated"},
@@ -1372,6 +1448,7 @@ def _billing(api: Contract) -> None:
         write_scope="payments:write",
         bulk=True,
         update=False,
+        include=True,
         csv=True,
         filters=["matter_id", "invoice_id", "from_date", "to_date", "status"],
         events={"created": "payment.completed"},
@@ -1588,13 +1665,13 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust/balances",
         operation_id="getTrustBalances",
         summary="Trust balances",
-        description="Per client per matter, per client, and per trust account, from the ledger.",
+        description="Identified rows. A matter row names client_id, matter_id, and trust_account_id. A client row names client_id. An account row names trust_account_id. The three-amount snapshot on a posted entry is TrustBalances, not this list.",
         tag="Trust",
         features=["trust-ledger"],
         roles=BILLING,
         scopes=["trust:read"],
         query=["matter_id", "client_id", "trust_account_id"],
-        response_schema=_page("TrustBalances"),
+        response_schema=_page("TrustBalanceRow"),
         paginate=True,
         writes=False,
         replaceable="trust",
@@ -1647,6 +1724,7 @@ def _trust(api: Contract) -> None:
         read_scope="trust:read",
         write_scope="trust:write",
         update=False,
+        bulk=True,
         filters=["matter_id", "status"],
         events={"created": "trust.replenishment_requested"},
         replaceable="trust",
@@ -1693,6 +1771,7 @@ def _trust(api: Contract) -> None:
         read_scope="trust:read",
         write_scope="trust:write",
         update=False,
+        bulk=True,
         filters=["trust_account_id"],
         events={"created": "trust.reconciled"},
         replaceable="trust",
@@ -1861,10 +1940,10 @@ def _files(api: Contract) -> None:
         success="201",
         events=["file.created"],
         error_codes=["batch_rejected"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     for method, path, op, summary, body, event, desc in (
-        ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person-locked name returns field_locked."),
+        ("post", "/api/v1/files/{file_id}/rename", "renameFile", "Rename a file", "FileRename", "file.updated", "Changes the only name. The extension stays, except when an editor save converts the file to DOCX. A person may rename a locked file. Doc Tender still cannot replace that name."),
         ("post", "/api/v1/files/{file_id}/move", "moveFile", "Move a file between folders", "FileMove", "file.updated", "Changes the folder record. Bytes stay on the same key."),
         ("post", "/api/v1/files/{file_id}/status", "markFileStatus", "Mark a file status", "FileStatusWrite", "file.updated", "Sets draft, final, executed, or filed. Received is how client and outside files arrive."),
         ("post", "/api/v1/files/{file_id}/trash", "trashFile", "Trash a file", None, "file.trashed", "The file stays listed and restorable."),
@@ -1883,9 +1962,9 @@ def _files(api: Contract) -> None:
             body=body,
             response="File",
             events=[event],
-            extra_access=WALL,
+            extra_access=FILE_WALL,
         )
-    api.spec["paths"]["/api/v1/files/{file_id}/rename"]["post"]["x-togavsu-error-codes"] = ["field_locked"]
+    api.spec["paths"]["/api/v1/files/{file_id}/rename"]["post"]["x-togavsu-access"]["person_lock"] = PERSON_LOCK
     api.add(
         "patch",
         "/api/v1/files/{file_id}",
@@ -1893,9 +1972,10 @@ def _files(api: Contract) -> None:
         summary="Update file metadata",
         description=(
             "Sets attorney_only, shared_with_client, category, matter, or contact without adding a version. "
+            "A person with files:write may change a field a person previously locked. "
+            "Doc Tender and other automated actors receive field_locked and do not replace it. "
             "Name stays on rename. Folder stays on move. "
-            "A change to a field in locked_fields returns field_locked and writes nothing. "
-            "The edit is audited. The file's matter wall and attorney-only flag apply; a hidden file is not_found."
+            "The edit is audited. Staff are not_found for an attorney-only file or a file on a walled matter."
         ),
         tag="Files",
         features=["files"],
@@ -1904,8 +1984,7 @@ def _files(api: Contract) -> None:
         body="FileMetadataWrite",
         response="File",
         events=["file.updated"],
-        error_codes=["field_locked"],
-        extra_access={**FILE_WALL, "attorney_only": ["attorney_only"]},
+        extra_access={**FILE_WALL, "person_lock": PERSON_LOCK},
     )
     api.add(
         "post",
@@ -1922,6 +2001,7 @@ def _files(api: Contract) -> None:
         response_content={},
         events=["file.purged"],
         error_codes=["confirm_name_mismatch", "conflict"],
+        extra_access=FILE_WALL,
     )
     api.add(
         "get",
@@ -1956,7 +2036,37 @@ def _files(api: Contract) -> None:
         response="FileVersion",
         success="201",
         events=["file.version_created"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
+    )
+    api.add(
+        "get",
+        "/api/v1/files/{file_id}/history",
+        operation_id="historyFile",
+        summary="File edit and version history",
+        description="Field edits and version saves for this file, newest first. Anyone who can read the file can read this. It is not the admin audit log. Attorney-only values are redacted. Staff are not_found when the file is attorney-only or behind a wall.",
+        tag="Files",
+        features=["files", "edit-history"],
+        roles=BILLING + ["client"],
+        scopes=["files:read"],
+        response_schema=_page("FileHistoryEntry"),
+        paginate=True,
+        writes=False,
+        extra_access=SHARED,
+    )
+    api.add(
+        "get",
+        "/api/v1/files/{file_id}/links",
+        operation_id="listFileLinks",
+        summary="List typed file links",
+        description="conversion_of, grouped_photo_source, and attachment links. A link is omitted unless the caller can read both files. The file wall and attorney-only flag apply.",
+        tag="Files",
+        features=["files", "conversions"],
+        roles=BILLING + ["client"],
+        scopes=["files:read"],
+        response_schema=_page("FileLink"),
+        paginate=True,
+        writes=False,
+        extra_access=SHARED,
     )
     api.add(
         "get",
@@ -1988,7 +2098,7 @@ def _files(api: Contract) -> None:
         response="FileVersion",
         success="201",
         events=["file.version_created"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "post",
@@ -2175,7 +2285,7 @@ def _files(api: Contract) -> None:
         scopes=["files:write"],
         response="EditLock",
         error_codes=["edit_lock_held"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "post",
@@ -2188,7 +2298,7 @@ def _files(api: Contract) -> None:
         roles=STAFF,
         scopes=["files:write"],
         response="EditLock",
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "delete",
@@ -2203,7 +2313,7 @@ def _files(api: Contract) -> None:
         success="204",
         response_content={},
         events=["file.lock_released"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "get",
@@ -2247,23 +2357,23 @@ def _files(api: Contract) -> None:
         success="201",
         events=["file.version_created"],
         error_codes=["command_refused"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.add(
         "post",
         "/api/v1/files/{file_id}/conversions",
         operation_id="convertFile",
         summary="Convert a file",
-        description="Creates a new file in the requested format and links it to the source.",
+        description="Creates a new file in the requested format and a conversion_of link to the source, returned together. Staff are not_found for an attorney-only source or a walled matter.",
         tag="Editor",
         features=["conversions"],
         roles=STAFF,
         scopes=["editor:run"],
         body="Conversion",
-        response="File",
+        response="ConversionResult",
         success="201",
         events=["file.created"],
-        extra_access=WALL,
+        extra_access=FILE_WALL,
     )
     api.resource(
         collection="/api/v1/court-profiles",
@@ -2852,25 +2962,30 @@ def _shell(api: Contract) -> None:
         "/api/v1/help/modules/{module_id}/pages",
         operation_id="createModuleHelpPage",
         summary="Register a module help page",
-        description="The module's own token writes only under its heading. Another module id is forbidden.",
+        description=(
+            "An approved module token with help:write may register a page under its own heading. "
+            "The path module_id must equal the token's module id. "
+            "The token is not an admin and cannot write firm help or another module's heading. "
+            "A human session, including an admin session, is forbidden here."
+        ),
         tag="Help",
         features=["module-help"],
-        roles=ADMIN,
+        roles=[],
         scopes=["help:write"],
         body="HelpPageWrite",
         response="HelpPage",
         success="201",
-        extra_access={"module_bound": True},
+        extra_access=MODULE_HELP,
     )
     api.add(
         "put",
         "/api/v1/help/modules/{module_id}/pages",
         operation_id="replaceModuleHelpPages",
         summary="Replace a module's help pages",
-        description="Used on module update. Disable hides the pages. Uninstall removes them.",
+        description="Replaces pages under this module's heading. Same module-token rule as createModuleHelpPage. A human admin session is forbidden. Disable hides the pages. Uninstall removes them.",
         tag="Help",
         features=["module-help"],
-        roles=ADMIN,
+        roles=[],
         scopes=["help:write"],
         body_schema={
             "type": "object",
@@ -2879,21 +2994,21 @@ def _shell(api: Contract) -> None:
             "properties": {"pages": {"type": "array", "items": {"$ref": "#/components/schemas/HelpPageWrite"}}},
         },
         response_schema=_batch_result("HelpPage"),
-        extra_access={"module_bound": True},
+        extra_access=MODULE_HELP,
     )
     api.add(
         "delete",
         "/api/v1/help/modules/{module_id}/pages/{page_id}",
         operation_id="deleteModuleHelpPage",
         summary="Remove a module help page",
-        description="Removes one page under the module heading.",
+        description="Removes one page under the calling module's heading. A token for another module, and any human session, is forbidden.",
         tag="Help",
         features=["module-help"],
-        roles=ADMIN,
+        roles=[],
         scopes=["help:write"],
         success="204",
         response_content={},
-        extra_access={"module_bound": True},
+        extra_access=MODULE_HELP,
     )
     api.add(
         "get",
@@ -2931,7 +3046,7 @@ def _shell(api: Contract) -> None:
         "/api/v1/events:bulk",
         operation_id="bulkEvent",
         summary="Append module events in one batch",
-        description="One transaction. A failed item writes none of the batch.",
+        description="One transaction. Every item's matter is authorized first. One inaccessible matter returns not_found and writes none of the batch.",
         tag="Shell",
         features=["events", "bulk"],
         roles=STAFF,
@@ -2944,7 +3059,8 @@ def _shell(api: Contract) -> None:
         },
         response_schema=_batch_result("Event"),
         success="201",
-        error_codes=["batch_rejected"],
+        error_codes=["batch_rejected", "not_found"],
+        extra_access=BATCH_WALL,
     )
     api.add(
         "get",
@@ -3443,6 +3559,31 @@ def _modules(api: Contract) -> None:
         error_codes=["validation_failed"],
     )
     api.add(
+        "post",
+        "/api/v1/modules/{module_id}/update",
+        operation_id="updateModule",
+        summary="Update an installed module",
+        description=(
+            "Selects the next marketplace version or uploads a local signed package. "
+            "The core verifies the signature and applies the new migrations before the new version starts. "
+            "New permissions wait for decideModulePermissions, and the old version keeps running until they are approved. "
+            "A failed signature, migration, or start leaves the previous version installed."
+        ),
+        tag="Modules",
+        features=["modules"],
+        roles=ADMIN,
+        scopes=["modules:write"],
+        request_content={
+            "application/json": {"schema": {"$ref": "#/components/schemas/ModuleUpdate"}},
+            "multipart/form-data": {"schema": {"$ref": "#/components/schemas/ModulePackageUpload"}},
+        },
+        response="ModuleUpdateResult",
+        success="202",
+        events=["module.update_requested"],
+        error_codes=["unsigned_module", "tampered_module", "migration_refused", "permission_declined"],
+        extra_access={"on_new_permissions": "awaiting_approval_keep_running", "on_failure": "keep_previous_version"},
+    )
+    api.add(
         "get",
         "/api/v1/modules/{module_id}/settings",
         operation_id="getModuleSettings",
@@ -3474,7 +3615,12 @@ def _modules(api: Contract) -> None:
         "/api/v1/modules/{module_id}/context-tokens",
         operation_id="createModuleContextToken",
         summary="Issue an iframe context token",
-        description="Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. The module does not receive the session cookie.",
+        description=(
+            "Short-lived signed context for the sandboxed frame: user, roles, and the matter in view. "
+            "The module does not receive the session cookie. "
+            "When matter_id is set, the viewer's matter wall is checked before the token is signed. "
+            "A walled matter the viewer cannot see returns not_found and no token."
+        ),
         tag="Modules",
         features=["modules"],
         roles=FIRM,
@@ -3482,6 +3628,7 @@ def _modules(api: Contract) -> None:
         body="ContextTokenRequest",
         response="ContextToken",
         success="201",
+        extra_access=WALL,
     )
     api.add(
         "get",

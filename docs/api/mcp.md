@@ -10,18 +10,14 @@
   "params": {
     "name": "getMatter",
     "arguments": {
-      "matter_id": "018f...",
-      "include": "matter-clock.targets",
-      "idempotency_key": "optional-on-writes",
-      "body": {}
+      "path": {"matter_id": "018f..."},
+      "query": {"include": "matter-clock.targets"}
     }
   }
 }
 ```
 
-`name` is the OpenAPI `operationId`. Each required tool records `x-togavsu-mcp.transfer`, and the same object is copied onto `api/openapi/v1/mcp-tools.json`.
-
-JSON calls use `path`, `query`, `idempotency_key`, and `body`. A call with a header parameter also sends `headers`. A raw body sends `body_base64` instead of `body`: standard base64 of the octets, no line breaks. A binary success uses the same encoding in the tool result, with `media_type` naming the HTTP type. A failure still sets the JSON-RPC error `data` to the problem+json body.
+`name` is the OpenAPI `operationId`. Arguments use one shape: `path` and `query` objects, then `idempotency_key` on writes, `headers` when the operation has header parameters, `body` for JSON, and `body_base64` for raw octets. `x-togavsu-mcp.transfer.arguments` lists those keys in that order, and `mcp-tools.json` copies the same object. A failure sets the JSON-RPC error `data` to the problem+json body.
 
 Chunk upload:
 
@@ -33,9 +29,10 @@ Chunk upload:
   "params": {
     "name": "putFileChunk",
     "arguments": {
-      "upload_id": "018f...",
-      "headers": {"Content-Range": "bytes 0-8388607/9000000"},
+      "path": {"upload_id": "018f..."},
+      "query": {},
       "idempotency_key": "chunk-0",
+      "headers": {"Content-Range": "bytes 0-8388607/9000000"},
       "body_base64": "AAECAw=="
     }
   }

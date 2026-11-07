@@ -61,6 +61,15 @@ def build_marketplace() -> dict:
                 "bearerAuth": {"type": "http", "scheme": "bearer"}
             },
             "schemas": {
+                "FlagRequest": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["note"],
+                    "properties": {
+                        "note": {"type": "string", "minLength": 1, "description": "Shown on the listing and in the firm alert."},
+                        "version": {"type": "string", "description": "Optional. Omit to flag the listing. Set to flag one version."},
+                    },
+                },
                 "Listing": {
                     "type": "object",
                     "additionalProperties": False,
@@ -158,9 +167,10 @@ def build_marketplace() -> dict:
         "post",
         "/v1/operator/listings/{listing_id}/flag",
         "flagListing",
-        "Operator flag. Installs stay possible. The note is shown on the listing.",
+        "Operator flag. Installs stay possible. The required note is shown on the listing. version flags one version; omit it to flag the listing.",
         auth=True,
         response="Listing",
+        body="FlagRequest",
     )
     add(
         "post",

@@ -21,7 +21,11 @@ Attorney-only values (SSN, EIN, conflict reasons) use `{ "redacted": true }` or 
 
 An accountant can read billing, trust, reports, and file records that are receipts or invoice PDFs. Accountant is absent from billing and trust writes. A client reaches shared items on their own matters. The user guide returns `not_found` for a client.
 
-`access_inherits` says which row carries the wall. `matter` hides a record whose matter is walled. `file` hides a record whose file is on a walled matter, or whose file is attorney-only for a caller without that access. A conflict record with no matter stays visible. The same flag is on reads and on the writes that reveal or change those rows, including Doc Tender exceptions, timer pause and stop, replenishment cancel and satisfy, and quarantine.
+`access_inherits` says which row carries the wall. `matter` hides a record whose matter is walled. `file` hides a record whose file is on a walled matter, and it also hides an attorney-only file from staff. File reads and file writes use `file`, including rename, move, status, trash, versions, locks, editor runs, and conversions. A conflict record with no matter stays visible. A bulk write checks every referenced record first. One inaccessible matter returns `not_found` and writes nothing.
+
+A person with `files:write` may still rename a file or correct category and matter after those fields are person-locked. The lock stops Doc Tender from replacing the person's value. It does not stop the person.
+
+Module help writes accept the module's own `help:write` token for its heading. That token is not an admin. A human session is forbidden on those three writes.
 
 A trust post picks the bearer scope from `entry_type_scopes`. `trust:write` posts a deposit. A withdrawal, transfer to operating, refund, or adjustment needs `trust:withdraw`. A deposit-only token is `scope_denied` on those types, including inside a bulk batch, and the batch writes nothing. Role checks still apply.
 

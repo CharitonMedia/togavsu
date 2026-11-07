@@ -69,7 +69,8 @@ class Contract:
             raise ContractError(f"{operation_id} alias needs a canonical operation")
         if mcp == "required" and public and roles:
             raise ContractError(f"public operation {operation_id} cannot also require roles")
-        if not public and mcp == "required" and not roles:
+        module_principal = (extra_access or {}).get("module_principal")
+        if not public and mcp == "required" and not roles and not module_principal:
             raise ContractError(f"{operation_id} needs roles")
 
         parameters: list = []
@@ -210,6 +211,8 @@ class Contract:
             access["accountant"] = accountant
         if extra_access:
             access.update(extra_access)
+        if include:
+            access["include_scope_pattern"] = "views:{module_id}.{view}:read"
         item = f"{collection}/{{{id_param}}}"
         self.add(
             "get",
@@ -504,8 +507,17 @@ def _attach_mcp_transfer(operation: dict) -> None:
     mcp = operation["x-togavsu-mcp"]
     if mcp.get("parity") != "required":
         return
-    arguments = ["path", "query", "idempotency_key"]
-    transfer: dict = {}
+    arguments = ["path", "query"]
+    transfer: dict = {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+    }
+    for parameter in operation.get("parameters", []):
+        ref = parameter.get("$ref", "")
+        if ref.endswith("/idempotencyKey"):
+            arguments.append("idempotency_key")
+            break
     headers = [parameter["name"] for parameter in operation.get("parameters", []) if parameter.get("in") == "header"]
     if headers:
         arguments.append("headers")

@@ -625,13 +625,19 @@ class ContractTest(unittest.TestCase):
     def test_file_metadata_edit_respects_locks(self):
         operation = _operation(self.spec, "updateFileMetadata")
         self.assertTrue(operation["x-togavsu-access"]["matter_wall"])
-        self.assertIn("field_locked", operation["x-togavsu-error-codes"])
+        lock = operation["x-togavsu-access"]["person_lock"]
+        self.assertEqual(lock["human_edit"], "allowed")
+        self.assertEqual(lock["automated_actor"], "field_locked")
+        self.assertIn("doc_tender", lock["blocked_actors"])
+        self.assertNotIn("field_locked", operation.get("x-togavsu-error-codes", []))
         self.assertIn("file.updated", operation["x-togavsu-events"])
         self.assertNotIn("file.version_created", operation["x-togavsu-events"])
         fields = self.spec["components"]["schemas"]["FileMetadataWrite"]["properties"]
         for field in ("attorney_only", "shared_with_client", "category_id", "matter_id"):
             self.assertIn(field, fields)
-        self.assertIn("field_locked", _operation(self.spec, "renameFile")["x-togavsu-error-codes"])
+        rename = _operation(self.spec, "renameFile")
+        self.assertEqual(rename["x-togavsu-access"]["person_lock"]["human_edit"], "allowed")
+        self.assertNotIn("field_locked", rename.get("x-togavsu-error-codes", []))
 
     def test_complete_module_manifest_validates(self):
         import copy
@@ -704,6 +710,215 @@ class ContractTest(unittest.TestCase):
         self.assertIn("doc_tender:read", operation["x-togavsu-access"]["scopes"])
         self.assertEqual(_schema_name(operation["responses"]["200"]), "DocTenderResult")
 
+    def test_profile_edit_rejects_admin_fields(self):
+        from jsonschema import Draft202012Validator
+
+        operation = _operation(self.spec, "updateMe")
+        self.assertEqual(_schema_name(operation["requestBody"]), "MeProfileWrite")
+        rejected = operation["x-togavsu-access"]["rejected_fields"]
+        for field in ("roles", "email", "linked_contact_id"):
+            self.assertIn(field, rejected)
+        schema = self.spec["components"]["schemas"]["MeProfileWrite"]
+        for field in rejected:
+            self.assertNotIn(field, schema["properties"])
+        validator = Draft202012Validator(schema)
+        validator.validate({"name": "Ada", "phone": "+15555550100", "initials": "AL"})
+        for field, value in (
+            ("roles", ["admin"]),
+            ("email", "ada@example.com"),
+            ("linked_contact_id", "018f1a00-7b3c-7d4e-8a11-111111111111"),
+        ):
+            with self.assertRaises(Exception):
+                validator.validate({field: value})
+
+    def test_file_writes_use_the_file_wall(self):
+        for operation_id in (
+            "renameFile",
+            "moveFile",
+            "markFileStatus",
+            "trashFile",
+            "restoreFile",
+            "addFileVersion",
+            "restoreFileVersion",
+            "acquireEditLock",
+            "renewEditLock",
+            "releaseEditLock",
+            "runEditor",
+            "convertFile",
+            "getFile",
+            "downloadFileVersion",
+        ):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertEqual(access["access_inherits"], "file", operation_id)
+            self.assertEqual(access["attorney_only_files"], "not_found", operation_id)
+            denied = [case for case in access["access_cases"] if case["role"] == "staff" and case.get("attorney_only")]
+            self.assertEqual(denied[0]["result"], "not_found", operation_id)
+
+    def test_batches_and_context_tokens_reject_walled_matters(self):
+        for operation_id in ("bulkCustomFieldValue", "bulkEvent"):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertTrue(access["matter_wall"], operation_id)
+            self.assertEqual(access["batch_authorization"], "all_or_nothing")
+            self.assertEqual(access["inaccessible_result"], "not_found")
+            self.assertIn("not_found", _operation(self.spec, operation_id)["x-togavsu-error-codes"])
+        token = _operation(self.spec, "createModuleContextToken")
+        self.assertTrue(token["x-togavsu-access"]["matter_wall"])
+        self.assertEqual(token["x-togavsu-access"]["access_inherits"], "matter")
+        self.assertIn("not_found", token["description"])
+
+    def test_module_help_token_is_not_an_admin(self):
+        for operation_id in ("createModuleHelpPage", "replaceModuleHelpPages", "deleteModuleHelpPage"):
+            operation = _operation(self.spec, operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["roles"], [])
+            principal = operation["x-togavsu-access"]["module_principal"]
+            self.assertFalse(principal["grants_admin"])
+            self.assertTrue(principal["own_heading_only"])
+            self.assertEqual(principal["scope"], "help:write")
+            self.assertEqual(operation["x-togavsu-access"]["scopes"], ["help:write"])
+
+    def test_module_update_keeps_the_old_version_on_failure(self):
+        operation = _operation(self.spec, "updateModule")
+        self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
+        content = operation["requestBody"]["content"]
+        self.assertIn("application/json", content)
+        self.assertIn("multipart/form-data", content)
+        self.assertIn("version", self.spec["components"]["schemas"]["ModuleUpdate"]["properties"])
+        self.assertEqual(operation["x-togavsu-access"]["on_failure"], "keep_previous_version")
+        self.assertEqual(operation["x-togavsu-access"]["on_new_permissions"], "awaiting_approval_keep_running")
+        self.assertIn("migration_refused", operation["x-togavsu-error-codes"])
+        self.assertIn("previous_version", self.spec["components"]["schemas"]["ModuleUpdateResult"]["required"])
+
+    def test_matter_archive_is_an_mcp_tool(self):
+        operation = _operation(self.spec, "archiveMatter")
+        self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(operation["x-togavsu-mcp"]["tool"], "archiveMatter")
+        self.assertIn("archived", self.spec["components"]["schemas"]["Matter"]["properties"])
+        self.assertIn("archived", self.spec["components"]["schemas"]["Matter"]["required"])
+
+    def test_paused_timer_resumes_without_resetting_elapsed_time(self):
+        resume = _operation(self.spec, "resumeTimer")
+        self.assertIn("accumulated_seconds", resume["description"])
+        self.assertIn("not reset", resume["description"])
+        self.assertIn("accumulated_seconds", self.spec["components"]["schemas"]["Timer"]["required"])
+        start = _operation(self.spec, "createTimer")
+        self.assertIn("accumulated_seconds", start["description"])
+        self.assertIn("resumes", start["description"])
+
+    def test_file_links_and_conversion_result(self):
+        link = self.spec["components"]["schemas"]["FileLink"]["properties"]["relationship"]
+        self.assertEqual(set(link["enum"]), {"conversion_of", "grouped_photo_source", "attachment"})
+        links = _operation(self.spec, "listFileLinks")
+        self.assertEqual(links["x-togavsu-access"]["access_inherits"], "file")
+        converted = _operation(self.spec, "convertFile")
+        self.assertEqual(_schema_name(converted["responses"]["201"]), "ConversionResult")
+        result = self.spec["components"]["schemas"]["ConversionResult"]["required"]
+        self.assertEqual(result, ["file", "link"])
+
+    def test_file_history_is_not_admin_only(self):
+        operation = _operation(self.spec, "historyFile")
+        self.assertIn("staff", operation["x-togavsu-access"]["roles"])
+        self.assertNotEqual(operation["x-togavsu-access"]["roles"], ["admin"])
+        self.assertEqual(operation["x-togavsu-access"]["scopes"], ["files:read"])
+        self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required")
+        self.assertEqual(operation["x-togavsu-access"]["access_inherits"], "file")
+        kind = self.spec["components"]["schemas"]["FileHistoryEntry"]["properties"]["kind"]
+        self.assertEqual(set(kind["enum"]), {"field_edit", "version_save"})
+
+    def test_bulk_endpoints_cover_record_types(self):
+        required = {
+            "contacts": "bulkContact",
+            "matters": "bulkMatter",
+            "matter-markers": "bulkMatterMarker",
+            "replenishment-requests": "bulkTrustReplenishment",
+            "trust-reconciliations": "bulkTrustReconciliation",
+            "trust-ledger": "bulkTrustEntry",
+            "notes": "bulkNote",
+            "time-entries": "bulkTimeEntry",
+            "expenses": "bulkExpense",
+            "payments": "bulkPayment",
+            "files": "bulkFile",
+            "events": "bulkEvent",
+            "custom-field-values": "bulkCustomFieldValue",
+        }
+        for record_type, operation_id in required.items():
+            operation = _operation(self.spec, operation_id)
+            self.assertIn("bulk", operation["x-togavsu-features"], record_type)
+            self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required", record_type)
+            self.assertTrue(operation["x-togavsu-mcp"]["tool"], record_type)
+
+    def test_expense_and_payment_includes(self):
+        for operation_id, schema_name in (
+            ("listExpense", "Expense"),
+            ("getExpense", "Expense"),
+            ("listPayment", "Payment"),
+            ("getPayment", "Payment"),
+        ):
+            operation = _operation(self.spec, operation_id)
+            names = [_param_name(parameter) for parameter in operation["parameters"]]
+            self.assertIn("include", names, operation_id)
+            self.assertTrue(operation["x-togavsu-access"]["matter_wall"], operation_id)
+            self.assertEqual(
+                operation["x-togavsu-access"]["include_scope_pattern"],
+                "views:{module_id}.{view}:read",
+            )
+            self.assertIn("included", self.spec["components"]["schemas"][schema_name]["properties"])
+
+    def test_trust_balance_rows_name_their_owners(self):
+        from jsonschema import Draft202012Validator
+
+        row = self.spec["components"]["schemas"]["TrustBalanceRow"]
+        validator = Draft202012Validator(
+            {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "$defs": {"Uuid": self.spec["components"]["schemas"]["Uuid"]},
+                **row,
+            }
+        )
+        # Uuid refs inside oneOf still point at components. Validate the required keys structurally.
+        matter = next(branch for branch in row["oneOf"] if branch["properties"]["scope"]["const"] == "matter")
+        client = next(branch for branch in row["oneOf"] if branch["properties"]["scope"]["const"] == "client")
+        account = next(branch for branch in row["oneOf"] if branch["properties"]["scope"]["const"] == "account")
+        self.assertIn("client_id", matter["required"])
+        self.assertIn("matter_id", matter["required"])
+        self.assertIn("trust_account_id", matter["required"])
+        self.assertIn("client_id", client["required"])
+        self.assertNotIn("matter_id", client["required"])
+        self.assertIn("trust_account_id", account["required"])
+        self.assertEqual(_schema_name_from_page(_operation(self.spec, "getTrustBalances")), "TrustBalanceRow")
+        self.assertIsNotNone(validator)
+
+    def test_mcp_arguments_use_path_and_query_objects(self):
+        import json
+        from pathlib import Path
+
+        matter = _operation(self.spec, "getMatter")["x-togavsu-mcp"]["transfer"]
+        self.assertEqual(matter["arguments"], ["path", "query"])
+        self.assertNotIn("matter_id", matter["arguments"])
+        chunk = _operation(self.spec, "putFileChunk")["x-togavsu-mcp"]["transfer"]["arguments"]
+        self.assertEqual(chunk[:2], ["path", "query"])
+        self.assertIn("headers", chunk)
+        self.assertIn("body_base64", chunk)
+        self.assertNotIn("upload_id", chunk)
+        text = Path("docs/api/mcp.md").read_text(encoding="utf-8")
+        blocks = [json.loads(part.split("```", 1)[0]) for part in text.split("```json\n")[1:]]
+        get_args = blocks[0]["params"]["arguments"]
+        put_args = blocks[1]["params"]["arguments"]
+        self.assertEqual(set(get_args), {"path", "query"})
+        self.assertIn("matter_id", get_args["path"])
+        self.assertIn("include", get_args["query"])
+        self.assertEqual(set(put_args), set(chunk))
+        self.assertIn("upload_id", put_args["path"])
+        self.assertIn("Content-Range", put_args["headers"])
+
+    def test_marketplace_flag_requires_a_note(self):
+        operation = self.market["paths"]["/v1/operator/listings/{listing_id}/flag"]["post"]
+        schema = operation["requestBody"]["content"]["application/json"]["schema"]
+        self.assertEqual(schema["$ref"], "#/components/schemas/FlagRequest")
+        flag = self.market["components"]["schemas"]["FlagRequest"]
+        self.assertEqual(flag["required"], ["note"])
+        self.assertIn("version", flag["properties"])
+        self.assertNotIn("version", flag["required"])
+
     def test_marketplace_flag_and_pull(self):
         paths = self.market["paths"]
         self.assertIn("/v1/operator/listings/{listing_id}/flag", paths)
@@ -719,8 +934,14 @@ def _operation(spec: dict, operation_id: str) -> dict:
     raise AssertionError(operation_id)
 
 
-def _schema_name(response: dict) -> str:
-    return response["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+def _schema_name(node: dict) -> str:
+    if "requestBody" in node:
+        return node["requestBody"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+    return node["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[1]
+
+
+def _schema_name_from_page(operation: dict) -> str:
+    return operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["items"]["$ref"].rsplit("/", 1)[1]
 
 
 def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type: str) -> str:

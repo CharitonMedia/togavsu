@@ -75,6 +75,7 @@ It does not claim the handlers or the MCP server are implemented.
 | matters, matter-glance, include-extensions | `POST` | `/api/v1/matters` | `createMatter` | required:createMatter | admin, attorney, staff | matters:write |
 | matters, matter-glance, include-extensions | `GET` | `/api/v1/matters/{matter_id}` | `getMatter` | required:getMatter | admin, attorney, staff | matters:read |
 | matters, matter-glance, include-extensions | `PATCH` | `/api/v1/matters/{matter_id}` | `updateMatter` | required:updateMatter | admin, attorney, staff | matters:write |
+| matters, matter-glance, include-extensions | `POST` | `/api/v1/matters/{matter_id}/archive` | `archiveMatter` | required:archiveMatter | admin, attorney, staff | matters:write |
 | matters, matter-glance, include-extensions, edit-history | `GET` | `/api/v1/matters/{matter_id}/history` | `historyMatter` | required:historyMatter | admin, attorney, staff | matters:read |
 | matters, matter-glance, include-extensions, bulk | `POST` | `/api/v1/matters:bulk` | `bulkMatter` | required:bulkMatter | admin, attorney, staff | matters:write |
 | matter-close | `GET` | `/api/v1/matters/{matter_id}/close-preview` | `previewMatterClose` | required:previewMatterClose | admin, attorney, staff | matters:read |
@@ -95,6 +96,7 @@ It does not claim the handlers or the MCP server are implemented.
 | matter-markers | `GET` | `/api/v1/matter-markers/{matter_marker_id}` | `getMatterMarker` | required:getMatterMarker | admin, attorney, staff | matters:read |
 | matter-markers | `PATCH` | `/api/v1/matter-markers/{matter_marker_id}` | `updateMatterMarker` | required:updateMatterMarker | admin, attorney, staff | matters:write |
 | matter-markers | `DELETE` | `/api/v1/matter-markers/{matter_marker_id}` | `deleteMatterMarker` | required:deleteMatterMarker | admin, attorney, staff | matters:write |
+| matter-markers, bulk | `POST` | `/api/v1/matter-markers:bulk` | `bulkMatterMarker` | required:bulkMatterMarker | admin, attorney, staff | matters:write |
 | matter-markers | `GET` | `/api/v1/marker-definitions` | `listMarkerDefinition` | required:listMarkerDefinition | admin, attorney, staff | settings:read |
 | matter-markers | `POST` | `/api/v1/marker-definitions` | `createMarkerDefinition` | required:createMarkerDefinition | admin | settings:write |
 | matter-markers | `GET` | `/api/v1/marker-definitions/{marker_id}` | `getMarkerDefinition` | required:getMarkerDefinition | admin, attorney, staff | settings:read |
@@ -169,6 +171,7 @@ It does not claim the handlers or the MCP server are implemented.
 | timers | `GET` | `/api/v1/timers/{timer_id}` | `getTimer` | required:getTimer | admin, attorney, staff | time:read |
 | timers | `POST` | `/api/v1/timers/{timer_id}/pause` | `pauseTimer` | required:pauseTimer | admin, attorney, staff | time:write |
 | timers | `POST` | `/api/v1/timers/{timer_id}/stop` | `stopTimer` | required:stopTimer | admin, attorney, staff | time:write |
+| timers | `POST` | `/api/v1/timers/{timer_id}/resume` | `resumeTimer` | required:resumeTimer | admin, attorney, staff | time:write |
 | expenses | `GET` | `/api/v1/expenses` | `listExpense` | required:listExpense | admin, attorney, staff, accountant | expenses:read |
 | expenses | `POST` | `/api/v1/expenses` | `createExpense` | required:createExpense | admin, attorney, staff | expenses:write |
 | expenses | `GET` | `/api/v1/expenses/{expense_id}` | `getExpense` | required:getExpense | admin, attorney, staff, accountant | expenses:read |
@@ -222,11 +225,13 @@ It does not claim the handlers or the MCP server are implemented.
 | trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests` | `listTrustReplenishment` | required:listTrustReplenishment | admin, attorney, staff, accountant | trust:read |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests` | `createTrustReplenishment` | required:createTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `GET` | `/api/v1/trust-replenishment-requests/{replenishment_id}` | `getTrustReplenishment` | required:getTrustReplenishment | admin, attorney, staff, accountant | trust:read |
+| trust-replenishment, bulk | `POST` | `/api/v1/trust-replenishment-requests:bulk` | `bulkTrustReplenishment` | required:bulkTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/cancel` | `cancelTrustReplenishment` | required:cancelTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-replenishment | `POST` | `/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy` | `satisfyTrustReplenishment` | required:satisfyTrustReplenishment | admin, attorney, staff | trust:write |
 | trust-reconciliation | `GET` | `/api/v1/trust-reconciliations` | `listTrustReconciliation` | required:listTrustReconciliation | admin, attorney, staff, accountant | trust:read |
 | trust-reconciliation | `POST` | `/api/v1/trust-reconciliations` | `createTrustReconciliation` | required:createTrustReconciliation | admin, attorney, staff | trust:write |
 | trust-reconciliation | `GET` | `/api/v1/trust-reconciliations/{reconciliation_id}` | `getTrustReconciliation` | required:getTrustReconciliation | admin, attorney, staff, accountant | trust:read |
+| trust-reconciliation, bulk | `POST` | `/api/v1/trust-reconciliations:bulk` | `bulkTrustReconciliation` | required:bulkTrustReconciliation | admin, attorney, staff | trust:write |
 | calendar | `GET` | `/api/v1/calendar-events` | `listCalendarEvent` | required:listCalendarEvent | admin, attorney, staff | calendar:read |
 | calendar | `POST` | `/api/v1/calendar-events` | `createCalendarEvent` | required:createCalendarEvent | admin, attorney, staff | calendar:write |
 | calendar | `GET` | `/api/v1/calendar-events/{calendar_event_id}` | `getCalendarEvent` | required:getCalendarEvent | admin, attorney, staff | calendar:read |
@@ -257,6 +262,8 @@ It does not claim the handlers or the MCP server are implemented.
 | files | `POST` | `/api/v1/files/{file_id}/purge` | `purgeFile` | required:purgeFile | admin | files:write |
 | file-versions | `GET` | `/api/v1/files/{file_id}/versions` | `listFileVersions` | required:listFileVersions | admin, attorney, staff, accountant, client | files:read |
 | file-versions, file-uploads | `POST` | `/api/v1/files/{file_id}/versions` | `addFileVersion` | required:addFileVersion | admin, attorney, staff | files:write |
+| files, edit-history | `GET` | `/api/v1/files/{file_id}/history` | `historyFile` | required:historyFile | admin, attorney, staff, accountant, client | files:read |
+| files, conversions | `GET` | `/api/v1/files/{file_id}/links` | `listFileLinks` | required:listFileLinks | admin, attorney, staff, accountant, client | files:read |
 | file-versions, quarantine | `GET` | `/api/v1/files/{file_id}/versions/{version_id}/download` | `downloadFileVersion` | required:downloadFileVersion | admin, attorney, staff, accountant, client | files:read |
 | file-versions | `POST` | `/api/v1/files/{file_id}/versions/{version_id}/restore` | `restoreFileVersion` | required:restoreFileVersion | admin, attorney, staff | files:write |
 | quarantine | `POST` | `/api/v1/files/{file_id}/versions/{version_id}/quarantine` | `quarantineFileVersion` | required:quarantineFileVersion | admin, attorney, staff | files:write |
@@ -354,9 +361,9 @@ It does not claim the handlers or the MCP server are implemented.
 | help-guide | `GET` | `/help/guide` | `getHelpGuideAlias` | alias:getHelpGuide | admin, attorney, staff, accountant, client | help:read |
 | help-guide | `GET` | `/help/guide.pdf` | `getHelpGuidePdfAlias` | alias:getHelpGuidePdf | admin, attorney, staff, accountant, client | help:read |
 | module-help | `GET` | `/api/v1/help/modules/{module_id}/pages` | `listModuleHelpPages` | required:listModuleHelpPages | admin, attorney, staff, accountant | help:read |
-| module-help | `POST` | `/api/v1/help/modules/{module_id}/pages` | `createModuleHelpPage` | required:createModuleHelpPage | admin | help:write |
-| module-help | `PUT` | `/api/v1/help/modules/{module_id}/pages` | `replaceModuleHelpPages` | required:replaceModuleHelpPages | admin | help:write |
-| module-help | `DELETE` | `/api/v1/help/modules/{module_id}/pages/{page_id}` | `deleteModuleHelpPage` | required:deleteModuleHelpPage | admin | help:write |
+| module-help | `POST` | `/api/v1/help/modules/{module_id}/pages` | `createModuleHelpPage` | required:createModuleHelpPage | public | help:write |
+| module-help | `PUT` | `/api/v1/help/modules/{module_id}/pages` | `replaceModuleHelpPages` | required:replaceModuleHelpPages | public | help:write |
+| module-help | `DELETE` | `/api/v1/help/modules/{module_id}/pages/{page_id}` | `deleteModuleHelpPage` | required:deleteModuleHelpPage | public | help:write |
 | activity, events | `GET` | `/api/v1/events` | `listEvents` | required:listEvents | admin, attorney, staff | events:read |
 | events | `POST` | `/api/v1/events` | `createEvent` | required:createEvent | admin, attorney, staff | events:write |
 | events, bulk | `POST` | `/api/v1/events:bulk` | `bulkEvent` | required:bulkEvent | admin, attorney, staff | events:write |
@@ -403,6 +410,7 @@ It does not claim the handlers or the MCP server are implemented.
 | modules | `POST` | `/api/v1/modules/{module_id}/enable` | `enableModule` | required:enableModule | admin | modules:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/disable` | `disableModule` | required:disableModule | admin | modules:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/uninstall` | `uninstallModule` | required:uninstallModule | admin | modules:write |
+| modules | `POST` | `/api/v1/modules/{module_id}/update` | `updateModule` | required:updateModule | admin | modules:write |
 | modules | `GET` | `/api/v1/modules/{module_id}/settings` | `getModuleSettings` | required:getModuleSettings | admin | modules:read |
 | modules | `PUT` | `/api/v1/modules/{module_id}/settings` | `putModuleSettings` | required:putModuleSettings | admin | modules:write |
 | modules | `POST` | `/api/v1/modules/{module_id}/context-tokens` | `createModuleContextToken` | required:createModuleContextToken | admin, attorney, staff, accountant | modules:read |
@@ -418,4 +426,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 412.
+Operations: 420.
