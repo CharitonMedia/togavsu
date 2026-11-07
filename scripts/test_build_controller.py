@@ -8,7 +8,7 @@ import unittest
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, APP_ID, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, extract_review, latest_checks, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -23,11 +23,11 @@ def check(name, conclusion="success", ident=1):
 class FakeRemote:
     def __init__(self):
         self.main = BASE
-        self.pr = {"number": 7, "state": "open", "merged": False, "draft": False,
+        self.pr = {"number": 7, "state": "open", "merged": False, "draft": False, "body": "Original evidence",
                    "mergeable": True, "labels": [{"name": "togavsu-task:one"}], "head": {"sha": HEAD, "ref": "cursor/one", "repo": {"full_name": "CharitonMedia/togavsu"}},
                    "base": {"ref": "main"}, "html_url": "https://github.com/CharitonMedia/togavsu/pull/7"}
         self.report = {"task_id": "one", "reviewed_head": HEAD, "reviewed_base": BASE, "verdict": "pass", "findings": [], "summary": "Reviewed"}
-        self.context = {"task_id": "one", "head": HEAD, "base": BASE, "pr": 7}
+        self.context = {"task_id": "one", "head": HEAD, "base": BASE, "pr": 7, "body": "Original evidence"}
         self.behind = 0
         self.calls = []
         self.run_id = "run-old"
@@ -342,6 +342,41 @@ class ControllerTests(unittest.TestCase):
         self.process()
         self.assertNotIn("halted", self.record)
         self.assertNotIn("infra_retried", self.record)
+
+    def test_unchanged_head_with_edited_body_waits_for_matching_review(self):
+        self.remote.pr["body"] = "New evidence"
+        self.process()
+        self.assertNotIn("completed", self.record)
+        self.assertIn("fresh matching", self.record["waiting"])
+        self.assertNotIn("infra_retried", self.record)
+
+    def test_body_edit_during_final_refresh_prevents_merge(self):
+        original, gets = self.remote.gh, []
+        def gh(path, **kwargs):
+            value = original(path, **kwargs)
+            if path == "pulls/7":
+                gets.append(path)
+                if len(gets) == 2:
+                    value["body"] = "Changed after initial validation"
+            return value
+        self.remote.gh = gh
+        self.process()
+        self.assertNotIn("completed", self.record)
+        self.assertIn("fresh matching", self.record["waiting"])
+
+    def test_task_label_edit_during_final_refresh_prevents_merge(self):
+        original, gets = self.remote.gh, []
+        def gh(path, **kwargs):
+            value = original(path, **kwargs)
+            if path == "pulls/7":
+                gets.append(path)
+                if len(gets) == 2:
+                    value["labels"] = [{"name": "togavsu-task:other"}]
+            return value
+        self.remote.gh = gh
+        self.process()
+        self.assertNotIn("completed", self.record)
+        self.assertIn("identity changed", self.record["waiting"])
 
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True

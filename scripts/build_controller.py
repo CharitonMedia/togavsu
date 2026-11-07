@@ -39,6 +39,10 @@ class ReviewPending(Exception):
     pass
 
 
+class ReviewSuperseded(Exception):
+    pass
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -69,6 +73,11 @@ def validate_review(report, context, pr, main, expected_task=None):
         raise ValueError("Review and context must be JSON objects")
     if expected_task is not None and (report.get("task_id") != expected_task or context.get("task_id") != expected_task):
         raise ValueError("Independent review does not cover the expected assignment")
+    if context.get("body") != pr.get("body"):
+        raise ReviewSuperseded("PR evidence changed after the reviewed event")
+    if expected_task is not None and [label["name"] for label in pr.get("labels", [])
+            if label["name"].startswith("togavsu-task:")] != ["togavsu-task:" + expected_task]:
+        raise ReviewSuperseded("PR task identity changed after review")
     if context.get("head") != pr["head"]["sha"] or context.get("base") != main:
         raise ValueError("Stale review context")
     if context.get("pr") != pr["number"]:
@@ -397,6 +406,9 @@ class Controller:
         except ReviewPending:
             record["waiting"] = "Codex workflow attempt queued or running"
             return False
+        except ReviewSuperseded as error:
+            self.wait_for_review(task, record, pr, str(error))
+            return False
         except (ValueError, KeyError, zipfile.BadZipFile) as error:
             # Stale base can result from a workflow event predating branch refresh. Rerun once.
             key = head + ":" + main
@@ -446,6 +458,11 @@ class Controller:
         current_main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
         if fresh["head"]["sha"] != head or current_main != main:
             return False
+        try:
+            validate_review(report, context, fresh, main, task)
+        except ReviewSuperseded as error:
+            self.wait_for_review(task, record, fresh, str(error))
+            return False
         protection = self.remote.gh("branches/main/protection")
         required_config = protection.get("required_status_checks") or {}
         if not (required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
@@ -466,6 +483,16 @@ class Controller:
         self.event(task, "Merged through protected checks: " + result["sha"])
         self.save()
         return True
+
+    def wait_for_review(self, task, record, pr, reason):
+        signature = hashlib.sha256(json.dumps({"head": pr["head"]["sha"], "body": pr.get("body"),
+            "labels": pr.get("labels", [])}, sort_keys=True).encode()).hexdigest()
+        if record.get("evidence_wait", {}).get("signature") != signature:
+            record["evidence_wait"] = {"signature": signature, "since": now()}
+        record["waiting"] = reason + "; await fresh matching Codex review"
+        elapsed = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(record["evidence_wait"]["since"])).total_seconds()
+        if elapsed > 5400:
+            self.halt(task, record, "Fresh review of current evidence did not arrive within 90 minutes")
 
     def validate_evidence(self, spec, evidence, head):
         if not isinstance(evidence, dict):
