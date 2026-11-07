@@ -3738,6 +3738,94 @@
       }
     },
     {
+      "name": "createModuleMarker",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/markers",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "markers:write"
+      ],
+      "roles": [],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "updateModuleMarker",
+      "method": "PATCH",
+      "path": "/api/v1/modules/{module_id}/markers/{marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "markers:write"
+      ],
+      "roles": [],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "revokeModuleMarker",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/markers/{marker_id}/revoke",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "markers:write"
+      ],
+      "roles": [],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key"
+        ]
+      }
+    },
+    {
       "name": "listFeeAgreement",
       "method": "GET",
       "path": "/api/v1/fee-agreements",

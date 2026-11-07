@@ -79,6 +79,20 @@ MODULE_HELP = {
         "grants_admin": False,
     },
 }
+MODULE_MARKER = {
+    "client": "deny",
+    "module_principal": {
+        "actor_kind": "module",
+        "scope": "markers:write",
+        "module_id_param": "module_id",
+        "own_namespace_only": True,
+        "grants_admin": False,
+        "ownership": "signed_module_principal",
+        "firm_markers": "forbidden",
+        "other_module": "forbidden",
+        "caller_supplied_owner": "ignored",
+    },
+}
 OWN = {"client": "own"}
 NOTIFICATION_RECIPIENT = {
     "owner": "self",
@@ -1061,6 +1075,77 @@ def _practice(api: Contract) -> None:
         write_scope="settings:write",
         filters=["active"],
     )
+    api.spec["paths"]["/api/v1/marker-definitions"]["post"]["description"] += (
+        " Admin only, with settings:write. A module cannot call this route. "
+        "An installed module registers a marker in its own namespace with markers:write. "
+        "That scope is not settings:write and it does not make the module an admin."
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/{module_id}/markers",
+        operation_id="createModuleMarker",
+        summary="Register a module marker",
+        description=(
+            "An approved module token with markers:write registers one marker in its own namespace. "
+            "The owner is the signed module id on the token. The path module_id must be that same id. "
+            "A caller-supplied owner is ignored. The token cannot create a firm marker or a marker for another module. "
+            "settings:write and an admin role are not accepted here. A human session is forbidden. "
+            "The label is plain text. The color is a six-digit hex value. "
+            "An optional display target is a module-local page; a URL or another scheme is rejected. "
+            "A second active marker with the same label in this namespace is a conflict. "
+            "Revoke hides the definition and leaves matter pins that already use it."
+        ),
+        tag="Matters",
+        features=["matter-markers"],
+        roles=[],
+        scopes=["markers:write"],
+        body="ModuleMarkerWrite",
+        response="ModuleMarker",
+        success="201",
+        events=["marker.created"],
+        error_codes=["forbidden", "scope_denied", "conflict"],
+        extra_access=MODULE_MARKER,
+    )
+    api.add(
+        "patch",
+        "/api/v1/modules/{module_id}/markers/{marker_id}",
+        operation_id="updateModuleMarker",
+        summary="Update a module marker",
+        description=(
+            "Updates the calling module's own marker. A firm marker and another module's marker are forbidden. "
+            "The signed module id is the owner. A duplicate active label in this namespace is a conflict. "
+            "A revoked marker is not edited back to active; register a new one. "
+            "Label, color, and display target use the same checks as createModuleMarker."
+        ),
+        tag="Matters",
+        features=["matter-markers"],
+        roles=[],
+        scopes=["markers:write"],
+        body="ModuleMarkerWritePatch",
+        response="ModuleMarker",
+        events=["marker.updated"],
+        error_codes=["forbidden", "scope_denied", "conflict", "not_found"],
+        extra_access=MODULE_MARKER,
+    )
+    api.add(
+        "post",
+        "/api/v1/modules/{module_id}/markers/{marker_id}/revoke",
+        operation_id="revokeModuleMarker",
+        summary="Revoke a module marker",
+        description=(
+            "Sets the calling module's marker inactive. The row stays, and matter pins that already use it stay. "
+            "A firm marker and another module's marker are forbidden. "
+            "Revoking an inactive marker returns the original result and emits nothing."
+        ),
+        tag="Matters",
+        features=["matter-markers"],
+        roles=[],
+        scopes=["markers:write"],
+        response="ModuleMarker",
+        events=["marker.revoked"],
+        error_codes=["forbidden", "scope_denied", "not_found"],
+        extra_access=MODULE_MARKER,
+    )
     api.resource(
         collection="/api/v1/fee-agreements",
         schema="FeeAgreement",
@@ -1787,7 +1872,9 @@ def _billing(api: Contract) -> None:
             "That scope check runs before any payment status change and before any ledger write. "
             "Insufficient scopes, the wrong role, or a walled matter write nothing. "
             "When the scopes and the wall allow it, the trust handler appends exactly one reversal. "
-            "The time module does not post another. A below-zero balance still posts and raises a flag."
+            "The time module does not post another. "
+            "A reversal that leaves a negative balance still posts and raises trust.flag_raised. "
+            "A non-negative reversal does not raise the flag. Rollback, denial, and replay emit nothing."
         ),
         tag="Billing",
         features=["payments"],
@@ -1936,8 +2023,9 @@ def _trust(api: Contract) -> None:
             "Staff may post a deposit. "
             "An adjustment amount is signed: positive credits the client and negative debits the client, with adjustment_direction set to match. "
             "An entry that leaves a negative client balance, per matter or overall, still posts. "
-            "The core raises a trust flag and emails the admins and the responsible attorney. "
-            "The balance is never a reason to reject the post."
+            "The core raises a trust flag, trust.flag_raised, only for that committed below-zero result and emails the admins and the responsible attorney. "
+            "A non-negative post does not raise the flag. A rollback, a denial, and a replay emit nothing. "
+            "The balance is a warning. It is never a reason to reject the post."
         ),
         tag="Trust",
         features=["trust-ledger", "trust-below-zero"],
@@ -1957,7 +2045,9 @@ def _trust(api: Contract) -> None:
         operation_id="bulkTrustEntry",
         summary="Post trust ledger entries in one batch",
         description=(
-            "One transaction. A failed item posts nothing. A negative balance still posts and returns its flags. "
+            "One transaction. A failed item posts nothing. Items apply in order, and each item sees the balance left by the item before it. "
+            "A below-zero result still posts and raises trust.flag_raised for that item. The batch is not rejected for the balance. "
+            "A rollback, a denial, and a replay emit neither trust.entry_posted nor trust.flag_raised. "
             "Each item uses entry_type_scopes. A trust:write token is scope_denied for a withdrawal, transfer, refund, or adjustment in the batch, and nothing is posted. "
             "There is no bulk edit and no bulk delete."
         ),
@@ -1973,7 +2063,7 @@ def _trust(api: Contract) -> None:
         },
         response_schema=_batch_result("TrustPostResult"),
         success="201",
-        events=["trust.entry_posted"],
+        events=["trust.entry_posted", "trust.flag_raised"],
         replaceable="trust",
         error_codes=["batch_rejected", "scope_denied"],
         extra_access=TRUST_ENTRY_ROLES,
@@ -1983,7 +2073,12 @@ def _trust(api: Contract) -> None:
         "/api/v1/trust-ledger/{trust_entry_id}/reversals",
         operation_id="reverseTrustEntry",
         summary="Reverse a trust ledger entry",
-        description="Appends a reversal entry. The original row stays. Update and delete are not operations on this ledger.",
+        description=(
+            "Appends a reversal entry. The original row stays. Update and delete are not operations on this ledger. "
+            "Reversing a deposit subtracts that amount and can leave a negative balance. "
+            "The reversal still posts and raises trust.flag_raised when the committed balance is below zero. "
+            "The balance does not block the reversal. A rollback, a denial, and a replay emit nothing."
+        ),
         tag="Trust",
         features=["trust-ledger"],
         roles=ATTORNEY,
@@ -1991,7 +2086,7 @@ def _trust(api: Contract) -> None:
         body="Reason",
         response="TrustPostResult",
         success="201",
-        events=["trust.entry_posted"],
+        events=["trust.entry_posted", "trust.flag_raised"],
         replaceable="trust",
         extra_access={"below_zero": "posts", "matter_wall": True, "access_inherits": "matter"},
     )

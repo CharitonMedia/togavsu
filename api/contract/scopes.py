@@ -17,6 +17,7 @@ SCOPES = {
     "contacts:write": "Write contacts and their channels.",
     "matters:read": "Read matters, parties, and fee agreements.",
     "matters:write": "Write matters, parties, walls, and fee agreements.",
+    "markers:write": "Register, update, or revoke marker definitions in the calling module's own namespace.",
     "notes:read": "Read notes.",
     "notes:write": "Write notes.",
     "conflicts:read": "Read conflict records and checks.",

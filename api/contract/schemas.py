@@ -594,13 +594,51 @@ SCHEMAS = _register(
             ["matter_id", "marker_id"],
         ),
         "MarkerDefinition": _meta(
-            {"label": {"type": "string"}, "color": {"type": "string"}, "active": {"type": "boolean"}, "module_id": {"type": "string"}},
+            {
+                "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[^<>\\r\\n\\t]{1,40}$",
+                    "description": "Plain label. Markup and control characters are rejected.",
+                },
+                "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "description": "Six-digit hex color."},
+                "active": {"type": "boolean"},
+                "module_id": _null(_module_id("Set when a module owns the marker. Absent on a firm marker.")),
+            },
             ["label", "color", "active"],
-            "Firm or module marker definition.",
+            "Firm or module marker definition. A module registers its own through markers:write.",
         ),
         "MarkerDefinitionWrite": _obj(
-            {"label": {"type": "string", "minLength": 1}, "color": {"type": "string"}, "active": {"type": "boolean"}},
+            {
+                "label": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^<>\\r\\n\\t]{1,40}$"},
+                "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                "active": {"type": "boolean"},
+            },
             ["label"],
+            "Firm marker. Color is six-digit hex. Modules use ModuleMarkerWrite and markers:write.",
+        ),
+        "ModuleMarkerWrite": _obj(
+            {
+                "label": {"type": "string", "minLength": 1, "maxLength": 40, "pattern": "^[^<>\\r\\n\\t]{1,40}$"},
+                "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                "target": _module_local_path("Optional module-local page. A URL, scheme, or other module's route is rejected."),
+            },
+            ["label", "color"],
+            "Own-namespace marker. The module id comes from the signed token, not this body.",
+        ),
+        "ModuleMarker": _meta(
+            {
+                "label": {"type": "string", "minLength": 1, "maxLength": 40},
+                "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+                "active": {"type": "boolean"},
+                "module_id": _module_id("Signed module that owns this marker."),
+                "namespace": _module_id("Same value as module_id. Firm markers are not stored on this route."),
+                "target": _null({"type": "string", "description": "Sanitized display target, or null when the marker is only a header label."}),
+                "placement": {"const": "matter-header"},
+            },
+            ["label", "color", "active", "module_id", "namespace", "placement"],
+            "A marker registered by the calling module.",
         ),
         "FeeAgreement": _meta(
             {
@@ -2188,9 +2226,14 @@ SCHEMAS = _register(
                 "task_authorization": _null(_ref("TaskAuthorization")),
                 "processor_authorization": _null(_ref("ProcessorAuthorization")),
                 "background_file_authorization": _null(_ref("BackgroundFileAuthorization")),
+                "client_id": _null(_uuid()),
+                "trust_account_id": _null(_uuid()),
+                "balance_cents": _null({"type": "integer", "description": "Resulting balance in cents. Negative is below zero."}),
+                "trust_entry_id": _null(_uuid("Ledger row that left the balance below zero.")),
+                "balance_scope": _null(_enum(["matter", "client", "account"])),
             },
             ["id", "type", "occurred_at", "actor_kind", "record_type", "record_id", "summary"],
-            "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null.",
+            "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read.",
         ),
         "Backup": _meta(
             {

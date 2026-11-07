@@ -104,6 +104,9 @@ It does not claim the handlers or the MCP server are implemented.
 | matter-markers | `POST` | `/api/v1/marker-definitions` | `createMarkerDefinition` | required:createMarkerDefinition | admin | settings:write |
 | matter-markers | `GET` | `/api/v1/marker-definitions/{marker_id}` | `getMarkerDefinition` | required:getMarkerDefinition | admin, attorney, staff | settings:read |
 | matter-markers | `PATCH` | `/api/v1/marker-definitions/{marker_id}` | `updateMarkerDefinition` | required:updateMarkerDefinition | admin | settings:write |
+| matter-markers | `POST` | `/api/v1/modules/{module_id}/markers` | `createModuleMarker` | required:createModuleMarker | public | markers:write |
+| matter-markers | `PATCH` | `/api/v1/modules/{module_id}/markers/{marker_id}` | `updateModuleMarker` | required:updateModuleMarker | public | markers:write |
+| matter-markers | `POST` | `/api/v1/modules/{module_id}/markers/{marker_id}/revoke` | `revokeModuleMarker` | required:revokeModuleMarker | public | markers:write |
 | fee-agreements | `GET` | `/api/v1/fee-agreements` | `listFeeAgreement` | required:listFeeAgreement | admin, attorney, staff | matters:read |
 | fee-agreements | `POST` | `/api/v1/fee-agreements` | `createFeeAgreement` | required:createFeeAgreement | admin, attorney, staff | matters:write |
 | fee-agreements | `GET` | `/api/v1/fee-agreements/{fee_agreement_id}` | `getFeeAgreement` | required:getFeeAgreement | admin, attorney, staff | matters:read |
@@ -435,4 +438,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 429.
+Operations: 432.

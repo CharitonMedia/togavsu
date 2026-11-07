@@ -18,6 +18,23 @@ import re
 # The path parameter {module_id} uses this same pattern. Callers do not get a second, looser rule.
 MODULE_ID_PATTERN = "^[a-z0-9][a-z0-9-]{0,63}$"
 _MODULE_ID_SLUG = re.compile(MODULE_ID_PATTERN)
+_UUID_TEXT = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+_FLAG_METADATA = ("matter_id", "client_id", "trust_account_id", "balance_cents", "trust_entry_id", "balance_scope")
+_TRUST_FLAG = {
+    "selection": "resulting_balance",
+    "posted": "trust.entry_posted",
+    "flag": "trust.flag_raised",
+    "when": "balance_below_zero",
+    "blocks": False,
+    "below_zero": "posts",
+    "warning": True,
+    "rollback": "no_event",
+    "denied": "no_event",
+    "replay": "no_event",
+    "bulk": "chronological_per_item",
+    "webhook_scope": "trust:read",
+    "metadata": list(_FLAG_METADATA),
+}
 from html.parser import HTMLParser
 
 FILE_DOWNLOAD = {
@@ -524,6 +541,7 @@ def finalize(spec: dict) -> None:
     publish_trust_debit(spec)
     publish_inherited_history(spec)
     publish_event_scopes(spec)
+    publish_trust_flags(spec)
     publish_matter_effect_order(spec)
     publish_invoice_item_privileges(spec)
     publish_client_projections(spec)
@@ -588,14 +606,27 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         if compensation is None:
             return _denied("validation_failed")
     entry = branch.get("trust_entry") or {}
-    flag = bool(
-        call.get("trust_linked")
-        and call.get("below_zero")
-        and entry.get("below_zero") == "posts"
-        and not entry.get("below_zero_blocks")
-        and not (compensation or {}).get("idempotent")
-    )
     idempotent = bool((compensation or {}).get("idempotent"))
+    events: list[dict] = []
+    if call.get("trust_linked") and compensation is not None and not idempotent:
+        posted = compensation["entry"]
+        opening = call.get("opening") if isinstance(call.get("opening"), dict) else {"matter_cents": 0, "client_cents": 0, "account_cents": 0}
+        events = trust_ledger_events(
+            operation,
+            [
+                {
+                    "amount_cents": posted.get("amount_cents", 0),
+                    "opening": opening,
+                    "matter_id": posted.get("matter_id"),
+                    "client_id": posted.get("client_id"),
+                    "trust_account_id": posted.get("trust_account_id"),
+                    "trust_entry_id": posted.get("id"),
+                    "trust_posted": True,
+                }
+            ],
+            committed=True,
+        )
+    flag = any(event.get("type") == "trust.flag_raised" for event in events)
     return {
         "result": "original_result" if idempotent else "allowed",
         "payment_mutated": not idempotent,
@@ -610,6 +641,7 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         "trust_entry": None if compensation is None else compensation["entry"],
         "trust_post": None if compensation is None else compensation["post"],
         "grant": None,
+        "events": events,
     }
 
 
@@ -898,12 +930,40 @@ def _processor_success(store: dict, unchanged: dict, policy: dict, result: str, 
     return {**unchanged, "result": result, "payment": payment, "ledger_count": len(store["ledger"]), **extra}
 
 
+def _posted_trust_events(operation: dict, payment: dict, call: dict, inserted: bool) -> list[dict]:
+    if not inserted:
+        return []
+    amount = call.get("amount_cents")
+    if isinstance(amount, bool) or not isinstance(amount, int):
+        amount = 0
+    opening = call.get("opening") if isinstance(call.get("opening"), dict) else {
+        "matter_cents": call.get("matter_cents", 0),
+        "client_cents": call.get("client_cents", 0),
+        "account_cents": call.get("account_cents", 0),
+    }
+    return trust_ledger_events(
+        operation,
+        [
+            {
+                "amount_cents": amount,
+                "opening": opening,
+                "matter_id": payment.get("matter_id"),
+                "client_id": call.get("client_id") or payment.get("contact_id"),
+                "trust_account_id": payment.get("trust_account_id"),
+                "trust_entry_id": payment.get("id"),
+                "trust_posted": True,
+            }
+        ],
+        committed=True,
+    )
+
+
 def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> dict:
     """Insert at most one payment per initialization. Denial leaves payment and ledger unchanged."""
     store.setdefault("payments", {})
     store.setdefault("ledger", [])
     store.setdefault("idempotency", {})
-    unchanged = {"payment_inserted": False, "ledger_inserted": False, "payment": None, "ledger_count": len(store["ledger"])}
+    unchanged = {"payment_inserted": False, "ledger_inserted": False, "payment": None, "ledger_count": len(store["ledger"]), "events": []}
     grant = call.get("grant") or {}
     init_id = grant.get("initialization_id")
     existing = store["payments"].get(init_id) if init_id else None
@@ -971,6 +1031,7 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
             body,
             payment_inserted=True,
             ledger_inserted=ledger_inserted,
+            events=_posted_trust_events(operation, payment, call, ledger_inserted),
         )
     if not existing or call.get("payment_id") != existing["id"]:
         return {**unchanged, "result": policy["unrelated_payment"]}
@@ -993,6 +1054,7 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
         body,
         payment_inserted=False,
         ledger_inserted=ledger_inserted,
+        events=_posted_trust_events(operation, existing, call, ledger_inserted),
     )
 
 
@@ -1301,6 +1363,70 @@ def payment_lifecycle_events(operation: dict, items: list[dict], *, committed: b
     return emitted
 
 
+def _balance_value(value, default: int = 0) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    return value
+
+
+def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, replay: bool = False, denied: bool = False) -> list[dict]:
+    """Post every committed ledger row. Raise trust.flag_raised only when that row's resulting balance is below zero."""
+    rule = (operation.get("x-togavsu-access") or {}).get("trust_flag") or {}
+    if rule.get("selection") != "resulting_balance" or rule.get("blocks") or rule.get("below_zero") == "blocks":
+        return []
+    if not committed or replay or denied:
+        return []
+    catalog = set(operation.get("x-togavsu-events") or [])
+    posted_name = rule.get("posted", "trust.entry_posted")
+    flag_name = rule.get("flag", "trust.flag_raised")
+    matter_bal: dict = {}
+    client_bal: dict = {}
+    account_bal: dict = {}
+    emitted: list[dict] = []
+    for item in items:
+        if item.get("trust_posted") is False:
+            continue
+        amount = item.get("amount_cents", 0)
+        if isinstance(amount, bool) or not isinstance(amount, int):
+            amount = 0
+        opening = item.get("opening") if isinstance(item.get("opening"), dict) else {}
+        matter_id = item.get("matter_id")
+        client_id = item.get("client_id")
+        account_id = item.get("trust_account_id")
+        matter_key = (account_id, client_id, matter_id)
+        client_key = (account_id, client_id)
+        account_key = (account_id,)
+        if matter_key not in matter_bal:
+            matter_bal[matter_key] = _balance_value(opening.get("matter_cents"))
+        if client_key not in client_bal:
+            client_bal[client_key] = _balance_value(opening.get("client_cents", opening.get("matter_cents")))
+        if account_key not in account_bal:
+            account_bal[account_key] = _balance_value(opening.get("account_cents", opening.get("matter_cents")))
+        matter_bal[matter_key] += amount
+        client_bal[client_key] += amount
+        account_bal[account_key] += amount
+        balances = {
+            "matter": matter_bal[matter_key],
+            "client": client_bal[client_key],
+            "account": account_bal[account_key],
+        }
+        scope = next((name for name in ("matter", "client", "account") if balances[name] < 0), None)
+        body = {
+            "type": posted_name,
+            "matter_id": matter_id,
+            "client_id": client_id,
+            "trust_account_id": account_id,
+            "balance_cents": balances["matter"],
+            "trust_entry_id": item.get("trust_entry_id"),
+            "balance_scope": scope or "matter",
+        }
+        if posted_name in catalog:
+            emitted.append(dict(body))
+        if scope and flag_name in catalog:
+            emitted.append({**body, "type": flag_name, "balance_cents": balances[scope], "balance_scope": scope})
+    return emitted
+
+
 def committed_events(operation: dict, *, committed: bool, count: int = 1) -> list[str]:
     if not committed or operation["operationId"] in EVENT_EXEMPTIONS:
         return []
@@ -1603,6 +1729,180 @@ def module_help_registration(operation: dict, call: dict) -> str:
     return "allowed"
 
 
+def _marker_label(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = " ".join(value.split())
+    if not text or len(text) > 40:
+        return None
+    if any(ord(char) < 32 or char in "<>\"\\" for char in text):
+        return None
+    compact = "".join(text.casefold().split())
+    if any(token in compact for token in ("javascript:", "vbscript:", "data:", "http:", "https:")):
+        return None
+    return text
+
+
+def _marker_color(value) -> str | None:
+    if not isinstance(value, str) or len(value) != 7 or not value.startswith("#"):
+        return None
+    if any(char not in "0123456789abcdefABCDEF" for char in value[1:]):
+        return None
+    return "#" + value[1:].lower()
+
+
+def _marker_label_taken(definitions: list[dict], module_id: str, label: str, except_id: str | None) -> bool:
+    key = " ".join(label.casefold().split())
+    for row in definitions:
+        if row.get("id") == except_id or not row.get("active") or row.get("module_id") != module_id:
+            continue
+        if " ".join(str(row.get("label", "")).casefold().split()) == key:
+            return True
+    return False
+
+
+def _marker_row(call: dict, module_id: str, marker_id: str, label: str, color: str, target: str | None, active: bool) -> dict:
+    stamp = call.get("created_at") or "2026-11-07T18:00:00Z"
+    return {
+        "id": marker_id,
+        "created_at": call.get("created_at") or stamp,
+        "created_by": call.get("created_by") or "00000000-0000-0000-0000-000000000000",
+        "updated_at": call.get("updated_at") or stamp,
+        "label": label,
+        "color": color,
+        "active": active,
+        "module_id": module_id,
+        "namespace": module_id,
+        "target": target,
+        "placement": "matter-header",
+    }
+
+
+def module_marker_registration(operation: dict, store: dict, call: dict) -> dict:
+    """Register, update, or revoke a marker owned by the signed module principal."""
+    quiet = {"definition": None, "events": [], "mutated": False}
+    principal = (operation.get("x-togavsu-access") or {}).get("module_principal") or {}
+    if (
+        principal.get("scope") != "markers:write"
+        or not principal.get("own_namespace_only")
+        or principal.get("grants_admin")
+        or principal.get("ownership") != "signed_module_principal"
+    ):
+        return {"result": "forbidden", **quiet}
+    if call.get("actor") != "module" or call.get("human_session") or call.get("role") in {"admin", "attorney", "staff", "accountant", "client"}:
+        return {"result": "forbidden", **quiet}
+    if "markers:write" not in set(call.get("scopes") or []):
+        return {"result": "scope_denied", **quiet}
+    module_id = call.get("module_id")
+    if not module_id_slug(module_id) or not module_id_slug(call.get("path_module_id")) or module_id != call.get("path_module_id"):
+        return {"result": "forbidden", **quiet}
+    if call.get("owner_module_id") not in (None, module_id):
+        return {"result": "forbidden", **quiet}
+    action = call.get("action")
+    if action not in {"create", "update", "revoke"}:
+        return {"result": "validation_failed", **quiet}
+    definitions = store.setdefault("definitions", [])
+    current = None
+    if action in {"update", "revoke"}:
+        current = next((row for row in definitions if row.get("id") == call.get("marker_id")), None)
+        if current is None:
+            return {"result": "not_found", **quiet}
+        if current.get("module_id") != module_id:
+            return {"result": "forbidden", **quiet}
+    label = color = target = None
+    if action == "create":
+        label = _marker_label(call.get("label"))
+        color = _marker_color(call.get("color"))
+        if label is None or color is None or not isinstance(call.get("marker_id"), str) or _UUID_TEXT.fullmatch(call["marker_id"]) is None:
+            return {"result": "validation_failed", **quiet}
+        if call.get("target") not in (None, ""):
+            target = normalize_module_target(module_id, call.get("target"))
+            if target is None:
+                return {"result": "validation_failed", **quiet}
+        if _marker_label_taken(definitions, module_id, label, None):
+            return {"result": "conflict", **quiet}
+    elif action == "update":
+        if not current.get("active"):
+            return {"result": "conflict", **quiet}
+        label = current["label"]
+        color = current["color"]
+        target = current.get("target")
+        if "label" in call:
+            label = _marker_label(call.get("label"))
+            if label is None:
+                return {"result": "validation_failed", **quiet}
+        if "color" in call:
+            color = _marker_color(call.get("color"))
+            if color is None:
+                return {"result": "validation_failed", **quiet}
+        if "target" in call and call.get("target") not in (None, ""):
+            target = normalize_module_target(module_id, call.get("target"))
+            if target is None:
+                return {"result": "validation_failed", **quiet}
+        if _marker_label_taken(definitions, module_id, label, current.get("id")):
+            return {"result": "conflict", **quiet}
+    if call.get("replay") or not call.get("committed", True):
+        return {"result": "original_result" if call.get("replay") else "rolled_back", **quiet}
+    seen = store.setdefault("idempotency", {})
+    key = call.get("idempotency_key")
+    if key and key in seen:
+        return {"result": "original_result", **quiet}
+    if action == "revoke":
+        if not current.get("active"):
+            return {"result": "original_result", **quiet}
+        current["active"] = False
+        current["updated_at"] = call.get("updated_at") or current.get("updated_at")
+        definition = current
+        event = "marker.revoked"
+    elif action == "update":
+        current["label"] = label
+        current["color"] = color
+        current["target"] = target
+        current["updated_at"] = call.get("updated_at") or current.get("updated_at")
+        definition = current
+        event = "marker.updated"
+    else:
+        definition = _marker_row(call, module_id, call["marker_id"], label, color, target, True)
+        definitions.append(definition)
+        event = "marker.created"
+    if key:
+        seen[key] = definition["id"]
+    return {
+        "result": "allowed",
+        "definition": definition,
+        "events": [{"type": event, "marker_id": definition["id"], "module_id": module_id}],
+        "mutated": True,
+    }
+
+
+def attach_matter_marker(store: dict, call: dict) -> dict:
+    """Pin an active marker to a matter. The wall is the matter on this call."""
+    quiet = {"attachment": None, "events": [], "mutated": False}
+    if call.get("role") not in {"admin", "attorney", "staff"}:
+        return {"result": "forbidden", **quiet}
+    scopes = set(call.get("scopes") or call.get("token_scopes") or [])
+    if "matters:write" not in scopes:
+        return {"result": "scope_denied", **quiet}
+    if not call.get("matter_id"):
+        return {"result": "validation_failed", **quiet}
+    if not matter_visible(call, call, single_record=True):
+        return {"result": "not_found", **quiet}
+    marker = next((row for row in store.get("definitions") or [] if row.get("id") == call.get("marker_id")), None)
+    if marker is None:
+        return {"result": "not_found", **quiet}
+    if not marker.get("active"):
+        return {"result": "validation_failed", **quiet}
+    if call.get("replay") or not call.get("committed", True):
+        return {"result": "original_result" if call.get("replay") else "rolled_back", **quiet}
+    pins = store.setdefault("attachments", [])
+    for pin in pins:
+        if pin.get("matter_id") == call.get("matter_id") and pin.get("marker_id") == marker["id"]:
+            return {"result": "original_result", **quiet}
+    pin = {"matter_id": call["matter_id"], "marker_id": marker["id"]}
+    pins.append(pin)
+    return {"result": "allowed", "attachment": pin, "events": ["matter.updated"], "mutated": True}
+
+
 def webhook_signature(secret: bytes | str, body: bytes | str) -> str:
     """Canonical X-Togavsu-Signature: sha256= plus lowercase hex HMAC-SHA256 of the raw body bytes."""
     key = secret.encode("utf-8") if isinstance(secret, str) else secret
@@ -1650,7 +1950,9 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
         summary = event["summary"]
     else:
         return None
-    return {
+    if event.get("type") == "trust.flag_raised" and any(event.get(key) is None for key in _FLAG_METADATA):
+        return None
+    body = {
         "id": event["id"],
         "type": event["type"],
         "occurred_at": event["occurred_at"],
@@ -1663,6 +1965,10 @@ def webhook_envelope(module: dict, event: dict) -> dict | None:
         "processor_authorization": event.get("processor_authorization"),
         "background_file_authorization": event.get("background_file_authorization"),
     }
+    if event.get("type") == "trust.flag_raised":
+        for key in _FLAG_METADATA:
+            body[key] = event.get(key)
+    return body
 
 
 def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
@@ -2689,6 +2995,36 @@ def confirm_totp_reset(operation: dict, call: dict, challenge: dict | None) -> d
     return {"result": "allowed", "old_secret_active": False, "activated": True, "challenge": spent}
 
 
+def publish_trust_flags(spec: dict) -> None:
+    """Every ledger writer catalogs the flag. Emission stays conditional on the committed balance."""
+    names = ("trust.entry_posted", "trust.flag_raised")
+    for operation_id in (
+        "postTrustEntry",
+        "bulkTrustEntry",
+        "reverseTrustEntry",
+        "applyTrustToInvoice",
+        "applyFlatFee",
+        "reversePayment",
+        "createPayment",
+        "bulkPayment",
+        "updatePaymentStatus",
+    ):
+        operation = operation_by_id(spec, operation_id)
+        access = operation["x-togavsu-access"]
+        access["trust_flag"] = {**_TRUST_FLAG, "metadata": list(_TRUST_FLAG["metadata"])}
+        if access.get("below_zero") not in (None, "posts"):
+            raise RuntimeError(f"{operation_id} blocks a below-zero trust balance")
+        events = operation.setdefault("x-togavsu-events", [])
+        for name in names:
+            if name not in events:
+                events.append(name)
+    flag = spec.get("x-togavsu-background-events", {}).get("trust.flag_raised")
+    if flag is not None:
+        flag["metadata"] = list(_FLAG_METADATA)
+        flag["scopes"] = ["trust:read"]
+        flag["below_zero"] = "warning"
+
+
 def publish_trust_debit(spec: dict) -> None:
     rule = {
         "client_id": "required",
@@ -2705,7 +3041,7 @@ def publish_trust_debit(spec: dict) -> None:
 
 def trust_debit_decision(call: dict) -> dict:
     """Select the client and trust account before any ledger post. Denial changes nothing."""
-    denied = {"ledger_mutated": False, "debited_account_id": None, "amount_cents": 0}
+    denied = {"ledger_mutated": False, "debited_account_id": None, "amount_cents": 0, "events": []}
     if call.get("role") not in ("admin", "attorney"):
         return {"result": "forbidden", **denied}
     if not matter_visible(call, call, single_record=True):
@@ -2728,13 +3064,38 @@ def trust_debit_decision(call: dict) -> dict:
         return {"result": "not_found", **denied}
     if row.get("active") is False or row.get("authorized") is False:
         return {"result": "forbidden", **denied}
+    amount = call.get("amount_cents")
+    signed = -abs(amount) if isinstance(amount, int) and not isinstance(amount, bool) else 0
+    resulting = call.get("balance_after", 0)
+    if isinstance(resulting, bool) or not isinstance(resulting, int):
+        resulting = 0
+    events = trust_ledger_events(
+        {
+            "operationId": "trustDebit",
+            "x-togavsu-events": ["trust.entry_posted", "trust.flag_raised"],
+            "x-togavsu-access": {"trust_flag": _TRUST_FLAG},
+        },
+        [
+            {
+                "amount_cents": signed,
+                "opening": {"matter_cents": resulting - signed, "client_cents": resulting - signed, "account_cents": resulting - signed},
+                "matter_id": call.get("matter_id"),
+                "client_id": call.get("client_id"),
+                "trust_account_id": row["trust_account_id"],
+                "trust_entry_id": call.get("trust_entry_id"),
+                "trust_posted": True,
+            }
+        ],
+        committed=True,
+    )
     return {
         "result": "allowed",
         "ledger_mutated": True,
         "debited_account_id": row["trust_account_id"],
         "client_id": row["client_id"],
         "amount_cents": call["amount_cents"],
-        "below_zero": call.get("balance_after", 0) < 0,
+        "below_zero": resulting < 0,
+        "events": events,
     }
 
 

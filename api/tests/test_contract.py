@@ -44,6 +44,9 @@ from contract.policy import (
     project_invoice_for_role,
     project_record,
     module_help_registration,
+    module_marker_registration,
+    attach_matter_marker,
+    trust_ledger_events,
     rendered_markdown,
     webhook_signature,
     webhook_signature_matches,
@@ -3705,6 +3708,16 @@ class ContractTest(unittest.TestCase):
             else:
                 self.assertEqual(scopes, published.get(event_type, []), event_type)
             sample = {**base, "type": event_type, "record_type": record_type}
+            if event_type == "trust.flag_raised":
+                sample.update(
+                    {
+                        "client_id": base["matter_id"],
+                        "trust_account_id": base["record_id"],
+                        "balance_cents": -1,
+                        "trust_entry_id": base["record_id"],
+                        "balance_scope": "matter",
+                    }
+                )
             events_only = {"installed": True, "registered": True, "approved_scopes": ["events:read"], "subscriptions": [event_type], "on_wall": True, "attorney_only": False}
             if "events:read" not in scopes:
                 self.assertIsNone(webhook_envelope(events_only, sample), event_type)
@@ -4318,6 +4331,407 @@ class ContractTest(unittest.TestCase):
             self.assertEqual(rule["other_accounts"], "unchanged", operation_id)
             self.assertEqual(rule["authorize_before"], "any_mutation", operation_id)
 
+    def test_module_marker_registration_owns_its_namespace(self):
+        firm = _operation(self.spec, "createMarkerDefinition")
+        self.assertEqual(firm["x-togavsu-access"]["roles"], ["admin"])
+        self.assertEqual(firm["x-togavsu-access"]["scopes"], ["settings:write"])
+        self.assertNotIn("module_principal", firm["x-togavsu-access"])
+        self.assertNotIn("markers:write", firm["x-togavsu-access"]["scopes"])
+        denied_settings = decide_module_permissions(
+            {"id": "intake", "version": "0.1.0", "permissions": ["settings:write"]},
+            [{"scope": "settings:write", "decision": "approve"}],
+            signature_verified=True,
+        )
+        self.assertEqual(denied_settings["result"], "validation_failed")
+        installed = decide_module_permissions(
+            {"id": "intake", "version": "0.1.0", "permissions": ["markers:write"]},
+            [{"scope": "markers:write", "decision": "approve"}],
+            signature_verified=True,
+        )
+        self.assertEqual(installed["result"], "installed")
+        self.assertEqual(installed["token_scopes"], ["markers:write"])
+        unsigned = decide_module_permissions(
+            {"id": "intake", "version": "0.1.0", "permissions": ["markers:write"]},
+            [{"scope": "markers:write", "decision": "approve"}],
+            signature_verified=False,
+        )
+        self.assertNotEqual(unsigned["result"], "installed")
+        tools = {tool["name"]: tool for tool in render_mcp(self.spec)["tools"]}
+        for operation_id in ("createModuleMarker", "updateModuleMarker", "revokeModuleMarker"):
+            operation = _operation(self.spec, operation_id)
+            self.assertEqual(operation["x-togavsu-mcp"]["parity"], "required", operation_id)
+            self.assertEqual(operation["x-togavsu-mcp"]["tool"], operation_id, operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["roles"], [], operation_id)
+            self.assertEqual(operation["x-togavsu-access"]["scopes"], ["markers:write"], operation_id)
+            self.assertNotIn("settings:write", operation["x-togavsu-access"]["scopes"], operation_id)
+            principal = operation["x-togavsu-access"]["module_principal"]
+            self.assertFalse(principal["grants_admin"], operation_id)
+            self.assertTrue(principal["own_namespace_only"], operation_id)
+            self.assertEqual(principal["ownership"], "signed_module_principal", operation_id)
+            self.assertEqual(principal["scope"], "markers:write", operation_id)
+            self.assertIn(operation_id, tools, operation_id)
+            self.assertEqual(tools[operation_id]["scopes"], operation["x-togavsu-access"]["scopes"], operation_id)
+            self.assertEqual(tools[operation_id]["roles"], operation["x-togavsu-access"]["roles"], operation_id)
+            self.assertNotEqual(operation["security"], [], operation_id)
+        write = _component_validator(self.spec, "ModuleMarkerWrite")
+        write.validate({"label": "After hours", "color": "#336699", "target": "intake/header"})
+        for body in (
+            {"label": "After hours", "color": "red"},
+            {"label": "<script>", "color": "#336699"},
+            {"label": "After hours", "color": "#336699", "target": "https://evil.example"},
+            {"label": "After hours", "color": "#336699", "target": "javascript:alert(1)"},
+            {"label": "After hours", "color": "#336699", "module_id": "other-mod"},
+        ):
+            with self.assertRaises(Exception):
+                write.validate(body)
+        create = _operation(self.spec, "createModuleMarker")
+        update = _operation(self.spec, "updateModuleMarker")
+        revoke = _operation(self.spec, "revokeModuleMarker")
+        self.assertEqual(module_marker_registration(firm, {"definitions": []}, {"actor": "module", "module_id": "intake", "path_module_id": "intake", "scopes": ["markers:write"], "action": "create"}), {"result": "forbidden", "definition": None, "events": [], "mutated": False})
+        marker_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        other_id = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        firm_id = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        actor = "018f1a00-7b3c-7d4e-8a11-444444444444"
+        matter_id = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        stamp = "2026-11-07T18:00:00Z"
+        own = {
+            "actor": "module",
+            "module_id": "intake",
+            "path_module_id": "intake",
+            "scopes": installed["token_scopes"],
+            "action": "create",
+            "marker_id": marker_id,
+            "label": "After hours",
+            "color": "#336699",
+            "target": "intake/header",
+            "created_at": stamp,
+            "created_by": actor,
+            "committed": True,
+        }
+        store = {"definitions": [{"id": firm_id, "label": "Pro bono", "color": "#112233", "active": True, "module_id": None, "namespace": "firm", "target": None, "placement": "matter-header", "created_at": stamp, "created_by": actor, "updated_at": stamp}], "attachments": []}
+        for label, call in (
+            ("settings", {**own, "scopes": ["settings:write"]}),
+            ("admin", {**own, "role": "admin", "human_session": True, "actor": "human", "scopes": ["markers:write", "settings:write"]}),
+            ("human", {**own, "actor": "human", "human_session": True}),
+            ("other-path", {**own, "path_module_id": "other-mod"}),
+            ("owner", {**own, "owner_module_id": "other-mod"}),
+            ("traversal", {**own, "module_id": "../intake", "path_module_id": "../intake"}),
+        ):
+            denied = module_marker_registration(create, store, call)
+            self.assertIn(denied["result"], {"forbidden", "scope_denied"}, label)
+            self.assertEqual(denied["events"], [], label)
+            self.assertFalse(denied["mutated"], label)
+        self.assertEqual(len(store["definitions"]), 1)
+        registered = module_marker_registration(create, store, own)
+        self.assertEqual(registered["result"], "allowed")
+        self.assertEqual(registered["events"], [{"type": "marker.created", "marker_id": marker_id, "module_id": "intake"}])
+        self.assertEqual(registered["definition"]["module_id"], "intake")
+        self.assertEqual(registered["definition"]["namespace"], "intake")
+        self.assertEqual(registered["definition"]["color"], "#336699")
+        self.assertEqual(registered["definition"]["target"], "/m/intake/intake/header")
+        self.assertEqual(registered["definition"]["placement"], "matter-header")
+        _component_validator(self.spec, "ModuleMarker").validate(registered["definition"])
+        duplicate = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": " after   HOURS "})
+        self.assertEqual(duplicate["result"], "conflict")
+        self.assertEqual(duplicate["events"], [])
+        self.assertEqual(len(store["definitions"]), 2)
+        bad_color = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": "Weekend", "color": "red"})
+        self.assertEqual(bad_color["result"], "validation_failed")
+        bad_target = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": "Weekend", "target": "javascript:alert(1)"})
+        self.assertEqual(bad_target["result"], "validation_failed")
+        self.assertEqual(len(store["definitions"]), 2)
+        rolled = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": "Weekend", "committed": False})
+        self.assertEqual(rolled["result"], "rolled_back")
+        self.assertEqual(rolled["events"], [])
+        replay = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": "Weekend", "replay": True})
+        self.assertEqual(replay["result"], "original_result")
+        self.assertEqual(replay["events"], [])
+        self.assertEqual(len(store["definitions"]), 2)
+        firm_edit = module_marker_registration(update, store, {**own, "action": "update", "marker_id": firm_id, "label": "Stolen", "scopes": ["markers:write", "settings:write"]})
+        self.assertEqual(firm_edit["result"], "forbidden")
+        self.assertEqual(store["definitions"][0]["label"], "Pro bono")
+        other_store_id = "018f1a00-7b3c-7d4e-8a11-666666666666"
+        store["definitions"].append({"id": other_store_id, "label": "Foreign", "color": "#abcdef", "active": True, "module_id": "other-mod", "namespace": "other-mod", "target": None, "placement": "matter-header", "created_at": stamp, "created_by": actor, "updated_at": stamp})
+        foreign = module_marker_registration(update, store, {**own, "action": "update", "marker_id": other_store_id, "color": "#000000"})
+        self.assertEqual(foreign["result"], "forbidden")
+        self.assertEqual(store["definitions"][-1]["color"], "#abcdef")
+        recolored = module_marker_registration(update, store, {**own, "action": "update", "marker_id": marker_id, "color": "#AABBCC"})
+        self.assertEqual(recolored["result"], "allowed")
+        self.assertEqual(recolored["definition"]["color"], "#aabbcc")
+        self.assertEqual(recolored["definition"]["label"], "After hours")
+        self.assertEqual(recolored["events"][0]["type"], "marker.updated")
+        second = module_marker_registration(create, store, {**own, "marker_id": other_id, "label": "Weekend", "target": None})
+        self.assertEqual(second["result"], "allowed")
+        clash = module_marker_registration(update, store, {**own, "action": "update", "marker_id": other_id, "label": "After hours"})
+        self.assertEqual(clash["result"], "conflict")
+        self.assertEqual(next(row for row in store["definitions"] if row["id"] == other_id)["label"], "Weekend")
+        revoked = module_marker_registration(revoke, store, {**own, "action": "revoke", "marker_id": marker_id})
+        self.assertEqual(revoked["result"], "allowed")
+        self.assertFalse(revoked["definition"]["active"])
+        self.assertEqual(revoked["events"][0]["type"], "marker.revoked")
+        again = module_marker_registration(revoke, store, {**own, "action": "revoke", "marker_id": marker_id})
+        self.assertEqual(again["result"], "original_result")
+        self.assertEqual(again["events"], [])
+        firm_revoke = module_marker_registration(revoke, store, {**own, "action": "revoke", "marker_id": firm_id})
+        self.assertEqual(firm_revoke["result"], "forbidden")
+        self.assertTrue(store["definitions"][0]["active"])
+        reused = module_marker_registration(create, store, {**own, "marker_id": "018f1a00-7b3c-7d4e-8a11-777777777777", "label": "After hours"})
+        self.assertEqual(reused["result"], "allowed")
+        staff = {"role": "staff", "token_scopes": ["matters:write"], "matter_id": matter_id, "marker_id": reused["definition"]["id"], "matter_walled": False, "committed": True}
+        pinned = attach_matter_marker(store, staff)
+        self.assertEqual(pinned["result"], "allowed")
+        self.assertEqual(pinned["events"], ["matter.updated"])
+        self.assertEqual(store["attachments"], [{"matter_id": matter_id, "marker_id": reused["definition"]["id"]}])
+        repeat = attach_matter_marker(store, {**staff, "replay": True})
+        self.assertEqual(repeat["result"], "original_result")
+        self.assertEqual(repeat["events"], [])
+        self.assertEqual(len(store["attachments"]), 1)
+        hidden = attach_matter_marker(store, {**staff, "matter_id": "018f1a00-7b3c-7d4e-8a11-888888888888", "matter_walled": True, "on_wall": False, "matter_membership": {"018f1a00-7b3c-7d4e-8a11-888888888888": False}})
+        self.assertEqual(hidden["result"], "not_found")
+        self.assertEqual(hidden["events"], [])
+        self.assertEqual(len(store["attachments"]), 1)
+        dead = attach_matter_marker(store, {**staff, "marker_id": marker_id})
+        self.assertEqual(dead["result"], "validation_failed")
+        self.assertEqual(len(store["attachments"]), 1)
+
+    def test_trust_flag_follows_the_committed_balance(self):
+        writers = (
+            "postTrustEntry",
+            "bulkTrustEntry",
+            "reverseTrustEntry",
+            "applyTrustToInvoice",
+            "applyFlatFee",
+            "reversePayment",
+            "createPayment",
+            "bulkPayment",
+            "updatePaymentStatus",
+        )
+        metadata = ["matter_id", "client_id", "trust_account_id", "balance_cents", "trust_entry_id", "balance_scope"]
+        for operation_id in writers:
+            operation = _operation(self.spec, operation_id)
+            rule = operation["x-togavsu-access"]["trust_flag"]
+            self.assertEqual(rule["selection"], "resulting_balance", operation_id)
+            self.assertFalse(rule["blocks"], operation_id)
+            self.assertEqual(rule["below_zero"], "posts", operation_id)
+            self.assertEqual(rule["webhook_scope"], "trust:read", operation_id)
+            self.assertEqual(rule["metadata"], metadata, operation_id)
+            self.assertIn("trust.entry_posted", operation["x-togavsu-events"], operation_id)
+            self.assertIn("trust.flag_raised", operation["x-togavsu-events"], operation_id)
+        background = self.spec["x-togavsu-background-events"]["trust.flag_raised"]
+        self.assertEqual(background["scopes"], ["trust:read"])
+        self.assertEqual(background["metadata"], metadata)
+        self.assertEqual(background["below_zero"], "warning")
+        self.assertEqual(event_read_scopes("trust.flag_raised"), ["trust:read"])
+        self.assertEqual(event_read_scopes("trust.entry_posted"), ["trust:read"])
+        self.assertNotIn("below_zero", self.spec["components"]["schemas"]["Problem"]["properties"]["code"]["enum"])
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        other_matter = "018f1a00-7b3c-7d4e-8a11-333333333334"
+        client = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        entry_a = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        entry_b = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        entry_c = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3"
+
+        def row(entry, amount, matter_id=matter, opening=None):
+            item = {"amount_cents": amount, "matter_id": matter_id, "client_id": client, "trust_account_id": account, "trust_entry_id": entry}
+            if opening is not None:
+                item["opening"] = opening
+            return item
+
+        opening = {"matter_cents": 100, "client_cents": 100, "account_cents": 500}
+        post = _operation(self.spec, "postTrustEntry")
+        bulk = _operation(self.spec, "bulkTrustEntry")
+        reverse = _operation(self.spec, "reverseTrustEntry")
+        safe = trust_ledger_events(post, [row(entry_a, 25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0})], committed=True)
+        self.assertEqual([event["type"] for event in safe], ["trust.entry_posted"])
+        flagged = trust_ledger_events(post, [row(entry_a, -25, opening={"matter_cents": 0, "client_cents": 0, "account_cents": 0})], committed=True)
+        self.assertEqual([event["type"] for event in flagged], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(flagged[1]["balance_cents"], -25)
+        self.assertEqual(flagged[1]["balance_scope"], "matter")
+        for label, kwargs in (("rollback", {"committed": False}), ("replay", {"committed": True, "replay": True}), ("denied", {"committed": True, "denied": True})):
+            self.assertEqual(trust_ledger_events(post, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
+            self.assertEqual(trust_ledger_events(bulk, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
+            self.assertEqual(trust_ledger_events(reverse, [row(entry_a, -25, opening=opening)], **kwargs), [], label)
+        ordered = trust_ledger_events(
+            bulk,
+            [row(entry_a, -40, opening=opening), row(entry_b, -80), row(entry_c, 5)],
+            committed=True,
+        )
+        self.assertEqual([event["type"] for event in ordered], ["trust.entry_posted", "trust.entry_posted", "trust.flag_raised", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual([event["balance_cents"] for event in ordered if event["type"] == "trust.flag_raised"], [-20, -15])
+        separate = trust_ledger_events(
+            bulk,
+            [
+                row(entry_a, -5, opening={"matter_cents": 10, "client_cents": 10, "account_cents": 10}),
+                row(entry_b, -5, matter_id=other_matter, opening={"matter_cents": 100, "client_cents": 0, "account_cents": 0}),
+            ],
+            committed=True,
+        )
+        self.assertEqual([event["type"] for event in separate], ["trust.entry_posted", "trust.entry_posted"])
+        deposit_reversal = trust_ledger_events(reverse, [row(entry_a, -250, opening={"matter_cents": 200, "client_cents": 200, "account_cents": 200})], committed=True)
+        self.assertEqual([event["type"] for event in deposit_reversal], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(deposit_reversal[1]["balance_cents"], -50)
+        client_only = trust_ledger_events(
+            post,
+            [row(entry_a, -10, opening={"matter_cents": 50, "client_cents": 5, "account_cents": 80})],
+            committed=True,
+        )
+        self.assertEqual(client_only[1]["balance_scope"], "client")
+        self.assertEqual(client_only[1]["balance_cents"], -5)
+        debit = trust_debit_decision(
+            {
+                "role": "attorney",
+                "token_scopes": ["trust:withdraw"],
+                "client_id": client,
+                "trust_account_id": account,
+                "matter_id": matter,
+                "amount_cents": 1500,
+                "balance_after": -20,
+                "trust_entry_id": entry_a,
+                "matter_walled": False,
+                "balances": [{"trust_account_id": account, "client_id": client, "matter_id": matter, "balance_cents": 1480, "active": True, "authorized": True, "firm_id": "firm-1"}],
+                "firm_id": "firm-1",
+            }
+        )
+        self.assertEqual(debit["result"], "allowed")
+        self.assertTrue(debit["below_zero"])
+        self.assertEqual([event["type"] for event in debit["events"]], ["trust.entry_posted", "trust.flag_raised"])
+        covered_call = {"role": "attorney", "token_scopes": ["trust:withdraw"], "client_id": client, "trust_account_id": account, "matter_id": matter, "amount_cents": 1500, "balance_after": 100, "matter_walled": False, "balances": [{"trust_account_id": account, "client_id": client, "matter_id": matter, "balance_cents": 1600, "active": True, "authorized": True, "firm_id": "firm-1"}], "firm_id": "firm-1"}
+        covered = trust_debit_decision(covered_call)
+        self.assertEqual([event["type"] for event in covered["events"]], ["trust.entry_posted"])
+        refused = trust_debit_decision({**covered_call, "token_scopes": ["trust:read"]})
+        self.assertEqual(refused["events"], [])
+        self.assertFalse(refused["ledger_mutated"])
+        account_row = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        accounts = [{"id": account_row, "active": True, "authorized": True, "firm_id": "firm-1"}]
+        compensation = {
+            "client_id": client,
+            "matter_id": matter,
+            "amount_cents": 1500,
+            "trust_entry_id": entry_a,
+            "created_by": "018f1a00-7b3c-7d4e-8a11-555555555555",
+            "posted_entry_id": entry_b,
+            "created_at": "2026-11-07T18:00:00Z",
+            "original_entry": {"id": entry_a, "entry_type": "deposit", "amount_cents": 1500},
+        }
+        reversal = payment_reversal_decision(
+            _operation(self.spec, "reversePayment"),
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                "trust_account_id": account_row,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "opening": {"matter_cents": 200, "client_cents": 200, "account_cents": 200},
+                **compensation,
+            },
+        )
+        self.assertEqual(reversal["result"], "allowed")
+        self.assertTrue(reversal["ledger_mutated"])
+        self.assertTrue(reversal["flag"])
+        self.assertEqual([event["type"] for event in reversal["events"]], ["trust.entry_posted", "trust.flag_raised"])
+        restored = payment_reversal_decision(
+            _operation(self.spec, "reversePayment"),
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                "trust_account_id": account_row,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "opening": {"matter_cents": 5000, "client_cents": 5000, "account_cents": 5000},
+                **compensation,
+            },
+        )
+        self.assertEqual(restored["result"], "allowed")
+        self.assertFalse(restored["flag"])
+        self.assertEqual([event["type"] for event in restored["events"]], ["trust.entry_posted"])
+        denied_reversal = payment_reversal_decision(
+            _operation(self.spec, "reversePayment"),
+            {"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": True, "matter_walled": False, "trust_account_id": account_row, "trust_accounts": accounts, "firm_id": "firm-1", **compensation},
+        )
+        self.assertEqual(denied_reversal["result"], "scope_denied")
+        self.assertEqual(denied_reversal.get("events", []), [])
+        self.assertFalse(denied_reversal["ledger_mutated"])
+        policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
+        issued = processor_issuance(
+            policy,
+            {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write", "trust:write"]},
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee1",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee2",
+                "matter_id": matter,
+                "contact_id": client,
+                "invoice_id": None,
+                "amount_cents": 40,
+                "destination": "trust",
+                "trust_account_id": account,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        self.assertEqual(issued["result"], "allowed")
+        create = _operation(self.spec, "createPayment")
+        store = {"payments": {}, "ledger": [], "idempotency": {}}
+        call = {
+            "operation": "createPayment",
+            "registered": True,
+            "caller_module_id": "lawpay",
+            "module_scopes": ["payments:write", "trust:write"],
+            "grant": issued["grant"],
+            "matter_id": matter,
+            "contact_id": client,
+            "invoice_id": None,
+            "amount_cents": 40,
+            "destination": "trust",
+            "trust_account_id": account,
+            "trust_accounts": accounts,
+            "firm_id": "firm-1",
+            "status": "completed",
+            "viewer_present": False,
+            "opening": {"matter_cents": -100, "client_cents": -100, "account_cents": -100},
+        }
+        posted = processor_apply(store, policy, create, call)
+        self.assertEqual(posted["result"], "allowed")
+        self.assertTrue(posted["ledger_inserted"])
+        self.assertEqual([event["type"] for event in posted["events"]], ["trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(posted["events"][1]["balance_cents"], -60)
+        replayed = processor_apply(store, policy, create, call)
+        self.assertEqual(replayed["result"], "original_result")
+        self.assertEqual(replayed["events"], [])
+        self.assertEqual(len(store["ledger"]), 1)
+        denied = processor_apply(store, policy, create, {**call, "destination": "operating", "grant": {**issued["grant"], "destination": "operating"}, "module_scopes": ["trust:read"]})
+        self.assertNotEqual(denied["result"], "allowed")
+        self.assertEqual(denied["events"], [])
+        self.assertEqual(len(store["ledger"]), 1)
+        flag = posted["events"][1]
+        envelope = {
+            "id": entry_c,
+            "type": "trust.flag_raised",
+            "occurred_at": "2026-11-07T18:00:00Z",
+            "actor_kind": "system",
+            "record_type": "trust_entry",
+            "record_id": flag["trust_entry_id"],
+            "summary": "Trust balance below zero",
+            "matter_walled": False,
+            **flag,
+        }
+        subscriber = {"installed": True, "registered": True, "module_id": "intake", "approved_scopes": ["trust:read"], "subscriptions": ["trust.flag_raised"], "on_wall": True, "attorney_only": False}
+        delivered = webhook_envelope(subscriber, envelope)
+        self.assertEqual(delivered["balance_cents"], -60)
+        self.assertEqual(delivered["balance_scope"], "matter")
+        self.assertEqual(delivered["client_id"], client)
+        self.assertEqual(delivered["trust_account_id"], account)
+        _component_validator(self.spec, "WebhookEvent").validate(delivered)
+        self.assertIsNone(webhook_envelope({**subscriber, "approved_scopes": ["events:read"]}, envelope))
+        self.assertIsNone(webhook_envelope(subscriber, {key: value for key, value in envelope.items() if key != "balance_cents"}))
+
     def test_record_mutations_emit_events_only_after_commit(self):
         exempt = []
         uncovered = []
@@ -4332,8 +4746,16 @@ class ContractTest(unittest.TestCase):
             self.assertTrue(operation["x-togavsu-events"], operation["operationId"])
             self.assertEqual(operation["x-togavsu-access"].get("events_on_failure"), "none", operation["operationId"])
             self.assertEqual(committed_events(operation, committed=False), [], operation["operationId"])
-            if operation["x-togavsu-access"].get("payment_events", {}).get("selection") == "resulting_state":
+            access = operation["x-togavsu-access"]
+            if access.get("trust_flag", {}).get("selection") == "resulting_balance":
+                self.assertFalse(access["trust_flag"]["blocks"], operation["operationId"])
+                self.assertEqual(trust_ledger_events(operation, [{"amount_cents": -1}], committed=False), [], operation["operationId"])
+                self.assertEqual(trust_ledger_events(operation, [{"amount_cents": -1}], committed=True, replay=True), [], operation["operationId"])
+                self.assertEqual(trust_ledger_events(operation, [{"amount_cents": -1}], committed=True, denied=True), [], operation["operationId"])
+            if access.get("payment_events", {}).get("selection") == "resulting_state":
                 self.assertEqual(payment_lifecycle_events(operation, [{"status": "completed"}], committed=False), [], operation["operationId"])
+                continue
+            if access.get("trust_flag", {}).get("selection") == "resulting_balance":
                 continue
             self.assertEqual(committed_events(operation, committed=True), operation["x-togavsu-events"], operation["operationId"])
             if not operation["x-togavsu-events"]:
@@ -4347,8 +4769,8 @@ class ContractTest(unittest.TestCase):
         bulk_payment = _operation(self.spec, "bulkPayment")
         update_payment = _operation(self.spec, "updatePaymentStatus")
         reverse_payment = _operation(self.spec, "reversePayment")
-        self.assertEqual(create_payment["x-togavsu-events"], ["payment.created", "payment.completed"])
-        self.assertEqual(bulk_payment["x-togavsu-events"], ["payment.created", "payment.completed"])
+        self.assertEqual(create_payment["x-togavsu-events"], ["payment.created", "payment.completed", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(bulk_payment["x-togavsu-events"], ["payment.created", "payment.completed", "trust.entry_posted", "trust.flag_raised"])
         self.assertEqual(
             payment_lifecycle_events(create_payment, [{"status": "pending", "inserted": True}], committed=True),
             ["payment.created"],

@@ -12708,7 +12708,7 @@
       "post": {
         "operationId": "createMarkerDefinition",
         "summary": "Create a marker definition",
-        "description": "Creates one marker definition. A repeated Idempotency-Key with the same body returns the original result.",
+        "description": "Creates one marker definition. A repeated Idempotency-Key with the same body returns the original result. Admin only, with settings:write. A module cannot call this route. An installed module registers a marker in its own namespace with markers:write. That scope is not settings:write and it does not make the module an admin.",
         "tags": [
           "Matters"
         ],
@@ -13039,6 +13039,436 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/modules/{module_id}/markers": {
+      "post": {
+        "operationId": "createModuleMarker",
+        "summary": "Register a module marker",
+        "description": "An approved module token with markers:write registers one marker in its own namespace. The owner is the signed module id on the token. The path module_id must be that same id. A caller-supplied owner is ignored. The token cannot create a firm marker or a marker for another module. settings:write and an admin role are not accepted here. A human session is forbidden. The label is plain text. The color is a six-digit hex value. An optional display target is a module-local page; a URL or another scheme is rejected. A second active marker with the same label in this namespace is a conflict. Revoke hides the definition and leaves matter pins that already use it.",
+        "tags": [
+          "Matters"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMarker"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "matter-markers"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "markers:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "markers:write",
+            "module_id_param": "module_id",
+            "own_namespace_only": true,
+            "grants_admin": false,
+            "ownership": "signed_module_principal",
+            "firm_markers": "forbidden",
+            "other_module": "forbidden",
+            "caller_supplied_owner": "ignored"
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "marker.created"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "createModuleMarker",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "conflict"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleMarkerWrite"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/modules/{module_id}/markers/{marker_id}": {
+      "patch": {
+        "operationId": "updateModuleMarker",
+        "summary": "Update a module marker",
+        "description": "Updates the calling module's own marker. A firm marker and another module's marker are forbidden. The signed module id is the owner. A duplicate active label in this namespace is a conflict. A revoked marker is not edited back to active; register a new one. Label, color, and display target use the same checks as createModuleMarker.",
+        "tags": [
+          "Matters"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "marker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter marker_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMarker"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "matter-markers"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "markers:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "markers:write",
+            "module_id_param": "module_id",
+            "own_namespace_only": true,
+            "grants_admin": false,
+            "ownership": "signed_module_principal",
+            "firm_markers": "forbidden",
+            "other_module": "forbidden",
+            "caller_supplied_owner": "ignored"
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "marker.updated"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "updateModuleMarker",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "body"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "conflict",
+          "not_found"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModuleMarkerWritePatch"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/modules/{module_id}/markers/{marker_id}/revoke": {
+      "post": {
+        "operationId": "revokeModuleMarker",
+        "summary": "Revoke a module marker",
+        "description": "Sets the calling module's marker inactive. The row stays, and matter pins that already use it stay. A firm marker and another module's marker are forbidden. Revoking an inactive marker returns the original result and emits nothing.",
+        "tags": [
+          "Matters"
+        ],
+        "parameters": [
+          {
+            "name": "module_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "description": "Path parameter module_id."
+          },
+          {
+            "name": "marker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter marker_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleMarker"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "matter-markers"
+        ],
+        "x-togavsu-access": {
+          "roles": [],
+          "scopes": [
+            "markers:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_principal": {
+            "actor_kind": "module",
+            "scope": "markers:write",
+            "module_id_param": "module_id",
+            "own_namespace_only": true,
+            "grants_admin": false,
+            "ownership": "signed_module_principal",
+            "firm_markers": "forbidden",
+            "other_module": "forbidden",
+            "caller_supplied_owner": "ignored"
+          },
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "marker.revoked"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "revokeModuleMarker",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "x-togavsu-error-codes": [
+          "forbidden",
+          "scope_denied",
+          "not_found"
+        ]
       }
     },
     "/api/v1/fee-agreements": {
@@ -25692,11 +26122,34 @@
             "authorize_before": "any_mutation",
             "inactive_or_unauthorized": "forbidden",
             "wrong_client_or_account": "not_found"
+          },
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
           }
         },
         "x-togavsu-events": [
           "payment.completed",
-          "trust.entry_posted"
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -26398,12 +26851,36 @@
           },
           "events_on": "commit",
           "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          },
           "admin_bypasses_wall": false,
           "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
           "payment.created",
-          "payment.completed"
+          "payment.completed",
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -26728,11 +27205,35 @@
             "other_module_unpublished_table": "forbidden"
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          }
         },
         "x-togavsu-events": [
           "payment.created",
-          "payment.completed"
+          "payment.completed",
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -27091,11 +27592,35 @@
           },
           "noninteractive_workflow": "payment_processor",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          }
         },
         "x-togavsu-events": [
           "payment.updated",
-          "payment.completed"
+          "payment.completed",
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -27168,7 +27693,7 @@
       "post": {
         "operationId": "reversePayment",
         "summary": "Reverse a payment",
-        "description": "Posts a reversal. The original payment amount is not edited and the original trust row is not edited. An operating payment, one with no trust entry, needs payments:write. A trust-linked payment also needs trust:withdraw. That scope check runs before any payment status change and before any ledger write. Insufficient scopes, the wrong role, or a walled matter write nothing. When the scopes and the wall allow it, the trust handler appends exactly one reversal. The time module does not post another. A below-zero balance still posts and raises a flag.",
+        "description": "Posts a reversal. The original payment amount is not edited and the original trust row is not edited. An operating payment, one with no trust entry, needs payments:write. A trust-linked payment also needs trust:withdraw. That scope check runs before any payment status change and before any ledger write. Insufficient scopes, the wrong role, or a walled matter write nothing. When the scopes and the wall allow it, the trust handler appends exactly one reversal. The time module does not post another. A reversal that leaves a negative balance still posts and raises trust.flag_raised. A non-negative reversal does not raise the flag. Rollback, denial, and replay emit nothing.",
         "tags": [
           "Billing"
         ],
@@ -27280,10 +27805,34 @@
             }
           },
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          }
         },
         "x-togavsu-events": [
-          "payment.reversed"
+          "payment.reversed",
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -27643,11 +28192,34 @@
             "inactive_or_unauthorized": "forbidden",
             "wrong_client_or_account": "not_found"
           },
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          },
           "admin_bypasses_wall": false,
           "effect_order": "authorize_before_external_effect"
         },
         "x-togavsu-events": [
-          "trust.entry_posted"
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -30042,7 +30614,7 @@
       "post": {
         "operationId": "postTrustEntry",
         "summary": "Post a trust ledger entry",
-        "description": "Appends a deposit, withdrawal, transfer to operating, refund, or adjustment. The bearer scope comes from entry_type_scopes: deposit needs trust:write, and a withdrawal, transfer, refund, or adjustment needs trust:withdraw. A token that holds only trust:write is scope_denied on those four types. A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. Staff may post a deposit. An adjustment amount is signed: positive credits the client and negative debits the client, with adjustment_direction set to match. An entry that leaves a negative client balance, per matter or overall, still posts. The core raises a trust flag and emails the admins and the responsible attorney. The balance is never a reason to reject the post.",
+        "description": "Appends a deposit, withdrawal, transfer to operating, refund, or adjustment. The bearer scope comes from entry_type_scopes: deposit needs trust:write, and a withdrawal, transfer, refund, or adjustment needs trust:withdraw. A token that holds only trust:write is scope_denied on those four types. A withdrawal, transfer, refund, or adjustment also requires an attorney or admin. Staff may post a deposit. An adjustment amount is signed: positive credits the client and negative debits the client, with adjustment_direction set to match. An entry that leaves a negative client balance, per matter or overall, still posts. The core raises a trust flag, trust.flag_raised, only for that committed below-zero result and emails the admins and the responsible attorney. A non-negative post does not raise the flag. A rollback, a denial, and a replay emit nothing. The balance is a warning. It is never a reason to reject the post.",
         "tags": [
           "Trust"
         ],
@@ -30207,6 +30779,28 @@
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          },
           "admin_bypasses_wall": false,
           "effect_order": "authorize_before_external_effect"
         },
@@ -30392,7 +30986,7 @@
       "post": {
         "operationId": "bulkTrustEntry",
         "summary": "Post trust ledger entries in one batch",
-        "description": "One transaction. A failed item posts nothing. A negative balance still posts and returns its flags. Each item uses entry_type_scopes. A trust:write token is scope_denied for a withdrawal, transfer, refund, or adjustment in the batch, and nothing is posted. There is no bulk edit and no bulk delete.",
+        "description": "One transaction. A failed item posts nothing. Items apply in order, and each item sees the balance left by the item before it. A below-zero result still posts and raises trust.flag_raised for that item. The batch is not rejected for the balance. A rollback, a denial, and a replay emit neither trust.entry_posted nor trust.flag_raised. Each item uses entry_type_scopes. A trust:write token is scope_denied for a withdrawal, transfer, refund, or adjustment in the batch, and nothing is posted. There is no bulk edit and no bulk delete.",
         "tags": [
           "Trust"
         ],
@@ -30569,10 +31163,33 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          }
         },
         "x-togavsu-events": [
-          "trust.entry_posted"
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -30652,7 +31269,7 @@
       "post": {
         "operationId": "reverseTrustEntry",
         "summary": "Reverse a trust ledger entry",
-        "description": "Appends a reversal entry. The original row stays. Update and delete are not operations on this ledger.",
+        "description": "Appends a reversal entry. The original row stays. Update and delete are not operations on this ledger. Reversing a deposit subtracts that amount and can leave a negative balance. The reversal still posts and raises trust.flag_raised when the committed balance is below zero. The balance does not block the reversal. A rollback, a denial, and a replay emit nothing.",
         "tags": [
           "Trust"
         ],
@@ -30729,10 +31346,33 @@
           "access_inherits": "matter",
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
-          "events_on_failure": "none"
+          "events_on_failure": "none",
+          "trust_flag": {
+            "selection": "resulting_balance",
+            "posted": "trust.entry_posted",
+            "flag": "trust.flag_raised",
+            "when": "balance_below_zero",
+            "blocks": false,
+            "below_zero": "posts",
+            "warning": true,
+            "rollback": "no_event",
+            "denied": "no_event",
+            "replay": "no_event",
+            "bulk": "chronological_per_item",
+            "webhook_scope": "trust:read",
+            "metadata": [
+              "matter_id",
+              "client_id",
+              "trust_account_id",
+              "balance_cents",
+              "trust_entry_id",
+              "balance_scope"
+            ]
+          }
         },
         "x-togavsu-events": [
-          "trust.entry_posted"
+          "trust.entry_posted",
+          "trust.flag_raised"
         ],
         "x-togavsu-writes": true,
         "x-togavsu-mcp": {
@@ -61914,16 +62554,32 @@
             "description": "UTC timestamp."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^<>\\r\\n\\t]{1,40}$",
+            "description": "Plain label. Markup and control characters are rejected."
           },
           "color": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "description": "Six-digit hex color."
           },
           "active": {
             "type": "boolean"
           },
           "module_id": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                "description": "Set when a module owns the marker. Absent on a firm marker."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -61935,7 +62591,7 @@
           "color",
           "active"
         ],
-        "description": "Firm or module marker definition."
+        "description": "Firm or module marker definition. A module registers its own through markers:write."
       },
       "MarkerDefinitionWrite": {
         "type": "object",
@@ -61943,10 +62599,13 @@
         "properties": {
           "label": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^<>\\r\\n\\t]{1,40}$"
           },
           "color": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
           },
           "active": {
             "type": "boolean"
@@ -61954,7 +62613,113 @@
         },
         "required": [
           "label"
-        ]
+        ],
+        "description": "Firm marker. Color is six-digit hex. Modules use ModuleMarkerWrite and markers:write."
+      },
+      "ModuleMarkerWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^<>\\r\\n\\t]{1,40}$"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Optional module-local page. A URL, scheme, or other module's route is rejected."
+          }
+        },
+        "required": [
+          "label",
+          "color"
+        ],
+        "description": "Own-namespace marker. The module id comes from the signed token, not this body."
+      },
+      "ModuleMarker": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "created_by": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User who created the row, or the nil id for System."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "module_id": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Signed module that owns this marker."
+          },
+          "namespace": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Same value as module_id. Firm markers are not stored on this route."
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Sanitized display target, or null when the marker is only a header label."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "placement": {
+            "const": "matter-header"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "label",
+          "color",
+          "active",
+          "module_id",
+          "namespace",
+          "placement"
+        ],
+        "description": "A marker registered by the calling module."
       },
       "FeeAgreement": {
         "type": "object",
@@ -69896,6 +70661,68 @@
                 "type": "null"
               }
             ]
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust_account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "UUIDv7."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "balance_cents": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "description": "Resulting balance in cents. Negative is below zero."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trust_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "description": "Ledger row that left the balance below zero."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "balance_scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "matter",
+                  "client",
+                  "account"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -69907,7 +70734,7 @@
           "record_id",
           "summary"
         ],
-        "description": "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null."
+        "description": "Signed webhook body. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module's webhook secret. A plain hash of the body is not a signature. file.version_created includes task_authorization for the subscribed module. payment.processor_authorized includes processor_authorization for the registered processor. file.background_authorized includes background_file_authorization for the installed module. Other events set all three to null. trust.flag_raised also includes client_id, trust_account_id, balance_cents, trust_entry_id, and balance_scope, and it is delivered only to a subscriber with trust:read."
       },
       "Backup": {
         "type": "object",
@@ -74555,16 +75382,43 @@
         "properties": {
           "label": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^<>\\r\\n\\t]{1,40}$"
           },
           "color": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
           },
           "active": {
             "type": "boolean"
           }
         },
-        "description": "MarkerDefinitionWrite Patch: every field is optional."
+        "description": "Firm marker. Color is six-digit hex. Modules use ModuleMarkerWrite and markers:write. Patch: every field is optional."
+      },
+      "ModuleMarkerWritePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[^<>\\r\\n\\t]{1,40}$"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Optional module-local page. A URL, scheme, or other module's route is rejected."
+          }
+        },
+        "description": "Own-namespace marker. The module id comes from the signed token, not this body. Patch: every field is optional."
       },
       "FeeAgreementWritePatch": {
         "type": "object",
@@ -77105,7 +77959,16 @@
       "matter_wall": true,
       "attorney_only": "redacted",
       "recipient": "subscribed_module",
-      "unknown_event": "fail_closed"
+      "unknown_event": "fail_closed",
+      "metadata": [
+        "matter_id",
+        "client_id",
+        "trust_account_id",
+        "balance_cents",
+        "trust_entry_id",
+        "balance_scope"
+      ],
+      "below_zero": "warning"
     },
     "file.version_created": {
       "scopes": [
@@ -77218,6 +78081,7 @@
     "marker.updated": [
       "settings:read"
     ],
+    "marker.revoked": [],
     "fee_agreement.created": [
       "matters:read"
     ],
@@ -79173,6 +80037,10 @@
     {
       "scope": "layouts:write",
       "description": "Save layouts."
+    },
+    {
+      "scope": "markers:write",
+      "description": "Register, update, or revoke marker definitions in the calling module's own namespace."
     },
     {
       "scope": "matters:read",
