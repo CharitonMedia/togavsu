@@ -209,6 +209,9 @@ class Controller:
         if repair and record.get("repair_count", 0) >= self.plan["max_repairs"]:
             self.halt(task, record, "Three correction cycles exhausted; independent work may continue")
             return
+        if not repair and record.get("sync_count", 0) >= 3:
+            self.halt(task, record, "Three integration conflict attempts exhausted")
+            return
         if self.dry:
             self.effect("followup " + task + " " + key, lambda: None)
             return
@@ -220,13 +223,16 @@ class Controller:
             self.event(task, "Delivery uncertain; next tick reconciles Cursor run identity before any replay")
             raise
         self.acknowledge(record, result["run"]["id"])
-        self.event(task, "Cursor correction dispatched (cycle " + str(record.get("repair_count", 0)) + ")")
+        self.event(task, ("Cursor correction dispatched (cycle " + str(record.get("repair_count", 0)) + ")")
+                   if repair else "Cursor integration conflict resolution dispatched")
 
     def acknowledge(self, record, run_id):
         intent = record.pop("intent")
         record.setdefault("delivered", []).append(intent["key"])
         if intent["repair"]:
             record["repair_count"] = record.get("repair_count", 0) + 1
+        else:
+            record["sync_count"] = record.get("sync_count", 0) + 1
         record["last_dispatched_run"] = run_id
         self.save()
 
@@ -310,7 +316,7 @@ class Controller:
                     "Merge origin/main into your existing PR branch and resolve integration conflicts, preserving both sides' "
                     "requirements, tests and debt entries. You may edit shared files solely to reconcile this integration. "
                     "Run complete applicable tests, refresh the ORIGINAL PR body with current revision/results, commit and push. "
-                    "Do not force-push, merge the PR, weaken checks or discard another domain's work.")
+                    "Do not force-push, merge the PR, weaken checks or discard another domain's work.", repair=False)
             elif record.get("updated_for") != [head, main]:
                 self.effect("update branch PR " + str(number), lambda: self.remote.gh("pulls/" + str(number) + "/update-branch",
                     "PUT", {"expected_head_sha": head}))

@@ -13,7 +13,7 @@ The controller runs on Render-1 as Patrick's systemd user timer, togavsu-build-c
 - Cloud integration assignments compose the separate packages into the actual running product and must provide real product CI and passing integration reports. The final release remains subject to all 52 criteria; merged scaffolding is never full product acceptance.
 
 ## Limits and stops
-The standing limit is three correction rounds per assignment, including rounds already dispatched manually. At that limit, pause the affected assignment and record its reason; independent tasks may continue. An unavailable review gets one infrastructure rerun for a given base/head. An ambiguous prompt delivery, closed unmerged PR, protected control-file edit, missing/pending integration evidence or failed protection check never gets a fabricated pass.
+The standing limit is three correction rounds per assignment, including rounds already dispatched manually. At that limit, pause the affected assignment and record its reason; independent tasks may continue. Routine Git conflict resolution has a separate three-attempt bound and does not consume code-defect correction rounds. An unavailable review gets one infrastructure rerun for a given base/head. An ambiguous prompt delivery, closed unmerged PR, protected control-file edit, missing/pending integration evidence or failed protection check never gets a fabricated pass.
 
 A failed control request is recorded and retried by later observation, not by bypassing checks. External service failures may prevent progress. Status is persisted in .build-state/status.json and a dedicated comment on GitHub build issue #1 is updated when task state changes.
 

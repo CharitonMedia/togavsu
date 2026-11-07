@@ -180,6 +180,24 @@ class ControllerTests(unittest.TestCase):
         self.remote.pr["mergeable"] = False
         self.process()
         self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["repair_count"], 2)
+        self.assertEqual(self.record["sync_count"], 1)
+
+    def test_git_conflict_after_three_code_repairs_can_still_integrate(self):
+        self.record["repair_count"] = 3
+        self.remote.behind = 1
+        self.remote.pr["mergeable"] = False
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["repair_count"], 3)
+
+    def test_git_sync_budget_is_also_bounded(self):
+        self.record["sync_count"] = 3
+        self.remote.behind = 1
+        self.remote.pr["mergeable"] = False
+        self.process()
+        self.assertFalse(self.posts())
+        self.assertTrue(self.record["halted"])
 
     def test_unavailable_review_has_one_retry_across_check_id_changes(self):
         self.remote.context["base"] = NEW
