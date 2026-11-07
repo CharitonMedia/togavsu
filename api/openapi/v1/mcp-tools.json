@@ -1,0 +1,6317 @@
+{
+  "transport": "POST /mcp",
+  "tools": [
+    {
+      "name": "getOpenAPI",
+      "method": "GET",
+      "path": "/api/v1/openapi.json",
+      "features": [
+        "openapi"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "getLlmsTxt",
+      "method": "GET",
+      "path": "/llms.txt",
+      "features": [
+        "llms"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "getHealthz",
+      "method": "GET",
+      "path": "/healthz",
+      "features": [
+        "health"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "getSetup",
+      "method": "GET",
+      "path": "/api/v1/setup",
+      "features": [
+        "setup"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "createSetup",
+      "method": "POST",
+      "path": "/api/v1/setup",
+      "features": [
+        "setup"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "login",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "features": [
+        "auth"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "verifyTotp",
+      "method": "POST",
+      "path": "/api/v1/auth/totp",
+      "features": [
+        "auth"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "verifyRecoveryCode",
+      "method": "POST",
+      "path": "/api/v1/auth/recovery",
+      "features": [
+        "auth"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "logout",
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "sessions:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "requestPasswordReset",
+      "method": "POST",
+      "path": "/api/v1/auth/password-resets",
+      "features": [
+        "auth"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "confirmPasswordReset",
+      "method": "POST",
+      "path": "/api/v1/auth/password-resets/confirm",
+      "features": [
+        "auth"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "getMe",
+      "method": "GET",
+      "path": "/api/v1/me",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "updateMe",
+      "method": "PATCH",
+      "path": "/api/v1/me",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "changePassword",
+      "method": "POST",
+      "path": "/api/v1/me/password",
+      "features": [
+        "profile"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "resetTotp",
+      "method": "POST",
+      "path": "/api/v1/me/totp/reset",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "regenerateRecoveryCodes",
+      "method": "POST",
+      "path": "/api/v1/me/recovery-codes",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getMeSettings",
+      "method": "GET",
+      "path": "/api/v1/me/settings",
+      "features": [
+        "me-settings"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "updateMeSettings",
+      "method": "PATCH",
+      "path": "/api/v1/me/settings",
+      "features": [
+        "me-settings"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getNotificationPreferences",
+      "method": "GET",
+      "path": "/api/v1/me/notification-preferences",
+      "features": [
+        "notification-preferences"
+      ],
+      "scopes": [
+        "notifications:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "putNotificationPreferences",
+      "method": "PUT",
+      "path": "/api/v1/me/notification-preferences",
+      "features": [
+        "notification-preferences"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getSidebarState",
+      "method": "GET",
+      "path": "/api/v1/me/sidebar",
+      "features": [
+        "sidebar"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "putSidebarState",
+      "method": "PUT",
+      "path": "/api/v1/me/sidebar",
+      "features": [
+        "sidebar"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listSessions",
+      "method": "GET",
+      "path": "/api/v1/sessions",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "sessions:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "deleteSession",
+      "method": "DELETE",
+      "path": "/api/v1/sessions/{session_id}",
+      "features": [
+        "auth"
+      ],
+      "scopes": [
+        "sessions:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "listUser",
+      "method": "GET",
+      "path": "/api/v1/users",
+      "features": [
+        "users"
+      ],
+      "scopes": [
+        "users:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createUser",
+      "method": "POST",
+      "path": "/api/v1/users",
+      "features": [
+        "users"
+      ],
+      "scopes": [
+        "users:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getUser",
+      "method": "GET",
+      "path": "/api/v1/users/{user_id}",
+      "features": [
+        "users"
+      ],
+      "scopes": [
+        "users:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "updateUser",
+      "method": "PATCH",
+      "path": "/api/v1/users/{user_id}",
+      "features": [
+        "users"
+      ],
+      "scopes": [
+        "users:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deactivateUser",
+      "method": "POST",
+      "path": "/api/v1/users/{user_id}/deactivate",
+      "features": [
+        "users"
+      ],
+      "scopes": [
+        "users:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listApiToken",
+      "method": "GET",
+      "path": "/api/v1/api-tokens",
+      "features": [
+        "api-tokens",
+        "profile"
+      ],
+      "scopes": [
+        "tokens:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "createApiToken",
+      "method": "POST",
+      "path": "/api/v1/api-tokens",
+      "features": [
+        "api-tokens"
+      ],
+      "scopes": [
+        "tokens:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getApiToken",
+      "method": "GET",
+      "path": "/api/v1/api-tokens/{token_id}",
+      "features": [
+        "api-tokens",
+        "profile"
+      ],
+      "scopes": [
+        "tokens:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "revokeApiToken",
+      "method": "DELETE",
+      "path": "/api/v1/api-tokens/{token_id}",
+      "features": [
+        "api-tokens"
+      ],
+      "scopes": [
+        "tokens:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "listContact",
+      "method": "GET",
+      "path": "/api/v1/contacts",
+      "features": [
+        "contacts"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createContact",
+      "method": "POST",
+      "path": "/api/v1/contacts",
+      "features": [
+        "contacts"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getContact",
+      "method": "GET",
+      "path": "/api/v1/contacts/{contact_id}",
+      "features": [
+        "contacts"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateContact",
+      "method": "PATCH",
+      "path": "/api/v1/contacts/{contact_id}",
+      "features": [
+        "contacts"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "archiveContact",
+      "method": "POST",
+      "path": "/api/v1/contacts/{contact_id}/archive",
+      "features": [
+        "contacts"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyContact",
+      "method": "GET",
+      "path": "/api/v1/contacts/{contact_id}/history",
+      "features": [
+        "contacts",
+        "edit-history"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkContact",
+      "method": "POST",
+      "path": "/api/v1/contacts:bulk",
+      "features": [
+        "contacts",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listContactAddress",
+      "method": "GET",
+      "path": "/api/v1/contact-addresses",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createContactAddress",
+      "method": "POST",
+      "path": "/api/v1/contact-addresses",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getContactAddress",
+      "method": "GET",
+      "path": "/api/v1/contact-addresses/{address_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateContactAddress",
+      "method": "PATCH",
+      "path": "/api/v1/contact-addresses/{address_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkContactAddress",
+      "method": "POST",
+      "path": "/api/v1/contact-addresses:bulk",
+      "features": [
+        "contact-channels",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listContactEmail",
+      "method": "GET",
+      "path": "/api/v1/contact-emails",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createContactEmail",
+      "method": "POST",
+      "path": "/api/v1/contact-emails",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getContactEmail",
+      "method": "GET",
+      "path": "/api/v1/contact-emails/{email_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateContactEmail",
+      "method": "PATCH",
+      "path": "/api/v1/contact-emails/{email_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkContactEmail",
+      "method": "POST",
+      "path": "/api/v1/contact-emails:bulk",
+      "features": [
+        "contact-channels",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listContactPhone",
+      "method": "GET",
+      "path": "/api/v1/contact-phones",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createContactPhone",
+      "method": "POST",
+      "path": "/api/v1/contact-phones",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getContactPhone",
+      "method": "GET",
+      "path": "/api/v1/contact-phones/{phone_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateContactPhone",
+      "method": "PATCH",
+      "path": "/api/v1/contact-phones/{phone_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkContactPhone",
+      "method": "POST",
+      "path": "/api/v1/contact-phones:bulk",
+      "features": [
+        "contact-channels",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listContactTag",
+      "method": "GET",
+      "path": "/api/v1/contact-tags",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createContactTag",
+      "method": "POST",
+      "path": "/api/v1/contact-tags",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getContactTag",
+      "method": "GET",
+      "path": "/api/v1/contact-tags/{tag_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateContactTag",
+      "method": "PATCH",
+      "path": "/api/v1/contact-tags/{tag_id}",
+      "features": [
+        "contact-channels"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkContactTag",
+      "method": "POST",
+      "path": "/api/v1/contact-tags:bulk",
+      "features": [
+        "contact-channels",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "mergeContact",
+      "method": "POST",
+      "path": "/api/v1/contacts/{contact_id}/merge",
+      "features": [
+        "contacts",
+        "merge"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listMatter",
+      "method": "GET",
+      "path": "/api/v1/matters",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createMatter",
+      "method": "POST",
+      "path": "/api/v1/matters",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getMatter",
+      "method": "GET",
+      "path": "/api/v1/matters/{matter_id}",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateMatter",
+      "method": "PATCH",
+      "path": "/api/v1/matters/{matter_id}",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyMatter",
+      "method": "GET",
+      "path": "/api/v1/matters/{matter_id}/history",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions",
+        "edit-history"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkMatter",
+      "method": "POST",
+      "path": "/api/v1/matters:bulk",
+      "features": [
+        "matters",
+        "matter-glance",
+        "include-extensions",
+        "bulk"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "previewMatterClose",
+      "method": "GET",
+      "path": "/api/v1/matters/{matter_id}/close-preview",
+      "features": [
+        "matter-close"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "closeMatter",
+      "method": "POST",
+      "path": "/api/v1/matters/{matter_id}/close",
+      "features": [
+        "matter-close"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "reopenMatter",
+      "method": "POST",
+      "path": "/api/v1/matters/{matter_id}/reopen",
+      "features": [
+        "matter-reopen"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "mergeMatter",
+      "method": "POST",
+      "path": "/api/v1/matters/{matter_id}/merge",
+      "features": [
+        "matters",
+        "merge"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listMattersMissingCaseNumber",
+      "method": "GET",
+      "path": "/api/v1/worklists/matters-missing-case-number",
+      "features": [
+        "missing-case-number"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listMatterTimeline",
+      "method": "GET",
+      "path": "/api/v1/matters/{matter_id}/timeline",
+      "features": [
+        "activity"
+      ],
+      "scopes": [
+        "events:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listMatterParty",
+      "method": "GET",
+      "path": "/api/v1/matter-parties",
+      "features": [
+        "matter-parties"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createMatterParty",
+      "method": "POST",
+      "path": "/api/v1/matter-parties",
+      "features": [
+        "matter-parties"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getMatterParty",
+      "method": "GET",
+      "path": "/api/v1/matter-parties/{party_id}",
+      "features": [
+        "matter-parties"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateMatterParty",
+      "method": "PATCH",
+      "path": "/api/v1/matter-parties/{party_id}",
+      "features": [
+        "matter-parties"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkMatterParty",
+      "method": "POST",
+      "path": "/api/v1/matter-parties:bulk",
+      "features": [
+        "matter-parties",
+        "bulk"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "putMatterWall",
+      "method": "PUT",
+      "path": "/api/v1/matters/{matter_id}/wall",
+      "features": [
+        "matter-walls"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getMatterWall",
+      "method": "GET",
+      "path": "/api/v1/matters/{matter_id}/wall",
+      "features": [
+        "matter-walls"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listMatterMarker",
+      "method": "GET",
+      "path": "/api/v1/matter-markers",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createMatterMarker",
+      "method": "POST",
+      "path": "/api/v1/matter-markers",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getMatterMarker",
+      "method": "GET",
+      "path": "/api/v1/matter-markers/{matter_marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateMatterMarker",
+      "method": "PATCH",
+      "path": "/api/v1/matter-markers/{matter_marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "deleteMatterMarker",
+      "method": "DELETE",
+      "path": "/api/v1/matter-markers/{matter_marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listMarkerDefinition",
+      "method": "GET",
+      "path": "/api/v1/marker-definitions",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createMarkerDefinition",
+      "method": "POST",
+      "path": "/api/v1/marker-definitions",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getMarkerDefinition",
+      "method": "GET",
+      "path": "/api/v1/marker-definitions/{marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateMarkerDefinition",
+      "method": "PATCH",
+      "path": "/api/v1/marker-definitions/{marker_id}",
+      "features": [
+        "matter-markers"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listFeeAgreement",
+      "method": "GET",
+      "path": "/api/v1/fee-agreements",
+      "features": [
+        "fee-agreements"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createFeeAgreement",
+      "method": "POST",
+      "path": "/api/v1/fee-agreements",
+      "features": [
+        "fee-agreements"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getFeeAgreement",
+      "method": "GET",
+      "path": "/api/v1/fee-agreements/{fee_agreement_id}",
+      "features": [
+        "fee-agreements"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateFeeAgreement",
+      "method": "PATCH",
+      "path": "/api/v1/fee-agreements/{fee_agreement_id}",
+      "features": [
+        "fee-agreements"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyFeeAgreement",
+      "method": "GET",
+      "path": "/api/v1/fee-agreements/{fee_agreement_id}/history",
+      "features": [
+        "fee-agreements",
+        "edit-history"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkFeeAgreement",
+      "method": "POST",
+      "path": "/api/v1/fee-agreements:bulk",
+      "features": [
+        "fee-agreements",
+        "bulk"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listNote",
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "features": [
+        "notes"
+      ],
+      "scopes": [
+        "notes:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createNote",
+      "method": "POST",
+      "path": "/api/v1/notes",
+      "features": [
+        "notes"
+      ],
+      "scopes": [
+        "notes:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getNote",
+      "method": "GET",
+      "path": "/api/v1/notes/{note_id}",
+      "features": [
+        "notes"
+      ],
+      "scopes": [
+        "notes:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateNote",
+      "method": "PATCH",
+      "path": "/api/v1/notes/{note_id}",
+      "features": [
+        "notes"
+      ],
+      "scopes": [
+        "notes:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "archiveNote",
+      "method": "POST",
+      "path": "/api/v1/notes/{note_id}/archive",
+      "features": [
+        "notes"
+      ],
+      "scopes": [
+        "notes:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkNote",
+      "method": "POST",
+      "path": "/api/v1/notes:bulk",
+      "features": [
+        "notes",
+        "bulk"
+      ],
+      "scopes": [
+        "notes:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listConflictRecord",
+      "method": "GET",
+      "path": "/api/v1/conflict-records",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createConflictRecord",
+      "method": "POST",
+      "path": "/api/v1/conflict-records",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getConflictRecord",
+      "method": "GET",
+      "path": "/api/v1/conflict-records/{conflict_record_id}",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateConflictRecord",
+      "method": "PATCH",
+      "path": "/api/v1/conflict-records/{conflict_record_id}",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkConflictRecord",
+      "method": "POST",
+      "path": "/api/v1/conflict-records:bulk",
+      "features": [
+        "conflicts",
+        "bulk"
+      ],
+      "scopes": [
+        "conflicts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "runConflictCheck",
+      "method": "POST",
+      "path": "/api/v1/matters/{matter_id}/conflict-checks",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listConflictChecks",
+      "method": "GET",
+      "path": "/api/v1/conflict-checks",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getConflictCheck",
+      "method": "GET",
+      "path": "/api/v1/conflict-checks/{conflict_check_id}",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "decideConflictHit",
+      "method": "POST",
+      "path": "/api/v1/conflict-checks/{conflict_check_id}/decisions",
+      "features": [
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:decide"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listPracticeArea",
+      "method": "GET",
+      "path": "/api/v1/practice-areas",
+      "features": [
+        "practice-areas"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createPracticeArea",
+      "method": "POST",
+      "path": "/api/v1/practice-areas",
+      "features": [
+        "practice-areas"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getPracticeArea",
+      "method": "GET",
+      "path": "/api/v1/practice-areas/{practice_area_id}",
+      "features": [
+        "practice-areas"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updatePracticeArea",
+      "method": "PATCH",
+      "path": "/api/v1/practice-areas/{practice_area_id}",
+      "features": [
+        "practice-areas"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listCounty",
+      "method": "GET",
+      "path": "/api/v1/counties",
+      "features": [
+        "counties"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createCounty",
+      "method": "POST",
+      "path": "/api/v1/counties",
+      "features": [
+        "counties"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getCounty",
+      "method": "GET",
+      "path": "/api/v1/counties/{county_id}",
+      "features": [
+        "counties"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateCounty",
+      "method": "PATCH",
+      "path": "/api/v1/counties/{county_id}",
+      "features": [
+        "counties"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listReferralSource",
+      "method": "GET",
+      "path": "/api/v1/referral-sources",
+      "features": [
+        "referral-sources"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createReferralSource",
+      "method": "POST",
+      "path": "/api/v1/referral-sources",
+      "features": [
+        "referral-sources"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getReferralSource",
+      "method": "GET",
+      "path": "/api/v1/referral-sources/{referral_source_id}",
+      "features": [
+        "referral-sources"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateReferralSource",
+      "method": "PATCH",
+      "path": "/api/v1/referral-sources/{referral_source_id}",
+      "features": [
+        "referral-sources"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listPartyRole",
+      "method": "GET",
+      "path": "/api/v1/party-roles",
+      "features": [
+        "party-roles"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createPartyRole",
+      "method": "POST",
+      "path": "/api/v1/party-roles",
+      "features": [
+        "party-roles"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getPartyRole",
+      "method": "GET",
+      "path": "/api/v1/party-roles/{party_role_id}",
+      "features": [
+        "party-roles"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updatePartyRole",
+      "method": "PATCH",
+      "path": "/api/v1/party-roles/{party_role_id}",
+      "features": [
+        "party-roles"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listFeeItem",
+      "method": "GET",
+      "path": "/api/v1/fee-items",
+      "features": [
+        "fee-items"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createFeeItem",
+      "method": "POST",
+      "path": "/api/v1/fee-items",
+      "features": [
+        "fee-items"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getFeeItem",
+      "method": "GET",
+      "path": "/api/v1/fee-items/{fee_item_id}",
+      "features": [
+        "fee-items"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateFeeItem",
+      "method": "PATCH",
+      "path": "/api/v1/fee-items/{fee_item_id}",
+      "features": [
+        "fee-items"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listActivityType",
+      "method": "GET",
+      "path": "/api/v1/activity-types",
+      "features": [
+        "activity-types"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createActivityType",
+      "method": "POST",
+      "path": "/api/v1/activity-types",
+      "features": [
+        "activity-types"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getActivityType",
+      "method": "GET",
+      "path": "/api/v1/activity-types/{activity_type_id}",
+      "features": [
+        "activity-types"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateActivityType",
+      "method": "PATCH",
+      "path": "/api/v1/activity-types/{activity_type_id}",
+      "features": [
+        "activity-types"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listExpenseType",
+      "method": "GET",
+      "path": "/api/v1/expense-types",
+      "features": [
+        "expense-types"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createExpenseType",
+      "method": "POST",
+      "path": "/api/v1/expense-types",
+      "features": [
+        "expense-types"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getExpenseType",
+      "method": "GET",
+      "path": "/api/v1/expense-types/{expense_type_id}",
+      "features": [
+        "expense-types"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateExpenseType",
+      "method": "PATCH",
+      "path": "/api/v1/expense-types/{expense_type_id}",
+      "features": [
+        "expense-types"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listCustomFieldDefinition",
+      "method": "GET",
+      "path": "/api/v1/custom-field-definitions",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createCustomFieldDefinition",
+      "method": "POST",
+      "path": "/api/v1/custom-field-definitions",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getCustomFieldDefinition",
+      "method": "GET",
+      "path": "/api/v1/custom-field-definitions/{definition_id}",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateCustomFieldDefinition",
+      "method": "PATCH",
+      "path": "/api/v1/custom-field-definitions/{definition_id}",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "retireCustomFieldDefinition",
+      "method": "POST",
+      "path": "/api/v1/custom-field-definitions/{definition_id}/retire",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putMatterCustomFields",
+      "method": "PUT",
+      "path": "/api/v1/matters/{matter_id}/custom-fields",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "matters:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "putTimeEntryCustomFields",
+      "method": "PUT",
+      "path": "/api/v1/time-entries/{time_entry_id}/custom-fields",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "putExpenseCustomFields",
+      "method": "PUT",
+      "path": "/api/v1/expenses/{expense_id}/custom-fields",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "expenses:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkCustomFieldValue",
+      "method": "POST",
+      "path": "/api/v1/custom-field-values:bulk",
+      "features": [
+        "custom-fields",
+        "bulk"
+      ],
+      "scopes": [
+        "contacts:write",
+        "matters:write",
+        "time:write",
+        "expenses:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "putContactCustomFields",
+      "method": "PUT",
+      "path": "/api/v1/contacts/{contact_id}/custom-fields",
+      "features": [
+        "custom-fields"
+      ],
+      "scopes": [
+        "contacts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listTimeEntry",
+      "method": "GET",
+      "path": "/api/v1/time-entries",
+      "features": [
+        "time-entries"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createTimeEntry",
+      "method": "POST",
+      "path": "/api/v1/time-entries",
+      "features": [
+        "time-entries"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getTimeEntry",
+      "method": "GET",
+      "path": "/api/v1/time-entries/{time_entry_id}",
+      "features": [
+        "time-entries"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateTimeEntry",
+      "method": "PATCH",
+      "path": "/api/v1/time-entries/{time_entry_id}",
+      "features": [
+        "time-entries"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyTimeEntry",
+      "method": "GET",
+      "path": "/api/v1/time-entries/{time_entry_id}/history",
+      "features": [
+        "time-entries",
+        "edit-history"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "bulkTimeEntry",
+      "method": "POST",
+      "path": "/api/v1/time-entries:bulk",
+      "features": [
+        "time-entries",
+        "bulk"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listTimer",
+      "method": "GET",
+      "path": "/api/v1/timers",
+      "features": [
+        "timers"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createTimer",
+      "method": "POST",
+      "path": "/api/v1/timers",
+      "features": [
+        "timers"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getTimer",
+      "method": "GET",
+      "path": "/api/v1/timers/{timer_id}",
+      "features": [
+        "timers"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "pauseTimer",
+      "method": "POST",
+      "path": "/api/v1/timers/{timer_id}/pause",
+      "features": [
+        "timers"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "stopTimer",
+      "method": "POST",
+      "path": "/api/v1/timers/{timer_id}/stop",
+      "features": [
+        "timers"
+      ],
+      "scopes": [
+        "time:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listExpense",
+      "method": "GET",
+      "path": "/api/v1/expenses",
+      "features": [
+        "expenses"
+      ],
+      "scopes": [
+        "expenses:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createExpense",
+      "method": "POST",
+      "path": "/api/v1/expenses",
+      "features": [
+        "expenses"
+      ],
+      "scopes": [
+        "expenses:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getExpense",
+      "method": "GET",
+      "path": "/api/v1/expenses/{expense_id}",
+      "features": [
+        "expenses"
+      ],
+      "scopes": [
+        "expenses:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateExpense",
+      "method": "PATCH",
+      "path": "/api/v1/expenses/{expense_id}",
+      "features": [
+        "expenses"
+      ],
+      "scopes": [
+        "expenses:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyExpense",
+      "method": "GET",
+      "path": "/api/v1/expenses/{expense_id}/history",
+      "features": [
+        "expenses",
+        "edit-history"
+      ],
+      "scopes": [
+        "expenses:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "bulkExpense",
+      "method": "POST",
+      "path": "/api/v1/expenses:bulk",
+      "features": [
+        "expenses",
+        "bulk"
+      ],
+      "scopes": [
+        "expenses:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listInvoice",
+      "method": "GET",
+      "path": "/api/v1/invoices",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getInvoice",
+      "method": "GET",
+      "path": "/api/v1/invoices/{invoice_id}",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "updateInvoice",
+      "method": "PATCH",
+      "path": "/api/v1/invoices/{invoice_id}",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "historyInvoice",
+      "method": "GET",
+      "path": "/api/v1/invoices/{invoice_id}/history",
+      "features": [
+        "invoices",
+        "edit-history"
+      ],
+      "scopes": [
+        "invoices:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "createInvoiceDrafts",
+      "method": "POST",
+      "path": "/api/v1/invoice-drafts",
+      "features": [
+        "invoices",
+        "billing-worklist"
+      ],
+      "scopes": [
+        "invoices:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "approveInvoice",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/approve",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:approve"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "sendInvoice",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/send",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:send"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "getInvoicePdf",
+      "method": "GET",
+      "path": "/api/v1/invoices/{invoice_id}/pdf",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "voidInvoice",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/void",
+      "features": [
+        "invoices"
+      ],
+      "scopes": [
+        "invoices:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "applyTrustToInvoice",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/apply-trust",
+      "features": [
+        "collections",
+        "trust-ledger"
+      ],
+      "scopes": [
+        "trust:withdraw"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "writeOffInvoice",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/write-off",
+      "features": [
+        "invoices",
+        "collections"
+      ],
+      "scopes": [
+        "invoices:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "requestInvoiceReplenishment",
+      "method": "POST",
+      "path": "/api/v1/invoices/{invoice_id}/replenishment-requests",
+      "features": [
+        "collections",
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listPayment",
+      "method": "GET",
+      "path": "/api/v1/payments",
+      "features": [
+        "payments",
+        "collections"
+      ],
+      "scopes": [
+        "payments:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createPayment",
+      "method": "POST",
+      "path": "/api/v1/payments",
+      "features": [
+        "payments",
+        "collections"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getPayment",
+      "method": "GET",
+      "path": "/api/v1/payments/{payment_id}",
+      "features": [
+        "payments",
+        "collections"
+      ],
+      "scopes": [
+        "payments:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "bulkPayment",
+      "method": "POST",
+      "path": "/api/v1/payments:bulk",
+      "features": [
+        "payments",
+        "collections",
+        "bulk"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updatePaymentStatus",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/status",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "reversePayment",
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/reverse",
+      "features": [
+        "payments"
+      ],
+      "scopes": [
+        "payments:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "getBillingWorklist",
+      "method": "GET",
+      "path": "/api/v1/billing/worklist",
+      "features": [
+        "billing-worklist"
+      ],
+      "scopes": [
+        "invoices:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "applyFlatFee",
+      "method": "POST",
+      "path": "/api/v1/billing/flat-fees/{matter_id}/apply",
+      "features": [
+        "billing-worklist",
+        "trust-ledger"
+      ],
+      "scopes": [
+        "trust:withdraw"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "reportUnbilledTime",
+      "method": "GET",
+      "path": "/api/v1/reports/unbilled-time",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportTimeByUser",
+      "method": "GET",
+      "path": "/api/v1/reports/time-by-user",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportArAging",
+      "method": "GET",
+      "path": "/api/v1/reports/ar-aging",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportPaymentsReceived",
+      "method": "GET",
+      "path": "/api/v1/reports/payments-received",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportWriteOffs",
+      "method": "GET",
+      "path": "/api/v1/reports/write-offs",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportTrustBalances",
+      "method": "GET",
+      "path": "/api/v1/reports/trust-balances",
+      "features": [
+        "reports",
+        "trust-reports"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportTrustClientLedger",
+      "method": "GET",
+      "path": "/api/v1/reports/trust-client-ledger",
+      "features": [
+        "reports",
+        "trust-reports"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportTrustAccountLedger",
+      "method": "GET",
+      "path": "/api/v1/reports/trust-account-ledger",
+      "features": [
+        "reports",
+        "trust-reports"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportReconciliations",
+      "method": "GET",
+      "path": "/api/v1/reports/reconciliations",
+      "features": [
+        "reports",
+        "trust-reports"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "reportDocTenderSpend",
+      "method": "GET",
+      "path": "/api/v1/reports/doc-tender-spend",
+      "features": [
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listTrustAccount",
+      "method": "GET",
+      "path": "/api/v1/trust-accounts",
+      "features": [
+        "trust-accounts"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createTrustAccount",
+      "method": "POST",
+      "path": "/api/v1/trust-accounts",
+      "features": [
+        "trust-accounts"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getTrustAccount",
+      "method": "GET",
+      "path": "/api/v1/trust-accounts/{trust_account_id}",
+      "features": [
+        "trust-accounts"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateTrustAccount",
+      "method": "PATCH",
+      "path": "/api/v1/trust-accounts/{trust_account_id}",
+      "features": [
+        "trust-accounts"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listTrustEntry",
+      "method": "GET",
+      "path": "/api/v1/trust-ledger",
+      "features": [
+        "trust-ledger",
+        "trust-below-zero"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "postTrustEntry",
+      "method": "POST",
+      "path": "/api/v1/trust-ledger",
+      "features": [
+        "trust-ledger",
+        "trust-below-zero"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getTrustEntry",
+      "method": "GET",
+      "path": "/api/v1/trust-ledger/{trust_entry_id}",
+      "features": [
+        "trust-ledger",
+        "trust-below-zero"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "bulkTrustEntry",
+      "method": "POST",
+      "path": "/api/v1/trust-ledger:bulk",
+      "features": [
+        "trust-ledger",
+        "trust-below-zero",
+        "bulk"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "reverseTrustEntry",
+      "method": "POST",
+      "path": "/api/v1/trust-ledger/{trust_entry_id}/reversals",
+      "features": [
+        "trust-ledger"
+      ],
+      "scopes": [
+        "trust:withdraw"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "getTrustBalances",
+      "method": "GET",
+      "path": "/api/v1/trust/balances",
+      "features": [
+        "trust-ledger"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listTrustFlag",
+      "method": "GET",
+      "path": "/api/v1/trust-flags",
+      "features": [
+        "trust-flags"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getTrustFlag",
+      "method": "GET",
+      "path": "/api/v1/trust-flags/{trust_flag_id}",
+      "features": [
+        "trust-flags"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "resolveTrustFlag",
+      "method": "POST",
+      "path": "/api/v1/trust-flags/{trust_flag_id}/resolve",
+      "features": [
+        "trust-flags"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listTrustReplenishment",
+      "method": "GET",
+      "path": "/api/v1/trust-replenishment-requests",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createTrustReplenishment",
+      "method": "POST",
+      "path": "/api/v1/trust-replenishment-requests",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getTrustReplenishment",
+      "method": "GET",
+      "path": "/api/v1/trust-replenishment-requests/{replenishment_id}",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "cancelTrustReplenishment",
+      "method": "POST",
+      "path": "/api/v1/trust-replenishment-requests/{replenishment_id}/cancel",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "satisfyTrustReplenishment",
+      "method": "POST",
+      "path": "/api/v1/trust-replenishment-requests/{replenishment_id}/satisfy",
+      "features": [
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listTrustReconciliation",
+      "method": "GET",
+      "path": "/api/v1/trust-reconciliations",
+      "features": [
+        "trust-reconciliation"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createTrustReconciliation",
+      "method": "POST",
+      "path": "/api/v1/trust-reconciliations",
+      "features": [
+        "trust-reconciliation"
+      ],
+      "scopes": [
+        "trust:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getTrustReconciliation",
+      "method": "GET",
+      "path": "/api/v1/trust-reconciliations/{reconciliation_id}",
+      "features": [
+        "trust-reconciliation"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listCalendarEvent",
+      "method": "GET",
+      "path": "/api/v1/calendar-events",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createCalendarEvent",
+      "method": "POST",
+      "path": "/api/v1/calendar-events",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getCalendarEvent",
+      "method": "GET",
+      "path": "/api/v1/calendar-events/{calendar_event_id}",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateCalendarEvent",
+      "method": "PATCH",
+      "path": "/api/v1/calendar-events/{calendar_event_id}",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "deleteCalendarEvent",
+      "method": "DELETE",
+      "path": "/api/v1/calendar-events/{calendar_event_id}",
+      "features": [
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkCalendarEvent",
+      "method": "POST",
+      "path": "/api/v1/calendar-events:bulk",
+      "features": [
+        "calendar",
+        "bulk"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listDeadline",
+      "method": "GET",
+      "path": "/api/v1/deadlines",
+      "features": [
+        "deadlines"
+      ],
+      "scopes": [
+        "deadlines:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createDeadline",
+      "method": "POST",
+      "path": "/api/v1/deadlines",
+      "features": [
+        "deadlines"
+      ],
+      "scopes": [
+        "deadlines:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getDeadline",
+      "method": "GET",
+      "path": "/api/v1/deadlines/{deadline_id}",
+      "features": [
+        "deadlines"
+      ],
+      "scopes": [
+        "deadlines:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateDeadline",
+      "method": "PATCH",
+      "path": "/api/v1/deadlines/{deadline_id}",
+      "features": [
+        "deadlines"
+      ],
+      "scopes": [
+        "deadlines:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkDeadline",
+      "method": "POST",
+      "path": "/api/v1/deadlines:bulk",
+      "features": [
+        "deadlines",
+        "bulk"
+      ],
+      "scopes": [
+        "deadlines:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "previewAvailableDates",
+      "method": "POST",
+      "path": "/api/v1/calendar/available-dates",
+      "features": [
+        "available-dates"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listIcalFeed",
+      "method": "GET",
+      "path": "/api/v1/ical-feeds",
+      "features": [
+        "ical"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createIcalFeed",
+      "method": "POST",
+      "path": "/api/v1/ical-feeds",
+      "features": [
+        "ical"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getIcalFeed",
+      "method": "GET",
+      "path": "/api/v1/ical-feeds/{feed_id}",
+      "features": [
+        "ical"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "revokeIcalFeed",
+      "method": "POST",
+      "path": "/api/v1/ical-feeds/{feed_id}/revoke",
+      "features": [
+        "ical"
+      ],
+      "scopes": [
+        "calendar:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "downloadIcal",
+      "method": "GET",
+      "path": "/ical/{secret}.ics",
+      "features": [
+        "ical"
+      ],
+      "scopes": [],
+      "roles": []
+    },
+    {
+      "name": "listFile",
+      "method": "GET",
+      "path": "/api/v1/files",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getFile",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "bulkFile",
+      "method": "POST",
+      "path": "/api/v1/files:bulk",
+      "features": [
+        "files",
+        "file-uploads",
+        "bulk"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "renameFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/rename",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "moveFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/move",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "markFileStatus",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/status",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "trashFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/trash",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "restoreFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/restore",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "purgeFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/purge",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listFileVersions",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/versions",
+      "features": [
+        "file-versions"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "addFileVersion",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/versions",
+      "features": [
+        "file-versions",
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "downloadFileVersion",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/versions/{version_id}/download",
+      "features": [
+        "file-versions",
+        "quarantine"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "restoreFileVersion",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/versions/{version_id}/restore",
+      "features": [
+        "file-versions"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "quarantineFileVersion",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/versions/{version_id}/quarantine",
+      "features": [
+        "quarantine"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listFileRenditions",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/renditions",
+      "features": [
+        "file-renditions"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "downloadFileRendition",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/renditions/{rendition_id}",
+      "features": [
+        "file-renditions"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "createFileUpload",
+      "method": "POST",
+      "path": "/api/v1/file-uploads",
+      "features": [
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ]
+    },
+    {
+      "name": "getFileUpload",
+      "method": "GET",
+      "path": "/api/v1/file-uploads/{upload_id}",
+      "features": [
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ]
+    },
+    {
+      "name": "putFileChunk",
+      "method": "PUT",
+      "path": "/api/v1/file-uploads/{upload_id}",
+      "features": [
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ]
+    },
+    {
+      "name": "completeFileUpload",
+      "method": "POST",
+      "path": "/api/v1/file-uploads/{upload_id}/complete",
+      "features": [
+        "file-uploads"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "client"
+      ]
+    },
+    {
+      "name": "createFileArchive",
+      "method": "POST",
+      "path": "/api/v1/file-archives",
+      "features": [
+        "files"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "listFolder",
+      "method": "GET",
+      "path": "/api/v1/folders",
+      "features": [
+        "folders"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createFolder",
+      "method": "POST",
+      "path": "/api/v1/folders",
+      "features": [
+        "folders"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getFolder",
+      "method": "GET",
+      "path": "/api/v1/folders/{folder_id}",
+      "features": [
+        "folders"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateFolder",
+      "method": "PATCH",
+      "path": "/api/v1/folders/{folder_id}",
+      "features": [
+        "folders"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "deleteFolder",
+      "method": "DELETE",
+      "path": "/api/v1/folders/{folder_id}",
+      "features": [
+        "folders"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "acquireEditLock",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/lock",
+      "features": [
+        "edit-locks",
+        "editor"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "releaseEditLock",
+      "method": "DELETE",
+      "path": "/api/v1/files/{file_id}/lock",
+      "features": [
+        "edit-locks"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "renewEditLock",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/lock/renew",
+      "features": [
+        "edit-locks"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getEditor",
+      "method": "GET",
+      "path": "/api/v1/editor",
+      "features": [
+        "editor"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listEditorCommands",
+      "method": "GET",
+      "path": "/api/v1/editor/commands",
+      "features": [
+        "editor-runs"
+      ],
+      "scopes": [
+        "editor:run"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "runEditor",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/editor-runs",
+      "features": [
+        "editor-runs"
+      ],
+      "scopes": [
+        "editor:run"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "convertFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/conversions",
+      "features": [
+        "conversions"
+      ],
+      "scopes": [
+        "editor:run"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listCourtProfile",
+      "method": "GET",
+      "path": "/api/v1/court-profiles",
+      "features": [
+        "court-profiles"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createCourtProfile",
+      "method": "POST",
+      "path": "/api/v1/court-profiles",
+      "features": [
+        "court-profiles"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getCourtProfile",
+      "method": "GET",
+      "path": "/api/v1/court-profiles/{court_profile_id}",
+      "features": [
+        "court-profiles"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateCourtProfile",
+      "method": "PATCH",
+      "path": "/api/v1/court-profiles/{court_profile_id}",
+      "features": [
+        "court-profiles"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "verifyCourtProfile",
+      "method": "POST",
+      "path": "/api/v1/court-profiles/{court_profile_id}/verify",
+      "features": [
+        "court-profiles"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listStorageBackend",
+      "method": "GET",
+      "path": "/api/v1/storage-backends",
+      "features": [
+        "storage-backends"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createStorageBackend",
+      "method": "POST",
+      "path": "/api/v1/storage-backends",
+      "features": [
+        "storage-backends"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getStorageBackend",
+      "method": "GET",
+      "path": "/api/v1/storage-backends/{storage_backend_id}",
+      "features": [
+        "storage-backends"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "updateStorageBackend",
+      "method": "PATCH",
+      "path": "/api/v1/storage-backends/{storage_backend_id}",
+      "features": [
+        "storage-backends"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "testStorageBackend",
+      "method": "POST",
+      "path": "/api/v1/storage-backends/{storage_backend_id}/test",
+      "features": [
+        "storage-backends"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listStorageMove",
+      "method": "GET",
+      "path": "/api/v1/storage-moves",
+      "features": [
+        "storage-moves"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createStorageMove",
+      "method": "POST",
+      "path": "/api/v1/storage-moves",
+      "features": [
+        "storage-moves"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getStorageMove",
+      "method": "GET",
+      "path": "/api/v1/storage-moves/{storage_move_id}",
+      "features": [
+        "storage-moves"
+      ],
+      "scopes": [
+        "files:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "confirmStorageMove",
+      "method": "POST",
+      "path": "/api/v1/storage-moves/{storage_move_id}/confirm",
+      "features": [
+        "storage-moves"
+      ],
+      "scopes": [
+        "files:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listDocTenderJobs",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/jobs",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getDocTenderJob",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/jobs/{job_id}",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "retryDocTenderJob",
+      "method": "POST",
+      "path": "/api/v1/doc-tender/jobs/{job_id}/retry",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listDocTenderException",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/exceptions",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "getDocTenderException",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/exceptions/{exception_id}",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "resolveDocTenderException",
+      "method": "POST",
+      "path": "/api/v1/doc-tender/exceptions/{exception_id}/resolve",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ]
+    },
+    {
+      "name": "listDocCategory",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/categories",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createDocCategory",
+      "method": "POST",
+      "path": "/api/v1/doc-tender/categories",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getDocCategory",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/categories/{category_id}",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "updateDocCategory",
+      "method": "PATCH",
+      "path": "/api/v1/doc-tender/categories/{category_id}",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getDocTenderNaming",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/naming",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "putDocTenderNaming",
+      "method": "PUT",
+      "path": "/api/v1/doc-tender/naming",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "search",
+      "method": "GET",
+      "path": "/api/v1/search",
+      "features": [
+        "search"
+      ],
+      "scopes": [
+        "search:use"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getNavContext",
+      "method": "GET",
+      "path": "/api/v1/nav/context",
+      "features": [
+        "nav"
+      ],
+      "scopes": [
+        "profile:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listNotification",
+      "method": "GET",
+      "path": "/api/v1/notifications",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "createNotification",
+      "method": "POST",
+      "path": "/api/v1/notifications",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "getNotification",
+      "method": "GET",
+      "path": "/api/v1/notifications/{notification_id}",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "markNotificationRead",
+      "method": "POST",
+      "path": "/api/v1/notifications/{notification_id}/read",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "markAllNotificationsRead",
+      "method": "POST",
+      "path": "/api/v1/notifications:read-all",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "listWidgets",
+      "method": "GET",
+      "path": "/api/v1/widgets",
+      "features": [
+        "widgets"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "widgetMyTime",
+      "method": "GET",
+      "path": "/api/v1/widgets/my-time",
+      "features": [
+        "widgets",
+        "time-entries"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetRunningTimer",
+      "method": "GET",
+      "path": "/api/v1/widgets/running-timer",
+      "features": [
+        "widgets",
+        "timers"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetUnbilled",
+      "method": "GET",
+      "path": "/api/v1/widgets/unbilled",
+      "features": [
+        "widgets",
+        "time-entries"
+      ],
+      "scopes": [
+        "time:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "widgetMyOpenMatters",
+      "method": "GET",
+      "path": "/api/v1/widgets/my-open-matters",
+      "features": [
+        "widgets",
+        "matters"
+      ],
+      "scopes": [
+        "matters:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetUpcomingDeadlines",
+      "method": "GET",
+      "path": "/api/v1/widgets/upcoming-deadlines",
+      "features": [
+        "widgets",
+        "deadlines"
+      ],
+      "scopes": [
+        "deadlines:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetTodaysCalendar",
+      "method": "GET",
+      "path": "/api/v1/widgets/todays-calendar",
+      "features": [
+        "widgets",
+        "calendar"
+      ],
+      "scopes": [
+        "calendar:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetTrustAlerts",
+      "method": "GET",
+      "path": "/api/v1/widgets/trust-alerts",
+      "features": [
+        "widgets",
+        "trust-flags"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "widgetReplenishmentRequests",
+      "method": "GET",
+      "path": "/api/v1/widgets/replenishment-requests",
+      "features": [
+        "widgets",
+        "trust-replenishment"
+      ],
+      "scopes": [
+        "trust:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "widgetArAging",
+      "method": "GET",
+      "path": "/api/v1/widgets/ar-aging",
+      "features": [
+        "widgets",
+        "reports"
+      ],
+      "scopes": [
+        "reports:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "widgetRecentActivity",
+      "method": "GET",
+      "path": "/api/v1/widgets/recent-activity",
+      "features": [
+        "widgets",
+        "activity"
+      ],
+      "scopes": [
+        "events:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetPendingConflictChecks",
+      "method": "GET",
+      "path": "/api/v1/widgets/pending-conflict-checks",
+      "features": [
+        "widgets",
+        "conflicts"
+      ],
+      "scopes": [
+        "conflicts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "widgetModuleAlerts",
+      "method": "GET",
+      "path": "/api/v1/widgets/module-alerts",
+      "features": [
+        "widgets",
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getCurrentLayout",
+      "method": "GET",
+      "path": "/api/v1/me/layout",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "putCurrentLayout",
+      "method": "PUT",
+      "path": "/api/v1/me/layout",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listHomeLayout",
+      "method": "GET",
+      "path": "/api/v1/me/layouts",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createHomeLayout",
+      "method": "POST",
+      "path": "/api/v1/me/layouts",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getHomeLayout",
+      "method": "GET",
+      "path": "/api/v1/me/layouts/{layout_id}",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateHomeLayout",
+      "method": "PATCH",
+      "path": "/api/v1/me/layouts/{layout_id}",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "deleteHomeLayout",
+      "method": "DELETE",
+      "path": "/api/v1/me/layouts/{layout_id}",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "setDefaultLayout",
+      "method": "POST",
+      "path": "/api/v1/me/layouts/{layout_id}/default",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "applyLayout",
+      "method": "POST",
+      "path": "/api/v1/me/layouts/{layout_id}/apply",
+      "features": [
+        "layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listLayoutResetOptions",
+      "method": "GET",
+      "path": "/api/v1/me/layout-reset-options",
+      "features": [
+        "layouts",
+        "role-layouts"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getRoleLayout",
+      "method": "GET",
+      "path": "/api/v1/role-layouts/{role}",
+      "features": [
+        "role-layouts"
+      ],
+      "scopes": [
+        "layouts:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putRoleLayout",
+      "method": "PUT",
+      "path": "/api/v1/role-layouts/{role}",
+      "features": [
+        "role-layouts"
+      ],
+      "scopes": [
+        "layouts:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listHelpSection",
+      "method": "GET",
+      "path": "/api/v1/help/sections",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createHelpSection",
+      "method": "POST",
+      "path": "/api/v1/help/sections",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getHelpSection",
+      "method": "GET",
+      "path": "/api/v1/help/sections/{section_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateHelpSection",
+      "method": "PATCH",
+      "path": "/api/v1/help/sections/{section_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteHelpSection",
+      "method": "DELETE",
+      "path": "/api/v1/help/sections/{section_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listHelpItem",
+      "method": "GET",
+      "path": "/api/v1/help/items",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createHelpItem",
+      "method": "POST",
+      "path": "/api/v1/help/items",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getHelpItem",
+      "method": "GET",
+      "path": "/api/v1/help/items/{item_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "updateHelpItem",
+      "method": "PATCH",
+      "path": "/api/v1/help/items/{item_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteHelpItem",
+      "method": "DELETE",
+      "path": "/api/v1/help/items/{item_id}",
+      "features": [
+        "help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listHelpTopics",
+      "method": "GET",
+      "path": "/api/v1/help/topics",
+      "features": [
+        "help-guide"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getHelpGuide",
+      "method": "GET",
+      "path": "/api/v1/help/guide",
+      "features": [
+        "help-guide"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "getHelpGuidePdf",
+      "method": "GET",
+      "path": "/api/v1/help/guide.pdf",
+      "features": [
+        "help-guide"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant",
+        "client"
+      ]
+    },
+    {
+      "name": "listModuleHelpPages",
+      "method": "GET",
+      "path": "/api/v1/help/modules/{module_id}/pages",
+      "features": [
+        "module-help"
+      ],
+      "scopes": [
+        "help:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "createModuleHelpPage",
+      "method": "POST",
+      "path": "/api/v1/help/modules/{module_id}/pages",
+      "features": [
+        "module-help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "replaceModuleHelpPages",
+      "method": "PUT",
+      "path": "/api/v1/help/modules/{module_id}/pages",
+      "features": [
+        "module-help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteModuleHelpPage",
+      "method": "DELETE",
+      "path": "/api/v1/help/modules/{module_id}/pages/{page_id}",
+      "features": [
+        "module-help"
+      ],
+      "scopes": [
+        "help:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listEvents",
+      "method": "GET",
+      "path": "/api/v1/events",
+      "features": [
+        "activity",
+        "events"
+      ],
+      "scopes": [
+        "events:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "createEvent",
+      "method": "POST",
+      "path": "/api/v1/events",
+      "features": [
+        "events"
+      ],
+      "scopes": [
+        "events:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "bulkEvent",
+      "method": "POST",
+      "path": "/api/v1/events:bulk",
+      "features": [
+        "events",
+        "bulk"
+      ],
+      "scopes": [
+        "events:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listAuditLog",
+      "method": "GET",
+      "path": "/api/v1/audit-log",
+      "features": [
+        "audit"
+      ],
+      "scopes": [
+        "audit:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listWebhookDeliveries",
+      "method": "GET",
+      "path": "/api/v1/webhook-deliveries",
+      "features": [
+        "webhooks"
+      ],
+      "scopes": [
+        "webhooks:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listSettings",
+      "method": "GET",
+      "path": "/api/v1/settings",
+      "features": [
+        "settings"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getSetting",
+      "method": "GET",
+      "path": "/api/v1/settings/{setting_key}",
+      "features": [
+        "settings"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "updateSetting",
+      "method": "PATCH",
+      "path": "/api/v1/settings/{setting_key}",
+      "features": [
+        "settings"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "resetSetting",
+      "method": "POST",
+      "path": "/api/v1/settings/{setting_key}/reset",
+      "features": [
+        "settings"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getAppearance",
+      "method": "GET",
+      "path": "/api/v1/settings/appearance",
+      "features": [
+        "appearance"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "putAppearance",
+      "method": "PUT",
+      "path": "/api/v1/settings/appearance",
+      "features": [
+        "appearance"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listAiProviders",
+      "method": "GET",
+      "path": "/api/v1/ai/providers",
+      "features": [
+        "ai"
+      ],
+      "scopes": [
+        "ai:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putAiProviderKey",
+      "method": "PUT",
+      "path": "/api/v1/ai/providers/{provider}/key",
+      "features": [
+        "ai"
+      ],
+      "scopes": [
+        "ai:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "checkAiProvider",
+      "method": "POST",
+      "path": "/api/v1/ai/providers/{provider}/check",
+      "features": [
+        "ai"
+      ],
+      "scopes": [
+        "ai:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createAiCall",
+      "method": "POST",
+      "path": "/api/v1/ai/calls",
+      "features": [
+        "ai"
+      ],
+      "scopes": [
+        "ai:use"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ]
+    },
+    {
+      "name": "listAiCalls",
+      "method": "GET",
+      "path": "/api/v1/ai/calls",
+      "features": [
+        "ai"
+      ],
+      "scopes": [
+        "ai:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putSmtpPassword",
+      "method": "PUT",
+      "path": "/api/v1/mail/smtp-password",
+      "features": [
+        "mail"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "testMail",
+      "method": "POST",
+      "path": "/api/v1/mail/test",
+      "features": [
+        "mail"
+      ],
+      "scopes": [
+        "settings:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listProblemReport",
+      "method": "GET",
+      "path": "/api/v1/problem-reports",
+      "features": [
+        "problem-reports"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createProblemReport",
+      "method": "POST",
+      "path": "/api/v1/problem-reports",
+      "features": [
+        "problem-reports"
+      ],
+      "scopes": [
+        "profile:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "getProblemReport",
+      "method": "GET",
+      "path": "/api/v1/problem-reports/{problem_report_id}",
+      "features": [
+        "problem-reports"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getSeatCount",
+      "method": "GET",
+      "path": "/api/v1/system/seats",
+      "features": [
+        "seats"
+      ],
+      "scopes": [
+        "settings:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listBackup",
+      "method": "GET",
+      "path": "/api/v1/backups",
+      "features": [
+        "backups"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createBackup",
+      "method": "POST",
+      "path": "/api/v1/backups",
+      "features": [
+        "backups"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getBackup",
+      "method": "GET",
+      "path": "/api/v1/backups/{backup_id}",
+      "features": [
+        "backups"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteBackup",
+      "method": "DELETE",
+      "path": "/api/v1/backups/{backup_id}",
+      "features": [
+        "backups"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "downloadBackup",
+      "method": "GET",
+      "path": "/api/v1/backups/{backup_id}/download",
+      "features": [
+        "backups"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listBackupDestination",
+      "method": "GET",
+      "path": "/api/v1/backup-destinations",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createBackupDestination",
+      "method": "POST",
+      "path": "/api/v1/backup-destinations",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getBackupDestination",
+      "method": "GET",
+      "path": "/api/v1/backup-destinations/{destination_id}",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "updateBackupDestination",
+      "method": "PATCH",
+      "path": "/api/v1/backup-destinations/{destination_id}",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteBackupDestination",
+      "method": "DELETE",
+      "path": "/api/v1/backup-destinations/{destination_id}",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "testBackupDestination",
+      "method": "POST",
+      "path": "/api/v1/backup-destinations/{destination_id}/test",
+      "features": [
+        "backup-destinations"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listRestore",
+      "method": "GET",
+      "path": "/api/v1/restores",
+      "features": [
+        "restores"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createRestore",
+      "method": "POST",
+      "path": "/api/v1/restores",
+      "features": [
+        "restores"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getRestore",
+      "method": "GET",
+      "path": "/api/v1/restores/{restore_id}",
+      "features": [
+        "restores"
+      ],
+      "scopes": [
+        "backups:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listUpdates",
+      "method": "GET",
+      "path": "/api/v1/updates",
+      "features": [
+        "updates"
+      ],
+      "scopes": [
+        "updates:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "startUpdate",
+      "method": "POST",
+      "path": "/api/v1/updates",
+      "features": [
+        "updates"
+      ],
+      "scopes": [
+        "updates:admin"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listModules",
+      "method": "GET",
+      "path": "/api/v1/modules",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "installModule",
+      "method": "POST",
+      "path": "/api/v1/modules",
+      "features": [
+        "modules",
+        "marketplace"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getModule",
+      "method": "GET",
+      "path": "/api/v1/modules/{module_id}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "decideModulePermissions",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/permissions",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "enableModule",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/enable",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "disableModule",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/disable",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "uninstallModule",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/uninstall",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getModuleSettings",
+      "method": "GET",
+      "path": "/api/v1/modules/{module_id}/settings",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putModuleSettings",
+      "method": "PUT",
+      "path": "/api/v1/modules/{module_id}/settings",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createModuleContextToken",
+      "method": "POST",
+      "path": "/api/v1/modules/{module_id}/context-tokens",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff",
+        "accountant"
+      ]
+    },
+    {
+      "name": "listMarketplaceListings",
+      "method": "GET",
+      "path": "/api/v1/marketplace/listings",
+      "features": [
+        "marketplace"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getMarketplaceListing",
+      "method": "GET",
+      "path": "/api/v1/marketplace/listings/{listing_id}",
+      "features": [
+        "marketplace"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listModuleAlert",
+      "method": "GET",
+      "path": "/api/v1/module-alerts",
+      "features": [
+        "marketplace"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getModuleAlert",
+      "method": "GET",
+      "path": "/api/v1/module-alerts/{alert_id}",
+      "features": [
+        "marketplace"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listTrustedKey",
+      "method": "GET",
+      "path": "/api/v1/trusted-signing-keys",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "createTrustedKey",
+      "method": "POST",
+      "path": "/api/v1/trusted-signing-keys",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "getTrustedKey",
+      "method": "GET",
+      "path": "/api/v1/trusted-signing-keys/{key_id}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "updateTrustedKey",
+      "method": "PATCH",
+      "path": "/api/v1/trusted-signing-keys/{key_id}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "deleteTrustedKey",
+      "method": "DELETE",
+      "path": "/api/v1/trusted-signing-keys/{key_id}",
+      "features": [
+        "modules"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "listDomainHandlers",
+      "method": "GET",
+      "path": "/api/v1/domain-handlers",
+      "features": [
+        "domain-replacement"
+      ],
+      "scopes": [
+        "modules:read"
+      ],
+      "roles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "putDomainHandler",
+      "method": "PUT",
+      "path": "/api/v1/domain-handlers/{domain}",
+      "features": [
+        "domain-replacement"
+      ],
+      "scopes": [
+        "modules:write"
+      ],
+      "roles": [
+        "admin"
+      ]
+    }
+  ]
+}
