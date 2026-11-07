@@ -1,7 +1,7 @@
 name: Codex checkpoint
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled]
 permissions:
   contents: read
 concurrency:
@@ -37,9 +37,11 @@ jobs:
           python3 - <<'PY'
           import json,os,pathlib
           event=json.loads(pathlib.Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          task_labels=[x["name"].split(":",1)[1] for x in event["pull_request"].get("labels",[]) if x["name"].startswith("togavsu-task:")]
+          task_id=task_labels[0] if len(task_labels)==1 else "unassigned"
           pathlib.Path("review-context.json").write_text(json.dumps({
             "base":os.environ["BASE_SHA"],"head":os.environ["HEAD_SHA"],
-            "pr":event["pull_request"]["number"],
+            "pr":event["pull_request"]["number"],"task_id":task_id,
             "body":event["pull_request"].get("body","")
           }))
           PY
@@ -68,7 +70,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/check_review.py "$RUNNER_TEMP/codex-review-output/review-result.json" "$BASE_SHA" "$HEAD_SHA"
+        run: python3 scripts/check_review.py "$RUNNER_TEMP/codex-review-output/review-result.json" "$BASE_SHA" "$HEAD_SHA" review-context.json
       - name: Retain review evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

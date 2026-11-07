@@ -939,7 +939,18 @@
       "owned_paths": [
         "docs/release/",
         "docs/build/reports/",
-        "scripts/release/"
+        "scripts/release/",
+        ".github/workflows/product-ci.yml",
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/"
       ],
       "prd_sections": [
         "6",
@@ -1000,7 +1011,7 @@
         "AC-051",
         "AC-052"
       ],
-      "prompt": "Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes. Add a Full acceptance CI job that actually executes all 52 criteria and clean Docker Desktop validation; never turn unexecuted acceptance into a passing job. Provide docs/build/reports/release.json with task_id release, status pass only after full acceptance, actual tests/exit_code and acceptance results. External blockers remain pending; never claim a signed release from scaffolding. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs.",
+      "prompt": "Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes. Add a Full acceptance CI job that actually executes all 52 criteria and clean Docker Desktop validation; never turn unexecuted acceptance into a passing job. Provide docs/build/reports/release.json with task_id release, status pass only after full acceptance, actual tests/exit_code and acceptance results. External blockers remain pending; never claim a signed release from scaffolding. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs. You are the final integration lead, authorized to reconcile shared implementation and product CI in these owned paths, including the Full acceptance job. Protected controller and review-gate files remain forbidden.",
       "report_path": "docs/build/reports/release.json",
       "required_checks": [
         "Core tests",

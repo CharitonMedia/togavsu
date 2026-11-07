@@ -60,7 +60,11 @@ def latest_checks(checks):
     return result
 
 
-def validate_review(report, context, pr, main):
+def validate_review(report, context, pr, main, expected_task=None):
+    if not isinstance(report, dict) or not isinstance(context, dict):
+        raise ValueError("Review and context must be JSON objects")
+    if expected_task is not None and (report.get("task_id") != expected_task or context.get("task_id") != expected_task):
+        raise ValueError("Independent review does not cover the expected assignment")
     if context.get("head") != pr["head"]["sha"] or context.get("base") != main:
         raise ValueError("Stale review context")
     if context.get("pr") != pr["number"]:
@@ -190,6 +194,9 @@ class Controller:
             if task not in self.tasks:
                 self.tasks[task] = {"agent_id": old["agent_id"], "starting_sha": old.get("starting_sha"),
                     "repair_count": old.get("repair_cycle", 0), "submitted": True}
+                branches = old.get("git", {}).get("branches", [])
+                if len(branches) == 1:
+                    self.tasks[task]["expected_branch"] = branches[0]["branch"]
                 self.event(task, "Adopted existing agent; prior correction count " + str(old.get("repair_cycle", 0)))
         self.save()
 
@@ -275,6 +282,11 @@ class Controller:
         if record.get("halted") or record.get("completed"):
             return False
         record["agent_status"] = snapshot["status"]
+        if not record.get("expected_branch"):
+            branches = snapshot.get("git", {}).get("branches", [])
+            if len(branches) == 1 and branches[0].get("repoUrl", "").removeprefix("https://").rstrip("/") == "github.com/" + REPO:
+                record["expected_branch"] = branches[0]["branch"]
+                self.save()
         if snapshot["status"] in ACTIVE:
             return False
         if snapshot["status"] != "FINISHED":
@@ -287,6 +299,12 @@ class Controller:
             self.followup(task, record, snapshot, "missing-pr:" + str(snapshot.get("run_id")),
                 "Your run finished without a discoverable pull request. Complete your assigned work, tests and push, "
                 "then open the PR on the same branch. Report genuine blockers. Do not merge or bypass checks.")
+            return False
+        if not record.get("expected_branch") or pr["head"].get("ref") != record["expected_branch"]:
+            self.halt(task, record, "PR branch does not match the branch pinned to this Cursor assignment")
+            return False
+        if any(other != task and value.get("pr") == pr["number"] for other, value in self.tasks.items()):
+            self.halt(task, record, "PR is already assigned to another task")
             return False
         if pr["head"]["repo"]["full_name"] != REPO or pr["base"]["ref"] != "main":
             self.halt(task, record, "Unexpected PR repository or target branch")
@@ -303,6 +321,23 @@ class Controller:
             return False
         if pr["state"] != "open":
             self.halt(task, record, "Assignment PR closed without merge")
+            return False
+        expected_label = "togavsu-task:" + task
+        task_labels = [label["name"] for label in pr.get("labels", []) if label["name"].startswith("togavsu-task:")]
+        if task_labels and task_labels != [expected_label]:
+            self.halt(task, record, "PR assignment label contradicts pinned task identity")
+            return False
+        if not task_labels:
+            def bind_label():
+                try:
+                    self.remote.gh("labels/" + urllib.parse.quote(expected_label, safe=""))
+                except RuntimeError as error:
+                    if "HTTP 404" not in str(error):
+                        raise
+                    self.remote.gh("labels", "POST", {"name": expected_label, "color": "1d76db"})
+                self.remote.gh("issues/" + str(number) + "/labels", "POST", {"labels": [expected_label]})
+            self.effect("bind task label on PR " + str(number), bind_label)
+            record["waiting"] = "Assignment label added; await task-bound Codex review"
             return False
         for file in self.remote.changed_files(number):
             paths = {file["filename"], file.get("previous_filename", "")}
@@ -352,7 +387,7 @@ class Controller:
         codex = checks["Codex checkpoint"]
         try:
             report, context = self.remote.review(codex)
-            validate_review(report, context, pr, main)
+            validate_review(report, context, pr, main, task)
         except (ValueError, KeyError, zipfile.BadZipFile) as error:
             # Stale base can result from a workflow event predating branch refresh. Rerun once.
             key = head + ":" + main
@@ -424,6 +459,8 @@ class Controller:
         return True
 
     def validate_evidence(self, spec, evidence, head):
+        if not isinstance(evidence, dict):
+            raise ValueError("Integration evidence must be a JSON object")
         if evidence.get("task_id") != spec["id"] or evidence.get("status") != "pass":
             raise ValueError("Integration report absent or not passing")
         tests = evidence.get("tests")
@@ -446,6 +483,8 @@ class Controller:
             raise ValueError("Assigned phase case coverage missing")
         seen = set()
         for case in cases:
+            if not isinstance(case, dict):
+                raise ValueError("Phase case must be a JSON object")
             key = case.get("id")
             if key not in required_cases or key in seen:
                 raise ValueError("Unknown or duplicate phase case")

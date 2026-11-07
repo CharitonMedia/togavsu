@@ -30,3 +30,5 @@ The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local crede
 The deterministic controller tests cover feedback dispatch/deduplication, ambiguous requests, retry exhaustion, branch conflicts, stale or forged reviews, required CI, merge races, protection rejection, dependency launches and pause behavior. A live dry-run against existing PRs precedes enabling the timer.
 
 Integration evidence is bound to a tested 40-character code revision; only report-file commits may follow that revision. Reports must exhaustively partition assigned acceptance IDs and pass every named phase case with its test command and mapped criteria. Final release permits no pending criterion. Integration leads are serialized through the dependency graph to preserve shared-file ownership. Correction dispatch and new launches share the same pre-observed four-worker capacity limit.
+
+Each PR is bound to the Cursor agent's pinned branch and a unique task label. The independent review repeats that task ID; another assignment's PR or report cannot unlock dependencies. PR-body edits and task labels trigger fresh reviews so current validation evidence is used.

@@ -23,10 +23,10 @@ class FakeRemote:
     def __init__(self):
         self.main = BASE
         self.pr = {"number": 7, "state": "open", "merged": False, "draft": False,
-                   "mergeable": True, "head": {"sha": HEAD, "repo": {"full_name": "CharitonMedia/togavsu"}},
+                   "mergeable": True, "labels": [{"name": "togavsu-task:one"}], "head": {"sha": HEAD, "ref": "cursor/one", "repo": {"full_name": "CharitonMedia/togavsu"}},
                    "base": {"ref": "main"}, "html_url": "https://github.com/CharitonMedia/togavsu/pull/7"}
-        self.report = {"reviewed_head": HEAD, "reviewed_base": BASE, "verdict": "pass", "findings": [], "summary": "Reviewed"}
-        self.context = {"head": HEAD, "base": BASE, "pr": 7}
+        self.report = {"task_id": "one", "reviewed_head": HEAD, "reviewed_base": BASE, "verdict": "pass", "findings": [], "summary": "Reviewed"}
+        self.context = {"task_id": "one", "head": HEAD, "base": BASE, "pr": 7}
         self.behind = 0
         self.calls = []
         self.run_id = "run-old"
@@ -82,7 +82,7 @@ class ControllerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.remote = FakeRemote()
         self.controller = Controller(self.remote, {"tasks": [SPEC], "max_repairs": 3, "max_implementation_agents": 4}, self.temp.name)
-        self.record = {"agent_id": "bc-one", "submitted": True, "pr": 7, "repair_count": 2}
+        self.record = {"agent_id": "bc-one", "expected_branch": "cursor/one", "submitted": True, "pr": 7, "repair_count": 2}
         self.controller.tasks["one"] = self.record
 
     def process(self):
@@ -292,6 +292,30 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.controller.validate_evidence(spec, evidence, HEAD)
 
+    def test_unrelated_pr_cannot_complete_assignment(self):
+        self.remote.pr["head"]["ref"] = "cursor/unrelated"
+        self.process()
+        self.assertTrue(self.record["halted"])
+        self.assertNotIn("completed", self.record)
+
+    def test_pr_cannot_be_reused_by_another_task(self):
+        self.controller.tasks["other"] = {"pr": 7}
+        self.process()
+        self.assertTrue(self.record["halted"])
+
+    def test_review_for_another_assignment_is_rejected(self):
+        self.remote.context["task_id"] = "other"
+        self.process()
+        self.assertNotIn("completed", self.record)
+
+    def test_null_report_and_null_member_are_rejected(self):
+        spec, evidence = self.evidence_fixture()
+        with self.assertRaises(ValueError):
+            self.controller.validate_evidence(spec, None, HEAD)
+        evidence["phase_cases"] = [None]
+        with self.assertRaises(ValueError):
+            self.controller.validate_evidence(spec, evidence, HEAD)
+
     def test_external_merge_is_not_accepted_without_controller_intent(self):
         self.remote.pr["merged"] = True
         self.remote.pr["merge_commit_sha"] = NEW
@@ -336,6 +360,11 @@ class ControllerTests(unittest.TestCase):
 
 
 class ReviewDataTests(unittest.TestCase):
+    def test_null_review_or_context_is_rejected(self):
+        r = FakeRemote()
+        for report, context in [(None,r.context),(r.report,None)]:
+            with self.assertRaises(ValueError):
+                validate_review(report, context, r.pr, BASE)
     def test_stale_or_other_pr_report_rejected(self):
         r = FakeRemote()
         validate_review(r.report, r.context, r.pr, BASE)
