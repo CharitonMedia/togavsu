@@ -394,6 +394,127 @@ func (p *PathDestination) dir() string {
 	return filepath.Join(p.Spec.Path, p.Spec.Namespace)
 }
 
+// openNamespace opens the configured destination root, then the namespace,
+// without following symlinks. create is only for a new owned namespace
+// directory. A symlink at that name is never used as the directory.
+func (p *PathDestination) openNamespace(create bool) (*os.File, error) {
+	root, err := openConfiguredRoot(p.Spec.Path)
+	if err != nil {
+		return nil, err
+	}
+	if p.Spec.Namespace == "" {
+		return root, nil
+	}
+	if !create {
+		fd, err := syscall.Openat(int(root.Fd()), p.Spec.Namespace, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+		root.Close()
+		if err != nil {
+			return nil, err
+		}
+		return os.NewFile(uintptr(fd), p.Spec.Namespace), nil
+	}
+	dir, err := mkdirChildNoFollow(root, p.Spec.Namespace)
+	root.Close()
+	return dir, err
+}
+
+// openConfiguredRoot opens the destination directory the operator named.
+// The final component is created only when it is missing, and it is never
+// a followed symlink. Parent components are opened without following
+// symlinks, so a replaced parent cannot redirect the root.
+func openConfiguredRoot(path string) (*os.File, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
+	}
+	parent, err := openNoFollowDir(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close()
+	base := filepath.Base(path)
+	if base == "." || base == ".." || base == string(os.PathSeparator) {
+		return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
+	}
+	fd, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err == syscall.ENOENT {
+		if err := syscall.Mkdirat(int(parent.Fd()), base, 0o700); err != nil {
+			return nil, err
+		}
+		fd, err = syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), base), nil
+}
+
+// openNoFollowDir opens path by walking from the filesystem root. Each
+// component is opened with O_NOFOLLOW, so a symlink in the configured
+// directory cannot be swapped for another path between checks.
+func openNoFollowDir(path string) (*os.File, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
+	}
+	clean := filepath.Clean(path)
+	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY, 0)
+	if err != nil {
+		return nil, err
+	}
+	cur := os.NewFile(uintptr(fd), "/")
+	for _, part := range strings.Split(clean, string(os.PathSeparator)) {
+		if part == "" || part == "." {
+			continue
+		}
+		if part == ".." {
+			cur.Close()
+			return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
+		}
+		next, err := syscall.Openat(int(cur.Fd()), part, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+		cur.Close()
+		if err != nil {
+			return nil, err
+		}
+		cur = os.NewFile(uintptr(next), part)
+	}
+	return cur, nil
+}
+
+// mkdirChildNoFollow creates or opens one directory entry. A symlink is not
+// followed and is not treated as the directory.
+func mkdirChildNoFollow(parent *os.File, name string) (*os.File, error) {
+	if err := validNamespace(name); err != nil {
+		return nil, err
+	}
+	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err == nil {
+		return os.NewFile(uintptr(fd), name), nil
+	}
+	if err != syscall.ENOENT {
+		return nil, err
+	}
+	if err := syscall.Mkdirat(int(parent.Fd()), name, 0o700); err != nil && err != syscall.EEXIST {
+		return nil, err
+	}
+	fd, err = syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), name), nil
+}
+
+func exclusiveTemp(dir *os.File) (string, *os.File, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", nil, err
+	}
+	name := ".togavsu-" + hexEncode(raw[:]) + ".tmp"
+	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_RDWR, 0o600)
+	if err != nil {
+		return "", nil, err
+	}
+	return name, os.NewFile(uintptr(fd), name), nil
+}
+
 func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha string) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -425,54 +546,61 @@ func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
 	if p.stall != nil {
 		p.stall("write")
 	}
-	if err := os.MkdirAll(p.dir(), 0o700); err != nil {
-		return err
-	}
-	target := filepath.Join(p.dir(), name)
-	tmp := target + ".partial"
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	dir, err := p.openNamespace(true)
 	if err != nil {
 		return err
 	}
-	_, copyErr := io.Copy(f, r)
-	closeErr := f.Close()
-	if copyErr != nil {
-		p.removeTemp(tmp)
+	defer dir.Close()
+	tmpName, f, err := exclusiveTemp(dir)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		f.Close()
+		p.removeTemp(dir, tmpName)
+	}()
+	if _, copyErr := io.Copy(f, r); copyErr != nil {
 		return copyErr
 	}
-	if closeErr != nil {
-		p.removeTemp(tmp)
-		return closeErr
+	if err := f.Sync(); err != nil {
+		return err
 	}
 	if p.stall != nil {
 		p.stall("hash")
 	}
 	if sha != "" {
-		got, err := hashFile(tmp)
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		got, err := sha256Hex(f)
 		if err != nil {
-			p.removeTemp(tmp)
 			return err
 		}
 		if got != sha {
-			p.removeTemp(tmp)
 			return ErrChecksum
 		}
+	}
+	if err := f.Close(); err != nil {
+		return err
 	}
 	if p.stall != nil {
 		p.stall("rename")
 	}
-	if err := os.Rename(tmp, target); err != nil {
-		p.removeTemp(tmp)
+	if err := syscall.Renameat(int(dir.Fd()), tmpName, int(dir.Fd()), name); err != nil {
 		return err
 	}
+	tmpName = ""
 	return nil
 }
 
-func (p *PathDestination) removeTemp(tmp string) {
+func (p *PathDestination) removeTemp(dir *os.File, name string) {
+	if name == "" || dir == nil {
+		return
+	}
 	if p.stall != nil {
 		p.stall("remove")
 	}
-	_ = os.Remove(tmp)
+	_ = syscall.Unlinkat(int(dir.Fd()), name)
 }
 
 func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -493,10 +621,16 @@ func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, 
 		if p.stall != nil {
 			p.stall("open")
 		}
-		f, err := os.Open(filepath.Join(p.dir(), name))
+		dir, err := p.openNamespace(false)
 		if err != nil {
 			return err
 		}
+		fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		dir.Close()
+		if err != nil {
+			return err
+		}
+		f := os.NewFile(uintptr(fd), name)
 		box.mu.Lock()
 		left := box.abandoned
 		if !left {
@@ -566,8 +700,16 @@ func (p *PathDestination) Delete(ctx context.Context, name string) error {
 		if p.stall != nil {
 			p.stall("remove")
 		}
-		err := os.Remove(filepath.Join(p.dir(), name))
-		if os.IsNotExist(err) {
+		dir, err := p.openNamespace(false)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		defer dir.Close()
+		err = syscall.Unlinkat(int(dir.Fd()), name)
+		if err == syscall.ENOENT {
 			return nil
 		}
 		return err
@@ -585,19 +727,20 @@ func (p *PathDestination) List(ctx context.Context) ([]RemoteObject, error) {
 		if p.stall != nil {
 			p.stall("list")
 		}
-		entries, err := os.ReadDir(p.dir())
-		if os.IsNotExist(err) {
-			return nil
+		dir, err := p.openNamespace(false)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
 		}
+		defer dir.Close()
+		entries, err := dir.Readdir(-1)
 		if err != nil {
 			return err
 		}
 		for _, ent := range entries {
-			info, err := ent.Info()
-			if err != nil {
-				return err
-			}
-			out = append(out, RemoteObject{Name: ent.Name(), Created: info.ModTime()})
+			out = append(out, RemoteObject{Name: ent.Name(), Created: ent.ModTime()})
 		}
 		return nil
 	})

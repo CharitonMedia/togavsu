@@ -859,9 +859,9 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 	if !errors.Is(err, ErrRemoteUncertain) || !strings.Contains(err.Error(), "already running") {
 		t.Fatalf("second put = %v", err)
 	}
-	partial := filepath.Join(root, spec.Namespace, archiveName+".partial")
-	if _, err := os.Stat(partial); err != nil {
-		t.Fatalf("partial archive: %v", err)
+	temps, err := filepath.Glob(filepath.Join(root, spec.Namespace, ".togavsu-*.tmp"))
+	if err != nil || len(temps) != 1 {
+		t.Fatalf("exclusive temp archive: %v %v", temps, err)
 	}
 	select {
 	case got := <-done:
@@ -1586,8 +1586,8 @@ func TestObservedCleanupFinishesWhenReceiptRemovalFailed(t *testing.T) {
 	}
 	s.failReceiptRemove = func() error { return errors.New("disk") }
 	s.OpenDestination = func(DestinationSpec) (Destination, error) { return d, nil }
-	if err := s.reconcileDestination(context.Background(), d); err != nil {
-		t.Fatal(err)
+	if err := s.reconcileDestination(context.Background(), d); err == nil {
+		t.Fatal("receipt removal failure was ignored")
 	}
 	owned, err := s.receiptBook().List("share")
 	if err != nil || len(owned) != 1 || owned[0].State != receiptObserved {
@@ -1606,6 +1606,126 @@ func TestObservedCleanupFinishesWhenReceiptRemovalFailed(t *testing.T) {
 	}
 	if string(d.objects["other-firm.tgbk"]) != "keep" {
 		t.Fatal("other firm touched")
+	}
+}
+
+func TestPathSymlinkCannotEscapeTheDestination(t *testing.T) {
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "parent")); err != nil {
+		t.Fatal(err)
+	}
+	parent := &PathDestination{Spec: DestinationSpec{ID: "share", Kind: "path", Path: filepath.Join(root, "parent"), Namespace: "nsowned01"}}
+	if err := parent.Put(context.Background(), "owned.tgbk", bytes.NewReader([]byte("nope")), ""); err == nil {
+		t.Fatal("symlink parent directory was used as the destination")
+	}
+	if body, err := os.ReadFile(victim); err != nil || string(body) != "keep" {
+		t.Fatalf("victim %q %v", body, err)
+	}
+
+	share := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(share, "nsowned01")); err != nil {
+		t.Fatal(err)
+	}
+	ns := &PathDestination{Spec: DestinationSpec{ID: "share", Kind: "path", Path: share, Namespace: "nsowned01"}}
+	if err := ns.Put(context.Background(), "owned.tgbk", bytes.NewReader([]byte("nope")), ""); err == nil {
+		t.Fatal("symlink namespace was used as the destination")
+	}
+	if body, err := os.ReadFile(victim); err != nil || string(body) != "keep" {
+		t.Fatalf("victim %q %v", body, err)
+	}
+
+	real := t.TempDir()
+	namespace := filepath.Join(real, "nsowned01")
+	if err := os.Mkdir(namespace, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(namespace, "kept.tgbk")
+	if err := os.WriteFile(kept, []byte("legit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range []string{"owned.tgbk.partial", "togavsu-destination-test.partial"} {
+		if err := os.Symlink(victim, filepath.Join(namespace, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dest := &PathDestination{Spec: DestinationSpec{ID: "share", Kind: "path", Path: real, Namespace: "nsowned01"}}
+	body := []byte("archive-bytes")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(victim); err != nil || string(got) != "keep" {
+		t.Fatalf("partial symlink changed the victim: %q %v", got, err)
+	}
+	if got, err := os.ReadFile(kept); err != nil || string(got) != "legit" {
+		t.Fatalf("existing file changed: %q %v", got, err)
+	}
+	rc, err := dest.Get(context.Background(), "owned.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("stored %q %v", got, err)
+	}
+	if err := dest.Delete(context.Background(), "owned.tgbk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dest.Get(context.Background(), "owned.tgbk"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted file still open: %v", err)
+	}
+	if got, err := os.ReadFile(victim); err != nil || string(got) != "keep" {
+		t.Fatalf("victim after delete %q %v", got, err)
+	}
+}
+
+func TestConfirmedReceiptRemovalFailureKeepsTheDeletingRecord(t *testing.T) {
+	s := testStore(t)
+	root := t.TempDir()
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("%+v %v", meta.DestinationErrors, err)
+	}
+	s.failReceiptRemove = func() error { return errors.New("disk") }
+	if err := s.Delete(context.Background(), meta.ID); err == nil {
+		t.Fatal("delete succeeded without a durable receipt removal")
+	}
+	kept, err := s.lookup(meta.ID)
+	if err != nil || !kept.Deleting {
+		t.Fatalf("deleting record was dropped: %+v %v", kept, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+".tgbk")); err != nil {
+		t.Fatalf("local archive removed: %v", err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) == 0 {
+		t.Fatalf("confirmed receipt was dropped: %+v %v", owned, err)
+	}
+	s.failReceiptRemove = nil
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now}
+	if err := restarted.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restarted.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("local metadata remained: %v", err)
+	}
+	if owned, err := restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt remained after retry: %+v %v", owned, err)
+	}
+	if err := restarted.DeleteDestination("share"); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1739,11 +1859,11 @@ func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) 
 	}
 	name := created.meta.ID + ".tgbk"
 	ns := filepath.Join(root, spec.Namespace)
-	partial := filepath.Join(ns, name+".partial")
-	final := filepath.Join(ns, name)
-	if _, err := os.Stat(partial); err != nil {
-		t.Fatalf("partial: %v", err)
+	temps, err := filepath.Glob(filepath.Join(ns, ".togavsu-*.tmp"))
+	if err != nil || len(temps) != 1 {
+		t.Fatalf("exclusive temp archive: %v %v", temps, err)
 	}
+	final := filepath.Join(ns, name)
 	if _, err := os.Stat(final); !os.IsNotExist(err) {
 		t.Fatal("final archive existed before the late writer resumed")
 	}
@@ -1788,8 +1908,8 @@ func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) 
 	if _, err := os.Stat(final); err != nil {
 		t.Fatalf("late writer did not publish the archive: %v", err)
 	}
-	if _, err := os.Stat(partial); !os.IsNotExist(err) {
-		t.Fatalf("partial remained after rename: %v", err)
+	if left, err := filepath.Glob(filepath.Join(ns, ".togavsu-*.tmp")); err != nil || len(left) != 0 {
+		t.Fatalf("temp remained after rename: %v %v", left, err)
 	}
 	dest, err := OpenDestination(spec)
 	if err != nil {
@@ -1801,8 +1921,8 @@ func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) 
 	if _, err := os.Stat(final); !os.IsNotExist(err) {
 		t.Fatalf("late archive remained after reconcile: %v", err)
 	}
-	if _, err := os.Stat(partial); !os.IsNotExist(err) {
-		t.Fatalf("partial remained after reconcile: %v", err)
+	if left, err := filepath.Glob(filepath.Join(ns, ".togavsu-*.tmp")); err != nil || len(left) != 0 {
+		t.Fatalf("temp remained after reconcile: %v %v", left, err)
 	}
 	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
 		t.Fatalf("receipt remained after the objects were confirmed absent: %+v %v", owned, err)

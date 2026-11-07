@@ -463,7 +463,9 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	got, err := hashBounded(ctx, rc)
 	closeErr := rc.Close()
 	if errors.Is(err, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) || ambiguousRemote(err) || ambiguousRemote(closeErr) {
-		_ = s.markUncertain(receipts, dest.ID(), name, meta.CreatedAt)
+		if merr := s.markUncertain(receipts, dest.ID(), name, meta.CreatedAt); merr != nil {
+			return merr
+		}
 		return uncertainJoin(err, closeErr)
 	}
 	if err != nil {
@@ -658,15 +660,21 @@ func (s *Store) recordMutation(ctx context.Context, dest Destination, receipts *
 		return err
 	}
 	if !definiteRejection(err) {
-		_ = s.markUncertain(receipts, dest.ID(), name, created)
+		if merr := s.markUncertain(receipts, dest.ID(), name, created); merr != nil {
+			return merr
+		}
 		if errors.Is(err, ErrRemoteUncertain) {
 			return err
 		}
 		return fmt.Errorf("%w: %s", ErrRemoteUncertain, err.Error())
 	}
-	_ = s.markRejected(receipts, dest.ID(), name, created)
+	if merr := s.markRejected(receipts, dest.ID(), name, created); merr != nil {
+		return merr
+	}
 	if s.dropRemote(ctx, dest, name) && confirmNameAbsent(ctx, dest, name) == nil {
-		_ = s.removeReceipt(receipts, dest.ID(), name)
+		if rerr := s.removeReceipt(receipts, dest.ID(), name); rerr != nil {
+			return rerr
+		}
 	}
 	return err
 }
@@ -746,22 +754,18 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	}
 	if obj.State == receiptUncertain || (obj.State == receiptPending && deleting) {
 		if obj.State == receiptPending {
-			_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
+			if err := s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created); err != nil {
+				return err
+			}
 		}
 		return s.reconcileUncertain(ctx, dest, receipts, obj)
 	}
 	rc, err := dest.Get(ctx, obj.Name)
-	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) {
-		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
-		return nil
-	}
-	if errors.Is(err, ErrNotFound) {
-		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
-		return nil
-	}
-	if err != nil {
-		// A failed read does not prove the original PUT was rejected.
-		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
+	if errors.Is(err, ErrRemoteUncertain) || ambiguousRemote(err) || errors.Is(err, ErrNotFound) || err != nil {
+		// A failed or missing read does not prove the original PUT was rejected.
+		if merr := s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created); merr != nil {
+			return merr
+		}
 		return nil
 	}
 	if sidecar {
@@ -772,7 +776,9 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 			if errors.Is(joined, errSidecarOversized) {
 				return s.beginObservedCleanup(ctx, dest, receipts, obj)
 			}
-			_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
+			if merr := s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created); merr != nil {
+				return merr
+			}
 			return nil
 		}
 		local, err := s.expectedSidecar(receipts, dest.ID(), id)
@@ -787,7 +793,9 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	got, hashErr := hashBounded(ctx, rc)
 	closeErr := rc.Close()
 	if errors.Is(hashErr, ErrRemoteUncertain) || errors.Is(closeErr, ErrRemoteUncertain) || ambiguousRemote(hashErr) || ambiguousRemote(closeErr) {
-		_ = s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created)
+		if merr := s.markUncertain(receipts, dest.ID(), obj.Name, obj.Created); merr != nil {
+			return merr
+		}
 		return nil
 	}
 	if hashErr != nil || closeErr != nil {
@@ -1019,8 +1027,7 @@ func (s *Store) reconcileUncertain(ctx context.Context, dest Destination, receip
 	if err != nil || !done {
 		return nil
 	}
-	_ = s.removeReceipt(receipts, dest.ID(), obj.Name)
-	return nil
+	return s.removeReceipt(receipts, dest.ID(), obj.Name)
 }
 
 // beginObservedCleanup records that the object was seen before deleting it.
@@ -1041,15 +1048,14 @@ func (s *Store) finishObserved(ctx context.Context, dest Destination, receipts *
 	}
 	rc, err := dest.Get(ctx, obj.Name)
 	if errors.Is(err, ErrNotFound) {
-		_ = s.removeReceipt(receipts, dest.ID(), obj.Name)
-		return nil
+		return s.removeReceipt(receipts, dest.ID(), obj.Name)
 	}
 	if err != nil {
 		return nil
 	}
 	_ = rc.Close()
 	if s.dropRemote(ctx, dest, obj.Name) && confirmNameAbsent(ctx, dest, obj.Name) == nil {
-		_ = s.removeReceipt(receipts, dest.ID(), obj.Name)
+		return s.removeReceipt(receipts, dest.ID(), obj.Name)
 	}
 	return nil
 }
@@ -1268,7 +1274,11 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 			}
 			// Pending after the worker is gone is the same unknown as a lost ack.
 			if obj.State == receiptPending {
-				_ = s.markUncertain(receipts, spec.ID, obj.Name, obj.Created)
+				if err := s.markUncertain(receipts, spec.ID, obj.Name, obj.Created); err != nil {
+					failed = append(failed, spec.ID+": "+err.Error())
+					blocked = true
+					continue
+				}
 			}
 			done, uerr := s.observedUncertainCleanup(ctx, dest, receipts, obj)
 			if uerr != nil || !done {
@@ -1302,8 +1312,9 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 				failed = append(failed, spec.ID+": "+err.Error())
 				continue
 			}
-			if receipts != nil {
-				_ = s.removeReceipt(receipts, spec.ID, name)
+			if err := s.removeReceipt(receipts, spec.ID, name); err != nil {
+				failed = append(failed, spec.ID+": "+err.Error())
+				continue
 			}
 		}
 	}
