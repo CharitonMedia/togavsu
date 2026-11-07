@@ -69,7 +69,7 @@ Failures use `application/problem+json`:
 
 ## Lists, writes, bulk
 
-Lists take `cursor` and `limit`. The usual default is 50 and the usual maximum is 200. A list that names a page-size setting uses that setting's starting value and registry range instead: the activities feed uses `activity.page_size` (100, and the admin may set it above 200) and notes use `notes.page_size` (25, with the same adjustable range). They return:
+Lists take `cursor` and `limit`. A general list uses `api.page_size` (starting value 50) and `api.max_page_size` (starting value 200). The effective default is the smaller of those two, and a requested size above the cap is refused. The next request uses an admin change. The activities feed uses `activity.page_size` (100, maximum 500). Notes use `notes.page_size` (25, maximum 200). They return:
 
 ```json
 { "data": [], "page": { "limit": 50, "next_cursor": null } }

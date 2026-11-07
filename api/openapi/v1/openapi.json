@@ -3103,7 +3103,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "user_id",
@@ -3197,7 +3197,9 @@
               "owner": "other_user",
               "result": "allowed"
             }
-          ]
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3381,7 +3383,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "include",
@@ -3459,7 +3461,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -3989,7 +3993,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -4139,7 +4143,9 @@
               "owner": "named_user",
               "result": "allowed"
             }
-          ]
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -4768,7 +4774,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -4920,7 +4926,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5552,7 +5560,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -5637,7 +5645,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -5879,7 +5889,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -5954,7 +5964,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -6565,7 +6577,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -6640,7 +6652,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -7251,7 +7265,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -7326,7 +7340,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -7937,7 +7953,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "contact_id",
@@ -8012,7 +8028,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -8764,7 +8782,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -8941,7 +8959,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -9577,7 +9597,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -9662,7 +9682,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10445,7 +10467,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "include",
@@ -10527,7 +10549,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10607,7 +10631,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -10683,7 +10707,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -10754,7 +10780,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -10854,7 +10880,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -11757,7 +11785,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -11833,7 +11861,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12569,7 +12599,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -12643,7 +12673,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13037,7 +13069,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -13137,7 +13169,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13629,7 +13663,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -13712,7 +13746,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -13949,9 +13985,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
+              "maximum": 200,
               "default": 25
             },
-            "description": "Page size. The default is notes.page_size (starting value 25). The admin can change that setting, and its registry range is the allowed page size."
+            "description": "Page size. The default is notes.page_size (starting value 25). The maximum is 200. The next request uses an admin change, and the size cannot exceed that setting's maximum."
           },
           {
             "name": "q",
@@ -14904,7 +14941,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -14998,7 +15035,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -15791,7 +15830,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -15867,7 +15906,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -16192,7 +16233,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -16266,7 +16307,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -16660,7 +16703,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -16734,7 +16777,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -17128,7 +17173,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -17202,7 +17247,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -17596,7 +17643,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -17670,7 +17717,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -18064,7 +18113,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -18138,7 +18187,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -18532,7 +18583,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -18606,7 +18657,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -19000,7 +19053,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -19074,7 +19127,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -19468,7 +19523,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "record_type",
@@ -19551,7 +19606,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -20834,7 +20891,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -21007,7 +21064,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21507,7 +21566,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -21591,7 +21650,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -21833,7 +21894,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -21900,7 +21961,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -22601,7 +22664,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -22765,7 +22828,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23265,7 +23330,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -23349,7 +23414,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -23591,7 +23658,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -23777,7 +23844,9 @@
             "sent_at",
             "paid_at",
             "client_message"
-          ]
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -24163,7 +24232,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -24263,7 +24332,9 @@
             "at",
             "actor_kind",
             "field"
-          ]
+          ],
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -26011,7 +26082,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -26162,7 +26233,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29233,7 +29306,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -29324,7 +29397,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -29801,7 +29876,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -29919,7 +29994,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30742,7 +30819,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -30837,7 +30914,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -30909,7 +30988,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "status",
@@ -30995,7 +31074,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -31321,7 +31402,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -31407,7 +31488,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32145,7 +32228,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "trust_account_id",
@@ -32221,7 +32304,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -32698,7 +32783,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -32843,7 +32928,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -33624,7 +33711,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -33755,7 +33842,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -34542,7 +34631,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -34645,7 +34734,9 @@
               "result": "omitted"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -35312,7 +35403,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -35497,7 +35588,9 @@
             "declared_table": "owner_module_or_viewer",
             "published_view": "views:{module}.{view}:read",
             "other_module_unpublished_table": "forbidden"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37586,7 +37679,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -37696,7 +37789,9 @@
             ],
             "additional_properties": false,
             "required_subset_of_grant": true
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -37954,7 +38049,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -38053,7 +38148,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -38133,7 +38230,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -38223,7 +38320,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39054,7 +39153,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "kind",
@@ -39152,7 +39251,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -40182,7 +40283,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -40258,7 +40359,9 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -41363,7 +41466,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -41429,7 +41532,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -41846,7 +41951,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -41912,7 +42017,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -42486,7 +42593,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -42550,7 +42657,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43117,7 +43226,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -43181,7 +43290,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -43625,7 +43736,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "matter_id",
@@ -43729,7 +43840,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -44080,7 +44193,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "status",
@@ -44183,7 +44296,9 @@
               "result": "not_found"
             }
           ],
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -44673,7 +44788,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "active",
@@ -44748,7 +44863,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -45647,7 +45764,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "read",
@@ -45741,7 +45858,9 @@
           "inherits": "source_record",
           "admin_bypasses_wall": false,
           "attorney_only": "redacted",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -46487,7 +46606,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -46553,7 +46672,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -48510,7 +48631,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -48576,7 +48697,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -49312,7 +49435,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -49379,7 +49502,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own"
+          "client": "own",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -49672,7 +49797,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -49739,7 +49864,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -50260,7 +50387,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "section_id",
@@ -50336,7 +50463,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -50857,7 +50986,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -50942,7 +51071,9 @@
           "public": false,
           "matter_wall": false,
           "client": "deny",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -51450,7 +51581,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -51533,7 +51664,9 @@
           "on_uninstall": "remove",
           "own_heading_only": true,
           "runtime_registration": "pending",
-          "module_delegation": "delegated_viewer"
+          "module_delegation": "delegated_viewer",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -52007,9 +52140,10 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
+              "maximum": 500,
               "default": 100
             },
-            "description": "Page size. The default is activity.page_size (starting value 100). The admin can change that setting, and its registry range is the allowed page size."
+            "description": "Page size. The default is activity.page_size (starting value 100). The maximum is 500. The next request uses an admin change, and the size cannot exceed that setting's maximum."
           },
           {
             "name": "actor_kind",
@@ -52524,7 +52658,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "entity_type",
@@ -52645,7 +52779,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -52704,7 +52840,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -52776,7 +52912,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -52835,7 +52973,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -52898,7 +53036,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -53497,7 +53637,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -53560,7 +53700,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -54013,7 +54155,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "from_time",
@@ -54116,7 +54258,9 @@
             "attorney_only_values": "redacted",
             "scopes_from": "underlying_record",
             "membership": "per_matter_id"
-          }
+          },
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -54410,7 +54554,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -54473,7 +54617,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -54828,7 +54974,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -54891,7 +55037,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -55340,7 +55488,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -55403,7 +55551,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -56007,7 +56157,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -56070,7 +56220,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -56460,7 +56612,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -56523,7 +56675,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -56697,7 +56851,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -56760,7 +56914,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -58171,7 +58327,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           },
           {
             "name": "q",
@@ -58243,7 +58399,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -58400,7 +58558,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -58463,7 +58621,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -58616,7 +58776,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -58679,7 +58839,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -59172,7 +59334,7 @@
               "maximum": 200,
               "default": 50
             },
-            "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers."
+            "description": "Page size. The default is api.page_size and the maximum is api.max_page_size. The effective default is the smaller of the two. The next request uses an admin change."
           }
         ],
         "responses": {
@@ -59235,7 +59397,9 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "deny"
+          "client": "deny",
+          "page_size_setting": "api.page_size",
+          "page_size_cap_setting": "api.max_page_size"
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -68311,6 +68475,8 @@
           "webhooks.retry_window_hours",
           "llms.show_firm_name",
           "llms.firm_paragraph",
+          "api.page_size",
+          "api.max_page_size",
           "api.idempotency_retention_hours",
           "api.bulk_batch_max",
           "api.csv_export_max_rows",
@@ -78099,7 +78265,8 @@
       "secret": false,
       "locked": false,
       "minimum": 1,
-      "help": "Default Activities Feed page size."
+      "maximum": 500,
+      "help": "Activities Feed page size. Default 100. The size cannot exceed 500."
     },
     {
       "key": "notes.page_size",
@@ -78109,7 +78276,8 @@
       "secret": false,
       "locked": false,
       "minimum": 1,
-      "help": "Default notes page size."
+      "maximum": 200,
+      "help": "Notes page size. Default 25. The size cannot exceed 200."
     },
     {
       "key": "mail.smtp_host",
@@ -78645,6 +78813,28 @@
       "secret": false,
       "locked": false,
       "help": "One optional paragraph of firm text on /llms.txt. It must not contain client or matter records."
+    },
+    {
+      "key": "api.page_size",
+      "type": "integer",
+      "tab": "agents_and_api",
+      "default": 50,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 10000,
+      "help": "Default page size for a list that does not name its own page-size setting. The next request uses a change. The effective default is the smaller of this value and api.max_page_size."
+    },
+    {
+      "key": "api.max_page_size",
+      "type": "integer",
+      "tab": "agents_and_api",
+      "default": 200,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 10000,
+      "help": "Largest page size a general list accepts. The next request uses a change."
     },
     {
       "key": "api.idempotency_retention_hours",

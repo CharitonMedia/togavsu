@@ -60,6 +60,7 @@ from contract.policy import (
     manifest_custom_fields,
     module_ui_targets,
     open_widget_target,
+    page_size_decision,
     sidebar_entries,
     background_grant_issuance,
     doc_tender_events,
@@ -473,31 +474,47 @@ class ContractTest(unittest.TestCase):
             self.assertIn("limit", names, path)
         from contract.settings import SETTINGS
 
-        registry = {item["key"]: item for item in SETTINGS if item["key"].endswith(".page_size")}
-        self.assertEqual(set(registry), {"activity.page_size", "notes.page_size"})
-        seen_settings = set()
+        rows = {item["key"]: item for item in SETTINGS}
+        self.assertEqual(rows["api.page_size"]["default"], 50)
+        self.assertEqual(rows["api.page_size"]["minimum"], 1)
+        self.assertEqual(rows["api.page_size"]["maximum"], 10000)
+        self.assertEqual(rows["api.page_size"]["tab"], "agents_and_api")
+        self.assertEqual(rows["api.max_page_size"]["default"], 200)
+        self.assertEqual(rows["api.max_page_size"]["maximum"], 10000)
+        self.assertEqual(rows["activity.page_size"]["maximum"], 500)
+        self.assertEqual(rows["notes.page_size"]["maximum"], 200)
         for _method, path, operation in _ops(self.spec):
             limit = next((parameter for parameter in operation.get("parameters") or [] if parameter.get("name") == "limit"), None)
             if limit is None:
                 continue
             schema = limit["schema"]
             named = operation["x-togavsu-access"].get("page_size_setting")
-            if named:
-                setting = registry[named]
-                seen_settings.add(named)
-                self.assertIn(named, operation["description"], operation["operationId"])
-                self.assertEqual(schema["default"], setting["default"], operation["operationId"])
-                self.assertEqual(schema["minimum"], setting["minimum"], operation["operationId"])
-                if "maximum" in setting:
-                    self.assertEqual(schema["maximum"], setting["maximum"], operation["operationId"])
-                else:
-                    self.assertNotIn("maximum", schema, operation["operationId"])
+            if named == "activity.page_size":
+                self.assertEqual(schema["default"], 100, operation["operationId"])
+                self.assertEqual(schema["maximum"], 500, operation["operationId"])
+            elif named == "notes.page_size":
+                self.assertEqual(schema["default"], 25, operation["operationId"])
+                self.assertEqual(schema["maximum"], 200, operation["operationId"])
             else:
+                self.assertEqual(named, "api.page_size", operation["operationId"])
                 self.assertEqual(schema.get("default"), 50, path)
                 self.assertEqual(schema.get("maximum"), 200, path)
-        self.assertEqual(seen_settings, set(registry))
-        self.assertEqual(_operation(self.spec, "listEvents")["x-togavsu-access"]["page_size_setting"], "activity.page_size")
-        self.assertEqual(_operation(self.spec, "listNote")["x-togavsu-access"]["page_size_setting"], "notes.page_size")
+            self.assertEqual(page_size_decision(operation, None)["limit"], schema["default"], operation["operationId"])
+            self.assertEqual(page_size_decision(operation, schema["maximum"] + 1)["result"], "validation_failed", operation["operationId"])
+        events = _operation(self.spec, "listEvents")
+        notes = _operation(self.spec, "listNote")
+        changed = page_size_decision(events, None, {"activity.page_size": 40})
+        self.assertEqual(changed["limit"], 40)
+        capped = page_size_decision(events, None, {"activity.page_size": 900})
+        self.assertEqual(capped["limit"], 500)
+        self.assertEqual(page_size_decision(events, 501)["result"], "validation_failed")
+        general = page_size_decision(_operation(self.spec, "listMatter"), None, {"api.page_size": 80, "api.max_page_size": 100})
+        self.assertEqual(general["limit"], 80)
+        self.assertEqual(page_size_decision(_operation(self.spec, "listMatter"), 100, {"api.page_size": 80, "api.max_page_size": 100})["result"], "allowed")
+        self.assertEqual(page_size_decision(_operation(self.spec, "listMatter"), 101, {"api.page_size": 80, "api.max_page_size": 100})["result"], "validation_failed")
+        squeezed = page_size_decision(_operation(self.spec, "listMatter"), None, {"api.page_size": 300, "api.max_page_size": 200})
+        self.assertEqual(squeezed["limit"], 200)
+        self.assertEqual(notes["x-togavsu-access"]["page_size_setting"], "notes.page_size")
 
     def test_trust_ledger_is_append_only(self):
         collection = self.spec["paths"]["/api/v1/trust-ledger"]
@@ -1691,7 +1708,7 @@ class ContractTest(unittest.TestCase):
         invoice_write.validate(item)
         with self.assertRaises(Exception):
             invoice_write.validate({**item, "total_cents": "9500"})
-        staff = {"role": "staff", "token_scopes": ["invoices:write"], "matter_walled": True, "on_wall": True}
+        staff = {"role": "staff", "token_scopes": ["invoices:write"], "matter_walled": True, "on_wall": True, "matter_membership": {matter: True}}
         store = {"invoices": [], "events": [], "idempotency": {}}
         for channel in ("http", "mcp"):
             first = bulk_invoice_apply(store, operation, {**staff, "channel": channel, "idempotency_key": "inv-1", "items": [item]})
@@ -1716,10 +1733,22 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(rejected["result"], "batch_rejected")
         self.assertEqual(rejected["events"], [])
         self.assertEqual(len(store["invoices"]), 1)
-        walled = bulk_invoice_apply(store, operation, {**staff, "on_wall": False, "idempotency_key": "inv-3", "items": [{**item, "matter_walled": True}]})
+        walled = bulk_invoice_apply(store, operation, {**staff, "on_wall": False, "matter_membership": {matter: False}, "idempotency_key": "inv-3", "items": [{**item, "matter_walled": True}]})
         self.assertEqual(walled["result"], "not_found")
         self.assertFalse(walled["written"])
         self.assertEqual(len(store["invoices"]), 1)
+        other_matter = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        mixed_items = [item, {**item, "number": "2026-0008", "matter_id": other_matter}]
+        mixed = bulk_invoice_apply(
+            store,
+            operation,
+            {**staff, "on_wall": True, "matter_membership": {matter: True, other_matter: False}, "idempotency_key": "mixed-wall", "items": mixed_items},
+        )
+        self.assertEqual(mixed["result"], "not_found")
+        self.assertFalse(mixed["written"])
+        self.assertEqual(mixed["events"], [])
+        self.assertEqual(len(store["invoices"]), 1)
+        self.assertEqual(store["events"], ["invoice.created"])
         for role in ("accountant", "client"):
             denied = bulk_invoice_apply(store, operation, {"role": role, "token_scopes": ["invoices:write"], "items": [item]})
             self.assertEqual(denied["result"], "forbidden", role)
@@ -1739,7 +1768,7 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(mixed["written"])
         self.assertEqual(len(store["invoices"]), 1)
         self.assertEqual(store["events"], ["invoice.created"])
-        privileged = {"role": "attorney", "token_scopes": ["invoices:write", "invoices:send", "payments:write"], "matter_walled": True, "on_wall": True}
+        privileged = {"role": "attorney", "token_scopes": ["invoices:write", "invoices:send", "payments:write"], "matter_walled": True, "on_wall": True, "matter_membership": {matter: True}}
         for label, extra in (("sent", sent), ("paid", paid), ("void", voided), ("write-off", written_off)):
             allowed = bulk_invoice_apply(store, operation, {**privileged, "idempotency_key": "attorney-" + label, "items": [extra]})
             self.assertEqual(allowed["result"], "allowed", label)

@@ -3111,7 +3111,7 @@ QUERY = {
         "in": "query",
         "required": False,
         "schema": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
-        "description": "Page size. Default 50. Maximum 200, unless the operation names a page-size setting. That setting's default and registry range replace these numbers.",
+        "description": "Page size. Replaced from api.page_size and api.max_page_size, or from the list's own page-size setting.",
     },
     "include": _query(
         "include",

@@ -570,7 +570,7 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         return _denied("forbidden")
     if call["role"] not in access["roles"]:
         return _denied("forbidden")
-    if call.get("matter_walled") and not call.get("on_wall"):
+    if not matter_visible(call, call, single_record=True):
         return _denied("not_found")
     branch = policy["trust_linked"] if call.get("trust_linked") else policy["operating"]
     if any(scope not in call["token_scopes"] for scope in branch["scopes"]):
@@ -712,10 +712,14 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
         return _denied("forbidden")
     if call["role"] not in access["roles"]:
         return _denied("forbidden")
-    if call.get("matter_walled") and not call.get("on_wall"):
-        return _denied("not_found")
     posts_trust = False
     for item in _effect_items(call):
+        row = {
+            "matter_walled": item.get("matter_walled", call.get("matter_walled")),
+            "matter_id": item.get("matter_id", call.get("matter_id")),
+        }
+        if not matter_visible(call, row):
+            return _denied("not_found")
         destination = item.get("destination", call.get("destination"))
         status = _item_payment_status(item)
         already = item.get("trust_already_posted", call.get("trust_already_posted", False))
@@ -751,7 +755,7 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
 
 def processor_issuance(policy: dict, module: dict, initialization: dict) -> dict:
     denied = _denied("forbidden")
-    if initialization.get("matter_walled") and not initialization.get("on_wall"):
+    if not matter_visible(initialization, initialization, single_record=True):
         return _denied("not_found")
     if not policy.get("registered_module") or not module.get("registered"):
         return _denied(policy["unregistered"])
@@ -1082,7 +1086,7 @@ def file_download_decision(operation: dict, call: dict) -> str:
         return "missing_confirm_input"
     if call.get("attorney_only") and call.get("role") in ("staff", "client", "accountant"):
         return "not_found"
-    if call.get("matter_walled") and not call.get("on_wall"):
+    if not matter_visible(call, call, single_record=True):
         return "not_found"
     if call.get("role") == "client" and not call.get("shared"):
         return "not_found"
@@ -1700,7 +1704,7 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
     elif assignment == "matter":
         if not job.get("matter_id"):
             return {**denied, "result": "validation_failed"}
-        if job.get("matter_walled") and not job.get("on_wall"):
+        if not matter_visible(job, job, single_record=True):
             return {**denied, "result": policy["wrong_matter"]}
         principal_matters = job.get("principal_matter_ids")
         if principal_matters is not None and job.get("matter_id") not in principal_matters:
@@ -2448,7 +2452,7 @@ def replace_matter_wall(operation: dict, call: dict) -> dict:
     scopes = call.get("module_scopes") if call.get("caller_module_id") else call.get("token_scopes")
     if scopes is not None and any(scope not in scopes for scope in access.get("scopes", [])):
         return {"result": "scope_denied", **unchanged}
-    if call.get("matter_walled") and not call.get("on_wall"):
+    if not matter_visible(call, call, single_record=True):
         return {"result": "not_found", **unchanged}
     user_ids = call.get("user_ids")
     if not isinstance(user_ids, list):
@@ -2555,7 +2559,7 @@ def external_effect_decision(operation: dict, call: dict) -> dict:
         needs_wall = scope == "matter"
     else:
         needs_wall = bool(matter_id)
-    if needs_wall and call.get("matter_walled") and not call.get("on_wall"):
+    if needs_wall and not matter_visible(call, call, single_record=True):
         return {"result": "not_found", **denied}
     if not access.get("matter_wall") or access.get("authorize_before") != "external_effect":
         return {"result": "forbidden", **denied}
@@ -2704,7 +2708,7 @@ def trust_debit_decision(call: dict) -> dict:
     denied = {"ledger_mutated": False, "debited_account_id": None, "amount_cents": 0}
     if call.get("role") not in ("admin", "attorney"):
         return {"result": "forbidden", **denied}
-    if call.get("matter_walled") and not call.get("on_wall"):
+    if not matter_visible(call, call, single_record=True):
         return {"result": "not_found", **denied}
     if "trust:withdraw" not in call.get("token_scopes", []):
         return {"result": "scope_denied", **denied}
@@ -2765,11 +2769,14 @@ def invoice_reconciliation_error(item: dict) -> str | None:
 
 
 def _invoice_off_wall(item: dict, call: dict) -> bool:
-    walled = item.get("matter_walled", call.get("matter_walled"))
-    if not walled:
-        return False
-    on_wall = item["on_wall"] if "on_wall" in item else call.get("on_wall")
-    return not on_wall
+    """Each invoice names its matter. A call-wide on_wall flag does not admit the rest of the batch."""
+    return not matter_visible(
+        call,
+        {
+            "matter_walled": item.get("matter_walled", call.get("matter_walled")),
+            "matter_id": item.get("matter_id", call.get("matter_id")),
+        },
+    )
 
 
 def publish_invoice_item_privileges(spec: dict) -> None:
@@ -2871,34 +2878,73 @@ def publish_client_projections(spec: dict) -> None:
             access.pop("client_csv_omitted_columns", None)
 
 
-def publish_page_sizes(spec: dict) -> None:
-    """A list that names a page-size setting uses that setting's default and range."""
+def _setting_value(key: str, current: dict | None = None):
     from contract.settings import SETTINGS
 
-    registry = {item["key"]: item for item in SETTINGS if str(item.get("key", "")).endswith(".page_size")}
+    registry = {item["key"]: item for item in SETTINGS}
+    if current and key in current:
+        return current[key]
+    return registry[key]["default"]
+
+
+def page_limit(current: dict | None = None, *, override: str | None = None) -> dict:
+    """Effective page bounds. A list-specific setting replaces the general default and cannot exceed its own maximum."""
+    from contract.settings import SETTINGS
+
+    registry = {item["key"]: item for item in SETTINGS}
+    cap = _setting_value("api.max_page_size", current)
+    default = min(_setting_value("api.page_size", current), cap)
+    minimum = registry["api.page_size"]["minimum"]
+    if override:
+        setting = registry[override]
+        specific_cap = setting["maximum"]
+        specific = min(_setting_value(override, current), specific_cap)
+        return {"default": specific, "minimum": setting["minimum"], "maximum": specific_cap, "setting": override}
+    return {"default": default, "minimum": minimum, "maximum": cap, "setting": "api.page_size"}
+
+
+def page_size_decision(operation: dict, requested, current: dict | None = None) -> dict:
+    """The next request uses the current settings. A size above the accepted maximum is refused."""
+    named = operation["x-togavsu-access"].get("page_size_setting")
+    override = named if named not in (None, "api.page_size") else None
+    bounds = page_limit(current, override=override)
+    if requested is None:
+        return {"result": "allowed", "limit": bounds["default"]}
+    if isinstance(requested, bool) or not isinstance(requested, int) or requested < bounds["minimum"] or requested > bounds["maximum"]:
+        return {"result": "validation_failed", "limit": None}
+    return {"result": "allowed", "limit": requested}
+
+
+def publish_page_sizes(spec: dict) -> None:
+    """Publish each list's default and maximum from the settings registry."""
+    general = page_limit()
     for _method, _path, operation in iter_operations(spec):
         description = operation.get("description") or ""
-        named = [key for key in registry if key in description]
-        if len(named) != 1:
-            continue
-        setting = registry[named[0]]
+        named = [key for key in ("activity.page_size", "notes.page_size") if key in description]
+        override = named[0] if len(named) == 1 else None
+        bounds = page_limit(override=override)
         for parameter in operation.get("parameters") or []:
             if parameter.get("name") != "limit":
                 continue
-            schema = dict(parameter.get("schema") or {})
-            schema["type"] = "integer"
-            schema["minimum"] = setting.get("minimum", 1)
-            schema["default"] = setting["default"]
-            if "maximum" in setting:
-                schema["maximum"] = setting["maximum"]
+            parameter["schema"] = {
+                "type": "integer",
+                "minimum": bounds["minimum"],
+                "maximum": bounds["maximum"],
+                "default": bounds["default"],
+            }
+            if override:
+                parameter["description"] = (
+                    f"Page size. The default is {override} (starting value {bounds['default']}). "
+                    f"The maximum is {bounds['maximum']}. The next request uses an admin change, and the size cannot exceed that setting's maximum."
+                )
+                operation["x-togavsu-access"]["page_size_setting"] = override
             else:
-                schema.pop("maximum", None)
-            parameter["schema"] = schema
-            parameter["description"] = (
-                f"Page size. The default is {setting['key']} (starting value {setting['default']}). "
-                "The admin can change that setting, and its registry range is the allowed page size."
-            )
-            operation["x-togavsu-access"]["page_size_setting"] = setting["key"]
+                parameter["description"] = (
+                    "Page size. The default is api.page_size and the maximum is api.max_page_size. "
+                    "The effective default is the smaller of the two. The next request uses an admin change."
+                )
+                operation["x-togavsu-access"]["page_size_setting"] = "api.page_size"
+                operation["x-togavsu-access"]["page_size_cap_setting"] = "api.max_page_size"
 
 
 def marketplace_package(catalog: dict, call: dict) -> dict:
