@@ -432,10 +432,115 @@ class ContractTest(unittest.TestCase):
         protected = mcp_tool_dispatch(self.spec, {**anonymous, "tool": "listMatter"})
         self.assertEqual(protected["result"], "unauthenticated")
         self.assertFalse(protected["effects"])
-        opened = mcp_tool_dispatch(self.spec, {"tool": "listMatter", "arguments": {}, "authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True})
+        opened = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "listMatter",
+                "arguments": {},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["matters:read"],
+            },
+        )
         self.assertEqual(opened["result"], "allowed")
         self.assertTrue(opened["effects"])
         self.assertFalse(opened["public"])
+        staff_setting = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "updateSetting",
+                "arguments": {"path": {"setting_key": "api.page_size"}},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["settings:write"],
+            },
+        )
+        self.assertEqual(staff_setting["result"], "forbidden")
+        self.assertFalse(staff_setting["effects"])
+        admin_setting = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "updateSetting",
+                "arguments": {"path": {"setting_key": "api.page_size"}},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "admin",
+                "token_scopes": ["settings:write"],
+            },
+        )
+        self.assertEqual(admin_setting["result"], "allowed")
+        self.assertTrue(admin_setting["effects"])
+        missing_scope = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "updateSetting",
+                "arguments": {},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "admin",
+                "token_scopes": ["settings:read"],
+            },
+        )
+        self.assertEqual(missing_scope["result"], "scope_denied")
+        self.assertFalse(missing_scope["effects"])
+        matter_id = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        off_wall = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "getMatter",
+                "arguments": {"path": {"matter_id": matter_id}, "on_wall": True},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "admin",
+                "token_scopes": ["matters:read"],
+                "matter_walled": True,
+                "on_wall": False,
+                "matter_membership": {matter_id: False},
+            },
+        )
+        self.assertEqual(off_wall["result"], "forbidden")
+        self.assertFalse(off_wall["effects"])
+        off_wall_context = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "getMatter",
+                "arguments": {"path": {"matter_id": matter_id}},
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "admin",
+                "token_scopes": ["matters:read"],
+                "matter_walled": True,
+                "on_wall": False,
+                "matter_membership": {matter_id: False},
+            },
+        )
+        self.assertEqual(off_wall_context["result"], "not_found")
+        self.assertFalse(off_wall_context["effects"])
+        module_denied = mcp_tool_dispatch(
+            self.spec,
+            {
+                "tool": "getMatter",
+                "arguments": {"path": {"matter_id": matter_id}},
+                "authorization": "Bearer module",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "attorney",
+                "module_id": "intake",
+                "approved_scopes": ["contacts:read"],
+                "token_scopes": ["matters:read"],
+                "grant_revoked": True,
+            },
+        )
+        self.assertEqual(module_denied["result"], "forbidden")
+        self.assertFalse(module_denied["effects"])
         wrong = mcp_tool_dispatch(self.spec, {"tool": "createSetup", "arguments": {}, "authorization": "Bearer nope", "authorization_scheme": "Bearer", "credential_valid": False})
         self.assertEqual(wrong["result"], "unauthenticated")
         self.assertFalse(wrong["effects"])
@@ -5138,6 +5243,18 @@ class ContractTest(unittest.TestCase):
             committed=True,
         )
         self.assertEqual([event["type"] for event in mixed_accounts], ["trust.entry_posted", "trust.entry_posted", "trust.flag_raised"])
+        same_matter_items = [
+            {"entry_type": "withdrawal", "amount_cents": 30, "method": "check", "description": "withdrawal", "matter_id": matter, "client_id": client, "trust_account_id": account_a, "trust_entry_id": entry_a, "opening": {"matter_cents": 40, "client_cents": 200, "account_cents": 100}},
+            {"entry_type": "withdrawal", "amount_cents": 30, "method": "check", "description": "withdrawal", "matter_id": matter, "client_id": client, "trust_account_id": account_b, "trust_entry_id": entry_b, "opening": {"matter_cents": 1000, "client_cents": 200, "account_cents": 100}},
+        ]
+        same_matter = trust_ledger_events(bulk, same_matter_items, committed=True)
+        for item in same_matter_items:
+            _component_validator(self.spec, "TrustEntryWrite").validate(write_body(item))
+        self.assertEqual([event["type"] for event in same_matter], ["trust.entry_posted", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(same_matter[2]["balance_scope"], "matter")
+        self.assertEqual(same_matter[2]["balance_cents"], -20)
+        self.assertGreaterEqual(same_matter[2]["balances"]["client_cents"], 0)
+        self.assertGreaterEqual(same_matter[2]["balances"]["account_cents"], 0)
         self.assertEqual(mixed_accounts[2]["balance_scope"], "client")
         self.assertEqual(mixed_accounts[2]["balance_cents"], -10)
         self.assertEqual(mixed_accounts[2]["client_id"], client)
@@ -5323,8 +5440,10 @@ class ContractTest(unittest.TestCase):
         posted = processor_apply(store, policy, create, call)
         self.assertEqual(posted["result"], "allowed")
         self.assertTrue(posted["ledger_inserted"])
-        self.assertEqual([event["type"] for event in posted["events"]], ["trust.entry_posted", "trust.flag_raised"])
-        self.assertEqual(posted["events"][1]["balance_cents"], -60)
+        self.assertEqual([event["type"] for event in posted["events"]], ["payment.created", "payment.completed", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(posted["events"][-1]["balance_cents"], -60)
+        for event in posted["events"]:
+            self.assertIn(event["type"], create["x-togavsu-events"])
         replayed = processor_apply(store, policy, create, call)
         self.assertEqual(replayed["result"], "original_result")
         self.assertEqual(replayed["events"], [])
@@ -5333,7 +5452,7 @@ class ContractTest(unittest.TestCase):
         self.assertNotEqual(denied["result"], "allowed")
         self.assertEqual(denied["events"], [])
         self.assertEqual(len(store["ledger"]), 1)
-        flag = posted["events"][1]
+        flag = posted["events"][-1]
         envelope = {
             "id": entry_c,
             "type": "trust.flag_raised",
@@ -5354,6 +5473,142 @@ class ContractTest(unittest.TestCase):
         _component_validator(self.spec, "WebhookEvent").validate(delivered)
         self.assertIsNone(webhook_envelope({**subscriber, "approved_scopes": ["events:read"]}, envelope))
         self.assertIsNone(webhook_envelope(subscriber, {key: value for key, value in envelope.items() if key != "balance_cents"}))
+        operating_issued = processor_issuance(
+            policy,
+            {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write"]},
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee3",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee4",
+                "matter_id": matter,
+                "contact_id": client,
+                "invoice_id": None,
+                "amount_cents": 40,
+                "destination": "operating",
+                "caller_scopes": ["payments:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        self.assertEqual(operating_issued["result"], "allowed")
+        operating = {
+            "operation": "createPayment",
+            "registered": True,
+            "caller_module_id": "lawpay",
+            "module_scopes": ["payments:write"],
+            "grant": operating_issued["grant"],
+            "matter_id": matter,
+            "contact_id": client,
+            "invoice_id": None,
+            "amount_cents": 40,
+            "destination": "operating",
+            "method": "card",
+            "firm_id": "firm-1",
+            "status": "pending",
+            "viewer_present": False,
+        }
+        operating_store = {"payments": {}, "ledger": [], "idempotency": {}}
+        pending = processor_apply(operating_store, policy, create, operating)
+        self.assertEqual([event["type"] for event in pending["events"]], ["payment.created"])
+        self.assertEqual(len(operating_store["ledger"]), 0)
+        failed = processor_apply(operating_store, policy, _operation(self.spec, "updatePaymentStatus"), {**operating, "operation": "updatePaymentStatus", "payment_id": operating_issued["grant"]["payment_id"], "status": "failed"})
+        self.assertEqual([event["type"] for event in failed["events"]], ["payment.updated"])
+        self.assertEqual(len(operating_store["ledger"]), 0)
+        repeat_status = processor_apply(operating_store, policy, _operation(self.spec, "updatePaymentStatus"), {**operating, "operation": "updatePaymentStatus", "payment_id": operating_issued["grant"]["payment_id"], "status": "failed"})
+        self.assertEqual(repeat_status["events"], [])
+        _component_validator(self.spec, "PaymentWrite").validate(
+            {"contact_id": client, "matter_id": matter, "amount_cents": 40, "destination": "operating", "method": "card", "status": "pending", "invoice_id": None}
+        )
+        _component_validator(self.spec, "PaymentStatusWrite").validate({"status": "failed"})
+        _component_validator(self.spec, "PaymentStatusWrite").validate({"status": "completed"})
+        failed_issued = processor_issuance(
+            policy,
+            {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write"]},
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee5",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee6",
+                "matter_id": matter,
+                "contact_id": client,
+                "invoice_id": None,
+                "amount_cents": 40,
+                "destination": "operating",
+                "caller_scopes": ["payments:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        failed_store = {"payments": {}, "ledger": [], "idempotency": {}}
+        failed_create = processor_apply(failed_store, policy, create, {**operating, "grant": failed_issued["grant"], "status": "failed"})
+        self.assertEqual([event["type"] for event in failed_create["events"]], ["payment.created"])
+        self.assertEqual(len(failed_store["ledger"]), 0)
+        completed_issued = processor_issuance(
+            policy,
+            {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write"]},
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee7",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee8",
+                "matter_id": matter,
+                "contact_id": client,
+                "invoice_id": None,
+                "amount_cents": 40,
+                "destination": "operating",
+                "caller_scopes": ["payments:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        completed_store = {"payments": {}, "ledger": [], "idempotency": {}}
+        created_completed = processor_apply(completed_store, policy, create, {**operating, "grant": completed_issued["grant"], "status": "completed"})
+        self.assertEqual([event["type"] for event in created_completed["events"]], ["payment.created", "payment.completed"])
+        self.assertEqual(len(completed_store["ledger"]), 0)
+        trust_pending_issued = processor_issuance(
+            policy,
+            {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write", "trust:write"]},
+            {
+                "processor_module_id": "lawpay",
+                "initialization_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee9",
+                "reserved_payment_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeeea",
+                "matter_id": matter,
+                "contact_id": client,
+                "invoice_id": None,
+                "amount_cents": 40,
+                "destination": "trust",
+                "trust_account_id": account,
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "caller_scopes": ["payments:write", "trust:write"],
+                "expires_at": "2026-11-07T18:00:00Z",
+            },
+        )
+        trust_store = {"payments": {}, "ledger": [], "idempotency": {}}
+        trust_pending_call = {
+            **operating,
+            "grant": trust_pending_issued["grant"],
+            "module_scopes": ["payments:write", "trust:write"],
+            "destination": "trust",
+            "trust_account_id": account,
+            "trust_accounts": accounts,
+            "status": "pending",
+            "opening": {"matter_cents": -100, "client_cents": -100, "account_cents": -100},
+        }
+        trust_pending = processor_apply(trust_store, policy, create, trust_pending_call)
+        self.assertEqual([event["type"] for event in trust_pending["events"]], ["payment.created"])
+        self.assertEqual(len(trust_store["ledger"]), 0)
+        trust_completed = processor_apply(
+            trust_store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_pending_call, "operation": "updatePaymentStatus", "payment_id": trust_pending_issued["grant"]["payment_id"], "status": "completed"},
+        )
+        self.assertEqual([event["type"] for event in trust_completed["events"]], ["payment.completed", "trust.entry_posted", "trust.flag_raised"])
+        self.assertEqual(trust_completed["events"][-1]["balance_cents"], -60)
+        trust_replay = processor_apply(
+            trust_store,
+            policy,
+            _operation(self.spec, "updatePaymentStatus"),
+            {**trust_pending_call, "operation": "updatePaymentStatus", "payment_id": trust_pending_issued["grant"]["payment_id"], "status": "completed"},
+        )
+        self.assertEqual(trust_replay["events"], [])
+        self.assertEqual(len(trust_store["ledger"]), 1)
 
     def test_record_mutations_emit_events_only_after_commit(self):
         exempt = []

@@ -968,6 +968,19 @@ def _posted_trust_events(operation: dict, payment: dict, call: dict, inserted: b
     )
 
 
+def _composed_payment_events(operation: dict, payment: dict, call: dict, *, inserted: bool, previous_status, ledger_inserted: bool, committed: bool = True, replay: bool = False) -> list[dict]:
+    """Payment lifecycle events, then the trust events from the same committed status."""
+    if not committed or replay:
+        return []
+    lifecycle = payment_lifecycle_events(
+        operation,
+        [{"status": payment.get("status"), "previous_status": previous_status, "inserted": inserted}],
+        committed=True,
+    )
+    trust = _posted_trust_events(operation, payment, call, ledger_inserted) if ledger_inserted else []
+    return [{"type": name} for name in lifecycle] + trust
+
+
 def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> dict:
     """Insert at most one payment per initialization. Denial leaves payment and ledger unchanged."""
     store.setdefault("payments", {})
@@ -1041,12 +1054,13 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
             body,
             payment_inserted=True,
             ledger_inserted=ledger_inserted,
-            events=_posted_trust_events(operation, payment, call, ledger_inserted),
+            events=_composed_payment_events(operation, payment, call, inserted=True, previous_status=None, ledger_inserted=ledger_inserted),
         )
     if not existing or call.get("payment_id") != existing["id"]:
         return {**unchanged, "result": policy["unrelated_payment"]}
     requested = call.get("status") if call.get("status") is not None else existing.get("status")
-    transition = payment_status_transition(existing.get("status"), requested)
+    previous_status = existing.get("status")
+    transition = payment_status_transition(previous_status, requested)
     if transition == policy["idempotency_replay"]:
         return _processor_success(store, unchanged, policy, transition, existing, call, init_id, body)
     if transition != "allowed":
@@ -1062,10 +1076,17 @@ def processor_apply(store: dict, policy: dict, operation: dict, call: dict) -> d
         call,
         init_id,
         body,
-        payment_inserted=False,
-        ledger_inserted=ledger_inserted,
-        events=_posted_trust_events(operation, existing, call, ledger_inserted),
-    )
+            payment_inserted=False,
+            ledger_inserted=ledger_inserted,
+            events=_composed_payment_events(
+                operation,
+                existing,
+                call,
+                inserted=False,
+                previous_status=previous_status,
+                ledger_inserted=ledger_inserted,
+            ),
+        )
 
 
 def _post_trust_once(store: dict, payment: dict, call: dict) -> bool:
@@ -1210,7 +1231,8 @@ def file_download_decision(operation: dict, call: dict) -> str:
 
 
 def mcp_credential_rejection(arguments: dict) -> str | None:
-    if any(name in arguments for name in ("Authorization", "Host", "roles")):
+    planted = ("Authorization", "Host", "roles", "role", "on_wall", "matter_membership", "token_scopes", "scopes", "approved_scopes")
+    if any(name in arguments for name in planted):
         return "forbidden"
     headers = arguments.get("headers") or {}
     if any(str(name).lower() in {"authorization", "host"} for name in headers):
@@ -1228,6 +1250,9 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
     if method in {"initialize", "tools/list"}:
         return {"result": "allowed", "effects": False, "public": True}
     operation = next((candidate for _method, _path, candidate in iter_operations(spec) if candidate["operationId"] == call.get("tool")), None)
+    if operation is not None and operation["x-togavsu-mcp"].get("parity") == "alias":
+        canonical_id = operation["x-togavsu-mcp"].get("canonical")
+        operation = next((candidate for _method, _path, candidate in iter_operations(spec) if candidate["operationId"] == canonical_id), None)
     if operation is None or operation["x-togavsu-mcp"].get("parity") != "required":
         return {"result": "not_found", **denied}
     public = operation.get("security") == []
@@ -1244,6 +1269,37 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
         return {"result": "allowed", "effects": True, "public": True}
     if not presented_bearer and not presented_cookie:
         return {"result": "unauthenticated", **denied}
+    access = operation["x-togavsu-access"]
+    role = call.get("role")
+    roles = access.get("roles") or []
+    if roles and role not in roles:
+        return {"result": "forbidden", **denied}
+    needed = list(access.get("scopes") or [])
+    if call.get("module_id"):
+        approved = set(call.get("approved_scopes") or [])
+        if any(scope not in approved for scope in needed) or call.get("grant_revoked"):
+            return {"result": "scope_denied" if not call.get("grant_revoked") else "forbidden", **denied}
+    held = set(call.get("token_scopes") or [])
+    if any(scope not in held for scope in needed):
+        return {"result": "scope_denied", **denied}
+    if access.get("matter_wall"):
+        path_args = arguments.get("path") if isinstance(arguments.get("path"), dict) else {}
+        matter_id = path_args.get("matter_id") or call.get("matter_id")
+        if matter_id is not None or call.get("matter_walled") or call.get("matter_membership") is not None:
+            row = {"matter_id": matter_id, "matter_walled": bool(call.get("matter_walled", call.get("matter_membership") is not None))}
+            if not matter_visible(call, row, single_record=matter_id is not None):
+                return {"result": "not_found", **denied}
+    if access.get("owner") == "self" and call.get("owner") not in (None, "self"):
+        return {"result": "not_found", **denied}
+    if access.get("attorney_only_files") == "not_found" and call.get("attorney_only") and role not in ("attorney", "admin"):
+        return {"result": "not_found", **denied}
+    domain = operation.get("x-togavsu-replaceable-domain")
+    if domain and operation.get("x-togavsu-writes"):
+        handler = (call.get("domain_handlers") or {}).get(domain) or {}
+        if handler.get("replaced"):
+            if not handler.get("available"):
+                return {"result": "forbidden", **denied}
+            return {"result": "allowed", "effects": False, "public": False, "routed": handler.get("module_id")}
     return {"result": "allowed", "effects": True, "public": False}
 
 
@@ -1474,7 +1530,7 @@ def trust_ledger_events(operation: dict, items: list[dict], *, committed: bool, 
         matter_id = item.get("matter_id")
         client_id = item.get("client_id")
         account_id = item.get("trust_account_id")
-        matter_key = (account_id, client_id, matter_id)
+        matter_key = (client_id, matter_id)
         account_key = (account_id,)
         if matter_key not in matter_bal:
             matter_bal[matter_key] = _balance_value(opening.get("matter_cents"))
