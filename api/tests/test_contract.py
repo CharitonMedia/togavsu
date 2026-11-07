@@ -33,6 +33,9 @@ from contract.policy import (
     file_download_decision,
     is_core_file_download,
     include_views_decision,
+    notification_page,
+    notification_recipient_decision,
+    sidebar_entries,
     background_grant_issuance,
     doc_tender_events,
     inherited_history_rows,
@@ -705,7 +708,28 @@ class ContractTest(unittest.TestCase):
                     "target": {"path": "/m/matter-clock/hours", "filters": {"month": "current"}},
                 }
             ],
-            "sidebar": [{"section": "Activity", "label": "Matter Clock", "icon": "clock", "order": 10}],
+            "sidebar": [
+                {
+                    "id": "targets",
+                    "section": "Activity",
+                    "label": "Targets",
+                    "icon": "clock",
+                    "order": 10,
+                    "target": "targets",
+                    "scopes": ["matters:read"],
+                    "roles": ["staff"],
+                },
+                {
+                    "id": "reports",
+                    "section": "Activity",
+                    "label": "Reports",
+                    "icon": "clock",
+                    "order": 20,
+                    "target": "reports",
+                    "scopes": ["matters:read"],
+                    "roles": ["staff"],
+                },
+            ],
             "quick_create": [{"label": "Set target", "target": "/m/matter-clock/target"}],
             "search_scopes": [{"id": "matter-clock", "label": "Targets"}],
             "matter_screen": {
@@ -718,6 +742,40 @@ class ContractTest(unittest.TestCase):
         self.assertIn("allowed_sizes", widget["required"])
         for field in ("sidebar", "quick_create", "search_scopes", "matter_screen"):
             self.assertIn(field, self.spec["components"]["schemas"]["ModuleManifest"]["properties"])
+        opened = sidebar_entries(
+            "matter-clock",
+            manifest["sidebar"],
+            {"role": "staff", "scopes": ["matters:read"]},
+        )
+        self.assertEqual(opened["result"], "allowed")
+        self.assertEqual([page["path"] for page in opened["pages"]], ["/m/matter-clock/targets", "/m/matter-clock/reports"])
+        self.assertEqual(len({page["path"] for page in opened["pages"]}), 2)
+        hidden = sidebar_entries("matter-clock", manifest["sidebar"], {"role": "client", "scopes": ["matters:read"]})
+        self.assertEqual(hidden["pages"], [])
+        for hostile in (
+            "https://evil.example/page",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "//evil.example/page",
+            "../other-module/secret",
+            "/api/v1/matters",
+            "/m/other-module/page",
+            "reports/../../secrets",
+            "Targets",
+        ):
+            refused = sidebar_entries(
+                "matter-clock",
+                [{**manifest["sidebar"][0], "target": hostile}],
+                {"role": "staff", "scopes": ["matters:read"]},
+            )
+            self.assertEqual(refused["result"], "validation_failed", hostile)
+            self.assertEqual(refused["pages"], [], hostile)
+        duplicate = sidebar_entries(
+            "matter-clock",
+            [manifest["sidebar"][0], {**manifest["sidebar"][1], "id": "targets", "target": "other"}],
+            {"role": "staff", "scopes": ["matters:read"]},
+        )
+        self.assertEqual(duplicate["result"], "validation_failed")
 
     def test_doc_tender_result_is_readable(self):
         file_schema = self.spec["components"]["schemas"]["File"]["properties"]
@@ -1519,6 +1577,11 @@ class ContractTest(unittest.TestCase):
             "posted_entry_id": "018f1a00-7b3c-7d4e-8a11-666666666666",
             "created_at": "2026-11-07T18:00:00Z",
             "balance_cents": -1500,
+            "original_entry": {
+                "id": "018f1a00-7b3c-7d4e-8a11-444444444444",
+                "entry_type": "deposit",
+                "amount_cents": 1500,
+            },
         }
         cases = [
             ({"role": "attorney", "token_scopes": ["payments:write"], "trust_linked": False, "matter_walled": False}, "allowed", False, False),
@@ -1563,6 +1626,72 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(incomplete["result"], "validation_failed")
         self.assertFalse(incomplete["ledger_mutated"])
+        transfer = payment_reversal_decision(
+            reverse,
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                **trust_ok,
+                **compensation,
+                "original_entry": {"id": compensation["trust_entry_id"], "entry_type": "transfer_to_operating", "amount_cents": 1500},
+            },
+        )
+        self.assertEqual(transfer["result"], "allowed")
+        self.assertEqual(transfer["trust_entry"]["direction"], "credit")
+        self.assertEqual(transfer["trust_entry"]["amount_cents"], 1500)
+        self.assertEqual(transfer["trust_entry"]["reverses_entry_id"], compensation["trust_entry_id"])
+        _component_validator(self.spec, "TrustEntry").validate(transfer["trust_entry"])
+        _component_validator(self.spec, "TrustPostResult").validate(transfer["trust_post"])
+        adjustment = payment_reversal_decision(
+            reverse,
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                **trust_ok,
+                **compensation,
+                "amount_cents": 400,
+                "original_entry": {"id": compensation["trust_entry_id"], "entry_type": "adjustment", "amount_cents": 400},
+            },
+        )
+        self.assertEqual(adjustment["trust_entry"]["amount_cents"], -400)
+        self.assertEqual(adjustment["trust_entry"]["direction"], "debit")
+        _component_validator(self.spec, "TrustEntry").validate(adjustment["trust_entry"])
+        zero = payment_reversal_decision(
+            reverse,
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                **trust_ok,
+                **compensation,
+                "amount_cents": 0,
+                "original_entry": {"id": compensation["trust_entry_id"], "entry_type": "deposit", "amount_cents": 0},
+            },
+        )
+        self.assertEqual(zero["result"], "validation_failed")
+        self.assertFalse(zero["ledger_mutated"])
+        self.assertFalse(zero["payment_mutated"])
+        again = payment_reversal_decision(
+            reverse,
+            {
+                "role": "attorney",
+                "token_scopes": ["payments:write", "trust:withdraw"],
+                "trust_linked": True,
+                "matter_walled": False,
+                **trust_ok,
+                **compensation,
+                "existing_reversal": trust["trust_entry"],
+            },
+        )
+        self.assertEqual(again["result"], "original_result")
+        self.assertFalse(again["ledger_mutated"])
+        self.assertFalse(again["payment_mutated"])
+        self.assertEqual(again["trust_entry"], trust["trust_entry"])
         mismatched = payment_reversal_decision(
             reverse,
             {"role": "attorney", "token_scopes": ["payments:write", "trust:withdraw"], "trust_linked": True, "matter_walled": False, "reversal_account_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002", **trust_ok},
@@ -2482,6 +2611,44 @@ class ContractTest(unittest.TestCase):
             "allowed",
         )
 
+    def test_notifications_are_limited_to_the_recipient(self):
+        for operation_id in ("listNotification", "getNotification", "markNotificationRead", "markAllNotificationsRead", "deleteNotification"):
+            access = _operation(self.spec, operation_id)["x-togavsu-access"]
+            self.assertEqual(access["owner"], "self", operation_id)
+            self.assertEqual(access["recipient"], "self", operation_id)
+            self.assertFalse(access["admin_sees_others"], operation_id)
+            self.assertEqual(access["filter_before"], ["pagination", "unread_count"], operation_id)
+            self.assertNotEqual(access.get("client"), "own", operation_id)
+        create = _operation(self.spec, "createNotification")
+        self.assertTrue(create["x-togavsu-access"]["creation_separate"])
+        self.assertNotEqual(create["x-togavsu-access"].get("owner"), "self")
+        self.assertEqual(notification_recipient_decision(create, {"role": "staff", "user_id": "018f1a00-7b3c-7d4e-8a11-222222222222"}), "allowed")
+        caller = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        other = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        for operation_id in ("listNotification", "getNotification", "markNotificationRead", "deleteNotification"):
+            operation = _operation(self.spec, operation_id)
+            for role in ("admin", "attorney", "staff", "accountant", "client"):
+                self.assertEqual(
+                    notification_recipient_decision(operation, {"role": role, "owner": "self", "caller_user_id": caller, "recipient_user_id": caller}),
+                    "allowed",
+                    (operation_id, role),
+                )
+                self.assertEqual(
+                    notification_recipient_decision(operation, {"role": role, "owner": "other_user", "caller_user_id": caller, "recipient_user_id": other}),
+                    "not_found",
+                    (operation_id, role),
+                )
+        rows = [
+            {"id": "own-unread", "user_id": caller, "read_at": None},
+            {"id": "own-read", "user_id": caller, "read_at": "2026-11-07T18:00:00Z"},
+            {"id": "other-unread", "user_id": other, "read_at": None},
+        ]
+        page = notification_page(_operation(self.spec, "listNotification"), {"role": "admin", "user_id": caller, "caller_user_id": caller}, rows, 1)
+        self.assertEqual([row["id"] for row in page["data"]], ["own-unread"])
+        self.assertEqual(page["unread_count"], 1)
+        self.assertEqual(page["total"], 2)
+        self.assertNotIn("other-unread", str(page))
+
     def test_history_inherits_the_underlying_record(self):
         covered = []
         for method, _path, operation in _ops(self.spec):
@@ -2645,6 +2812,18 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(issuance["x-togavsu-mcp"]["parity"], "required")
         self.assertEqual(issuance["x-togavsu-mcp"]["tool"], "issueFilePublicationGrant")
         self.assertEqual(issuance["x-togavsu-access"]["grant_issuance"], "background_file_publication")
+        self.assertEqual(issuance["x-togavsu-access"]["authorization_category"], "service_principal_issuance")
+        self.assertEqual(issuance["x-togavsu-access"]["module_delegation"], "service_principal")
+        self.assertFalse(issuance["x-togavsu-access"]["viewer_required"])
+        self.assertFalse(issuance["x-togavsu-access"]["task_grant_required"])
+        self.assertFalse(issuance["x-togavsu-access"]["existing_grant_authorizes_issuance"])
+        credentials = issuance["x-togavsu-mcp"]["transfer"]["credentials"]
+        self.assertNotIn("task_authorization", credentials)
+        self.assertNotIn("context_token", credentials)
+        self.assertFalse(credentials["module_bearer"]["viewer_required"])
+        self.assertFalse(credentials["module_bearer"]["task_grant_required"])
+        self.assertNotIn("issueFilePublicationGrant", self.spec["x-togavsu-module-delegation"]["noninteractive"]["operations"])
+        self.assertIn("issueFilePublicationGrant", self.spec["x-togavsu-module-delegation"]["service_principal_issuance"]["operations"])
         self.assertFalse(issuance["x-togavsu-access"]["grants_admin"])
         module = {"installed": True, "registered": True, "module_id": "email", "approved_scopes": ["files:write"]}
         job = {
@@ -2672,6 +2851,13 @@ class ContractTest(unittest.TestCase):
         self.assertIsNone(background_grant_issuance(issuance, {**module, "installed": False}, job)["grant"])
         self.assertIsNone(background_grant_issuance(issuance, module, {**job, "matter_walled": True, "on_wall": False})["grant"])
         self.assertIsNone(background_grant_issuance(issuance, module, {**job, "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333334"})["grant"])
+        renewed = background_grant_issuance(issuance, module, {**job, "previous_grant_expired": True, "viewer_present": False})
+        self.assertEqual(renewed["result"], "allowed")
+        _component_validator(self.spec, "BackgroundFileAuthorization").validate(renewed["grant"])
+        blocked_grant = background_grant_issuance(issuance, module, {**job, "task_authorization": {"module_id": "email"}, "viewer_present": False})
+        self.assertEqual(blocked_grant["result"], "forbidden")
+        self.assertIsNone(blocked_grant["grant"])
+        self.assertIsNone(background_grant_issuance(issuance, module, {**job, "module_id": "zoom"})["grant"])
         grant = issued["grant"]
         matter = job["matter_id"]
         store = {"uploads": {}, "files": {}, "events": []}

@@ -80,6 +80,13 @@ MODULE_HELP = {
     },
 }
 OWN = {"client": "own"}
+NOTIFICATION_RECIPIENT = {
+    "owner": "self",
+    "recipient": "self",
+    "roles_bound": ["admin", "attorney", "staff", "accountant", "client"],
+    "filter_before": ["pagination", "unread_count"],
+    "admin_sees_others": False,
+}
 TOKEN_OWNERSHIP = {
     "client": "own",
     "owner": "self_or_admin",
@@ -2166,9 +2173,13 @@ def _files(api: Contract) -> None:
         extra_access={
             **FILE_WALL,
             "grant_issuance": "background_file_publication",
+            "authorization_category": "service_principal_issuance",
             "event_read_scopes": ["files:write"],
             "grants_admin": False,
             "firmwide_bypass": False,
+            "viewer_required": False,
+            "task_grant_required": False,
+            "existing_grant_authorizes_issuance": False,
         },
     )
     for method, path, op, summary, body, event, desc in (
@@ -3007,9 +3018,15 @@ def _shell(api: Contract) -> None:
         write_scope="notifications:write",
         update=False,
         filters=["read"],
-        events={"created": "notification.created"},
-        extra_access=OWN,
+        delete=True,
+        events={"created": "notification.created", "deleted": "notification.deleted"},
+        extra_access=NOTIFICATION_RECIPIENT,
     )
+    created = api.spec["paths"]["/api/v1/notifications"]["post"]
+    for key in ("owner", "recipient", "roles_bound", "filter_before", "admin_sees_others"):
+        created["x-togavsu-access"].pop(key, None)
+    created["x-togavsu-access"]["creation_separate"] = True
+    created["x-togavsu-access"]["recipient"] = "named_on_create"
     api.add(
         "post",
         "/api/v1/notifications/{notification_id}/read",
@@ -3021,21 +3038,21 @@ def _shell(api: Contract) -> None:
         roles=ANY,
         scopes=["notifications:write"],
         response="Notification",
-        extra_access=OWN,
+        extra_access=NOTIFICATION_RECIPIENT,
     )
     api.add(
         "post",
         "/api/v1/notifications:read-all",
         operation_id="markAllNotificationsRead",
         summary="Mark all notifications read",
-        description="Clears the caller's unread count.",
+        description="Clears the caller's unread count. The count is the caller's own rows, filtered before the page.",
         tag="Shell",
         features=["notifications"],
         roles=ANY,
         scopes=["notifications:write"],
         success="204",
         response_content={},
-        extra_access=OWN,
+        extra_access=NOTIFICATION_RECIPIENT,
     )
     api.add(
         "get",

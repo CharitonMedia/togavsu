@@ -323,6 +323,7 @@ It does not claim the handlers or the MCP server are implemented.
 | notifications | `GET` | `/api/v1/notifications` | `listNotification` | required:listNotification | admin, attorney, staff, accountant, client | notifications:read |
 | notifications | `POST` | `/api/v1/notifications` | `createNotification` | required:createNotification | admin, attorney, staff | notifications:write |
 | notifications | `GET` | `/api/v1/notifications/{notification_id}` | `getNotification` | required:getNotification | admin, attorney, staff, accountant, client | notifications:read |
+| notifications | `DELETE` | `/api/v1/notifications/{notification_id}` | `deleteNotification` | required:deleteNotification | admin, attorney, staff | notifications:write |
 | notifications | `POST` | `/api/v1/notifications/{notification_id}/read` | `markNotificationRead` | required:markNotificationRead | admin, attorney, staff, accountant, client | notifications:write |
 | notifications | `POST` | `/api/v1/notifications:read-all` | `markAllNotificationsRead` | required:markAllNotificationsRead | admin, attorney, staff, accountant, client | notifications:write |
 | widgets | `GET` | `/api/v1/widgets` | `listWidgets` | required:listWidgets | admin, attorney, staff, accountant | layouts:read |
@@ -431,4 +432,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 425.
+Operations: 426.

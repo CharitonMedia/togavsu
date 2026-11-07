@@ -161,12 +161,12 @@ GENERIC_NONINTERACTIVE = frozenset(
         "createAiCall",
     }
 )
+SERVICE_PRINCIPAL_ISSUANCE = frozenset({"issueFilePublicationGrant"})
 NONINTERACTIVE_OPERATIONS = (
     GENERIC_NONINTERACTIVE
     | frozenset(MALWARE_SEQUENCE)
     | frozenset(PAYMENT_PROCESSOR["sequence"])
     | frozenset(BACKGROUND_FILE_SEQUENCE)
-    | frozenset({"issueFilePublicationGrant"})
 )
 
 _TRUST_POST = {
@@ -395,7 +395,7 @@ def tag_noninteractive_workflows(spec: dict) -> None:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "payment_processor"
         elif operation_id in MALWARE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "malware_scan"
-        elif operation_id in BACKGROUND_FILE_SEQUENCE or operation_id == "issueFilePublicationGrant":
+        elif operation_id in BACKGROUND_FILE_SEQUENCE:
             operation["x-togavsu-access"]["noninteractive_workflow"] = "background_file_publication"
 
 
@@ -518,13 +518,15 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
         and call.get("below_zero")
         and entry.get("below_zero") == "posts"
         and not entry.get("below_zero_blocks")
+        and not (compensation or {}).get("idempotent")
     )
+    idempotent = bool((compensation or {}).get("idempotent"))
     return {
-        "result": "allowed",
-        "payment_mutated": True,
+        "result": "original_result" if idempotent else "allowed",
+        "payment_mutated": not idempotent,
         "payment_status": "reversed",
         "amount_unchanged": True,
-        "ledger_mutated": bool(call.get("trust_linked")),
+        "ledger_mutated": bool(call.get("trust_linked")) and not idempotent,
         "ledger_append_only": bool(entry.get("append_only", True)) if call.get("trust_linked") else False,
         "original_trust_edited": bool(entry.get("original_edited", False)) if call.get("trust_linked") else False,
         "flag": flag,
@@ -536,15 +538,42 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
     }
 
 
-def _reversal_compensation(call: dict, account_id: str) -> dict | None:
-    """Read-only compensation row. The write schema does not accept entry_type reversal."""
-    required = ("client_id", "matter_id", "amount_cents", "trust_entry_id", "created_by", "posted_entry_id", "created_at")
-    if any(call.get(key) in (None, "") for key in required):
-        return None
-    amount = call["amount_cents"]
+def _inverted_trust_amount(original: dict) -> int | None:
+    """Invert the original trust posting. A deposit is undone by a debit. A transfer to operating is undone by a credit."""
+    amount = original.get("amount_cents")
     if not isinstance(amount, int) or amount == 0:
         return None
-    signed = -abs(amount)
+    kind = original.get("entry_type")
+    if kind == "deposit":
+        return -abs(amount)
+    if kind in {"withdrawal", "transfer_to_operating", "refund"}:
+        return abs(amount)
+    if kind == "adjustment":
+        return -amount
+    return None
+
+
+def _reversal_compensation(call: dict, account_id: str) -> dict | None:
+    """Read-only compensation row. The write schema does not accept entry_type reversal."""
+    required = ("client_id", "matter_id", "trust_entry_id", "created_by", "posted_entry_id", "created_at")
+    if any(call.get(key) in (None, "") for key in required):
+        return None
+    existing = call.get("existing_reversal")
+    if existing:
+        if existing.get("entry_type") != "reversal" or existing.get("reverses_entry_id") != call["trust_entry_id"]:
+            return None
+        if existing.get("amount_cents") in (None, 0):
+            return None
+        return {"entry": existing, "post": {"entry": existing, "balances": call.get("balances") or {"matter_cents": existing["amount_cents"], "client_cents": existing["amount_cents"], "account_cents": existing["amount_cents"]}, "flags": []}, "idempotent": True}
+    original = call.get("original_entry")
+    if not isinstance(original, dict) or original.get("id") != call["trust_entry_id"]:
+        return None
+    if call.get("amount_cents") not in (None, original.get("amount_cents")) and abs(call.get("amount_cents") or 0) != abs(original.get("amount_cents") or 0):
+        return None
+    signed = _inverted_trust_amount(original)
+    if signed is None:
+        return None
+    direction = "credit" if signed > 0 else "debit"
     entry = {
         "id": call["posted_entry_id"],
         "created_at": call["created_at"],
@@ -554,7 +583,7 @@ def _reversal_compensation(call: dict, account_id: str) -> dict | None:
         "matter_id": call["matter_id"],
         "entry_type": "reversal",
         "amount_cents": signed,
-        "direction": "debit",
+        "direction": direction,
         "method": call.get("method") or "internal_transfer",
         "description": call.get("description") or "Payment reversal",
         "reverses_entry_id": call["trust_entry_id"],
@@ -1308,8 +1337,18 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
         return denied
     if any(scope not in module.get("approved_scopes", []) for scope in policy["scopes"]):
         return {**denied, "result": policy["missing_scope"]}
-    if not job.get("expires_at") or job.get("expired"):
-        return {**denied, "result": policy["expired"]}
+    if job.get("task_authorization") or job.get("existing_grant"):
+        return denied
+    if access.get("authorization_category") != "service_principal_issuance":
+        return denied
+    if access.get("module_delegation") != "service_principal":
+        return denied
+    credentials = ((operation.get("x-togavsu-mcp") or {}).get("transfer") or {}).get("credentials") or {}
+    bearer = credentials.get("module_bearer") or {}
+    if bearer.get("viewer_required") or bearer.get("task_grant_required") or "task_authorization" in credentials or "context_token" in credentials:
+        return denied
+    if not job.get("expires_at"):
+        return {**denied, "result": "validation_failed"}
     if job.get("matter_walled") and not job.get("on_wall"):
         return {**denied, "result": policy["wrong_matter"]}
     principal_matters = job.get("principal_matter_ids")
@@ -1492,6 +1531,81 @@ def commit_concurrent_publishes(policy: dict, operation: dict, grant: dict, uplo
     first = background_file_step(store, policy, operation, call)
     second = background_file_step(store, policy, operation, call)
     return {"store": store, "first": first, "second": second}
+
+
+def notification_recipient_decision(operation: dict, call: dict) -> str:
+    """Reads and read-state changes are the caller's own rows. Creation may name another recipient."""
+    access = operation["x-togavsu-access"]
+    if access.get("creation_separate") or access.get("recipient") == "named_on_create":
+        if call.get("role") not in access.get("roles", []):
+            return "forbidden"
+        return "allowed"
+    if access.get("owner") != "self" or access.get("admin_sees_others"):
+        return "forbidden"
+    if call.get("role") not in access.get("roles_bound", []):
+        return "forbidden"
+    if call.get("owner") != "self":
+        return "not_found"
+    if call.get("recipient_user_id") not in (None, call.get("caller_user_id")):
+        return "not_found"
+    return "allowed"
+
+
+def notification_page(operation: dict, caller: dict, rows: list[dict], limit: int) -> dict:
+    """Drop other users' rows before the page and the unread count."""
+    if notification_recipient_decision(operation, {**caller, "owner": "self", "recipient_user_id": caller.get("user_id")}) != "allowed":
+        return {"data": [], "unread_count": 0, "total": 0}
+    own = [row for row in rows if row.get("user_id") == caller.get("user_id")]
+    return {
+        "data": own[:limit],
+        "unread_count": sum(1 for row in own if not row.get("read_at")),
+        "total": len(own),
+    }
+
+
+def normalize_module_target(module_id: str, target: str) -> str | None:
+    """Module-local path. Schemes, absolute URLs, traversal, and other modules' routes are refused."""
+    if not isinstance(target, str) or not isinstance(module_id, str) or not module_id:
+        return None
+    lowered = target.strip().lower()
+    if lowered.startswith(("javascript:", "data:", "http:", "https:", "file:", "ftp:", "net:")):
+        return None
+    if "\\" in target or target.startswith(("/", "//")) or ".." in target.split("/"):
+        return None
+    parts = target.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        return None
+    for part in parts:
+        if part.lower() != part:
+            return None
+        if not part or part[0] == "-" or not all(char.isalnum() or char == "-" for char in part):
+            return None
+        if not part.isascii() or not part[0].isalnum():
+            return None
+    return f"/m/{module_id}/{target}"
+
+
+def sidebar_entries(module_id: str, entries: list[dict], caller: dict) -> dict:
+    """Two entries open two pages. Render and the target both require the entry's roles and scopes."""
+    seen: set[str] = set()
+    opened = []
+    for entry in entries:
+        entry_id = entry.get("id")
+        if not entry_id or entry_id in seen:
+            return {"result": "validation_failed", "pages": []}
+        seen.add(entry_id)
+        path = normalize_module_target(module_id, entry.get("target"))
+        if not path:
+            return {"result": "validation_failed", "pages": []}
+        roles = set(entry.get("roles") or [])
+        scopes = set(entry.get("scopes") or [])
+        if caller.get("role") not in roles or not scopes <= set(caller.get("scopes") or []):
+            continue
+        opened.append({"id": entry_id, "path": path})
+    paths = [page["path"] for page in opened]
+    if len(paths) != len(set(paths)):
+        return {"result": "validation_failed", "pages": []}
+    return {"result": "allowed", "pages": opened}
 
 
 def include_views_decision(operation: dict, call: dict) -> str:

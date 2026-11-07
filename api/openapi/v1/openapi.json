@@ -35252,13 +35252,16 @@
             }
           ],
           "grant_issuance": "background_file_publication",
+          "authorization_category": "service_principal_issuance",
           "event_read_scopes": [
             "files:write"
           ],
           "grants_admin": false,
           "firmwide_bypass": false,
-          "module_delegation": "delegated_viewer_or_noninteractive",
-          "noninteractive_workflow": "background_file_publication",
+          "viewer_required": false,
+          "task_grant_required": false,
+          "existing_grant_authorizes_issuance": false,
+          "module_delegation": "service_principal",
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -35274,15 +35277,12 @@
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
             "credentials": {
-              "context_token": {
-                "header": "X-Togavsu-Context-Token",
-                "argument": "context_token",
-                "roles_from_arguments": false
-              },
-              "task_authorization": {
-                "header": "X-Togavsu-Task-Authorization",
-                "argument": "task_authorization",
-                "roles_from_arguments": false
+              "module_bearer": {
+                "header": "Authorization",
+                "scheme": "Bearer",
+                "from_arguments": false,
+                "viewer_required": false,
+                "task_grant_required": false
               }
             },
             "forbidden_header_overrides": [
@@ -35301,8 +35301,6 @@
               "path",
               "query",
               "idempotency_key",
-              "context_token",
-              "task_authorization",
               "body"
             ]
           }
@@ -44414,7 +44412,21 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own",
+          "client": "deny",
+          "owner": "self",
+          "recipient": "self",
+          "roles_bound": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "filter_before": [
+            "pagination",
+            "unread_count"
+          ],
+          "admin_sees_others": false,
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -44524,8 +44536,10 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own",
+          "client": "deny",
           "module_delegation": "delegated_viewer_or_noninteractive",
+          "creation_separate": true,
+          "recipient": "named_on_create",
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -44661,7 +44675,21 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own",
+          "client": "deny",
+          "owner": "self",
+          "recipient": "self",
+          "roles_bound": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "filter_before": [
+            "pagination",
+            "unread_count"
+          ],
+          "admin_sees_others": false,
           "module_delegation": "delegated_viewer"
         },
         "x-togavsu-events": [],
@@ -44691,6 +44719,136 @@
             "arguments": [
               "path",
               "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteNotification",
+        "summary": "Delete a notification",
+        "description": "Deletes the notification. Core client files and append-only ledgers do not use this method.",
+        "tags": [
+          "Shell"
+        ],
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter notification_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "notifications"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "notifications:write"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "owner": "self",
+          "recipient": "self",
+          "roles_bound": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "filter_before": [
+            "pagination",
+            "unread_count"
+          ],
+          "admin_sees_others": false,
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "notification.deleted"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "deleteNotification",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "empty"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
               "context_token"
             ]
           }
@@ -44784,7 +44942,21 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own",
+          "client": "deny",
+          "owner": "self",
+          "recipient": "self",
+          "roles_bound": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "filter_before": [
+            "pagination",
+            "unread_count"
+          ],
+          "admin_sees_others": false,
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -44837,7 +45009,7 @@
       "post": {
         "operationId": "markAllNotificationsRead",
         "summary": "Mark all notifications read",
-        "description": "Clears the caller's unread count.",
+        "description": "Clears the caller's unread count. The count is the caller's own rows, filtered before the page.",
         "tags": [
           "Shell"
         ],
@@ -44896,7 +45068,21 @@
           ],
           "public": false,
           "matter_wall": false,
-          "client": "own",
+          "client": "deny",
+          "owner": "self",
+          "recipient": "self",
+          "roles_bound": [
+            "admin",
+            "attorney",
+            "staff",
+            "accountant",
+            "client"
+          ],
+          "filter_before": [
+            "pagination",
+            "unread_count"
+          ],
+          "admin_sees_others": false,
           "module_delegation": "delegated_viewer",
           "events_on": "commit",
           "events_on_failure": "none"
@@ -56464,9 +56650,7 @@
               "downloadFileVersion",
               "listFileRenditions",
               "downloadFileRendition",
-              "createFileArchive",
-              "listNotification",
-              "getNotification"
+              "createFileArchive"
             ],
             "grants_admin": false,
             "firmwide_bypass": false
@@ -68745,6 +68929,13 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+            "description": "Stable id unique within the module manifest."
+          },
           "section": {
             "type": "string"
           },
@@ -68766,15 +68957,48 @@
               "normal",
               "warning"
             ]
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+            "description": "Module-local path. The core opens /m/{module_id}/{target}. Schemes, absolute URLs, and .. are refused."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Approved scopes required to render the entry and to open the target."
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "admin",
+                "attorney",
+                "staff",
+                "accountant",
+                "client"
+              ],
+              "description": "One role. A user may hold several."
+            },
+            "description": "Roles that may render the entry and open the target."
           }
         },
         "required": [
+          "id",
           "section",
           "label",
           "icon",
-          "order"
+          "order",
+          "target",
+          "scopes",
+          "roles"
         ],
-        "description": "A sidebar entry from the module manifest."
+        "description": "A sidebar entry. id is unique in the manifest. target is a module-local path, not a core route or another module's path. Two ids with different targets open two pages."
       },
       "ManifestQuickCreate": {
         "type": "object",
@@ -73597,13 +73821,33 @@
         "downloadFileVersion",
         "getFile",
         "getFileUpload",
-        "issueFilePublicationGrant",
         "listFileVersions",
         "publishFile",
         "putFileChunk",
         "quarantineFileVersion",
         "updatePaymentStatus"
       ]
+    },
+    "service_principal_issuance": {
+      "operations": [
+        "issueFilePublicationGrant"
+      ],
+      "credential": "module_bearer",
+      "viewer_required": false,
+      "task_grant_required": false,
+      "existing_grant_authorizes_issuance": false,
+      "requires": [
+        "installed",
+        "registered",
+        "approved_scope",
+        "firm_configured_matter_access"
+      ],
+      "scope": "files:write",
+      "missing_bearer": "unauthenticated",
+      "unknown_module": "forbidden",
+      "missing_scope": "scope_denied",
+      "wrong_matter": "not_found",
+      "wrong_recipient": "forbidden"
     },
     "cases": [
       {
@@ -74152,6 +74396,9 @@
       "doc_tender:read"
     ],
     "notification.created": [
+      "notifications:read"
+    ],
+    "notification.deleted": [
       "notifications:read"
     ],
     "notification.read": [

@@ -2271,15 +2271,31 @@ SCHEMAS = _register(
         ),
         "ManifestSidebarEntry": _obj(
             {
+                "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}$",
+                    "description": "Stable id unique within the module manifest.",
+                },
                 "section": {"type": "string"},
                 "subgroup": {"type": "string"},
                 "label": {"type": "string"},
                 "icon": {"type": "string"},
                 "order": {"type": "integer"},
                 "badge": _enum(["normal", "warning"]),
+                "target": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,63}(/[a-z0-9][a-z0-9-]{0,63})*$",
+                    "description": "Module-local path. The core opens /m/{module_id}/{target}. Schemes, absolute URLs, and .. are refused.",
+                },
+                "scopes": _arr({"type": "string"}, "Approved scopes required to render the entry and to open the target."),
+                "roles": _arr(_ROLE, "Roles that may render the entry and open the target."),
             },
-            ["section", "label", "icon", "order"],
-            "A sidebar entry from the module manifest.",
+            ["id", "section", "label", "icon", "order", "target", "scopes", "roles"],
+            "A sidebar entry. id is unique in the manifest. target is a module-local path, not a core route or another module's path. Two ids with different targets open two pages.",
         ),
         "ManifestQuickCreate": _obj(
             {"label": {"type": "string"}, "target": {"type": "string"}},

@@ -10189,15 +10189,12 @@
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
         "credentials": {
-          "context_token": {
-            "header": "X-Togavsu-Context-Token",
-            "argument": "context_token",
-            "roles_from_arguments": false
-          },
-          "task_authorization": {
-            "header": "X-Togavsu-Task-Authorization",
-            "argument": "task_authorization",
-            "roles_from_arguments": false
+          "module_bearer": {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": false,
+            "viewer_required": false,
+            "task_grant_required": false
           }
         },
         "forbidden_header_overrides": [
@@ -10216,8 +10213,6 @@
           "path",
           "query",
           "idempotency_key",
-          "context_token",
-          "task_authorization",
           "body"
         ]
       }
@@ -13081,6 +13076,47 @@
         "arguments": [
           "path",
           "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "deleteNotification",
+      "method": "DELETE",
+      "path": "/api/v1/notifications/{notification_id}",
+      "features": [
+        "notifications"
+      ],
+      "scopes": [
+        "notifications:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "empty"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
           "context_token"
         ]
       }

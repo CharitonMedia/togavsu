@@ -8,7 +8,13 @@ Trigger: the core serves /api/v1/openapi.json.
 
 from __future__ import annotations
 
-from contract.policy import BACKGROUND_FILE_PUBLICATION, MALWARE_DELIVERY, NONINTERACTIVE_OPERATIONS, PAYMENT_PROCESSOR
+from contract.policy import (
+    BACKGROUND_FILE_PUBLICATION,
+    MALWARE_DELIVERY,
+    NONINTERACTIVE_OPERATIONS,
+    PAYMENT_PROCESSOR,
+    SERVICE_PRINCIPAL_ISSUANCE,
+)
 from contract.schemas import COMPONENTS, PARAM_SCHEMA, QUERY
 
 PUBLIC_SECURITY: list = []
@@ -96,6 +102,20 @@ MODULE_DELEGATION_POLICY = {
         "payment_processor": PAYMENT_PROCESSOR,
         "background_file_publication": BACKGROUND_FILE_PUBLICATION,
         "operations": sorted(NONINTERACTIVE_OPERATIONS),
+    },
+    "service_principal_issuance": {
+        "operations": sorted(SERVICE_PRINCIPAL_ISSUANCE),
+        "credential": "module_bearer",
+        "viewer_required": False,
+        "task_grant_required": False,
+        "existing_grant_authorizes_issuance": False,
+        "requires": ["installed", "registered", "approved_scope", "firm_configured_matter_access"],
+        "scope": "files:write",
+        "missing_bearer": "unauthenticated",
+        "unknown_module": "forbidden",
+        "missing_scope": "scope_denied",
+        "wrong_matter": "not_found",
+        "wrong_recipient": "forbidden",
     },
     "cases": [
         {"operation_scope": "ai:use", "module_scopes": ["ai:use"], "viewer_role": "staff", "result": "allowed"},
@@ -265,6 +285,8 @@ def _delegated_viewer(access: dict, public: bool, mcp: str) -> bool:
 
 
 def _delegation_mode(access: dict, public: bool, mcp: str, operation_id: str) -> str | None:
+    if access.get("authorization_category") == "service_principal_issuance":
+        return "service_principal"
     if not _delegated_viewer(access, public, mcp):
         return None
     if operation_id in NONINTERACTIVE_OPERATIONS:
@@ -805,6 +827,14 @@ def _attach_mcp_transfer(operation: dict) -> None:
             "roles_from_arguments": False,
         }
         arguments.append("task_authorization")
+    if delegation == "service_principal":
+        credentials["module_bearer"] = {
+            "header": "Authorization",
+            "scheme": "Bearer",
+            "from_arguments": False,
+            "viewer_required": False,
+            "task_grant_required": False,
+        }
     if credentials:
         transfer["credentials"] = credentials
         transfer["forbidden_header_overrides"] = ["Authorization", "Host"]
