@@ -113,3 +113,8 @@ Limitation: this gate checks the shape and the binding. It does not execute the 
 Add it under the criterion in `tests/harness/cases.py`. Keep the requirement sentence in `docs/build/acceptance.json`. Set `phase` to the phase where that observation can be true. The full behavior phase has to equal the latest case phase. If that phase is before 7, list 7 as a recheck. Run the unittest command and `--write`.
 
 Canonical validation compares the complete case definition, including expected assertions and procedure. Keeping a case ID while replacing its expectations or action refuses the submitted matrix before any evidence can accept a criterion.
+
+
+Final app acceptance additionally requires every case result to carry integer `phase: 7` and the same full lowercase 40-character `tested_revision` as the clean Docker Desktop attestation. Earlier-phase or stale-revision evidence can document bounded progress but cannot complete the app. All cases are rerun on the integrated release, including the canonical phase-7 rechecks; submitted criterion definitions cannot remove that policy. The harness validates evidence shape and consistency, not cryptographic authenticity of a caller's claims. Actual domain runners and independent integrated-release tests must produce those observations.
+
+The structural stand-in denylist is always loaded from the canonical corpus. Optional caller hashes can only add refusals, never replace the canonical hashes; unavailable canonical data fails closed.

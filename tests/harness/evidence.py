@@ -7,6 +7,8 @@ criterion pending. app_complete also requires a clean Docker Desktop install.
 
 from __future__ import annotations
 
+import re
+
 ALLOWED_KINDS = frozenset({"command", "http", "sql", "file_hash", "log", "clean_install"})
 REFUSED_KINDS = frozenset({
     "mock",
@@ -155,16 +157,37 @@ def docker_desktop_ok(attestation: dict | None) -> bool:
 
 
 def _load_standins(standins: frozenset[str] | None) -> tuple[frozenset[str], bool]:
-    """None loads the corpus denylist. An empty denylist fails closed."""
-    if standins is None:
-        try:
-            from .corpus import standin_hashes
-            standins = standin_hashes()
-        except Exception:
-            return frozenset(), False
-    if not standins:
+    """Caller additions cannot replace the canonical denylist."""
+    try:
+        from .corpus import standin_hashes
+        canonical = standin_hashes()
+    except Exception:
         return frozenset(), False
-    return standins, True
+    if not canonical:
+        return frozenset(), False
+    if standins is not None and (not isinstance(standins, (set, frozenset)) or not standins):
+        return frozenset(canonical), False
+    return frozenset(canonical) | frozenset(standins or ()), True
+
+
+def _release_rechecks_ok(matrix: list[dict], evidence: dict, attestation: dict | None) -> bool:
+    """Final acceptance requires the whole suite rerun on the clean-install release."""
+    if not isinstance(attestation, dict) or type(attestation.get("phase")) is not int or attestation["phase"] != 7:
+        return False
+    revision = attestation.get("tested_revision")
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        return False
+    for criterion in matrix:
+        # The current canonical inventory has phase-7 rechecks. Other future
+        # phase requirements must fail closed until their evidence is represented.
+        if any(type(phase) is not int or phase != 7 for phase in criterion["recheck_phases"]):
+            return False
+        for case in criterion["positive"] + criterion["failure"]:
+            record = evidence.get(case["id"])
+            if (not isinstance(record, dict) or type(record.get("phase")) is not int
+                    or record["phase"] != 7 or record.get("tested_revision") != revision):
+                return False
+    return True
 
 
 def _blocked(matrix: list[dict], errors: list[str]) -> dict:
@@ -211,7 +234,8 @@ def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestat
             pending.append(criterion["id"])
         else:
             pending.append(criterion["id"])
-    app_complete = len(accepted) == len(matrix) == 52 and not failed and docker_desktop_ok(attestation)
+    release_rechecks = _release_rechecks_ok(matrix, evidence_by_case, attestation)
+    app_complete = len(accepted) == len(matrix) == 52 and not failed and docker_desktop_ok(attestation) and release_rechecks
     return {
         "task": "qa",
         "criteria": len(matrix),
@@ -223,5 +247,6 @@ def summarize(matrix: list[dict], evidence_by_case: dict | None = None, attestat
         "app_complete": app_complete,
         "product_acceptance": "pending" if not app_complete else "claimed",
         "inventory_errors": [],
+        "release_rechecks_complete": release_rechecks,
         "cases": case_results,
     }

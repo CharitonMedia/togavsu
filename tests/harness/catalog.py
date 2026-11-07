@@ -96,6 +96,8 @@ def inventory_errors(matrix: list[dict]) -> list[str]:
         expected = canon_by_id.get(item.get("id"))
         if expected is None:
             continue
+        if item != expected:
+            errors.append(f"{item['id']} criterion definition does not match the canonical inventory")
         if item.get("requirement") != expected["requirement"]:
             errors.append(f"{item['id']} requirement does not match the canonical inventory")
         for polarity in ("positive", "failure"):
