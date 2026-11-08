@@ -73,6 +73,11 @@ type Store struct {
 	// failReceiptRemove, when set by tests, fails the next receipt removal
 	// after a cleanup delete has already been recorded.
 	failReceiptRemove func() error
+	// publishHook, when set by tests, runs at each local publication step:
+	// "archive" after the encrypted tar is written, "checksum" after the
+	// sidecar is written, and "metadata" before the .json record is written.
+	// A returned error fails that step.
+	publishHook func(step string) error
 }
 
 func (s *Store) passphrase() (string, error) {
@@ -210,31 +215,53 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 		return BackupMeta{}, err
 	}
 
+	// The intent record is durable before any payload byte reaches the
+	// backup volume. Until the .json record is published, the archive, the
+	// sidecar and any metadata temp for this id belong to an unfinished
+	// publication that reconcilePublications may remove on restart.
+	if err := s.beginPublication(id, now); err != nil {
+		return BackupMeta{}, err
+	}
+	published := false
+	defer func() {
+		if !published {
+			_ = s.abandonPublication(id)
+		}
+	}()
 	archive := filepath.Join(s.Dir, id+".tgbk")
 	if err := s.encryptDir(work, archive, pass); err != nil {
-		os.Remove(archive)
+		return BackupMeta{}, err
+	}
+	if err := s.publishStep("archive"); err != nil {
 		return BackupMeta{}, err
 	}
 	sum, err := hashFile(archive)
 	if err != nil {
-		os.Remove(archive)
 		return BackupMeta{}, err
 	}
 	info, err := os.Stat(archive)
 	if err != nil {
-		os.Remove(archive)
 		return BackupMeta{}, err
 	}
 	side := filepath.Join(s.Dir, id+".sha256")
 	if err := s.writeSyncedFile(side, []byte(sum+"\n"), "checksum"); err != nil {
-		os.Remove(side)
-		os.Remove(archive)
+		return BackupMeta{}, err
+	}
+	if err := s.publishStep("checksum"); err != nil {
 		return BackupMeta{}, err
 	}
 	meta := BackupMeta{ID: id, CreatedAt: now, Reason: reason, SHA256: sum, Bytes: info.Size()}
+	if err := s.publishStep("metadata"); err != nil {
+		return BackupMeta{}, err
+	}
 	if err := writeFileAtomic(filepath.Join(s.Dir, id+".json"), mustJSON(meta), 0o600); err != nil {
 		return BackupMeta{}, err
 	}
+	published = true
+	// The backup is complete once its .json record is published. If the
+	// intent cannot be removed now, reconcilePublications finds the record
+	// on the next recovery pass and drops only the intent.
+	_ = s.finishPublication(id)
 	if s.Book != nil {
 		meta.DestinationErrors = s.copyOut(ctx, meta)
 		if len(meta.DestinationErrors) > 0 {
@@ -2067,6 +2094,9 @@ func (s *Store) recoverPlaintext() error {
 	if s == nil || s.Dir == "" {
 		return nil
 	}
+	if err := s.reconcilePublications(); err != nil {
+		return err
+	}
 	if err := removeAbandonedPlaintext(s.Dir, nil); err != nil {
 		return err
 	}
@@ -2212,4 +2242,151 @@ func mustJSON(v any) []byte {
 	}
 	raw = append(raw, '\n')
 	return raw
+}
+
+// publicationSuffix names the durable intent record for a local backup that
+// has started writing payload bytes but has not yet published its .json.
+const publicationSuffix = ".publishing"
+
+type publicationIntent struct {
+	Format    string    `json:"format"`
+	ID        string    `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+}
+
+func (s *Store) publishStep(step string) error {
+	if s.publishHook == nil {
+		return nil
+	}
+	return s.publishHook(step)
+}
+
+// beginPublication durably records that this process owns every local file
+// for id. The id is fresh and random, and the record is created exclusively,
+// so it cannot claim files that another publication or the operator made.
+func (s *Store) beginPublication(id string, now time.Time) error {
+	path, err := s.contained(id, publicationSuffix)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(mustJSON(publicationIntent{Format: "togavsu.publication.v1", ID: id, StartedAt: now}))
+	if werr == nil {
+		werr = f.Sync()
+	}
+	cerr := f.Close()
+	if werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		_ = os.Remove(path)
+		return werr
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+// finishPublication drops the intent after the .json record is published.
+func (s *Store) finishPublication(id string) error {
+	path, err := s.contained(id, publicationSuffix)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+// abandonPublication removes every local file an unfinished publication of
+// id may have written: the .json record and its temps, the sidecar and the
+// archive. The intent is removed last, and only when every other removal
+// succeeded, so a failed cleanup is retried by the next recovery pass.
+func (s *Store) abandonPublication(id string) error {
+	var paths []string
+	for _, suffix := range []string{".json", ".sha256", ".tgbk"} {
+		path, err := s.contained(id, suffix)
+		if err != nil {
+			return err
+		}
+		paths = append(paths, path)
+	}
+	temps, err := filepath.Glob(filepath.Join(filepath.Clean(s.Dir), ".partial-"+id+".json-*"))
+	if err != nil {
+		return err
+	}
+	paths = append(temps, paths...)
+	var firstErr error
+	for _, path := range paths {
+		if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
+			// Not a file this store writes; leave it and keep the intent.
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s is not a regular file: %w", filepath.Base(path), ErrUnsafePath)
+			}
+			continue
+		}
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+	if err := syncDir(filepath.Clean(s.Dir)); err != nil {
+		return err
+	}
+	return s.finishPublication(id)
+}
+
+// reconcilePublications settles intents left by a process that stopped
+// between its first payload byte and dropping the intent. A published,
+// readable .json record means the backup completed and only the intent goes.
+// A missing record means the publication never completed and its files go.
+// A record that exists but cannot be read is left alone with its intent.
+// Callers hold the scratch lock, so no live publication is reconciled.
+func (s *Store) reconcilePublications() error {
+	dir := filepath.Clean(s.Dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var firstErr error
+	for _, ent := range entries {
+		name := ent.Name()
+		if !strings.HasSuffix(name, publicationSuffix) || !ent.Type().IsRegular() {
+			continue
+		}
+		id := strings.TrimSuffix(name, publicationSuffix)
+		if !validID(id) {
+			continue
+		}
+		_, lerr := s.lookup(id)
+		switch {
+		case lerr == nil:
+			err = s.finishPublication(id)
+		case errors.Is(lerr, ErrNotFound):
+			if _, statErr := os.Lstat(filepath.Join(dir, id+".json")); statErr == nil {
+				// A record exists under this name but does not describe this
+				// id. Keep everything for the operator.
+				continue
+			}
+			err = s.abandonPublication(id)
+		default:
+			continue
+		}
+		if errors.Is(err, ErrUnsafePath) {
+			// Something other than this store's files sits under one of the
+			// names. Keep it and the intent; do not block later backups.
+			continue
+		}
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
