@@ -2136,6 +2136,246 @@ func TestDestinationRemovalKeepsTheOwnedLocation(t *testing.T) {
 	}
 }
 
+func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "new-dest")
+	var steps []string
+	record := func(step string) error {
+		steps = append(steps, step)
+		return nil
+	}
+	dest := &PathDestination{
+		Spec:    DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"},
+		dirSync: record,
+	}
+	body := []byte("archive-bytes")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "root,namespace,file" {
+		t.Fatalf("new directory syncs = %v", steps)
+	}
+	rc, err := dest.Get(context.Background(), "owned.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("stored %q %v", got, err)
+	}
+
+	steps = nil
+	second := []byte("second-archive")
+	secondSum, err := sha256Hex(bytes.NewReader(second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dest.Put(context.Background(), "second.tgbk", bytes.NewReader(second), secondSum); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "file" {
+		t.Fatalf("existing directory syncs = %v", steps)
+	}
+	rc, err = dest.Get(context.Background(), "second.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = io.ReadAll(rc)
+	rc.Close()
+	if err != nil || !bytes.Equal(got, second) {
+		t.Fatalf("second stored %q %v", got, err)
+	}
+	rc, err = dest.Get(context.Background(), "owned.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = io.ReadAll(rc)
+	rc.Close()
+	if err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("first file changed %q %v", got, err)
+	}
+
+	steps = nil
+	freshNS := &PathDestination{
+		Spec:    DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned02"},
+		dirSync: record,
+	}
+	if err := freshNS.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "namespace,file" {
+		t.Fatalf("new namespace syncs = %v", steps)
+	}
+}
+
+func TestArchiveDirectorySyncFailureStaysUncertain(t *testing.T) {
+	root := t.TempDir()
+	ns := filepath.Join(root, "nsowned01")
+	if err := os.Mkdir(ns, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(ns, "kept.tgbk")
+	if err := os.WriteFile(kept, []byte("legit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dest := &PathDestination{
+		Spec: DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"},
+		dirSync: func(step string) error {
+			if step == "file" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		},
+	}
+	body := []byte("archive-bytes")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum)
+	var pathErr *os.PathError
+	if !errors.Is(err, ErrRemoteUncertain) || errors.As(err, &pathErr) {
+		t.Fatalf("post-rename sync = %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(ns, "owned.tgbk")); err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("renamed archive = %q %v", got, err)
+	}
+	if got, err := os.ReadFile(kept); err != nil || string(got) != "legit" {
+		t.Fatalf("neighbor = %q %v", got, err)
+	}
+
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: dest.dirSync}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 || !strings.Contains(meta.DestinationErrors[0], "uncertain") {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	name := meta.ID + ".tgbk"
+	owned, err := s.receiptBook().List("share")
+	if err != nil || !receiptState(owned, name, receiptUncertain) || receiptState(owned, name, "") || receiptState(owned, meta.ID+".sha256", "") {
+		t.Fatalf("receipt %+v %v", owned, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace, name)); err != nil {
+		t.Fatalf("archive missing after uncertain sync: %v", err)
+	}
+	if got, err := os.ReadFile(kept); err != nil || string(got) != "legit" {
+		t.Fatalf("neighbor after copy %q %v", got, err)
+	}
+}
+
+func TestSidecarDirectorySyncFailureDoesNotConfirmTheArchive(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "nsowned01"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	syncs := 0
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step != "file" {
+				return nil
+			}
+			syncs++
+			if syncs == 2 {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 || !strings.Contains(meta.DestinationErrors[0], "uncertain") {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	name := meta.ID + ".tgbk"
+	side := meta.ID + ".sha256"
+	owned, err := s.receiptBook().List("share")
+	if err != nil || !receiptState(owned, name, receiptPending) || !receiptState(owned, side, receiptUncertain) || receiptState(owned, name, "") || receiptState(owned, side, "") {
+		t.Fatalf("receipt %+v %v", owned, err)
+	}
+	for _, filename := range []string{name, side} {
+		if _, err := os.Stat(filepath.Join(root, spec.Namespace, filename)); err != nil {
+			t.Fatalf("%s missing: %v", filename, err)
+		}
+	}
+}
+
+func TestNewDirectorySyncFailurePublishesNothing(t *testing.T) {
+	s := testStore(t)
+	fresh := filepath.Join(t.TempDir(), "fresh")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: fresh, Namespace: "nsowned01", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step == "root" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	if _, err := os.Stat(filepath.Join(fresh, spec.Namespace, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("archive published without a durable root: %v", err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt after root sync failure: %+v %v", owned, err)
+	}
+
+	s = testStore(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "kept"), []byte("legit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err = s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step == "namespace" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	meta, err = s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, spec.Namespace, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("archive published without a durable namespace: %v", err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt after namespace sync failure: %+v %v", owned, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "kept")); err != nil || string(got) != "legit" {
+		t.Fatalf("parent file changed %q %v", got, err)
+	}
+}
+
 func tarWithName(t *testing.T, name string) io.Reader {
 	t.Helper()
 	var buf bytes.Buffer
