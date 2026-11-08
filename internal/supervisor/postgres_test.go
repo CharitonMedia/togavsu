@@ -56,7 +56,8 @@ func TestKilledRestoreDoesNotLeavePlaintextSQL(t *testing.T) {
 				if time.Now().After(deadline) {
 					_ = cmd.Process.Kill()
 					_, _ = cmd.Process.Wait()
-					t.Fatal("child did not reach the database apply")
+					detail, _ := os.ReadFile(ready + ".err")
+					t.Fatalf("child did not reach the database apply: %s", detail)
 				}
 				time.Sleep(20 * time.Millisecond)
 			}
@@ -81,19 +82,33 @@ func runPlaintextChild(mode string) {
 	ctx := context.Background()
 	admin := "postgres://togavsu@127.0.0.1/postgres"
 	if mode == "measure" {
-		_, _ = MeasureCommand(bin, admin)(ctx, dump)
+		if _, err := MeasureCommand(bin, admin)(ctx, dump); err != nil {
+			os.WriteFile(os.Getenv("TOGAVSU_PLAIN_READY")+".err", []byte(err.Error()), 0o600)
+		}
 		return
 	}
-	_ = RestoreIntoCleanDatabase(ctx, bin, admin, "postgres://togavsu@127.0.0.1/togavsu", dump, nil)
+	err := RestoreIntoCleanDatabase(ctx, bin, admin, "postgres://togavsu@127.0.0.1/togavsu", dump, nil)
+	if err != nil {
+		os.WriteFile(os.Getenv("TOGAVSU_PLAIN_READY")+".err", []byte(err.Error()), 0o600)
+	}
 }
 
 func writeSleepPsql(t *testing.T, ready string) string {
 	t.Helper()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "psql")
-	script := "#!/bin/sh\nready=" + shellQuote(ready) + "\nprev=\ncmd=\nfor arg in \"$@\"; do\n" +
+	script := "#!/bin/sh\nready=" + shellQuote(ready) + "\nnames=\"${ready}.names\"\n" +
+		"if [ ! -f \"$names\" ]; then printf '%s\\n' postgres togavsu > \"$names\"; fi\n" +
+		"prev=\ncmd=\nfor arg in \"$@\"; do\n" +
 		"  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\n" +
-		"if [ -n \"$cmd\" ]; then exit 0; fi\n" +
+		"if [ -n \"$cmd\" ]; then\n" +
+		"  case \"$cmd\" in\n" +
+		"    *system_identifier*) echo 100 ;;\n" +
+		"    *oid::text*) name=$(printf '%s\\n' \"$cmd\" | sed \"s/.*datname = '//; s/'.*//\"); grep -qx \"$name\" \"$names\" && echo 42 ;;\n" +
+		"    CREATE\\ DATABASE\\ *) printf '%s\\n' \"${cmd#CREATE DATABASE }\" >> \"$names\" ;;\n" +
+		"  esac\n" +
+		"  exit 0\n" +
+		"fi\n" +
 		": > \"$ready\"\nsleep 60\nexit 0\n"
 	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
@@ -299,16 +314,6 @@ drop_name() {
   mv "$STATE.next" "$STATE"
 }
 case "$cmd" in
-  "SELECT datname"*)
-    if [ "$MODE" = "blind" ]; then
-      echo "connection reset" >&2
-      exit 1
-    fi
-    while IFS= read -r n; do
-      [ -n "$n" ] && printf '%s\n' "$n"
-    done < "$STATE"
-    exit 0
-    ;;
   BEGIN*)
     case "$MODE" in
       fail-before|fail-between)
@@ -332,6 +337,28 @@ case "$cmd" in
         exit 0
         ;;
     esac
+    ;;
+  *"system_identifier"*)
+    echo 100
+    exit 0
+    ;;
+  *"oid::text"*)
+    echo 10
+    exit 0
+    ;;
+  *"togavsu_fence_op"*)
+    echo cancelled
+    exit 0
+    ;;
+  "SELECT datname"*)
+    if [ "$MODE" = "blind" ]; then
+      echo "connection reset" >&2
+      exit 1
+    fi
+    while IFS= read -r n; do
+      [ -n "$n" ] && printf '%s\n' "$n"
+    done < "$STATE"
+    exit 0
     ;;
   "ALTER DATABASE "*)
     from=$(printf '%s\n' "$cmd" | awk '{print $3}')

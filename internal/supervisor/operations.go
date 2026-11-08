@@ -483,13 +483,32 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
+		ctx = WithRestoreOpID(ctx, rec.ID)
+		ctx = WithAllocHook(ctx, func(a RestoreAlloc) error {
+			_, herr := o.persist(o.current(rec.ID, rec), phaseApplying, func(cur *journalRecord) {
+				cur.Database = &databaseIntent{
+					Configured: a.Configured, Fresh: a.Fresh, Replaced: a.Replaced,
+					Allocated: true, OpID: a.OpID, ClusterID: a.ClusterID,
+					FreshOID: a.FreshOID, ConfiguredOID: a.ConfiguredOID,
+				}
+			})
+			return herr
+		})
 		ctx = WithSwapHook(ctx, func(configured, fresh, replaced string) error {
 			_, herr := o.persist(o.current(rec.ID, rec), phaseSwapIntended, func(cur *journalRecord) {
+				prev := cur.Database
 				cur.Database = &databaseIntent{
 					Configured:   configured,
 					Fresh:        fresh,
 					Replaced:     replaced,
 					SwapIntended: true,
+				}
+				if prev != nil {
+					cur.Database.Allocated = prev.Allocated
+					cur.Database.OpID = prev.OpID
+					cur.Database.ClusterID = prev.ClusterID
+					cur.Database.FreshOID = prev.FreshOID
+					cur.Database.ConfiguredOID = prev.ConfiguredOID
 				}
 			})
 			return herr
@@ -807,15 +826,21 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
+	if err := o.confirmCluster(ctx, db); err != nil {
+		return decisionUnknown, false
+	}
 	st, err := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
 	if err != nil || st == nil {
 		return decisionUnknown, false
 	}
-	// Names that still match the pre-rename catalog are not a rollback until
-	// this operation's transaction is finished. A catalog that cannot fence
-	// that transaction stays unknown, and writers stay stopped.
+	// Unchanged names are not a rollback until this operation row is
+	// cancelled. That cancel commits before writers restart. A lock timeout
+	// or a missing row stays pending. A committed row is never cancelled.
+	state := ""
 	if st[db.Configured] && st[db.Fresh] && !st[db.Replaced] {
-		if err := o.fenceSwap(ctx, db); err != nil {
+		var ferr error
+		state, ferr = o.fenceSwap(ctx, db)
+		if ferr != nil || state == "absent" {
 			return decisionUnknown, false
 		}
 		st, err = o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
@@ -823,15 +848,89 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 			return decisionUnknown, false
 		}
 	}
-	return decisionFromCatalog(st, db), true
+	decision := decisionFromCatalog(st, db)
+	if state != "" && state != "cancelled" && state != "committed" {
+		return decisionUnknown, false
+	}
+	if state == "cancelled" && decision != decisionOldIntact {
+		return decisionUnknown, false
+	}
+	if state == "committed" && decision == decisionOldIntact {
+		return decisionUnknown, false
+	}
+	if state == "" && decision == decisionOldIntact {
+		return decisionUnknown, false
+	}
+	return decision, true
 }
 
-func (o *Operations) fenceSwap(ctx context.Context, db *databaseIntent) error {
+func (o *Operations) finishAllocation(rec RestoreRecord, db *databaseIntent) error {
+	if db.FreshOID == "" || db.OpID == "" {
+		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
+		return err
+	}
+	dropper, ok := o.Catalog.(interface {
+		DropVerified(context.Context, string, string, string) error
+	})
+	if !ok {
+		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	if err := o.confirmCluster(ctx, db); err != nil {
+		_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", err)
+		return errors.Join(err, perr)
+	}
+	if err := dropper.DropVerified(ctx, db.OpID, db.Fresh, db.FreshOID); err != nil {
+		_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", err)
+		return errors.Join(err, perr)
+	}
+	return nil
+}
+
+// confirmCluster rejects recovery when the journal names a different cluster
+// or a different configured database oid than the admin connection. An empty
+// cluster id is an older record and is left to the catalog row check.
+func (o *Operations) confirmCluster(ctx context.Context, db *databaseIntent) error {
+	if db == nil || db.ClusterID == "" || o == nil || o.Catalog == nil {
+		return nil
+	}
+	idn, ok := o.Catalog.(interface {
+		Cluster(context.Context) (string, error)
+	})
+	if !ok {
+		return fmt.Errorf("%w: cluster identity", errSwapUnobserved)
+	}
+	got, err := idn.Cluster(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errSwapUnobserved, err)
+	}
+	if got != db.ClusterID {
+		return fmt.Errorf("admin connection is a different database cluster: %w", ErrBadRequest)
+	}
+	if db.ConfiguredOID == "" {
+		return nil
+	}
+	look, ok := o.Catalog.(interface {
+		DatabaseOID(context.Context, string) (string, error)
+	})
+	if !ok {
+		return fmt.Errorf("%w: database identity", errSwapUnobserved)
+	}
+	oid, err := look.DatabaseOID(ctx, db.Configured)
+	if err != nil || oid == "" || oid != db.ConfiguredOID {
+		return fmt.Errorf("%w: configured database identity", errSwapUnobserved)
+	}
+	return nil
+}
+
+func (o *Operations) fenceSwap(ctx context.Context, db *databaseIntent) (string, error) {
 	fencer, ok := o.Catalog.(interface {
-		Fence(context.Context, string, string, string) error
+		Fence(context.Context, string, string, string) (string, error)
 	})
 	if !ok || db == nil {
-		return errSwapUnobserved
+		return "", errSwapUnobserved
 	}
 	return fencer.Fence(ctx, db.Configured, db.Fresh, db.Replaced)
 }
@@ -972,6 +1071,13 @@ func (o *Operations) admit(ctx context.Context) error {
 
 func (o *Operations) recoverLocked(ctx context.Context) error {
 	var errs []error
+	if catalog, ok := o.Catalog.(interface {
+		Reconcile(context.Context) error
+	}); ok {
+		if err := catalog.Reconcile(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	if o.Store != nil {
 		if err := o.Store.RecoverPlaintext(); err != nil {
 			return err
@@ -1040,6 +1146,11 @@ func (o *Operations) finishMaintenance(rec RestoreRecord, err error) (RestoreRec
 }
 
 func (o *Operations) finishCommittedUncertain(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	if err := o.confirmCluster(ctx, o.databaseOf(rec.ID)); err != nil {
+		return o.keepPending(rec, phaseApplied, "catalog_unobserved", err)
+	}
 	st, observed := o.observeSwap(rec)
 	if !observed {
 		return o.keepPending(rec, phaseApplied, "catalog_unobserved", cause)
@@ -1073,6 +1184,10 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 		return o.recoverCommitted(item)
 	}
 	if item.Database != nil && item.Database.SwapRolledBack {
+		if err := o.confirmCluster(ctx, item.Database); err != nil {
+			_, perr := o.keepPending(rec, phaseRolledBack, "catalog_unobserved", err)
+			return errors.Join(err, perr)
+		}
 		o.dropRolledBackFresh(item)
 		saved, err := o.closeStopped(rec, nil, errors.New("restore rolled back before the database rename committed"), "rolled_back")
 		if saved.Status == "running" {
@@ -1170,6 +1285,12 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 
 func (o *Operations) recoverCommitted(item journalRecord) error {
 	rec := item.Record
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	if err := o.confirmCluster(ctx, item.Database); err != nil {
+		_, perr := o.keepPending(rec, phaseApplied, "catalog_unobserved", err)
+		return errors.Join(err, perr)
+	}
 	st, observed := o.observeSwap(rec)
 	if !observed {
 		_, err := o.keepPending(rec, phaseApplied, "catalog_unobserved", errSwapUnobserved)
@@ -1212,6 +1333,11 @@ func (o *Operations) recoverCommitted(item journalRecord) error {
 }
 
 func (o *Operations) recoverOneTail(rec RestoreRecord) error {
+	if db := o.databaseOf(rec.ID); db != nil && db.Allocated && !db.SwapCommitted {
+		if err := o.finishAllocation(rec, db); err != nil {
+			return err
+		}
+	}
 	saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted after writers stopped and before the database rename"), "restarted_writers")
 	if saved.Status == "running" {
 		return err

@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -70,21 +68,18 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	if err != nil {
 		return err
 	}
-	var raw [6]byte
-	if _, err := rand.Read(raw[:]); err != nil {
+	alloc, err := allocateDatabase(ctx, bin, adminURL, databaseURL, "togavsu_restore_")
+	if err != nil {
 		return err
 	}
-	suffix := hex.EncodeToString(raw[:])
-	fresh := "togavsu_restore_" + suffix
-	if _, err := psqlLines(ctx, bin, adminURL, "CREATE DATABASE "+fresh); err != nil {
-		return err
-	}
-	dropFresh := true
+	fresh := alloc.Fresh
+	suffix := alloc.Suffix
+	dropFresh := alloc.FreshOID != ""
 	defer func() {
 		if dropFresh {
 			clean, cancel := recoveryContext()
 			defer cancel()
-			_, _ = psqlLines(clean, bin, adminURL, "DROP DATABASE IF EXISTS "+fresh)
+			_ = dropVerifiedDatabase(clean, bin, adminURL, alloc.OpID, fresh, alloc.FreshOID)
 		}
 	}()
 	target, err := withDatabase(adminURL, fresh)
@@ -239,6 +234,30 @@ type PostgresCatalog struct {
 	AdminURL string
 }
 
+// Cluster is the admin connection's pg_control system identifier.
+func (p PostgresCatalog) Cluster(ctx context.Context) (string, error) {
+	if p.AdminURL == "" {
+		return "", errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return clusterID(ctx, bin, p.AdminURL)
+}
+
+// DatabaseOID is the configured database oid on the admin connection.
+func (p PostgresCatalog) DatabaseOID(ctx context.Context, name string) (string, error) {
+	if p.AdminURL == "" {
+		return "", errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return databaseOID(ctx, bin, p.AdminURL, name)
+}
+
 func (p PostgresCatalog) Drop(ctx context.Context, name string) error {
 	if p.AdminURL == "" {
 		return errSwapUnobserved
@@ -265,10 +284,28 @@ func (p PostgresCatalog) Observe(ctx context.Context, configured, fresh, replace
 	return observeDatabases(ctx, bin, p.AdminURL, configured, fresh, replaced)
 }
 
-// Fence acquires this operation's advisory lock. The rename transaction holds
-// that lock until it commits or aborts, so a successful fence means that
-// transaction can no longer commit. A timeout leaves the outcome unknown.
-func (p PostgresCatalog) Fence(ctx context.Context, configured, fresh, replaced string) error {
+// Fence cancels a still-pending restore operation, or reports that the rename
+// transaction already committed. It locks that operation row. A timeout or a
+// missing row does not declare rollback.
+func (p PostgresCatalog) Fence(ctx context.Context, configured, fresh, replaced string) (string, error) {
+	if p.AdminURL == "" {
+		return "", errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	opID, err := lookupRestoreOp(ctx, bin, p.AdminURL, configured, fresh, replaced)
+	if err != nil {
+		return "", err
+	}
+	return fenceRestoreOp(ctx, bin, p.AdminURL, opID)
+}
+
+// Reconcile drops temp databases whose recorded oid still names that fresh
+// database. It does not drop by name prefix, and it does not drop a database
+// whose oid was never recorded or no longer matches.
+func (p PostgresCatalog) Reconcile(ctx context.Context) error {
 	if p.AdminURL == "" {
 		return errSwapUnobserved
 	}
@@ -276,7 +313,20 @@ func (p PostgresCatalog) Fence(ctx context.Context, configured, fresh, replaced 
 	if bin == "" {
 		bin = "psql"
 	}
-	return fenceSwapTransaction(ctx, bin, p.AdminURL, configured, fresh, replaced)
+	return reconcileOwnedDatabases(ctx, bin, p.AdminURL)
+}
+
+// DropVerified drops fresh only when opID owns that exact oid and the oid
+// still bears the fresh name.
+func (p PostgresCatalog) DropVerified(ctx context.Context, opID, fresh, oid string) error {
+	if p.AdminURL == "" {
+		return errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return dropVerifiedDatabase(ctx, bin, p.AdminURL, opID, fresh, oid)
 }
 
 // swapDatabase renames orig to replaced and fresh to orig in one Postgres
@@ -300,28 +350,45 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 			return err
 		}
 	}
+	if _, err := clusterID(ctx, bin, adminURL); err != nil {
+		return err
+	}
+	opID := restoreOpID(ctx)
+	if opID == "" {
+		var idErr error
+		opID, idErr = newRestoreOpID(time.Now())
+		if idErr != nil {
+			return idErr
+		}
+	}
+	if err := ensureRestoreOp(ctx, bin, adminURL, opID, orig, fresh, replaced); err != nil {
+		return err
+	}
 	_, _ = psqlLines(rec, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+orig+"' AND pid <> pg_backend_pid()")
-	k1, k2 := swapLockKeys(orig, fresh, replaced)
-	txn := fmt.Sprintf("BEGIN; SELECT pg_advisory_xact_lock(%d, %d); ALTER DATABASE %s RENAME TO %s; ALTER DATABASE %s RENAME TO %s; COMMIT;", k1, k2, orig, replaced, fresh, orig)
+	txn, err := swapTransactionSQL(opID, orig, fresh, replaced)
+	if err != nil {
+		return err
+	}
 	txnErr := psqlExec(ctx, bin, adminURL, txn)
 	if txnErr != nil {
-		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, txnErr)
+		return reconcileSwap(ctx, bin, adminURL, opID, orig, fresh, replaced, txnErr)
 	}
 	if err := recordSwapCommitted(ctx, orig, fresh, replaced); err != nil {
 		return fmt.Errorf("%w: %v", errCommitUnjournaled, err)
 	}
 	dropErr := psqlExec(ctx, bin, adminURL, "DROP DATABASE "+replaced)
 	if dropErr != nil {
-		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, dropErr)
+		return reconcileSwap(ctx, bin, adminURL, opID, orig, fresh, replaced, dropErr)
 	}
-	return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, nil)
+	return reconcileSwap(ctx, bin, adminURL, opID, orig, fresh, replaced, nil)
 }
 
-func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced string, stepErr error) error {
+func reconcileSwap(hookCtx context.Context, bin, adminURL, opID, orig, fresh, replaced string, stepErr error) error {
 	ctx, cancel := recoveryContext()
 	defer cancel()
 	last := stepErr
 	fenced := false
+	committedRow := false
 	for attempt := 0; attempt < 4; attempt++ {
 		st, err := observeDatabases(ctx, bin, adminURL, orig, fresh, replaced)
 		if err != nil {
@@ -343,16 +410,25 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 			}
 			return nil
 		case st[orig] && st[fresh] && !st[replaced]:
-			// Unchanged names do not prove rollback while the rename
-			// transaction can still commit. The fence waits for that
-			// transaction's advisory lock, which it holds until commit or
-			// abort. A timeout stays unknown and does not restart writers.
+			// Unchanged names are not a rollback until this operation row is
+			// cancelled. The cancel commits before any caller restarts writers.
+			// The rename batch locks that same row and refuses a cancelled or
+			// missing operation, so a command that has not locked yet cannot
+			// commit afterwards. A lock timeout leaves the operation pending.
 			if !fenced {
-				if err := fenceSwapTransaction(ctx, bin, adminURL, orig, fresh, replaced); err != nil {
+				state, err := fenceRestoreOp(ctx, bin, adminURL, opID)
+				if err != nil {
 					return fmt.Errorf("%w: rename transaction is still in flight: %v", errSwapUnobserved, err)
 				}
+				if state == "absent" {
+					return fmt.Errorf("%w: restore operation is absent", errSwapUnobserved)
+				}
 				fenced = true
+				committedRow = state == "committed"
 				continue
+			}
+			if committedRow {
+				return fmt.Errorf("%w: restore operation committed but the catalog did not", errSwapUnobserved)
 			}
 			if stepErr != nil {
 				if err := recordSwapRolledBack(hookCtx, orig, fresh, replaced); err != nil {
@@ -425,38 +501,491 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 	return nil
 }
 
-// swapFenceTimeout is how long recovery waits for the rename transaction to
-// end. A timeout is not evidence of rollback.
+// swapFenceTimeout is how long recovery waits to lock the operation row.
+// A timeout is not evidence of rollback.
 var swapFenceTimeout = 5 * time.Second
 
-// swapLockKeys identifies one rename transaction. The key is derived from
-// that operation's database names, not from a backend pid.
-func swapLockKeys(orig, fresh, replaced string) (int32, int32) {
-	sum := sha256.Sum256([]byte("togavsu-swap-v1\x00" + orig + "\x00" + fresh + "\x00" + replaced))
-	k1 := int32(binary.BigEndian.Uint32(sum[0:4]) & 0x7fffffff)
-	k2 := int32(binary.BigEndian.Uint32(sum[4:8]) & 0x7fffffff)
-	if k1 == 0 && k2 == 0 {
-		k2 = 1
-	}
-	return k1, k2
+type restoreOpIDKey struct{}
+
+type allocHookKey struct{}
+
+// RestoreAlloc is one temp database this process owns.
+type RestoreAlloc struct {
+	OpID          string
+	ClusterID     string
+	Configured    string
+	Fresh         string
+	Replaced      string
+	Suffix        string
+	ConfiguredOID string
+	FreshOID      string
 }
 
-// fenceSwapTransaction returns when this operation's rename transaction has
-// committed or aborted. It does not call pg_terminate_backend, so a reused
-// pid is never signaled. A lock timeout means the transaction is still live.
-func fenceSwapTransaction(ctx context.Context, bin, adminURL, orig, fresh, replaced string) error {
-	for _, name := range []string{orig, fresh, replaced} {
-		if !ident(name) {
-			return fmt.Errorf("database name: %w", ErrBadRequest)
+// WithRestoreOpID binds CREATE and the rename batch to one journaled operation.
+func WithRestoreOpID(ctx context.Context, id string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, restoreOpIDKey{}, id)
+}
+
+func restoreOpID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	id, _ := ctx.Value(restoreOpIDKey{}).(string)
+	return id
+}
+
+// WithAllocHook runs before CREATE DATABASE and again after the oid is verified.
+// The hook must return only after its record is fsynced.
+func WithAllocHook(ctx context.Context, hook func(RestoreAlloc) error) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, allocHookKey{}, hook)
+}
+
+func allocHook(ctx context.Context) func(RestoreAlloc) error {
+	if ctx == nil {
+		return nil
+	}
+	hook, _ := ctx.Value(allocHookKey{}).(func(RestoreAlloc) error)
+	return hook
+}
+
+func clusterID(ctx context.Context, bin, databaseURL string) (string, error) {
+	lines, err := psqlLines(ctx, bin, databaseURL, "SELECT system_identifier FROM pg_control_system()")
+	if err != nil {
+		return "", err
+	}
+	if len(lines) != 1 || strings.Trim(lines[0], "0123456789") != "" {
+		return "", fmt.Errorf("database cluster: %w", errSwapUnobserved)
+	}
+	return lines[0], nil
+}
+
+func assertSameCluster(ctx context.Context, bin, adminURL, databaseURL string) (string, error) {
+	adminID, err := clusterID(ctx, bin, adminURL)
+	if err != nil {
+		return "", err
+	}
+	dbID, err := clusterID(ctx, bin, databaseURL)
+	if err != nil {
+		return "", err
+	}
+	if adminID != dbID {
+		return "", fmt.Errorf("admin connection is a different database cluster: %w", ErrBadRequest)
+	}
+	name, err := databaseName(databaseURL)
+	if err != nil {
+		return "", err
+	}
+	oid, err := databaseOID(ctx, bin, adminURL, name)
+	if err != nil {
+		return "", err
+	}
+	if oid == "" {
+		return "", fmt.Errorf("configured database is not on the admin cluster: %w", ErrBadRequest)
+	}
+	return adminID, nil
+}
+
+func sqlText(value string) (string, error) {
+	if value == "" || len(value) > 80 {
+		return "", fmt.Errorf("operation id: %w", ErrBadRequest)
+	}
+	for _, c := range value {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
+		default:
+			return "", fmt.Errorf("operation id: %w", ErrBadRequest)
 		}
+	}
+	return "'" + value + "'", nil
+}
+
+func ensureRestoreSchema(ctx context.Context, bin, adminURL string) error {
+	ddl := `
+CREATE TABLE IF NOT EXISTS togavsu_restore_op (
+  op_id text PRIMARY KEY,
+  configured text NOT NULL,
+  fresh text NOT NULL,
+  replaced text NOT NULL,
+  cluster_id text NOT NULL,
+  state text NOT NULL,
+  fresh_oid text,
+  configured_oid text
+);
+CREATE OR REPLACE FUNCTION togavsu_fence_op(op text, wait_ms integer)
+RETURNS text
+LANGUAGE plpgsql
+AS $fn$
+DECLARE s text; live text; row_cluster text; row_oid text; live_oid text; row_name text;
+BEGIN
+  PERFORM set_config('lock_timeout', wait_ms::text || 'ms', true);
+  SELECT system_identifier::text INTO live FROM pg_control_system();
+  SELECT state, cluster_id, configured_oid, configured INTO s, row_cluster, row_oid, row_name
+    FROM togavsu_restore_op WHERE op_id = op FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN 'absent';
+  END IF;
+  SELECT oid::text INTO live_oid FROM pg_database WHERE datname = row_name;
+  IF row_cluster IS DISTINCT FROM live OR (row_oid IS NOT NULL AND row_oid IS DISTINCT FROM live_oid) THEN
+    IF s IN ('owned', 'loading', 'allocating') THEN
+      UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = op AND state = s;
+    END IF;
+    RETURN 'absent';
+  END IF;
+  IF s IN ('owned', 'loading', 'allocating') THEN
+    UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = op AND state = s;
+    RETURN 'cancelled';
+  END IF;
+  RETURN s;
+END;
+$fn$;`
+	return psqlExec(ctx, bin, adminURL, ddl)
+}
+
+func allocateDatabase(ctx context.Context, bin, adminURL, databaseURL, prefix string) (RestoreAlloc, error) {
+	var zero RestoreAlloc
+	cluster, err := assertSameCluster(ctx, bin, adminURL, databaseURL)
+	if err != nil {
+		return zero, err
+	}
+	configured, err := databaseName(databaseURL)
+	if err != nil {
+		return zero, err
+	}
+	if err := ensureRestoreSchema(ctx, bin, adminURL); err != nil {
+		return zero, err
+	}
+	opID := restoreOpID(ctx)
+	if opID == "" {
+		opID, err = newRestoreOpID(time.Now())
+		if err != nil {
+			return zero, err
+		}
+	}
+	var raw [6]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return zero, err
+	}
+	suffix := hex.EncodeToString(raw[:])
+	fresh := prefix + suffix
+	if !ident(fresh) {
+		return zero, fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	replaced := configured + "_replaced_" + suffix
+	if !ident(replaced) {
+		return zero, fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	cfgOID, err := databaseOID(ctx, bin, adminURL, configured)
+	if err != nil {
+		return zero, err
+	}
+	if cfgOID == "" {
+		return zero, fmt.Errorf("configured database is not on the admin cluster: %w", ErrBadRequest)
+	}
+	alloc := RestoreAlloc{
+		OpID: opID, ClusterID: cluster, Configured: configured, Fresh: fresh,
+		Replaced: replaced, Suffix: suffix, ConfiguredOID: cfgOID,
+	}
+	if hook := allocHook(ctx); hook != nil {
+		if err := hook(alloc); err != nil {
+			return zero, err
+		}
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return zero, err
+	}
+	insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, configured_oid) VALUES (" +
+		opLit + ", '" + configured + "', '" + fresh + "', '" + replaced + "', '" + cluster + "', 'allocating', '" + cfgOID + "')"
+	if err := psqlExec(ctx, bin, adminURL, insert); err != nil {
+		return zero, err
+	}
+	absent, err := databaseOID(ctx, bin, adminURL, fresh)
+	if err != nil {
+		return zero, err
+	}
+	if absent != "" {
+		_ = psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND fresh_oid IS NULL")
+		return zero, fmt.Errorf("fresh database already exists: %w", ErrBadRequest)
+	}
+	createErr := psqlExec(ctx, bin, adminURL, "CREATE DATABASE "+fresh)
+	oid, oidErr := databaseOID(ctx, bin, adminURL, fresh)
+	if oidErr != nil {
+		return zero, fmt.Errorf("%w: %v", errSwapUnobserved, oidErr)
+	}
+	if oid == "" {
+		_ = psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND state = 'allocating' AND fresh_oid IS NULL")
+		if createErr != nil {
+			return zero, createErr
+		}
+		return zero, fmt.Errorf("%w: fresh database was not created", errSwapUnobserved)
+	}
+	if createErr != nil && !ambiguousExec(createErr) {
+		return zero, createErr
+	}
+	own := "UPDATE togavsu_restore_op SET state = 'loading', fresh_oid = '" + oid + "' WHERE op_id = " + opLit + " AND state = 'allocating' AND fresh_oid IS NULL"
+	if err := psqlExec(ctx, bin, adminURL, own); err != nil {
+		return zero, fmt.Errorf("%w: %v", errSwapUnobserved, err)
+	}
+	alloc.FreshOID = oid
+	if hook := allocHook(ctx); hook != nil {
+		if err := hook(alloc); err != nil {
+			return alloc, err
+		}
+	}
+	if createErr != nil {
+		return alloc, fmt.Errorf("%w: %v", errSwapUnobserved, createErr)
+	}
+	return alloc, nil
+}
+
+func ambiguousExec(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "already exists") || strings.Contains(msg, "syntax error") {
+		return false
+	}
+	return true
+}
+
+func databaseOID(ctx context.Context, bin, adminURL, name string) (string, error) {
+	if !ident(name) {
+		return "", fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	lines, err := psqlLines(ctx, bin, adminURL, "SELECT oid::text FROM pg_database WHERE datname = '"+name+"'")
+	if err != nil {
+		return "", err
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	if len(lines) != 1 || strings.Trim(lines[0], "0123456789") != "" {
+		return "", fmt.Errorf("database oid: %w", errSwapUnobserved)
+	}
+	return lines[0], nil
+}
+
+func ensureRestoreOp(ctx context.Context, bin, adminURL, opID, configured, fresh, replaced string) error {
+	if err := ensureRestoreSchema(ctx, bin, adminURL); err != nil {
+		return err
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return err
+	}
+	cluster, err := clusterID(ctx, bin, adminURL)
+	if err != nil {
+		return err
+	}
+	cfgOID, err := databaseOID(ctx, bin, adminURL, configured)
+	if err != nil {
+		return err
+	}
+	freshOID, err := databaseOID(ctx, bin, adminURL, fresh)
+	if err != nil {
+		return err
+	}
+	// A row written before CREATE stays. Direct swap callers insert owned.
+	// A cancelled or committed row is terminal: a late command must not promote
+	// it and must not start the rename.
+	present, err := psqlLines(ctx, bin, adminURL, "SELECT state || '|' || cluster_id || '|' || COALESCE(configured_oid, '') FROM togavsu_restore_op WHERE op_id = "+opLit)
+	if err != nil {
+		return err
+	}
+	if len(present) == 1 {
+		parts := strings.Split(present[0], "|")
+		if len(parts) != 3 {
+			return fmt.Errorf("%w: restore operation row", errSwapUnobserved)
+		}
+		state, rowCluster, rowOID := parts[0], parts[1], parts[2]
+		if rowCluster != cluster {
+			return fmt.Errorf("admin connection is a different database cluster: %w", ErrBadRequest)
+		}
+		if rowOID != "" && cfgOID != "" && rowOID != cfgOID {
+			return fmt.Errorf("configured database identity changed: %w", ErrBadRequest)
+		}
+		switch state {
+		case "cancelled", "committed":
+			return fmt.Errorf("restore operation rejected: %w", ErrBadRequest)
+		case "allocating", "loading":
+			if freshOID == "" {
+				return fmt.Errorf("%w: fresh database identity", errSwapUnobserved)
+			}
+			return psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'owned', fresh_oid = '"+freshOID+"' WHERE op_id = "+opLit+" AND state IN ('allocating', 'loading')")
+		case "owned":
+			return nil
+		default:
+			return fmt.Errorf("%w: restore operation", errSwapUnobserved)
+		}
+	}
+	if freshOID == "" {
+		freshOID = "0"
+	}
+	return psqlExec(ctx, bin, adminURL, "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, configured_oid, fresh_oid) VALUES ("+
+		opLit+", '"+configured+"', '"+fresh+"', '"+replaced+"', '"+cluster+"', 'owned', '"+cfgOID+"', '"+freshOID+"')")
+}
+
+func restoreOpGuardSQL(opID string) (string, error) {
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return "", err
+	}
+	return "DO $$ DECLARE s text; want text; cfg text; live text; BEGIN SELECT state, configured_oid, configured INTO s, want, cfg FROM togavsu_restore_op WHERE op_id = " + opLit +
+		" FOR UPDATE; SELECT oid::text INTO live FROM pg_database WHERE datname = cfg; IF s IS DISTINCT FROM 'owned' OR (want IS NOT NULL AND want IS DISTINCT FROM live) THEN RAISE EXCEPTION 'togavsu restore operation rejected: %', COALESCE(s, 'absent'); END IF; END $$;", nil
+}
+
+func swapTransactionSQL(opID, orig, fresh, replaced string) (string, error) {
+	guard, err := restoreOpGuardSQL(opID)
+	if err != nil {
+		return "", err
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return "", err
+	}
+	return "BEGIN; " + guard + " ALTER DATABASE " + orig + " RENAME TO " + replaced + "; ALTER DATABASE " + fresh + " RENAME TO " + orig + "; UPDATE togavsu_restore_op SET state = 'committed' WHERE op_id = " + opLit + " AND state = 'owned'; COMMIT;", nil
+}
+
+func fenceRestoreOp(ctx context.Context, bin, adminURL, opID string) (string, error) {
+	if err := ensureRestoreSchema(ctx, bin, adminURL); err != nil {
+		return "", err
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return "", err
 	}
 	ms := swapFenceTimeout.Milliseconds()
 	if ms < 1 {
 		ms = 1
 	}
-	k1, k2 := swapLockKeys(orig, fresh, replaced)
-	sql := fmt.Sprintf("SET lock_timeout = '%dms'; SELECT pg_advisory_lock(%d, %d); SELECT pg_advisory_unlock(%d, %d);", ms, k1, k2, k1, k2)
-	return psqlExec(ctx, bin, adminURL, sql)
+	lines, err := psqlLines(ctx, bin, adminURL, fmt.Sprintf("SELECT togavsu_fence_op(%s, %d)", opLit, ms))
+	if err != nil {
+		return "", err
+	}
+	if len(lines) != 1 {
+		return "", fmt.Errorf("%w: restore operation fence", errSwapUnobserved)
+	}
+	switch lines[0] {
+	case "cancelled", "committed", "absent", "owned", "allocating":
+		return lines[0], nil
+	default:
+		return "", fmt.Errorf("%w: restore operation fence", errSwapUnobserved)
+	}
+}
+
+func lookupRestoreOp(ctx context.Context, bin, adminURL, configured, fresh, replaced string) (string, error) {
+	lines, err := psqlLines(ctx, bin, adminURL, "SELECT op_id FROM togavsu_restore_op WHERE configured = '"+configured+"' AND fresh = '"+fresh+"' AND replaced = '"+replaced+"' ORDER BY op_id DESC")
+	if err != nil {
+		return "", err
+	}
+	if len(lines) == 0 {
+		return "", errSwapUnobserved
+	}
+	return lines[0], nil
+}
+
+func dropVerifiedDatabase(ctx context.Context, bin, adminURL, opID, fresh, oid string) error {
+	if oid == "" || strings.Trim(oid, "0123456789") != "" {
+		return fmt.Errorf("database oid: %w", ErrBadRequest)
+	}
+	if !ident(fresh) {
+		return fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return err
+	}
+	lines, err := psqlLines(ctx, bin, adminURL, "SELECT datname FROM pg_database WHERE oid = "+oid+"::oid")
+	if err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		_ = psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND state = 'owned' AND fresh_oid = '"+oid+"'")
+		return nil
+	}
+	if len(lines) != 1 || lines[0] != fresh {
+		// The recorded oid now names something else, or the lookup was
+		// ambiguous. Leave that database alone.
+		opLit, lerr := sqlText(opID)
+		if lerr != nil {
+			return lerr
+		}
+		_ = psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND fresh_oid = '"+oid+"' AND state = 'loading' AND fresh = '"+fresh+"'")
+		return nil
+	}
+	owned, err := psqlLines(ctx, bin, adminURL, "SELECT op_id FROM togavsu_restore_op WHERE op_id = "+opLit+" AND fresh = '"+fresh+"' AND fresh_oid = '"+oid+"' AND state IN ('owned', 'cancelled', 'allocating', 'loading')")
+	if err != nil {
+		return err
+	}
+	if len(owned) != 1 {
+		return fmt.Errorf("%w: fresh database is not owned", errSwapUnobserved)
+	}
+	_, _ = psqlLines(ctx, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+fresh+"' AND pid <> pg_backend_pid()")
+	if err := psqlExec(ctx, bin, adminURL, "DROP DATABASE "+fresh); err != nil {
+		return err
+	}
+	return psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND fresh_oid = '"+oid+"' AND state IN ('owned', 'allocating', 'loading')")
+}
+
+func reconcileOwnedDatabases(ctx context.Context, bin, adminURL string) error {
+	if err := ensureRestoreSchema(ctx, bin, adminURL); err != nil {
+		return err
+	}
+	live, err := clusterID(ctx, bin, adminURL)
+	if err != nil {
+		return err
+	}
+	lines, err := psqlLines(ctx, bin, adminURL, "SELECT op_id || ' ' || fresh || ' ' || COALESCE(fresh_oid, '') || ' ' || state || ' ' || cluster_id FROM togavsu_restore_op WHERE state IN ('loading', 'allocating')")
+	if err != nil {
+		return err
+	}
+	var unresolved error
+	for _, line := range lines {
+		parts := strings.Split(line, " ")
+		if len(parts) != 5 {
+			return fmt.Errorf("%w: restore operation row", errSwapUnobserved)
+		}
+		opID, fresh, oid, state, rowCluster := parts[0], parts[1], parts[2], parts[3], parts[4]
+		if rowCluster != live {
+			unresolved = fmt.Errorf("%w: cluster identity", errSwapUnobserved)
+			continue
+		}
+		if oid == "" {
+			current, oerr := databaseOID(ctx, bin, adminURL, fresh)
+			if oerr != nil {
+				unresolved = fmt.Errorf("%w: %v", errSwapUnobserved, oerr)
+				continue
+			}
+			if current == "" && state == "allocating" {
+				opLit, lerr := sqlText(opID)
+				if lerr != nil {
+					return lerr
+				}
+				if err := psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND state = 'allocating' AND fresh_oid IS NULL"); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if err := dropVerifiedDatabase(ctx, bin, adminURL, opID, fresh, oid); err != nil {
+			if errors.Is(err, errSwapUnobserved) {
+				unresolved = err
+				continue
+			}
+			return err
+		}
+	}
+	return unresolved
 }
 
 func observeDatabases(ctx context.Context, bin, adminURL string, names ...string) (map[string]bool, error) {
@@ -594,20 +1123,16 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		if adminURL == "" {
 			return nil, fmt.Errorf("ADMIN_DATABASE_URL: %w", ErrBadRequest)
 		}
-		var raw [6]byte
-		if _, err := rand.Read(raw[:]); err != nil {
-			return nil, err
-		}
-		name := "togavsu_check_" + hex.EncodeToString(raw[:])
-		if _, err := psqlLines(ctx, bin, adminURL, "CREATE DATABASE "+name); err != nil {
+		alloc, err := allocateDatabase(ctx, bin, adminURL, adminURL, "togavsu_check_")
+		if err != nil {
 			return nil, err
 		}
 		defer func() {
 			clean, cancel := recoveryContext()
 			defer cancel()
-			_, _ = psqlLines(clean, bin, adminURL, "DROP DATABASE "+name)
+			_ = dropVerifiedDatabase(clean, bin, adminURL, alloc.OpID, alloc.Fresh, alloc.FreshOID)
 		}()
-		target, err := withDatabase(adminURL, name)
+		target, err := withDatabase(adminURL, alloc.Fresh)
 		if err != nil {
 			return nil, err
 		}

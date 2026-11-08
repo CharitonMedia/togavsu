@@ -47,8 +47,11 @@ func (c *scriptCatalog) Observe(context.Context, string, string, string) (map[st
 	return out, nil
 }
 
-func (c *scriptCatalog) Fence(context.Context, string, string, string) error {
-	return c.fenceErr
+func (c *scriptCatalog) Fence(context.Context, string, string, string) (string, error) {
+	if c.fenceErr != nil {
+		return "", c.fenceErr
+	}
+	return "cancelled", nil
 }
 
 func (c *scriptCatalog) Drop(_ context.Context, name string) error {
@@ -1462,7 +1465,7 @@ func TestCommitUnjournaledDoesNotClaimUnchangedData(t *testing.T) {
 	psqlOK := func(t *testing.T, log string) string {
 		t.Helper()
 		bin := filepath.Join(t.TempDir(), "psql")
-		script := "#!/bin/sh\ncmd=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\nprintf '%s\\n' \"$cmd\" >> " + log + "\nexit 0\n"
+		script := "#!/bin/sh\ncmd=\nprev=\nfor arg in \"$@\"; do\n  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\nprintf '%s\\n' \"$cmd\" >> " + log + "\ncase \"$cmd\" in\n  *system_identifier*) echo 100 ;;\n  *oid::text*) echo 10 ;;\nesac\nexit 0\n"
 		if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -1552,6 +1555,9 @@ done
 printf '%s\n' "$cmd" >> "` + log + `"
 case "$cmd" in
   BEGIN*) echo refused >&2; exit 1 ;;
+  *system_identifier*) echo 100 ;;
+  *oid::text*) echo 10 ;;
+  *togavsu_fence_op*) echo cancelled ;;
   "SELECT datname"*) printf 'origdb\nfreshdb\n' ;;
 esac
 exit 0
@@ -1758,8 +1764,11 @@ func TestZeroRowCountMismatchDoesNotReplaceDatabase(t *testing.T) {
 		"  prev=$arg\n" +
 		"done\n" +
 		"case \"$sql\" in\n" +
+		"  *system_identifier*) echo 100; exit 0 ;;\n" +
+		"  *oid::text*) if printf '%s' \"$sql\" | grep -q togavsu_restore_; then if [ -f " + logPath + ".created ]; then echo 11; fi; exit 0; fi; echo 10; exit 0 ;;\n" +
 		"  *\"ALTER DATABASE \"*|*'RENAME TO '*) echo replaced >> " + logPath + "; exit 0 ;;\n" +
-		"  \"CREATE DATABASE \"*|\"DROP DATABASE \"*) exit 0 ;;\n" +
+		"  \"CREATE DATABASE \"*) : > " + logPath + ".created; exit 0 ;;\n" +
+		"  \"DROP DATABASE \"*) exit 0 ;;\n" +
 		"  *pg_class*) echo core.matters ;;\n" +
 		"  \"SELECT count(*)\"*) echo 0 ;;\n" +
 		"esac\n" +
@@ -1775,7 +1784,7 @@ func TestZeroRowCountMismatchDoesNotReplaceDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "replaced") || strings.Contains(string(raw), "ALTER DATABASE") {
+	if strings.Contains(string(raw), "RENAME TO") || strings.Contains(string(raw), "ALTER DATABASE") {
 		t.Fatalf("database was replaced:\n%s", raw)
 	}
 }
@@ -1794,7 +1803,12 @@ func TestStalledPostgresCleanupStillRestartsWriters(t *testing.T) {
 		"  prev=$arg\n" +
 		"done\n" +
 		"case \"$sql\" in\n" +
-		"  \"CREATE DATABASE \"*) exit 0 ;;\n" +
+		"  *system_identifier*) echo 100; exit 0 ;;\n" +
+		"  *oid::text*) if printf '%s' \"$sql\" | grep -q togavsu_restore_; then if [ -f " + dropped + ".created ]; then echo 11; fi; exit 0; fi; echo 10; exit 0 ;;\n" +
+		"  *\"WHERE oid = \"*) if [ -f " + dropped + ".name ]; then cat " + dropped + ".name; fi; exit 0 ;;\n" +
+		"  *togavsu_restore_op*) echo op; exit 0 ;;\n" +
+		"  *pg_terminate_backend*) exit 0 ;;\n" +
+		"  \"CREATE DATABASE \"*) printf '%s\\n' \"${sql#CREATE DATABASE }\" > " + dropped + ".name; : > " + dropped + ".created; exit 0 ;;\n" +
 		"  \"DROP DATABASE \"*) echo dropped > " + dropped + "; exec sleep 30 ;;\n" +
 		"esac\n" +
 		"exec sleep 30\n"

@@ -56,6 +56,13 @@ type databaseIntent struct {
 	SwapIntended   bool   `json:"swap_intended"`
 	SwapCommitted  bool   `json:"swap_committed,omitempty"`
 	SwapRolledBack bool   `json:"swap_rolled_back,omitempty"`
+	// Allocated is set before CREATE DATABASE. FreshOID is the verified oid.
+	// An allocation without FreshOID is not deleted.
+	Allocated     bool   `json:"allocated,omitempty"`
+	OpID          string `json:"op_id,omitempty"`
+	ClusterID     string `json:"cluster_id,omitempty"`
+	FreshOID      string `json:"fresh_oid,omitempty"`
+	ConfiguredOID string `json:"configured_oid,omitempty"`
 }
 
 func (r journalRecord) terminal() bool {

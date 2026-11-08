@@ -22,15 +22,35 @@ else
   cd "$work"
 fi
 log=$(mktemp)
-if ! go test -tags=integration ./internal/supervisor/ -count=1 -run 'TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap' >"$log" 2>&1; then
+# Every integration-tagged restore test. -v is required so CI logs show each
+# safety test actually ran; a name filter that omits one is a failure.
+# The build tag also compiles the rest of the package. This list is every
+# Test in the integration files, not the sshd and Compose tests.
+if ! go test -tags=integration -count=1 -timeout 20m -v ./internal/supervisor/ -run '^(TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap|TestDelayedRenameCannotCommitAfterRecovery|TestInFlightRenameCannotCommitAfterAFailedRestore|TestCommittedRenameSurvivesLostJournal|TestOwnedTempDatabaseSurvivesOnlyWhenVerified|TestDifferentClusterIsRejected)($|/)' >"$log" 2>&1; then
   cat "$log" >&2
   rm -f "$log"
   exit 1
 fi
 cat "$log"
 if grep -q "no tests to run" "$log"; then
-  echo "integration filter matched nothing" >&2
+  echo "integration suite matched nothing" >&2
   rm -f "$log"
   exit 1
 fi
+for name in \
+  TestPostgresRestoreReplacesEvolvedSchema \
+  TestUpdateRollbackKeepsWriteAfterSnapshot \
+  TestPostgres17Swap \
+  TestInFlightRenameCannotCommitAfterAFailedRestore \
+  TestDelayedRenameCannotCommitAfterRecovery \
+  TestCommittedRenameSurvivesLostJournal \
+  TestOwnedTempDatabaseSurvivesOnlyWhenVerified \
+  TestDifferentClusterIsRejected
+do
+  if ! grep -q "=== RUN   ${name}$" "$log"; then
+    echo "backup integration did not run ${name}" >&2
+    rm -f "$log"
+    exit 1
+  fi
+done
 rm -f "$log"
