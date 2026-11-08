@@ -7522,6 +7522,195 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(staff_decision["effects"])
         self.assertEqual(staff_decision.get("events") or [], [])
 
+    def test_association_walls_fail_closed(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        destination = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        activity = "018f1a00-7b3c-7d4e-8a11-121212121212"
+        time_body = {"matter_id": destination, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}
+        _component_validator(self.spec, "FileMetadataWrite").validate({"matter_id": None})
+        _component_validator(self.spec, "FileMetadataWrite").validate({"matter_id": destination})
+        _component_validator(self.spec, "TimeEntryWritePatch").validate({"matter_id": destination})
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "TimeEntryWritePatch").validate({"matter_id": None})
+        _component_validator(self.spec, "CalendarEventWritePatch").validate({"matter_id": None})
+        _component_validator(self.spec, "CalendarEventWritePatch").validate({"matter_id": destination})
+        _component_validator(self.spec, "TimeEntryWrite").validate(time_body)
+
+        def both(operation_id, raw):
+            operation = _operation(self.spec, operation_id)
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"], operation_id)
+            self.assertEqual(http["effects"], mcp["effects"], operation_id)
+            self.assertEqual(http.get("events"), mcp.get("events"), operation_id)
+            self.assertEqual(http.get("routed"), mcp.get("routed"), operation_id)
+            return mcp
+
+        def file_call(body, **trusted):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["files:write"],
+                "tool": "updateFileMetadata",
+                "arguments": {"path": {"file_id": file_id}, "body": body},
+                **trusted,
+            }
+            return both("updateFileMetadata", raw)
+
+        omitted_clear = file_call({"matter_id": None})
+        self.assertEqual(omitted_clear["result"], "not_found")
+        self.assertFalse(omitted_clear["effects"])
+        self.assertEqual(omitted_clear.get("events") or [], [])
+        omitted_move = file_call({"matter_id": destination}, matter_walls={destination: False})
+        self.assertEqual(omitted_move["result"], "not_found")
+        self.assertFalse(omitted_move["effects"])
+        self.assertEqual(omitted_move.get("events") or [], [])
+        unassigned = file_call({"matter_id": destination}, matter_id=None, matter_walls={destination: False})
+        self.assertEqual(unassigned["result"], "allowed")
+        self.assertTrue(unassigned["effects"])
+        self.assertTrue(unassigned["reparented"])
+        known_clear = file_call({"matter_id": None}, matter_id=source, matter_walls={source: False})
+        self.assertEqual(known_clear["result"], "allowed")
+        self.assertTrue(known_clear["cleared"])
+        bad_target = file_call({"matter_id": destination}, matter_id=source, matter_walls={source: False, destination: None})
+        self.assertEqual(bad_target["result"], "not_found")
+        self.assertFalse(bad_target["effects"])
+        self.assertEqual(bad_target.get("events") or [], [])
+        missing_target = file_call({"matter_id": destination}, matter_id=source, matter_walls={source: False})
+        self.assertEqual(missing_target["result"], "not_found")
+        self.assertFalse(missing_target["effects"])
+        resolved_move = file_call({"matter_id": destination}, matter_id=source, matter_walls={source: False, destination: False})
+        self.assertEqual(resolved_move["result"], "allowed")
+        self.assertTrue(resolved_move["reparented"])
+        hidden_source = file_call({"matter_id": destination}, matter_id=source, matter_walls={source: True, destination: False}, matter_membership={source: False})
+        self.assertEqual(hidden_source["result"], "not_found")
+        self.assertFalse(hidden_source["effects"])
+        unknown_source_wall = file_call({"matter_id": None}, matter_id=source, matter_walls={source: None})
+        self.assertEqual(unknown_source_wall["result"], "not_found")
+        self.assertFalse(unknown_source_wall["effects"])
+        self.assertFalse(unknown_source_wall.get("cleared"))
+        created = both(
+            "createTimeEntry",
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["time:write"],
+                "matter_walled": False,
+                "tool": "createTimeEntry",
+                "arguments": {"body": time_body},
+            },
+        )
+        self.assertEqual(created["result"], "allowed")
+        self.assertTrue(created["effects"])
+
+        time_handler = {"time": {"replaced": True, "available": True, "module_id": "time-mod"}}
+        calendar_handler = {"calendar": {"replaced": True, "available": True, "module_id": "cal-mod"}}
+
+        def replaced(operation_id, scope, handler, body, walls, membership=None):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": [scope],
+                "matter_id": source,
+                "matter_walls": walls,
+                "matter_membership": {} if membership is None else membership,
+                "domain_handlers": handler,
+                "tool": operation_id,
+                "arguments": {"path": {"time_entry_id" if operation_id == "updateTimeEntry" else "calendar_event_id": file_id}, "body": body},
+            }
+            return both(operation_id, raw)
+
+        for operation_id, scope, handler in (
+            ("updateTimeEntry", "time:write", time_handler),
+            ("updateCalendarEvent", "calendar:write", calendar_handler),
+        ):
+            hidden = replaced(operation_id, scope, handler, {"matter_id": destination}, {source: False, destination: True}, {destination: False})
+            self.assertEqual(hidden["result"], "not_found", operation_id)
+            self.assertFalse(hidden["effects"], operation_id)
+            self.assertIsNone(hidden.get("routed"), operation_id)
+            self.assertEqual(hidden.get("events") or [], [], operation_id)
+            routed = replaced(operation_id, scope, handler, {"matter_id": destination}, {source: False, destination: False})
+            self.assertEqual(routed["result"], "allowed", operation_id)
+            self.assertFalse(routed["effects"], operation_id)
+            self.assertEqual(routed["routed"], handler[next(iter(handler))]["module_id"], operation_id)
+        calendar_clear = replaced("updateCalendarEvent", "calendar:write", calendar_handler, {"matter_id": None}, {source: False})
+        self.assertEqual(calendar_clear["result"], "allowed")
+        self.assertFalse(calendar_clear["effects"])
+        self.assertEqual(calendar_clear["routed"], "cal-mod")
+        time_null = replaced("updateTimeEntry", "time:write", time_handler, {"matter_id": None}, {source: False})
+        self.assertEqual(time_null["result"], "validation_failed")
+        self.assertFalse(time_null["effects"])
+        self.assertIsNone(time_null.get("routed"))
+        client_blocked = replaced("updateTimeEntry", "time:write", time_handler, {"matter_id": destination}, {source: False, destination: False})
+        client_blocked = both(
+            "updateTimeEntry",
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "client",
+                "token_scopes": ["time:write"],
+                "matter_id": source,
+                "shared": False,
+                "matter_walls": {source: False, destination: False},
+                "domain_handlers": time_handler,
+                "tool": "updateTimeEntry",
+                "arguments": {"path": {"time_entry_id": file_id}, "body": {"matter_id": destination}},
+            },
+        )
+        self.assertNotEqual(client_blocked["result"], "allowed")
+        self.assertFalse(client_blocked["effects"])
+        self.assertIsNone(client_blocked.get("routed"))
+
+        entry = {"matter_id": source, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}
+        other = {"matter_id": destination, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}
+        _component_validator(self.spec, "TimeEntryWrite").validate(entry)
+
+        def batch(walls, items, membership=None, **extra):
+            raw = {
+                "cookie": "togavsu_session",
+                "credential_valid": True,
+                "role": "staff",
+                "matter_walls": walls,
+                "tool": "bulkTimeEntry",
+                "arguments": {"body": {"items": items}},
+                **extra,
+            }
+            if membership is not None:
+                raw["matter_membership"] = membership
+            return both("bulkTimeEntry", raw)
+
+        unwalled = batch({source: False}, [entry])
+        self.assertEqual(unwalled["result"], "allowed")
+        self.assertTrue(unwalled["effects"])
+        on_wall = batch({source: True}, [entry], {source: True})
+        self.assertEqual(on_wall["result"], "allowed")
+        self.assertTrue(on_wall["effects"])
+        off_wall = batch({source: True}, [entry])
+        self.assertEqual(off_wall["result"], "not_found")
+        self.assertFalse(off_wall["effects"])
+        null_wall = batch({source: None}, [entry])
+        self.assertEqual(null_wall["result"], "not_found")
+        self.assertFalse(null_wall["effects"])
+        self.assertEqual(null_wall.get("events") or [], [])
+        for bad in ("false", 0, 1, []):
+            malformed = batch({source: bad}, [entry])
+            self.assertEqual(malformed["result"], "not_found", bad)
+            self.assertFalse(malformed["effects"], bad)
+        mixed = batch({source: False, destination: None}, [entry, other])
+        self.assertEqual(mixed["result"], "not_found")
+        self.assertFalse(mixed["effects"])
+        mixed_hidden = batch({source: False, destination: True}, [entry, other], {destination: False})
+        self.assertEqual(mixed_hidden["result"], "not_found")
+        self.assertFalse(mixed_hidden["effects"])
+
     def test_factor_reset_requires_reauthentication(self):
         reset = _operation(self.spec, "resetTotp")
         regenerate = _operation(self.spec, "regenerateRecoveryCodes")

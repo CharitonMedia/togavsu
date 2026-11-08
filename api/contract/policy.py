@@ -1079,13 +1079,19 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
     return None
 
 
-def _item_matter_walled(call: dict, matter_id: str) -> bool:
-    """Trusted wall flag for this matter. An unknown matter stays walled. The item body is not a source."""
+def _item_matter_walled(call: dict, matter_id: str) -> bool | None:
+    """A resolved wall boolean, or None when the trusted value is not a boolean.
+
+    An id absent from the map stays walled. Null, strings, and numbers are unresolved, not unwalled.
+    The item body is not a source.
+    """
     walls = call.get("matter_walls")
     if isinstance(walls, dict) and matter_id in walls:
-        return bool(walls[matter_id])
+        value = walls[matter_id]
+        return value if type(value) is bool else None
     if call.get("matter_id") == matter_id and "matter_walled" in call:
-        return bool(call.get("matter_walled"))
+        value = call.get("matter_walled")
+        return value if type(value) is bool else None
     return True
 
 
@@ -1102,8 +1108,8 @@ def _batch_matter_denial(access: dict, call: dict) -> str | None:
         matter_id = item.get("matter_id")
         if not matter_id:
             continue
-        row = {"matter_id": matter_id, "matter_walled": _item_matter_walled(call, matter_id)}
-        if not matter_visible(call, row, single_record=True):
+        walled = _item_matter_walled(call, matter_id)
+        if walled is None or not matter_visible(call, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
             return "not_found"
     return None
 
@@ -1225,9 +1231,9 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
         walls = subject.get("matter_walls")
-        if isinstance(matter_id, str) and isinstance(walls, dict) and matter_id in walls:
-            walled = walls[matter_id]
-            if type(walled) is not bool or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
+        if isinstance(matter_id, str) and isinstance(walls, dict):
+            walled = walls.get(matter_id)
+            if matter_id not in walls or type(walled) is not bool or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
                 return {"result": "not_found", **denied, "events": []}
         elif matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
             row = {"matter_id": matter_id, "matter_walled": bool(subject.get("matter_walled", subject.get("matter_membership") is not None))}
@@ -1274,13 +1280,13 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     financial = _accountant_financial_denial(operation, subject)
     if financial:
         return {"result": financial, **denied}
-    routed = _replacement_decision(operation, subject)
-    if routed:
-        return {**denied, **routed, "public": False}
     subject["matter_null_allowed"] = _matter_null_allowed(spec, operation)
     destination = _requested_matter_denial(subject)
     if destination:
         return {"result": destination, **denied, "events": [], "reparented": False}
+    routed = _replacement_decision(operation, subject)
+    if routed:
+        return {**denied, **routed, "public": False}
     allowed = {"result": "allowed", "effects": True, "public": False}
     if subject.get("_patch_events") is not None:
         allowed["events"] = subject["_patch_events"]
@@ -1332,6 +1338,8 @@ def _requested_matter_denial(subject: dict) -> str | None:
     """Deny a requested matter. This never grants, and null clears only after the source gates."""
     if not subject.get("destination_requested"):
         return None
+    if subject.get("existing_record") and subject.get("stored_matter_state") in {"absent", "unresolved"}:
+        return "not_found"
     if subject.get("stored_matter_state") == "unresolved":
         return "not_found"
     requested = subject.get("requested_matter_id")
@@ -1577,6 +1585,7 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
             subject[key] = call[key]
     path_matter = path.get("matter_id") if isinstance(path.get("matter_id"), str) else None
     resource_update = any(key != "matter_id" for key in path)
+    subject["existing_record"] = resource_update
     if "matter_id" in call:
         stored_value = call.get("matter_id")
         if stored_value is None:

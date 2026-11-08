@@ -3296,7 +3296,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:7525-7617",
+      "source": "api/tests/test_contract.py:7714-7806",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 47,
@@ -5714,6 +5714,131 @@
       "retirement_status": "pending"
     },
     {
+      "id": "ContractTest.test_association_walls_fail_closed",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-008",
+        "AC-011",
+        "AC-039"
+      ],
+      "prd": [
+        "8",
+        "8.19"
+      ],
+      "source": "api/tests/test_contract.py:7525-7712",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 61,
+      "loop_count": 2,
+      "literal_rows": [
+        {
+          "line": 7630,
+          "literal_rows": 2,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "updateTimeEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "time:write"
+              },
+              {
+                "kind": "name",
+                "id": "time_handler"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateCalendarEvent"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar:write"
+              },
+              {
+                "kind": "name",
+                "id": "calendar_handler"
+              }
+            ]
+          ],
+          "text": "for operation_id, scope, handler in ( (\"updateTimeEntry\", \"time:write\", time_handler), (\"updateCalendarEvent\", \"calendar:write\", calendar_handler), ): hidden = replaced(operation_id, scope, handler, {\"matter_id\": destination}, {source: False, destination: True}, {destination: False}) self.assertEqual(hidden[\"result\"], \"not_found\", operation_id) self.assertFalse(hidden[\"effects\"], operation_id) self.assertIsNone(hidden.get(\"routed\"), operation_id) self.assertEqual(hidden.get(\"events\") or [], [], operation_id) routed = replaced(operation_id, scope, handler, {\"matter_id\": destination}, {source: False, destination: False}) self.assertEqual(routed[\"result\"], \"allowed\", operation_id) self.assertFalse(routed[\"effects\"], operation_id) self.assertEqual(routed[\"routed\"], handler[next(iter(handler))][\"module_id\"], operation_id)",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertEqual(omitted_clear[\"result\"], \"not_found\")",
+        "self.assertFalse(omitted_clear[\"effects\"])",
+        "self.assertEqual(omitted_clear.get(\"events\") or [], [])",
+        "self.assertEqual(omitted_move[\"result\"], \"not_found\")",
+        "self.assertFalse(omitted_move[\"effects\"])",
+        "self.assertEqual(omitted_move.get(\"events\") or [], [])",
+        "self.assertEqual(unassigned[\"result\"], \"allowed\")",
+        "self.assertTrue(unassigned[\"effects\"])",
+        "self.assertTrue(unassigned[\"reparented\"])",
+        "self.assertEqual(known_clear[\"result\"], \"allowed\")",
+        "self.assertTrue(known_clear[\"cleared\"])",
+        "self.assertEqual(bad_target[\"result\"], \"not_found\")",
+        "self.assertFalse(bad_target[\"effects\"])",
+        "self.assertEqual(bad_target.get(\"events\") or [], [])",
+        "self.assertEqual(missing_target[\"result\"], \"not_found\")",
+        "self.assertFalse(missing_target[\"effects\"])",
+        "self.assertEqual(resolved_move[\"result\"], \"allowed\")",
+        "self.assertTrue(resolved_move[\"reparented\"])",
+        "self.assertEqual(hidden_source[\"result\"], \"not_found\")",
+        "self.assertFalse(hidden_source[\"effects\"])",
+        "self.assertEqual(unknown_source_wall[\"result\"], \"not_found\")",
+        "self.assertFalse(unknown_source_wall[\"effects\"])",
+        "self.assertFalse(unknown_source_wall.get(\"cleared\"))",
+        "self.assertEqual(created[\"result\"], \"allowed\")",
+        "self.assertTrue(created[\"effects\"])",
+        "self.assertEqual(calendar_clear[\"result\"], \"allowed\")",
+        "self.assertFalse(calendar_clear[\"effects\"])",
+        "self.assertEqual(calendar_clear[\"routed\"], \"cal-mod\")",
+        "self.assertEqual(time_null[\"result\"], \"validation_failed\")",
+        "self.assertFalse(time_null[\"effects\"])",
+        "self.assertIsNone(time_null.get(\"routed\"))",
+        "self.assertNotEqual(client_blocked[\"result\"], \"allowed\")",
+        "self.assertFalse(client_blocked[\"effects\"])",
+        "self.assertIsNone(client_blocked.get(\"routed\"))",
+        "self.assertEqual(unwalled[\"result\"], \"allowed\")",
+        "self.assertTrue(unwalled[\"effects\"])",
+        "self.assertEqual(on_wall[\"result\"], \"allowed\")",
+        "self.assertTrue(on_wall[\"effects\"])",
+        "self.assertEqual(off_wall[\"result\"], \"not_found\")",
+        "self.assertFalse(off_wall[\"effects\"])",
+        "self.assertEqual(null_wall[\"result\"], \"not_found\")",
+        "self.assertFalse(null_wall[\"effects\"])",
+        "self.assertEqual(null_wall.get(\"events\") or [], [])",
+        "self.assertEqual(mixed[\"result\"], \"not_found\")",
+        "self.assertFalse(mixed[\"effects\"])",
+        "self.assertEqual(mixed_hidden[\"result\"], \"not_found\")",
+        "self.assertFalse(mixed_hidden[\"effects\"])",
+        "with self.assertRaises(Exception):",
+        "self.assertEqual(http[\"result\"], mcp[\"result\"], operation_id)",
+        "self.assertEqual(http[\"effects\"], mcp[\"effects\"], operation_id)",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"), operation_id)",
+        "self.assertEqual(http.get(\"routed\"), mcp.get(\"routed\"), operation_id)",
+        "self.assertEqual(hidden[\"result\"], \"not_found\", operation_id)",
+        "self.assertFalse(hidden[\"effects\"], operation_id)",
+        "self.assertIsNone(hidden.get(\"routed\"), operation_id)",
+        "self.assertEqual(hidden.get(\"events\") or [], [], operation_id)",
+        "self.assertEqual(routed[\"result\"], \"allowed\", operation_id)",
+        "self.assertFalse(routed[\"effects\"], operation_id)",
+        "self.assertEqual(routed[\"routed\"], handler[next(iter(handler))][\"module_id\"], operation_id)",
+        "self.assertEqual(malformed[\"result\"], \"not_found\", bad)",
+        "self.assertFalse(malformed[\"effects\"], bad)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
       "id": "ContractTest.test_matter_wall_is_inherited_on_named_flows",
       "go_owner": "practice",
       "acceptance": [
@@ -7390,9 +7515,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 8,
-      "assertion_call_sites": 219,
-      "literal_rows": 50,
+      "methods": 9,
+      "assertion_call_sites": 280,
+      "literal_rows": 52,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -7401,7 +7526,8 @@
         "test_client_context_reads_follow_published_access",
         "test_mcp_dispatcher_covers_special_authorization_families",
         "test_module_owned_upload_events_use_the_tagged_owner",
-        "test_dispatcher_parity_matrix"
+        "test_dispatcher_parity_matrix",
+        "test_association_walls_fail_closed"
       ],
       "status": "not_converted",
       "complete": false
