@@ -683,19 +683,28 @@ class ContractTest(unittest.TestCase):
 
         def scan(task=scan_grant, **extra):
             path = {"file_id": extra.pop("file_id", "file-1"), "version_id": extra.pop("version_id", "ver-1")}
-            return mcp_tool_dispatch(
-                self.spec,
-                {
-                    **bearer(viewer_present=False, module_id=extra.pop("module_id", "malware"), caller_module_id=extra.pop("caller_module_id", "malware")),
-                    "tool": "downloadFileVersion",
-                    "module_scopes": extra.pop("module_scopes", ["files:read"]),
-                    "registered": True,
-                    "subscriptions": ["file.version_created"],
-                    "matter_id": extra.pop("matter_id", matter),
-                    "arguments": {"task_authorization": task, "path": path},
-                    **extra,
-                },
-            )
+            scopes = extra.pop("module_scopes", ["files:read"])
+            token = extra.pop("token_scopes", list(scopes))
+            approved = extra.pop("approved_scopes", list(scopes))
+            call = {
+                **bearer(
+                    viewer_present=False,
+                    module_id=extra.pop("module_id", "malware"),
+                    caller_module_id=extra.pop("caller_module_id", "malware"),
+                ),
+                "tool": "downloadFileVersion",
+                "module_scopes": scopes,
+                "registered": True,
+                "subscriptions": ["file.version_created"],
+                "matter_id": extra.pop("matter_id", matter),
+                "arguments": {"task_authorization": task, "path": path},
+                **extra,
+            }
+            if token is not None:
+                call["token_scopes"] = token
+            if approved is not None:
+                call["approved_scopes"] = approved
+            return mcp_tool_dispatch(self.spec, call)
 
         allowed_scan = scan()
         self.assertEqual(allowed_scan["result"], "allowed")
@@ -714,6 +723,14 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(scan(version_id="ver-2")["effects"])
         self.assertEqual(scan(module_scopes=["files:write"])["result"], "scope_denied")
         self.assertFalse(scan(module_scopes=["files:write"])["effects"])
+        self.assertEqual(scan(token_scopes=[], approved_scopes=["files:read"])["result"], "scope_denied")
+        self.assertFalse(scan(token_scopes=[], approved_scopes=["files:read"])["effects"])
+        self.assertEqual(scan(token_scopes=None, approved_scopes=None)["result"], "scope_denied")
+        self.assertFalse(scan(token_scopes=None, approved_scopes=None)["effects"])
+        self.assertEqual(scan(current_approved_scopes=[])["result"], "scope_denied")
+        self.assertFalse(scan(current_approved_scopes=[])["effects"])
+        self.assertEqual(scan(current_approved_scopes=["files:write"])["result"], "scope_denied")
+        self.assertFalse(scan(current_approved_scopes=["files:write"])["effects"])
         off_wall = scan(matter_walled=True, matter_membership={matter: False}, on_wall=False)
         self.assertEqual(off_wall["result"], "not_found")
         self.assertFalse(off_wall["effects"])
@@ -756,24 +773,29 @@ class ContractTest(unittest.TestCase):
         )["grant"]
 
         def callback(grant, **extra):
-            return mcp_tool_dispatch(
-                self.spec,
-                {
-                    **bearer(viewer_present=False, module_id=extra.pop("module_id", "lawpay"), caller_module_id=extra.pop("caller_module_id", "lawpay")),
-                    "tool": "createPayment",
-                    "module_scopes": extra.pop("module_scopes", ["payments:write"]),
-                    "registered": True,
-                    "matter_id": grant["matter_id"] if grant else None,
-                    "contact_id": grant.get("contact_id") if grant else None,
-                    "amount_cents": grant.get("amount_cents") if grant else None,
-                    "destination": extra.pop("destination", grant.get("destination") if grant else None),
-                    "status": extra.pop("status", "pending"),
-                    "trust_accounts": accounts,
-                    "firm_id": "firm-1",
-                    "arguments": {"task_authorization": grant},
-                    **extra,
-                },
-            )
+            scopes = extra.pop("module_scopes", ["payments:write"])
+            token = extra.pop("token_scopes", list(scopes))
+            approved = extra.pop("approved_scopes", list(scopes))
+            call = {
+                **bearer(viewer_present=False, module_id=extra.pop("module_id", "lawpay"), caller_module_id=extra.pop("caller_module_id", "lawpay")),
+                "tool": "createPayment",
+                "module_scopes": scopes,
+                "registered": True,
+                "matter_id": grant["matter_id"] if grant else None,
+                "contact_id": grant.get("contact_id") if grant else None,
+                "amount_cents": grant.get("amount_cents") if grant else None,
+                "destination": extra.pop("destination", grant.get("destination") if grant else None),
+                "status": extra.pop("status", "pending"),
+                "trust_accounts": accounts,
+                "firm_id": "firm-1",
+                "arguments": {"task_authorization": grant},
+                **extra,
+            }
+            if token is not None:
+                call["token_scopes"] = token
+            if approved is not None:
+                call["approved_scopes"] = approved
+            return mcp_tool_dispatch(self.spec, call)
 
         operating_callback = callback(operating_grant)
         self.assertEqual(operating_callback["result"], "allowed")
@@ -792,6 +814,14 @@ class ContractTest(unittest.TestCase):
         trust_allowed = callback(trust_grant, destination="trust", status="completed", module_scopes=["payments:write", "trust:write"], trust_account_id=account)
         self.assertEqual(trust_allowed["result"], "allowed")
         self.assertTrue(trust_allowed["effects"])
+        self.assertEqual(callback(operating_grant, token_scopes=[], approved_scopes=["payments:write"])["result"], "scope_denied")
+        self.assertFalse(callback(operating_grant, token_scopes=[], approved_scopes=["payments:write"])["effects"])
+        self.assertEqual(callback(operating_grant, token_scopes=None, approved_scopes=None)["result"], "scope_denied")
+        self.assertFalse(callback(operating_grant, token_scopes=None, approved_scopes=None)["effects"])
+        self.assertEqual(callback(operating_grant, current_approved_scopes=[])["result"], "scope_denied")
+        self.assertFalse(callback(operating_grant, current_approved_scopes=[])["effects"])
+        self.assertEqual(callback(operating_grant, current_approved_scopes=["trust:write"])["result"], "scope_denied")
+        self.assertFalse(callback(operating_grant, current_approved_scopes=["trust:write"])["effects"])
         marker_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
         marker_body = {"marker_id": marker_id, "label": "After hours", "color": "#336699", "target": "intake/header"}
         own_marker = mcp_tool_dispatch(
@@ -871,7 +901,7 @@ class ContractTest(unittest.TestCase):
         owned = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder"),
+                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder", token_scopes=["files:write"], approved_scopes=["files:write"]),
                 "tool": "getFileUpload",
                 "module_scopes": ["files:write"],
                 "registered": True,
@@ -6861,7 +6891,10 @@ class ContractTest(unittest.TestCase):
             {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
             {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
             {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
-            {"family": "upload_owner", "name": "module resume", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "module resume omitted scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "module resume minimal scopes", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=["files:write"], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "module resume empty token", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=[], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "module resume empty current approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=["files:write"], approved_scopes=["files:write"], current_approved_scopes=[]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "upload_owner", "name": "user resume", "result": "allowed", "call": {**cookie(role="staff", user_id=owner), "tool": "getFileUpload", "record": user_upload, "arguments": {"path": {"upload_id": upload_id}}}},
             {"family": "upload_owner", "name": "other user resume", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["files:write"], user_id=other_user), "tool": "getFileUpload", "record": user_upload, "arguments": {"path": {"upload_id": upload_id}}}},
             {"family": "upload_owner", "name": "staff is not the module owner", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["files:write"], user_id=owner), "tool": "getFileUpload", "record": module_upload, "arguments": {"path": {"upload_id": upload_id}}}},

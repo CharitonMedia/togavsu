@@ -1,14 +1,14 @@
 {
   "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-  "stage": 1,
+  "stage": "1b",
   "runtime_status": "runtime_pending",
-  "note": "Structure and traceability only. These fixtures are not executed and are not acceptance evidence.",
+  "note": "Structure and schema shape only. runtime_pending means these fixtures were not executed and are not acceptance.",
   "fixtures": [
     {
       "id": "reg-createModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -47,15 +47,84 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createModuleMarker-empty-token-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6948,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake"
+          },
+          "body": {
+            "label": "After hours",
+            "color": "#336699"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -97,15 +166,87 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createModuleMarker-empty-current-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6949,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake"
+          },
+          "body": {
+            "label": "After hours",
+            "color": "#336699"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": [
+          "markers:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-updateModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -145,15 +286,84 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-updateModuleMarker-empty-token-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6948,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "updateModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "updateModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          },
+          "body": {
+            "color": "#336699"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-updateModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -196,15 +406,87 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-updateModuleMarker-empty-current-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6949,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "updateModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "updateModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          },
+          "body": {
+            "color": "#336699"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": [
+          "markers:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-revokeModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "revokeModuleMarker",
       "requirement": {
@@ -244,15 +526,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-revokeModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "revokeModuleMarker",
       "requirement": {
@@ -295,15 +585,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createModuleHelpPage-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -342,15 +640,85 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createModuleHelpPage-empty-token-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6948,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          },
+          "body": {
+            "id": "start",
+            "title": "Start",
+            "markdown": "Hello"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createModuleHelpPage-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -392,15 +760,88 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createModuleHelpPage-empty-current-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6949,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          },
+          "body": {
+            "id": "start",
+            "title": "Start",
+            "markdown": "Hello"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -439,15 +880,89 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-replaceModuleHelpPages-empty-token-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6948,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "replaceModuleHelpPages",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "replaceModuleHelpPages",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          },
+          "body": {
+            "pages": [
+              {
+                "id": "start",
+                "title": "Start",
+                "markdown": "Hello"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -489,15 +1004,92 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-replaceModuleHelpPages-empty-current-endpoint",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6949,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "replaceModuleHelpPages",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "replaceModuleHelpPages",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          },
+          "body": {
+            "pages": [
+              {
+                "id": "start",
+                "title": "Start",
+                "markdown": "Hello"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-deleteModuleHelpPage-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "deleteModuleHelpPage",
       "requirement": {
@@ -537,15 +1129,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6948,
+      "source_range": [
+        6948,
+        6948
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-deleteModuleHelpPage-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "deleteModuleHelpPage",
       "requirement": {
@@ -588,15 +1188,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6949,
+      "source_range": [
+        6949,
+        6949
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createModuleHelpPage-current-match",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6954,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -642,15 +1250,23 @@
       },
       "expected": {
         "result": "allowed",
-        "effects": true
+        "effects": true,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6954,
+      "source_range": [
+        6954,
+        6954
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-issueFilePublicationGrant-effective",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6960,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -694,15 +1310,23 @@
       },
       "expected": {
         "result": "allowed",
-        "effects": true
+        "effects": true,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6960,
+      "source_range": [
+        6960,
+        6960
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-approval",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6961,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -747,15 +1371,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6961,
+      "source_range": [
+        6961,
+        6961
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6962,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -800,15 +1432,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6962,
+      "source_range": [
+        6962,
+        6962
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6963,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -856,15 +1496,23 @@
       },
       "expected": {
         "result": "scope_denied",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6963,
+      "source_range": [
+        6963,
+        6963
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-listCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6974,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -900,15 +1548,23 @@
       "expected": {
         "result": "allowed",
         "effects": false,
-        "routed": "cal-mod"
+        "routed": "cal-mod",
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6974,
+      "source_range": [
+        6974,
+        6974
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-getCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6975,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getCalendarEvent",
       "requirement": {
@@ -948,15 +1604,23 @@
       "expected": {
         "result": "allowed",
         "effects": false,
-        "routed": "cal-mod"
+        "routed": "cal-mod",
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6975,
+      "source_range": [
+        6975,
+        6975
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-listCalendarEvent-core-history",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6976,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -993,15 +1657,23 @@
       "expected": {
         "result": "allowed",
         "effects": true,
-        "routed": null
+        "routed": null,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6976,
+      "source_range": [
+        6976,
+        6976
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-listCalendarEvent-unavailable",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6977,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1036,15 +1708,23 @@
       },
       "expected": {
         "result": "forbidden",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6977,
+      "source_range": [
+        6977,
+        6977
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-listCalendarEvent-core",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6978,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1073,15 +1753,23 @@
       "expected": {
         "result": "allowed",
         "effects": true,
-        "routed": null
+        "routed": null,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6978,
+      "source_range": [
+        6978,
+        6978
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6979,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createCalendarEvent",
       "requirement": {
@@ -1124,15 +1812,23 @@
       "expected": {
         "result": "allowed",
         "effects": false,
-        "routed": "cal-mod"
+        "routed": "cal-mod",
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6979,
+      "source_range": [
+        6979,
+        6979
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-createCalendarEvent-history-does-not-keep-write",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6980,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createCalendarEvent",
       "requirement": {
@@ -1176,15 +1872,23 @@
       "expected": {
         "result": "allowed",
         "effects": false,
-        "routed": "cal-mod"
+        "routed": "cal-mod",
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6980,
+      "source_range": [
+        6980,
+        6980
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-bulkTimeEntry-unwalled",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6990,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1224,15 +1928,23 @@
       },
       "expected": {
         "result": "allowed",
-        "effects": true
+        "effects": true,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6990,
+      "source_range": [
+        6990,
+        6990
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-bulkTimeEntry-call-flag",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6991,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1271,15 +1983,23 @@
       },
       "expected": {
         "result": "allowed",
-        "effects": true
+        "effects": true,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6991,
+      "source_range": [
+        6991,
+        6991
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-bulkTimeEntry-mixed-off-wall",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6992,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1330,15 +2050,23 @@
       },
       "expected": {
         "result": "not_found",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6992,
+      "source_range": [
+        6992,
+        6992
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-bulkTimeEntry-mixed-on-wall",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6993,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1389,15 +2117,23 @@
       },
       "expected": {
         "result": "allowed",
-        "effects": true
+        "effects": true,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "source_line": 6993,
+      "source_range": [
+        6993,
+        6993
+      ],
+      "public_assertion_line": 7059
     },
     {
       "id": "reg-bulkTimeEntry-item-flag-ignored",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6901,
+      "line": 6994,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1445,9 +2181,764 @@
       },
       "expected": {
         "result": "not_found",
-        "effects": false
+        "effects": false,
+        "public": false
       },
-      "runtime_status": "runtime_pending"
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Malformed TimeEntryWrite. matter_walled is not a published field. The trusted wall still denies the item.",
+      "source_line": 6994,
+      "source_range": [
+        6994,
+        6994
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-downloadFileVersion-minimal-scopes",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 709,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "downloadFileVersion",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "downloadFileVersion",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "malware",
+        "token_scopes": [
+          "files:read"
+        ],
+        "approved_scopes": [
+          "files:read"
+        ],
+        "module_scopes": [
+          "files:read"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "allowed_scan = scan()",
+      "source_line": 709,
+      "source_range": [
+        709,
+        709
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-downloadFileVersion-empty-token",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 726,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "downloadFileVersion",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "downloadFileVersion",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "malware",
+        "token_scopes": [],
+        "approved_scopes": [
+          "files:read"
+        ],
+        "module_scopes": [
+          "files:read"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "scan(token_scopes=[], approved_scopes=[\"files:read\"])",
+      "source_line": 726,
+      "source_range": [
+        726,
+        726
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-downloadFileVersion-omitted-scopes",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 728,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "downloadFileVersion",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "downloadFileVersion",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "malware",
+        "module_scopes": [
+          "files:read"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "scan(token_scopes=None, approved_scopes=None)",
+      "source_line": 728,
+      "source_range": [
+        728,
+        728
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-downloadFileVersion-empty-current",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 730,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "downloadFileVersion",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "downloadFileVersion",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "malware",
+        "token_scopes": [
+          "files:read"
+        ],
+        "approved_scopes": [
+          "files:read"
+        ],
+        "current_approved_scopes": [],
+        "module_scopes": [
+          "files:read"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "scan(current_approved_scopes=[])",
+      "source_line": 730,
+      "source_range": [
+        730,
+        730
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-downloadFileVersion-revoked-current",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 732,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "downloadFileVersion",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "downloadFileVersion",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "malware",
+        "token_scopes": [
+          "files:read"
+        ],
+        "approved_scopes": [
+          "files:read"
+        ],
+        "current_approved_scopes": [
+          "files:write"
+        ],
+        "module_scopes": [
+          "files:read"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "scan(current_approved_scopes=[\"files:write\"])",
+      "source_line": 732,
+      "source_range": [
+        732,
+        732
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createPayment-minimal-scopes",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 800,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createPayment",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-026"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "createPayment",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "lawpay",
+        "token_scopes": [
+          "payments:write"
+        ],
+        "approved_scopes": [
+          "payments:write"
+        ],
+        "module_scopes": [
+          "payments:write"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "operating_callback = callback(operating_grant)",
+      "source_line": 800,
+      "source_range": [
+        800,
+        800
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createPayment-empty-token",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 817,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createPayment",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-026"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "createPayment",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "lawpay",
+        "token_scopes": [],
+        "approved_scopes": [
+          "payments:write"
+        ],
+        "module_scopes": [
+          "payments:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "callback(operating_grant, token_scopes=[], approved_scopes=[\"payments:write\"])",
+      "source_line": 817,
+      "source_range": [
+        817,
+        817
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createPayment-omitted-scopes",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 819,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createPayment",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-026"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "createPayment",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "lawpay",
+        "module_scopes": [
+          "payments:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "callback(operating_grant, token_scopes=None, approved_scopes=None)",
+      "source_line": 819,
+      "source_range": [
+        819,
+        819
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createPayment-empty-current",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 821,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createPayment",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-026"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "createPayment",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "lawpay",
+        "token_scopes": [
+          "payments:write"
+        ],
+        "approved_scopes": [
+          "payments:write"
+        ],
+        "current_approved_scopes": [],
+        "module_scopes": [
+          "payments:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "callback(operating_grant, current_approved_scopes=[])",
+      "source_line": 821,
+      "source_range": [
+        821,
+        821
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-createPayment-revoked-current",
+      "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 823,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createPayment",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-026"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "createPayment",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "lawpay",
+        "token_scopes": [
+          "payments:write"
+        ],
+        "approved_scopes": [
+          "payments:write"
+        ],
+        "current_approved_scopes": [
+          "trust:write"
+        ],
+        "module_scopes": [
+          "payments:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "callback(operating_grant, current_approved_scopes=[\"trust:write\"])",
+      "source_line": 823,
+      "source_range": [
+        823,
+        823
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-getFileUpload-omitted-scopes",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6894,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "getFileUpload",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "getFileUpload",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "module resume omitted scopes",
+      "source_line": 6894,
+      "source_range": [
+        6894,
+        6894
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-getFileUpload-minimal-scopes",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6895,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "getFileUpload",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "getFileUpload",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "token_scopes": [
+          "files:write"
+        ],
+        "approved_scopes": [
+          "files:write"
+        ],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "module resume minimal scopes",
+      "source_line": 6895,
+      "source_range": [
+        6895,
+        6895
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-getFileUpload-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6896,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "getFileUpload",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "getFileUpload",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "token_scopes": [],
+        "approved_scopes": [
+          "files:write"
+        ],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "module resume empty token",
+      "source_line": 6896,
+      "source_range": [
+        6896,
+        6896
+      ],
+      "public_assertion_line": 7059
+    },
+    {
+      "id": "reg-getFileUpload-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6897,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "getFileUpload",
+      "requirement": {
+        "prd": [
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-039"
+        ],
+        "review_finding": "A grant workflow still checks the effective bearer scope. Stale module_scopes do not allow an empty, omitted, or revoked scope."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "getFileUpload",
+        "arguments": {
+          "path": {}
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "token_scopes": [
+          "files:write"
+        ],
+        "approved_scopes": [
+          "files:write"
+        ],
+        "current_approved_scopes": [],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "policy_probe",
+      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "source_anchor": "module resume empty current approval",
+      "source_line": 6897,
+      "source_range": [
+        6897,
+        6897
+      ],
+      "public_assertion_line": 7059
     }
   ]
 }

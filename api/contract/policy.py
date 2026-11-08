@@ -346,7 +346,7 @@ def processor_callback(policy: dict, operation: dict, call: dict) -> str:
     effect = operation["x-togavsu-access"].get("payment_effect")
     if effect and call.get("destination") == "trust" and call.get("status") == "completed":
         needed = list(effect["trust_destination"]["scopes"])
-    if any(scope not in call.get("module_scopes", []) for scope in needed):
+    if grant_scope_denial(call, needed):
         return policy["missing_scope"]
     if call.get("matter_id") != grant.get("matter_id"):
         return policy["unrelated_matter"]
@@ -396,7 +396,7 @@ def malware_scan_decision(policy: dict, operation: dict, call: dict) -> str:
     if operation["x-togavsu-access"].get("noninteractive_workflow") != "malware_scan":
         return policy["operation_outside_grant"]
     needed = operation["x-togavsu-access"]["scopes"]
-    if any(scope not in call.get("module_scopes", []) for scope in needed):
+    if grant_scope_denial(call, needed):
         return policy["missing_scope"]
     if call.get("matter_id") != grant.get("matter_id"):
         return policy["unrelated_matter"]
@@ -1095,6 +1095,34 @@ def bearer_lacks_scopes(call: dict, needed) -> bool:
         return False
     held = set(call.get("token_scopes") or []) if "token_scopes" in call else set()
     return any(scope not in held for scope in required)
+
+
+def _bearer_presented(call: dict) -> bool:
+    """True when this call carries a bearer rather than a module_scopes-only probe."""
+    return (
+        call.get("credential") == "bearer"
+        or bool(call.get("authorization"))
+        or "token_scopes" in call
+        or "approved_scopes" in call
+        or "current_approved_scopes" in call
+    )
+
+
+def grant_scope_denial(call: dict, needed) -> str | None:
+    """Grant workflows still require module_scopes. A presented bearer also needs the effective token.
+
+    Empty or omitted token scopes, empty or omitted approvals, and a current approval list that
+    drops the scope do not fall back to stale module_scopes. PRD 9.3.
+    """
+    required = [scope for scope in (needed or [])]
+    if any(scope not in set(call.get("module_scopes") or []) for scope in required):
+        return "scope_denied"
+    if not _bearer_presented(call) or session_authorizes(call):
+        return None
+    subject = call if call.get("module_id") else {**call, "module_id": call.get("caller_module_id") or "_bearer"}
+    if bearer_lacks_scopes(_module_scope_intersection(subject), required):
+        return "scope_denied"
+    return None
 
 
 def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
@@ -2207,7 +2235,7 @@ def background_grant_authorization(policy: dict, call: dict) -> str:
         return policy["revoked"]
     if grant.get("issued_by") != policy["issued_by"] or grant.get("module_id") != call.get("caller_module_id"):
         return policy["wrong_module"]
-    if any(scope not in call.get("module_scopes", []) for scope in policy["scopes"]):
+    if grant_scope_denial(call, policy["scopes"]):
         return policy["missing_scope"]
     if call.get("operation") not in grant.get("allowed_operations", []):
         return policy["operation_outside_grant"]

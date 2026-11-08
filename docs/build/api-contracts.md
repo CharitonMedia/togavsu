@@ -44,7 +44,7 @@ Net lines are in the PR. Debt count for this task: 1. The MCP adapter correction
 
 ## Stage 1 split
 
-Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/contract/metadata.py`. The call simulator remains `api/contract/policy.py` and its tests still run. `docs/api/stage1-inventory.json` lists every current contract test, and `docs/api/runtime-fixtures.json` holds runtime-pending regressions. Those fixtures are not executed and are not AC-002 acceptance. Unexpanded simulator scenarios block later removal. Phase 1 still means the OpenAPI documents validate. REST and MCP behavior stays with the Go work.
+Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/contract/metadata.py`. The call simulator remains `api/contract/policy.py` and its tests still run. Stage 1b keeps that split. `docs/api/stage1-inventory.json` classifies every contract test from the source, including helpers that only return a decision. `docs/api/scenario-manifest.json` expands the identity and modules batch. Other domains stay listed and unfinished. `docs/api/runtime-fixtures.json` holds runtime-pending probes and schema-valid endpoint variants. Those fixtures are not executed and are not AC-002 acceptance. Grant workflows now deny a presented bearer whose token or current approval lacks the scope, including the old module-resume case that expected an allow from stale `module_scopes` (PRD 9.3). Deletion stays blocked. Phase 1 still means the OpenAPI documents validate. REST and MCP behavior stays with the Go work.
 
 ```
 file: api/contract/model.py
