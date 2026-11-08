@@ -95,16 +95,17 @@ class Stage1InventoryTest(unittest.TestCase):
         self.assertTrue(self.inventory["deletion_blocked"])
         self.assertGreaterEqual(self.inventory["counts"]["behavioral_methods"], 46)
         self.assertEqual(len(self.inventory["blocking_gaps"]), self.inventory["counts"]["blocking_gaps"])
-        self.assertEqual(self.inventory["counting"]["unittest_tests"], 101)
+        self.assertEqual(self.inventory["counting"]["unittest_tests"], 102)
         self.assertEqual(self.inventory["counting"]["setup_methods"], 1)
-        self.assertEqual(self.inventory["counting"]["contract_test_methods_including_setup"], 102)
+        self.assertEqual(self.inventory["counting"]["contract_test_methods_including_setup"], 103)
         live = {row["name"]: row for row in self.classification["methods"]}
         for row in self.inventory["tests"]:
             current = live[row["id"].split(".", 1)[1]]
             self.assertEqual(row["kind"], current["kind"], row["id"])
             self.assertEqual(row["go_owner"], current["go_owner"], row["id"])
-            expected = current["acceptance"] if current["behavioral"] else (current["acceptance"] or ["AC-002"])
-            self.assertEqual(row["acceptance"], expected, row["id"])
+            self.assertEqual(row["acceptance"], current["acceptance"], row["id"])
+            self.assertEqual(row["prd"], current["prd"], row["id"])
+            self.assertFalse(row["complete"], row["id"])
             if row["blocking_removal"]:
                 self.assertNotEqual(row["go_owner"], "unmapped", row["id"])
             self.assertIn(row["kind"], {"contract_validation", "simulator_behavior", "both"})
@@ -116,7 +117,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 self.assertTrue(row["blocking_removal"])
                 self.assertEqual(row["runtime_status"], "runtime_pending")
                 self.assertTrue(row.get("gap"))
-                self.assertNotEqual(row["acceptance"], ["AC-002"], row["id"])
+                self.assertEqual(row["retirement_status"], "pending")
         self.assertIn("_trust_poster", self.classification["behavioral_helpers"])
         self.assertEqual(self.classification["aliases"], {"module_ui_targets": "sidebar_entries"})
         self.assertEqual(len(self.classification["classes"][0]["methods"]), 8)
@@ -146,7 +147,9 @@ class Stage1InventoryTest(unittest.TestCase):
             public_line = CONTRACT_TEST.read_text(encoding="utf-8").splitlines()[fixture["public_assertion_line"] - 1]
             self.assertIn('assertFalse(decision["public"]', public_line)
             self.assertGreater(fixture["line"], 0)
-            self.assertIn(fixture["fixture_kind"], {"endpoint", "policy_probe"})
+            self.assertIn(fixture["fixture_kind"], {"endpoint", "policy_probe", "incomplete_source_excerpt"})
+            self.assertFalse(fixture["complete"])
+            self.assertFalse(fixture["executed"])
             self.assertTrue(fixture["go_owner"])
             self.assertEqual(fixture["baseline_sha"], self.fixtures["baseline_sha"])
             ids.add(fixture["id"])
@@ -206,7 +209,12 @@ class Stage1InventoryTest(unittest.TestCase):
                 self.assertEqual(endpoint["fixture_kind"], "endpoint")
                 self.assertIn("body", endpoint["request"]["arguments"])
                 self.assertEqual(endpoint["expected"]["result"], "scope_denied")
-        self.assertEqual(by_id["reg-downloadFileVersion-omitted-scopes"]["expected"]["result"], "scope_denied")
+        excerpt = by_id["reg-downloadFileVersion-omitted-scopes"]
+        self.assertEqual(excerpt["expected"]["result"], "scope_denied")
+        self.assertEqual(excerpt["fixture_kind"], "incomplete_source_excerpt")
+        self.assertFalse(excerpt["reproducible"])
+        self.assertFalse(excerpt["runtime_assertion"])
+        self.assertIn("grant", excerpt["missing_for_replay"])
         self.assertEqual(by_id["reg-createPayment-empty-token"]["expected"]["result"], "scope_denied")
         self.assertEqual(by_id["reg-getFileUpload-omitted-scopes"]["expected"]["result"], "scope_denied")
         self.assertEqual(by_id["reg-getFileUpload-minimal-scopes"]["expected"]["result"], "allowed")
@@ -239,22 +247,48 @@ class Stage1InventoryTest(unittest.TestCase):
         errors = list(_schema_validator(spec, schema["properties"]["items"]["items"]).iter_errors(item))
         self.assertTrue(errors)
 
-    def test_scenario_manifest_expands_identity_and_modules_only(self):
+    def test_source_index_does_not_claim_conversion(self):
+        self.assertEqual(self.manifest["document"], "source_index")
+        self.assertFalse(self.manifest["complete"])
+        self.assertEqual(self.manifest["converted_for_retirement"], 0)
+        self.assertNotIn("identity_and_modules", self.manifest)
+        behavioral = [row for row in self.classification["methods"] if row["behavioral"]]
+        indexed = {row["id"] for row in self.manifest["entries"]}
+        self.assertEqual(indexed, {f"ContractTest.{row['name']}" for row in behavioral})
+        for row in self.manifest["entries"]:
+            self.assertFalse(row["complete"], row["id"])
+            self.assertFalse(row["is_scenario"], row["id"])
+            self.assertFalse(row["executed"], row["id"])
+            self.assertEqual(row["retirement_status"], "pending")
+            self.assertEqual(row["source_line_basis"], "current_worktree")
+        for domain in self.manifest["domains"].values():
+            self.assertFalse(domain["complete"])
+            self.assertEqual(domain["status"], "not_converted")
+        reads = next(row for row in self.manifest["entries"] if row["id"].endswith("test_client_context_reads_follow_published_access"))
+        self.assertEqual(sum(table["literal_rows"] for table in reads["literal_rows"]), 18)
+        self.assertTrue(any(part.get("kind") == "dict" for table in reads["literal_rows"] for item in table["rows"] for part in item))
+        joined = "\n".join(reads["assertion_statements"])
+        self.assertIn("assertEqual", joined)
+        generator = (ROOT / "api" / "contract" / "stage1_check.py").read_text(encoding="utf-8")
+        self.assertNotIn('"complete": True', generator)
+        self.assertNotIn("OWNER_RULES", generator)
+        mapped = {
+            "test_custom_fields_are_written_with_the_record": ("practice", ["AC-025"]),
+            "test_bulk_custom_fields_follow_the_time_domain": ("practice", ["AC-025"]),
+            "test_editor_pin": ("editor", ["AC-041"]),
+            "test_file_links_and_conversion_result": ("multiple", ["AC-039", "AC-042"]),
+            "test_doc_tender_result_is_readable": ("doc-tender", ["AC-043"]),
+            "test_naming_refuses_a_status_token": ("doc-tender", ["AC-051"]),
+            "test_include_views_cover_extensible_core_records": ("modules", ["AC-036"]),
+            "test_expense_and_payment_includes": ("modules", ["AC-036"]),
+        }
         live = {row["name"]: row for row in self.classification["methods"]}
-        expanded = {row["id"] for row in self.manifest["identity_and_modules"]}
-        for row in self.classification["methods"]:
-            if not row["behavioral"]:
-                continue
-            identifier = f"ContractTest.{row['name']}"
-            if row["go_owner"] in {"identity", "modules"}:
-                self.assertIn(identifier, expanded)
-            else:
-                self.assertNotIn(identifier, expanded)
-                self.assertFalse(self.manifest["remaining_batches"][row["go_owner"]]["complete"])
-        reads = next(row for row in self.manifest["identity_and_modules"] if row["id"].endswith("test_client_context_reads_follow_published_access"))
-        self.assertEqual(sum(table["cases"] for table in reads["explicit_cases"]), 18)
-        self.assertGreater(len(reads["assertions"]), 0)
-        self.assertEqual(live["test_client_context_reads_follow_published_access"]["explicit_case_count"], 18)
+        for name, (owner, acceptance) in mapped.items():
+            self.assertEqual(live[name]["go_owner"], owner, name)
+            self.assertEqual(live[name]["acceptance"], acceptance, name)
+        covered = {row["inventory_id"] for row in self.fixtures["fixtures"]}
+        self.assertTrue(covered <= {"ContractTest.test_dispatcher_parity_matrix", "ContractTest.test_mcp_dispatch_reuses_the_operation_policy"})
+        self.assertEqual(self.inventory["counting"]["converted_for_retirement"], 0)
         spec_ids = sorted(
             operation["operationId"]
             for item in build_spec()["paths"].values()

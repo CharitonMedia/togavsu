@@ -44,7 +44,11 @@ Net lines are in the PR. Debt count for this task: 1. The MCP adapter correction
 
 ## Stage 1 split
 
-Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/contract/metadata.py`. The call simulator remains `api/contract/policy.py` and its tests still run. Stage 1b keeps that split. `docs/api/stage1-inventory.json` classifies every contract test from the source, including helpers that only return a decision. `docs/api/scenario-manifest.json` expands the identity and modules batch. Other domains stay listed and unfinished. `docs/api/runtime-fixtures.json` holds runtime-pending probes and schema-valid endpoint variants. Those fixtures are not executed and are not AC-002 acceptance. Grant workflows now deny a presented bearer whose token or current approval lacks the scope, including the old module-resume case that expected an allow from stale `module_scopes` (PRD 9.3). Deletion stays blocked. Phase 1 still means the OpenAPI documents validate. REST and MCP behavior stays with the Go work.
+Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/contract/metadata.py`. The call simulator remains `api/contract/policy.py` and its tests still run. `docs/api/scenario-manifest.json` is a source index. It counts methods, assertion-call sites, and literal rows. It does not mark any method converted, and every behavioral method stays pending. `docs/api/method-acceptance.json` is the reviewed method map. `docs/api/runtime-fixtures.json` stays `runtime_pending`. The fourteen grant excerpts are incomplete and are not replayable. Deletion stays blocked.
+
+A presented bearer must hold a published view scope on the token, not only in the approval list. `createApiToken` requires `tokens:write` in addition to the child-scope ceiling. `initiateProcessorPayment` applies the declared processor policy, so `payments:write` alone cannot initialize a trust payment. Custom acceptance does not skip an operation's own scopes. Entry-type and per-item scope lists stay alternatives.
+
+Phase 1 still means the OpenAPI documents validate. Run `python3 -m pip install -r api/requirements-dev.txt` and then `sh api/check.sh`. That command does not execute runtime fixtures. REST and MCP behavior stays with the Go work. Product CI wiring belongs to the platform owner.
 
 ```
 file: api/contract/model.py

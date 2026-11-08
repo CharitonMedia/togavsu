@@ -13,11 +13,10 @@ Versioned OpenAPI 3.1 for the Togavsu core and a separate marketplace read/opera
 Regenerate and check:
 
 ```bash
-pip install -r api/requirements-dev.txt
-PYTHONPATH=api python3 -m contract.build
-PYTHONPATH=api python3 -m unittest api.tests.test_contract
+python3 -m pip install -r api/requirements-dev.txt
+sh api/check.sh
 ```
 
-`openapi-spec-validator` 0.9.0 is the validator. The unit test runs it on both documents and on a broken document that must fail.
+`api/requirements-dev.txt` pins `openapi-spec-validator` 0.9.0. `api/check.sh` fails if that package or a generated file is missing. It runs every test under `api/tests`, both OpenAPI validators, the broken-spec and reference-resolution check, then regenerates the four contract artifacts and requires `git diff` to be empty. It does not execute `docs/api/runtime-fixtures.json`.
 
 Conventions: [docs/api/conventions.md](../docs/api/conventions.md). MCP mapping: [docs/api/mcp.md](../docs/api/mcp.md). Coverage matrix: [docs/api/coverage.md](../docs/api/coverage.md).

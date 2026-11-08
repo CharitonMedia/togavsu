@@ -5,29 +5,29 @@
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
   "counting": {
-    "contract_test_methods_including_setup": 102,
-    "unittest_tests": 101,
+    "contract_test_methods_including_setup": 103,
+    "unittest_tests": 102,
     "setup_methods": 1,
-    "meaning": "102 ContractTest methods are 101 unittest tests plus setUpClass.",
+    "meaning": "103 ContractTest methods are 102 unittest tests plus 1 setUpClass.",
     "top_level_helpers": 23,
     "nested_functions_inside_test_methods": 20,
     "nested_structural_helpers_inside_top_level_helpers": [
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 7176,
+        "line": 7237,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 7199,
+        "line": 7260,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 7315,
+        "line": 7376,
         "structural": true
       }
     ],
@@ -35,7 +35,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 2600,
+        "line": 2660,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -53,21 +53,23 @@
       "module_ui_targets": "sidebar_entries"
     },
     "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
-    "behavioral_methods": 47,
-    "behavioral_methods_are_not_scenarios": true
+    "behavioral_methods": 48,
+    "behavioral_methods_are_not_scenarios": true,
+    "converted_for_retirement": 0,
+    "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one."
   },
   "counts": {
     "contract_tests": 55,
     "simulator_tests": 1,
-    "mixed_tests": 46,
-    "test_methods": 102,
-    "behavioral_methods": 47,
+    "mixed_tests": 47,
+    "test_methods": 103,
+    "behavioral_methods": 48,
     "local_helpers": 23,
     "simulator_helpers": 9,
     "nested_helpers": 20,
-    "blocking_gaps": 47,
-    "explicit_cases_in_behavioral_methods": 213,
-    "assertion_calls_in_behavioral_methods": 1565,
+    "blocking_gaps": 48,
+    "explicit_cases_in_behavioral_methods": 215,
+    "assertion_calls_in_behavioral_methods": 1569,
     "runtime_fixtures": 52
   },
   "artifacts": {
@@ -99,15 +101,18 @@
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "unmapped",
-      "acceptance": [
-        "AC-002"
-      ],
+      "acceptance": [],
+      "prd": [],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 0,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_core_spec_validates",
@@ -116,16 +121,23 @@
       "end_line": 332,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 0,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_marketplace_spec_validates",
@@ -138,12 +150,19 @@
       "acceptance": [
         "AC-015"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 0,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_validator_rejects_a_broken_spec",
@@ -152,16 +171,23 @@
       "end_line": 355,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_version_and_conventions",
@@ -170,16 +196,23 @@
       "end_line": 367,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 9,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_prd_paths_exist",
@@ -188,16 +221,23 @@
       "end_line": 371,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_required_features_have_an_mcp_tool",
@@ -210,12 +250,19 @@
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_mcp_parity_rules",
@@ -228,12 +275,19 @@
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 7,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_public_and_authenticated_security",
@@ -242,16 +296,23 @@
       "end_line": 430,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 5,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_mcp_public_bootstrap_tools_need_no_credential",
@@ -260,17 +321,23 @@
       "end_line": 575,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "api",
       "acceptance": [
-        "AC-001",
-        "AC-003"
+        "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 35,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
@@ -281,18 +348,25 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
       "acceptance": [
-        "AC-003",
         "AC-008",
         "AC-012",
-        "AC-026",
+        "AC-036",
         "AC-039"
       ],
+      "prd": [
+        "7",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 78,
       "loop_count": 4,
       "explicit_case_count": 9,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_writes_accept_idempotency_keys",
@@ -301,16 +375,23 @@
       "end_line": 947,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_list_operations_use_cursor_pages",
@@ -319,16 +400,23 @@
       "end_line": 1012,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "platform",
+      "go_owner": "api",
       "acceptance": [
-        "AC-030"
+        "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 38,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_trust_ledger_is_append_only",
@@ -339,16 +427,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-006"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 3,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_below_zero_posts_and_flags",
@@ -357,16 +450,23 @@
       "end_line": 1034,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "trust",
       "acceptance": [
-        "AC-002"
+        "AC-005"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 9,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_accountant_cannot_write_billing_or_trust",
@@ -375,18 +475,24 @@
       "end_line": 1042,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "trust",
+      "go_owner": "billing",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-004"
       ],
+      "prd": [
+        "8.3",
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_conflict_decisions_are_attorney_only",
@@ -396,15 +502,20 @@
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
-      "acceptance": [
-        "AC-003"
+      "acceptance": [],
+      "prd": [
+        "8"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_search_is_staff_only_and_walled",
@@ -417,12 +528,19 @@
       "acceptance": [
         "AC-020"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 3,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_matter_reads_are_walled",
@@ -433,16 +551,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
       "acceptance": [
-        "AC-003",
-        "AC-020",
-        "AC-023"
+        "AC-003"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_layout_cap",
@@ -451,16 +574,23 @@
       "end_line": 1065,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "ui",
       "acceptance": [
-        "AC-002"
+        "AC-010"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_audit_log_has_no_write",
@@ -469,16 +599,23 @@
       "end_line": 1068,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "identity",
       "acceptance": [
-        "AC-002"
+        "AC-018"
       ],
+      "prd": [
+        "6"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_file_versions_have_no_mutation",
@@ -491,12 +628,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_available_dates_do_not_write_events",
@@ -505,16 +649,23 @@
       "end_line": 1079,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "calendar",
       "acceptance": [
-        "AC-002"
+        "AC-027"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_guide_hides_from_clients",
@@ -523,16 +674,23 @@
       "end_line": 1089,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "ui",
       "acceptance": [
-        "AC-002"
+        "AC-022"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 6,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_editor_pin",
@@ -543,14 +701,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "editor",
       "acceptance": [
-        "AC-040"
+        "AC-041"
       ],
+      "prd": [
+        "8.20"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_naming_refuses_a_status_token",
@@ -559,17 +724,23 @@
       "end_line": 1100,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "doc-tender",
       "acceptance": [
-        "AC-018",
-        "AC-024"
+        "AC-051"
       ],
+      "prd": [
+        "8.21"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_settings_defaults_and_locked_admin_totp",
@@ -578,17 +749,23 @@
       "end_line": 1109,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "ui",
       "acceptance": [
-        "AC-001",
-        "AC-024"
+        "AC-029"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_doc_category_seed",
@@ -597,16 +774,23 @@
       "end_line": 1114,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "contracts",
       "acceptance": [
-        "AC-002"
+        "AC-035"
       ],
+      "prd": [
+        "5"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_widget_manifest_requires_a_target",
@@ -615,17 +799,23 @@
       "end_line": 1118,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "modules",
+      "go_owner": "ui",
       "acceptance": [
-        "AC-012",
-        "AC-013"
+        "AC-011"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_close_warns_without_a_block",
@@ -634,16 +824,23 @@
       "end_line": 1124,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "practice",
       "acceptance": [
-        "AC-002"
+        "AC-009"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_disk_matches_the_builder",
@@ -652,16 +849,23 @@
       "end_line": 1130,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_trust_entry_scopes_deny_a_deposit_only_token",
@@ -673,15 +877,21 @@
       "go_owner": "trust",
       "acceptance": [
         "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-006"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 7,
       "loop_count": 3,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_matter_wall_is_inherited_on_named_flows",
@@ -692,16 +902,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
       "acceptance": [
-        "AC-003",
-        "AC-020",
-        "AC-023"
+        "AC-003"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 42,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_first_admin_enrolls_totp_before_a_session",
@@ -712,15 +927,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "identity",
       "acceptance": [
-        "AC-001",
-        "AC-024"
+        "AC-001"
       ],
+      "prd": [
+        "6"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 31,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_mcp_binary_upload_and_download",
@@ -733,12 +954,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 9,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_local_module_install_is_multipart",
@@ -749,17 +977,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-037"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 7,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_restore_accepts_a_downloaded_archive_and_passphrase",
@@ -768,16 +1000,23 @@
       "end_line": 1361,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "platform",
       "acceptance": [
-        "AC-002"
+        "AC-018"
       ],
+      "prd": [
+        "11"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 9,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_upload_staging_is_separate_from_publication",
@@ -790,12 +1029,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 10,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_draft_invoice_lines_are_editable",
@@ -806,16 +1052,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 8,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_file_metadata_edit_respects_locks",
@@ -828,12 +1079,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 10,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_complete_module_manifest_validates",
@@ -845,16 +1103,21 @@
       "go_owner": "modules",
       "acceptance": [
         "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-013"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 135,
       "loop_count": 11,
       "explicit_case_count": 10,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_doc_tender_result_is_readable",
@@ -865,15 +1128,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "doc-tender",
       "acceptance": [
-        "AC-041",
-        "AC-042"
+        "AC-043"
       ],
+      "prd": [
+        "8.21"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 16,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_profile_edit_rejects_admin_fields",
@@ -882,16 +1151,21 @@
       "end_line": 2031,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "files",
-      "acceptance": [
-        "AC-039"
+      "go_owner": "identity",
+      "acceptance": [],
+      "prd": [
+        "6"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 3,
       "explicit_case_count": 3,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_file_writes_use_the_file_wall",
@@ -904,12 +1178,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 3,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_batches_and_context_tokens_reject_walled_matters",
@@ -918,17 +1199,25 @@
       "end_line": 2066,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "multiple",
       "acceptance": [
-        "AC-018",
-        "AC-024"
+        "AC-003",
+        "AC-012"
       ],
+      "prd": [
+        "8",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 7,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_module_help_token_is_not_an_admin",
@@ -939,17 +1228,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-033"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 15,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_module_update_keeps_the_old_version_on_failure",
@@ -960,17 +1253,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-037"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 8,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_matter_archive_is_an_mcp_tool",
@@ -980,17 +1277,20 @@
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
-      "acceptance": [
-        "AC-003",
-        "AC-020",
-        "AC-023"
+      "acceptance": [],
+      "prd": [
+        "8"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_paused_timer_resumes_without_resetting_elapsed_time",
@@ -999,16 +1299,21 @@
       "end_line": 2127,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "platform",
-      "acceptance": [
-        "AC-030"
+      "go_owner": "billing",
+      "acceptance": [],
+      "prd": [
+        "8.3"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 5,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_file_links_and_conversion_result",
@@ -1017,16 +1322,25 @@
       "end_line": 2137,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "files",
+      "go_owner": "multiple",
       "acceptance": [
-        "AC-039"
+        "AC-039",
+        "AC-042"
       ],
+      "prd": [
+        "8.19",
+        "8.20"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_file_history_is_not_admin_only",
@@ -1039,12 +1353,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 6,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_bulk_endpoints_cover_record_types",
@@ -1053,16 +1374,23 @@
       "end_line": 2177,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "api",
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_bulk_invoice_reconciles_or_writes_nothing",
@@ -1073,16 +1401,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 48,
       "loop_count": 5,
       "explicit_case_count": 8,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_expense_and_payment_includes",
@@ -1091,17 +1424,23 @@
       "end_line": 2301,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "billing",
+      "go_owner": "modules",
       "acceptance": [
-        "AC-008",
-        "AC-026"
+        "AC-036"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 1,
       "explicit_case_count": 4,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_trust_balance_rows_name_their_owners",
@@ -1112,16 +1451,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-006"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 8,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_mcp_arguments_use_path_and_query_objects",
@@ -1134,12 +1478,19 @@
       "acceptance": [
         "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 15,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_marketplace_flag_requires_a_note",
@@ -1152,12 +1503,19 @@
       "acceptance": [
         "AC-015"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_ical_feeds_are_owner_bound_and_wall_filtered",
@@ -1166,17 +1524,24 @@
       "end_line": 2374,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "calendar",
       "acceptance": [
-        "AC-018",
-        "AC-024"
+        "AC-011",
+        "AC-027"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 7,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_client_invoice_hides_internal_notes_and_history",
@@ -1187,16 +1552,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 20,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_complete_marketplace_listing_validates",
@@ -1209,12 +1579,19 @@
       "acceptance": [
         "AC-015"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 2,
       "loop_count": 3,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_archive_quarantine_requires_confirmation",
@@ -1227,12 +1604,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 4,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_citation_requires_a_location",
@@ -1241,16 +1625,23 @@
       "end_line": 2548,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
+      "go_owner": "doc-tender",
       "acceptance": [
-        "AC-002"
+        "AC-043"
       ],
+      "prd": [
+        "8.21"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 1,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_ai_call_log_includes_cost",
@@ -1263,12 +1654,19 @@
       "acceptance": [
         "AC-031"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 23,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_module_delegation_does_not_escalate_the_viewer",
@@ -1280,15 +1678,21 @@
       "go_owner": "modules",
       "acceptance": [
         "AC-012",
-        "AC-014",
-        "AC-031"
+        "AC-014"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 13,
       "loop_count": 5,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_malware_scan_uses_the_event_grant_for_the_whole_sequence",
@@ -1301,12 +1705,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 20,
       "loop_count": 3,
       "explicit_case_count": 18,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_file_byte_downloads_are_audited_and_highlighted",
@@ -1319,12 +1730,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 11,
       "loop_count": 3,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
@@ -1335,16 +1753,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-004"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 34,
       "loop_count": 3,
       "explicit_case_count": 3,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_client_context_token_is_own_matter_only",
@@ -1353,17 +1776,25 @@
       "end_line": 3045,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "modules",
+      "go_owner": "multiple",
       "acceptance": [
-        "AC-012",
-        "AC-003"
+        "AC-003",
+        "AC-012"
       ],
+      "prd": [
+        "8",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 30,
       "loop_count": 6,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_invoicing_is_time_domain_and_trust_posts_once",
@@ -1372,19 +1803,25 @@
       "end_line": 3103,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "billing",
+      "go_owner": "multiple",
       "acceptance": [
         "AC-006",
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3",
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 11,
       "loop_count": 4,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_api_token_reads_are_self_or_admin",
@@ -1394,16 +1831,20 @@
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "identity",
-      "acceptance": [
-        "AC-018",
-        "AC-024"
+      "acceptance": [],
+      "prd": [
+        "6"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 33,
       "loop_count": 2,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_trust_adjustment_credit_and_debit",
@@ -1414,16 +1855,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-006"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 5,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_attachment_link_authorizes_both_files",
@@ -1436,12 +1882,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 9,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_verified_email_change_keeps_privileged_fields_rejected",
@@ -1450,16 +1903,21 @@
       "end_line": 3263,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "unmapped",
-      "acceptance": [
-        "AC-002"
+      "go_owner": "identity",
+      "acceptance": [],
+      "prd": [
+        "6"
       ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 8,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_trust_moving_payments_are_scoped_before_mutation",
@@ -1471,15 +1929,21 @@
       "go_owner": "trust",
       "acceptance": [
         "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-006"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 40,
       "loop_count": 2,
       "explicit_case_count": 19,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_processor_callback_records_and_finishes_without_a_viewer",
@@ -1493,12 +1957,19 @@
         "AC-008",
         "AC-026"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 109,
       "loop_count": 3,
       "explicit_case_count": 18,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_processor_initialization_binds_one_payment",
@@ -1512,12 +1983,19 @@
         "AC-008",
         "AC-026"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 33,
       "loop_count": 3,
       "explicit_case_count": 9,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_custom_fields_are_written_with_the_record",
@@ -1528,14 +2006,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
       "acceptance": [
-        "AC-023"
+        "AC-025"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 11,
       "loop_count": 3,
       "explicit_case_count": 11,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_mcp_forwards_context_and_task_grants",
@@ -1544,17 +2029,25 @@
       "end_line": 4088,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "files",
+      "go_owner": "multiple",
       "acceptance": [
         "AC-012",
         "AC-039"
       ],
+      "prd": [
+        "8.19",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 22,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_invoice_pdf_confirmation_is_a_real_input",
@@ -1565,16 +2058,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 11,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_client_context_reads_follow_published_access",
@@ -1583,17 +2081,24 @@
       "end_line": 4139,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "modules",
+      "go_owner": "multiple",
       "acceptance": [
         "AC-012",
-        "AC-003"
+        "AC-036"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 6,
       "loop_count": 1,
       "explicit_case_count": 18,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_published_versions_emit_after_commit",
@@ -1606,12 +2111,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 11,
       "loop_count": 3,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_malware_grant_responses_match_projection_schemas",
@@ -1624,12 +2136,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 15,
       "loop_count": 3,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
-      "gap": ""
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     },
     {
       "id": "ContractTest.test_webhook_delivery_is_authorized_before_serialization",
@@ -1640,14 +2159,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-031"
+        "AC-012"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 22,
       "loop_count": 2,
       "explicit_case_count": 8,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_every_emitted_event_uses_its_resource_read_scope",
@@ -1656,16 +2182,23 @@
       "end_line": 4428,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "practice",
+      "go_owner": "api",
       "acceptance": [
-        "AC-024"
+        "AC-002"
       ],
+      "prd": [
+        "7"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 40,
       "loop_count": 2,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_include_views_cover_extensible_core_records",
@@ -1676,14 +2209,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-012"
+        "AC-036"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 39,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_notifications_are_limited_to_the_recipient",
@@ -1692,16 +2232,23 @@
       "end_line": 4628,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "identity",
+      "go_owner": "ui",
       "acceptance": [
-        "AC-019"
+        "AC-021"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 20,
       "loop_count": 3,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
@@ -1713,14 +2260,21 @@
       "go_owner": "modules",
       "acceptance": [
         "AC-012",
-        "AC-031"
+        "AC-036"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 39,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
@@ -1732,17 +2286,24 @@
       "go_owner": "multiple",
       "acceptance": [
         "AC-003",
-        "AC-005",
         "AC-008",
         "AC-012",
         "AC-039"
       ],
+      "prd": [
+        "7",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 31,
       "loop_count": 4,
       "explicit_case_count": 2,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_owner_bound_events_follow_the_read_policy",
@@ -1753,15 +2314,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "identity",
       "acceptance": [
-        "AC-018",
-        "AC-024"
+        "AC-018"
       ],
+      "prd": [
+        "6"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 26,
       "loop_count": 5,
       "explicit_case_count": 14,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_invoice_drafts_accept_a_date_range",
@@ -1772,16 +2339,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
       "acceptance": [
-        "AC-008",
-        "AC-009",
-        "AC-026"
+        "AC-008"
       ],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 25,
       "loop_count": 2,
       "explicit_case_count": 9,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_attorney_only_files_are_omitted_from_aggregates",
@@ -1794,12 +2366,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 17,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_bulk_custom_fields_follow_the_time_domain",
@@ -1810,14 +2389,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
       "acceptance": [
-        "AC-023"
+        "AC-025"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 24,
       "loop_count": 0,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_module_owned_upload_events_use_the_tagged_owner",
@@ -1826,19 +2412,25 @@
       "end_line": 5433,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
-      "go_owner": "modules",
+      "go_owner": "multiple",
       "acceptance": [
         "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-039"
       ],
+      "prd": [
+        "8.19",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 18,
       "loop_count": 2,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_account_trust_flags_match_the_emitted_scope",
@@ -1849,16 +2441,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-005"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 18,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_history_inherits_the_underlying_record",
@@ -1871,12 +2468,19 @@
       "acceptance": [
         "AC-024"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 14,
       "loop_count": 5,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_background_file_publication_grant",
@@ -1889,12 +2493,19 @@
       "acceptance": [
         "AC-039"
       ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 77,
       "loop_count": 3,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_trust_application_selects_the_account_and_client",
@@ -1905,16 +2516,22 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
         "AC-006",
-        "AC-007"
+        "AC-026"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 14,
       "loop_count": 2,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_module_marker_registration_owns_its_namespace",
@@ -1925,17 +2542,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
       "acceptance": [
-        "AC-012",
-        "AC-013",
-        "AC-014",
-        "AC-031"
+        "AC-012"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 75,
       "loop_count": 3,
       "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_trust_flag_follows_the_committed_balance",
@@ -1946,16 +2567,21 @@
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
       "acceptance": [
-        "AC-005",
-        "AC-006",
-        "AC-007"
+        "AC-005"
       ],
+      "prd": [
+        "8.4"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 107,
       "loop_count": 6,
       "explicit_case_count": 3,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_record_mutations_emit_events_only_after_commit",
@@ -1968,12 +2594,19 @@
       "acceptance": [
         "AC-024"
       ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 32,
       "loop_count": 1,
       "explicit_case_count": 0,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_marketplace_flag_and_pull",
@@ -1986,18 +2619,51 @@
       "acceptance": [
         "AC-015"
       ],
+      "prd": [
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 21,
       "loop_count": 1,
       "explicit_case_count": 5,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_custom_acceptance_cannot_skip_operation_scopes",
+      "source": "api/tests/test_contract.py",
+      "line": 6739,
+      "end_line": 6783,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "api",
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "7",
+        "9.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 4,
+      "loop_count": 1,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     },
     {
       "id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6739,
-      "end_line": 7059,
+      "line": 6785,
+      "end_line": 7120,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -2005,14 +2671,23 @@
         "AC-003",
         "AC-008",
         "AC-012",
+        "AC-036",
         "AC-039"
       ],
+      "prd": [
+        "7",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 23,
       "loop_count": 4,
-      "explicit_case_count": 13,
+      "explicit_case_count": 15,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
-      "gap": "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. Other domains remain a named batch and are not claimed complete."
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     }
   ],
   "helpers": [
@@ -2023,112 +2698,112 @@
     },
     {
       "name": "_operation",
-      "line": 7062,
+      "line": 7123,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 7069,
+      "line": 7130,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 7075,
+      "line": 7136,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 7079,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "_malware_call",
-      "line": 7100,
-      "kind": "simulator_helper"
-    },
-    {
-      "name": "_case_matches",
-      "line": 7104,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "operation_denies_other_client",
-      "line": 7113,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "_upload_step_result",
-      "line": 7121,
-      "kind": "simulator_helper"
-    },
-    {
-      "name": "_file_byte_downloads",
       "line": 7140,
       "kind": "contract_helper"
     },
     {
+      "name": "_malware_call",
+      "line": 7161,
+      "kind": "simulator_helper"
+    },
+    {
+      "name": "_case_matches",
+      "line": 7165,
+      "kind": "contract_helper"
+    },
+    {
+      "name": "operation_denies_other_client",
+      "line": 7174,
+      "kind": "contract_helper"
+    },
+    {
+      "name": "_upload_step_result",
+      "line": 7182,
+      "kind": "simulator_helper"
+    },
+    {
+      "name": "_file_byte_downloads",
+      "line": 7201,
+      "kind": "contract_helper"
+    },
+    {
       "name": "_client_portal_result",
-      "line": 7146,
+      "line": 7207,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 7168,
+      "line": 7229,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 7192,
+      "line": 7253,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 7214,
+      "line": 7275,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 7235,
+      "line": 7296,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 7252,
+      "line": 7313,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 7260,
+      "line": 7321,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 7269,
+      "line": 7330,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 7283,
+      "line": 7344,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 7296,
+      "line": 7357,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 7305,
+      "line": 7366,
       "kind": "simulator_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 7312,
+      "line": 7373,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 7331,
+      "line": 7392,
       "kind": "contract_helper"
     }
   ],
@@ -2221,17 +2896,17 @@
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "cookie",
-      "line": 6762
+      "line": 6808
     },
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "bearer",
-      "line": 6765
+      "line": 6811
     },
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "validate",
-      "line": 6768
+      "line": 6814
     }
   ],
   "behavioral_helpers": [
@@ -2292,6 +2967,7 @@
     "ContractTest.test_trust_flag_follows_the_committed_balance",
     "ContractTest.test_record_mutations_emit_events_only_after_commit",
     "ContractTest.test_marketplace_flag_and_pull",
+    "ContractTest.test_custom_acceptance_cannot_skip_operation_scopes",
     "ContractTest.test_dispatcher_parity_matrix"
   ],
   "hidden_runtime_consumers": [],

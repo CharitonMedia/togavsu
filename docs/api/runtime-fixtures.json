@@ -8,7 +8,7 @@
       "id": "reg-createModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -53,18 +53,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleMarker-empty-token-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -113,18 +115,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -172,18 +176,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleMarker-empty-current-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleMarker",
       "requirement": {
@@ -235,18 +241,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-updateModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -292,18 +300,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-updateModuleMarker-empty-token-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -352,18 +362,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-updateModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -412,18 +424,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-updateModuleMarker-empty-current-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "updateModuleMarker",
       "requirement": {
@@ -475,18 +489,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-revokeModuleMarker-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "revokeModuleMarker",
       "requirement": {
@@ -531,18 +547,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-revokeModuleMarker-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "revokeModuleMarker",
       "requirement": {
@@ -590,18 +608,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleHelpPage-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -646,18 +666,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleHelpPage-empty-token-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -707,18 +729,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleHelpPage-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -766,18 +790,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleHelpPage-empty-current-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -830,18 +856,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -886,18 +914,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-token-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -951,18 +981,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -1010,18 +1042,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Lower-level policy probe. The request omits the published body and is not a complete endpoint call.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-replaceModuleHelpPages-empty-current-endpoint",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "replaceModuleHelpPages",
       "requirement": {
@@ -1078,18 +1112,20 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
       "label": "Schema-valid endpoint request. The expected scope_denied is the same denial the policy probe already asserts.",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-deleteModuleHelpPage-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6948,
+      "line": 7009,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "deleteModuleHelpPage",
       "requirement": {
@@ -1134,18 +1170,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6948,
+      "source_line": 7009,
       "source_range": [
-        6948,
-        6948
+        7009,
+        7009
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-deleteModuleHelpPage-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6949,
+      "line": 7010,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "deleteModuleHelpPage",
       "requirement": {
@@ -1193,18 +1231,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6949,
+      "source_line": 7010,
       "source_range": [
-        6949,
-        6949
+        7010,
+        7010
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createModuleHelpPage-current-match",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6954,
+      "line": 7015,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createModuleHelpPage",
       "requirement": {
@@ -1255,18 +1295,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6954,
+      "source_line": 7015,
       "source_range": [
-        6954,
-        6954
+        7015,
+        7015
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-issueFilePublicationGrant-effective",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6960,
+      "line": 7021,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -1315,18 +1357,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6960,
+      "source_line": 7021,
       "source_range": [
-        6960,
-        6960
+        7021,
+        7021
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-approval",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6961,
+      "line": 7022,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -1376,18 +1420,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6961,
+      "source_line": 7022,
       "source_range": [
-        6961,
-        6961
+        7022,
+        7022
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6962,
+      "line": 7023,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -1437,18 +1483,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6962,
+      "source_line": 7023,
       "source_range": [
-        6962,
-        6962
+        7023,
+        7023
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-issueFilePublicationGrant-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6963,
+      "line": 7024,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "issueFilePublicationGrant",
       "requirement": {
@@ -1501,18 +1549,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6963,
+      "source_line": 7024,
       "source_range": [
-        6963,
-        6963
+        7024,
+        7024
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-listCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6974,
+      "line": 7035,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1553,18 +1603,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6974,
+      "source_line": 7035,
       "source_range": [
-        6974,
-        6974
+        7035,
+        7035
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-getCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6975,
+      "line": 7036,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getCalendarEvent",
       "requirement": {
@@ -1609,18 +1661,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6975,
+      "source_line": 7036,
       "source_range": [
-        6975,
-        6975
+        7036,
+        7036
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-listCalendarEvent-core-history",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6976,
+      "line": 7037,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1662,18 +1716,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6976,
+      "source_line": 7037,
       "source_range": [
-        6976,
-        6976
+        7037,
+        7037
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-listCalendarEvent-unavailable",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6977,
+      "line": 7038,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1713,18 +1769,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6977,
+      "source_line": 7038,
       "source_range": [
-        6977,
-        6977
+        7038,
+        7038
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-listCalendarEvent-core",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6978,
+      "line": 7039,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "listCalendarEvent",
       "requirement": {
@@ -1758,18 +1816,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6978,
+      "source_line": 7039,
       "source_range": [
-        6978,
-        6978
+        7039,
+        7039
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createCalendarEvent-routed",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6979,
+      "line": 7040,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createCalendarEvent",
       "requirement": {
@@ -1817,18 +1877,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6979,
+      "source_line": 7040,
       "source_range": [
-        6979,
-        6979
+        7040,
+        7040
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-createCalendarEvent-history-does-not-keep-write",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6980,
+      "line": 7041,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "createCalendarEvent",
       "requirement": {
@@ -1877,18 +1939,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6980,
+      "source_line": 7041,
       "source_range": [
-        6980,
-        6980
+        7041,
+        7041
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-unwalled",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6990,
+      "line": 7051,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1933,18 +1997,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6990,
+      "source_line": 7051,
       "source_range": [
-        6990,
-        6990
+        7051,
+        7051
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-call-flag",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6991,
+      "line": 7052,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -1988,18 +2054,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6991,
+      "source_line": 7052,
       "source_range": [
-        6991,
-        6991
+        7052,
+        7052
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-mixed-off-wall",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6992,
+      "line": 7053,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -2055,18 +2123,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6992,
+      "source_line": 7053,
       "source_range": [
-        6992,
-        6992
+        7053,
+        7053
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-mixed-on-wall",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6993,
+      "line": 7054,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -2122,18 +2192,20 @@
       },
       "runtime_status": "runtime_pending",
       "fixture_kind": "endpoint",
-      "source_line": 6993,
+      "source_line": 7054,
       "source_range": [
-        6993,
-        6993
+        7054,
+        7054
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-item-flag-ignored",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6994,
+      "line": 7055,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "bulkTimeEntry",
       "requirement": {
@@ -2187,12 +2259,14 @@
       "runtime_status": "runtime_pending",
       "fixture_kind": "policy_probe",
       "label": "Malformed TimeEntryWrite. matter_walled is not a published field. The trusted wall still denies the item.",
-      "source_line": 6994,
+      "source_line": 7055,
       "source_range": [
-        6994,
-        6994
+        7055,
+        7055
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-bulkTimeEntry-trusted-wall",
@@ -2256,7 +2330,9 @@
         6994,
         6994
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "executed": false
     },
     {
       "id": "reg-downloadFileVersion-minimal-scopes",
@@ -2302,15 +2378,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "allowed_scan = scan()",
       "source_line": 709,
       "source_range": [
         709,
         709
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-downloadFileVersion-empty-token",
@@ -2354,15 +2442,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "scan(token_scopes=[], approved_scopes=[\"files:read\"])",
       "source_line": 726,
       "source_range": [
         726,
         726
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-downloadFileVersion-omitted-scopes",
@@ -2402,15 +2502,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "scan(token_scopes=None, approved_scopes=None)",
       "source_line": 728,
       "source_range": [
         728,
         728
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-downloadFileVersion-empty-current",
@@ -2457,15 +2569,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "scan(current_approved_scopes=[])",
       "source_line": 730,
       "source_range": [
         730,
         730
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-downloadFileVersion-revoked-current",
@@ -2514,15 +2638,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "scan(current_approved_scopes=[\"files:write\"])",
       "source_line": 732,
       "source_range": [
         732,
         732
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-createPayment-minimal-scopes",
@@ -2569,15 +2705,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "operating_callback = callback(operating_grant)",
       "source_line": 800,
       "source_range": [
         800,
         800
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-createPayment-empty-token",
@@ -2622,15 +2770,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "callback(operating_grant, token_scopes=[], approved_scopes=[\"payments:write\"])",
       "source_line": 817,
       "source_range": [
         817,
         817
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-createPayment-omitted-scopes",
@@ -2671,15 +2831,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "callback(operating_grant, token_scopes=None, approved_scopes=None)",
       "source_line": 819,
       "source_range": [
         819,
         819
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-createPayment-empty-current",
@@ -2727,15 +2899,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "callback(operating_grant, current_approved_scopes=[])",
       "source_line": 821,
       "source_range": [
         821,
         821
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-createPayment-revoked-current",
@@ -2785,21 +2969,33 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "callback(operating_grant, current_approved_scopes=[\"trust:write\"])",
       "source_line": 823,
       "source_range": [
         823,
         823
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-getFileUpload-omitted-scopes",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6894,
+      "line": 6948,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getFileUpload",
       "requirement": {
@@ -2833,21 +3029,33 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "module resume omitted scopes",
-      "source_line": 6894,
+      "source_line": 6948,
       "source_range": [
-        6894,
-        6894
+        6948,
+        6948
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-getFileUpload-minimal-scopes",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6895,
+      "line": 6949,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getFileUpload",
       "requirement": {
@@ -2887,21 +3095,33 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "module resume minimal scopes",
-      "source_line": 6895,
+      "source_line": 6949,
       "source_range": [
-        6895,
-        6895
+        6949,
+        6949
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-getFileUpload-empty-token",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6896,
+      "line": 6950,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getFileUpload",
       "requirement": {
@@ -2939,21 +3159,33 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "module resume empty token",
-      "source_line": 6896,
+      "source_line": 6950,
       "source_range": [
-        6896,
-        6896
+        6950,
+        6950
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     },
     {
       "id": "reg-getFileUpload-empty-current",
       "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 6897,
+      "line": 6951,
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "operation": "getFileUpload",
       "requirement": {
@@ -2994,15 +3226,27 @@
         "public": false
       },
       "runtime_status": "runtime_pending",
-      "fixture_kind": "policy_probe",
-      "label": "Grant-workflow policy probe. The expected result is the assertion already in the contract test.",
+      "fixture_kind": "incomplete_source_excerpt",
+      "label": "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression.",
       "source_anchor": "module resume empty current approval",
-      "source_line": 6897,
+      "source_line": 6951,
       "source_range": [
-        6897,
-        6897
+        6951,
+        6951
       ],
-      "public_assertion_line": 7059
+      "public_assertion_line": 7120,
+      "complete": false,
+      "reproducible": false,
+      "executed": false,
+      "runtime_assertion": false,
+      "missing_for_replay": [
+        "grant",
+        "registration",
+        "subscriptions",
+        "resource",
+        "path",
+        "state"
+      ]
     }
   ]
 }

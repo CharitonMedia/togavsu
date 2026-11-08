@@ -8,6 +8,7 @@ as a contract-only check.
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,72 +33,9 @@ DECISION_RESULTS = {
 }
 ROUTING_RESULTS = {"trust_module", "core", "ambiguous"}
 
-# First matching token in the test name wins. Acceptance ids are the domain's
-# existing plan ids, not a stand-in AC-002 label.
-OWNER_RULES = (
-    ("mcp_dispatch_reuses", "multiple", ["AC-003", "AC-008", "AC-012", "AC-026", "AC-039"]),
-    ("mcp_forwards_context", "files", ["AC-012", "AC-039"]),
-    ("every_emitted_event", "practice", ["AC-024"]),
-    ("mcp_dispatcher_covers", "multiple", ["AC-003", "AC-005", "AC-008", "AC-012", "AC-039"]),
-    ("mcp_public_bootstrap", "identity", ["AC-001", "AC-003"]),
-    ("dispatcher_parity", "multiple", ["AC-003", "AC-008", "AC-012", "AC-039"]),
-    ("cursor_pages", "platform", ["AC-030"]),
-    ("ai_call", "modules", ["AC-031"]),
-    ("malware", "files", ["AC-039"]),
-    ("processor_callback", "billing", ["AC-008", "AC-026"]),
-    ("custom_field", "practice", ["AC-023"]),
-    ("published_version", "files", ["AC-039"]),
-    ("include_view", "modules", ["AC-012"]),
-    ("owner_bound", "identity", ["AC-018", "AC-024"]),
-    ("bulk_custom", "practice", ["AC-023"]),
-    ("history_inherits", "practice", ["AC-024"]),
-    ("record_mutation", "practice", ["AC-024"]),
-    ("invoicing", "billing", ["AC-006", "AC-008", "AC-009", "AC-026"]),
-    ("client_context", "modules", ["AC-012", "AC-003"]),
-    ("delegation", "modules", ["AC-012", "AC-014", "AC-031"]),
-    ("module", "modules", ["AC-012", "AC-013", "AC-014", "AC-031"]),
-    ("marker", "modules", ["AC-012", "AC-031"]),
-    ("manifest", "modules", ["AC-012", "AC-013"]),
-    ("webhook", "modules", ["AC-031"]),
-    ("sidebar", "modules", ["AC-012", "AC-019"]),
-    ("widget", "modules", ["AC-011", "AC-012"]),
-    ("marketplace", "marketplace", ["AC-015"]),
-    ("trust", "trust", ["AC-005", "AC-006", "AC-007"]),
-    ("invoice", "billing", ["AC-008", "AC-009", "AC-026"]),
-    ("payment", "billing", ["AC-008", "AC-026"]),
-    ("time_entry", "billing", ["AC-008"]),
-    ("expense", "billing", ["AC-008"]),
-    ("billing", "billing", ["AC-004", "AC-008"]),
-    ("calendar", "calendar", ["AC-011", "AC-027"]),
-    ("deadline", "calendar", ["AC-011", "AC-027"]),
-    ("ical", "calendar", ["AC-027"]),
-    ("upload", "files", ["AC-039"]),
-    ("storage", "files", ["AC-039"]),
-    ("quarantine", "files", ["AC-039"]),
-    ("file", "files", ["AC-039"]),
-    ("editor", "editor", ["AC-040"]),
-    ("doc_tender", "doc-tender", ["AC-041", "AC-042"]),
-    ("tender", "doc-tender", ["AC-041", "AC-042"]),
-    ("totp", "identity", ["AC-001", "AC-024"]),
-    ("password", "identity", ["AC-001"]),
-    ("login", "identity", ["AC-001", "AC-024"]),
-    ("session", "identity", ["AC-024"]),
-    ("token", "identity", ["AC-018", "AC-024"]),
-    ("user", "identity", ["AC-004", "AC-024"]),
-    ("notification", "identity", ["AC-019"]),
-    ("nav", "identity", ["AC-019"]),
-    ("matter", "practice", ["AC-003", "AC-020", "AC-023"]),
-    ("contact", "practice", ["AC-003", "AC-020"]),
-    ("conflict", "practice", ["AC-003"]),
-    ("search", "practice", ["AC-020"]),
-    ("note", "practice", ["AC-023"]),
-    ("page_size", "platform", ["AC-030"]),
-    ("setting", "platform", ["AC-030"]),
-    ("backup", "platform", ["AC-018"]),
-    ("mcp", "api", ["AC-002"]),
-    ("openapi", "api", ["AC-002"]),
-    ("scope", "api", ["AC-002"]),
-)
+MAP_PATH = ROOT / "docs" / "api" / "method-acceptance.json"
+ACCEPTANCE_PATH = ROOT / "docs" / "build" / "acceptance.json"
+TASKS_PATH = ROOT / "docs" / "build" / "tasks.json"
 
 
 def _policy_surface() -> tuple[set[str], dict[str, str], list[dict]]:
@@ -140,16 +78,61 @@ def _returned_constants(node: ast.AST) -> set[str]:
     return found
 
 
-def _owner(name: str) -> tuple[str, list[str]]:
-    lowered = name.lower()
-    for token, owner, acceptance in OWNER_RULES:
-        if token in lowered:
-            return owner, list(acceptance)
-    return "unmapped", []
+def reviewed_method_map() -> dict:
+    """Explicit method map. Acceptance ids must exist and belong to the named task."""
+    mapping = json.loads(MAP_PATH.read_text(encoding="utf-8"))
+    known = {row["id"] for row in json.loads(ACCEPTANCE_PATH.read_text(encoding="utf-8"))}
+    tasks = {
+        row["id"]: set(row.get("acceptance_ids") or [])
+        for row in json.loads(TASKS_PATH.read_text(encoding="utf-8"))["tasks"]
+    }
+    for name, row in mapping.items():
+        owners = list(row.get("tasks") or [])
+        if row.get("go_owner") != "multiple" and row.get("go_owner") not in owners:
+            owners.append(row["go_owner"])
+        for acceptance_id in row.get("acceptance") or []:
+            if acceptance_id not in known:
+                raise ValueError(f"{name} cites unknown {acceptance_id}")
+            if not any(acceptance_id in tasks.get(owner, ()) for owner in owners):
+                raise ValueError(f"{name} cites {acceptance_id}, which is not on {owners}")
+    return mapping
+
+
+def _owner(name: str) -> tuple[str, list[str], list[str]]:
+    if name == "setUpClass":
+        return "unmapped", [], []
+    row = reviewed_method_map().get(name)
+    if row is None:
+        raise ValueError(f"{name} has no reviewed method mapping")
+    return row["go_owner"], list(row.get("acceptance") or []), list(row.get("prd") or [])
+
+
+def _literal_part(node: ast.AST) -> dict:
+    if isinstance(node, ast.Constant):
+        value = node.value
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return {"kind": "constant", "value": value}
+        return {"kind": "constant", "unrepresented": True}
+    if isinstance(node, ast.Dict):
+        keys = []
+        for key in node.keys:
+            keys.append(key.value if isinstance(key, ast.Constant) else None)
+        return {"kind": "dict", "keys": keys, "values_omitted": True}
+    if isinstance(node, ast.Name):
+        return {"kind": "name", "id": node.id}
+    if isinstance(node, ast.Call):
+        func = node.func
+        label = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "?")
+        return {"kind": "call", "name": label}
+    return {"kind": type(node).__name__}
+
+
+def _statement_text(lines: list[str], node: ast.AST) -> str:
+    return " ".join(line.strip() for line in lines[node.lineno - 1 : node.end_lineno])
 
 
 def _case_tables(node: ast.AST, lines: list[str]) -> list[dict]:
-    """Lists and loops whose elements are tuples. This is the explicit case count, not a method count."""
+    """Literal tuple rows. Dicts and calls stay visible and are not scenarios."""
     tables = []
     for child in ast.walk(node):
         target = None
@@ -163,13 +146,17 @@ def _case_tables(node: ast.AST, lines: list[str]) -> list[dict]:
             continue
         if not target.elts or not all(isinstance(elt, ast.Tuple) for elt in target.elts):
             continue
-        rows = []
-        for elt in target.elts:
-            if not isinstance(elt, ast.Tuple):
-                continue
-            values = [item.value for item in elt.elts if isinstance(item, ast.Constant)]
-            rows.append([value for value in values if isinstance(value, (str, int, bool))])
-        tables.append({"line": line, "cases": len(target.elts), "constants": rows, "text": lines[line - 1].strip()})
+        rows = [[_literal_part(item) for item in elt.elts] for elt in target.elts if isinstance(elt, ast.Tuple)]
+        tables.append(
+            {
+                "line": line,
+                "literal_rows": len(target.elts),
+                "rows": rows,
+                "text": _statement_text(lines, child),
+                "complete": False,
+                "is_scenario": False,
+            }
+        )
     return tables
 
 
@@ -232,7 +219,7 @@ def classify_contract_tests() -> dict:
                 kind = "simulator_behavior"
             else:
                 kind = "contract_validation"
-            owner, acceptance = _owner(item.name)
+            owner, acceptance, prd = _owner(item.name)
             assertion_calls = [
                 child
                 for child in ast.walk(item)
@@ -251,12 +238,13 @@ def classify_contract_tests() -> dict:
                     "kind": kind,
                     "go_owner": owner,
                     "acceptance": acceptance,
+                    "prd": prd,
                     "behavioral": behavioral,
                     "assertion_count": len(assertion_calls),
                     "loop_count": len(loops),
-                    "explicit_case_count": sum(table["cases"] for table in case_tables),
+                    "explicit_case_count": sum(table["literal_rows"] for table in case_tables),
                     "case_tables": case_tables,
-                    "assertion_lines": [lines[child.lineno - 1].strip() for child in assertion_calls],
+                    "assertion_lines": [_statement_text(lines, child) for child in assertion_calls],
                     "source": "api/tests/test_contract.py",
                 }
             )
@@ -301,18 +289,22 @@ def write_stage1_documents() -> None:
                 "kind": row["kind"],
                 "baseline_sha": BASELINE,
                 "go_owner": row["go_owner"],
-                "acceptance": row["acceptance"] if row["behavioral"] else (row["acceptance"] or ["AC-002"]),
+                "acceptance": row["acceptance"],
+                "prd": row["prd"],
+                "source_line_basis": "current_worktree",
+                "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
                 "assertion_count": row["assertion_count"],
                 "loop_count": row["loop_count"],
                 "explicit_case_count": row["explicit_case_count"],
                 "runtime_status": "runtime_pending" if blocking else "contract_check",
                 "blocking_removal": blocking,
                 "gap": (
-                    "Behavioral method. Identity and modules cases are expanded in scenario-manifest.json. "
-                    "Other domains remain a named batch and are not claimed complete."
+                    "Pending. This method is not converted. The source index does not make it complete."
                     if blocking
                     else ""
                 ),
+                "complete": False,
+                "retirement_status": "pending" if blocking else "not_behavioral",
             }
         )
     behavioral = [row for row in data["methods"] if row["behavioral"]]
@@ -329,7 +321,7 @@ def write_stage1_documents() -> None:
             "contract_test_methods_including_setup": len(methods),
             "unittest_tests": data["unittest_tests"],
             "setup_methods": data["setup_methods"],
-            "meaning": "102 ContractTest methods are 101 unittest tests plus setUpClass.",
+            "meaning": f"{len(methods)} ContractTest methods are {data['unittest_tests']} unittest tests plus {data['setup_methods']} setUpClass.",
             "top_level_helpers": len(data["helpers"]),
             "nested_functions_inside_test_methods": len(data["nested_in_tests"]),
             "nested_structural_helpers_inside_top_level_helpers": data["nested_structural_helpers"],
@@ -340,6 +332,8 @@ def write_stage1_documents() -> None:
             "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
             "behavioral_methods": len(behavioral),
             "behavioral_methods_are_not_scenarios": True,
+            "converted_for_retirement": 0,
+            "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one.",
         },
         "counts": {
             "contract_tests": sum(1 for row in methods if row["kind"] == "contract_validation"),
@@ -375,40 +369,38 @@ def write_stage1_documents() -> None:
         "importers": previous.get("importers", {}),
     }
     domains = {}
-    expanded = []
-    remaining = {}
+    index_entries = []
     for owner, rows in sorted(by_domain.items()):
-        entry = {
+        domains[owner] = {
             "go_owner": owner,
             "methods": len(rows),
-            "assertion_calls": sum(row["assertion_count"] for row in rows),
-            "explicit_case_rows": sum(row["explicit_case_count"] for row in rows),
+            "assertion_call_sites": sum(row["assertion_count"] for row in rows),
+            "literal_rows": sum(row["explicit_case_count"] for row in rows),
             "method_names": [row["name"] for row in rows],
+            "status": "not_converted",
+            "complete": False,
         }
-        if owner in {"identity", "modules"}:
-            entry["status"] = "expanded_in_this_batch"
-            for row in rows:
-                expanded.append(
-                    {
-                        "id": row["id"],
-                        "go_owner": owner,
-                        "acceptance": row["acceptance"],
-                        "source": f"api/tests/test_contract.py:{row['line']}-{row['end_line']}",
-                        "kind": row["kind"],
-                        "assertion_count": row["assertion_count"],
-                        "loop_count": row["loop_count"],
-                        "explicit_cases": row["case_tables"],
-                        "assertions": row["assertion_lines"],
-                        "runtime_status": "runtime_pending",
-                        "complete": True,
-                    }
-                )
-        else:
-            entry["status"] = "remaining_batch"
-            entry["complete"] = False
-        domains[owner] = entry
-        if entry["status"] == "remaining_batch":
-            remaining[owner] = entry
+        for row in rows:
+            index_entries.append(
+                {
+                    "id": row["id"],
+                    "go_owner": owner,
+                    "acceptance": row["acceptance"],
+                    "prd": row["prd"],
+                    "source": f"api/tests/test_contract.py:{row['line']}-{row['end_line']}",
+                    "source_line_basis": "current_worktree",
+                    "kind": row["kind"],
+                    "assertion_call_sites": row["assertion_count"],
+                    "loop_count": row["loop_count"],
+                    "literal_rows": row["case_tables"],
+                    "assertion_statements": row["assertion_lines"],
+                    "runtime_status": "runtime_pending",
+                    "complete": False,
+                    "is_scenario": False,
+                    "executed": False,
+                    "retirement_status": "pending",
+                }
+            )
     from contract.build import build_spec
 
     operation_ids = sorted(
@@ -419,13 +411,15 @@ def write_stage1_documents() -> None:
     )
     manifest = {
         "baseline_sha": BASELINE,
+        "document": "source_index",
         "stage": "1b",
-        "note": "A method is not a scenario. explicit_cases are tuple rows copied from the test source. Remaining domains are not expanded and are not complete.",
+        "complete": False,
+        "converted_for_retirement": 0,
+        "note": "Source index only. methods, assertion_call_sites, and literal_rows are not scenarios and were not executed. Every behavioral method stays pending for retirement.",
         "spec_operation_ids": operation_ids,
         "spec_operation_guard": "A new operation id must be added here before the stage check passes. This records the mapped operation set. It does not execute those operations.",
-        "identity_and_modules": expanded,
+        "entries": index_entries,
         "domains": domains,
-        "remaining_batches": remaining,
         "runtime_status": "runtime_pending",
     }
     fixtures = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -493,6 +487,18 @@ def write_stage1_documents() -> None:
             continue
         seen_ids.add(fixture["id"])
         unique.append(fixture)
+    for fixture in unique:
+        if fixture["id"].startswith(("reg-downloadFileVersion-", "reg-createPayment-", "reg-getFileUpload-")):
+            fixture["fixture_kind"] = "incomplete_source_excerpt"
+            fixture["complete"] = False
+            fixture["reproducible"] = False
+            fixture["executed"] = False
+            fixture["runtime_assertion"] = False
+            fixture["missing_for_replay"] = ["grant", "registration", "subscriptions", "resource", "path", "state"]
+            fixture["label"] = "Incomplete source excerpt. It does not carry the grant, registration, subscription, or resource state the recorded dispatcher result needs. The original test remains the regression."
+        else:
+            fixture["complete"] = False
+            fixture["executed"] = False
     fixtures["fixtures"] = unique
     fixtures["stage"] = "1b"
     fixtures["runtime_status"] = "runtime_pending"
