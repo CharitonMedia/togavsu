@@ -894,6 +894,11 @@ def _practice(api: Contract) -> None:
         extra_access=WALL,
         extra_features=["matter-glance", "include-extensions"],
     )
+    api.spec["paths"]["/api/v1/matters/{matter_id}"]["patch"]["description"] = (
+        "Patches ordinary fields. status may move among prospect, open, and on_hold. "
+        "It cannot set closed and it cannot change a closed matter. "
+        "closeMatter closes a matter. reopenMatter, for an attorney or admin with a reason, restores the status from before the close and emits matter.reopened."
+    )
     api.add(
         "get",
         "/api/v1/matters/{matter_id}/close-preview",
@@ -943,7 +948,13 @@ def _practice(api: Contract) -> None:
         "/api/v1/matters/{matter_id}/merge",
         operation_id="mergeMatter",
         summary="Merge a matter",
-        description="Relinks module rows to the survivor in the same transaction and archives this matter. A hard delete is not available.",
+        description=(
+            "Relinks module rows to the survivor in the same transaction and archives this matter. "
+            "The caller must be allowed to see both this matter and the survivor. "
+            "A missing or unresolved survivor is not treated as accessible. "
+            "An inaccessible matter is not_found. Nothing is relinked, archived, or emitted unless both are allowed. "
+            "A hard delete is not available."
+        ),
         tag="Matters",
         features=["matters", "merge"],
         roles=ATTORNEY,
@@ -1492,7 +1503,7 @@ def _billing(api: Contract) -> None:
         "/api/v1/timers/{timer_id}/stop",
         operation_id="stopTimer",
         summary="Stop a timer",
-        description="Stops the timer and creates a draft time entry for review. The timer's matter wall applies.",
+        description="Stops the timer and creates one draft time entry. The response timer status is stopped, not running or paused. The timer's matter wall applies.",
         tag="Billing",
         features=["timers"],
         roles=STAFF,

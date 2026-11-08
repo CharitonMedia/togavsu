@@ -1213,13 +1213,24 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if not subject.get("noninteractive_accepted") and conditional is None and not subject.get("principal_accepted"):
         roles = access.get("roles") or []
         if not roles or subject.get("role") not in roles:
+            if operation.get("operationId") in {"mergeMatter", "updateMatter", "reopenMatter"}:
+                return {"result": "forbidden", **denied, "events": []}
             return {"result": "forbidden", **denied}
+    if operation.get("operationId") == "mergeMatter":
+        return _merge_matter_decision(subject)
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
         if matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
             row = {"matter_id": matter_id, "matter_walled": bool(subject.get("matter_walled", subject.get("matter_membership") is not None))}
             if not matter_visible(subject, row, single_record=matter_id is not None):
                 return {"result": "not_found", **denied}
+    if operation.get("operationId") == "updateMatter":
+        patch = _matter_patch_decision(subject)
+        if patch["result"] != "allowed":
+            return patch
+        subject["_patch_events"] = patch["events"]
+    if operation.get("operationId") == "reopenMatter":
+        return _reopen_matter_decision(subject)
     owner_denial = _tagged_owner_denial(operation, subject)
     if owner_denial:
         return {"result": owner_denial, **denied}
@@ -1257,7 +1268,66 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     routed = _replacement_decision(operation, subject)
     if routed:
         return {**denied, **routed, "public": False}
-    return {"result": "allowed", "effects": True, "public": False}
+    allowed = {"result": "allowed", "effects": True, "public": False}
+    if subject.get("_patch_events") is not None:
+        allowed["events"] = subject["_patch_events"]
+    return allowed
+
+
+_ORDINARY_MATTER_STATUSES = {"prospect", "open", "on_hold"}
+
+
+def _merge_matter_decision(subject: dict) -> dict:
+    """Both matter ids come from the request. Wall state comes only from trusted matter_walls."""
+    source = subject.get("matter_id")
+    target = subject.get("survivor_id")
+    quiet = {"effects": False, "public": False, "events": [], "relinked": False, "archived": False}
+    if not isinstance(source, str) or not isinstance(target, str) or not source or not target or source == target:
+        return {"result": "validation_failed", **quiet}
+    walls = subject.get("matter_walls")
+    if not isinstance(walls, dict) or source not in walls or target not in walls:
+        return {"result": "not_found", **quiet}
+    for matter_id in (source, target):
+        row = {"matter_id": matter_id, "matter_walled": bool(walls[matter_id])}
+        if not matter_visible(subject, row, single_record=True):
+            return {"result": "not_found", **quiet}
+    return {"result": "allowed", "effects": True, "public": False, "events": ["matter.merged"], "relinked": True, "archived": True}
+
+
+def _matter_patch_decision(subject: dict) -> dict:
+    """PATCH cannot close a matter or change a closed one. reopenMatter is the only reopen path."""
+    quiet = {"effects": False, "public": False, "events": []}
+    stored = subject.get("stored_status")
+    status = subject.get("patch_status", None)
+    if stored not in _ORDINARY_MATTER_STATUSES:
+        return {"result": "forbidden", **quiet}
+    if "patch_status" in subject and status not in _ORDINARY_MATTER_STATUSES:
+        return {"result": "validation_failed", **quiet}
+    return {"result": "allowed", "effects": True, "public": False, "events": ["matter.updated"]}
+
+
+def _reopen_matter_decision(subject: dict) -> dict:
+    """Attorney or admin, with a reason, restores the trusted prior status. The close record stays."""
+    quiet = {"effects": False, "public": False, "events": []}
+    if subject.get("role") not in ("admin", "attorney"):
+        return {"result": "forbidden", **quiet}
+    reason = subject.get("reason")
+    if not isinstance(reason, str) or not reason.strip():
+        return {"result": "validation_failed", **quiet}
+    if subject.get("stored_status") != "closed":
+        return {"result": "validation_failed", **quiet}
+    previous = subject.get("status_before_close")
+    if previous not in _ORDINARY_MATTER_STATUSES:
+        return {"result": "validation_failed", **quiet}
+    return {
+        "result": "allowed",
+        "effects": True,
+        "public": False,
+        "events": ["matter.reopened"],
+        "status": previous,
+        "closed_on": subject.get("closed_on"),
+        "close_reason": subject.get("close_reason"),
+    }
 
 
 def _inherited_record_denial(operation: dict, call: dict) -> str | None:
@@ -1311,6 +1381,10 @@ _PRESERVED_CONTEXT = (
     "viewer_role",
     "description",
     "matter_walls",
+    "stored_status",
+    "status_before_close",
+    "closed_on",
+    "close_reason",
     "core_history",
 )
 
@@ -1365,6 +1439,7 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "installed": call.get("installed"),
         "token_revoked": call.get("token_revoked"),
         "matter_id": path.get("matter_id") or body.get("matter_id") or call.get("matter_id"),
+        "survivor_id": body.get("survivor_id") if isinstance(body.get("survivor_id"), str) else None,
         "matter_walled": call.get("matter_walled"),
         "matter_membership": call.get("matter_membership"),
         "on_wall": call.get("on_wall"),
@@ -1442,6 +1517,10 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
     for key in _PRESERVED_CONTEXT:
         if key in call:
             subject[key] = call[key]
+    if "status" in body:
+        subject["patch_status"] = body.get("status")
+    if "reason" in body and operation.get("operationId") == "reopenMatter":
+        subject["reason"] = body.get("reason")
     if isinstance(body, dict) and "scope" in body:
         subject["scope"] = body["scope"]
     elif "scope" in call:
@@ -1496,7 +1575,12 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
     if not presented_bearer and not presented_cookie:
         return {"result": "unauthenticated", **denied}
     decision = operation_authorization(spec, operation, _mcp_operation_call(call, arguments, operation))
-    return {"result": decision["result"], "effects": decision.get("effects", False), "public": False, **({"routed": decision["routed"]} if decision.get("routed") else {})}
+    forwarded = {
+        key: decision[key]
+        for key in ("routed", "events", "relinked", "archived", "status", "closed_on", "close_reason")
+        if key in decision
+    }
+    return {"result": decision["result"], "effects": decision.get("effects", False), "public": False, **forwarded}
 
 
 def published_version_events(operation: dict, *, committed: bool, version_count: int = 0) -> list[str]:

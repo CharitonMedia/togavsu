@@ -15,6 +15,18 @@ ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "api" / "contract" / "policy.py"
 TEST_PATH = ROOT / "api" / "tests" / "test_contract.py"
 BASELINE = "b4350f8af3803b8dc8439b2b2e7a431f198583d9"
+def _file_hashes() -> dict[str, str]:
+    import hashlib
+
+    return {rel: hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() for rel in BASELINE_ARTIFACTS}
+
+
+BASELINE_ARTIFACTS = {
+    "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
+    "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
+    "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+    "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa",
+}
 
 DECISION_RESULTS = {
     "allowed",
@@ -314,7 +326,8 @@ def write_stage1_documents() -> None:
     inventory = {
         "baseline_sha": BASELINE,
         "stage": "1b",
-        "purpose": "Correct inventory classification and keep the simulator. Deletion stays blocked.",
+        "purpose": "Source index and contract checks. The simulator and its tests are retained. Generated documents are no longer byte-identical to the baseline after the named corrections.",
+        "baseline_artifacts": BASELINE_ARTIFACTS,
         "deletion_blocked": True,
         "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
         "counting": {
@@ -348,7 +361,24 @@ def write_stage1_documents() -> None:
             "explicit_cases_in_behavioral_methods": sum(row["explicit_case_count"] for row in behavioral),
             "assertion_calls_in_behavioral_methods": sum(row["assertion_count"] for row in behavioral),
         },
-        "artifacts": previous["artifacts"],
+        "artifacts": _file_hashes(),
+        "intentional_generated_deltas": [
+            {
+                "id": "merge-matter-both-walls",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "mergeMatter's description now says both matters must be visible. The MCP catalog and coverage do not inline that description.",
+            },
+            {
+                "id": "matter-patch-cannot-reopen",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "MatterWritePatch status is prospect, open, or on_hold, and updateMatter's description keeps close and reopen on their own methods.",
+            },
+            {
+                "id": "stopped-timer-response",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "stopTimer's TimerStopResult now references StoppedTimer, whose status is stopped. The MCP tool still names TimerStopResult. Active Timer values stay running or paused.",
+            },
+        ],
         "intentional_corrections": [
             {
                 "id": "grant-workflow-effective-scopes",

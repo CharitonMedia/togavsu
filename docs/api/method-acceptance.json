@@ -100,5 +100,8 @@
   "test_record_mutations_emit_events_only_after_commit": {"go_owner": "practice", "tasks": ["practice"], "acceptance": ["AC-024"], "prd": ["8"]},
   "test_marketplace_flag_and_pull": {"go_owner": "marketplace", "tasks": ["marketplace"], "acceptance": ["AC-015"], "prd": ["9"]},
   "test_dispatcher_parity_matrix": {"go_owner": "multiple", "tasks": ["practice", "billing", "modules", "files"], "acceptance": ["AC-003", "AC-008", "AC-012", "AC-036", "AC-039"], "prd": ["7", "9"]},
-  "test_custom_acceptance_cannot_skip_operation_scopes": {"go_owner": "api", "tasks": ["api"], "acceptance": ["AC-002"], "prd": ["7", "9.3"]}
+  "test_custom_acceptance_cannot_skip_operation_scopes": {"go_owner": "api", "tasks": ["api"], "acceptance": ["AC-002"], "prd": ["7", "9.3"]},
+  "test_merge_matter_authorizes_both_records": {"go_owner": "practice", "tasks": ["practice"], "acceptance": ["AC-003"], "prd": ["8"]},
+  "test_matter_patch_cannot_reopen": {"go_owner": "practice", "tasks": ["practice"], "acceptance": ["AC-023"], "prd": ["8.12"]},
+  "test_stopped_timer_response_is_terminal": {"go_owner": "billing", "tasks": ["billing"], "acceptance": [], "prd": ["8.3"], "acceptance_note": "Billing owns timers. No acceptance id states the stopped-timer response."}
 }

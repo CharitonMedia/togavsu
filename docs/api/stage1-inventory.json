@@ -1,33 +1,39 @@
 {
   "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
   "stage": "1b",
-  "purpose": "Correct inventory classification and keep the simulator. Deletion stays blocked.",
+  "purpose": "Source index and contract checks. The simulator and its tests are retained. Generated documents are no longer byte-identical to the baseline after the named corrections.",
+  "baseline_artifacts": {
+    "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
+    "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
+    "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+    "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa"
+  },
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
   "counting": {
-    "contract_test_methods_including_setup": 103,
-    "unittest_tests": 102,
+    "contract_test_methods_including_setup": 106,
+    "unittest_tests": 105,
     "setup_methods": 1,
-    "meaning": "103 ContractTest methods are 102 unittest tests plus 1 setUpClass.",
+    "meaning": "106 ContractTest methods are 105 unittest tests plus 1 setUpClass.",
     "top_level_helpers": 23,
-    "nested_functions_inside_test_methods": 20,
+    "nested_functions_inside_test_methods": 22,
     "nested_structural_helpers_inside_top_level_helpers": [
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 7237,
+        "line": 7444,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 7260,
+        "line": 7467,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 7376,
+        "line": 7583,
         "structural": true
       }
     ],
@@ -35,7 +41,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 2660,
+        "line": 2744,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -53,31 +59,54 @@
       "module_ui_targets": "sidebar_entries"
     },
     "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
-    "behavioral_methods": 48,
+    "behavioral_methods": 50,
     "behavioral_methods_are_not_scenarios": true,
     "converted_for_retirement": 0,
     "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one."
   },
   "counts": {
-    "contract_tests": 55,
+    "contract_tests": 56,
     "simulator_tests": 1,
-    "mixed_tests": 47,
-    "test_methods": 103,
-    "behavioral_methods": 48,
+    "mixed_tests": 49,
+    "test_methods": 106,
+    "behavioral_methods": 50,
     "local_helpers": 23,
     "simulator_helpers": 9,
-    "nested_helpers": 20,
-    "blocking_gaps": 48,
+    "nested_helpers": 22,
+    "blocking_gaps": 50,
     "explicit_cases_in_behavioral_methods": 215,
-    "assertion_calls_in_behavioral_methods": 1569,
+    "assertion_calls_in_behavioral_methods": 1645,
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
+    "api/openapi/v1/openapi.json": "c8938e788bd4a1ef60a58c3016313c40ac02236a83de01a011e2e6bd3c34a452",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
     "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa"
   },
+  "intentional_generated_deltas": [
+    {
+      "id": "merge-matter-both-walls",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "mergeMatter's description now says both matters must be visible. The MCP catalog and coverage do not inline that description."
+    },
+    {
+      "id": "matter-patch-cannot-reopen",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "MatterWritePatch status is prospect, open, or on_hold, and updateMatter's description keeps close and reopen on their own methods."
+    },
+    {
+      "id": "stopped-timer-response",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "stopTimer's TimerStopResult now references StoppedTimer, whose status is stopped. The MCP tool still names TimerStopResult. Active Timer values stay running or paused."
+    }
+  ],
   "intentional_corrections": [
     {
       "id": "grant-workflow-effective-scopes",
@@ -2688,6 +2717,79 @@
       "gap": "Pending. This method is not converted. The source index does not make it complete.",
       "complete": false,
       "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_merge_matter_authorizes_both_records",
+      "source": "api/tests/test_contract.py",
+      "line": 7122,
+      "end_line": 7185,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "practice",
+      "acceptance": [
+        "AC-003"
+      ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 34,
+      "loop_count": 0,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_matter_patch_cannot_reopen",
+      "source": "api/tests/test_contract.py",
+      "line": 7187,
+      "end_line": 7265,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "practice",
+      "acceptance": [
+        "AC-023"
+      ],
+      "prd": [
+        "8.12"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 42,
+      "loop_count": 1,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_stopped_timer_response_is_terminal",
+      "source": "api/tests/test_contract.py",
+      "line": 7267,
+      "end_line": 7327,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "billing",
+      "acceptance": [],
+      "prd": [
+        "8.3"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 10,
+      "loop_count": 1,
+      "explicit_case_count": 0,
+      "runtime_status": "contract_check",
+      "blocking_removal": false,
+      "gap": "",
+      "complete": false,
+      "retirement_status": "not_behavioral"
     }
   ],
   "helpers": [
@@ -2698,112 +2800,112 @@
     },
     {
       "name": "_operation",
-      "line": 7123,
+      "line": 7330,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 7130,
+      "line": 7337,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 7136,
+      "line": 7343,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 7140,
+      "line": 7347,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 7161,
+      "line": 7368,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 7165,
+      "line": 7372,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 7174,
+      "line": 7381,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 7182,
+      "line": 7389,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 7201,
+      "line": 7408,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 7207,
+      "line": 7414,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 7229,
+      "line": 7436,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 7253,
+      "line": 7460,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 7275,
+      "line": 7482,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 7296,
+      "line": 7503,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 7313,
+      "line": 7520,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 7321,
+      "line": 7528,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 7330,
+      "line": 7537,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 7344,
+      "line": 7551,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 7357,
+      "line": 7564,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 7366,
+      "line": 7573,
       "kind": "simulator_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 7373,
+      "line": 7580,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 7392,
+      "line": 7599,
       "kind": "contract_helper"
     }
   ],
@@ -2907,6 +3009,16 @@
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "validate",
       "line": 6814
+    },
+    {
+      "test": "ContractTest.test_merge_matter_authorizes_both_records",
+      "name": "decide",
+      "line": 7128
+    },
+    {
+      "test": "ContractTest.test_matter_patch_cannot_reopen",
+      "name": "call",
+      "line": 7197
     }
   ],
   "behavioral_helpers": [
@@ -2968,7 +3080,9 @@
     "ContractTest.test_record_mutations_emit_events_only_after_commit",
     "ContractTest.test_marketplace_flag_and_pull",
     "ContractTest.test_custom_acceptance_cannot_skip_operation_scopes",
-    "ContractTest.test_dispatcher_parity_matrix"
+    "ContractTest.test_dispatcher_parity_matrix",
+    "ContractTest.test_merge_matter_authorizes_both_records",
+    "ContractTest.test_matter_patch_cannot_reopen"
   ],
   "hidden_runtime_consumers": [],
   "non_python_consumers": [],

@@ -9310,7 +9310,7 @@
       "patch": {
         "operationId": "updateMatter",
         "summary": "Update a matter",
-        "description": "Patches fields the caller may write. Omitted fields stay as they are. Server-computed fields on the write schema are ignored.",
+        "description": "Patches ordinary fields. status may move among prospect, open, and on_hold. It cannot set closed and it cannot change a closed matter. closeMatter closes a matter. reopenMatter, for an attorney or admin with a reason, restores the status from before the close and emits matter.reopened.",
         "tags": [
           "Matters"
         ],
@@ -10369,7 +10369,7 @@
       "post": {
         "operationId": "mergeMatter",
         "summary": "Merge a matter",
-        "description": "Relinks module rows to the survivor in the same transaction and archives this matter. A hard delete is not available.",
+        "description": "Relinks module rows to the survivor in the same transaction and archives this matter. The caller must be allowed to see both this matter and the survivor. A missing or unresolved survivor is not treated as accessible. An inaccessible matter is not_found. Nothing is relinked, archived, or emitted unless both are allowed. A hard delete is not available.",
         "tags": [
           "Matters"
         ],
@@ -23000,7 +23000,7 @@
       "post": {
         "operationId": "stopTimer",
         "summary": "Stop a timer",
-        "description": "Stops the timer and creates a draft time entry for review. The timer's matter wall applies.",
+        "description": "Stops the timer and creates one draft time entry. The response timer status is stopped, not running or paused. The timer's matter wall applies.",
         "tags": [
           "Billing"
         ],
@@ -64557,7 +64557,61 @@
           "accumulated_seconds",
           "status"
         ],
-        "description": "One running or paused timer per user per matter. accumulated_seconds survives pause and resume."
+        "description": "An active timer: running or paused. List and resume return only these. stopTimer returns StoppedTimer instead. accumulated_seconds survives pause and resume."
+      },
+      "StoppedTimer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "matter_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7."
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "stopped_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "UTC timestamp."
+          },
+          "accumulated_seconds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "status": {
+            "const": "stopped"
+          },
+          "time_entry_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The draft time entry created by this stop."
+          }
+        },
+        "required": [
+          "id",
+          "matter_id",
+          "user_id",
+          "started_at",
+          "stopped_at",
+          "accumulated_seconds",
+          "status",
+          "time_entry_id"
+        ],
+        "description": "Terminal timer. status is stopped. It is not an active timer and is not returned by list or resume."
       },
       "TimerWrite": {
         "type": "object",
@@ -64579,7 +64633,7 @@
         "additionalProperties": false,
         "properties": {
           "timer": {
-            "$ref": "#/components/schemas/Timer"
+            "$ref": "#/components/schemas/StoppedTimer"
           },
           "time_entry": {
             "$ref": "#/components/schemas/TimeEntry"
@@ -64589,7 +64643,7 @@
           "timer",
           "time_entry"
         ],
-        "description": "Stopping a timer creates a draft time entry."
+        "description": "Stopping a timer creates one draft time entry. timer.status is stopped and timer.time_entry_id is that time entry."
       },
       "Expense": {
         "type": "object",
@@ -76624,9 +76678,9 @@
             "enum": [
               "prospect",
               "open",
-              "on_hold",
-              "closed"
-            ]
+              "on_hold"
+            ],
+            "description": "PATCH may move among prospect, open, and on_hold. closed is closeMatter only. A closed matter is not updated here."
           },
           "stage": {
             "type": "string"
@@ -76775,7 +76829,7 @@
             }
           }
         },
-        "description": "Writable matter fields. number is assigned. Close and reopen use their own methods. custom_fields is written in the same transaction. A required field for this practice area must be present. Patch: every field is optional."
+        "description": "Ordinary matter updates. Omitted fields stay as they are. status cannot be closed and cannot change a closed matter. closeMatter closes. reopenMatter restores the status from before the close."
       },
       "MatterPartyWritePatch": {
         "type": "object",

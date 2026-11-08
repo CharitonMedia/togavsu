@@ -95,9 +95,12 @@ class Stage1InventoryTest(unittest.TestCase):
         self.assertTrue(self.inventory["deletion_blocked"])
         self.assertGreaterEqual(self.inventory["counts"]["behavioral_methods"], 46)
         self.assertEqual(len(self.inventory["blocking_gaps"]), self.inventory["counts"]["blocking_gaps"])
-        self.assertEqual(self.inventory["counting"]["unittest_tests"], 102)
+        self.assertEqual(self.inventory["counting"]["unittest_tests"], self.classification["unittest_tests"])
         self.assertEqual(self.inventory["counting"]["setup_methods"], 1)
-        self.assertEqual(self.inventory["counting"]["contract_test_methods_including_setup"], 103)
+        self.assertEqual(
+            self.inventory["counting"]["contract_test_methods_including_setup"],
+            self.classification["unittest_tests"] + 1,
+        )
         live = {row["name"]: row for row in self.classification["methods"]}
         for row in self.inventory["tests"]:
             current = live[row["id"].split(".", 1)[1]]
@@ -312,7 +315,28 @@ class Stage1InventoryTest(unittest.TestCase):
             self.assertEqual(disk, text, path.name)
             digest = hashlib.sha256(disk.encode("utf-8")).hexdigest()
             rel = str(path.relative_to(ROOT))
+            self.assertEqual(self.inventory["baseline_artifacts"][rel], {
+                "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
+                "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
+                "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+                "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa",
+            }[rel])
             self.assertEqual(self.inventory["artifacts"][rel], digest, rel)
+        self.assertNotEqual(
+            self.inventory["artifacts"]["api/openapi/v1/openapi.json"],
+            self.inventory["baseline_artifacts"]["api/openapi/v1/openapi.json"],
+        )
+        for rel in (
+            "api/openapi/marketplace/openapi.json",
+            "api/openapi/v1/mcp-tools.json",
+            "docs/api/coverage.md",
+        ):
+            self.assertEqual(self.inventory["artifacts"][rel], self.inventory["baseline_artifacts"][rel], rel)
+        delta_ids = {row["id"] for row in self.inventory["intentional_generated_deltas"]}
+        self.assertEqual(
+            delta_ids,
+            {"merge-matter-both-walls", "matter-patch-cannot-reopen", "stopped-timer-response"},
+        )
 
     def test_builder_does_not_import_the_simulator(self):
         for rel in (

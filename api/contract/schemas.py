@@ -221,6 +221,20 @@ def _redacted(value_schema: dict, description: str) -> dict:
 def _register(schemas: dict[str, dict]) -> dict[str, dict]:
     generated: dict[str, dict] = {}
     for name, schema in schemas.items():
+        if name == "MatterWrite":
+            patch = copy.deepcopy(schema)
+            patch.pop("required", None)
+            patch["properties"]["status"] = _enum(
+                ["prospect", "open", "on_hold"],
+                "PATCH may move among prospect, open, and on_hold. closed is closeMatter only. A closed matter is not updated here.",
+            )
+            patch["description"] = (
+                "Ordinary matter updates. Omitted fields stay as they are. "
+                "status cannot be closed and cannot change a closed matter. "
+                "closeMatter closes. reopenMatter restores the status from before the close."
+            )
+            generated["MatterWritePatch"] = patch
+            continue
         if name.endswith("Write"):
             patch = copy.deepcopy(schema)
             patch.pop("required", None)
@@ -760,14 +774,32 @@ SCHEMAS = _register(
                 "status": _enum(["running", "paused"]),
             },
             ["matter_id", "user_id", "started_at", "accumulated_seconds", "status"],
-            "One running or paused timer per user per matter. accumulated_seconds survives pause and resume.",
+            "An active timer: running or paused. List and resume return only these. stopTimer returns StoppedTimer instead. accumulated_seconds survives pause and resume.",
+        ),
+        "StoppedTimer": _obj(
+            {
+                "id": _uuid(),
+                "matter_id": _uuid(),
+                "user_id": _uuid(),
+                "started_at": _dt(),
+                "stopped_at": _dt(),
+                "accumulated_seconds": {"type": "integer", "minimum": 0},
+                "status": {"const": "stopped"},
+                "time_entry_id": _uuid("The draft time entry created by this stop."),
+            },
+            ["id", "matter_id", "user_id", "started_at", "stopped_at", "accumulated_seconds", "status", "time_entry_id"],
+            "Terminal timer. status is stopped. It is not an active timer and is not returned by list or resume.",
         ),
         "TimerWrite": _obj(
             {"matter_id": _uuid()},
             ["matter_id"],
             "Starts a timer for the caller on this matter. If a paused timer already exists for that user and matter, the server resumes it and keeps accumulated_seconds instead of creating a second timer.",
         ),
-        "TimerStopResult": _obj({"timer": _ref("Timer"), "time_entry": _ref("TimeEntry")}, ["timer", "time_entry"], "Stopping a timer creates a draft time entry."),
+        "TimerStopResult": _obj(
+            {"timer": _ref("StoppedTimer"), "time_entry": _ref("TimeEntry")},
+            ["timer", "time_entry"],
+            "Stopping a timer creates one draft time entry. timer.status is stopped and timer.time_entry_id is that time entry.",
+        ),
         "Expense": _meta(
             {
                 "matter_id": _uuid(),

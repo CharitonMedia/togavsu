@@ -7119,6 +7119,213 @@ class ContractTest(unittest.TestCase):
                 self.assertEqual(decision.get("routed"), case["routed"], case["name"])
             self.assertFalse(decision["public"], case["name"])
 
+    def test_merge_matter_authorizes_both_records(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        survivor = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        other = "018f1a00-7b3c-7d4e-8a11-333333333331"
+        operation = _operation(self.spec, "mergeMatter")
+
+        def decide(walls, body, membership=None, role="attorney", scopes=None):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": role,
+                "token_scopes": ["matters:write"] if scopes is None else scopes,
+                "matter_walls": walls,
+                "matter_membership": {} if membership is None else membership,
+                "tool": "mergeMatter",
+                "arguments": {"path": {"matter_id": source}, "body": body},
+            }
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"])
+            self.assertEqual(http["effects"], mcp["effects"])
+            self.assertEqual(http.get("events"), mcp.get("events"))
+            self.assertEqual(http.get("relinked"), mcp.get("relinked"))
+            self.assertEqual(http.get("archived"), mcp.get("archived"))
+            return mcp
+
+        allowed = decide({source: False, survivor: False}, {"survivor_id": survivor})
+        self.assertEqual(allowed["result"], "allowed")
+        self.assertTrue(allowed["effects"])
+        self.assertEqual(allowed["events"], ["matter.merged"])
+        self.assertTrue(allowed["relinked"])
+        self.assertTrue(allowed["archived"])
+        on_wall = decide({source: True, survivor: True}, {"survivor_id": survivor}, {source: True, survivor: True})
+        self.assertEqual(on_wall["result"], "allowed")
+        self.assertTrue(on_wall["relinked"])
+        self.assertTrue(on_wall["archived"])
+        hidden_survivor = decide({source: False, survivor: True}, {"survivor_id": survivor, "matter_walled": False}, {survivor: False})
+        self.assertEqual(hidden_survivor["result"], "not_found")
+        self.assertFalse(hidden_survivor["effects"])
+        self.assertEqual(hidden_survivor["events"], [])
+        self.assertFalse(hidden_survivor["relinked"])
+        self.assertFalse(hidden_survivor["archived"])
+        hidden_source = decide({source: True, survivor: False}, {"survivor_id": survivor}, {source: False})
+        self.assertEqual(hidden_source["result"], "not_found")
+        self.assertFalse(hidden_source["effects"])
+        self.assertFalse(hidden_source["relinked"])
+        self.assertFalse(hidden_source["archived"])
+        missing = decide({source: False, survivor: False}, {})
+        self.assertEqual(missing["result"], "validation_failed")
+        self.assertFalse(missing["effects"])
+        self.assertFalse(missing["relinked"])
+        self.assertFalse(missing["archived"])
+        mismatched = decide({source: False, other: False}, {"survivor_id": survivor})
+        self.assertEqual(mismatched["result"], "not_found")
+        self.assertFalse(mismatched["relinked"])
+        self.assertFalse(mismatched["archived"])
+        same = decide({source: False}, {"survivor_id": source})
+        self.assertEqual(same["result"], "validation_failed")
+        self.assertFalse(same["relinked"])
+        staff = decide({source: False, survivor: False}, {"survivor_id": survivor}, role="staff")
+        self.assertEqual(staff["result"], "forbidden")
+        self.assertFalse(staff["effects"])
+        self.assertEqual(staff["events"], [])
+
+    def test_matter_patch_cannot_reopen(self):
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        update = _operation(self.spec, "updateMatter")
+        reopen = _operation(self.spec, "reopenMatter")
+        patch_schema = self.spec["components"]["schemas"]["MatterWritePatch"]
+        self.assertEqual(set(patch_schema["properties"]["status"]["enum"]), {"prospect", "open", "on_hold"})
+        _component_validator(self.spec, "MatterWritePatch").validate({"status": "on_hold", "name": "Smith"})
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "MatterWritePatch").validate({"status": "closed"})
+
+        def call(operation, role, body, **trusted):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": role,
+                "token_scopes": ["matters:write"],
+                "matter_walled": False,
+                "tool": operation["operationId"],
+                "arguments": {"path": {"matter_id": matter}, "body": body},
+                **trusted,
+            }
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"])
+            self.assertEqual(http["effects"], mcp["effects"])
+            self.assertEqual(http.get("events"), mcp.get("events"))
+            self.assertEqual(http.get("status"), mcp.get("status"))
+            self.assertEqual(http.get("closed_on"), mcp.get("closed_on"))
+            self.assertEqual(http.get("close_reason"), mcp.get("close_reason"))
+            return mcp
+
+        for role in ("staff", "attorney", "admin"):
+            denied = call(update, role, {"status": "open"}, stored_status="closed")
+            self.assertEqual(denied["result"], "forbidden", role)
+            self.assertFalse(denied["effects"], role)
+            self.assertEqual(denied["events"], [], role)
+        untouched = call(update, "staff", {"name": "Still closed"}, stored_status="closed")
+        self.assertEqual(untouched["result"], "forbidden")
+        self.assertFalse(untouched["effects"])
+        self.assertEqual(untouched["events"], [])
+        moved = call(update, "staff", {"status": "on_hold"}, stored_status="open")
+        self.assertEqual(moved["result"], "allowed")
+        self.assertTrue(moved["effects"])
+        self.assertEqual(moved["events"], ["matter.updated"])
+        ordinary = call(update, "staff", {"name": "Smith"}, stored_status="open")
+        self.assertEqual(ordinary["result"], "allowed")
+        self.assertEqual(ordinary["events"], ["matter.updated"])
+        closed_value = call(update, "attorney", {"status": "closed"}, stored_status="open")
+        self.assertEqual(closed_value["result"], "validation_failed")
+        self.assertFalse(closed_value["effects"])
+        self.assertEqual(closed_value["events"], [])
+        unknown = call(update, "staff", {"name": "Smith"})
+        self.assertEqual(unknown["result"], "forbidden")
+        self.assertFalse(unknown["effects"])
+        kept = {"stored_status": "closed", "status_before_close": "on_hold", "closed_on": "2026-11-01", "close_reason": "Done"}
+        opened = call(reopen, "attorney", {"reason": "Client returned"}, **kept)
+        self.assertEqual(opened["result"], "allowed")
+        self.assertTrue(opened["effects"])
+        self.assertEqual(opened["status"], "on_hold")
+        self.assertEqual(opened["closed_on"], "2026-11-01")
+        self.assertEqual(opened["close_reason"], "Done")
+        self.assertEqual(opened["events"], ["matter.reopened"])
+        admin_opened = call(reopen, "admin", {"reason": "Client returned"}, **kept)
+        self.assertEqual(admin_opened["result"], "allowed")
+        self.assertEqual(admin_opened["events"], ["matter.reopened"])
+        missing_reason = call(reopen, "attorney", {}, **kept)
+        self.assertEqual(missing_reason["result"], "validation_failed")
+        self.assertFalse(missing_reason["effects"])
+        self.assertEqual(missing_reason["events"], [])
+        self.assertNotIn("status", missing_reason)
+        blank_reason = call(reopen, "attorney", {"reason": " "}, **kept)
+        self.assertEqual(blank_reason["result"], "validation_failed")
+        self.assertEqual(blank_reason["events"], [])
+        staff_reopen = call(reopen, "staff", {"reason": "Client returned"}, **kept)
+        self.assertEqual(staff_reopen["result"], "forbidden")
+        self.assertFalse(staff_reopen["effects"])
+        self.assertEqual(staff_reopen["events"], [])
+        self.assertNotIn("status", staff_reopen)
+
+    def test_stopped_timer_response_is_terminal(self):
+        schemas = self.spec["components"]["schemas"]
+        self.assertEqual(set(schemas["Timer"]["properties"]["status"]["enum"]), {"running", "paused"})
+        self.assertEqual(schemas["StoppedTimer"]["properties"]["status"]["const"], "stopped")
+        self.assertEqual(_schema_name(_operation(self.spec, "stopTimer")["responses"]["200"]), "TimerStopResult")
+        self.assertEqual(_schema_name(_operation(self.spec, "resumeTimer")["responses"]["200"]), "Timer")
+        self.assertEqual(_schema_name(_operation(self.spec, "pauseTimer")["responses"]["200"]), "Timer")
+        entry_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        timer_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        user = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        activity = "018f1a00-7b3c-7d4e-8a11-121212121212"
+        entry = {
+            "id": entry_id,
+            "created_at": "2026-11-07T18:00:00Z",
+            "created_by": user,
+            "updated_at": "2026-11-07T18:00:00Z",
+            "matter_id": matter,
+            "user_id": user,
+            "worked_on": "2026-11-07",
+            "increments": 2,
+            "description": "Hearing",
+            "activity_type_id": activity,
+            "billable": True,
+            "rate_cents": 0,
+            "source": "timer",
+            "custom_fields": [],
+        }
+        terminal = {
+            "id": timer_id,
+            "matter_id": matter,
+            "user_id": user,
+            "started_at": "2026-11-07T17:00:00Z",
+            "stopped_at": "2026-11-07T18:00:00Z",
+            "accumulated_seconds": 3600,
+            "status": "stopped",
+            "time_entry_id": entry_id,
+        }
+        _component_validator(self.spec, "TimerStopResult").validate({"timer": terminal, "time_entry": entry})
+        self.assertEqual(terminal["status"], "stopped")
+        self.assertEqual(terminal["time_entry_id"], entry["id"])
+        self.assertEqual(terminal["matter_id"], entry["matter_id"])
+        stopped = _component_validator(self.spec, "StoppedTimer")
+        for status in ("running", "paused"):
+            with self.assertRaises(Exception):
+                stopped.validate({**terminal, "status": status})
+        active = {
+            "id": timer_id,
+            "created_at": "2026-11-07T17:00:00Z",
+            "created_by": user,
+            "updated_at": "2026-11-07T17:30:00Z",
+            "matter_id": matter,
+            "user_id": user,
+            "started_at": "2026-11-07T17:00:00Z",
+            "accumulated_seconds": 1800,
+            "status": "paused",
+        }
+        _component_validator(self.spec, "Timer").validate(active)
+        _component_validator(self.spec, "Timer").validate({**active, "status": "running"})
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "Timer").validate({**active, "status": "stopped"})
+
 
 def _operation(spec: dict, operation_id: str) -> dict:
     for _method, _path, operation in _ops(spec):

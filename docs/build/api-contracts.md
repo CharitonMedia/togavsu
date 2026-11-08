@@ -48,7 +48,9 @@ Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/co
 
 A presented bearer must hold a published view scope on the token, not only in the approval list. `createApiToken` requires `tokens:write` in addition to the child-scope ceiling. `initiateProcessorPayment` applies the declared processor policy, so `payments:write` alone cannot initialize a trust payment. Custom acceptance does not skip an operation's own scopes. Entry-type and per-item scope lists stay alternatives.
 
-Phase 1 still means the OpenAPI documents validate. Run `python3 -m pip install -r api/requirements-dev.txt` and then `sh api/check.sh`. That command does not execute runtime fixtures. REST and MCP behavior stays with the Go work. Product CI wiring belongs to the platform owner.
+The simulator and its tests are retained. They are not byte-identical to baseline `b4350f8a` after the later authorization corrections. `mergeMatter` authorizes both matters. `MatterWritePatch` cannot close or reopen. `stopTimer` returns a stopped timer. Those three changes are why the current OpenAPI, MCP catalog, and coverage differ from the baseline hashes. The marketplace document is unchanged. `docs/api/stage1-inventory.json` keeps the baseline hashes separately from the current hashes.
+
+Phase 1 still means the OpenAPI documents validate. Run `python3 -m pip install -r api/requirements-dev.txt` and then `sh api/check.sh`. That command does not execute runtime fixtures and does not mean product CI already calls it. REST and MCP behavior stays with the Go work. The platform owner wires the command.
 
 ```
 file: api/contract/model.py
