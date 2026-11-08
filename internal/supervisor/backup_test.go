@@ -2178,7 +2178,7 @@ func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
 	if err := dest.Put(context.Background(), "second.tgbk", bytes.NewReader(second), secondSum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "file" {
+	if strings.Join(steps, ",") != "root,namespace,file" {
 		t.Fatalf("existing directory syncs = %v", steps)
 	}
 	rc, err = dest.Get(context.Background(), "second.tgbk")
@@ -2208,7 +2208,7 @@ func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
 	if err := freshNS.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,file" {
 		t.Fatalf("new namespace syncs = %v", steps)
 	}
 }
@@ -2373,6 +2373,256 @@ func TestNewDirectorySyncFailurePublishesNothing(t *testing.T) {
 	}
 	if got, err := os.ReadFile(filepath.Join(root, "kept")); err != nil || string(got) != "legit" {
 		t.Fatalf("parent file changed %q %v", got, err)
+	}
+}
+
+func TestParentDirectorySyncIsRetriedBeforeTheCopyIsConfirmed(t *testing.T) {
+	body := []byte("archive-bytes")
+	sum, err := sha256Hex(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	root := filepath.Join(parent, "dest")
+	spec := DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"}
+	failed := &PathDestination{Spec: spec, dirSync: func(step string) error {
+		if step == "root" {
+			return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+		}
+		return nil
+	}}
+	if err := failed.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err == nil {
+		t.Fatal("root sync failure was acknowledged")
+	}
+	if _, err := os.Stat(filepath.Join(root, "nsowned01", "owned.tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("archive published after root sync failure: %v", err)
+	}
+	var steps []string
+	reopened := &PathDestination{Spec: spec, dirSync: func(step string) error {
+		steps = append(steps, step)
+		return nil
+	}}
+	if err := reopened.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "root,namespace,file" {
+		t.Fatalf("reopened put syncs = %v", steps)
+	}
+	rc, err := reopened.Get(context.Background(), "owned.tgbk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("stored %q %v", got, err)
+	}
+
+	nsRoot := t.TempDir()
+	nsSpec := DestinationSpec{ID: "share", Kind: "path", Path: nsRoot, Namespace: "nsowned01"}
+	nsFailed := &PathDestination{Spec: nsSpec, dirSync: func(step string) error {
+		if step == "namespace" {
+			return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+		}
+		return nil
+	}}
+	if err := nsFailed.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err == nil {
+		t.Fatal("namespace sync failure was acknowledged")
+	}
+	steps = nil
+	nsAgain := &PathDestination{Spec: nsSpec, dirSync: func(step string) error {
+		steps = append(steps, step)
+		return nil
+	}}
+	if err := nsAgain.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "root,namespace,file" {
+		t.Fatalf("reopened namespace syncs = %v", steps)
+	}
+
+	s := testStore(t)
+	fresh := filepath.Join(t.TempDir(), "fresh")
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: fresh, Namespace: "nsowned01", RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step == "root" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 1 {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt confirmed after root sync failure: %+v %v", owned, err)
+	}
+	var copied []string
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			copied = append(copied, step)
+			return nil
+		}}, nil
+	}
+	meta, err = s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("retry %+v %v", meta.DestinationErrors, err)
+	}
+	if !strings.Contains(strings.Join(copied, ","), "root") || !strings.Contains(strings.Join(copied, ","), "namespace") {
+		t.Fatalf("retry did not sync parents: %v", copied)
+	}
+	name := meta.ID + ".tgbk"
+	side := meta.ID + ".sha256"
+	owned, err := s.receiptBook().List("share")
+	if err != nil || !receiptState(owned, name, "") || !receiptState(owned, side, "") {
+		t.Fatalf("retry receipt %+v %v", owned, err)
+	}
+}
+
+func TestDeleteDirectorySyncFailureKeepsTheReceipt(t *testing.T) {
+	root := t.TempDir()
+	ns := filepath.Join(root, "nsowned01")
+	if err := os.Mkdir(ns, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ns, "owned.tgbk"), []byte("archive-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ns, "kept.tgbk"), []byte("legit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	spec := DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"}
+	failed := &PathDestination{Spec: spec, dirSync: func(step string) error {
+		if step == "delete" {
+			return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+		}
+		return nil
+	}}
+	err := failed.Delete(context.Background(), "owned.tgbk")
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("delete sync = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ns, "owned.tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("unlink did not remove the name: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(ns, "kept.tgbk")); err != nil || string(got) != "legit" {
+		t.Fatalf("neighbor %q %v", got, err)
+	}
+	var steps []string
+	reopened := &PathDestination{Spec: spec, dirSync: func(step string) error {
+		steps = append(steps, step)
+		return nil
+	}}
+	if err := reopened.Delete(context.Background(), "owned.tgbk"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(steps, ",") != "delete" {
+		t.Fatalf("already-absent retry syncs = %v", steps)
+	}
+
+	s := testStore(t)
+	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	saved, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil || len(meta.DestinationErrors) != 0 {
+		t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+	}
+	s.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step == "delete" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	if err := s.Delete(context.Background(), meta.ID); err == nil {
+		t.Fatal("delete acknowledged a directory sync failure")
+	}
+	kept, err := s.lookup(meta.ID)
+	if err != nil || !kept.Deleting {
+		t.Fatalf("deleting record dropped: %+v %v", kept, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+".tgbk")); err != nil {
+		t.Fatalf("local archive removed: %v", err)
+	}
+	name := meta.ID + ".tgbk"
+	if owned, err := s.receiptBook().List("share"); err != nil || !receiptState(owned, name, "") {
+		t.Fatalf("receipt dropped: %+v %v", owned, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, saved.Namespace, name)); !os.IsNotExist(err) {
+		t.Fatalf("remote name still linked: %v", err)
+	}
+
+	var retry []string
+	restarted := &Store{Dir: s.Dir, Book: s.Book, Passphrase: s.Passphrase, Now: s.Now, OpenDestination: func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			retry = append(retry, step)
+			return nil
+		}}, nil
+	}}
+	if err := restarted.Delete(context.Background(), meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(retry, ","), "delete") {
+		t.Fatalf("retry did not sync the directory: %v", retry)
+	}
+	if _, err := restarted.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("local metadata remained: %v", err)
+	}
+	if owned, err := restarted.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("receipt remained: %+v %v", owned, err)
+	}
+
+	observedRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(observedRoot, "nsowned01"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	obs := testStore(t)
+	obs.Book = &DestinationBook{Path: filepath.Join(obs.Dir, "destinations.json")}
+	if _, err := obs.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: observedRoot, Namespace: "nsowned01", RetentionDays: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if err := obs.receiptBook().Add(OwnedObject{DestinationID: "share", Name: "seen.tgbk", Created: obs.now(), State: receiptObserved}); err != nil {
+		t.Fatal(err)
+	}
+	obs.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got, dirSync: func(step string) error {
+			if step == "delete" {
+				return &os.PathError{Op: "sync", Path: "directory", Err: errors.New("injected")}
+			}
+			return nil
+		}}, nil
+	}
+	dest, err := obs.OpenDestination(DestinationSpec{ID: "share", Kind: "path", Path: observedRoot, Namespace: "nsowned01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := obs.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := obs.receiptBook().List("share"); err != nil || !receiptState(owned, "seen.tgbk", receiptObserved) {
+		t.Fatalf("observed receipt cleared without directory sync: %+v %v", owned, err)
+	}
+	obs.OpenDestination = func(got DestinationSpec) (Destination, error) {
+		return &PathDestination{Spec: got}, nil
+	}
+	dest, err = obs.OpenDestination(DestinationSpec{ID: "share", Kind: "path", Path: observedRoot, Namespace: "nsowned01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := obs.reconcileDestination(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := obs.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("observed receipt remained after durable absence: %+v %v", owned, err)
 	}
 }
 

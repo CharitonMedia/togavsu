@@ -380,8 +380,10 @@ func OpenDestination(spec DestinationSpec) (Destination, error) {
 // stall, when set, runs inside the tracked filesystem worker. Tests use it
 // to hold a syscall without blocking the caller past destinationIOTimeout.
 // dirSync, when set, runs before a directory fsync. Steps are "root" and
-// "namespace" for a directory this call created, and "file" after rename.
-// A returned error replaces that fsync.
+// "namespace" for the parent of those directories, "file" after rename, and
+// "delete" after unlink. A returned error replaces that fsync. Put syncs a
+// parent even when the directory is already there, so a failed sync is
+// retried before the copy can be acknowledged.
 type PathDestination struct {
 	Spec    DestinationSpec
 	stall   func(step string)
@@ -402,9 +404,15 @@ func (p *PathDestination) dir() string {
 // without following symlinks. create is only for a new owned namespace
 // directory. A symlink at that name is never used as the directory.
 func (p *PathDestination) openNamespace(create bool) (*os.File, error) {
-	root, err := openConfiguredRoot(p.Spec.Path, func(parent *os.File) error {
-		return p.syncDirectory(parent, "root")
-	})
+	var syncParent func(*os.File) error
+	if create {
+		// Every put syncs the parent. A directory left behind by a failed
+		// sync, including after this process is gone, is not treated as durable.
+		syncParent = func(parent *os.File) error {
+			return p.syncDirectory(parent, "root")
+		}
+	}
+	root, err := openConfiguredRoot(p.Spec.Path, syncParent)
 	if err != nil {
 		return nil, err
 	}
@@ -419,17 +427,15 @@ func (p *PathDestination) openNamespace(create bool) (*os.File, error) {
 		}
 		return os.NewFile(uintptr(fd), p.Spec.Namespace), nil
 	}
-	dir, created, err := mkdirChildNoFollow(root, p.Spec.Namespace)
+	dir, err := mkdirChildNoFollow(root, p.Spec.Namespace)
 	if err != nil {
 		root.Close()
 		return nil, err
 	}
-	if created {
-		if err := p.syncDirectory(root, "namespace"); err != nil {
-			dir.Close()
-			root.Close()
-			return nil, err
-		}
+	if err := p.syncDirectory(root, "namespace"); err != nil {
+		dir.Close()
+		root.Close()
+		return nil, err
 	}
 	root.Close()
 	return dir, nil
@@ -453,21 +459,16 @@ func openConfiguredRoot(path string, syncParent func(*os.File) error) (*os.File,
 		return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
 	}
 	fd, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	created := false
 	if err == syscall.ENOENT {
 		if err := syscall.Mkdirat(int(parent.Fd()), base, 0o700); err != nil {
 			return nil, err
 		}
-		created = true
 		fd, err = syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	}
 	if err != nil {
 		return nil, err
 	}
-	if created {
-		if syncParent == nil {
-			syncParent = func(dir *os.File) error { return dir.Sync() }
-		}
+	if syncParent != nil {
 		if err := syncParent(parent); err != nil {
 			syscall.Close(fd)
 			return nil, err
@@ -508,29 +509,26 @@ func openNoFollowDir(path string) (*os.File, error) {
 }
 
 // mkdirChildNoFollow creates or opens one directory entry. A symlink is not
-// followed and is not treated as the directory. created is true only when
-// this call made the entry, so the caller can sync the parent directory.
-func mkdirChildNoFollow(parent *os.File, name string) (*os.File, bool, error) {
+// followed and is not treated as the directory.
+func mkdirChildNoFollow(parent *os.File, name string) (*os.File, error) {
 	if err := validNamespace(name); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if err == nil {
-		return os.NewFile(uintptr(fd), name), false, nil
+		return os.NewFile(uintptr(fd), name), nil
 	}
 	if err != syscall.ENOENT {
-		return nil, false, err
+		return nil, err
 	}
-	err = syscall.Mkdirat(int(parent.Fd()), name, 0o700)
-	created := err == nil
-	if err != nil && err != syscall.EEXIST {
-		return nil, false, err
+	if err := syscall.Mkdirat(int(parent.Fd()), name, 0o700); err != nil && err != syscall.EEXIST {
+		return nil, err
 	}
 	fd, err = syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	return os.NewFile(uintptr(fd), name), created, nil
+	return os.NewFile(uintptr(fd), name), nil
 }
 
 // syncDirectory makes one directory entry durable. The file descriptor was
@@ -760,10 +758,15 @@ func (p *PathDestination) Delete(ctx context.Context, name string) error {
 		}
 		defer dir.Close()
 		err = syscall.Unlinkat(int(dir.Fd()), name)
-		if err == syscall.ENOENT {
-			return nil
+		if err != nil && err != syscall.ENOENT {
+			return err
 		}
-		return err
+		// Absence is not durable until the directory entry is synced. A retry
+		// of a name that is already gone still has to sync before success.
+		if err := p.syncDirectory(dir, "delete"); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 

@@ -830,6 +830,9 @@ func (s *Store) reconcileRejected(ctx context.Context, dest Destination, receipt
 	}
 	rc, err := dest.Get(ctx, obj.Name)
 	if errors.Is(err, ErrNotFound) {
+		if err := dest.Delete(ctx, obj.Name); err != nil {
+			return nil
+		}
 		return receipts.Remove(dest.ID(), obj.Name)
 	}
 	if err != nil {
@@ -1039,15 +1042,20 @@ func (s *Store) beginObservedCleanup(ctx context.Context, dest Destination, rece
 	return s.finishObserved(ctx, dest, receipts, obj)
 }
 
-// finishObserved completes a delete that was already decided. Absence is
-// enough, because the object was observed before the delete. An unobserved
-// upload does not use this path.
+// finishObserved completes a delete that was already decided. A missing name
+// is acknowledged only after Delete syncs the containing directory. An
+// unobserved upload does not use this path.
 func (s *Store) finishObserved(ctx context.Context, dest Destination, receipts *ReceiptBook, obj OwnedObject) error {
 	if remoteBusy(remoteKey(dest.ID(), obj.Name)) {
 		return nil
 	}
 	rc, err := dest.Get(ctx, obj.Name)
 	if errors.Is(err, ErrNotFound) {
+		// A previous unlink can already have removed the name. That absence
+		// is not acknowledged until the containing directory is synced.
+		if err := dest.Delete(ctx, obj.Name); err != nil {
+			return nil
+		}
 		return s.removeReceipt(receipts, dest.ID(), obj.Name)
 	}
 	if err != nil {
