@@ -55,7 +55,7 @@ A published file version emits `file.version_created` after the transaction comm
 
 When time is replaced, invoice and payment operations follow that module. A billing post that also moves trust still posts exactly one append-only trust row through the trust handler. The time module does not post a second row. A below-zero result still flags.
 
-Replaceable domains are time, trust, and calendar (`x-togavsu-replaceable-domain`). Switching the handler does not change these paths. Core rows stay readable. A trust module still posts a below-zero entry and raises `trust.flag_raised`.
+Replaceable domains are time, trust, and calendar (`x-togavsu-replaceable-domain`). Switching the handler does not change these paths. Live reads and writes go to the module that holds the domain. A call marked `core_history` reads the retained core rows and does not write them. A trust module still posts a below-zero entry and raises `trust.flag_raised`.
 
 ## Errors
 

@@ -1437,11 +1437,14 @@ def _tagged_owner_denial(operation: dict, call: dict) -> str | None:
 
 
 def _replacement_decision(operation: dict, call: dict) -> dict | None:
+    """Live reads and writes of a replaced domain go to that module. Retained core rows are a separate read."""
     domain = operation.get("x-togavsu-replaceable-domain")
-    if not domain or not operation.get("x-togavsu-writes"):
+    if not domain:
         return None
     handler = (call.get("domain_handlers") or {}).get(domain) or {}
     if not handler.get("replaced"):
+        return None
+    if not operation.get("x-togavsu-writes") and call.get("core_history") is True:
         return None
     if not handler.get("available"):
         return {"result": "forbidden", "effects": False}
@@ -1474,7 +1477,7 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         "actor": "module" if call.get("module_id") and not call.get("human_session") and not call.get("role") else "human",
         "human_session": bool(call.get("human_session") or call.get("role")),
         "role": call.get("role"),
-        "scopes": list(call.get("approved_scopes") or []) if "approved_scopes" in call else [],
+        "scopes": list(call.get("token_scopes") or []) if "token_scopes" in call else [],
         "module_id": call.get("module_id"),
         "path_module_id": call.get("path_module_id"),
         "owner_module_id": call.get("owner_module_id"),
@@ -1536,7 +1539,7 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
             "installed": bool(call.get("installed", call.get("registered"))),
             "registered": bool(call.get("registered")),
             "module_id": call.get("module_id"),
-            "approved_scopes": list(call.get("approved_scopes") or call.get("module_scopes") or []),
+            "approved_scopes": list(call.get("token_scopes") or []) if "token_scopes" in call else [],
             "tenant_id": call.get("tenant_id"),
         }
         job = {
@@ -1560,8 +1563,18 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
     return None
 
 
+def _item_matter_walled(call: dict, matter_id: str) -> bool:
+    """Trusted wall flag for this matter. An unknown matter stays walled. The item body is not a source."""
+    walls = call.get("matter_walls")
+    if isinstance(walls, dict) and matter_id in walls:
+        return bool(walls[matter_id])
+    if call.get("matter_id") == matter_id and "matter_walled" in call:
+        return bool(call.get("matter_walled"))
+    return True
+
+
 def _batch_matter_denial(access: dict, call: dict) -> str | None:
-    """Every item matter is authorized before any batch effect. One off-wall item rejects the batch."""
+    """Every item matter is authorized before any batch effect. One inaccessible item rejects the batch."""
     if not access.get("matter_wall"):
         return None
     items = call.get("items") if isinstance(call.get("items"), list) else None
@@ -1573,7 +1586,8 @@ def _batch_matter_denial(access: dict, call: dict) -> str | None:
         matter_id = item.get("matter_id")
         if not matter_id:
             continue
-        if not matter_visible(call, {"matter_id": matter_id, "matter_walled": True}, single_record=True):
+        row = {"matter_id": matter_id, "matter_walled": _item_matter_walled(call, matter_id)}
+        if not matter_visible(call, row, single_record=True):
             return "not_found"
     return None
 
@@ -1778,15 +1792,15 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         if workflow != "allowed":
             return {"result": workflow, **denied}
         subject["noninteractive_accepted"] = True
+    if subject.get("module_id") and not subject.get("noninteractive_accepted"):
+        if subject.get("grant_revoked"):
+            return {"result": "forbidden", **denied}
+        subject = _module_scope_intersection(subject)
     principal = _principal_code(operation, subject)
     if principal is not None:
         if principal != "allowed":
             return {"result": principal, **denied}
         subject["principal_accepted"] = True
-    if subject.get("module_id") and not subject.get("noninteractive_accepted") and not subject.get("principal_accepted"):
-        if subject.get("grant_revoked"):
-            return {"result": "forbidden", **denied}
-        subject = _module_scope_intersection(subject)
     if not subject.get("noninteractive_accepted"):
         batch = _batch_matter_denial(access, subject)
         if batch:
@@ -1794,10 +1808,11 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     conditional = _conditional_scope_code(spec, operation, subject)
     if conditional is not None and conditional != "allowed":
         return {"result": conditional, **denied}
-    if not subject.get("noninteractive_accepted") and not subject.get("principal_accepted") and conditional is None:
-        roles = access.get("roles") or []
-        if not roles or subject.get("role") not in roles:
-            return {"result": "forbidden", **denied}
+    if not subject.get("noninteractive_accepted") and conditional is None:
+        if not subject.get("principal_accepted"):
+            roles = access.get("roles") or []
+            if not roles or subject.get("role") not in roles:
+                return {"result": "forbidden", **denied}
         if bearer_lacks_scopes(subject, access.get("scopes") or []):
             return {"result": "scope_denied", **denied}
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
@@ -1896,6 +1911,8 @@ _PRESERVED_CONTEXT = (
     "current_wall",
     "viewer_role",
     "description",
+    "matter_walls",
+    "core_history",
 )
 
 

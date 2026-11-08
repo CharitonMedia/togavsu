@@ -797,7 +797,7 @@ class ContractTest(unittest.TestCase):
         own_marker = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"]),
                 "tool": "createModuleMarker",
                 "arguments": {"path": {"module_id": "intake"}, "body": marker_body},
             },
@@ -807,7 +807,7 @@ class ContractTest(unittest.TestCase):
         victim_marker = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"]),
                 "tool": "createModuleMarker",
                 "arguments": {"path": {"module_id": "victim"}, "body": marker_body},
             },
@@ -827,7 +827,7 @@ class ContractTest(unittest.TestCase):
         own_help = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"]),
+                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], token_scopes=["help:write"]),
                 "tool": "createModuleHelpPage",
                 "arguments": {"path": {"module_id": "matter-clock"}, "body": {"heading": "matter-clock"}},
             },
@@ -837,7 +837,7 @@ class ContractTest(unittest.TestCase):
         other_help = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"]),
+                **bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], token_scopes=["help:write"]),
                 "tool": "createModuleHelpPage",
                 "arguments": {"path": {"module_id": "victim"}, "body": {"heading": "matter-clock"}},
             },
@@ -4727,7 +4727,7 @@ class ContractTest(unittest.TestCase):
         updated = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=definition),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"], stored_definition=definition),
                 "tool": "updateModuleMarker",
                 "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}, "body": {"color": "#AABBCC"}},
             },
@@ -4739,7 +4739,7 @@ class ContractTest(unittest.TestCase):
         revoked = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=dict(definition)),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"], stored_definition=dict(definition)),
                 "tool": "revokeModuleMarker",
                 "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}},
             },
@@ -4750,7 +4750,7 @@ class ContractTest(unittest.TestCase):
         missing_marker = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"]),
                 "tool": "updateModuleMarker",
                 "arguments": {
                     "path": {"module_id": "intake", "marker_id": marker_id},
@@ -4766,7 +4766,7 @@ class ContractTest(unittest.TestCase):
                 **bearer(
                     viewer_present=False,
                     module_id="intake",
-                    approved_scopes=["markers:write"],
+                    approved_scopes=["markers:write"], token_scopes=["markers:write"],
                     stored_definition={**definition, "module_id": "victim"},
                 ),
                 "tool": "revokeModuleMarker",
@@ -4778,7 +4778,7 @@ class ContractTest(unittest.TestCase):
         replayed = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=dict(definition), replay=True),
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], token_scopes=["markers:write"], stored_definition=dict(definition), replay=True),
                 "tool": "revokeModuleMarker",
                 "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}},
             },
@@ -4791,7 +4791,7 @@ class ContractTest(unittest.TestCase):
                 **bearer(
                     viewer_present=False,
                     module_id="intake",
-                    approved_scopes=["markers:write"],
+                    approved_scopes=["markers:write"], token_scopes=["markers:write"],
                     stored_definition={**definition, "active": False},
                 ),
                 "tool": "updateModuleMarker",
@@ -4890,7 +4890,7 @@ class ContractTest(unittest.TestCase):
         help_body = {"path": {"module_id": "matter-clock"}, "body": {"heading": "matter-clock"}}
         help_ok = mcp_tool_dispatch(
             self.spec,
-            {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], installed=True, grant_revoked=False), "tool": "createModuleHelpPage", "arguments": help_body},
+            {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], token_scopes=["help:write"], installed=True, grant_revoked=False), "tool": "createModuleHelpPage", "arguments": help_body},
         )
         self.assertEqual(help_ok["result"], "allowed")
         self.assertTrue(help_ok["effects"])
@@ -6873,7 +6873,7 @@ class ContractTest(unittest.TestCase):
             {"family": "module_principal", "name": "empty help approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=[], token_scopes=["help:write"], installed=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
             {"family": "module_principal", "name": "absent help approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="matter-clock", token_scopes=["help:write"], installed=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
             {"family": "module_principal", "name": "empty marker approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="intake", approved_scopes=[], token_scopes=["markers:write"], installed=True), "tool": "createModuleMarker", "arguments": {"path": {"module_id": "intake"}, "body": marker_body}}},
-            {"family": "module_principal", "name": "revoked module install", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], installed=True, grant_revoked=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
+            {"family": "module_principal", "name": "revoked module install", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], token_scopes=["help:write"], installed=True, grant_revoked=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
             {"family": "issuance", "name": "cookie issues within role", "result": "allowed", "call": {**cookie(role="admin", caller_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
             {"family": "issuance", "name": "empty bearer cannot issue", "result": "scope_denied", "call": {**bearer(role="admin", token_scopes=[], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
             {"family": "issuance", "name": "session without caller scopes", "result": "scope_denied", "call": {**cookie(role="admin", owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
@@ -6897,6 +6897,70 @@ class ContractTest(unittest.TestCase):
             {"family": "batch_wall", "name": "cookie on-wall batch", "result": "allowed", "call": {**cookie(role="staff", matter_membership=membership), "tool": "bulkEvent", "arguments": {"body": {"items": [event_row, event_row]}}}},
             {"family": "batch_wall", "name": "empty bearer batch", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[], matter_membership=membership), "tool": "bulkEvent", "arguments": {"body": {"items": [event_row]}}}},
         ]
+        principal_ids = []
+        for _method, path, operation in _ops(self.spec):
+            principal = operation["x-togavsu-access"].get("module_principal")
+            if not principal:
+                continue
+            operation_id = operation["operationId"]
+            principal_ids.append(operation_id)
+            scope = principal["scope"]
+            module_id = "intake" if scope == "markers:write" else "matter-clock"
+            arguments = {"path": {"module_id": module_id}}
+            if "{marker_id}" in path:
+                arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
+            if "{page_id}" in path:
+                arguments["path"]["page_id"] = "start"
+            held = {"viewer_present": False, "module_id": module_id, "installed": True, "approved_scopes": [scope], "module_scopes": [scope]}
+            cases.append({"family": "module_principal", "name": operation_id + " empty token", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[]), "tool": operation_id, "arguments": arguments}})
+            cases.append({"family": "module_principal", "name": operation_id + " empty current approval", "result": "scope_denied", "call": {**bearer(**held, token_scopes=[scope], current_approved_scopes=[]), "tool": operation_id, "arguments": arguments}})
+        self.assertEqual(
+            set(principal_ids),
+            {"createModuleHelpPage", "replaceModuleHelpPages", "deleteModuleHelpPage", "createModuleMarker", "updateModuleMarker", "revokeModuleMarker"},
+        )
+        cases.append({"family": "module_principal", "name": "help bearer matches current approval", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="matter-clock", installed=True, approved_scopes=["help:write"], token_scopes=["help:write"], current_approved_scopes=["help:write"]), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}})
+        grant_body = {"assignment": "matter", "matter_id": visible, "source": "email"}
+        validate("issueFilePublicationGrant", grant_body)
+        grant_call = {"viewer_present": False, "module_id": "email", "installed": True, "registered": True, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False}
+        cases.extend(
+            [
+                {"family": "publication_grant", "name": "publication grant effective scopes", "result": "allowed", "call": {**bearer(**grant_call, approved_scopes=["files:write"], token_scopes=["files:write"]), "tool": "issueFilePublicationGrant", "arguments": {"body": grant_body}}},
+                {"family": "publication_grant", "name": "empty approval ignores stale module scopes", "result": "scope_denied", "call": {**bearer(**grant_call, approved_scopes=[], token_scopes=["files:write"], module_scopes=["files:write"]), "tool": "issueFilePublicationGrant", "arguments": {"body": grant_body}}},
+                {"family": "publication_grant", "name": "empty token ignores stale module scopes", "result": "scope_denied", "call": {**bearer(**grant_call, approved_scopes=["files:write"], token_scopes=[], module_scopes=["files:write"]), "tool": "issueFilePublicationGrant", "arguments": {"body": grant_body}}},
+                {"family": "publication_grant", "name": "empty current approval ignores stale module scopes", "result": "scope_denied", "call": {**bearer(**grant_call, approved_scopes=["files:write"], token_scopes=["files:write"], current_approved_scopes=[], module_scopes=["files:write"]), "tool": "issueFilePublicationGrant", "arguments": {"body": grant_body}}},
+            ]
+        )
+        calendar = {"calendar": {"replaced": True, "available": True, "module_id": "cal-mod"}}
+        calendar_down = {"calendar": {"replaced": True, "available": False, "module_id": "cal-mod"}}
+        event_id = "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee1"
+        cal_write = {"title": "Hearing", "kind": "court_date", "starts_at": "2026-11-07T18:00:00Z", "ends_at": "2026-11-07T19:00:00Z"}
+        validate("createCalendarEvent", cal_write)
+        staff_read = bearer(role="staff", token_scopes=["calendar:read"])
+        cases.extend(
+            [
+                {"family": "replacement", "name": "calendar list routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**staff_read, "domain_handlers": calendar, "tool": "listCalendarEvent", "arguments": {}}},
+                {"family": "replacement", "name": "calendar get routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**staff_read, "domain_handlers": calendar, "tool": "getCalendarEvent", "arguments": {"path": {"calendar_event_id": event_id}}}},
+                {"family": "replacement", "name": "calendar history stays on core", "result": "allowed", "effects": True, "routed": None, "call": {**staff_read, "domain_handlers": calendar, "core_history": True, "tool": "listCalendarEvent", "arguments": {}}},
+                {"family": "replacement", "name": "unavailable calendar read", "result": "forbidden", "call": {**staff_read, "domain_handlers": calendar_down, "tool": "listCalendarEvent", "arguments": {}}},
+                {"family": "replacement", "name": "core calendar list", "result": "allowed", "effects": True, "routed": None, "call": {**staff_read, "tool": "listCalendarEvent", "arguments": {}}},
+                {"family": "replacement", "name": "calendar write routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**bearer(role="staff", token_scopes=["calendar:write"], domain_handlers=calendar), "tool": "createCalendarEvent", "arguments": {"body": cal_write}}},
+                {"family": "replacement", "name": "history flag does not keep a write", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**bearer(role="staff", token_scopes=["calendar:write"], domain_handlers=calendar, core_history=True), "tool": "createCalendarEvent", "arguments": {"body": cal_write}}},
+            ]
+        )
+        activity = "018f1a00-7b3c-7d4e-8a11-121212121212"
+        open_time = {"matter_id": visible, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}
+        hidden_time = {**open_time, "matter_id": hidden}
+        validate("bulkTimeEntry", {"items": [open_time]})
+        validate("bulkTimeEntry", {"items": [open_time, hidden_time]})
+        cases.extend(
+            [
+                {"family": "batch_wall", "name": "unwalled time batch", "result": "allowed", "call": {**cookie(role="staff", matter_walls={visible: False}), "tool": "bulkTimeEntry", "arguments": {"body": {"items": [open_time]}}}},
+                {"family": "batch_wall", "name": "call wall flag for one matter", "result": "allowed", "call": {**cookie(role="staff", matter_id=visible, matter_walled=False), "tool": "bulkTimeEntry", "arguments": {"body": {"items": [open_time]}}}},
+                {"family": "batch_wall", "name": "mixed unwalled and off-wall", "result": "not_found", "call": {**cookie(role="staff", matter_walls={visible: False, hidden: True}, matter_membership={hidden: False}), "tool": "bulkTimeEntry", "arguments": {"body": {"items": [open_time, hidden_time]}}}},
+                {"family": "batch_wall", "name": "mixed unwalled and on-wall", "result": "allowed", "call": {**cookie(role="staff", matter_walls={visible: False, hidden: True}, matter_membership={hidden: True}), "tool": "bulkTimeEntry", "arguments": {"body": {"items": [open_time, hidden_time]}}}},
+                {"family": "batch_wall", "name": "item flag does not clear a wall", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["time:write"], matter_walls={visible: True}, matter_membership={visible: False}), "tool": "bulkTimeEntry", "arguments": {"body": {"items": [{**open_time, "matter_walled": False}]}}}},
+            ]
+        )
         present = set()
         for _method, _path, operation in _ops(self.spec):
             access = operation["x-togavsu-access"]
@@ -6955,7 +7019,10 @@ class ContractTest(unittest.TestCase):
         for case in cases:
             decision = mcp_tool_dispatch(self.spec, case["call"])
             self.assertEqual(decision["result"], case["result"], case["name"])
-            self.assertEqual(decision["effects"], case["result"] == "allowed", case["name"])
+            expected_effects = case["effects"] if "effects" in case else case["result"] == "allowed"
+            self.assertEqual(decision["effects"], expected_effects, case["name"])
+            if "routed" in case:
+                self.assertEqual(decision.get("routed"), case["routed"], case["name"])
             self.assertFalse(decision["public"], case["name"])
 
 
