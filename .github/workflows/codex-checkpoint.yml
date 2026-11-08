@@ -46,26 +46,92 @@ jobs:
           }))
           PY
           git -C candidate diff "$BASE_SHA...$HEAD_SHA" > review.diff
-      - name: Prepare unprivileged reviewer
+      - name: Prepare review output
+        id: prep
         run: |
-          sudo useradd --create-home --shell /bin/bash codex-reviewer
-          sudo chmod a+rx /home/runner /home/runner/work "$RUNNER_TEMP"
-          sudo chmod -R a+rX "$GITHUB_WORKSPACE"
           mkdir -p "$RUNNER_TEMP/codex-review-output"
-          sudo chown codex-reviewer "$RUNNER_TEMP/codex-review-output"
-      - name: Independent Codex review
-        id: codex
-        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
+          echo "schema=$(jq -c . docs/build/review.schema.json)" >> "$GITHUB_OUTPUT"
+      # Opus on the Max subscription replaces the OpenAI Codex action. The
+      # check name, artifact name and result path stay the same so the build
+      # controller and check_review.py need no change. Read-only tools only:
+      # no shell, no edits, no web, so candidate code is never executed.
+      # Deny rules keep Read, Glob and Grep away from process data, runner
+      # files, git credentials and anything outside the checkouts.
+      - name: Independent Opus review
+        id: review
+        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: docs/build/prompts/codex-review.md
-          output-schema-file: docs/build/review.schema.json
-          output-file: ${{ runner.temp }}/codex-review-output/review-result.json
-          sandbox: read-only
-          safety-strategy: unprivileged-user
-          codex-user: codex-reviewer
-          effort: high
-          allow-bot-users: cursor[bot]
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: cursor[bot]
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Read(//proc/**)",
+                  "Read(//sys/**)",
+                  "Read(//dev/**)",
+                  "Read(//etc/**)",
+                  "Read(//tmp/**)",
+                  "Read(//run/**)",
+                  "Read(//var/**)",
+                  "Read(//root/**)",
+                  "Read(//opt/**)",
+                  "Read(//usr/**)",
+                  "Read(//snap/**)",
+                  "Read(//home/runner/work/_temp/**)",
+                  "Read(//home/runner/work/_actions/**)",
+                  "Read(//home/runner/work/_tool/**)",
+                  "Read(//home/runner/.*)",
+                  "Read(//home/runner/.*/**)",
+                  "Read(//home/runner/runners/**)",
+                  "Read(//home/runner/actions-runner/**)",
+                  "Read(**/.git)",
+                  "Read(**/.git/**)"
+                ]
+              }
+            }
+          prompt: |
+            Read docs/build/prompts/codex-review.md in the workspace root and follow it exactly.
+            It is the trusted review policy. Return only the structured result it asks for.
+          claude_args: >-
+            --model opus
+            --allowedTools "Read,Glob,Grep"
+            --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+            --json-schema '${{ steps.prep.outputs.schema }}'
+      - name: Report reviewer error
+        if: failure() && steps.review.outcome == 'failure'
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          test -f "$f" || exit 0
+          jq -r '[.[] | select(.type == "result")] | last | "subtype=\(.subtype) is_error=\(.is_error) result=\((.result // "") | tostring | .[0:400])"' "$f"
+      # The reviewer's process holds its own token, so a prompt injection in
+      # candidate content could try to copy a credential into the result.
+      # Withhold any result that contains one before it reaches the public
+      # step summary or artifact.
+      - name: Write review result
+        if: always()
+        env:
+          RESULT: ${{ steps.review.outputs.structured_output }}
+          SECRET_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SECRET_GITHUB: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, os, re, sys
+          result = os.environ.get("RESULT", "")
+          forms = set()
+          for name in ("SECRET_OAUTH", "SECRET_GITHUB"):
+              value = os.environ.get(name, "")
+              if not value:
+                  continue
+              forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
+              forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
+          shaped = re.search(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}", result)
+          if shaped or any(len(f) >= 16 and f in result for f in forms):
+              sys.exit("Reviewer output contains a credential; result withheld")
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "codex-review-output", "review-result.json"), "w") as out:
+              out.write(result)
+          PY
       - name: Validate independent verdict
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
