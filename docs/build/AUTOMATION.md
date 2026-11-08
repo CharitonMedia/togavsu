@@ -25,7 +25,7 @@ State lives in the control checkout's ignored .build-state directory: controller
 ## Deployment and credentials
 The running controller and plan are copied from a reviewed commit into /home/patrick/.local/share/togavsu-controller. They are pinned; a worker changing main cannot replace the running controller. The installed receipt records the source commit and file hashes.
 
-The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local credential file. GitHub uses the existing authenticated gh configuration. No key values are in the repository or unit files, and no control credentials are injected into build VMs. Codex reviews use the GitHub secret already configured and API billing.
+The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local credential file. GitHub uses the existing authenticated gh configuration. No key values are in the repository or unit files, and no control credentials are injected into build VMs. The Codex checkpoint runs Opus on the CLAUDE_CODE_OAUTH_TOKEN repository secret, billed to the Max subscription.
 
 The deterministic controller tests cover feedback dispatch/deduplication, ambiguous requests, retry exhaustion, branch conflicts, stale or forged reviews, required CI, merge races, protection rejection, dependency launches and pause behavior. A live dry-run against existing PRs precedes enabling the timer.
 
