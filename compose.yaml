@@ -62,6 +62,7 @@ services:
       SUPERVISOR_DATA: /var/lib/togavsu
       BACKUP_DIR: /var/lib/togavsu/backups
       BACKUP_PASSPHRASE_FILE: /appsecrets/backup_passphrase
+      FIELD_KEY_FILE: /appsecrets/field_key
       DATABASE_URL_FILE: /appsecrets/database_url
       ADMIN_DATABASE_URL_FILE: /appsecrets/admin_database_url
       TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}

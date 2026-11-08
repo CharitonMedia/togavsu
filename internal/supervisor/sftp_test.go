@@ -251,7 +251,7 @@ func TestSFTPDeleteConfirmsAbsenceAndRetriesAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "sftp", Host: "files.example", User: "backup", Port: 22,
 		IdentityFile: filepath.Join(dir, "id"), KnownHosts: filepath.Join(dir, "known"),
@@ -331,7 +331,7 @@ func TestOpenSSHNamespaceFirstUseAndStoreDelete(t *testing.T) {
 	}
 	dest, root := startRealSFTP(t)
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec := dest.Spec
 	spec.RetentionDays = 30
 	if _, err := s.Book.Put(spec); err != nil {

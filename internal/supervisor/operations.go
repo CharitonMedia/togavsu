@@ -946,6 +946,11 @@ func (o *Operations) admit(ctx context.Context) error {
 
 func (o *Operations) recoverLocked(ctx context.Context) error {
 	var errs []error
+	if o.Store != nil {
+		if err := o.Store.RecoverPlaintext(); err != nil {
+			return err
+		}
+	}
 	if o.Journal != nil {
 		pending, err := o.Journal.Incomplete()
 		if err != nil {

@@ -2,11 +2,13 @@
 
 An archive is a tar file encrypted with AES-256-GCM. The passphrase is stretched with PBKDF2-HMAC-SHA256, 200000 iterations, a random 16-byte salt, and a random 4-byte nonce prefix. Each chunk is at most 1 MiB of plaintext. The chunk nonce is the prefix plus a big-endian counter. A wrong passphrase or a flipped ciphertext byte fails decryption.
 
-On disk:
+On disk, under the backup volume:
 
 - `{id}.tgbk` encrypted archive
 - `{id}.sha256` hex digest of the encrypted bytes, checked before decrypt and after a destination copy
 - `{id}.json` metadata: id, time, reason, checksum, size, destination errors
+
+Plaintext dumps and extracted archives are written in a scratch directory outside that volume. Startup recovery and retention remove abandoned `staging-*` and `restore-*` directories on the volume and in that scratch directory. A workspace this process still has open is kept. Symlinks with those names are not followed. A missing destination directory before any upload is a completed failure. A timeout or a lost server response stays an uncertain receipt until the object is seen.
 
 The id is `YYYYMMDDTHHMMSSZ-` plus 16 hex characters.
 

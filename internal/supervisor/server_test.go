@@ -22,7 +22,7 @@ func TestAPIAuthBackupAndRedaction(t *testing.T) {
 	dir := t.TempDir()
 	store := testStore(t)
 	store.Dir = dir
-	store.Book = &DestinationBook{Path: filepath.Join(dir, "destinations.json")}
+	store.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(dir, "destinations.json")}
 	var logs bytes.Buffer
 	log := slog.New(ScrubHandler{Next: slog.NewTextHandler(&logs, nil)})
 	ops := &Operations{
@@ -107,6 +107,13 @@ func TestAPIAuthBackupAndRedaction(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusCreated || strings.Contains(string(body), "super-secret-value") {
 		t.Fatalf("destination response %d %s", res.StatusCode, body)
+	}
+	stored, err := os.ReadFile(store.Book.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(stored, []byte("super-secret-value")) || !bytes.Contains(stored, []byte(destSealPrefix)) {
+		t.Fatalf("destination file kept the credential: %s", stored)
 	}
 }
 
@@ -626,7 +633,7 @@ func TestOverlappingRestoresDoNotReplaceTheJob(t *testing.T) {
 func TestDestinationHandlersSerializeMutations(t *testing.T) {
 	store := testStore(t)
 	dir := t.TempDir()
-	store.Book = &DestinationBook{Path: filepath.Join(dir, "destinations.json")}
+	store.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(dir, "destinations.json")}
 	ops := &Operations{Store: store, Gate: &Gate{}, Passphrase: func() (string, error) { return store.Passphrase, nil }}
 	srv := httptest.NewServer(NewMux("local-token", ops, nil))
 	defer srv.Close()

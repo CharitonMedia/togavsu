@@ -49,8 +49,8 @@ A missing passphrase returns `409 passphrase_required`. Copy failures keep the l
 Destination kinds:
 
 - `path`: absolute directory, including a mounted SMB or NFS path. Copies go in a generated `namespace` directory under that path. Checksum is verified after the copy.
-- `s3`: path-style AWS Signature Version 4. Fields: `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`, `retention_days`. The installation `namespace` is appended to `prefix`.
-- `sftp`: OpenSSH `sftp` in batch mode with `StrictHostKeyChecking=yes`. The destination argument is a single `user@host` operand after `--`. Fields: `host`, `port`, `user`, `identity_file`, `known_hosts`, `remote_path`, `retention_days`. The installation `namespace` is a directory under `remote_path`.
+- `s3`: path-style AWS Signature Version 4. Fields: `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`, `retention_days`. The installation `namespace` is appended to `prefix`. `secret_key` is sealed with the installer field key before `destinations.json` is written (`destseal:v1:`). The plaintext credential and the key are not stored. A record that still has a plaintext secret is rewritten on the next open when that key is available. Compose sets `FIELD_KEY_FILE` to `/appsecrets/field_key`.
+- `sftp`: OpenSSH `sftp` in batch mode with `StrictHostKeyChecking=yes`. The destination argument is a single `user@host` operand after `--`. Fields: `host`, `port`, `user`, `identity_file`, `known_hosts`, `remote_path`, `retention_days`. The installation `namespace` is a directory under `remote_path`. `identity_file` is a path to a key file. The file contents are not copied into the destination record.
 
 Retention deletes only names in this installation's receipt file. Archives already stored in the shared directory, bucket prefix, or remote directory stay there.
 
@@ -68,7 +68,7 @@ Until the settings table exists, these environment values carry the PRD defaults
 | `TEST_RESTORE_DAY` | `1` | Monthly test-restore day |
 | `LOG_RETENTION_DAYS` | `400` | Application and access log retention |
 
-Database URL, admin URL, field key, domain, and the supervisor token stay in Docker secrets. They are not settings.
+Database URL, admin URL, field key, domain, and the supervisor token stay in Docker secrets. They are not settings. The supervisor reads the field key from `FIELD_KEY` or `FIELD_KEY_FILE` and uses it only to seal destination credentials. A 64-character hex field key and standard base64 of the same 32 bytes are both accepted. The secret file is not rewritten.
 
 ## Core migrate contract
 

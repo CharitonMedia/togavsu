@@ -3,7 +3,10 @@ package supervisor
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -172,13 +175,15 @@ type DestinationSpec struct {
 	// Namespace is the per-installation directory or key prefix. Retention
 	// deletes only receipts inside it. Objects already in the configured root
 	// are left where they are.
-	Namespace    string `json:"namespace,omitempty"`
-	Path         string `json:"path,omitempty"`
-	Endpoint     string `json:"endpoint,omitempty"`
-	Region       string `json:"region,omitempty"`
-	Bucket       string `json:"bucket,omitempty"`
-	Prefix       string `json:"prefix,omitempty"`
-	AccessKey    string `json:"access_key,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Endpoint  string `json:"endpoint,omitempty"`
+	Region    string `json:"region,omitempty"`
+	Bucket    string `json:"bucket,omitempty"`
+	Prefix    string `json:"prefix,omitempty"`
+	AccessKey string `json:"access_key,omitempty"`
+	// SecretKey is plaintext only in memory. The book seals it with the
+	// installer key before destinations.json is written.
 	SecretKey    string `json:"secret_key,omitempty"`
 	Host         string `json:"host,omitempty"`
 	Port         int    `json:"port,omitempty"`
@@ -197,15 +202,23 @@ func (s DestinationSpec) Public() DestinationSpec {
 	return s
 }
 
-// DestinationBook persists destination specs as JSON on the backup volume.
+// DestinationBook persists destination specs as JSON on the supervisor data
+// volume. SecretKey is sealed with Key, the installer field key. Key is not
+// written next to the ciphertext. SFTP keeps using IdentityFile as a path
+// reference and does not copy the key file into this record.
 //
 // ponytail: destinations live in a supervisor JSON file, ceiling: not the
 // core settings table, upgrade: core backup-destination records push here,
 // trigger: /api/v1/backup-destinations is served by core.
 type DestinationBook struct {
 	Path string
+	Key  []byte
 	mu   sync.Mutex
 }
+
+// destSealPrefix marks a secret sealed with the installer key. A value
+// without the prefix is a legacy plaintext credential and is rewritten.
+const destSealPrefix = "destseal:v1:"
 
 func (b *DestinationBook) List() ([]Destination, error) {
 	specs, err := b.Specs()
@@ -240,6 +253,22 @@ func (b *DestinationBook) readSpecs() ([]DestinationSpec, error) {
 	var specs []DestinationSpec
 	if err := json.Unmarshal(raw, &specs); err != nil {
 		return nil, err
+	}
+	legacy := false
+	for i := range specs {
+		plain, migrated, err := b.openSecret(specs[i].SecretKey)
+		if err != nil {
+			return nil, err
+		}
+		if migrated {
+			legacy = true
+		}
+		specs[i].SecretKey = plain
+	}
+	if legacy {
+		if err := b.writeSealed(specs); err != nil {
+			return nil, err
+		}
 	}
 	return specs, nil
 }
@@ -313,10 +342,23 @@ func (b *DestinationBook) Get(id string) (Destination, error) {
 }
 
 func (b *DestinationBook) save(specs []DestinationSpec) error {
+	return b.writeSealed(specs)
+}
+
+func (b *DestinationBook) writeSealed(specs []DestinationSpec) error {
 	if err := os.MkdirAll(filepath.Dir(b.Path), 0o700); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(specs, "", "  ")
+	stored := make([]DestinationSpec, len(specs))
+	for i, spec := range specs {
+		sealed, err := b.sealSecret(spec.SecretKey)
+		if err != nil {
+			return err
+		}
+		spec.SecretKey = sealed
+		stored[i] = spec
+	}
+	raw, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -325,6 +367,62 @@ func (b *DestinationBook) save(specs []DestinationSpec) error {
 		return err
 	}
 	return os.Chmod(b.Path, 0o600)
+}
+
+func (b *DestinationBook) sealSecret(plain string) (string, error) {
+	if plain == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(plain, destSealPrefix) {
+		return "", fmt.Errorf("destination secret: %w", ErrBadRequest)
+	}
+	aead, err := b.destAEAD()
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, aead.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := aead.Seal(nonce, nonce, []byte(plain), []byte(destSealPrefix))
+	return destSealPrefix + base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+func (b *DestinationBook) openSecret(stored string) (string, bool, error) {
+	if stored == "" {
+		return "", false, nil
+	}
+	if !strings.HasPrefix(stored, destSealPrefix) {
+		return stored, true, nil
+	}
+	aead, err := b.destAEAD()
+	if err != nil {
+		return "", false, err
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(stored, destSealPrefix))
+	if err != nil {
+		return "", false, fmt.Errorf("destination secret: %w", ErrDecrypt)
+	}
+	ns := aead.NonceSize()
+	if len(raw) < ns {
+		return "", false, fmt.Errorf("destination secret: %w", ErrDecrypt)
+	}
+	plain, err := aead.Open(nil, raw[:ns], raw[ns:], []byte(destSealPrefix))
+	if err != nil {
+		return "", false, fmt.Errorf("destination secret: %w", ErrDecrypt)
+	}
+	return string(plain), false, nil
+}
+
+func (b *DestinationBook) destAEAD() (cipher.AEAD, error) {
+	if b == nil || len(b.Key) != 32 {
+		return nil, fmt.Errorf("installer key: %w", ErrBadRequest)
+	}
+	block, err := aes.NewCipher(b.Key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
 }
 
 func validateSpec(spec DestinationSpec) error {
@@ -461,12 +559,12 @@ func openConfiguredRoot(path string, syncParent func(*os.File) error) (*os.File,
 	fd, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if err == syscall.ENOENT {
 		if err := syscall.Mkdirat(int(parent.Fd()), base, 0o700); err != nil {
-			return nil, err
+			return nil, pathError("mkdir", path, err)
 		}
 		fd, err = syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	}
 	if err != nil {
-		return nil, err
+		return nil, pathError("open", path, err)
 	}
 	if syncParent != nil {
 		if err := syncParent(parent); err != nil {
@@ -487,9 +585,10 @@ func openNoFollowDir(path string) (*os.File, error) {
 	clean := filepath.Clean(path)
 	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY, 0)
 	if err != nil {
-		return nil, err
+		return nil, pathError("open", "/", err)
 	}
 	cur := os.NewFile(uintptr(fd), "/")
+	walked := "/"
 	for _, part := range strings.Split(clean, string(os.PathSeparator)) {
 		if part == "" || part == "." {
 			continue
@@ -498,14 +597,25 @@ func openNoFollowDir(path string) (*os.File, error) {
 			cur.Close()
 			return nil, fmt.Errorf("%w: destination path", ErrBadRequest)
 		}
+		walked = filepath.Join(walked, part)
 		next, err := syscall.Openat(int(cur.Fd()), part, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 		cur.Close()
 		if err != nil {
-			return nil, err
+			return nil, pathError("open", walked, err)
 		}
 		cur = os.NewFile(uintptr(next), part)
 	}
 	return cur, nil
+}
+
+// pathError keeps a local filesystem failure as a path error. Callers that
+// compare a raw errno do so before this wrap. Classification treats the
+// result as a completed local failure, not an uncertain remote write.
+func pathError(op, path string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &os.PathError{Op: op, Path: path, Err: err}
 }
 
 // mkdirChildNoFollow creates or opens one directory entry. A symlink is not
@@ -519,14 +629,14 @@ func mkdirChildNoFollow(parent *os.File, name string) (*os.File, error) {
 		return os.NewFile(uintptr(fd), name), nil
 	}
 	if err != syscall.ENOENT {
-		return nil, err
+		return nil, pathError("open", name, err)
 	}
 	if err := syscall.Mkdirat(int(parent.Fd()), name, 0o700); err != nil && err != syscall.EEXIST {
-		return nil, err
+		return nil, pathError("mkdir", name, err)
 	}
 	fd, err = syscall.Openat(int(parent.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return nil, err
+		return nil, pathError("open", name, err)
 	}
 	return os.NewFile(uintptr(fd), name), nil
 }
@@ -553,7 +663,7 @@ func exclusiveTemp(dir *os.File) (string, *os.File, error) {
 	name := ".togavsu-" + hexEncode(raw[:]) + ".tmp"
 	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_CREAT|syscall.O_EXCL|syscall.O_NOFOLLOW|syscall.O_RDWR, 0o600)
 	if err != nil {
-		return "", nil, err
+		return "", nil, pathError("open", name, err)
 	}
 	return name, os.NewFile(uintptr(fd), name), nil
 }
@@ -570,7 +680,7 @@ func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha
 	if f, ok := r.(*os.File); ok {
 		dup, err := dupFile(f)
 		if err != nil {
-			return err
+			return pathError("dup", f.Name(), err)
 		}
 		src = dup
 		srcClose = dup.Close
@@ -630,7 +740,7 @@ func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
 		p.stall("rename")
 	}
 	if err := syscall.Renameat(int(dir.Fd()), tmpName, int(dir.Fd()), name); err != nil {
-		return err
+		return pathError("rename", name, err)
 	}
 	tmpName = ""
 	// The new name is visible. A failed directory sync must not become a

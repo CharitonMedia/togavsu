@@ -38,7 +38,7 @@ func (s *SFTPDestination) Put(ctx context.Context, name string, r io.Reader, sha
 		return err
 	}
 	if err := s.ensureNamespace(ctx); err != nil {
-		return err
+		return beforePublication(err)
 	}
 	tmp, err := os.CreateTemp("", "togavsu-sftp-*")
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *SFTPDestination) Put(ctx context.Context, name string, r io.Reader, sha
 	if err != nil {
 		return err
 	}
-	return s.batch(ctx, "put "+local+" "+remote)
+	return beforePublication(s.batch(ctx, "put "+local+" "+remote))
 }
 
 func (s *SFTPDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {

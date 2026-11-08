@@ -1874,7 +1874,7 @@ func TestStalledSSHHandshakeRestartsWriters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store.Book = &DestinationBook{Path: filepath.Join(store.Dir, "destinations.json")}
+	store.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(store.Dir, "destinations.json")}
 	if _, err := store.Book.Put(DestinationSpec{
 		ID: "share", Kind: "sftp", Host: "127.0.0.1", User: "backup", Port: port,
 		IdentityFile: key, KnownHosts: known, RemotePath: "/tmp/backups", RetentionDays: 7,

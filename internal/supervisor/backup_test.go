@@ -20,6 +20,14 @@ import (
 	"time"
 )
 
+func testInstallerKey() []byte {
+	key := make([]byte, 32)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	return key
+}
+
 func testStore(t *testing.T) *Store {
 	t.Helper()
 	dir := t.TempDir()
@@ -248,7 +256,7 @@ func TestStalledDestinationReleasesTheGateAndKeepsTheLocalBackup(t *testing.T) {
 	}))
 	defer stall.Close()
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "stall", Kind: "s3", Endpoint: stall.URL, Region: "us-east-1",
 		Bucket: "bucket", AccessKey: "key", SecretKey: "secret", RetentionDays: 7,
@@ -283,7 +291,7 @@ func TestDestinationRelocationKeepsTheCopyLocation(t *testing.T) {
 	s := testStore(t)
 	dirA := filepath.Join(t.TempDir(), "a")
 	dirB := filepath.Join(t.TempDir(), "b")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	saved, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirA, RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +367,7 @@ func TestBackupPathDestinationCopyFailureNotifies(t *testing.T) {
 	s := testStore(t)
 	destDir := filepath.Join(t.TempDir(), "share")
 	bookPath := filepath.Join(s.Dir, "destinations.json")
-	s.Book = &DestinationBook{Path: bookPath}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: bookPath}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: destDir, RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +393,7 @@ func TestBackupPathDestinationCopyFailureNotifies(t *testing.T) {
 		t.Fatalf("copied checksum %s want %s err %v", sum, meta.SHA256, err)
 	}
 
-	bad := &DestinationBook{Path: filepath.Join(t.TempDir(), "none.json")}
+	bad := &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(t.TempDir(), "none.json")}
 	if _, err := bad.Put(DestinationSpec{ID: "missing", Kind: "path", Path: filepath.Join(t.TempDir(), "nope", "blocked")}); err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +402,7 @@ func TestBackupPathDestinationCopyFailureNotifies(t *testing.T) {
 	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "bad-dest.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "bad-dest.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "blocked", Kind: "path", Path: blocked}); err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +459,7 @@ func TestRejectsArchivePathEscape(t *testing.T) {
 }
 
 func TestDestinationSpecRedactsSecret(t *testing.T) {
-	book := &DestinationBook{Path: filepath.Join(t.TempDir(), "dest.json")}
+	book := &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(t.TempDir(), "dest.json")}
 	spec := DestinationSpec{
 		ID: "obj", Kind: "s3", Endpoint: "http://127.0.0.1:9000", Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKIA", SecretKey: "super-secret-value",
@@ -509,7 +517,7 @@ func TestLocalPruneKeepsLongerDestinationCopy(t *testing.T) {
 	old := time.Now().Add(-40 * 24 * time.Hour)
 	s.Now = func() time.Time { return old }
 	destDir := filepath.Join(t.TempDir(), "share")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: destDir, RetentionDays: 365}); err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +563,7 @@ func TestDeleteRetriesAfterRemoteFailure(t *testing.T) {
 	s := testStore(t)
 	rootA := filepath.Join(t.TempDir(), "a")
 	rootB := filepath.Join(t.TempDir(), "b")
-	book := &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	book := &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := book.Put(DestinationSpec{ID: "a", Kind: "path", Path: rootA, RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +629,7 @@ func TestDeleteRetriesAfterRemoteFailure(t *testing.T) {
 func TestDeleteWaitsForBlockedCopy(t *testing.T) {
 	s := testStore(t)
 	root := filepath.Join(t.TempDir(), "share")
-	book := &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	book := &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -815,7 +823,7 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 
 	s := testStore(t)
 	root := filepath.Join(t.TempDir(), "share")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	releaseCh := make(chan struct{})
 	started := make(chan struct{})
 	var startOnce sync.Once
@@ -984,7 +992,7 @@ func TestStalledPathRestoreRestartsWriters(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := filepath.Join(t.TempDir(), "share")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	releaseCh := make(chan struct{})
 	started := make(chan struct{})
 	var startOnce sync.Once
@@ -1087,7 +1095,7 @@ func TestPendingUploadReconcileDoesNotTouchOtherInstallations(t *testing.T) {
 	if err := os.WriteFile(foreign, []byte("not-ours"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: ns, RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -1172,7 +1180,7 @@ func TestRejectedUploadClearsWhenAbsenceIsConfirmed(t *testing.T) {
 	d.archivePut = &remoteStatusError{Status: http.StatusForbidden, Detail: "denied"}
 	d.denyDelete = true
 	d.denyRead = true
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1246,7 +1254,7 @@ func TestCrashBeforeSidecarReceiptUploadsAndValidates(t *testing.T) {
 	}
 	stream := &chunkReader{b: payload}
 	d := &scriptDest{id: "share", objects: map[string][]byte{meta.ID + ".tgbk": payload}, stream: stream}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1290,7 +1298,7 @@ func TestMalformedSidecarDoesNotCompleteTheArchive(t *testing.T) {
 		objects:  map[string][]byte{meta.ID + ".tgbk": raw},
 		override: map[string][]byte{meta.ID + ".sha256": bytes.Repeat([]byte("x"), 4096)},
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1317,7 +1325,7 @@ func TestUploadOutcomeBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1477,7 +1485,7 @@ func TestPendingGetForbiddenDoesNotRejectTheUpload(t *testing.T) {
 	}
 	name := meta.ID + ".tgbk"
 	d := &scriptDest{id: "share", objects: map[string][]byte{"other-firm.tgbk": []byte("keep")}, denyRead: true}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1551,7 +1559,7 @@ func TestSFTPExitLeavesTheUploadUncertain(t *testing.T) {
 	}
 	name := meta.ID + ".tgbk"
 	d := &scriptDest{id: "share", objects: map[string][]byte{"other-firm.tgbk": []byte("keep")}, archivePut: exitErr}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1595,7 +1603,7 @@ func TestObservedCleanupFinishesWhenReceiptRemovalFailed(t *testing.T) {
 	}
 	name := meta.ID + ".tgbk"
 	d := &scriptDest{id: "share", objects: map[string][]byte{name: raw, "other-firm.tgbk": []byte("keep")}}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1709,7 +1717,7 @@ func TestPathSymlinkCannotEscapeTheDestination(t *testing.T) {
 func TestConfirmedReceiptRemovalFailureKeepsTheDeletingRecord(t *testing.T) {
 	s := testStore(t)
 	root := t.TempDir()
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -1772,7 +1780,7 @@ func TestRetentionKeepsLocalFilesUntilRemoteRecoverySettles(t *testing.T) {
 	name := meta.ID + ".tgbk"
 	side := meta.ID + ".sha256"
 	d := &scriptDest{id: "share", objects: map[string][]byte{name: archive, "other-firm.tgbk": []byte("keep")}}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: t.TempDir(), RetentionDays: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -1832,7 +1840,7 @@ func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) 
 
 	s := testStore(t)
 	root := filepath.Join(t.TempDir(), "share")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	releaseCh := make(chan struct{})
 	started := make(chan struct{})
 	var startOnce sync.Once
@@ -1969,7 +1977,7 @@ func TestTimedOutUploadDeleteKeepsOwnershipUntilTheWriterFinishes(t *testing.T) 
 func TestReceiptWriteFailureDoesNotUpload(t *testing.T) {
 	s := testStore(t)
 	root := filepath.Join(t.TempDir(), "share")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2016,7 +2024,7 @@ func TestDeleteSkipsUnreceiptedDestinations(t *testing.T) {
 	s := testStore(t)
 	root := filepath.Join(t.TempDir(), "owned")
 	otherRoot := filepath.Join(t.TempDir(), "unreceipted")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "owned", Kind: "path", Path: root, RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -2077,7 +2085,7 @@ func TestDestinationRemovalKeepsTheOwnedLocation(t *testing.T) {
 	s := testStore(t)
 	dirA := filepath.Join(t.TempDir(), "a")
 	dirB := filepath.Join(t.TempDir(), "b")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	saved, err := s.PutDestination(DestinationSpec{ID: "share", Kind: "path", Path: dirA, RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2250,7 +2258,7 @@ func TestArchiveDirectorySyncFailureStaysUncertain(t *testing.T) {
 	}
 
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2281,7 +2289,7 @@ func TestSidecarDirectorySyncFailureDoesNotConfirmTheArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2319,7 +2327,7 @@ func TestSidecarDirectorySyncFailureDoesNotConfirmTheArchive(t *testing.T) {
 func TestNewDirectorySyncFailurePublishesNothing(t *testing.T) {
 	s := testStore(t)
 	fresh := filepath.Join(t.TempDir(), "fresh")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: fresh, Namespace: "nsowned01", RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2348,7 +2356,7 @@ func TestNewDirectorySyncFailurePublishesNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "kept"), []byte("legit"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	spec, err = s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2443,7 +2451,7 @@ func TestParentDirectorySyncIsRetriedBeforeTheCopyIsConfirmed(t *testing.T) {
 
 	s := testStore(t)
 	fresh := filepath.Join(t.TempDir(), "fresh")
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: fresh, Namespace: "nsowned01", RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}
@@ -2526,7 +2534,7 @@ func TestDeleteDirectorySyncFailureKeepsTheReceipt(t *testing.T) {
 	}
 
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	saved, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01", RetentionDays: 30})
 	if err != nil {
 		t.Fatal(err)
@@ -2586,7 +2594,7 @@ func TestDeleteDirectorySyncFailureKeepsTheReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 	obs := testStore(t)
-	obs.Book = &DestinationBook{Path: filepath.Join(obs.Dir, "destinations.json")}
+	obs.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(obs.Dir, "destinations.json")}
 	if _, err := obs.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: observedRoot, Namespace: "nsowned01", RetentionDays: 30}); err != nil {
 		t.Fatal(err)
 	}

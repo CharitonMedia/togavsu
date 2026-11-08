@@ -69,6 +69,8 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	if err != nil {
 		return err
 	}
+	// The dump copy is a temp file, not a directory on the backup volume.
+	// CreateTemp with an empty dir uses the system temp directory.
 	tmp, err := os.CreateTemp("", "togavsu-restore-*.sql")
 	if err != nil {
 		return err
@@ -545,6 +547,7 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		if adminURL == "" {
 			return nil, fmt.Errorf("ADMIN_DATABASE_URL: %w", ErrBadRequest)
 		}
+		// Same as restore: plaintext SQL stays off the backup volume.
 		tmp, err := os.CreateTemp("", "togavsu-measure-*.sql")
 		if err != nil {
 			return nil, err

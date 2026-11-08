@@ -128,8 +128,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	store := &supervisor.Store{
 		Dir:    cfg.BackupDir,
 		Dump:   supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
-		Book:   &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json")},
+		Book:   &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json"), Key: cfg.FieldKey},
 		Outbox: outbox,
+	}
+	if err := store.RecoverPlaintext(); err != nil {
+		return nil, err
 	}
 	docker := &supervisor.DockerRuntime{
 		Client:           supervisor.DockerSocketClient(cfg.DockerSocket),

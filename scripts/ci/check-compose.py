@@ -17,6 +17,7 @@ required = [
     "/var/run/docker.sock",
     "POSTGRES_PASSWORD_FILE",
     "SUPERVISOR_TOKEN_FILE",
+    "FIELD_KEY_FILE",
     "deploy/core.Dockerfile",
     "togavsu.role: core",
 ]

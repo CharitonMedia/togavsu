@@ -1,6 +1,8 @@
 package supervisor
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -18,6 +20,7 @@ import (
 // settings registry is present in the database this process can read.
 type Config struct {
 	Token              string
+	FieldKey           []byte
 	Listen             string
 	DataDir            string
 	BackupDir          string
@@ -89,6 +92,10 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	cfg.FieldKey, err = loadFieldKey(getenv)
+	if err != nil {
+		return Config{}, err
+	}
 	cfg.AdminDatabaseURL, err = secret(getenv, "ADMIN_DATABASE_URL", "ADMIN_DATABASE_URL_FILE")
 	if err != nil {
 		return Config{}, err
@@ -154,6 +161,46 @@ func (c Config) Schedule() (Schedule, error) {
 		Window:         Window{Start: start, End: end, Location: loc},
 		TestRestoreDay: c.TestRestoreDay,
 	}, nil
+}
+
+// loadFieldKey reads the installer field key. The file is the same one
+// bootstrap writes: standard base64 of 32 bytes, or the earlier 64-character
+// hex form. The key is not copied into the supervisor data volume.
+func loadFieldKey(getenv func(string) string) ([]byte, error) {
+	text, err := optionalSecret(getenv, "FIELD_KEY", "FIELD_KEY_FILE")
+	if err != nil {
+		return nil, err
+	}
+	if text == "" {
+		return nil, nil
+	}
+	return decodeFieldKey(text)
+}
+
+func decodeFieldKey(text string) ([]byte, error) {
+	if len(text) == 64 && isHex(text) {
+		raw, err := hex.DecodeString(text)
+		if err != nil || len(raw) != 32 {
+			return nil, fmt.Errorf("FIELD_KEY: %w", ErrBadRequest)
+		}
+		return raw, nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(text)
+	if err != nil || len(raw) != 32 {
+		return nil, fmt.Errorf("FIELD_KEY: %w", ErrBadRequest)
+	}
+	return raw, nil
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func secret(getenv func(string) string, envKey, fileKey string) (string, error) {

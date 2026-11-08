@@ -54,12 +54,18 @@ type Store struct {
 	Now        func() time.Time
 	Book       *DestinationBook
 	Outbox     *Outbox
+	// Scratch is the non-persistent directory for plaintext dumps and extracted
+	// archives. Empty uses a private directory under the system temp dir.
+	// It must not be the backup volume or a directory inside it.
+	Scratch string
 	// OpenDestination, when set, replaces the real destination opener. Tests
 	// use it to fail one remote delete and then retry.
 	OpenDestination func(DestinationSpec) (Destination, error)
 	mu              sync.Mutex
 	receiptsMu      sync.Mutex
 	receipts        *ReceiptBook
+	scratchMu       sync.Mutex
+	scratchActive   map[string]struct{}
 	// failSync, when set by tests, fails the next Sync of that file.
 	// "archive" is the encrypted tar. "checksum" is its sidecar.
 	// Empty means every Sync is attempted.
@@ -113,16 +119,19 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return BackupMeta{}, err
 	}
+	if err := s.RecoverPlaintext(); err != nil {
+		return BackupMeta{}, err
+	}
 	now := s.now().UTC()
 	id, err := newBackupID(now)
 	if err != nil {
 		return BackupMeta{}, err
 	}
-	work, err := os.MkdirTemp(s.Dir, "staging-")
+	work, cleanup, err := s.plaintextWorkspace("staging-")
 	if err != nil {
 		return BackupMeta{}, err
 	}
-	defer os.RemoveAll(work)
+	defer cleanup()
 
 	dumpPath := filepath.Join(work, "db", "dump.sql")
 	if err := os.MkdirAll(filepath.Dir(dumpPath), 0o700); err != nil {
@@ -533,8 +542,9 @@ func (e *remoteStatusError) Error() string {
 // ambiguousRemote reports a mutating request whose outcome is not known.
 // EOF, a wrapped EOF, an unexpected EOF, a reset, a broken pipe, a timeout,
 // and an HTTP 408 or 5xx do not prove the write stopped. A definite failure
-// is a known sentinel, an explicit 4xx other than 408, or a local path error.
-// Wording inside an error string is not that evidence.
+// is a known sentinel, an explicit 4xx other than 408, a local path error,
+// or a raw local errno from an open that never published a name. Wording
+// inside an error string is not that evidence.
 func ambiguousRemote(err error) bool {
 	if err == nil || errors.Is(err, ErrRemoteUncertain) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBadRequest) || errors.Is(err, ErrChecksum) {
 		return false
@@ -547,16 +557,23 @@ func ambiguousRemote(err error) bool {
 		return ambiguousHTTPStatus(status.Status)
 	}
 	// An SFTP client exit, including a group kill or a dropped connection,
-	// does not prove the remote write was rejected.
+	// does not prove the remote write was rejected. A raw network errno is
+	// the same, including when a path error wraps it.
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
-		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, os.ErrDeadlineExceeded) {
+		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.ETIMEDOUT) ||
+		errors.Is(err, os.ErrDeadlineExceeded) {
 		return true
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
+	}
+	// A local refusal, wrapped or raw, happened before a remote name existed.
+	// syscall.ENOENT from a missing parent is this case. It is not a lost ack.
+	if localFilesystemRefusal(err) {
+		return false
 	}
 	var pathErr *os.PathError
 	if errors.As(err, &pathErr) {
@@ -567,6 +584,47 @@ func ambiguousRemote(err error) bool {
 		return false
 	}
 	return true
+}
+
+// localFilesystemRefusal is a completed local filesystem error. The operation
+// did not publish a destination name. Network and timeout errnos are absent
+// so a lost server response is not reclassified as a rejection.
+func localFilesystemRefusal(err error) bool {
+	var errno syscall.Errno
+	if !errors.As(err, &errno) {
+		return false
+	}
+	switch errno {
+	case syscall.ENOENT, syscall.ENOTDIR, syscall.EACCES, syscall.EPERM,
+		syscall.EROFS, syscall.ENAMETOOLONG, syscall.EINVAL, syscall.ELOOP,
+		syscall.EISDIR, syscall.ENOSPC, syscall.EDQUOT, syscall.ENODEV,
+		syscall.ENXIO, syscall.EEXIST, syscall.ENOTSUP,
+		syscall.EFBIG, syscall.EMLINK, syscall.ENOTEMPTY, syscall.EXDEV,
+		syscall.EMFILE, syscall.ENFILE, syscall.EBADF, syscall.EFAULT,
+		syscall.EOVERFLOW:
+		return true
+	default:
+		return false
+	}
+}
+
+// beforePublication leaves timeouts and lost client exits unchanged. A missing
+// path or a local refusal that the client reported before publication becomes
+// a definite absence, so a later repair can drop the receipt.
+func beforePublication(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, ErrRemoteUncertain) {
+		return err
+	}
+	if !ambiguousRemote(err) {
+		return err
+	}
+	if remoteObjectAbsent(err) || localFilesystemRefusal(err) {
+		return fmt.Errorf("%w: %s", ErrNotFound, err.Error())
+	}
+	return err
 }
 
 // ambiguousHTTPStatus is a response that can arrive before the storage write
@@ -1446,6 +1504,9 @@ func (s *Store) pruneLocked(ctx context.Context, retention time.Duration) (int, 
 	if retention <= 0 {
 		return 0, fmt.Errorf("retention: %w", ErrBadRequest)
 	}
+	if err := s.RecoverPlaintext(); err != nil {
+		return 0, err
+	}
 	all, err := s.List()
 	if err != nil {
 		return 0, err
@@ -1503,6 +1564,9 @@ func (s *Store) PruneDestinations(ctx context.Context) (int, error) {
 func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 	if s.Book == nil {
 		return 0, nil
+	}
+	if err := s.RecoverPlaintext(); err != nil {
+		return 0, err
 	}
 	specs, err := s.Book.Specs()
 	if err != nil {
@@ -1635,11 +1699,13 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 		return fail(err)
 	}
 	defer rc.Close()
-	work, err := os.MkdirTemp(s.Dir, "restore-")
+	if err := s.RecoverPlaintext(); err != nil {
+		return fail(err)
+	}
+	work, cleanupWork, err := s.plaintextWorkspace("restore-")
 	if err != nil {
 		return fail(err)
 	}
-	cleanupWork := func() { os.RemoveAll(work) }
 	plainPath := filepath.Join(work, "plain.tar")
 	plainFile, err := os.OpenFile(plainPath, os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -1804,6 +1870,127 @@ func (s *Store) contained(id, suffix string) (string, error) {
 		return "", ErrNotFound
 	}
 	return path, nil
+}
+
+// RecoverPlaintext removes plaintext dumps left on the backup volume and in
+// this installation's scratch directory. A workspace this process still has
+// open is left in place. Symlinks are not removed and are not followed.
+func (s *Store) RecoverPlaintext() error {
+	if s == nil || s.Dir == "" {
+		return nil
+	}
+	if err := removeAbandonedPlaintext(s.Dir, nil); err != nil {
+		return err
+	}
+	root, err := s.scratchRoot()
+	if err != nil {
+		return err
+	}
+	return removeAbandonedPlaintext(root, s.activeScratch())
+}
+
+func (s *Store) activeScratch() map[string]struct{} {
+	s.scratchMu.Lock()
+	defer s.scratchMu.Unlock()
+	keep := make(map[string]struct{}, len(s.scratchActive))
+	for path := range s.scratchActive {
+		keep[path] = struct{}{}
+	}
+	return keep
+}
+
+func (s *Store) scratchRoot() (string, error) {
+	root := s.Scratch
+	if root == "" {
+		sum := sha256.Sum256([]byte(filepath.Clean(s.Dir)))
+		root = filepath.Join(os.TempDir(), "togavsu-scratch-"+hex.EncodeToString(sum[:8]))
+	}
+	root = filepath.Clean(root)
+	backup := filepath.Clean(s.Dir)
+	if dirContains(backup, root) || dirContains(root, backup) {
+		return "", fmt.Errorf("plaintext scratch shares the backup volume: %w", ErrBadRequest)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	return root, nil
+}
+
+func (s *Store) plaintextWorkspace(prefix string) (string, func(), error) {
+	root, err := s.scratchRoot()
+	if err != nil {
+		return "", func() {}, err
+	}
+	work, err := os.MkdirTemp(root, prefix)
+	if err != nil {
+		return "", func() {}, err
+	}
+	s.scratchMu.Lock()
+	if s.scratchActive == nil {
+		s.scratchActive = map[string]struct{}{}
+	}
+	s.scratchActive[work] = struct{}{}
+	s.scratchMu.Unlock()
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			_ = os.RemoveAll(work)
+			s.scratchMu.Lock()
+			delete(s.scratchActive, work)
+			s.scratchMu.Unlock()
+		})
+	}
+	return work, cleanup, nil
+}
+
+func removeAbandonedPlaintext(dir string, keep map[string]struct{}) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, ent := range entries {
+		name := ent.Name()
+		if !strings.HasPrefix(name, "staging-") && !strings.HasPrefix(name, "restore-") {
+			continue
+		}
+		if !ent.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if _, ok := keep[path]; ok {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func dirContains(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+	if parent == child {
+		return true
+	}
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func mustJSON(v any) []byte {

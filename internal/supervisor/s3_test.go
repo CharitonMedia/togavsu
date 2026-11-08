@@ -295,7 +295,7 @@ func TestAdvancingClockDoesNotFinishAnUncertainPut(t *testing.T) {
 	now := func() time.Time { return time.Unix(0, clock.Load()).UTC() }
 	s := testStore(t)
 	s.Now = now
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -414,7 +414,7 @@ func TestLateS3PutKeepsOwnershipUntilTheBytesAreGone(t *testing.T) {
 	clock := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	s := testStore(t)
 	s.Now = func() time.Time { return clock }
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -796,7 +796,7 @@ func TestS3RejectedPutClearsAfterPermissionRecovery(t *testing.T) {
 	}))
 	defer srv.Close()
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -881,6 +881,10 @@ func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 		&remoteStatusError{Status: http.StatusBadRequest, Detail: "malformed"},
 		&remoteStatusError{Status: http.StatusConflict, Detail: "conflict"},
 		&os.PathError{Op: "open", Path: "archive", Err: os.ErrPermission},
+		syscall.ENOENT,
+		syscall.ENOTDIR,
+		fmt.Errorf("open parent: %w", syscall.ENOENT),
+		&os.PathError{Op: "open", Path: "/missing", Err: syscall.ENOENT},
 	} {
 		if ambiguousRemote(err) {
 			t.Fatalf("%v was treated as a lost response", err)
@@ -953,7 +957,7 @@ func TestServerErrorKeepsOwnershipUntilLatePublication(t *testing.T) {
 			}))
 			defer srv.Close()
 			s := testStore(t)
-			s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+			s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 			if _, err := s.Book.Put(DestinationSpec{
 				ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 				Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -1077,7 +1081,7 @@ func TestRestartedPendingPutSurvivesMissingGet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -1203,7 +1207,7 @@ func TestHTTPCloseEOFKeepsOwnershipUntilDelayedPublish(t *testing.T) {
 	}))
 	defer srv.Close()
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
@@ -1325,7 +1329,7 @@ func TestSidecarLostAckBlocksDeleteUntilLatePublish(t *testing.T) {
 	}))
 	defer srv.Close()
 	s := testStore(t)
-	s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
 	if _, err := s.Book.Put(DestinationSpec{
 		ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
 		Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
