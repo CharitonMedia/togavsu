@@ -11,7 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import AgentNotFound, Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
+from build_controller import AgentNotFound, Controller, ObservationError, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -872,7 +872,8 @@ class ControllerTests(unittest.TestCase):
         with self.advance(16):
             self.controller.tick()
         self.assertEqual(self.controller.occupied, 1)
-        self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+        self.assertIn("Terminal Cursor observation lacks a run identity", self.record["last_error"])
+        self.assertEqual(self.controller.state["health"], "needs_attention")
         self.assertEqual(len(self.posts()), 1)
 
     def test_base_format_acknowledgement_reserves_slot_and_blocks_pr_across_restarts(self):
@@ -1052,6 +1053,102 @@ class ControllerTests(unittest.TestCase):
             self.controller.plan["tasks"].append({"id": task, "depends_on": []})
             self.controller.tasks[task] = {"agent_id": task, "submitted": True}
         self.controller.plan["tasks"].append({"id": "five", "depends_on": []})
+
+    def test_invalid_statuses_reserve_capacity_across_origins_holds_and_restarts(self):
+        invalid = [None, [], {}, {"run_id": "R3"}] + [
+            {"status": status, "run_id": "R3"} for status in (None, "", "UNKNOWN", "IDLE", "ARCHIVED", "STOPPED", 0, True, [], {})]
+        for origin in ("submitted", "adopted", "launch"):
+            for hold in (("plain",) if origin == "adopted" else ("plain", "acknowledged", "intent", "halted")):
+                for invalid_snapshot in invalid:
+                    with self.subTest(origin=origin, hold=hold, snapshot=invalid_snapshot):
+                        self.setUp()
+                        if origin == "adopted":
+                            self.controller.tasks.clear()
+                            (Path(self.temp.name) / "agents.json").write_text(json.dumps({"one": {
+                                "agent_id": "bc-one", "submitted": True, "starting_sha": BASE}}))
+                        elif origin == "launch":
+                            self.record["submitted"] = False
+                        if hold in {"acknowledged", "intent"}:
+                            self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2")
+                        if hold == "intent":
+                            self.record["intent"] = {"key": "pending", "repair": True, "previous_run": "R3", "time": "2026-11-08T00:00:00+00:00"}
+                        if hold == "halted":
+                            self.record["halted"] = "Ownership mismatch"
+                        expected_intent = copy.deepcopy(self.record.get("intent"))
+                        self.occupy_other_slots()
+                        self.remote.agent = lambda r: copy.deepcopy(invalid_snapshot) if r["agent_id"] == "bc-one" else {
+                            "status": "RUNNING", "run_id": "active", "git": {}}
+                        for minute in (0, 1):
+                            with self.advance(minute):
+                                self.controller.tick()
+                            self.record = self.controller.tasks["one"]
+                            self.assertEqual(self.controller.occupied, 4)
+                            self.assertNotIn("five", self.controller.tasks)
+                            self.assertNotIn("completed", self.record)
+                            self.assertIn("Cursor observation invalid", self.record["last_error"])
+                            self.assertEqual(self.record.get("intent"), expected_intent)
+                            if hold == "halted":
+                                self.assertEqual(self.record["halted"], "Ownership mismatch")
+                            if origin == "launch":
+                                self.assertTrue(self.record["launch_uncertain"])
+                                self.assertFalse(self.record["submitted"])
+                            self.assertEqual(self.controller.state["health"], "needs_attention")
+                            self.assertNotIn("last_successful_tick", self.controller.state)
+                            self.assertFalse(any(c[1].startswith("pulls/") or c[1] == "/agents" for c in self.remote.calls))
+                            self.assertFalse(self.posts())
+                            self.restart()
+                        self.remote.agent = lambda r: {"status": "RUNNING", "run_id": "R3", "git": {}}
+                        with self.advance(2):
+                            self.controller.tick()
+                        self.assertEqual(self.controller.occupied, 4)
+                        self.assertTrue(self.record["submitted"])
+                        self.assertNotIn("launch_uncertain", self.record)
+                        self.assertNotIn("last_error", self.record)
+                        self.assertEqual(self.record.get("intent"), expected_intent)
+                        if hold == "halted":
+                            self.assertEqual(self.record["halted"], "Ownership mismatch")
+                        self.assertFalse(any(c[1].startswith("pulls/") or c[1] == "/agents" for c in self.remote.calls))
+                        self.assertFalse(self.posts())
+
+    def test_terminal_without_valid_identity_reserves_slot_until_valid_recovery(self):
+        for status in ("FINISHED", "ERROR", "CANCELLED", "EXPIRED"):
+            for run_id in (None, "", " ", 7, [], {}):
+                with self.subTest(status=status, run_id=run_id):
+                    self.setUp()
+                    self.occupy_other_slots()
+                    self.remote.agent = lambda r: {"status": status, "run_id": run_id, "git": {}} if r["agent_id"] == "bc-one" else {
+                        "status": "RUNNING", "run_id": "active", "git": {}}
+                    for minute in (0, 1):
+                        self.restart()
+                        with self.advance(minute):
+                            self.controller.tick()
+                        self.assertEqual(self.controller.occupied, 4)
+                        self.assertNotIn("five", self.controller.tasks)
+                        self.assertNotIn("completed", self.record)
+                        self.assertIn("Cursor observation invalid", self.record["last_error"])
+                        self.assertFalse(any(c[1].startswith("pulls/") or c[1] == "/agents" for c in self.remote.calls))
+                        self.assertFalse(self.posts())
+                    self.remote.agent = lambda r: {"status": status, "run_id": "R3", "git": {}} if r["agent_id"] == "bc-one" else {
+                        "status": "RUNNING", "run_id": "active", "git": {}}
+                    with self.advance(2):
+                        self.controller.tick()
+                    self.assertNotIn("last_error", self.record)
+                    if status == "FINISHED":
+                        self.assertIn("completed", self.record)
+                        self.assertFalse(self.posts())
+                    else:
+                        self.assertEqual(len(self.posts()), 1)
+                        self.assertEqual(self.controller.occupied, 4)
+                        self.assertNotIn("five", self.controller.tasks)
+
+    def test_direct_processing_rejects_invalid_observation_before_state_changes(self):
+        self.record["halted"] = LEGACY_REPAIR_HALT
+        original = copy.deepcopy(self.record)
+        for snapshot in ({"status": None}, {"status": "FUTURE", "run_id": "R3"}, {"status": "FINISHED"}):
+            with self.assertRaises(ObservationError):
+                self.controller.process(SPEC, self.record, snapshot, BASE)
+            self.assertEqual(self.record, original)
+            self.assertFalse(self.remote.calls)
 
     def test_worker_observation_errors_never_free_capacity_or_overwrite_holds(self):
         errors = [urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one/runs/R3", 404, "missing run", {}, None),
@@ -1622,6 +1719,55 @@ class ControllerTests(unittest.TestCase):
 
 
 class ReviewDataTests(unittest.TestCase):
+    def test_agent_lifecycle_without_run_never_proves_completion(self):
+        for status in (None, "IDLE", "ARCHIVED", "FINISHED", "ERROR", "CANCELLED", "EXPIRED", [], {}):
+            for latest in ({}, {"latestRunId": None}, {"latestRunId": ""}):
+                with self.subTest(status=status, latest=latest):
+                    remote = Remote()
+                    reads = []
+                    def cursor(method, path):
+                        reads.append(path)
+                        return {"id": "bc-one", "status": status, **latest}
+                    remote.cursor = cursor
+                    with self.assertRaises(ObservationError):
+                        remote.agent({"agent_id": "bc-one"})
+                    self.assertEqual(reads, ["/agents/bc-one"])
+        remote.cursor = lambda *args: {"id": "bc-one", "status": "ACTIVE"}
+        snapshot = remote.agent({"agent_id": "bc-one"})
+        self.assertEqual(snapshot["status"], "ACTIVE")
+        self.assertIsNone(snapshot["run_id"])
+
+    def test_malformed_agent_identity_or_latest_run_is_not_an_observation(self):
+        agents = [None, [], {}, {"id": "bc-other", "status": "ACTIVE"}] + [
+            {"id": "bc-one", "status": "ACTIVE", "latestRunId": value} for value in (True, 7, [], {}, " ")]
+        for agent in agents:
+            with self.subTest(agent=agent):
+                remote = Remote()
+                remote.cursor = lambda *args: agent
+                with self.assertRaises(ObservationError):
+                    remote.agent({"agent_id": "bc-one"})
+
+    def test_run_identity_and_status_are_validated_without_agent_fallback(self):
+        valid = {"id": "R3", "agentId": "bc-one", "status": "FINISHED"}
+        invalid = [None, [], {}, {"agentId": "bc-one", "status": "FINISHED"},
+                   {"id": "R3", "status": "FINISHED"}, {"id": "R3", "agentId": "bc-one"},
+                   dict(valid, id="R1"), dict(valid, agentId="bc-other")] + [
+                   dict(valid, status=status) for status in (None, "", "UNKNOWN", "ACTIVE", "IDLE", "STOPPED", 0, True, [], {})]
+        for run in invalid:
+            with self.subTest(run=run):
+                remote = Remote()
+                remote.cursor = lambda method, path: run if "/runs/" in path else {
+                    "id": "bc-one", "latestRunId": "R3", "status": "ACTIVE"}
+                with self.assertRaises(ObservationError):
+                    remote.agent({"agent_id": "bc-one"})
+        for status in ("CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "FINISHED", "ERROR", "CANCELLED", "EXPIRED"):
+            with self.subTest(valid_status=status):
+                remote.cursor = lambda method, path: dict(valid, status=status) if "/runs/" in path else {
+                    "id": "bc-one", "latestRunId": "R3", "status": "IDLE"}
+                snapshot = remote.agent({"agent_id": "bc-one"})
+                self.assertEqual(snapshot["status"], status)
+                self.assertEqual(snapshot["run_id"], "R3")
+
     def test_only_agent_endpoint_404_establishes_agent_absence(self):
         for endpoint, code in (("agent", 404), ("run", 404), ("agent", 403), ("run", 503)):
             with self.subTest(endpoint=endpoint, code=code):

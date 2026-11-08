@@ -22,7 +22,9 @@ import uuid
 import zipfile
 
 REPO = "CharitonMedia/togavsu"
-ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "ACTIVE"}
+RUN_ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK"}
+ACTIVE = RUN_ACTIVE | {"ACTIVE"}  # Agent lifecycle ACTIVE is only a conservative busy signal.
+TERMINAL = {"FINISHED", "ERROR", "CANCELLED", "EXPIRED"}  # Cursor v1 Get A Run outcomes.
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
 LEGACY_REPAIR_HALT = "Three correction cycles exhausted; independent work may continue"
@@ -58,6 +60,23 @@ class ReviewSuperseded(Exception):
 
 class AgentNotFound(Exception):
     """The agent endpoint itself returned 404, not its latest-run endpoint."""
+
+
+class ObservationError(ValueError):
+    """The response cannot establish worker execution state; observe again later."""
+
+
+def validate_snapshot(snapshot):
+    if not isinstance(snapshot, dict):
+        raise ObservationError("Cursor snapshot is not an object")
+    status = snapshot.get("status")
+    if not isinstance(status, str) or status not in ACTIVE | TERMINAL:
+        raise ObservationError("Cursor run status is missing or unrecognized")
+    run_id = snapshot.get("run_id")
+    if run_id is not None and (not isinstance(run_id, str) or (run_id and not run_id.strip())):
+        raise ObservationError("Cursor run identity is malformed")
+    if status in TERMINAL and not run_id:
+        raise ObservationError("Terminal Cursor observation lacks a run identity")
 
 
 def now():
@@ -197,10 +216,27 @@ class Remote:
             if error.code == 404:
                 raise AgentNotFound("Cursor agent endpoint returned HTTP 404") from error
             raise
+        if not isinstance(agent, dict) or agent.get("id") != record["agent_id"]:
+            raise ObservationError("Cursor agent response does not match the requested identity")
         run_id = agent.get("latestRunId")
-        run = self.cursor("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id) if run_id else {}
-        return {"status": run.get("status", agent.get("status")), "run_id": run_id,
-                "git": run.get("git", {}), "updated_at": run.get("updatedAt", agent.get("updatedAt"))}
+        if run_id is None or run_id == "":
+            # Agent lifecycle IDLE/ARCHIVED is not a terminal run result.
+            snapshot = {"status": "ACTIVE" if agent.get("status") == "ACTIVE" else None,
+                "run_id": None, "git": {}, "updated_at": agent.get("updatedAt")}
+        else:
+            if not isinstance(run_id, str) or not run_id.strip():
+                raise ObservationError("Cursor latest run identity is malformed")
+            run = self.cursor("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id)
+            if (not isinstance(run, dict) or run.get("id") != run_id
+                    or run.get("agentId") != record["agent_id"]):
+                raise ObservationError("Cursor run response does not match the requested agent and run")
+            status = run.get("status")
+            if not isinstance(status, str) or status not in RUN_ACTIVE | TERMINAL:
+                raise ObservationError("Cursor run status is missing or unrecognized")
+            snapshot = {"status": status, "run_id": run_id,
+                "git": run.get("git", {}), "updated_at": run.get("updatedAt")}
+        validate_snapshot(snapshot)
+        return snapshot
 
     def review(self, check):
         if not self.authentic_checkpoint(check):
@@ -464,6 +500,7 @@ class Controller:
         return None
 
     def process(self, spec, record, snapshot, main):
+        validate_snapshot(snapshot)  # Direct callers cannot bypass the observation boundary.
         task = spec["id"]
         if record.get("halted") == LEGACY_REPAIR_HALT:
             record.setdefault("recovered_halts", []).append({"reason": record.pop("halted"), "time": now()})
@@ -908,7 +945,9 @@ class Controller:
             if task not in specs or record.get("completed"):
                 continue
             try:
-                snapshots[task] = self.remote.agent(record)
+                snapshot = self.remote.agent(record)
+                validate_snapshot(snapshot)
+                snapshots[task] = snapshot
                 if not record.get("submitted"):
                     record["submitted"] = True  # Reconcile an uncertain idempotent create.
                     record.pop("launch_uncertain", None)
@@ -930,7 +969,8 @@ class Controller:
                 self.occupied += 1  # Includes run-endpoint 404 and every unknown observation outcome.
                 if not record.get("submitted"):
                     record["launch_uncertain"] = True
-                record["last_error"] = ("Cursor observation HTTP " + str(error.code) if isinstance(error, urllib.error.HTTPError)
+                record["last_error"] = ("Cursor observation invalid: " + str(error) if isinstance(error, ObservationError)
+                    else "Cursor observation HTTP " + str(error.code) if isinstance(error, urllib.error.HTTPError)
                     else type(error).__name__ + ": agent observation unavailable")
                 continue
             snapshot = snapshots[task]
