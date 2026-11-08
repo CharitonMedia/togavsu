@@ -6342,10 +6342,10 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8272-8431",
+      "source": "api/tests/test_contract.py:8272-8435",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 44,
+      "assertion_call_sites": 45,
       "loop_count": 2,
       "literal_rows": [
         {
@@ -6526,6 +6526,7 @@
         "self.assertEqual(confirmed[\"result\"], \"allowed\")",
         "self.assertTrue(confirmed[\"effects\"])",
         "self.assertEqual(omitted_scan[\"result\"], \"not_found\")",
+        "self.assertEqual(omitted_key[\"result\"], \"not_found\")",
         "self.assertEqual(bad_ids[\"result\"], \"validation_failed\")",
         "self.assertFalse(bad_ids[\"effects\"])",
         "self.assertFalse(decision[\"effects\"])",
@@ -6553,14 +6554,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8433-8606",
+      "source": "api/tests/test_contract.py:8437-8610",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 36,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8470,
+          "line": 8474,
           "literal_rows": 6,
           "rows": [
             [
@@ -6714,6 +6715,148 @@
         "self.assertIsNone(decision.get(\"routed\"))",
         "self.assertEqual(denied[\"result\"], \"not_found\", tool)",
         "with self.assertRaises(Exception):"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_parent_schema_and_client_file_reads",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-004",
+        "AC-005",
+        "AC-039"
+      ],
+      "prd": [
+        "8",
+        "8.19"
+      ],
+      "source": "api/tests/test_contract.py:8612-8763",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 26,
+      "loop_count": 3,
+      "literal_rows": [
+        {
+          "line": 8673,
+          "literal_rows": 5,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getInvoice"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "invoice_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getTrustEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "trust_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "stopTimer"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "timer_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "historyTimeEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "time_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getTimeEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "time_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "samples = ( (\"getInvoice\", [\"invoices:read\"], {\"invoice_id\": \"018f1a00-7b3c-7d4e-8a11-111111111111\"}), (\"getTrustEntry\", [\"trust:read\"], {\"trust_entry_id\": \"018f1a00-7b3c-7d4e-8a11-222222222221\"}), (\"stopTimer\", [\"time:write\"], {\"timer_id\": \"018f1a00-7b3c-7d4e-8a11-333333333331\"}), (\"historyTimeEntry\", [\"time:read\"], {\"time_entry_id\": \"018f1a00-7b3c-7d4e-8a11-ccccccccccc1\"}), (\"getTimeEntry\", [\"time:read\"], {\"time_entry_id\": \"018f1a00-7b3c-7d4e-8a11-ccccccccccc1\"}), )",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertGreater(len(found), len(named))",
+        "self.assertNotIn(\"listMatter\", found)",
+        "self.assertNotIn(\"createTimeEntry\", found)",
+        "self.assertTrue(all(mode in {\"required\", \"nullable\", \"absent\"} for mode in found.values()))",
+        "self.assertEqual(routed_denied[\"result\"], \"not_found\")",
+        "self.assertEqual(routed[\"result\"], \"allowed\")",
+        "self.assertFalse(routed[\"effects\"])",
+        "self.assertEqual(routed[\"routed\"], \"time-mod\")",
+        "self.assertEqual(unassigned[\"result\"], \"allowed\")",
+        "self.assertEqual(listed[\"result\"], \"allowed\")",
+        "self.assertEqual(foreign_read[\"result\"], \"not_found\")",
+        "self.assertEqual(foreign_download[\"result\"], \"not_found\")",
+        "self.assertEqual(own_read[\"result\"], \"allowed\")",
+        "self.assertTrue(own_read[\"effects\"])",
+        "self.assertEqual(own_download[\"result\"], \"allowed\")",
+        "self.assertEqual(contact_only[\"result\"], \"allowed\")",
+        "self.assertEqual(contact_on_foreign[\"result\"], \"not_found\")",
+        "self.assertEqual(staff_read[\"result\"], \"allowed\")",
+        "self.assertEqual(found[operation_id], mode, operation_id)",
+        "self.assertFalse(decision[\"effects\"])",
+        "self.assertEqual(decision.get(\"events\") or [], [])",
+        "self.assertIsNone(decision.get(\"routed\"))",
+        "self.assertEqual(denied[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(rescued[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(allowed[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(allowed[\"effects\"], tool)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -8398,9 +8541,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 13,
-      "assertion_call_sites": 445,
-      "literal_rows": 89,
+      "methods": 14,
+      "assertion_call_sites": 472,
+      "literal_rows": 94,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -8414,7 +8557,8 @@
         "test_trusted_wall_grant_and_csrf",
         "test_transport_link_and_matter_grant",
         "test_concrete_matter_and_selected_files",
-        "test_record_owner_and_client_file_access"
+        "test_record_owner_and_client_file_access",
+        "test_parent_schema_and_client_file_reads"
       ],
       "status": "not_converted",
       "complete": false

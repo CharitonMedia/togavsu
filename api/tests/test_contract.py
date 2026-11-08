@@ -8426,6 +8426,10 @@ class ContractTest(unittest.TestCase):
         self.assertTrue(confirmed["effects"])
         omitted_scan = quiet(archive({"file_ids": [file_id]}, [row(file_id, quarantined=None)]))
         self.assertEqual(omitted_scan["result"], "not_found")
+        bare = row(file_id)
+        bare.pop("quarantined")
+        omitted_key = quiet(archive({"file_ids": [file_id]}, [bare]))
+        self.assertEqual(omitted_key["result"], "not_found")
         bad_ids = archive({"file_ids": [{"id": file_id}]}, [row(file_id)])
         self.assertEqual(bad_ids["result"], "validation_failed")
         self.assertFalse(bad_ids["effects"])
@@ -8604,6 +8608,159 @@ class ContractTest(unittest.TestCase):
             },
         )
         self.assertEqual(quiet(link)["result"], "not_found")
+
+    def test_parent_schema_and_client_file_reads(self):
+        from contract.policy import _parent_matter_mode, iter_operations
+
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        foreign = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        contact = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        version_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
+        named = {
+            "getInvoice": "required",
+            "updateInvoice": "required",
+            "historyInvoice": "required",
+            "getInvoicePdf": "required",
+            "getTrustEntry": "required",
+            "historyTimeEntry": "required",
+            "getTimeEntry": "required",
+            "updateTimeEntry": "required",
+            "stopTimer": "required",
+            "pauseTimer": "required",
+            "getTimer": "required",
+            "getCalendarEvent": "nullable",
+            "getFile": "nullable",
+            "downloadFileVersion": "nullable",
+            "deleteNotification": "absent",
+            "markNotificationRead": "absent",
+        }
+        found = {}
+        for _method, path, operation in iter_operations(self.spec):
+            if not operation["x-togavsu-access"].get("matter_wall"):
+                continue
+            if not any(part.startswith("{") and part != "{matter_id}" for part in path.split("/")):
+                continue
+            found[operation["operationId"]] = _parent_matter_mode(self.spec, operation)
+        for operation_id, mode in named.items():
+            self.assertEqual(found[operation_id], mode, operation_id)
+        self.assertGreater(len(found), len(named))
+        self.assertNotIn("listMatter", found)
+        self.assertNotIn("createTimeEntry", found)
+        self.assertTrue(all(mode in {"required", "nullable", "absent"} for mode in found.values()))
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def staff(tool, scopes, path, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": {"path": path, **trusted.pop("arguments", {})},
+                    **trusted,
+                },
+            )
+
+        samples = (
+            ("getInvoice", ["invoices:read"], {"invoice_id": "018f1a00-7b3c-7d4e-8a11-111111111111"}),
+            ("getTrustEntry", ["trust:read"], {"trust_entry_id": "018f1a00-7b3c-7d4e-8a11-222222222221"}),
+            ("stopTimer", ["time:write"], {"timer_id": "018f1a00-7b3c-7d4e-8a11-333333333331"}),
+            ("historyTimeEntry", ["time:read"], {"time_entry_id": "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"}),
+            ("getTimeEntry", ["time:read"], {"time_entry_id": "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"}),
+        )
+        handler = {"time": {"replaced": True, "available": True, "module_id": "time-mod"}}
+        for tool, scopes, path in samples:
+            denied = quiet(staff(tool, scopes, path, matter_walls=None))
+            self.assertEqual(denied["result"], "not_found", tool)
+            rescued = quiet(staff(tool, scopes, path, matter_walled=False, arguments={"body": {"matter_id": matter}}))
+            self.assertEqual(rescued["result"], "not_found", tool)
+            allowed = staff(tool, scopes, path, matter_id=matter, matter_walled=False)
+            self.assertEqual(allowed["result"], "allowed", tool)
+            self.assertTrue(allowed["effects"], tool)
+        routed_denied = quiet(staff("stopTimer", ["time:write"], {"timer_id": "018f1a00-7b3c-7d4e-8a11-333333333331"}, domain_handlers=handler))
+        self.assertEqual(routed_denied["result"], "not_found")
+        routed = staff("stopTimer", ["time:write"], {"timer_id": "018f1a00-7b3c-7d4e-8a11-333333333331"}, matter_id=matter, matter_walls={matter: False}, domain_handlers=handler)
+        self.assertEqual(routed["result"], "allowed")
+        self.assertFalse(routed["effects"])
+        self.assertEqual(routed["routed"], "time-mod")
+        unassigned = staff("getFile", ["files:read"], {"file_id": file_id}, matter_id=None)
+        self.assertEqual(unassigned["result"], "allowed")
+        listed = mcp_tool_dispatch(
+            self.spec,
+            {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, "role": "staff", "token_scopes": ["invoices:read"], "tool": "listInvoice", "arguments": {}},
+        )
+        self.assertEqual(listed["result"], "allowed")
+
+        def file_row(matter_id, **flags):
+            return {
+                "id": file_id,
+                "matter_id": matter_id,
+                "matter_walled": False,
+                "attorney_only": False,
+                "shared_with_client": True,
+                "quarantined": False,
+                "contact_id": contact,
+                "version_id": version_id,
+                **flags,
+            }
+
+        def client_read(tool, row, path, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "client",
+                    "token_scopes": ["files:read"],
+                    "shared": True,
+                    "owner": "self",
+                    "stored_file": row,
+                    "client_matter_ids": [matter],
+                    "client_contact_id": contact,
+                    "tool": tool,
+                    "arguments": {"path": path},
+                    **trusted,
+                },
+            )
+
+        foreign_read = quiet(client_read("getFile", file_row(foreign), {"file_id": file_id}))
+        self.assertEqual(foreign_read["result"], "not_found")
+        foreign_download = quiet(client_read("downloadFileVersion", file_row(foreign), {"file_id": file_id, "version_id": version_id}, confirm=True))
+        self.assertEqual(foreign_download["result"], "not_found")
+        own_read = client_read("getFile", file_row(matter), {"file_id": file_id})
+        self.assertEqual(own_read["result"], "allowed")
+        self.assertTrue(own_read["effects"])
+        own_download = client_read("downloadFileVersion", file_row(matter), {"file_id": file_id, "version_id": version_id}, confirm=True, quarantined=False)
+        self.assertEqual(own_download["result"], "allowed")
+        contact_only = client_read("getFile", file_row(None), {"file_id": file_id}, client_matter_ids=[])
+        self.assertEqual(contact_only["result"], "allowed")
+        contact_on_foreign = quiet(client_read("downloadFileVersion", file_row(foreign), {"file_id": file_id, "version_id": version_id}, confirm=True))
+        self.assertEqual(contact_on_foreign["result"], "not_found")
+        staff_read = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["files:read"],
+                "stored_file": file_row(foreign),
+                "matter_walled": False,
+                "tool": "getFile",
+                "arguments": {"path": {"file_id": file_id}},
+            },
+        )
+        self.assertEqual(staff_read["result"], "allowed")
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

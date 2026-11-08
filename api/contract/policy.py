@@ -827,22 +827,37 @@ def _file_row_denial(subject: dict, row: dict) -> str | None:
 
 
 def _client_file_denied(subject: dict, row: dict) -> bool:
-    """A client needs sharing plus a trusted matter or contact that belongs to that client."""
+    """A shared assigned file must be on this client's matter. Contact applies only when the file is unassigned."""
     if subject.get("role") != "client":
         return False
-    if row.get("shared_with_client") is not True:
+    if row.get("shared_with_client") is not True or "matter_id" not in row:
         return True
     matters = subject.get("client_matter_ids")
-    matter_ok = (
-        isinstance(row.get("matter_id"), str)
-        and isinstance(matters, list)
-        and bool(matters)
-        and all(isinstance(item, str) and item for item in matters)
-        and row["matter_id"] in matters
-    )
+    matter_list_ok = isinstance(matters, list) and bool(matters) and all(isinstance(item, str) and item for item in matters)
+    matter_id = row.get("matter_id")
+    if isinstance(matter_id, str) and matter_id:
+        return not (matter_list_ok and matter_id in matters)
+    if matter_id is not None:
+        return True
     contact = subject.get("client_contact_id")
-    contact_ok = isinstance(row.get("contact_id"), str) and bool(row.get("contact_id")) and isinstance(contact, str) and bool(contact) and row["contact_id"] == contact
-    return not (matter_ok or contact_ok)
+    return not (isinstance(row.get("contact_id"), str) and row["contact_id"] and isinstance(contact, str) and contact == row["contact_id"])
+
+
+def _stored_file_for_request(call: dict) -> dict | None:
+    """The trusted file row for this path. A caller shared or owner flag is not a row."""
+    file_id = call.get("file_id")
+    rows = []
+    if isinstance(call.get("stored_file"), dict):
+        rows.append(call["stored_file"])
+    rows.extend(row for row in call.get("stored_files") or [] if isinstance(row, dict))
+    if isinstance(file_id, str) and file_id:
+        matches = [row for row in rows if row.get("id") == file_id or row.get("file_id") == file_id]
+        if len(matches) != 1:
+            return None
+        return matches[0] if _trusted_file([matches[0]], matches[0].get("id") or file_id) else None
+    if len(rows) == 1 and _trusted_file([rows[0]], rows[0].get("id")):
+        return rows[0]
+    return None
 
 
 def _bind_archive(subject: dict, call: dict, body: dict) -> None:
@@ -920,7 +935,11 @@ def file_download_decision(operation: dict, call: dict) -> str:
         return "not_found"
     if not matter_visible(call, call, single_record=True):
         return "not_found"
-    if call.get("role") == "client" and not call.get("shared"):
+    if call.get("role") == "client" and access.get("access_inherits") == "file" and call.get("file_id"):
+        row = _stored_file_for_request(call)
+        if row is None or _client_file_denied(call, row):
+            return "not_found"
+    elif call.get("role") == "client" and not call.get("shared"):
         return "not_found"
     if call.get("owner") == "other_client":
         return "not_found"
@@ -1396,7 +1415,11 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         return {"result": "not_found", **denied}
     if client in {"own", "own_matter"} and role == "client" and subject.get("owner") not in (None, "self"):
         return {"result": "not_found", **denied}
-    if client == "shared" and role == "client" and (subject.get("owner") == "other_client" or subject.get("shared") is False):
+    if client == "shared" and role == "client" and access.get("access_inherits") == "file" and subject.get("file_id"):
+        row = _stored_file_for_request(subject)
+        if row is None or _client_file_denied(subject, row):
+            return {"result": "not_found", **denied, "events": []}
+    elif client == "shared" and role == "client" and (subject.get("owner") == "other_client" or subject.get("shared") is False):
         return {"result": "not_found", **denied}
     if access.get("quarantine_confirmation") == "required" and not subject.get("noninteractive_accepted"):
         download = file_download_decision(operation, subject)
@@ -1627,15 +1650,86 @@ def _response_record_schema(spec: dict, operation: dict) -> dict | None:
     return None
 
 
+def _matter_prop_mode(prop: dict) -> str:
+    options = prop.get("anyOf") or prop.get("oneOf") or []
+    if prop.get("type") == "null" or any(isinstance(item, dict) and item.get("type") == "null" for item in options):
+        return "nullable"
+    return "required"
+
+
+def _collect_matter_modes(spec: dict, schema: dict, seen: set[str] | None = None) -> set[str]:
+    """Matter modes from a schema, including oneOf branches, wrappers, and page items."""
+    if not isinstance(schema, dict):
+        return set()
+    seen = seen if seen is not None else set()
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        if ref in seen:
+            return set()
+        seen.add(ref)
+        schema = _deref_schema(spec, schema)
+    modes: set[str] = set()
+    for key in ("oneOf", "anyOf", "allOf"):
+        for branch in schema.get(key) or []:
+            if isinstance(branch, dict):
+                modes |= _collect_matter_modes(spec, branch, seen)
+    properties = schema.get("properties") or {}
+    matter = properties.get("matter_id")
+    if isinstance(matter, dict):
+        modes.add(_matter_prop_mode(matter))
+    for name, value in properties.items():
+        if name == "matter_id" or not isinstance(value, dict):
+            continue
+        if value.get("type") in {"string", "integer", "number", "boolean"} and "$ref" not in value and "oneOf" not in value and "anyOf" not in value:
+            continue
+        if "items" in value and isinstance(value.get("items"), dict):
+            modes |= _collect_matter_modes(spec, value["items"], seen)
+        else:
+            modes |= _collect_matter_modes(spec, value, seen)
+    return modes
+
+
+def _operation_path(spec: dict, operation: dict) -> str | None:
+    for path, item in spec.get("paths", {}).items():
+        if not isinstance(item, dict):
+            continue
+        for method, candidate in item.items():
+            if method.startswith("x-") or not isinstance(candidate, dict):
+                continue
+            if candidate.get("operationId") == operation.get("operationId"):
+                return path
+    return None
+
+
+def _parent_item_schema(spec: dict, operation: dict) -> dict | None:
+    """The item GET behind a history or action route. The item itself has no further parent."""
+    path = _operation_path(spec, operation)
+    if not path or "{" not in path or path.endswith("}"):
+        return None
+    parts = path.split("/")
+    indexes = [index for index, part in enumerate(parts) if part.startswith("{") and part.endswith("}")]
+    if not indexes:
+        return None
+    parent_path = "/".join(parts[: indexes[-1] + 1])
+    parent = spec.get("paths", {}).get(parent_path, {}).get("get")
+    if not isinstance(parent, dict):
+        parent_path = "/".join(parts[: indexes[0] + 1])
+        parent = spec.get("paths", {}).get(parent_path, {}).get("get")
+    if isinstance(parent, dict) and parent.get("operationId") != operation.get("operationId"):
+        return _response_record_schema(spec, parent)
+    return None
+
+
 def _parent_matter_mode(spec: dict, operation: dict) -> str:
-    """required, nullable, or absent. absent means this record contract has no parent matter."""
-    schema = _response_record_schema(spec, operation) or {}
-    prop = (schema.get("properties") or {}).get("matter_id")
-    if isinstance(prop, dict):
-        options = prop.get("anyOf") or prop.get("oneOf") or []
-        if any(isinstance(item, dict) and item.get("type") == "null" for item in options):
-            return "nullable"
+    """required, nullable, or absent. A wrapper or oneOf does not make a matter-bound record matter-free."""
+    modes = _collect_matter_modes(spec, _response_record_schema(spec, operation) or {})
+    parent = _parent_item_schema(spec, operation)
+    if parent:
+        modes |= _collect_matter_modes(spec, parent)
+    if "required" in modes:
         return "required"
+    if "nullable" in modes:
+        return "nullable"
     if (operation.get("x-togavsu-access") or {}).get("access_inherits") == "file":
         return "nullable"
     return "absent"
@@ -1913,6 +2007,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
                 subject["stored_matter_id"] = stored_value
             else:
                 subject["stored_matter_state"] = "unresolved"
+            if "matter_walled" not in subject and type(record.get("matter_walled")) is bool:
+                subject["matter_walled"] = record["matter_walled"]
         else:
             subject["stored_matter_state"] = "absent"
     if "matter_id" in body and (resource_update or "matter_id" in call):
