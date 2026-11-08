@@ -14,9 +14,9 @@ Read [interfaces](interfaces.md), [backup format](backup-format.md), [CI](ci.md)
 
 Reviewed the diff from main `1b00ff0ce02d42bc03692509d9a8c24c085d91f9` to this branch. The change stays on the Go standard library and the existing supervisor, destination, and HTTP client paths. No PRD behavior was removed. HTTP 408 and 5xx stay inside `ambiguousRemote`, so `definiteRejection`, `recordMutation`, and the S3 client share one rule. The parent-directory retry, the post-rename uncertain receipt, and the delete directory sync are the durability behavior; cutting them would let a receipt be confirmed or dropped too early. Plaintext backup workspaces stay off the backup volume and are removed on recovery. Destination secrets are sealed with the existing installer field key. A raw local errno before publication is a completed failure. A rename is not called a rollback until recovery commits that operation row cancelled, and a late command rejects a cancelled or missing operation. Restore SQL is streamed instead of copied into the system temp directory. No further deletion was safe.
 
-`git diff --numstat 1b00ff0ce02d42bc03692509d9a8c24c085d91f9`: 73 files, 26271 added, 1 removed, net 26270.
+`git diff --numstat 1b00ff0ce02d42bc03692509d9a8c24c085d91f9`: 74 files, 27049 added, 1 removed, net 27048.
 
-This pass against `b790a53d97bdd168746b6ead8953ee5d3843f3cc`: 9 files, 644 added, 14 removed, net 630.
+This pass against `42f6f52cf9103412843dff5ee955722ea77b4681`: 8 files, 808 added, 30 removed, net 778.
 
 `PONYTAIL-DEBT.md` debt count: 19.
 

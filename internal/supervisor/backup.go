@@ -467,7 +467,14 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := s.noteReceipt(receipts, OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
 		return err
 	}
-	if err := dest.Put(ctx, name, f, meta.SHA256); err != nil {
+	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, mtime int64, digest string) error {
+		return s.noteReceipt(receipts, OwnedObject{
+			DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt,
+			State: receiptPending, Digest: meta.SHA256,
+			Temp: temp, TempInode: inode, TempMtime: mtime, TempDigest: digest,
+		})
+	})
+	if err := dest.Put(putCtx, name, f, meta.SHA256); err != nil {
 		return s.recordMutation(ctx, dest, receipts, name, meta.CreatedAt, err)
 	}
 	rc, err := dest.Get(ctx, name)
@@ -779,6 +786,13 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 	if err != nil {
 		return err
 	}
+	if err := s.reconcileOwnedTemps(ctx, dest, receipts, owned); err != nil {
+		return err
+	}
+	owned, err = receipts.List(dest.ID())
+	if err != nil {
+		return err
+	}
 	// Sidecars first so an archive is not marked complete while its checksum
 	// mutation is still unsettled.
 	for _, pass := range []string{".sha256", ".tgbk"} {
@@ -792,6 +806,38 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, receipts *ReceiptBook, owned []OwnedObject) error {
+	cleaner, ok := dest.(interface {
+		RemoveOwnedTemp(context.Context, string, uint64, int64, string) error
+	})
+	if !ok {
+		return nil
+	}
+	for _, obj := range owned {
+		if obj.Temp == "" || obj.TempInode == 0 || obj.TempMtime == 0 || obj.TempDigest == "" {
+			continue
+		}
+		if remoteBusy(remoteKey(dest.ID(), obj.Name)) || remoteBusy(remoteKey(dest.ID(), obj.Temp)) {
+			continue
+		}
+		err := cleaner.RemoveOwnedTemp(ctx, obj.Temp, obj.TempInode, obj.TempMtime, obj.TempDigest)
+		if errors.Is(err, errTempBusy) || errors.Is(err, errTempIdentity) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		obj.Temp = ""
+		obj.TempInode = 0
+		obj.TempMtime = 0
+		obj.TempDigest = ""
+		if err := s.noteReceipt(receipts, obj); err != nil {
+			return err
 		}
 	}
 	return nil

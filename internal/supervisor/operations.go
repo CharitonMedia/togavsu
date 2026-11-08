@@ -665,8 +665,18 @@ func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
 	if o.Catalog == nil {
 		return false, nil
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	// Cluster identity is the journal's recorded cluster, not the oid of
+	// whatever database currently bears the configured name. A later restore
+	// may replace that live oid while this cleanup target is still owed.
+	if db.ClusterID != "" {
+		if err := o.confirmMaintenanceCluster(ctx, db); err != nil {
+			return false, err
+		}
+	}
 	st, observed := o.observeSwap(rec)
-	if !observed || !st.configured || st.fresh {
+	if !observed {
 		return false, errSwapUnobserved
 	}
 	if !db.SwapCommitted {
@@ -690,15 +700,16 @@ func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
 		}
 	}
 	if !st.replaced {
+		if !st.configured || st.fresh {
+			return false, errSwapUnobserved
+		}
 		return true, nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
-	defer cancel()
+	if !st.configured || st.fresh {
+		return false, errSwapUnobserved
+	}
 	var dropErr error
 	if db.ClusterID != "" || db.ConfiguredOID != "" {
-		if err := o.confirmCluster(ctx, db); err != nil {
-			return false, err
-		}
 		if db.OpID == "" || db.ConfiguredOID == "" {
 			return false, errSwapUnobserved
 		}
@@ -946,6 +957,29 @@ func (o *Operations) finishAllocation(rec RestoreRecord, db *databaseIntent) err
 		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
 		return err
 	}
+}
+
+// confirmMaintenanceCluster checks only the recorded cluster identifier.
+// It does not compare the live configured database oid. Active restore
+// recovery still uses confirmCluster for that check.
+func (o *Operations) confirmMaintenanceCluster(ctx context.Context, db *databaseIntent) error {
+	if db == nil || db.ClusterID == "" || o == nil || o.Catalog == nil {
+		return nil
+	}
+	idn, ok := o.Catalog.(interface {
+		Cluster(context.Context) (string, error)
+	})
+	if !ok {
+		return fmt.Errorf("%w: cluster identity", errSwapUnobserved)
+	}
+	got, err := idn.Cluster(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errSwapUnobserved, err)
+	}
+	if got != db.ClusterID {
+		return fmt.Errorf("admin connection is a different database cluster: %w", ErrBadRequest)
+	}
+	return nil
 }
 
 // confirmCluster rejects recovery when the admin connection is a different

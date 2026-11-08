@@ -691,11 +691,35 @@ func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha
 		if srcClose != nil {
 			defer srcClose()
 		}
-		return p.putFile(name, src, sha)
+		return p.putFile(wait, name, src, sha)
 	})
 }
 
-func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
+type pathTempKey struct{}
+
+// WithPathTemp records the exact temporary file before its bytes can be
+// abandoned. An empty name clears that ownership after the rename.
+// inode and mtime are the file identity. A recreated name does not match.
+func WithPathTemp(ctx context.Context, fn func(name string, inode uint64, mtime int64, digest string) error) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, pathTempKey{}, fn)
+}
+
+func pathTempOwner(ctx context.Context) func(string, uint64, int64, string) error {
+	if ctx == nil {
+		return nil
+	}
+	fn, _ := ctx.Value(pathTempKey{}).(func(string, uint64, int64, string) error)
+	return fn
+}
+
+func statMtime(info syscall.Stat_t) int64 {
+	return info.Mtim.Sec*1_000_000_000 + info.Mtim.Nsec
+}
+
+func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader, sha string) error {
 	if p.stall != nil {
 		p.stall("write")
 	}
@@ -712,11 +736,41 @@ func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
 		f.Close()
 		p.removeTemp(dir, tmpName)
 	}()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		return err
+	}
+	var info syscall.Stat_t
+	if err := syscall.Fstat(int(f.Fd()), &info); err != nil {
+		return err
+	}
+	if own := pathTempOwner(ctx); own != nil {
+		if err := own(tmpName, info.Ino, statMtime(info), ""); err != nil {
+			return err
+		}
+	}
 	if _, copyErr := io.Copy(f, r); copyErr != nil {
 		return copyErr
 	}
 	if err := f.Sync(); err != nil {
 		return err
+	}
+	if err := syscall.Fstat(int(f.Fd()), &info); err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	sum, err := sha256Hex(f)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if own := pathTempOwner(ctx); own != nil {
+		if err := own(tmpName, info.Ino, statMtime(info), sum); err != nil {
+			return err
+		}
 	}
 	if p.stall != nil {
 		p.stall("hash")
@@ -743,6 +797,11 @@ func (p *PathDestination) putFile(name string, r io.Reader, sha string) error {
 		return pathError("rename", name, err)
 	}
 	tmpName = ""
+	if own := pathTempOwner(ctx); own != nil {
+		if err := own("", 0, 0, ""); err != nil {
+			return fmt.Errorf("%w: temp ownership: %v", ErrRemoteUncertain, err)
+		}
+	}
 	// The new name is visible. A failed directory sync must not become a
 	// confirmed receipt, and it must not be a definite rejection: that would
 	// delete the object and drop ownership. A later read can still see it.
@@ -844,6 +903,81 @@ func (p *PathDestination) closeTracked(f *os.File, name string) {
 // RemovePartial deletes the in-progress sibling of an owned archive name.
 func (p *PathDestination) RemovePartial(ctx context.Context, name string) error {
 	return p.Delete(ctx, name+".partial")
+}
+
+var (
+	errTempBusy     = errors.New("temp upload is active")
+	errTempIdentity = errors.New("temp file identity changed")
+)
+
+func ownedTempName(name string) bool {
+	const prefix = ".togavsu-"
+	const suffix = ".tmp"
+	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, suffix) {
+		return false
+	}
+	hexPart := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+	if len(hexPart) != 32 {
+		return false
+	}
+	for _, c := range hexPart {
+		if c < '0' || (c > '9' && c < 'a') || c > 'f' {
+			return false
+		}
+	}
+	return true
+}
+
+// RemoveOwnedTemp unlinks one recorded temporary file when its inode still
+// matches and no process holds its lock. A different inode or a symlink is
+// left in place. A missing name, including after a successful rename, is done.
+func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, name string, inode uint64, mtime int64, digest string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !ownedTempName(name) || inode == 0 || mtime == 0 {
+		return fmt.Errorf("temp name: %w", ErrBadRequest)
+	}
+	dir, err := p.openNamespace(false)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer dir.Close()
+	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDWR|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		if err == syscall.ENOENT {
+			return nil
+		}
+		return err
+	}
+	file := os.NewFile(uintptr(fd), name)
+	defer file.Close()
+	var info syscall.Stat_t
+	if err := syscall.Fstat(fd, &info); err != nil {
+		return err
+	}
+	if digest == "" || info.Ino != inode || statMtime(info) != mtime {
+		return errTempIdentity
+	}
+	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return errTempBusy
+	}
+	defer syscall.Flock(fd, syscall.LOCK_UN)
+	hashed, err := sha256Hex(file)
+	if err != nil {
+		return err
+	}
+	if hashed != digest {
+		return errTempIdentity
+	}
+	err = syscall.Unlinkat(int(dir.Fd()), name)
+	if err != nil && err != syscall.ENOENT {
+		return err
+	}
+	return nil
 }
 
 func (p *PathDestination) Delete(ctx context.Context, name string) error {
@@ -1080,6 +1214,13 @@ type OwnedObject struct {
 	// Digest is the archive checksum recorded with the intent. Recovery can
 	// validate a copy after local retention has removed the metadata file.
 	Digest string `json:"digest,omitempty"`
+	// Temp is the exact unpublished file for this upload. TempInode and
+	// TempMtime are the identity recorded when that file was created.
+	// Recovery removes only that identity. A recreated name is left alone.
+	Temp       string `json:"temp,omitempty"`
+	TempInode  uint64 `json:"temp_inode,omitempty"`
+	TempMtime  int64  `json:"temp_mtime,omitempty"`
+	TempDigest string `json:"temp_digest,omitempty"`
 }
 
 // PruneDestination deletes owned archives older than retention. It does not
