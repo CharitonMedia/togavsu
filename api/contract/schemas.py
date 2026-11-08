@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 
-from contract.metadata import CORE_PAGE_TARGETS, MODULE_ID_PATTERN
+from contract.metadata import CORE_EXTENSION_TARGETS, CORE_PAGE_TARGETS, MODULE_ID_PATTERN
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [
@@ -65,6 +65,7 @@ def _trust_reversal_schema() -> dict:
             "method": _PAY_METHOD,
             "description": {"type": "string"},
             "reverses_entry_id": _uuid("The original ledger row. This compensation does not edit that row."),
+            "included": _ref("Included"),
         },
         [
             "id",
@@ -118,6 +119,7 @@ def _trust_entry_schema(*, read: bool, adjustment: bool) -> dict:
             **properties,
         }
         required = ["id", "created_at", "created_by", *required]
+        properties["included"] = _ref("Included")
     return _obj(properties, required)
 
 
@@ -1432,6 +1434,7 @@ SCHEMAS = _register(
                 "how": _VERSION_HOW,
                 "note": {"type": "string"},
                 "quarantined": {"type": "boolean"},
+                "included": _ref("Included"),
             },
             ["file_id", "number", "storage_backend_id", "size_bytes", "sha256", "media_type", "saved_by", "how", "quarantined"],
             "An immutable file version. The storage key is not in the API.",
@@ -2491,25 +2494,7 @@ SCHEMAS = _register(
         ),
         "ManifestExtension": _obj(
             {
-                "core_record": _enum(
-                    [
-                        "contact",
-                        "matter",
-                        "user",
-                        "note",
-                        "fee_agreement",
-                        "time_entry",
-                        "expense",
-                        "invoice",
-                        "payment",
-                        "calendar_event",
-                        "deadline",
-                        "file",
-                        "conflict_record",
-                        "trust_account",
-                        "matter_party",
-                    ]
-                ),
+                "core_record": _enum([row[0] for row in CORE_EXTENSION_TARGETS]),
                 "table": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
                 "primary_key": {"const": "id"},
                 "foreign_key": {"const": "id"},
@@ -2520,25 +2505,7 @@ SCHEMAS = _register(
         "ManifestView": _obj(
             {
                 "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"},
-                "core_record": _enum(
-                    [
-                        "contact",
-                        "matter",
-                        "user",
-                        "note",
-                        "fee_agreement",
-                        "time_entry",
-                        "expense",
-                        "invoice",
-                        "payment",
-                        "calendar_event",
-                        "deadline",
-                        "file",
-                        "conflict_record",
-                        "trust_account",
-                        "matter_party",
-                    ]
-                ),
+                "core_record": _enum([row[0] for row in CORE_EXTENSION_TARGETS]),
                 "key_column": {"const": "id"},
                 "columns": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}},
                 "scope": {"type": "string", "pattern": "^views:" + MODULE_ID_PATTERN[1:-1] + r"\.[a-z0-9_]+:read$"},

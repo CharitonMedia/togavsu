@@ -450,7 +450,7 @@
       "prd": [
         "7"
       ],
-      "source": "api/tests/test_contract.py:432-575",
+      "source": "api/tests/test_contract.py:433-576",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 35,
@@ -508,7 +508,7 @@
       "prd": [
         "7"
       ],
-      "source": "api/tests/test_contract.py:954-1017",
+      "source": "api/tests/test_contract.py:955-1018",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 38,
@@ -569,14 +569,14 @@
       "prd": [
         "7"
       ],
-      "source": "api/tests/test_contract.py:4321-4436",
+      "source": "api/tests/test_contract.py:4323-4438",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 40,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4330,
+          "line": 4332,
           "literal_rows": 6,
           "rows": [
             [
@@ -697,7 +697,7 @@
         "7",
         "9.3"
       ],
-      "source": "api/tests/test_contract.py:6747-6791",
+      "source": "api/tests/test_contract.py:6809-6853",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 4,
@@ -724,14 +724,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:2184-2289",
+      "source": "api/tests/test_contract.py:2185-2290",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 48,
       "loop_count": 5,
       "literal_rows": [
         {
-          "line": 2261,
+          "line": 2262,
           "literal_rows": 4,
           "rows": [
             [
@@ -780,7 +780,7 @@
           "is_scenario": false
         },
         {
-          "line": 2272,
+          "line": 2273,
           "literal_rows": 4,
           "rows": [
             [
@@ -894,7 +894,7 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:2381-2493",
+      "source": "api/tests/test_contract.py:2382-2494",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
@@ -937,14 +937,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:2792-2948",
+      "source": "api/tests/test_contract.py:2793-2950",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 34,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2853,
+          "line": 2855,
           "literal_rows": 3,
           "rows": [
             [
@@ -1035,14 +1035,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:3437-3749",
+      "source": "api/tests/test_contract.py:3439-3751",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 109,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3501,
+          "line": 3503,
           "literal_rows": 4,
           "rows": [
             [
@@ -1125,7 +1125,7 @@
           "is_scenario": false
         },
         {
-          "line": 3595,
+          "line": 3597,
           "literal_rows": 14,
           "rows": [
             [
@@ -1529,14 +1529,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:3751-3919",
+      "source": "api/tests/test_contract.py:3753-3921",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 33,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3813,
+          "line": 3815,
           "literal_rows": 3,
           "rows": [
             [
@@ -1582,7 +1582,7 @@
           "is_scenario": false
         },
         {
-          "line": 3847,
+          "line": 3849,
           "literal_rows": 6,
           "rows": [
             [
@@ -1745,7 +1745,7 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:4098-4115",
+      "source": "api/tests/test_contract.py:4100-4117",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
@@ -1779,14 +1779,14 @@
       "prd": [
         "8.3"
       ],
-      "source": "api/tests/test_contract.py:5197-5274",
+      "source": "api/tests/test_contract.py:5259-5336",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 25,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 5260,
+          "line": 5322,
           "literal_rows": 9,
           "rows": [
             [
@@ -2004,7 +2004,7 @@
       "prd": [
         "8.21"
       ],
-      "source": "api/tests/test_contract.py:1990-2015",
+      "source": "api/tests/test_contract.py:1991-2016",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 16,
@@ -2043,14 +2043,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:2685-2760",
+      "source": "api/tests/test_contract.py:2686-2761",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2728,
+          "line": 2729,
           "literal_rows": 4,
           "rows": [
             [
@@ -2099,7 +2099,7 @@
           "is_scenario": false
         },
         {
-          "line": 2741,
+          "line": 2742,
           "literal_rows": 14,
           "rows": [
             [
@@ -2439,14 +2439,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:2762-2790",
+      "source": "api/tests/test_contract.py:2763-2791",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 2774,
+          "line": 2775,
           "literal_rows": 6,
           "rows": [
             [
@@ -2580,7 +2580,7 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:4149-4186",
+      "source": "api/tests/test_contract.py:4151-4188",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
@@ -2614,7 +2614,7 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:5276-5325",
+      "source": "api/tests/test_contract.py:5338-5387",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 17,
@@ -2654,14 +2654,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:5704-5869",
+      "source": "api/tests/test_contract.py:5766-5931",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 77,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 5802,
+          "line": 5864,
           "literal_rows": 6,
           "rows": [
             [
@@ -2818,14 +2818,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7385-7532",
+      "source": "api/tests/test_contract.py:7447-7595",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 64,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 7469,
+          "line": 7532,
           "literal_rows": 3,
           "rows": [
             [
@@ -2978,7 +2978,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:1273-1321",
+      "source": "api/tests/test_contract.py:1274-1322",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 31,
@@ -3030,7 +3030,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:3110-3215",
+      "source": "api/tests/test_contract.py:3112-3217",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 33,
@@ -3086,14 +3086,14 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:5081-5195",
+      "source": "api/tests/test_contract.py:5143-5257",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 26,
       "loop_count": 5,
       "literal_rows": [
         {
-          "line": 5136,
+          "line": 5198,
           "literal_rows": 11,
           "rows": [
             [
@@ -3212,7 +3212,7 @@
           "is_scenario": false
         },
         {
-          "line": 5155,
+          "line": 5217,
           "literal_rows": 3,
           "rows": [
             [
@@ -3296,7 +3296,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:7965-8057",
+      "source": "api/tests/test_contract.py:8028-8120",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 47,
@@ -3366,14 +3366,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:6686-6745",
+      "source": "api/tests/test_contract.py:6748-6807",
       "source_line_basis": "current_worktree",
       "kind": "simulator_behavior",
       "assertion_call_sites": 21,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 6724,
+          "line": 6786,
           "literal_rows": 5,
           "rows": [
             [
@@ -3513,14 +3513,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:1415-1988",
+      "source": "api/tests/test_contract.py:1416-1989",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 135,
       "loop_count": 11,
       "literal_rows": [
         {
-          "line": 1720,
+          "line": 1721,
           "literal_rows": 6,
           "rows": [
             [
@@ -3613,7 +3613,7 @@
           "is_scenario": false
         },
         {
-          "line": 1841,
+          "line": 1842,
           "literal_rows": 4,
           "rows": [
             [
@@ -3833,7 +3833,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:2073-2104",
+      "source": "api/tests/test_contract.py:2074-2105",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 15,
@@ -3871,7 +3871,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:2555-2641",
+      "source": "api/tests/test_contract.py:2556-2642",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
@@ -3918,7 +3918,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:2643-2683",
+      "source": "api/tests/test_contract.py:2644-2684",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 13,
@@ -3954,14 +3954,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4248-4319",
+      "source": "api/tests/test_contract.py:4250-4321",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 22,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 4271,
+          "line": 4273,
           "literal_rows": 5,
           "rows": [
             [
@@ -4071,7 +4071,7 @@
           "is_scenario": false
         },
         {
-          "line": 4303,
+          "line": 4305,
           "literal_rows": 3,
           "rows": [
             [
@@ -4200,15 +4200,317 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4438-4564",
+      "source": "api/tests/test_contract.py:4440-4626",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 39,
-      "loop_count": 1,
-      "literal_rows": [],
+      "assertion_call_sites": 49,
+      "loop_count": 2,
+      "literal_rows": [
+        {
+          "line": 4441,
+          "literal_rows": 17,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "user"
+              },
+              {
+                "kind": "constant",
+                "value": "User"
+              },
+              {
+                "kind": "constant",
+                "value": "users:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "contact"
+              },
+              {
+                "kind": "constant",
+                "value": "Contact"
+              },
+              {
+                "kind": "constant",
+                "value": "contacts:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "matter"
+              },
+              {
+                "kind": "constant",
+                "value": "Matter"
+              },
+              {
+                "kind": "constant",
+                "value": "matters:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "matter_party"
+              },
+              {
+                "kind": "constant",
+                "value": "MatterParty"
+              },
+              {
+                "kind": "constant",
+                "value": "matters:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "note"
+              },
+              {
+                "kind": "constant",
+                "value": "Note"
+              },
+              {
+                "kind": "constant",
+                "value": "notes:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "fee_agreement"
+              },
+              {
+                "kind": "constant",
+                "value": "FeeAgreement"
+              },
+              {
+                "kind": "constant",
+                "value": "matters:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "time_entry"
+              },
+              {
+                "kind": "constant",
+                "value": "TimeEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "time:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "expense"
+              },
+              {
+                "kind": "constant",
+                "value": "Expense"
+              },
+              {
+                "kind": "constant",
+                "value": "expenses:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "invoice"
+              },
+              {
+                "kind": "constant",
+                "value": "Invoice"
+              },
+              {
+                "kind": "constant",
+                "value": "invoices:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "payment"
+              },
+              {
+                "kind": "constant",
+                "value": "Payment"
+              },
+              {
+                "kind": "constant",
+                "value": "payments:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "calendar_event"
+              },
+              {
+                "kind": "constant",
+                "value": "CalendarEvent"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "deadline"
+              },
+              {
+                "kind": "constant",
+                "value": "Deadline"
+              },
+              {
+                "kind": "constant",
+                "value": "deadlines:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "file"
+              },
+              {
+                "kind": "constant",
+                "value": "File"
+              },
+              {
+                "kind": "constant",
+                "value": "files:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "file_version"
+              },
+              {
+                "kind": "constant",
+                "value": "FileVersion"
+              },
+              {
+                "kind": "constant",
+                "value": "files:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "conflict_record"
+              },
+              {
+                "kind": "constant",
+                "value": "ConflictRecord"
+              },
+              {
+                "kind": "constant",
+                "value": "conflicts:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "trust_account"
+              },
+              {
+                "kind": "constant",
+                "value": "TrustAccount"
+              },
+              {
+                "kind": "constant",
+                "value": "trust:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "trust_entry"
+              },
+              {
+                "kind": "constant",
+                "value": "TrustEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "trust:read"
+              },
+              {
+                "kind": "Tuple"
+              }
+            ]
+          ],
+          "text": "expected = ( (\"user\", \"User\", \"users:read\", (\"listUser\", \"getUser\")), (\"contact\", \"Contact\", \"contacts:read\", (\"listContact\", \"getContact\")), (\"matter\", \"Matter\", \"matters:read\", (\"listMatter\", \"getMatter\")), (\"matter_party\", \"MatterParty\", \"matters:read\", (\"listMatterParty\", \"getMatterParty\")), (\"note\", \"Note\", \"notes:read\", (\"listNote\", \"getNote\")), (\"fee_agreement\", \"FeeAgreement\", \"matters:read\", (\"listFeeAgreement\", \"getFeeAgreement\")), (\"time_entry\", \"TimeEntry\", \"time:read\", (\"listTimeEntry\", \"getTimeEntry\")), (\"expense\", \"Expense\", \"expenses:read\", (\"listExpense\", \"getExpense\")), (\"invoice\", \"Invoice\", \"invoices:read\", (\"listInvoice\", \"getInvoice\")), (\"payment\", \"Payment\", \"payments:read\", (\"listPayment\", \"getPayment\")), (\"calendar_event\", \"CalendarEvent\", \"calendar:read\", (\"listCalendarEvent\", \"getCalendarEvent\")), (\"deadline\", \"Deadline\", \"deadlines:read\", (\"listDeadline\", \"getDeadline\")), (\"file\", \"File\", \"files:read\", (\"listFile\", \"getFile\")), (\"file_version\", \"FileVersion\", \"files:read\", (\"listFileVersions\",)), (\"conflict_record\", \"ConflictRecord\", \"conflicts:read\", (\"listConflictRecord\", \"getConflictRecord\")), (\"trust_account\", \"TrustAccount\", \"trust:read\", (\"listTrustAccount\", \"getTrustAccount\")), (\"trust_entry\", \"TrustEntry\", \"trust:read\", (\"listTrustEntry\", \"getTrustEntry\")), )",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
       "assertion_statements": [
-        "self.assertEqual(EXTENSIBLE_RECORDS, expected)",
-        "self.assertEqual(seen, set(expected))",
+        "self.assertEqual(CORE_EXTENSION_TARGETS, expected)",
+        "self.assertEqual(EXTENSIBLE_RECORDS, {schema: scope for _key, schema, scope, _reads in expected})",
+        "self.assertEqual(extension_enum, [row[0] for row in expected])",
+        "self.assertEqual(view_enum, [row[0] for row in expected])",
+        "self.assertEqual(covered, {row[1] for row in expected})",
         "self.assertEqual(include_views_decision(users, {\"role\": \"admin\", \"approved_scopes\": approved, \"include\": [\"clock.targets\"]}), \"allowed\")",
         "self.assertEqual(include_views_decision(users, {\"role\": \"staff\", \"approved_scopes\": approved, \"include\": [\"clock.targets\"]}), \"forbidden\")",
         "self.assertEqual(include_views_decision(users, {\"role\": \"admin\", \"approved_scopes\": [\"users:read\"], \"include\": [\"clock.targets\"]}), \"forbidden\")",
@@ -4238,14 +4540,21 @@
         "self.assertEqual(attorney[\"record\"][\"identifier\"], \"123-45-6789\")",
         "self.assertEqual(hidden_file[\"result\"], \"not_found\")",
         "self.assertIsNone(hidden_file[\"record\"])",
-        "self.assertIn(\"include\", names, operation[\"operationId\"])",
-        "self.assertEqual(operation[\"x-togavsu-access\"][\"include_scope_pattern\"], \"views:{module_id}.{view}:read\", operation[\"operationId\"])",
-        "self.assertEqual(canonical[\"x-togavsu-access\"][\"scopes\"], [expected[schema_name]], schema_name)",
-        "self.assertEqual(_operation(self.spec, f\"get{schema_name}\")[\"x-togavsu-access\"][\"scopes\"], [expected[schema_name]], schema_name)",
-        "self.assertIn(\"included\", schema[\"properties\"], schema_name)",
-        "self.assertNotIn(\"included\", schema.get(\"required\", []), schema_name)",
-        "self.assertIn(\"query\", arguments, operation[\"operationId\"])",
-        "self.assertNotIn(\"roles\", arguments, operation[\"operationId\"])"
+        "self.assertTrue(_schema_accepts_included(self.spec[\"components\"][\"schemas\"][schema_name]), schema_name)",
+        "with self.assertRaises(Exception):",
+        "self.assertIn(\"include\", names, operation_id)",
+        "self.assertEqual(operation[\"x-togavsu-access\"][\"include_scope_pattern\"], \"views:{module_id}.{view}:read\", operation_id)",
+        "self.assertEqual(operation[\"x-togavsu-access\"][\"scopes\"], [scope], operation_id)",
+        "self.assertIn(\"query\", arguments, operation_id)",
+        "self.assertNotIn(\"roles\", arguments, operation_id)",
+        "self.assertEqual(include_views_decision(operation, positive), \"allowed\", operation_id)",
+        "self.assertEqual( include_views_decision(operation, {**positive, \"approved_scopes\": [scope], \"include\": [\"not-a-view\"]}), \"validation_failed\", operation_id, )",
+        "self.assertEqual(include_views_decision(operation, extension), \"allowed\", operation_id)",
+        "self.assertEqual(include_views_decision(operation, {**extension, \"caller_module_id\": \"other-module\"}), \"forbidden\", operation_id)",
+        "self.assertEqual(include_views_decision(operation, published), \"allowed\", operation_id)",
+        "self.assertEqual( include_views_decision(operation, {**published, \"approved_scopes\": [scope], \"token_scopes\": [scope]}), \"forbidden\", operation_id, )",
+        "self.assertEqual(hidden, \"not_found\", operation_id)",
+        "self.assertEqual(hidden, \"allowed\", operation_id)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -4263,7 +4572,7 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4638-4840",
+      "source": "api/tests/test_contract.py:4700-4902",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 39,
@@ -4325,14 +4634,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:5919-6080",
+      "source": "api/tests/test_contract.py:5981-6142",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 75,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 5997,
+          "line": 6059,
           "literal_rows": 6,
           "rows": [
             [
@@ -4526,14 +4835,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:577-943",
+      "source": "api/tests/test_contract.py:578-944",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 78,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 713,
+          "line": 714,
           "literal_rows": 5,
           "rows": [
             [
@@ -4592,7 +4901,7 @@
           "is_scenario": false
         },
         {
-          "line": 803,
+          "line": 804,
           "literal_rows": 4,
           "rows": [
             [
@@ -4738,7 +5047,7 @@
         "8",
         "9"
       ],
-      "source": "api/tests/test_contract.py:2950-3050",
+      "source": "api/tests/test_contract.py:2952-3052",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 30,
@@ -4793,7 +5102,7 @@
         "8.3",
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:3052-3108",
+      "source": "api/tests/test_contract.py:3054-3110",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
@@ -4829,7 +5138,7 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:4001-4096",
+      "source": "api/tests/test_contract.py:4003-4098",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
@@ -4876,14 +5185,14 @@
       "prd": [
         "9"
       ],
-      "source": "api/tests/test_contract.py:4117-4147",
+      "source": "api/tests/test_contract.py:4119-4149",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 6,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 4126,
+          "line": 4128,
           "literal_rows": 18,
           "rows": [
             [
@@ -5278,14 +5587,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:4842-5079",
+      "source": "api/tests/test_contract.py:4904-5141",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 31,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 5028,
+          "line": 5090,
           "literal_rows": 2,
           "rows": [
             [
@@ -5372,14 +5681,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:5374-5441",
+      "source": "api/tests/test_contract.py:5436-5503",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 18,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 5420,
+          "line": 5482,
           "literal_rows": 6,
           "rows": [
             [
@@ -5514,14 +5823,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:6793-7129",
+      "source": "api/tests/test_contract.py:6855-7191",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 6904,
+          "line": 6966,
           "literal_rows": 15,
           "rows": [
             [
@@ -5726,14 +6035,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7534-7723",
+      "source": "api/tests/test_contract.py:7597-7786",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 7639,
+          "line": 7702,
           "literal_rows": 2,
           "rows": [
             [
@@ -5851,14 +6160,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:7725-7963",
+      "source": "api/tests/test_contract.py:7788-8026",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 41,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 7788,
+          "line": 7851,
           "literal_rows": 6,
           "rows": [
             [
@@ -5952,7 +6261,7 @@
           "is_scenario": false
         },
         {
-          "line": 7856,
+          "line": 7919,
           "literal_rows": 8,
           "rows": [
             [
@@ -6188,14 +6497,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8059-8270",
+      "source": "api/tests/test_contract.py:8122-8334",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 43,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8191,
+          "line": 8254,
           "literal_rows": 6,
           "rows": [
             [
@@ -6342,14 +6651,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8272-8435",
+      "source": "api/tests/test_contract.py:8336-8499",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 45,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 8307,
+          "line": 8371,
           "literal_rows": 6,
           "rows": [
             [
@@ -6435,7 +6744,7 @@
           "is_scenario": false
         },
         {
-          "line": 8357,
+          "line": 8421,
           "literal_rows": 5,
           "rows": [
             [
@@ -6554,14 +6863,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8437-8610",
+      "source": "api/tests/test_contract.py:8501-8680",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 36,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8474,
+          "line": 8538,
           "literal_rows": 6,
           "rows": [
             [
@@ -6734,14 +7043,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8612-8730",
+      "source": "api/tests/test_contract.py:8682-8806",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 21,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8640,
+          "line": 8710,
           "literal_rows": 5,
           "rows": [
             [
@@ -6877,14 +7186,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8732-9027",
+      "source": "api/tests/test_contract.py:8808-9107",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
       "loop_count": 5,
       "literal_rows": [
         {
-          "line": 8789,
+          "line": 8865,
           "literal_rows": 6,
           "rows": [
             [
@@ -6992,7 +7301,7 @@
           "is_scenario": false
         },
         {
-          "line": 8876,
+          "line": 8952,
           "literal_rows": 3,
           "rows": [
             [
@@ -7050,7 +7359,7 @@
           "is_scenario": false
         },
         {
-          "line": 8930,
+          "line": 9010,
           "literal_rows": 2,
           "rows": [
             [
@@ -7079,7 +7388,7 @@
           "is_scenario": false
         },
         {
-          "line": 9010,
+          "line": 9090,
           "literal_rows": 5,
           "rows": [
             [
@@ -7238,6 +7547,210 @@
       "retirement_status": "pending"
     },
     {
+      "id": "ContractTest.test_canonical_file_flag_source_and_context_matter",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-002",
+        "AC-005",
+        "AC-012",
+        "AC-039"
+      ],
+      "prd": [
+        "8.4",
+        "8.19",
+        "9"
+      ],
+      "source": "api/tests/test_contract.py:9109-9383",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 35,
+      "loop_count": 2,
+      "literal_rows": [
+        {
+          "line": 9156,
+          "literal_rows": 5,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getFile"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateFileMetadata"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "body"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "historyFile"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "listFileVersions"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "downloadFileVersion"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "query"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for tool, scopes, arguments in ( (\"getFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"updateFileMetadata\", [\"files:write\"], {\"path\": {\"file_id\": file_id}, \"body\": {\"matter_id\": None}}), (\"historyFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"listFileVersions\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"downloadFileVersion\", [\"files:read\"], {\"path\": {\"file_id\": file_id, \"version_id\": version_id}, \"query\": {\"confirm_quarantine\": True}}), ): bypass = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=None, matter_walled=False)) self.assertEqual(bypass[\"result\"], \"not_found\", tool) moved = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=other, matter_walls={other: False})) self.assertEqual(moved[\"result\"], \"not_found\", tool) missing = quiet(call(tool, \"staff\", scopes, arguments, matter_id=matter, matter_walled=False)) self.assertEqual(missing[\"result\"], \"not_found\", tool) conflicted = quiet( call( tool, \"staff\", scopes, arguments, stored_files=[file_row(matter), file_row(other, id=file_id)], matter_walls={matter: False}, ) ) self.assertEqual(conflicted[\"result\"], \"not_found\", tool) opened = call( tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_id=matter, matter_walls={matter: False}, ) self.assertEqual(opened[\"result\"], \"allowed\", tool) self.assertTrue(opened[\"effects\"], tool)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 9257,
+          "literal_rows": 3,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "matter"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "client_id",
+                  "matter_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "client"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "client_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "account"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "trust_account_id"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for scope, extra in ( (\"matter\", {\"client_id\": contact, \"matter_id\": matter}), (\"client\", {\"client_id\": contact}), (\"account\", {\"trust_account_id\": account}), ): stored = flag(scope, **extra) read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False) self.assertEqual(read[\"result\"], \"allowed\", scope) self.assertTrue(read[\"effects\"], scope) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\", \"source\": {\"matter_id\": other, \"matter_walled\": False}}}, stored_record=stored, matter_walled=False, ) self.assertEqual(resolved[\"result\"], \"allowed\", scope) routed = call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False, domain_handlers=handler, ) self.assertEqual(routed[\"result\"], \"allowed\", scope) self.assertFalse(routed[\"effects\"], scope) self.assertEqual(routed[\"routed\"], \"trust-mod\", scope) hidden_source = flag(scope, **extra) hidden_source[\"source\"] = {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": True, \"client_id\": contact} denied = quiet( call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"source\": {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": False}}}, stored_record=hidden_source, matter_walls={matter: False}, matter_membership={matter: False}, domain_handlers=handler, ) ) self.assertEqual(denied[\"result\"], \"not_found\", scope) unknown = quiet(call(\"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\"}}, stored_record={key: value for key, value in stored.items() if key != \"source\"})) self.assertEqual(unknown[\"result\"], \"not_found\", scope)",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertEqual(client_walled[\"result\"], \"not_found\")",
+        "self.assertEqual(client_open[\"result\"], \"allowed\")",
+        "self.assertTrue(client_open[\"effects\"])",
+        "self.assertEqual(archive[\"result\"], \"not_found\")",
+        "self.assertEqual(link[\"result\"], \"not_found\")",
+        "self.assertEqual(quiet(call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=mismatched))[\"result\"], \"not_found\")",
+        "self.assertEqual(listed[\"result\"], \"allowed\")",
+        "self.assertEqual([row[\"scope\"] for row in listed[\"rows\"]], [\"client\"])",
+        "self.assertEqual(foreign[\"result\"], \"not_found\")",
+        "self.assertEqual(omitted[\"result\"], \"not_found\")",
+        "self.assertEqual(unshared[\"result\"], \"not_found\")",
+        "self.assertEqual(malformed[\"result\"], \"not_found\")",
+        "self.assertEqual(own[\"result\"], \"allowed\")",
+        "self.assertTrue(own[\"effects\"])",
+        "self.assertEqual(none[\"result\"], \"allowed\")",
+        "self.assertTrue(none[\"effects\"])",
+        "self.assertEqual(staff[\"result\"], \"allowed\")",
+        "self.assertTrue(staff[\"effects\"])",
+        "self.assertFalse(decision[\"effects\"])",
+        "self.assertEqual(decision.get(\"events\") or [], [])",
+        "self.assertIsNone(decision.get(\"routed\"))",
+        "self.assertEqual(bypass[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(moved[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(missing[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(conflicted[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(opened[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(opened[\"effects\"], tool)",
+        "self.assertEqual(read[\"result\"], \"allowed\", scope)",
+        "self.assertTrue(read[\"effects\"], scope)",
+        "self.assertEqual(resolved[\"result\"], \"allowed\", scope)",
+        "self.assertEqual(routed[\"result\"], \"allowed\", scope)",
+        "self.assertFalse(routed[\"effects\"], scope)",
+        "self.assertEqual(routed[\"routed\"], \"trust-mod\", scope)",
+        "self.assertEqual(denied[\"result\"], \"not_found\", scope)",
+        "self.assertEqual(unknown[\"result\"], \"not_found\", scope)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
       "id": "ContractTest.test_matter_wall_is_inherited_on_named_flows",
       "go_owner": "practice",
       "acceptance": [
@@ -7246,7 +7759,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:1157-1271",
+      "source": "api/tests/test_contract.py:1158-1272",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 42,
@@ -7311,14 +7824,14 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:3921-3999",
+      "source": "api/tests/test_contract.py:3923-4001",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 11,
       "loop_count": 3,
       "literal_rows": [
         {
-          "line": 3957,
+          "line": 3959,
           "literal_rows": 7,
           "rows": [
             [
@@ -7443,7 +7956,7 @@
           "is_scenario": false
         },
         {
-          "line": 3990,
+          "line": 3992,
           "literal_rows": 4,
           "rows": [
             [
@@ -7520,7 +8033,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:5327-5372",
+      "source": "api/tests/test_contract.py:5389-5434",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 24,
@@ -7567,7 +8080,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:5552-5702",
+      "source": "api/tests/test_contract.py:5614-5764",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -7604,7 +8117,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:6592-6684",
+      "source": "api/tests/test_contract.py:6654-6746",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 32,
@@ -7659,7 +8172,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7131-7194",
+      "source": "api/tests/test_contract.py:7193-7256",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 34,
@@ -7716,7 +8229,7 @@
       "prd": [
         "8.12"
       ],
-      "source": "api/tests/test_contract.py:7196-7274",
+      "source": "api/tests/test_contract.py:7258-7336",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 42,
@@ -7781,7 +8294,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7338-7383",
+      "source": "api/tests/test_contract.py:7400-7445",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -7819,7 +8332,7 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:1137-1155",
+      "source": "api/tests/test_contract.py:1138-1156",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 7,
@@ -7850,14 +8363,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:3270-3435",
+      "source": "api/tests/test_contract.py:3272-3437",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 40,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 3292,
+          "line": 3294,
           "literal_rows": 7,
           "rows": [
             [
@@ -8038,7 +8551,7 @@
           "is_scenario": false
         },
         {
-          "line": 3416,
+          "line": 3418,
           "literal_rows": 12,
           "rows": [
             [
@@ -8402,7 +8915,7 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:5443-5550",
+      "source": "api/tests/test_contract.py:5505-5612",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 18,
@@ -8444,14 +8957,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:5871-5917",
+      "source": "api/tests/test_contract.py:5933-5979",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 5900,
+          "line": 5962,
           "literal_rows": 6,
           "rows": [
             [
@@ -8594,14 +9107,14 @@
       "prd": [
         "8.4"
       ],
-      "source": "api/tests/test_contract.py:6082-6590",
+      "source": "api/tests/test_contract.py:6144-6652",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 107,
       "loop_count": 6,
       "literal_rows": [
         {
-          "line": 6183,
+          "line": 6245,
           "literal_rows": 3,
           "rows": [
             [
@@ -8775,7 +9288,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:4566-4636",
+      "source": "api/tests/test_contract.py:4628-4698",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 20,
@@ -8897,8 +9410,8 @@
     "modules": {
       "go_owner": "modules",
       "methods": 8,
-      "assertion_call_sites": 361,
-      "literal_rows": 24,
+      "assertion_call_sites": 371,
+      "literal_rows": 41,
       "method_names": [
         "test_complete_module_manifest_validates",
         "test_module_help_token_is_not_an_admin",
@@ -8914,9 +9427,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 15,
-      "assertion_call_sites": 528,
-      "literal_rows": 110,
+      "methods": 16,
+      "assertion_call_sites": 563,
+      "literal_rows": 118,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -8932,7 +9445,8 @@
         "test_concrete_matter_and_selected_files",
         "test_record_owner_and_client_file_access",
         "test_parent_schema_and_client_file_reads",
-        "test_trusted_resource_facts_match_the_route"
+        "test_trusted_resource_facts_match_the_route",
+        "test_canonical_file_flag_source_and_context_matter"
       ],
       "status": "not_converted",
       "complete": false

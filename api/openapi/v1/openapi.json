@@ -31161,6 +31161,15 @@
               "description": "Calendar date."
             },
             "description": "Inclusive end date."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -31229,7 +31238,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -31549,6 +31564,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter trust_entry_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -31601,7 +31625,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -39026,6 +39056,15 @@
               "default": 50
             },
             "description": "Page size. The published maximum is the registry ceiling for api.max_page_size, 10000. The active cap is the current api.max_page_size, starting at 200, and a limit above that cap is refused. The default is api.page_size, starting at 50, and cannot exceed the active cap. The next request uses an admin change."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -39122,6 +39161,7 @@
               "result": "not_found"
             }
           ],
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer_or_noninteractive",
           "noninteractive_workflow": "malware_scan",
           "response_projection": {
@@ -39135,6 +39175,11 @@
             ],
             "additional_properties": false,
             "required_subset_of_grant": true
+          },
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
           },
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
@@ -66357,6 +66402,9 @@
                 "type": "integer",
                 "minimum": 0,
                 "description": "Zero or greater. Direction comes from entry_type, not from the sign."
+              },
+              "included": {
+                "$ref": "#/components/schemas/Included"
               }
             },
             "required": [
@@ -66449,6 +66497,9 @@
                   "debit"
                 ],
                 "description": "credit matches a positive amount. debit matches a negative amount."
+              },
+              "included": {
+                "$ref": "#/components/schemas/Included"
               }
             },
             "required": [
@@ -66535,6 +66586,9 @@
                 "type": "string",
                 "format": "uuid",
                 "description": "The original ledger row. This compensation does not edit that row."
+              },
+              "included": {
+                "$ref": "#/components/schemas/Included"
               }
             },
             "required": [
@@ -68282,6 +68336,9 @@
           },
           "quarantined": {
             "type": "boolean"
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -73294,9 +73351,10 @@
           "core_record": {
             "type": "string",
             "enum": [
+              "user",
               "contact",
               "matter",
-              "user",
+              "matter_party",
               "note",
               "fee_agreement",
               "time_entry",
@@ -73306,9 +73364,10 @@
               "calendar_event",
               "deadline",
               "file",
+              "file_version",
               "conflict_record",
               "trust_account",
-              "matter_party"
+              "trust_entry"
             ]
           },
           "table": {
@@ -73341,9 +73400,10 @@
           "core_record": {
             "type": "string",
             "enum": [
+              "user",
               "contact",
               "matter",
-              "user",
+              "matter_party",
               "note",
               "fee_agreement",
               "time_entry",
@@ -73353,9 +73413,10 @@
               "calendar_event",
               "deadline",
               "file",
+              "file_version",
               "conflict_record",
               "trust_account",
-              "matter_party"
+              "trust_entry"
             ]
           },
           "key_column": {

@@ -413,6 +413,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "createFileLink is not_found when neither file resolves. The access cases include from_visible false with to_visible false.",
             },
+            {
+                "id": "extension-trust-entry-file-version",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "ManifestExtension and ManifestView include trust_entry and file_version. listTrustEntry, getTrustEntry, and listFileVersions take include, and those read schemas carry optional included. The MCP catalog still describes query as one object, so its bytes stay the same.",
+            },
         ],
         "intentional_corrections": [
             {

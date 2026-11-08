@@ -175,6 +175,30 @@ MODULE_GUIDE = {
     "own_heading_only": True,
     "runtime_registration": "pending",
 }
+# Section 9.9 records a module may extend by id. The manifest enum and include
+# reads both come from this list. Wrappers, credentials, admin catalogs, storage
+# infrastructure, and append-only streams are not records in this catalog.
+# file_version is listed by listFileVersions; it has no separate get.
+CORE_EXTENSION_TARGETS = (
+    ("user", "User", "users:read", ("listUser", "getUser")),
+    ("contact", "Contact", "contacts:read", ("listContact", "getContact")),
+    ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
+    ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+    ("note", "Note", "notes:read", ("listNote", "getNote")),
+    ("fee_agreement", "FeeAgreement", "matters:read", ("listFeeAgreement", "getFeeAgreement")),
+    ("time_entry", "TimeEntry", "time:read", ("listTimeEntry", "getTimeEntry")),
+    ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
+    ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
+    ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+    ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
+    ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
+    ("file", "File", "files:read", ("listFile", "getFile")),
+    ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
+    ("conflict_record", "ConflictRecord", "conflicts:read", ("listConflictRecord", "getConflictRecord")),
+    ("trust_account", "TrustAccount", "trust:read", ("listTrustAccount", "getTrustAccount")),
+    ("trust_entry", "TrustEntry", "trust:read", ("listTrustEntry", "getTrustEntry")),
+)
+
 CORE_PAGE_TARGETS = {
     "time_entries": {"operation": "listTimeEntry", "scopes": ["time:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
     "matters": {"operation": "listMatter", "scopes": ["matters:read"], "roles": ["admin", "attorney", "staff"], "matter_wall": True},
@@ -1215,6 +1239,7 @@ PAYMENT_PROCESSOR["status_graph"] = PAYMENT_STATUS_GRAPH
 __all__ = [
     'BACKGROUND_FILE_PUBLICATION',
     'BACKGROUND_FILE_SEQUENCE',
+    'CORE_EXTENSION_TARGETS',
     'CORE_PAGE_TARGETS',
     'EVENT_EXEMPTIONS',
     'FILE_DOWNLOAD',

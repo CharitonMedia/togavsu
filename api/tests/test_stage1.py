@@ -343,6 +343,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "mcp-cookie-csrf",
                 "csrf-header-is-transport",
                 "file-link-both-unresolved",
+                "extension-trust-entry-file-version",
             },
         )
 

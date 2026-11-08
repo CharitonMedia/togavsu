@@ -2057,6 +2057,7 @@ def _trust(api: Contract) -> None:
         create=False,
         update=False,
         filters=["matter_id", "client_id", "trust_account_id", "from_date", "to_date"],
+        include=True,
         replaceable="trust",
         extra_access=WALL,
         extra_features=["trust-below-zero"],
@@ -2574,8 +2575,9 @@ def _files(api: Contract) -> None:
         scopes=["files:read"],
         response_schema=_page("FileVersion"),
         paginate=True,
+        include=True,
         writes=False,
-        extra_access=SHARED,
+        extra_access={**SHARED, "include_scope_pattern": "views:{module_id}.{view}:read"},
     )
     api.add(
         "post",

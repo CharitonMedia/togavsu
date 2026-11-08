@@ -23,6 +23,7 @@ from contract.build import (
 )
 from contract.policy import (
     CORE_PAGE_TARGETS,
+    CORE_EXTENSION_TARGETS,
     EXTENSIBLE_RECORDS,
     background_file_step,
     commit_concurrent_processor_creates,
@@ -2813,6 +2814,7 @@ class ContractTest(unittest.TestCase):
                 "warnings": [],
                 "financial_classification": classification,
                 "matter_id": matter,
+                "matter_walled": False,
             }
             row.update(extra)
             return row
@@ -2822,7 +2824,7 @@ class ContractTest(unittest.TestCase):
         ordinary = stored(None, id="018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3", name="pleading.pdf")
         absent = {key: value for key, value in stored(None, id="018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4").items() if key != "financial_classification"}
         for row in (receipt, invoice, ordinary, absent):
-            _component_validator(self.spec, "File").validate(row)
+            _component_validator(self.spec, "File").validate({key: value for key, value in row.items() if key != "matter_walled"})
         download = _operation(self.spec, "downloadFileVersion")
         get_file = _operation(self.spec, "getFile")
         invoice_pdf = _operation(self.spec, "getInvoicePdf")
@@ -4436,46 +4438,106 @@ class ContractTest(unittest.TestCase):
         self.assertIn("keyed", self.spec["webhooks"]["moduleEvent"]["post"]["description"])
 
     def test_include_views_cover_extensible_core_records(self):
-        expected = {
-            "User": "users:read",
-            "Contact": "contacts:read",
-            "Matter": "matters:read",
-            "MatterParty": "matters:read",
-            "Note": "notes:read",
-            "FeeAgreement": "matters:read",
-            "TimeEntry": "time:read",
-            "Expense": "expenses:read",
-            "Invoice": "invoices:read",
-            "Payment": "payments:read",
-            "CalendarEvent": "calendar:read",
-            "Deadline": "deadlines:read",
-            "File": "files:read",
-            "ConflictRecord": "conflicts:read",
-            "TrustAccount": "trust:read",
-        }
-        self.assertEqual(EXTENSIBLE_RECORDS, expected)
-        seen = set()
-        for _method, _path, operation in _ops(self.spec):
-            if _method != "get":
-                continue
-            matched = _response_record_schemas(operation) & set(expected)
-            if not matched:
-                continue
-            seen.update(matched)
-            schema_name = sorted(matched)[0]
-            names = [_param_name(parameter) for parameter in operation.get("parameters") or []]
-            self.assertIn("include", names, operation["operationId"])
-            self.assertEqual(operation["x-togavsu-access"]["include_scope_pattern"], "views:{module_id}.{view}:read", operation["operationId"])
-            canonical = _operation(self.spec, f"list{schema_name}")
-            self.assertEqual(canonical["x-togavsu-access"]["scopes"], [expected[schema_name]], schema_name)
-            self.assertEqual(_operation(self.spec, f"get{schema_name}")["x-togavsu-access"]["scopes"], [expected[schema_name]], schema_name)
-            schema = self.spec["components"]["schemas"][schema_name]
-            self.assertIn("included", schema["properties"], schema_name)
-            self.assertNotIn("included", schema.get("required", []), schema_name)
-            arguments = operation["x-togavsu-mcp"]["transfer"]["arguments"]
-            self.assertIn("query", arguments, operation["operationId"])
-            self.assertNotIn("roles", arguments, operation["operationId"])
-        self.assertEqual(seen, set(expected))
+        expected = (
+            ("user", "User", "users:read", ("listUser", "getUser")),
+            ("contact", "Contact", "contacts:read", ("listContact", "getContact")),
+            ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
+            ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+            ("note", "Note", "notes:read", ("listNote", "getNote")),
+            ("fee_agreement", "FeeAgreement", "matters:read", ("listFeeAgreement", "getFeeAgreement")),
+            ("time_entry", "TimeEntry", "time:read", ("listTimeEntry", "getTimeEntry")),
+            ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
+            ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
+            ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
+            ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
+            ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
+            ("file", "File", "files:read", ("listFile", "getFile")),
+            ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
+            ("conflict_record", "ConflictRecord", "conflicts:read", ("listConflictRecord", "getConflictRecord")),
+            ("trust_account", "TrustAccount", "trust:read", ("listTrustAccount", "getTrustAccount")),
+            ("trust_entry", "TrustEntry", "trust:read", ("listTrustEntry", "getTrustEntry")),
+        )
+        self.assertEqual(CORE_EXTENSION_TARGETS, expected)
+        self.assertEqual(EXTENSIBLE_RECORDS, {schema: scope for _key, schema, scope, _reads in expected})
+        extension_enum = self.spec["components"]["schemas"]["ManifestExtension"]["properties"]["core_record"]["enum"]
+        view_enum = self.spec["components"]["schemas"]["ManifestView"]["properties"]["core_record"]["enum"]
+        self.assertEqual(extension_enum, [row[0] for row in expected])
+        self.assertEqual(view_enum, [row[0] for row in expected])
+        covered = set()
+        for key, schema_name, scope, reads in expected:
+            self.assertTrue(_schema_accepts_included(self.spec["components"]["schemas"][schema_name]), schema_name)
+            for operation_id in reads:
+                operation = _operation(self.spec, operation_id)
+                covered.add(schema_name)
+                names = [_param_name(parameter) for parameter in operation.get("parameters") or []]
+                self.assertIn("include", names, operation_id)
+                self.assertEqual(operation["x-togavsu-access"]["include_scope_pattern"], "views:{module_id}.{view}:read", operation_id)
+                self.assertEqual(operation["x-togavsu-access"]["scopes"], [scope], operation_id)
+                arguments = operation["x-togavsu-mcp"]["transfer"]["arguments"]
+                self.assertIn("query", arguments, operation_id)
+                self.assertNotIn("roles", arguments, operation_id)
+                positive = {
+                    "role": "admin",
+                    "approved_scopes": [scope, "views:clock.targets:read"],
+                    "token_scopes": [scope, "views:clock.targets:read"],
+                    "include": ["clock.targets"],
+                    "matter_walled": False,
+                }
+                self.assertEqual(include_views_decision(operation, positive), "allowed", operation_id)
+                self.assertEqual(
+                    include_views_decision(operation, {**positive, "approved_scopes": [scope], "include": ["not-a-view"]}),
+                    "validation_failed",
+                    operation_id,
+                )
+                hidden = include_views_decision(operation, {**positive, "matter_walled": True, "on_wall": False})
+                if operation["x-togavsu-access"].get("matter_wall"):
+                    self.assertEqual(hidden, "not_found", operation_id)
+                else:
+                    self.assertEqual(hidden, "allowed", operation_id)
+                extension = {
+                    "role": "admin",
+                    "approved_scopes": [scope],
+                    "token_scopes": [scope],
+                    "include": [f"clock.{key}"],
+                    "extensions": [f"clock.{key}"],
+                    "caller_module_id": "clock",
+                    "matter_walled": False,
+                }
+                self.assertEqual(include_views_decision(operation, extension), "allowed", operation_id)
+                self.assertEqual(include_views_decision(operation, {**extension, "caller_module_id": "other-module"}), "forbidden", operation_id)
+                published = {
+                    "role": "admin",
+                    "caller_module_id": "other-module",
+                    "approved_scopes": [scope, f"views:clock.{key}:read"],
+                    "token_scopes": [scope, f"views:clock.{key}:read"],
+                    "include": [f"clock.{key}"],
+                    "published_views": [f"clock.{key}"],
+                    "matter_walled": False,
+                }
+                self.assertEqual(include_views_decision(operation, published), "allowed", operation_id)
+                self.assertEqual(
+                    include_views_decision(operation, {**published, "approved_scopes": [scope], "token_scopes": [scope]}),
+                    "forbidden",
+                    operation_id,
+                )
+            record_key = key
+            _component_validator(self.spec, "ManifestExtension").validate(
+                {"core_record": record_key, "table": "module_row", "primary_key": "id", "foreign_key": "id"}
+            )
+            _component_validator(self.spec, "ManifestView").validate(
+                {
+                    "name": "module_row",
+                    "core_record": record_key,
+                    "key_column": "id",
+                    "columns": ["note"],
+                    "scope": "views:clock.module_row:read",
+                }
+            )
+        self.assertEqual(covered, {row[1] for row in expected})
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "ManifestExtension").validate(
+                {"core_record": "not_a_record", "table": "module_row", "primary_key": "id", "foreign_key": "id"}
+            )
         users = _operation(self.spec, "listUser")
         approved = ["users:read", "views:clock.targets:read"]
         self.assertEqual(include_views_decision(users, {"role": "admin", "approved_scopes": approved, "include": ["clock.targets"]}), "allowed")
@@ -6952,8 +7014,8 @@ class ContractTest(unittest.TestCase):
             {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": archive_body}}},
             {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
             {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
-            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
-            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
+            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
             {"family": "background_file", "name": "module resume omitted scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume minimal scopes", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=["files:write"], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume empty token", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=[], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
@@ -7403,6 +7465,7 @@ class ContractTest(unittest.TestCase):
                 "arguments": {"path": {"file_id": file_id}, "body": body},
                 **extra,
             }
+            raw = _with_canonical_file(raw, file_id)
             mcp = mcp_tool_dispatch(self.spec, raw)
             http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
             self.assertEqual(http["result"], mcp["result"])
@@ -7567,7 +7630,7 @@ class ContractTest(unittest.TestCase):
                 "arguments": {"path": {"file_id": file_id}, "body": body},
                 **trusted,
             }
-            return both("updateFileMetadata", raw)
+            return both("updateFileMetadata", _with_canonical_file(raw, file_id))
 
         omitted_clear = file_call({"matter_id": None})
         self.assertEqual(omitted_clear["result"], "not_found")
@@ -7783,7 +7846,7 @@ class ContractTest(unittest.TestCase):
                 "arguments": {"path": {"file_id": file_id}, "body": body},
                 **trusted,
             }
-            return mcp_tool_dispatch(self.spec, raw)
+            return mcp_tool_dispatch(self.spec, _with_canonical_file(raw, file_id))
 
         for label, trusted in (
             ("null", {"matter_id": source, "matter_walled": None}),
@@ -8243,6 +8306,7 @@ class ContractTest(unittest.TestCase):
                 "token_scopes": ["files:write"],
                 "matter_id": source,
                 "matter_walled": False,
+                "stored_file": {"id": file_id, "matter_id": source, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": False},
                 "tool": "updateFileMetadata",
                 "arguments": {"path": {"file_id": file_id}, "body": {"matter_id": None}},
             },
@@ -8512,7 +8576,13 @@ class ContractTest(unittest.TestCase):
         unassigned_event = call("getCalendarEvent", ["calendar:read"], {"path": {"calendar_event_id": event}}, matter_id=None)
         self.assertEqual(unassigned_event["result"], "allowed")
         self.assertTrue(unassigned_event["effects"])
-        unassigned_file = call("getFile", ["files:read"], {"path": {"file_id": file_id}}, matter_id=None)
+        unassigned_file = call(
+            "getFile",
+            ["files:read"],
+            {"path": {"file_id": file_id}},
+            matter_id=None,
+            stored_file={"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": False},
+        )
         self.assertEqual(unassigned_file["result"], "allowed")
         routed_hidden = quiet(
             call(
@@ -8659,7 +8729,13 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(routed["result"], "allowed")
         self.assertFalse(routed["effects"])
         self.assertEqual(routed["routed"], "time-mod")
-        unassigned = staff("getFile", ["files:read"], {"file_id": file_id}, matter_id=None)
+        unassigned = staff(
+            "getFile",
+            ["files:read"],
+            {"file_id": file_id},
+            matter_id=None,
+            stored_file={"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": False},
+        )
         self.assertEqual(unassigned["result"], "allowed")
         listed = mcp_tool_dispatch(
             self.spec,
@@ -8927,6 +9003,10 @@ class ContractTest(unittest.TestCase):
         _component_validator(self.spec, "TrustFlag").validate(client_flag)
         _component_validator(self.spec, "TrustFlag").validate(account_flag)
         _component_validator(self.spec, "TrustFlag").validate(matter_flag)
+        ledger = {"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": False, "client_id": contact}
+        client_flag = {**client_flag, "source": ledger}
+        account_flag = {**account_flag, "source": ledger}
+        matter_flag = {**matter_flag, "source": ledger}
         for stored, label in ((client_flag, "client"), (account_flag, "account")):
             read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored)
             self.assertEqual(read["result"], "allowed", label)
@@ -9025,6 +9105,282 @@ class ContractTest(unittest.TestCase):
         staff_list = call("listInvoice", "staff", ["invoices:read"], {})
         self.assertEqual(staff_list["result"], "allowed")
         self.assertTrue(staff_list["effects"])
+
+    def test_canonical_file_flag_source_and_context_matter(self):
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        other = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        contact = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        version_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
+        flag_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa5"
+        entry_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        stamp = "2026-11-07T18:00:00Z"
+        actor = "018f1a00-7b3c-7d4e-8a11-555555555555"
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def call(tool, role, scopes, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        def file_row(row_matter, **flags):
+            row = {
+                "id": file_id,
+                "matter_id": row_matter,
+                "matter_walled": False,
+                "attorney_only": False,
+                "shared_with_client": True,
+                "quarantined": False,
+            }
+            row.update(flags)
+            return row
+
+        walled = file_row(matter, matter_walled=True)
+        for tool, scopes, arguments in (
+            ("getFile", ["files:read"], {"path": {"file_id": file_id}}),
+            ("updateFileMetadata", ["files:write"], {"path": {"file_id": file_id}, "body": {"matter_id": None}}),
+            ("historyFile", ["files:read"], {"path": {"file_id": file_id}}),
+            ("listFileVersions", ["files:read"], {"path": {"file_id": file_id}}),
+            ("downloadFileVersion", ["files:read"], {"path": {"file_id": file_id, "version_id": version_id}, "query": {"confirm_quarantine": True}}),
+        ):
+            bypass = quiet(call(tool, "staff", scopes, arguments, stored_file=walled, matter_id=None, matter_walled=False))
+            self.assertEqual(bypass["result"], "not_found", tool)
+            moved = quiet(call(tool, "staff", scopes, arguments, stored_file=walled, matter_id=other, matter_walls={other: False}))
+            self.assertEqual(moved["result"], "not_found", tool)
+            missing = quiet(call(tool, "staff", scopes, arguments, matter_id=matter, matter_walled=False))
+            self.assertEqual(missing["result"], "not_found", tool)
+            conflicted = quiet(
+                call(
+                    tool,
+                    "staff",
+                    scopes,
+                    arguments,
+                    stored_files=[file_row(matter), file_row(other, id=file_id)],
+                    matter_walls={matter: False},
+                )
+            )
+            self.assertEqual(conflicted["result"], "not_found", tool)
+            opened = call(
+                tool,
+                "staff",
+                scopes,
+                arguments,
+                stored_file=file_row(matter),
+                matter_id=matter,
+                matter_walls={matter: False},
+            )
+            self.assertEqual(opened["result"], "allowed", tool)
+            self.assertTrue(opened["effects"], tool)
+        client_walled = quiet(
+            call(
+                "getFile",
+                "client",
+                ["files:read"],
+                {"path": {"file_id": file_id}},
+                stored_file=walled,
+                matter_id=None,
+                client_matter_ids=[matter],
+                shared=True,
+                owner="self",
+            )
+        )
+        self.assertEqual(client_walled["result"], "not_found")
+        client_open = call(
+            "getFile",
+            "client",
+            ["files:read"],
+            {"path": {"file_id": file_id}},
+            stored_file=file_row(matter),
+            client_matter_ids=[matter],
+        )
+        self.assertEqual(client_open["result"], "allowed")
+        self.assertTrue(client_open["effects"])
+        archive = quiet(
+            call(
+                "createFileArchive",
+                "staff",
+                ["files:read"],
+                {"body": {"file_ids": [file_id]}},
+                stored_files=[walled],
+                matter_id=None,
+                matter_walled=False,
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(archive["result"], "not_found")
+        link = quiet(
+            call(
+                "createFileLink",
+                "staff",
+                ["files:write"],
+                {"path": {"file_id": file_id}, "body": {"to_file_id": other_file, "relationship": "attachment"}},
+                stored_files=[walled, file_row(matter, id=other_file, matter_walled=True)],
+                matter_id=None,
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(link["result"], "not_found")
+
+        def flag(scope, **extra):
+            row = {
+                "id": flag_id,
+                "created_at": stamp,
+                "created_by": actor,
+                "updated_at": stamp,
+                "trust_entry_id": entry_id,
+                "balance_cents": -5,
+                "scope": scope,
+                "status": "open",
+                "source": {"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": False, "client_id": contact},
+            }
+            row.update(extra)
+            return row
+
+        handler = {"trust": {"replaced": True, "available": True, "module_id": "trust-mod"}}
+        for scope, extra in (
+            ("matter", {"client_id": contact, "matter_id": matter}),
+            ("client", {"client_id": contact}),
+            ("account", {"trust_account_id": account}),
+        ):
+            stored = flag(scope, **extra)
+            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored, matter_walled=False)
+            self.assertEqual(read["result"], "allowed", scope)
+            self.assertTrue(read["effects"], scope)
+            resolved = call(
+                "resolveTrustFlag",
+                "attorney",
+                ["trust:write"],
+                {"path": {"trust_flag_id": flag_id}, "body": {"note": "Reviewed", "source": {"matter_id": other, "matter_walled": False}}},
+                stored_record=stored,
+                matter_walled=False,
+            )
+            self.assertEqual(resolved["result"], "allowed", scope)
+            routed = call(
+                "getTrustFlag",
+                "staff",
+                ["trust:read"],
+                {"path": {"trust_flag_id": flag_id}},
+                stored_record=stored,
+                matter_walled=False,
+                domain_handlers=handler,
+            )
+            self.assertEqual(routed["result"], "allowed", scope)
+            self.assertFalse(routed["effects"], scope)
+            self.assertEqual(routed["routed"], "trust-mod", scope)
+            hidden_source = flag(scope, **extra)
+            hidden_source["source"] = {"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": True, "client_id": contact}
+            denied = quiet(
+                call(
+                    "getTrustFlag",
+                    "staff",
+                    ["trust:read"],
+                    {"path": {"trust_flag_id": flag_id}, "body": {"source": {"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": False}}},
+                    stored_record=hidden_source,
+                    matter_walls={matter: False},
+                    matter_membership={matter: False},
+                    domain_handlers=handler,
+                )
+            )
+            self.assertEqual(denied["result"], "not_found", scope)
+            unknown = quiet(call("resolveTrustFlag", "attorney", ["trust:write"], {"path": {"trust_flag_id": flag_id}, "body": {"note": "Reviewed"}}, stored_record={key: value for key, value in stored.items() if key != "source"}))
+            self.assertEqual(unknown["result"], "not_found", scope)
+        mismatched = flag("client", client_id=contact)
+        mismatched["source"] = {"trust_entry_id": other_file, "matter_id": matter, "matter_walled": False}
+        self.assertEqual(quiet(call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=mismatched))["result"], "not_found")
+        listed = trust_flag_rows(
+            {"role": "staff", "token_scopes": ["trust:read"], "matter_membership": {matter: False}},
+            [flag("client", client_id=contact), flag("account", trust_account_id=account, source={"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": True, "client_id": contact})],
+            [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}],
+        )
+        self.assertEqual(listed["result"], "allowed")
+        self.assertEqual([row["scope"] for row in listed["rows"]], ["client"])
+
+        foreign = quiet(
+            call(
+                "createModuleContextToken",
+                "client",
+                ["modules:read"],
+                {"path": {"module_id": "intake"}, "body": {"matter_id": other}},
+                matter_walls={other: False},
+            )
+        )
+        self.assertEqual(foreign["result"], "not_found")
+        omitted = quiet(
+            call(
+                "createModuleContextToken",
+                "client",
+                ["modules:read"],
+                {"path": {"module_id": "intake"}, "body": {"matter_id": matter}},
+                matter_walls={matter: False},
+                shared=True,
+            )
+        )
+        self.assertEqual(omitted["result"], "not_found")
+        unshared = quiet(
+            call(
+                "createModuleContextToken",
+                "client",
+                ["modules:read"],
+                {"path": {"module_id": "intake"}, "body": {"matter_id": matter}},
+                matter_walls={matter: False},
+                client_matter_ids=[matter],
+                client_shared_matter_ids=[other],
+                owner="self",
+                shared=True,
+            )
+        )
+        self.assertEqual(unshared["result"], "not_found")
+        malformed = quiet(
+            call(
+                "createModuleContextToken",
+                "client",
+                ["modules:read"],
+                {"path": {"module_id": "intake"}, "body": {"matter_id": 12}},
+                client_matter_ids=[matter],
+                client_shared_matter_ids=[matter],
+            )
+        )
+        self.assertEqual(malformed["result"], "not_found")
+        own = call(
+            "createModuleContextToken",
+            "client",
+            ["modules:read"],
+            {"path": {"module_id": "intake"}, "body": {"matter_id": matter}},
+            matter_walls={matter: False},
+            client_matter_ids=[matter],
+            client_shared_matter_ids=[matter],
+        )
+        self.assertEqual(own["result"], "allowed")
+        self.assertTrue(own["effects"])
+        none = call("createModuleContextToken", "client", ["modules:read"], {"path": {"module_id": "intake"}, "body": {}})
+        self.assertEqual(none["result"], "allowed")
+        self.assertTrue(none["effects"])
+        staff = call(
+            "createModuleContextToken",
+            "staff",
+            ["modules:read"],
+            {"path": {"module_id": "intake"}, "body": {"matter_id": other}},
+            matter_walls={other: False},
+        )
+        self.assertEqual(staff["result"], "allowed")
+        self.assertTrue(staff["effects"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:
@@ -9294,6 +9650,43 @@ def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type
     if all(scope in token_scopes for scope in needed):
         return "allowed"
     return "scope_denied"
+
+
+def _with_canonical_file(raw: dict, file_id: str) -> dict:
+    """Turn a trusted matter id into the stored file row these metadata scenarios already describe."""
+    if "stored_file" in raw or "stored_files" in raw or "matter_id" not in raw:
+        return raw
+    matter = raw.get("matter_id")
+    wall = raw.get("matter_walled")
+    walls = raw.get("matter_walls")
+    if matter is None:
+        resolved = False
+    elif isinstance(matter, str) and type(wall) is bool:
+        resolved = wall
+    elif isinstance(matter, str) and isinstance(walls, dict) and type(walls.get(matter)) is bool:
+        resolved = walls[matter]
+    else:
+        return raw
+    row = {
+        "id": file_id,
+        "matter_id": matter,
+        "matter_walled": resolved,
+        "attorney_only": raw.get("attorney_only") is True,
+        "shared_with_client": False,
+        "quarantined": raw.get("quarantined") is True,
+    }
+    return {**raw, "stored_file": row}
+
+
+def _schema_accepts_included(schema: dict) -> bool:
+    """included is optional on the record or on every read branch. It is not required."""
+    if not isinstance(schema, dict):
+        return False
+    branches = schema.get("oneOf") or schema.get("anyOf") or []
+    if branches:
+        return all(_schema_accepts_included(branch) for branch in branches if isinstance(branch, dict))
+    properties = schema.get("properties") or {}
+    return "included" in properties and "included" not in (schema.get("required") or [])
 
 
 def _response_record_schemas(operation: dict) -> set[str]:

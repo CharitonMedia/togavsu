@@ -1321,33 +1321,69 @@ def grant_scope_denial(call: dict, needed) -> str | None:
     return None
 
 
-def _bind_file_row_restrictions(operation: dict, subject: dict) -> str | None:
-    """Copy file restrictions from the trusted row. A caller flag cannot replace them.
-
-    Archive and link authorize every selected row in their own binders. Invoice PDF is not a file row.
-    """
-    access = operation.get("x-togavsu-access") or {}
-    if access.get("access_inherits") != "file":
-        return None
-    if operation.get("operationId") in {"getInvoicePdf", "createFileLink", "createFileArchive"}:
-        return None
-    file_id = subject.get("file_id")
+def _canonical_file_rows(subject: dict) -> list[dict]:
     rows: list[dict] = []
     one = subject.get("stored_file")
     if isinstance(one, dict):
         rows.append(one)
     rows.extend(row for row in subject.get("stored_files") or [] if isinstance(row, dict))
-    if not rows or not isinstance(file_id, str) or not file_id:
-        return None
-    matches = [row for row in rows if row.get("id") == file_id or row.get("file_id") == file_id]
-    if len(matches) != 1:
-        return "not_found"
-    row = matches[0]
-    if type(row.get("attorney_only")) is not bool:
-        return "not_found"
+    return rows
+
+
+def _file_record_request(operation: dict, subject: dict) -> bool:
+    """A path file id names one stored file. Invoice PDF, archive, and link use their own rows."""
+    access = operation.get("x-togavsu-access") or {}
+    if subject.get("noninteractive_accepted"):
+        return False
+    if access.get("access_inherits") != "file":
+        return False
+    if operation.get("operationId") in {"getInvoicePdf", "createFileLink", "createFileArchive"}:
+        return False
+    file_id = subject.get("file_id")
+    return isinstance(file_id, str) and bool(file_id)
+
+
+def _apply_file_parent(subject: dict, row: dict) -> None:
+    """The stored row's matter and restrictions replace caller flags."""
+    matter = row.get("matter_id")
     subject["attorney_only"] = row["attorney_only"]
+    subject["matter_walled"] = row["matter_walled"]
     if type(row.get("shared_with_client")) is bool:
         subject["shared"] = row["shared_with_client"]
+    if matter is None:
+        subject["stored_matter_state"] = "unassigned"
+        subject["matter_id"] = None
+        subject.pop("stored_matter_id", None)
+        return
+    subject["stored_matter_state"] = "matter"
+    subject["stored_matter_id"] = matter
+    subject["matter_id"] = matter
+
+
+def _canonical_file_row(subject: dict, file_id: str) -> tuple[dict | None, str | None]:
+    """One matching trusted row, or not_found. A missing or conflicting row does not fall through."""
+    matches = [row for row in _canonical_file_rows(subject) if row.get("id") == file_id or row.get("file_id") == file_id]
+    if len(matches) != 1:
+        return None, "not_found"
+    row = matches[0]
+    matter = row.get("matter_id") if "matter_id" in row else False
+    if "matter_id" not in row or (matter is not None and (type(matter) is not str or not matter)):
+        return None, "not_found"
+    if type(row.get("matter_walled")) is not bool or type(row.get("attorney_only")) is not bool:
+        return None, "not_found"
+    if subject.get("_caller_matter_supplied") and subject.get("_caller_matter_id") != matter:
+        return None, "not_found"
+    return row, None
+
+
+def _bind_file_row_restrictions(operation: dict, subject: dict) -> str | None:
+    """The path file's trusted row is the parent. Caller matter and flags cannot replace it."""
+    if not _file_record_request(operation, subject):
+        return None
+    row, denial = _canonical_file_row(subject, subject["file_id"])
+    if denial:
+        return denial
+    _apply_file_parent(subject, row or {})
     return None
 
 
@@ -1372,6 +1408,29 @@ def _invoice_client_read(spec: dict, operation: dict) -> bool:
         return False
     path = _operation_path(spec, operation) or ""
     return path == "/api/v1/invoices" or path.startswith("/api/v1/invoices/")
+
+
+def _client_context_matter_denial(subject: dict) -> str | None:
+    """A requested context matter must be this client's own shared matter. No matter stays allowed.
+
+    Caller owner and shared flags are not evidence. A missing, empty, foreign, or malformed list denies.
+    """
+    if not subject.get("destination_requested"):
+        return None
+    requested = subject.get("requested_matter_id")
+    if requested is None:
+        return None
+    if type(requested) is not str or not requested:
+        return "not_found"
+    matters = _trusted_client_matters(subject)
+    shares = subject.get("client_shared_matter_ids")
+    if matters is None or requested not in matters:
+        return "not_found"
+    if not isinstance(shares, list) or not shares or any(type(item) is not str or not item for item in shares):
+        return "not_found"
+    if len(set(shares)) != len(shares) or requested not in shares:
+        return "not_found"
+    return None
 
 
 def _invoice_relationship_denial(subject: dict) -> str | None:
@@ -1474,6 +1533,10 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
             walled = _resolved_source_wall(subject, matter_id)
             if walled is None or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
                 return {"result": "not_found", **denied, "events": []}
+    if operation.get("operationId") in {"getTrustFlag", "resolveTrustFlag"}:
+        record = subject.get("stored_record")
+        if not isinstance(record, dict) or _trust_flag_source_denial(subject, record):
+            return {"result": "not_found", **denied, "events": []}
     if operation.get("operationId") == "updateMatter":
         patch = _matter_patch_decision(subject)
         if patch["result"] != "allowed":
@@ -1496,6 +1559,10 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         return {"result": "not_found", **denied}
     if client in {"own", "own_matter"} and role == "client" and subject.get("owner") not in (None, "self"):
         return {"result": "not_found", **denied}
+    if operation.get("operationId") == "createModuleContextToken" and role == "client":
+        context_denial = _client_context_matter_denial(subject)
+        if context_denial:
+            return {"result": context_denial, **denied, "events": []}
     if _invoice_client_read(spec, operation) and role == "client":
         if _invoice_relationship_denial(subject):
             return {"result": "not_found", **denied, "events": []}
@@ -1699,6 +1766,7 @@ _PRESERVED_CONTEXT = (
     "reauthentication_proof",
     "core_history",
     "client_matter_ids",
+    "client_shared_matter_ids",
     "client_contact_id",
 )
 
@@ -2041,6 +2109,11 @@ def _bind_file_link(subject: dict, call: dict, path: dict, body: dict) -> None:
         subject["same_matter"] = False
         subject["shared"] = False
         return
+    if subject.get("_caller_matter_supplied") and subject.get("_caller_matter_id") != source.get("matter_id"):
+        subject["stored_matter_state"] = "unresolved"
+        subject["from_visible"] = False
+        subject["to_visible"] = False
+        return
     subject["attorney_only"] = bool(source["attorney_only"] or target["attorney_only"])
     source_matter = source.get("matter_id")
     target_matter = target.get("matter_id")
@@ -2172,6 +2245,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
     resource_update = any(key != "matter_id" for key in path)
     subject["existing_record"] = resource_update
     if "matter_id" in call:
+        subject["_caller_matter_supplied"] = True
+        subject["_caller_matter_id"] = call.get("matter_id")
         stored_value = call.get("matter_id")
         if stored_value is None:
             subject["stored_matter_state"] = "unassigned"
@@ -2484,23 +2559,7 @@ _CUSTOM_FIELD_READ = {
     "expense": ["expenses:read"],
 }
 
-EXTENSIBLE_RECORDS = {
-    "User": "users:read",
-    "Contact": "contacts:read",
-    "Matter": "matters:read",
-    "MatterParty": "matters:read",
-    "Note": "notes:read",
-    "FeeAgreement": "matters:read",
-    "TimeEntry": "time:read",
-    "Expense": "expenses:read",
-    "Invoice": "invoices:read",
-    "Payment": "payments:read",
-    "CalendarEvent": "calendar:read",
-    "Deadline": "deadlines:read",
-    "File": "files:read",
-    "ConflictRecord": "conflicts:read",
-    "TrustAccount": "trust:read",
-}
+EXTENSIBLE_RECORDS = {schema: scope for _key, schema, scope, _reads in CORE_EXTENSION_TARGETS}
 
 
 _HISTORY_REDACTED_FIELDS = ("old_value", "new_value", "summary", "reason", "excerpt")
@@ -4219,6 +4278,27 @@ def invoice_draft_decision(operation: dict, call: dict, matters: list[dict]) -> 
     return {"result": "allowed", "reason": mode, "drafted": drafted}
 
 
+def _trust_flag_source_denial(caller: dict, flag: dict) -> str | None:
+    """The originating ledger matter must be visible. Scope does not erase that wall.
+
+    source is trusted context. A body copy of it is not this argument.
+    """
+    if not isinstance(flag, dict):
+        return "not_found"
+    entry_id = flag.get("trust_entry_id")
+    source = flag.get("source") if isinstance(flag.get("source"), dict) else None
+    if not isinstance(entry_id, str) or not entry_id or source is None or source.get("trust_entry_id") != entry_id:
+        return "not_found"
+    matter_id = source.get("matter_id")
+    if not isinstance(matter_id, str) or not matter_id or type(source.get("matter_walled")) is not bool:
+        return "not_found"
+    if flag.get("scope") == "matter" and flag.get("matter_id") != matter_id:
+        return "not_found"
+    if not matter_visible(caller, {"matter_id": matter_id, "matter_walled": source["matter_walled"]}, single_record=True):
+        return "not_found"
+    return None
+
+
 def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query: dict | None = None) -> dict:
     """Every scope is authorized from the source ledger entry before a row, count, or cursor is returned."""
     if caller.get("role") not in {"admin", "attorney", "staff", "accountant"}:
@@ -4241,14 +4321,10 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
 
     for flag in flags:
         source = flag.get("source") if isinstance(flag.get("source"), dict) else None
-        entry_id = (source or {}).get("trust_entry_id")
-        matter_id = (source or {}).get("matter_id")
-        if not isinstance(entry_id, str) or not entry_id or not isinstance(matter_id, str) or not matter_id:
+        if _trust_flag_source_denial(caller, flag):
             conceal(flag, source)
             continue
-        if not matter_visible(caller, {"matter_id": matter_id, "matter_walled": source.get("matter_walled", True)}):
-            conceal(flag, source)
-            continue
+        entry_id = source.get("trust_entry_id") if isinstance(source, dict) else None
         scope = flag.get("scope")
         if scope == "account":
             if current.get(flag.get("trust_account_id")) is None:
