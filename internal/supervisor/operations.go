@@ -865,33 +865,61 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 }
 
 func (o *Operations) finishAllocation(rec RestoreRecord, db *databaseIntent) error {
-	if db.FreshOID == "" || db.OpID == "" {
-		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
-		return err
-	}
-	dropper, ok := o.Catalog.(interface {
-		DropVerified(context.Context, string, string, string) error
-	})
-	if !ok {
-		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
-		return err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
 	if err := o.confirmCluster(ctx, db); err != nil {
 		_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", err)
 		return errors.Join(err, perr)
 	}
-	if err := dropper.DropVerified(ctx, db.OpID, db.Fresh, db.FreshOID); err != nil {
-		_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", err)
-		return errors.Join(err, perr)
+	if db.FreshOID != "" && db.OpID != "" {
+		dropper, ok := o.Catalog.(interface {
+			DropVerified(context.Context, string, string, string) error
+		})
+		if !ok {
+			_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
+			return err
+		}
+		if err := dropper.DropVerified(ctx, db.OpID, db.Fresh, db.FreshOID); err != nil {
+			_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", err)
+			return errors.Join(err, perr)
+		}
+		return nil
 	}
-	return nil
+	// The first allocation record is written before CREATE, so it has no oid.
+	// Fence the operation, then restart. A database whose oid was never
+	// recorded stays in place. A missing row and a missing fresh name means
+	// CREATE did not happen.
+	state, ferr := o.fenceSwap(ctx, db)
+	st, oerr := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
+	if oerr != nil || st == nil {
+		_, perr := o.keepPending(rec, phaseApplying, "allocation_unverified", errors.Join(ferr, oerr, errSwapUnobserved))
+		return perr
+	}
+	if !st[db.Configured] {
+		_, err := o.keepPending(rec, phaseApplying, "configured_database_absent", errConfiguredDatabaseAbsent)
+		return err
+	}
+	if ferr != nil {
+		if st[db.Fresh] || !errors.Is(ferr, errSwapUnobserved) {
+			_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", ferr)
+			return err
+		}
+		return nil
+	}
+	switch state {
+	case "cancelled", "absent", "committed":
+		return nil
+	default:
+		_, err := o.keepPending(rec, phaseApplying, "allocation_unverified", errSwapUnobserved)
+		return err
+	}
 }
 
-// confirmCluster rejects recovery when the journal names a different cluster
-// or a different configured database oid than the admin connection. An empty
-// cluster id is an older record and is left to the catalog row check.
+// confirmCluster rejects recovery when the admin connection is a different
+// cluster, or the configured name is neither the original database nor the
+// restored one. A committed rename puts the fresh oid under the configured
+// name, so that oid is a match. An empty cluster id is an older record and is
+// left to the catalog row check.
 func (o *Operations) confirmCluster(ctx context.Context, db *databaseIntent) error {
 	if db == nil || db.ClusterID == "" || o == nil || o.Catalog == nil {
 		return nil
@@ -909,7 +937,7 @@ func (o *Operations) confirmCluster(ctx context.Context, db *databaseIntent) err
 	if got != db.ClusterID {
 		return fmt.Errorf("admin connection is a different database cluster: %w", ErrBadRequest)
 	}
-	if db.ConfiguredOID == "" {
+	if db.ConfiguredOID == "" && db.FreshOID == "" {
 		return nil
 	}
 	look, ok := o.Catalog.(interface {
@@ -919,10 +947,16 @@ func (o *Operations) confirmCluster(ctx context.Context, db *databaseIntent) err
 		return fmt.Errorf("%w: database identity", errSwapUnobserved)
 	}
 	oid, err := look.DatabaseOID(ctx, db.Configured)
-	if err != nil || oid == "" || oid != db.ConfiguredOID {
+	if err != nil || oid == "" {
 		return fmt.Errorf("%w: configured database identity", errSwapUnobserved)
 	}
-	return nil
+	if db.FreshOID != "" && oid == db.FreshOID {
+		return nil
+	}
+	if db.ConfiguredOID != "" && oid == db.ConfiguredOID {
+		return nil
+	}
+	return fmt.Errorf("%w: configured database identity", errSwapUnobserved)
 }
 
 func (o *Operations) fenceSwap(ctx context.Context, db *databaseIntent) (string, error) {

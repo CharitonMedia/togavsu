@@ -26,7 +26,7 @@ log=$(mktemp)
 # safety test actually ran; a name filter that omits one is a failure.
 # The build tag also compiles the rest of the package. This list is every
 # Test in the integration files, not the sshd and Compose tests.
-if ! go test -tags=integration -count=1 -timeout 20m -v ./internal/supervisor/ -run '^(TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap|TestDelayedRenameCannotCommitAfterRecovery|TestInFlightRenameCannotCommitAfterAFailedRestore|TestCommittedRenameSurvivesLostJournal|TestOwnedTempDatabaseSurvivesOnlyWhenVerified|TestDifferentClusterIsRejected)($|/)' >"$log" 2>&1; then
+if ! go test -tags=integration -count=1 -timeout 20m -v ./internal/supervisor/ -run '^(TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap|TestDelayedRenameCannotCommitAfterRecovery|TestInFlightRenameCannotCommitAfterAFailedRestore|TestCommittedRenameSurvivesLostJournal|TestOwnedTempDatabaseSurvivesOnlyWhenVerified|TestUnverifiedAllocationRestartsWriters|TestDifferentClusterIsRejected)($|/)' >"$log" 2>&1; then
   cat "$log" >&2
   rm -f "$log"
   exit 1
@@ -45,6 +45,7 @@ for name in \
   TestDelayedRenameCannotCommitAfterRecovery \
   TestCommittedRenameSurvivesLostJournal \
   TestOwnedTempDatabaseSurvivesOnlyWhenVerified \
+  TestUnverifiedAllocationRestartsWriters \
   TestDifferentClusterIsRejected
 do
   if ! grep -q "=== RUN   ${name}$" "$log"; then

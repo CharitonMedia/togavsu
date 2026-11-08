@@ -1595,6 +1595,38 @@ exit 0
 	}
 }
 
+func TestAllocationWithoutOIDRestartsWhenCreateDidNotHappen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
+	j := OpenJournal(path)
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-alloc", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseApplying,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+			Allocated: true, OpID: "restore-alloc",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+	cat := &scriptCatalog{present: map[string]bool{"origdb": true}}
+	ops := &Operations{Gate: &Gate{}, Journal: j, Runtime: rt, Catalog: cat}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") || len(cat.drops) != 0 {
+		t.Fatalf("order %v drops %v", order, cat.drops)
+	}
+	got, ok, err := ops.LookupRestore("restore-alloc")
+	if err != nil || !ok || got.Status != "failed" || got.Status == "running" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
 func TestRolledBackRecordRestartsAfterTheLoadedNameIsGone(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
 	j := OpenJournal(path)
