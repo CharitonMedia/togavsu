@@ -12,6 +12,8 @@ The controller runs on Render-1 as Patrick's systemd user timer, togavsu-build-c
 - Record the protected merge as a bounded dependency. Launch ready assignments automatically, with at most four occupied implementation slots and a durable UUID per new agent.
 - Cloud integration assignments compose the separate packages into the actual running product and must provide real product CI and passing integration reports. The final release remains subject to all 52 criteria; merged scaffolding is never full product acceptance.
 
+The controller and integration lead own GitHub CI monitoring, review feedback and future dispatch. Every launch and follow-up prompt forbids worker-created background CI subscriptions (including `github:ci:branch`), CI-wait continuation events and asynchronous background waits. Workers may make read-only synchronous checks, then return the exact pushed SHA, local test commands/results and pending CI links, and finish the run. Pending CI is reported honestly and followed by the controller. This prompt boundary does not cancel existing subscriptions or replace the exact-run, capacity, review or uncertain-delivery guards.
+
 ## Limits and recovery
 The controller allows three correction attempts for each individual finding or check failure in an assignment. The lifetime `repair_count` remains an audit total, so a fourth or fortieth correction doesn't stop work that has reached different independent findings. `max_repairs` in the existing pinned plan now sets the per-problem limit; the plan needs no migration.
 

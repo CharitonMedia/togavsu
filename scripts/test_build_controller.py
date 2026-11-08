@@ -107,6 +107,46 @@ class ControllerTests(unittest.TestCase):
         self.remote.report.update(verdict="fail", findings=[{"detail": "concrete defect"}])
         self.remote.check_rows["Codex checkpoint"]["conclusion"] = "failure"
 
+    def assert_ci_ownership(self, prompt):
+        self.assertEqual(prompt.count("The controller and integration lead own GitHub CI monitoring, review feedback, and future dispatch."), 1)
+        self.assertIn("Do not create background CI subscriptions (including github:ci:branch) or CI-wait continuation events", prompt)
+        self.assertIn("do not start asynchronous background waits", prompt)
+        self.assertIn("Read-only synchronous status checks are allowed", prompt)
+        self.assertIn("exact pushed commit SHA, local test commands and results, and links to pending CI checks", prompt)
+        self.assertIn("Report pending CI honestly, then finish this run", prompt)
+        self.assertIn("the controller will monitor CI and dispatch any further correction", prompt)
+        self.assertIn("Do not start another run or subscription to continue waiting", prompt)
+
+    def test_launch_prompt_assigns_ci_monitoring_to_controller(self):
+        self.controller.tasks.clear()
+        self.controller.tick()
+        launches = [c for c in self.remote.calls if c[0] == "POST" and c[1] == "/agents"]
+        self.assertEqual(len(launches), 1)
+        self.assert_ci_ownership(launches[0][2]["prompt"]["text"])
+        self.assertIn("Do not merge, push main, force-push", launches[0][2]["prompt"]["text"])
+
+    def test_initial_and_repeated_correction_prompts_keep_ci_ownership(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+        self.finish_correction()
+        with self.advance(5):
+            self.process()
+        self.assertEqual(len(self.posts()), 2)
+        for post in self.posts():
+            self.assert_ci_ownership(post[2]["prompt"]["text"])
+        self.assertIn("Diagnose why the prior approach", self.posts()[1][2]["prompt"]["text"])
+
+    def test_conflict_followup_prompt_keeps_ci_ownership(self):
+        self.remote.behind = 1
+        self.remote.pr["mergeable"] = False
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assert_ci_ownership(self.posts()[0][2]["prompt"]["text"])
+        self.assertIn("resolve integration conflicts", self.posts()[0][2]["prompt"]["text"])
+        self.assertEqual(self.record["sync_count"], 1)
+        self.assertEqual(self.record["repair_count"], 2)
+
     def test_failed_review_dispatches_exactly_once(self):
         self.failed_review()
         self.process()

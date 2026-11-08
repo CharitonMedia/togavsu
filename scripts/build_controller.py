@@ -26,6 +26,14 @@ ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "ACTIVE"}
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
 LEGACY_REPAIR_HALT = "Three correction cycles exhausted; independent work may continue"
+CI_OWNERSHIP = (
+    "The controller and integration lead own GitHub CI monitoring, review feedback, and future dispatch. "
+    "Do not create background CI subscriptions (including github:ci:branch) or CI-wait continuation events, "
+    "and do not start asynchronous background waits. Read-only synchronous status checks are allowed. "
+    "Return the exact pushed commit SHA, local test commands and results, and links to pending CI checks. "
+    "Report pending CI honestly, then finish this run; the controller will monitor CI and dispatch any further correction. "
+    "Do not start another run or subscription to continue waiting."
+)
 CHECK_WORKFLOWS = {"Codex checkpoint": ".github/workflows/codex-checkpoint.yml",
                    "Setup checks": ".github/workflows/setup-checks.yml"}
 for _name in ("Core tests", "API contract tests", "QA harness tests", "Supervisor tests", "Backup integration", "Supervisor image", "Full acceptance"):
@@ -395,7 +403,8 @@ class Controller:
             record["intent"]["problems"] = fingerprints
         self.save()
         try:
-            result = self.remote.cursor("POST", "/agents/" + record["agent_id"] + "/runs", {"prompt": {"text": prompt}})
+            result = self.remote.cursor("POST", "/agents/" + record["agent_id"] + "/runs",
+                {"prompt": {"text": prompt + "\n\n" + CI_OWNERSHIP}})
         except Exception:
             self.event(task, "Delivery uncertain; integration lead must verify the dispatched run before reconciliation")
             raise
@@ -831,7 +840,8 @@ class Controller:
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
             "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "
             "Commit/push explicit paths and open a ready PR when your bounded assignment is complete. "
-            "Keep original PR body current with tested code revision and results.\n\n" + json.dumps(spec))
+            "Keep original PR body current with tested code revision and results.\n\n" + json.dumps(spec)
+            + "\n\n" + CI_OWNERSHIP)
         try:
             result = self.effect("launch " + task, lambda: self.remote.cursor("POST", "/agents", {
                 "agentId": record["agent_id"], "name": "Togavsu " + task, "prompt": {"text": prompt},
