@@ -12,7 +12,7 @@ Plaintext dumps and extracted archives are written in a scratch directory outsid
 
 The id is `YYYYMMDDTHHMMSSZ-` plus 16 hex characters.
 
-Each destination gets its own installation namespace (`namespace` on the destination record). New archives and their `.sha256` sidecars are written only under that directory or key prefix. A local receipt records the archive name after a successful copy. Retention deletes a receipt's archive and its sidecar together, and only after both deletes succeed. Files already in the configured root, including another firm's `.tgbk` names and checksums, are not adopted and are not deleted. A local delete keeps the metadata until every configured destination has removed that archive and its sidecar. Local retention still removes only the local volume and does not use that remote delete.
+Each destination gets its own installation namespace (`namespace` on the destination record). New archives and their `.sha256` sidecars are written only under that directory or key prefix. On a path destination the two objects share the staged lifecycle in [path upload lifecycle](path-upload-lifecycle.md). A local receipt records the archive name after a successful copy. Retention deletes a receipt's archive and its sidecar together, and only after both deletes succeed. Files already in the configured root, including another firm's `.tgbk` names and checksums, are not adopted and are not deleted. A local delete keeps the metadata until every configured destination has removed that archive and its sidecar. Local retention still removes only the local volume and does not use that remote delete.
 
 The tar contains:
 

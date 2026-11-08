@@ -48,7 +48,7 @@ A missing passphrase returns `409 passphrase_required`. Copy failures keep the l
 
 Destination kinds:
 
-- `path`: absolute directory, including a mounted SMB or NFS path. Copies go in a generated `namespace` directory under that path. Checksum is verified after the copy.
+- `path`: absolute directory, including a mounted SMB or NFS path. Copies go in a generated `namespace` directory under that path. Checksum is verified after the copy. The archive and the `.sha256` sidecar share one staged lifecycle: temp, no-xattr publication copy, anchor, quarantine rename, final object, and receipt. Each identity is journaled before its payload bytes. Shares that reject user xattrs or hardlinks stay supported, and the token prefix is not part of the published bytes. [Path upload lifecycle](path-upload-lifecycle.md) is the state table.
 - `s3`: path-style AWS Signature Version 4. Fields: `endpoint`, `region`, `bucket`, `prefix`, `access_key`, `secret_key`, `retention_days`. The installation `namespace` is appended to `prefix`. `secret_key` is sealed with the installer field key before `destinations.json` is written (`destseal:v1:`). The plaintext credential and the key are not stored. A record that still has a plaintext secret is rewritten on the next open when that key is available. Compose sets `FIELD_KEY_FILE` to `/appsecrets/field_key`.
 - `sftp`: OpenSSH `sftp` in batch mode with `StrictHostKeyChecking=yes`. The destination argument is a single `user@host` operand after `--`. Fields: `host`, `port`, `user`, `identity_file`, `known_hosts`, `remote_path`, `retention_days`. The installation `namespace` is a directory under `remote_path`. `identity_file` is a path to a key file. The file contents are not copied into the destination record.
 

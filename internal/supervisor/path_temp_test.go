@@ -315,15 +315,17 @@ func pathDest(root string) *PathDestination {
 
 func pathTempContext(book string) context.Context {
 	receipts := &ReceiptBook{Path: book}
-	return WithPathTemp(context.Background(), func(temp string, inode uint64, token, link string, release bool) error {
-		obj := OwnedObject{
-			DestinationID: "share", Name: "backup.tgbk", State: receiptPending,
-			Temp: temp, TempInode: inode, TempToken: token, TempLink: link,
+	return WithPathTemp(context.Background(), func(id PathIdentity) error {
+		obj := OwnedObject{DestinationID: "share", Name: "backup.tgbk", State: receiptPending}
+		if owned, err := receipts.List("share"); err == nil {
+			if cur, ok := matchingReceipt(owned, "share", "backup.tgbk"); ok {
+				obj = cur
+				if obj.State == "" {
+					obj.State = receiptPending
+				}
+			}
 		}
-		if release {
-			obj.releaseTemp = true
-			obj.Temp, obj.TempInode, obj.TempToken, obj.TempLink = "", 0, "", ""
-		}
+		applyPathIdentity(&obj, id)
 		return receipts.Add(obj)
 	})
 }
@@ -755,7 +757,7 @@ func testPathNoXattrSuccess(t *testing.T) {
 		t.Fatalf("published archive: %v prefix %v", err, bytes.Contains(body, []byte("TGVTMP1")))
 	}
 	side, err := os.ReadFile(filepath.Join(ns, meta.ID+".sha256"))
-	if err != nil || !bytes.Contains(side, []byte(meta.SHA256)) {
+	if err != nil || !bytes.Contains(side, []byte(meta.SHA256)) || bytes.Contains(side, []byte("TGVTMP1")) {
 		t.Fatalf("sidecar: %q %v", side, err)
 	}
 }

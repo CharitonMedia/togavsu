@@ -467,17 +467,9 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := s.noteReceipt(receipts, OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
 		return err
 	}
-	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, token, link string, release bool) error {
-		obj := OwnedObject{
-			DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt,
-			State: receiptPending, Digest: meta.SHA256,
-			Temp: temp, TempInode: inode, TempToken: token, TempLink: link,
-		}
-		if release {
-			obj.releaseTemp = true
-			obj.Temp, obj.TempInode, obj.TempToken, obj.TempLink = "", 0, "", ""
-		}
-		return s.noteReceipt(receipts, obj)
+	putCtx := s.pathUploadContext(ctx, receipts, OwnedObject{
+		DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt,
+		State: receiptPending, Digest: meta.SHA256,
 	})
 	if err := dest.Put(putCtx, name, f, meta.SHA256); err != nil {
 		return s.recordMutation(ctx, dest, receipts, name, meta.CreatedAt, err)
@@ -518,7 +510,11 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err != nil {
 		return err
 	}
-	if err := dest.Put(ctx, sideName, bytes.NewReader(side), ""); err != nil {
+	sideCtx := s.pathUploadContext(ctx, receipts, OwnedObject{
+		DestinationID: dest.ID(), Name: sideName, Created: meta.CreatedAt,
+		State: receiptPending, Digest: meta.SHA256,
+	})
+	if err := dest.Put(sideCtx, sideName, bytes.NewReader(side), ""); err != nil {
 		return s.recordMutation(ctx, dest, receipts, sideName, meta.CreatedAt, err)
 	}
 	if err := s.noteReceipt(receipts, OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, Digest: meta.SHA256}); err != nil {
@@ -816,6 +812,55 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 	return nil
 }
 
+func (s *Store) pathUploadContext(ctx context.Context, receipts *ReceiptBook, base OwnedObject) context.Context {
+	return WithPathTemp(ctx, func(id PathIdentity) error {
+		obj := base
+		if owned, err := receipts.List(base.DestinationID); err == nil {
+			if cur, ok := matchingReceipt(owned, base.DestinationID, base.Name); ok {
+				obj = cur
+			}
+		}
+		if obj.State == "" {
+			obj.State = base.State
+		}
+		if obj.Digest == "" {
+			obj.Digest = base.Digest
+		}
+		if obj.Created.IsZero() {
+			obj.Created = base.Created
+		}
+		applyPathIdentity(&obj, id)
+		return s.noteReceipt(receipts, obj)
+	})
+}
+
+func (s *Store) reloadReceipt(receipts *ReceiptBook, obj OwnedObject) (OwnedObject, error) {
+	owned, err := receipts.List(obj.DestinationID)
+	if err != nil {
+		return OwnedObject{}, err
+	}
+	cur, ok := matchingReceipt(owned, obj.DestinationID, obj.Name)
+	if !ok {
+		return obj, nil
+	}
+	return cur, nil
+}
+
+func publishInode(dest Destination, name string) (uint64, bool) {
+	type inodeSource interface {
+		publishedInode(string) (uint64, error)
+	}
+	src, ok := dest.(inodeSource)
+	if !ok {
+		return 0, false
+	}
+	ino, err := src.publishedInode(name)
+	if err != nil || ino == 0 {
+		return 0, false
+	}
+	return ino, true
+}
+
 func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, receipts *ReceiptBook, owned []OwnedObject) error {
 	cleaner, ok := dest.(interface {
 		RemoveOwnedTemp(context.Context, OwnedObject) error
@@ -824,49 +869,84 @@ func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, recei
 		return nil
 	}
 	for _, obj := range owned {
-		if obj.Temp == "" || obj.TempInode == 0 || obj.TempToken == "" {
+		if !obj.hasStaging() && !obj.CleanupVerified {
 			continue
 		}
-		if remoteBusy(remoteKey(dest.ID(), obj.Name)) || remoteBusy(remoteKey(dest.ID(), obj.Temp)) {
+		if remoteBusy(remoteKey(dest.ID(), obj.Name)) ||
+			(obj.Temp != "" && remoteBusy(remoteKey(dest.ID(), obj.Temp))) ||
+			(obj.Clean != "" && remoteBusy(remoteKey(dest.ID(), obj.Clean))) {
 			continue
 		}
-		err := cleaner.RemoveOwnedTemp(ctx, obj)
-		var displaced tempDisplacedError
-		if errors.As(err, &displaced) {
-			obj.TempHold = displaced.hold
-			if err := s.noteReceipt(receipts, obj); err != nil {
+		stageCtx := WithPathTemp(ctx, func(id PathIdentity) error {
+			cur, err := s.reloadReceipt(receipts, obj)
+			if err != nil {
 				return err
 			}
-			continue
+			applyPathIdentity(&cur, id)
+			return s.noteReceipt(receipts, cur)
+		})
+		var err error
+		if obj.hasStaging() {
+			err = cleaner.RemoveOwnedTemp(stageCtx, obj)
+			cur, lerr := s.reloadReceipt(receipts, obj)
+			if lerr != nil {
+				return lerr
+			}
+			obj = cur
 		}
-		if errors.Is(err, errTempBusy) || errors.Is(err, errTempIdentity) {
+		var displaced tempDisplacedError
+		if errors.As(err, &displaced) || errors.Is(err, errTempBusy) || errors.Is(err, errTempIdentity) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
-		obj.releaseTemp = true
-		obj.Temp = ""
-		obj.TempInode = 0
-		obj.TempToken = ""
-		obj.TempLink = ""
-		obj.TempHold = ""
-		if !remoteBusy(remoteKey(dest.ID(), obj.Name)) {
-			rc, gerr := dest.Get(ctx, obj.Name)
-			if errors.Is(gerr, ErrNotFound) {
-				obj.State = receiptAborted
-			} else if rc != nil {
-				rc.Close()
-			}
-		}
+		// The names are gone. Record that before reading the final object so
+		// a timed-out read cannot erase the proof.
+		obj.CleanupVerified = true
 		if err := s.noteReceipt(receipts, obj); err != nil {
 			return err
 		}
-		if obj.State == receiptAborted {
+		if remoteBusy(remoteKey(dest.ID(), obj.Name)) ||
+			(obj.Temp != "" && remoteBusy(remoteKey(dest.ID(), obj.Temp))) ||
+			(obj.Clean != "" && remoteBusy(remoteKey(dest.ID(), obj.Clean))) {
+			continue
+		}
+		rc, gerr := dest.Get(ctx, obj.Name)
+		if errors.Is(gerr, ErrNotFound) {
+			hold := obj.TempHold
+			applyPathIdentity(&obj, PathIdentity{Release: true})
+			obj.TempHold = hold
+			obj.CleanupVerified = true
+			obj.State = receiptAborted
+			if err := s.noteReceipt(receipts, obj); err != nil {
+				return err
+			}
+			if hold != "" {
+				continue
+			}
 			if err := s.reconcileRejected(ctx, dest, receipts, obj); err != nil {
 				return err
 			}
+			continue
 		}
+		if rc != nil {
+			rc.Close()
+			ino, matched := publishInode(dest, obj.Name)
+			ours := matched && ino != 0 && (ino == obj.TempInode || ino == obj.CleanInode)
+			hold := obj.TempHold
+			applyPathIdentity(&obj, PathIdentity{Release: true})
+			obj.TempHold = hold
+			obj.CleanupVerified = true
+			if ours && (obj.State == receiptUncertain || obj.State == receiptAborted) {
+				obj.State = receiptPending
+			}
+			if err := s.noteReceipt(receipts, obj); err != nil {
+				return err
+			}
+			continue
+		}
+		// Transient read. cleanup_verified and the identities stay on the row.
 	}
 	return nil
 }
@@ -1123,7 +1203,11 @@ func (s *Store) ensureValidSidecar(ctx context.Context, dest Destination, receip
 	if err != nil {
 		return err
 	}
-	if err := dest.Put(ctx, sideName, bytes.NewReader(local), ""); err != nil {
+	sideCtx := s.pathUploadContext(ctx, receipts, OwnedObject{
+		DestinationID: dest.ID(), Name: sideName, Created: created,
+		State: receiptPending, Digest: s.knownDigest(receipts, dest.ID(), id+".tgbk"),
+	})
+	if err := dest.Put(sideCtx, sideName, bytes.NewReader(local), ""); err != nil {
 		return s.recordMutation(ctx, dest, receipts, sideName, created, err)
 	}
 	if err := s.sidecarMatches(ctx, dest, id); err != nil {
@@ -1625,8 +1709,7 @@ func (s *Store) remoteRecoveryOpen(id string) bool {
 		if base != id {
 			continue
 		}
-		switch obj.State {
-		case receiptPending, receiptUncertain, receiptRejected, receiptObserved, receiptAborted:
+		if receiptOpen(obj) {
 			return true
 		}
 	}
@@ -1674,7 +1757,7 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 		}
 		var stable []OwnedObject
 		for _, obj := range owned {
-			if obj.Temp != "" || obj.State == receiptPending || obj.State == receiptUncertain || obj.State == receiptRejected || obj.State == receiptObserved || obj.State == receiptAborted {
+			if receiptOpen(obj) {
 				continue
 			}
 			if strings.HasSuffix(obj.Name, ".tgbk") && s.sidecarUnsettled(book, dest.ID(), strings.TrimSuffix(obj.Name, ".tgbk")) {

@@ -18,10 +18,12 @@ Reviewed the diff from main `1b00ff0ce02d42bc03692509d9a8c24c085d91f9` to this b
 
 This pass against `1ec2902f167bcd9e7bf279b0aca804518e6d1f19`: 6 files, 634 added, 57 removed, net 577.
 
+Path-upload repair against `b0a086ea417abbbf71b500f81997eb5f543f2c07`: 16 files, 1844 added, 281 removed, net 1563. The new pre-journal ceiling is a `ponytail` comment in `putFile` and in the path-upload lifecycle. `PONYTAIL-DEBT.md` is outside this assignment, so its debt count stays 19.
+
 `PONYTAIL-DEBT.md` debt count: 19.
 
-Mounted SMB and NFS shares are supported. User xattrs are used when the filesystem accepts them. A share that returns ENOTSUP or EOPNOTSUPP stores the same ownership token in a fixed prefix of the temporary file and publishes a copy of the payload without that prefix. A private hardlink is created when the filesystem allows it. Recovery never deletes by a name prefix or by an inode number alone.
+Mounted SMB and NFS shares are supported. User xattrs are used when the filesystem accepts them. A share that returns ENOTSUP or EOPNOTSUPP stores the same ownership token in a fixed prefix of the temporary file and publishes a copy of the payload without that prefix. A private hardlink is created when the filesystem allows it. Recovery never deletes by a name prefix or by an inode number alone. The staged objects, their receipt states, and the crash windows are in [path upload lifecycle](path-upload-lifecycle.md).
 
-Cleanup limit: a kill in the interval after the empty temporary file is created and before its token is journaled can leave that one empty file. It contains no archive bytes. Recovery does not sweep for it, because a sweep would be able to delete a file this installation does not own. The limit is cleared if the token can be journaled before the file exists, which this filesystem interface does not allow. This is not complete cleanup of every empty file.
+Pre-journal residual: the receipt cannot be written before the inode exists. A kill in the source gap leaves at most one inode and two directory entries (the `.tmp` name and, when hardlinks work, its `.own` anchor). The content is 0 bytes when the token is an xattr, or exactly 41 bytes of the `TGVTMP1` prefix. A kill after the no-xattr clean file is created and before that file's own journal leaves one additional 0-byte name. Neither gap contains an untracked archive payload. Recovery does not sweep these names. The limit is cleared only if an inode can be journaled before it is linked, which this filesystem interface does not allow.
 
 This review does not accept AC-001, AC-016, or AC-018.
