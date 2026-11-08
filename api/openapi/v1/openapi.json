@@ -402,7 +402,7 @@
       "post": {
         "operationId": "postMcp",
         "summary": "MCP transport",
-        "description": "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools and need no credential. tools/call runs one OpenAPI operation: params.name is the operationId, and params.arguments carries path parameters, query parameters, idempotency_key, and body. Authorization is decided from that operation before any effect. A public operation, including first-run setup, login, and TOTP enrollment, is reachable with no session and no bearer. Every other tool requires the same session cookie or bearer as its HTTP operation. An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. Arguments must not carry Authorization, Host, or roles. A cookie tools/call that changes state sends X-CSRF-Token. The core verifies that token. A caller flag is not proof. A bearer call does not send it. A read-only cookie call does not need it. A tool error uses the problem body and sets the JSON-RPC error data to that problem.",
+        "description": "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools and need no credential. tools/call runs one OpenAPI operation: params.name is the operationId, and params.arguments carries path parameters, query parameters, idempotency_key, and body. Authorization is decided from that operation before any effect. A public operation, including first-run setup, login, and TOTP enrollment, is reachable with no session and no bearer. Every other tool requires the same session cookie or bearer as its HTTP operation. An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. Arguments must not carry Authorization, Host, or roles. A cookie tools/call that changes state sends X-CSRF-Token as this HTTP header. It is not a tool argument. The core verifies that header. A caller flag is not proof. A bearer call does not send it. A read-only cookie call does not need it. A tool error uses the problem body and sets the JSON-RPC error data to that problem.",
         "tags": [
           "Platform"
         ],
@@ -76531,7 +76531,7 @@
           "jsonrpc",
           "method"
         ],
-        "description": "MCP JSON-RPC. Methods: initialize, tools/list, tools/call. tools/call params.name is an operationId. params.arguments contains path parameters, query parameters, idempotency_key, and body."
+        "description": "MCP JSON-RPC. Methods: initialize, tools/list, tools/call. tools/call params.name is an operationId. params.arguments contains path parameters, query parameters, idempotency_key, and body. X-CSRF-Token is the HTTP header on POST /mcp, not a field of params.arguments."
       },
       "JsonRpcResponse": {
         "type": "object",

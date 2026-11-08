@@ -3189,7 +3189,7 @@ SCHEMAS = _register(
                 "params": {"type": "object", "additionalProperties": True},
             },
             ["jsonrpc", "method"],
-            "MCP JSON-RPC. Methods: initialize, tools/list, tools/call. tools/call params.name is an operationId. params.arguments contains path parameters, query parameters, idempotency_key, and body.",
+            "MCP JSON-RPC. Methods: initialize, tools/list, tools/call. tools/call params.name is an operationId. params.arguments contains path parameters, query parameters, idempotency_key, and body. X-CSRF-Token is the HTTP header on POST /mcp, not a field of params.arguments.",
         ),
         "JsonRpcResponse": _obj(
             {

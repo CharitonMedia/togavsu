@@ -283,7 +283,7 @@ def _platform(api: Contract) -> None:
             "Every other tool requires the same session cookie or bearer as its HTTP operation. "
             "An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. "
             "Arguments must not carry Authorization, Host, or roles. "
-            "A cookie tools/call that changes state sends X-CSRF-Token. The core verifies that token. A caller flag is not proof. "
+            "A cookie tools/call that changes state sends X-CSRF-Token as this HTTP header. It is not a tool argument. The core verifies that header. A caller flag is not proof. "
             "A bearer call does not send it. A read-only cookie call does not need it. "
             "A tool error uses the problem body and sets the JSON-RPC error data to that problem."
         ),

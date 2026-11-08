@@ -403,6 +403,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
                 "change": "POST /mcp publishes X-CSRF-Token, and the MCP catalog names that header. Cookie tools/call writes require it. Bearer calls and cookie reads do not.",
             },
+            {
+                "id": "csrf-header-is-transport",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "POST /mcp and JsonRpcRequest say X-CSRF-Token is the HTTP header on the transport, not a tools/call argument.",
+            },
         ],
         "intentional_corrections": [
             {

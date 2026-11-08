@@ -894,6 +894,7 @@ class ContractTest(unittest.TestCase):
                 "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
                 "expires_at": "2026-11-07T18:00:00Z",
                 "matter_walled": False,
+                "principal_matter_ids": ["018f1a00-7b3c-7d4e-8a11-333333333333"],
             },
         )
         self.assertEqual(publication["result"], "allowed")
@@ -6858,7 +6859,7 @@ class ContractTest(unittest.TestCase):
         issued = background_grant_issuance(
             issuance,
             {"installed": True, "registered": True, "module_id": "email", "approved_scopes": ["files:write"]},
-            {"module_id": "email", "source": "email", "matter_id": visible, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False},
+            {"module_id": "email", "source": "email", "matter_id": visible, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False, "principal_matter_ids": [visible]},
         )
         self.assertEqual(issued["result"], "allowed")
         grant = issued["grant"]
@@ -7022,7 +7023,7 @@ class ContractTest(unittest.TestCase):
         cases.append({"family": "module_principal", "name": "help bearer matches current approval", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="matter-clock", installed=True, approved_scopes=["help:write"], token_scopes=["help:write"], current_approved_scopes=["help:write"]), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}})
         grant_body = {"assignment": "matter", "matter_id": visible, "source": "email"}
         validate("issueFilePublicationGrant", grant_body)
-        grant_call = {"viewer_present": False, "module_id": "email", "installed": True, "registered": True, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False}
+        grant_call = {"viewer_present": False, "module_id": "email", "installed": True, "registered": True, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False, "principal_matter_ids": [visible]}
         cases.extend(
             [
                 {"family": "publication_grant", "name": "publication grant effective scopes", "result": "allowed", "call": {**bearer(**grant_call, approved_scopes=["files:write"], token_scopes=["files:write"]), "tool": "issueFilePublicationGrant", "arguments": {"body": grant_body}}},
@@ -7687,8 +7688,9 @@ class ContractTest(unittest.TestCase):
                 "role": "staff",
                 "matter_walls": walls,
                 "csrf_verifier": {"valid": True, "token": "csrf-1"},
+                "transport_headers": {"X-CSRF-Token": "csrf-1"},
                 "tool": "bulkTimeEntry",
-                "arguments": {"headers": {"X-CSRF-Token": "csrf-1"}, "body": {"items": items}},
+                "arguments": {"body": {"items": items}},
                 **extra,
             }
             if membership is not None:
@@ -7882,9 +7884,9 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(missing_csrf["result"], "csrf_required")
         flagged = quiet(cookie_call("createContact", {"body": contact, "csrf_valid": True}))
         self.assertEqual(flagged["result"], "csrf_required")
-        mismatched = quiet(cookie_call("createContact", {"headers": {"X-CSRF-Token": "nope"}, "body": contact}, csrf_verifier={"valid": True, "token": "csrf-1"}))
+        mismatched = quiet(cookie_call("createContact", {"body": contact}, transport_headers={"X-CSRF-Token": "nope"}, csrf_verifier={"valid": True, "token": "csrf-1"}))
         self.assertEqual(mismatched["result"], "csrf_required")
-        created_contact = cookie_call("createContact", {"headers": {"X-CSRF-Token": "csrf-1"}, "body": contact}, csrf_verifier={"valid": True, "token": "csrf-1"})
+        created_contact = cookie_call("createContact", {"body": contact}, transport_headers={"X-CSRF-Token": "csrf-1"}, csrf_verifier={"valid": True, "token": "csrf-1"})
         self.assertEqual(created_contact["result"], "allowed")
         self.assertTrue(created_contact["effects"])
         listed = cookie_call("listMatter", {})
@@ -7918,7 +7920,8 @@ class ContractTest(unittest.TestCase):
         hidden_verified = quiet(
             cookie_call(
                 "updateCalendarEvent",
-                {"headers": {"X-CSRF-Token": "csrf-1"}, "path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+                {"path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+                transport_headers={"X-CSRF-Token": "csrf-1"},
                 csrf_verifier={"valid": True, "token": "csrf-1"},
                 matter_id=source,
                 matter_walls={source: False, destination: True},
@@ -7929,7 +7932,8 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(hidden_verified["result"], "not_found")
         routed = cookie_call(
             "updateCalendarEvent",
-            {"headers": {"X-CSRF-Token": "csrf-1"}, "path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+            {"path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+            transport_headers={"X-CSRF-Token": "csrf-1"},
             csrf_verifier={"valid": True, "token": "csrf-1"},
             matter_id=source,
             matter_walls={source: False, destination: False},
@@ -8051,6 +8055,219 @@ class ContractTest(unittest.TestCase):
         self.assertTrue(bound["old_secret_active"])
         self.assertEqual(bound["events"], ["user.totp_reset_started"])
 
+    def test_transport_link_and_matter_grant(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        other_matter = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        contact = {"kind": "person", "given_name": "Ada"}
+        link_body = {"to_file_id": other_file, "relationship": "attachment"}
+        grant_body = {"assignment": "matter", "matter_id": source, "source": "email"}
+        _component_validator(self.spec, "ContactWrite").validate(contact)
+        _component_validator(self.spec, "FileLinkWrite").validate(link_body)
+        _component_validator(self.spec, "BackgroundFileGrantRequest").validate(grant_body)
+        _component_validator(self.spec, "BackgroundFileGrantRequest").validate({"assignment": "unassigned", "source": "importer"})
+        _component_validator(self.spec, "FileMetadataWrite").validate({"matter_id": None})
+        self.assertIn("HTTP header", _operation(self.spec, "postMcp")["description"])
+        self.assertIn("not a field of params.arguments", self.spec["components"]["schemas"]["JsonRpcRequest"]["description"])
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def cookie_write(arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {"cookie": "togavsu_session", "credential_valid": True, "role": "staff", "tool": "createContact", "arguments": arguments, **trusted},
+            )
+
+        transport = cookie_write({"body": contact}, transport_headers={"X-CSRF-Token": "csrf-1"}, csrf_verifier={"valid": True, "token": "csrf-1"})
+        self.assertEqual(transport["result"], "allowed")
+        self.assertTrue(transport["effects"])
+        argument_header = quiet(cookie_write({"headers": {"X-CSRF-Token": "csrf-1"}, "body": contact}, csrf_verifier={"valid": True, "token": "csrf-1"}))
+        self.assertEqual(argument_header["result"], "csrf_required")
+        flagged = quiet(cookie_write({"body": contact, "csrf_valid": True}, transport_headers={"X-CSRF-Token": "csrf-1"}))
+        self.assertEqual(flagged["result"], "csrf_required")
+        mismatched = quiet(cookie_write({"body": contact}, transport_headers={"X-CSRF-Token": "other"}, csrf_verifier={"valid": True, "token": "csrf-1"}))
+        self.assertEqual(mismatched["result"], "csrf_required")
+        missing_verifier = quiet(cookie_write({"body": contact}, transport_headers={"X-CSRF-Token": "csrf-1"}, csrf_verifier={"token": "csrf-1"}))
+        self.assertEqual(missing_verifier["result"], "csrf_required")
+        listed = mcp_tool_dispatch(self.spec, {"cookie": "togavsu_session", "credential_valid": True, "role": "staff", "tool": "listMatter", "arguments": {}})
+        self.assertEqual(listed["result"], "allowed")
+        bearer_contact = mcp_tool_dispatch(
+            self.spec,
+            {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, "role": "staff", "token_scopes": ["contacts:write"], "tool": "createContact", "arguments": {"body": contact}},
+        )
+        self.assertEqual(bearer_contact["result"], "allowed")
+        handler = {"calendar": {"replaced": True, "available": True, "module_id": "cal-mod"}}
+
+        def calendar(arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "cookie": "togavsu_session",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "tool": "updateCalendarEvent",
+                    "matter_id": source,
+                    "matter_walls": {source: False, other_matter: False},
+                    "domain_handlers": handler,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        argument_route = quiet(calendar({"headers": {"X-CSRF-Token": "csrf-1"}, "path": {"calendar_event_id": file_id}, "body": {"matter_id": other_matter}}, csrf_verifier={"valid": True, "token": "csrf-1"}))
+        self.assertEqual(argument_route["result"], "csrf_required")
+        hidden_route = quiet(
+            calendar(
+                {"path": {"calendar_event_id": file_id}, "body": {"matter_id": other_matter}},
+                transport_headers={"X-CSRF-Token": "csrf-1"},
+                csrf_verifier={"valid": True, "token": "csrf-1"},
+                matter_walls={source: False, other_matter: True},
+                matter_membership={other_matter: False},
+            )
+        )
+        self.assertEqual(hidden_route["result"], "not_found")
+        routed = calendar(
+            {"path": {"calendar_event_id": file_id}, "body": {"matter_id": other_matter}},
+            transport_headers={"X-CSRF-Token": "csrf-1"},
+            csrf_verifier={"valid": True, "token": "csrf-1"},
+        )
+        self.assertEqual(routed["result"], "allowed")
+        self.assertFalse(routed["effects"])
+        self.assertEqual(routed["routed"], "cal-mod")
+
+        def file_row(row_id, matter, **flags):
+            return {"id": row_id, "matter_id": matter, "matter_walled": False, "attorney_only": False, "shared_with_client": True, **flags}
+
+        def link(records, body=None, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": trusted.pop("role", "staff"),
+                    "token_scopes": ["files:write"],
+                    "stored_files": records,
+                    "tool": "createFileLink",
+                    "arguments": {"path": {"file_id": file_id}, "body": body or {**link_body, "from_visible": True, "to_visible": True, "same_matter": True, "attorney_only": False, "matter_walled": False}},
+                    **trusted,
+                },
+            )
+
+        walled_target = quiet(link([file_row(file_id, source), file_row(other_file, source, matter_walled=True)], matter_membership={source: False}))
+        self.assertEqual(walled_target["result"], "not_found")
+        attorney_target = quiet(link([file_row(file_id, source), file_row(other_file, source, attorney_only=True)]))
+        self.assertEqual(attorney_target["result"], "not_found")
+        wrong_matter = quiet(link([file_row(file_id, source), file_row(other_file, other_matter)]))
+        self.assertEqual(wrong_matter["result"], "matter_mismatch")
+        missing_target = quiet(link([file_row(file_id, source)]))
+        self.assertEqual(missing_target["result"], "not_found")
+        substituted = quiet(link([file_row(file_id, source), file_row("018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3", source)]))
+        self.assertEqual(substituted["result"], "not_found")
+        hidden_source = quiet(link([file_row(file_id, source, matter_walled=True), file_row(other_file, source)], matter_membership={source: False}))
+        self.assertEqual(hidden_source["result"], "not_found")
+        unresolved_target = quiet(link([file_row(file_id, source), {"id": other_file, "matter_id": source, "attorney_only": False}]))
+        self.assertEqual(unresolved_target["result"], "not_found")
+        linked = link([file_row(file_id, source), file_row(other_file, source)])
+        self.assertEqual(linked["result"], "allowed")
+        self.assertTrue(linked["effects"])
+        attorney_link = link([file_row(file_id, source), file_row(other_file, source, attorney_only=True)], role="attorney")
+        self.assertEqual(attorney_link["result"], "allowed")
+        self.assertTrue(attorney_link["effects"])
+
+        issuance = _operation(self.spec, "issueFilePublicationGrant")
+        module = {"installed": True, "registered": True, "module_id": "email", "approved_scopes": ["files:write"]}
+        job = {"module_id": "email", "source": "email", "assignment": "matter", "matter_id": source, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False}
+
+        def issued(extra):
+            return background_grant_issuance(issuance, module, {**job, **extra})
+
+        for label, extra in (
+            ("missing", {}),
+            ("null", {"principal_matter_ids": None}),
+            ("empty", {"principal_matter_ids": []}),
+            ("string", {"principal_matter_ids": source}),
+            ("null item", {"principal_matter_ids": [None]}),
+            ("other matter", {"principal_matter_ids": [other_matter]}),
+        ):
+            denied = issued(extra)
+            self.assertEqual(denied["result"], "not_found", label)
+            self.assertIsNone(denied["grant"], label)
+            self.assertEqual(denied["events"], [], label)
+        matched = issued({"principal_matter_ids": [source]})
+        self.assertEqual(matched["result"], "allowed")
+        self.assertEqual(matched["grant"]["matter_id"], source)
+        unassigned = background_grant_issuance(issuance, module, {"module_id": "email", "assignment": "unassigned", "source": "importer", "expires_at": "2026-11-07T20:00:00Z"})
+        self.assertEqual(unassigned["result"], "allowed")
+        self.assertIsNone(unassigned["grant"]["matter_id"])
+
+        def grant_call(body, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "viewer_present": False,
+                    "module_id": "email",
+                    "installed": True,
+                    "registered": True,
+                    "expires_at": "2026-11-07T20:00:00Z",
+                    "matter_walled": False,
+                    "token_scopes": ["files:write"],
+                    "approved_scopes": ["files:write"],
+                    "tool": "issueFilePublicationGrant",
+                    "arguments": {"body": body},
+                    **trusted,
+                },
+            )
+
+        spoofed = quiet(grant_call({**grant_body, "principal_matter_ids": [source]}))
+        self.assertEqual(spoofed["result"], "not_found")
+        granted = grant_call(grant_body, principal_matter_ids=[source])
+        self.assertEqual(granted["result"], "allowed")
+        self.assertTrue(granted["effects"])
+        cleared = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["files:write"],
+                "matter_id": source,
+                "matter_walled": False,
+                "tool": "updateFileMetadata",
+                "arguments": {"path": {"file_id": file_id}, "body": {"matter_id": None}},
+            },
+        )
+        self.assertEqual(cleared["result"], "allowed")
+        self.assertTrue(cleared["cleared"])
+        null_map = quiet(
+            mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "token_scopes": ["files:write"],
+                    "matter_id": source,
+                    "matter_walls": None,
+                    "matter_walled": False,
+                    "tool": "updateFileMetadata",
+                    "arguments": {"path": {"file_id": file_id}, "body": {"matter_id": None}},
+                },
+            )
+        )
+        self.assertEqual(null_map["result"], "not_found")
+        self.assertFalse(null_map.get("cleared"))
+
 
 def _operation(spec: dict, operation_id: str) -> dict:
     for _method, _path, operation in _ops(spec):
@@ -8080,14 +8297,12 @@ def _as_trusted_grant_fixture(call: dict, token: str = "fixture-task") -> dict:
 
 
 def _session_csrf(call: dict, token: str = "csrf-1") -> dict:
-    """Existing cookie scenarios present a verified token. Bearer calls are unchanged."""
+    """Existing cookie scenarios present the HTTP header and a verified token. Bearer calls are unchanged."""
     if not call.get("cookie") or call.get("authorization"):
         return call
-    arguments = dict(call.get("arguments") or {})
-    headers = dict(arguments.get("headers") or {})
+    headers = dict(call.get("transport_headers") or {})
     headers.setdefault("X-CSRF-Token", token)
-    arguments["headers"] = headers
-    return {**call, "arguments": arguments, "csrf_verifier": call.get("csrf_verifier") or {"valid": True, "token": token}}
+    return {**call, "transport_headers": headers, "csrf_verifier": call.get("csrf_verifier") or {"valid": True, "token": token}}
 
 
 def _issue_malware_grant(policy: dict, module: dict) -> dict | None:

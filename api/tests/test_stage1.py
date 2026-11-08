@@ -341,6 +341,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "factor-reauthentication",
                 "opaque-task-credential",
                 "mcp-cookie-csrf",
+                "csrf-header-is-transport",
             },
         )
 

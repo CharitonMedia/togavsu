@@ -1082,11 +1082,11 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
 def _resolved_source_wall(subject: dict, matter_id: str) -> bool | None:
     """Resolved wall boolean for one known matter.
 
-    A matter_walls map wins, including when its value is unresolved. Null, strings, numbers, and a
-    map that is not an object do not fall through to a permissive scalar. An absent map uses the
-    trusted scalar, which must itself be a boolean. Omitted evidence is unresolved.
+    A supplied matter_walls value wins, including null and any non-object. Those are unresolved and
+    do not fall through to a scalar. A genuinely omitted map uses the trusted scalar, which must be
+    a boolean. Omitted scalar evidence is unresolved.
     """
-    if "matter_walls" in subject and subject.get("matter_walls") is not None:
+    if "matter_walls" in subject:
         walls = subject.get("matter_walls")
         if not isinstance(walls, dict) or matter_id not in walls:
             return None
@@ -1102,9 +1102,9 @@ def _item_matter_walled(call: dict, matter_id: str) -> bool | None:
     """A resolved wall boolean, or None when the trusted value is not a boolean.
 
     An id absent from the map stays walled. Null, strings, and numbers are unresolved, not unwalled.
-    A map that is not an object does not fall through to the scalar. The item body is not a source.
+    An explicit null or non-object map does not fall through to the scalar. The item body is not a source.
     """
-    if "matter_walls" in call and call.get("matter_walls") is not None:
+    if "matter_walls" in call:
         walls = call.get("matter_walls")
         if not isinstance(walls, dict):
             return None
@@ -1535,24 +1535,88 @@ def _task_grant(call: dict, arguments: dict) -> tuple[dict | None, str | None]:
     return claims, None
 
 
-def _cookie_csrf_denial(call: dict, arguments: dict) -> str | None:
-    """Cookie writes need a trusted CSRF result. A caller flag is not that result.
-
-    The model does not mint or expire the token. Go checks the session binding and passes valid.
-    """
-    headers = arguments.get("headers") if isinstance(arguments.get("headers"), dict) else {}
-    presented = None
+def _transport_csrf_token(call: dict) -> str | None:
+    """The X-CSRF-Token value captured from the outer HTTP request, not from tool arguments."""
+    headers = call.get("transport_headers")
+    if not isinstance(headers, dict):
+        return None
     for name, value in headers.items():
-        if str(name).lower() == "x-csrf-token":
-            presented = value
-            break
+        if str(name).lower() == "x-csrf-token" and isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _cookie_csrf_denial(call: dict, arguments: dict) -> str | None:
+    """Cookie writes need the transport header and a trusted verifier result.
+
+    arguments is not a source. A tool-argument header or a caller valid flag is not the HTTP header.
+    The model does not mint, expire, or bind the token to a session. Go does that and passes valid.
+    """
+    del arguments
+    presented = _transport_csrf_token(call)
     verifier = call.get("csrf_verifier")
     if not isinstance(verifier, dict) or verifier.get("valid") is not True:
         return "csrf_required"
     token = verifier.get("token")
-    if not isinstance(presented, str) or not isinstance(token, str) or not presented or presented != token:
+    if not isinstance(presented, str) or not isinstance(token, str) or presented != token:
         return "csrf_required"
     return None
+
+
+def _configured_matter(configured, matter_id: str | None) -> bool:
+    """A matter grant needs an explicit trusted list that contains that matter. Null is not public."""
+    if not isinstance(matter_id, str) or not matter_id or not isinstance(configured, list) or not configured:
+        return False
+    if any(not isinstance(item, str) or not item for item in configured):
+        return False
+    return matter_id in configured
+
+
+def _trusted_file(records: list, file_id) -> dict | None:
+    """One trusted file row whose id is the requested id. A missing or non-boolean flag is unresolved."""
+    if not isinstance(file_id, str) or not file_id:
+        return None
+    matches = [row for row in records if isinstance(row, dict) and row.get("id") == file_id]
+    if len(matches) != 1:
+        return None
+    row = matches[0]
+    matter = row.get("matter_id")
+    if "matter_id" not in row or (matter is not None and (not isinstance(matter, str) or not matter)):
+        return None
+    if type(row.get("matter_walled")) is not bool or type(row.get("attorney_only")) is not bool:
+        return None
+    return row
+
+
+def _trusted_file_visible(subject: dict, row: dict | None) -> bool:
+    if row is None:
+        return False
+    if row.get("attorney_only") and subject.get("role") not in ("attorney", "admin"):
+        return False
+    return matter_visible(subject, {"matter_id": row.get("matter_id"), "matter_walled": row["matter_walled"]}, single_record=isinstance(row.get("matter_id"), str))
+
+
+def _bind_file_link(subject: dict, call: dict, path: dict, body: dict) -> None:
+    """Both file ids come from the request. Visibility and matter come only from trusted rows."""
+    records = [row for row in call.get("stored_files") or [] if isinstance(row, dict)]
+    source = _trusted_file(records, path.get("file_id"))
+    target = _trusted_file(records, body.get("to_file_id"))
+    subject["to_file_id"] = body.get("to_file_id") if isinstance(body.get("to_file_id"), str) else None
+    subject["relationship"] = body.get("relationship") if isinstance(body.get("relationship"), str) else None
+    subject["from_visible"] = _trusted_file_visible(subject, source)
+    subject["to_visible"] = _trusted_file_visible(subject, target)
+    if source is None or target is None:
+        subject["same_matter"] = False
+        subject["shared"] = False
+        return
+    subject["attorney_only"] = bool(source["attorney_only"] or target["attorney_only"])
+    source_matter = source.get("matter_id")
+    target_matter = target.get("matter_id")
+    subject["same_matter"] = not (isinstance(source_matter, str) and isinstance(target_matter, str) and source_matter != target_matter)
+    subject["shared"] = source.get("shared_with_client") is True and target.get("shared_with_client") is True
+    if isinstance(source_matter, str):
+        subject["matter_id"] = source_matter
+    subject["matter_walled"] = source["matter_walled"]
 
 
 def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
@@ -1711,6 +1775,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         subject["status"] = body["status"] if "status" in body else call.get("status")
     if "invoice_id" in body or "invoice_id" in call:
         subject["invoice_id"] = body["invoice_id"] if "invoice_id" in body else call.get("invoice_id")
+    if operation.get("operationId") == "createFileLink":
+        _bind_file_link(subject, call, path, body)
     return subject
 
 
@@ -2475,8 +2541,7 @@ def background_grant_issuance(operation: dict, module: dict, job: dict) -> dict:
             return {**denied, "result": "validation_failed"}
         if not matter_visible(job, job, single_record=True):
             return {**denied, "result": policy["wrong_matter"]}
-        principal_matters = job.get("principal_matter_ids")
-        if principal_matters is not None and job.get("matter_id") not in principal_matters:
+        if not _configured_matter(job.get("principal_matter_ids"), job.get("matter_id")):
             return {**denied, "result": policy["wrong_matter"]}
         matter_id = job["matter_id"]
     else:
