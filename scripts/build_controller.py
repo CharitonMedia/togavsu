@@ -72,6 +72,18 @@ def review_problem(findings):
     return {"review_findings": sorted(normalized, key=lambda f: json.dumps(f, sort_keys=True))}
 
 
+def problem_fingerprints(problem):
+    # Keep singleton fingerprints stable, but never give A a fresh budget just
+    # because the next report changes from [A, B] to [A, C].
+    parts = [problem]
+    if isinstance(problem, dict):
+        for kind in ("review_findings", "failed_checks", "missing_checks"):
+            if problem.get(kind):
+                parts = [{kind: [item]} for item in problem[kind]]
+                break
+    return sorted({hashlib.sha256(json.dumps(part, sort_keys=True).encode()).hexdigest() for part in parts})
+
+
 def unobserved_run(record, snapshot):
     # A successful POST reserves a slot until its run becomes visible. A stale
     # predecessor is never evidence that the acknowledged worker is finished.
@@ -323,40 +335,39 @@ class Controller:
             return
         if repair:
             # A new SHA/run ID alone is not evidence that a repeated defect improved.
-            fingerprint = hashlib.sha256(json.dumps(problem if problem is not None else key.split(":")[0],
-                sort_keys=True).encode()).hexdigest()
+            fingerprints = problem_fingerprints(problem if problem is not None else key.split(":")[0])
             windows = record.setdefault("repair_problems", {})
             previous = record.get("repair_window", {})
             if previous:
                 windows.setdefault(previous["fingerprint"], previous)
-            window = windows.get(fingerprint)
-            if window is None:
-                window = {"fingerprint": fingerprint, "attempts": 0}
-                # Preserve old delivered keys. A known completed old correction gets a
-                # bounded recovery, never a blind replay while Cursor still shows its predecessor.
-                if key in record.get("delivered", []):
-                    if snapshot.get("run_id") != record.get("last_dispatched_run"):
-                        record["waiting"] = "Await observation of previously delivered correction"
-                        return
-                    window.update(attempts=1, last_dispatch_at=now())
-                windows[fingerprint] = window
-            record["repair_window"] = window
-            if previous.get("fingerprint") != fingerprint:
-                if record.get("stalled", {}).get("kind") == "no_progress":
-                    record.pop("stalled")
+            for fingerprint in fingerprints:
+                if fingerprint not in windows:
+                    window = {"fingerprint": fingerprint, "attempts": 0}
+                    # Preserve old delivered keys without replaying an uncertain run.
+                    if key in record.get("delivered", []):
+                        if snapshot.get("run_id") != record.get("last_dispatched_run"):
+                            record["waiting"] = "Await observation of previously delivered correction"
+                            return
+                        window.update(attempts=1, last_dispatch_at=now())
+                    windows[fingerprint] = window
+            current = [windows[fingerprint] for fingerprint in fingerprints]
+            window = record["repair_window"] = max(current, key=lambda w: w["attempts"])
+            if record.get("stalled", {}).get("kind") == "no_progress":
+                record.pop("stalled")
             if window["attempts"] >= self.plan["max_repairs"]:
                 record["stalled"] = {"kind": "no_progress", "reason":
                     "Repeated problem exhausted recovery budget; integration lead must inspect the existing agent and PR",
-                    "fingerprint": fingerprint}
+                    "fingerprint": window["fingerprint"]}
                 record.pop("waiting", None)
                 self.save()
                 return
-            delay = min(1800, 300 * 2 ** max(0, window["attempts"] - 1))
-            if window["attempts"] and age(window["last_dispatch_at"]) < delay:
-                record["waiting"] = "Repeated problem backoff until " + (dt.datetime.fromisoformat(
-                    window["last_dispatch_at"]) + dt.timedelta(seconds=delay)).isoformat()
+            retry_at = max((dt.datetime.fromisoformat(w["last_dispatch_at"]) + dt.timedelta(
+                seconds=min(1800, 300 * 2 ** (w["attempts"] - 1))) for w in current if w["attempts"]), default=None)
+            if retry_at and dt.datetime.fromisoformat(now()) < retry_at:
+                record["waiting"] = "Repeated problem backoff until " + retry_at.isoformat()
                 return
-            key += ":recovery:" + fingerprint + ":" + str(window["attempts"] + 1)
+            attempt = [(w["fingerprint"], w["attempts"] + 1) for w in current]
+            key += ":recovery:" + hashlib.sha256(json.dumps(attempt).encode()).hexdigest()
             if window["attempts"]:
                 prompt = ("The same problem remains after a completed correction. Diagnose why the prior approach "
                     "made no progress, use a different approach within this assignment, and report concrete blockers.\n\n" + prompt)
@@ -376,7 +387,7 @@ class Controller:
             return
         record["intent"] = {"key": key, "previous_run": snapshot.get("run_id"), "time": now(), "repair": repair}
         if repair:
-            record["intent"]["problem"] = fingerprint
+            record["intent"]["problems"] = fingerprints
         self.save()
         try:
             result = self.remote.cursor("POST", "/agents/" + record["agent_id"] + "/runs", {"prompt": {"text": prompt}})
@@ -392,7 +403,14 @@ class Controller:
         record.setdefault("delivered", []).append(intent["key"])
         if intent["repair"]:
             record["repair_count"] = record.get("repair_count", 0) + 1
-            if intent.get("problem"):
+            if intent.get("problems"):
+                current = [record["repair_problems"][fingerprint] for fingerprint in intent["problems"]]
+                for window in current:
+                    window["attempts"] += 1
+                    window["last_dispatch_at"] = intent["time"]
+                record["repair_window"] = max(current, key=lambda w: w["attempts"])
+            elif intent.get("problem"):
+                # Reconcile an already-persisted single-window intent once.
                 window = record["repair_window"]
                 window["attempts"] += 1
                 window["last_dispatch_at"] = intent["time"]

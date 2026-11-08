@@ -11,7 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, review_problem, validate_review
+from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -365,6 +365,85 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.record["stalled"]["kind"], "no_progress")
         self.assertEqual(len(self.record["repair_problems"]), 2)
 
+    def test_mixed_finding_sets_preserve_each_budget_and_backoff_across_restarts(self):
+        self.failed_review()
+        for minute, defects, total in ((0, ["A"], 1), (4, ["A", "B"], 1), (5, ["A", "B"], 2),
+                (14, ["A", "C"], 2), (15, ["A", "C"], 3), (30, ["A", "D"], 3)):
+            with self.advance(minute):
+                self.remote.report["findings"] = [{"detail": defect} for defect in defects]
+                self.process()
+                self.assertEqual(len(self.posts()), total)
+                self.finish_correction(format(minute + 1, "040x"))
+                self.restart()
+        for defect, attempts in (("A", 3), ("B", 1), ("C", 1), ("D", 0)):
+            fingerprint = problem_fingerprints(review_problem([{"detail": defect}]))[0]
+            self.assertEqual(self.record["repair_problems"][fingerprint]["attempts"], attempts)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        self.assertEqual(self.record["repair_count"], 5)
+
+    def test_mixed_failed_check_sets_preserve_persistent_check_budget(self):
+        for i, companion in enumerate((None, "QA harness tests", "API contract tests", "Supervisor tests")):
+            with self.advance(i * 30):
+                self.remote.check_rows = {name: check(name) for name in ("Setup checks", "Codex checkpoint")}
+                self.remote.check_rows["Core tests"] = check("Core tests", "failure")
+                if companion:
+                    self.remote.check_rows[companion] = check(companion, "failure")
+                self.process()
+                self.finish_correction(format(i + 1, "040x"))
+                self.restart()
+        fingerprint = problem_fingerprints({"failed_checks": ["Core tests"]})[0]
+        self.assertEqual(self.record["repair_problems"][fingerprint]["attempts"], 3)
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+
+    def test_mixed_missing_check_sets_preserve_persistent_check_budget(self):
+        names = ("A", "B", "C", "D")
+        spec = dict(SPEC, required_checks=list(names))
+        for i, missing in enumerate(({"A"}, {"A", "B"}, {"A", "C"}, {"A", "D"})):
+            with self.advance(i * 30):
+                self.remote.check_rows = {name: check(name) for name in ("Setup checks", "Codex checkpoint") + names
+                    if name not in missing}
+                self.record["check_wait"] = {"head": HEAD, "since": "2026-11-07T22:00:00+00:00"}
+                self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+                self.finish_correction()
+                self.restart()
+        fingerprint = problem_fingerprints({"missing_checks": ["A"]})[0]
+        self.assertEqual(self.record["repair_problems"][fingerprint]["attempts"], 3)
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+
+    def test_mixed_set_waits_for_latest_individual_backoff_deadline(self):
+        self.failed_review()
+        for minute, defects, total in ((0, ["A"], 1), (5, ["A"], 2), (20, ["B"], 3),
+                (21, ["A", "B"], 3), (25, ["A", "B"], 4)):
+            with self.advance(minute):
+                self.remote.report["findings"] = [{"detail": defect} for defect in defects]
+                self.process()
+                self.assertEqual(len(self.posts()), total)
+                if minute == 21:
+                    self.assertIn("00:25:00", self.record["waiting"])
+                self.finish_correction(format(minute + 1, "040x"))
+                self.restart()
+
+    def test_mixed_ambiguous_dispatch_increments_each_distinct_problem_once(self):
+        self.failed_review()
+        self.remote.report["findings"] = [{"detail": "A"}, {"detail": "A"}, {"detail": "B"}]
+        self.remote.fail_post = True
+        with self.advance(0):
+            with self.assertRaises(TimeoutError):
+                self.process()
+            self.assertEqual(len(self.record["intent"]["problems"]), 2)
+            self.restart()
+            self.process()
+            self.assertTrue(all(w["attempts"] == 0 for w in self.record["repair_problems"].values()))
+            self.remote.run_id, self.remote.run_status = "arrived", "RUNNING"
+            self.process()
+            self.restart()
+            self.process()
+        self.assertTrue(all(w["attempts"] == 1 for w in self.record["repair_problems"].values()))
+        self.assertEqual(self.record["repair_count"], 3)
+        self.assertEqual(len(self.posts()), 1)
+
     def test_review_metadata_and_order_changes_do_not_reset_budget(self):
         self.failed_review()
         findings = [{"file": "one.go", "detail": "Same defect", "priority": "P1"},
@@ -381,7 +460,7 @@ class ControllerTests(unittest.TestCase):
                 self.finish_correction(format(i + 1, "040x"))
                 self.restart()
         self.assertEqual(len(self.posts()), 3)
-        self.assertEqual(len(self.record["repair_problems"]), 1)
+        self.assertEqual(len(self.record["repair_problems"]), 2)
         self.assertIn("stalled", self.record)
 
     def test_line_locations_do_not_reset_same_defect_budget(self):
