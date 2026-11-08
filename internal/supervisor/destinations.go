@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 // destinationIOTimeout bounds how long a caller waits for one destination
@@ -698,25 +699,64 @@ func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha
 type pathTempKey struct{}
 
 // WithPathTemp records the exact temporary file before its bytes can be
-// abandoned. An empty name clears that ownership after the rename.
-// inode and mtime are the file identity. A recreated name does not match.
-func WithPathTemp(ctx context.Context, fn func(name string, inode uint64, mtime int64, digest string) error) context.Context {
+// abandoned. The token is written onto that inode and does not change while
+// the upload is copied. release drops the record only after publication or a
+// synced removal has already been verified.
+func WithPathTemp(ctx context.Context, fn func(name string, inode uint64, token string, release bool) error) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, pathTempKey{}, fn)
 }
 
-func pathTempOwner(ctx context.Context) func(string, uint64, int64, string) error {
+func pathTempOwner(ctx context.Context) func(string, uint64, string, bool) error {
 	if ctx == nil {
 		return nil
 	}
-	fn, _ := ctx.Value(pathTempKey{}).(func(string, uint64, int64, string) error)
+	fn, _ := ctx.Value(pathTempKey{}).(func(string, uint64, string, bool) error)
 	return fn
 }
 
-func statMtime(info syscall.Stat_t) int64 {
-	return info.Mtim.Sec*1_000_000_000 + info.Mtim.Nsec
+const tempTokenAttr = "user.togavsu.own"
+
+func newTempToken() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return hexEncode(raw[:]), nil
+}
+
+func fsetxattr(fd int, attr string, data []byte) error {
+	name, err := syscall.BytePtrFromString(attr)
+	if err != nil {
+		return err
+	}
+	var value unsafe.Pointer
+	if len(data) > 0 {
+		value = unsafe.Pointer(&data[0])
+	}
+	_, _, errno := syscall.Syscall6(syscall.SYS_FSETXATTR, uintptr(fd), uintptr(unsafe.Pointer(name)), uintptr(value), uintptr(len(data)), 0, 0)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+func fgetxattr(fd int, attr string) (string, error) {
+	name, err := syscall.BytePtrFromString(attr)
+	if err != nil {
+		return "", err
+	}
+	buf := make([]byte, 64)
+	n, _, errno := syscall.Syscall6(syscall.SYS_FGETXATTR, uintptr(fd), uintptr(unsafe.Pointer(name)), uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), 0, 0)
+	if errno != 0 {
+		return "", errno
+	}
+	if int(n) > len(buf) {
+		return "", syscall.ERANGE
+	}
+	return string(buf[:n]), nil
 }
 
 func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader, sha string) error {
@@ -733,8 +773,10 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 		return err
 	}
 	defer func() {
+		if tmpName != "" {
+			_ = syscall.Unlinkat(int(dir.Fd()), tmpName)
+		}
 		f.Close()
-		p.removeTemp(dir, tmpName)
 	}()
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		return err
@@ -743,34 +785,39 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 	if err := syscall.Fstat(int(f.Fd()), &info); err != nil {
 		return err
 	}
+	token, err := newTempToken()
+	if err != nil {
+		return err
+	}
+	if err := fsetxattr(int(f.Fd()), tempTokenAttr, []byte(token)); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
 	if own := pathTempOwner(ctx); own != nil {
-		if err := own(tmpName, info.Ino, statMtime(info), ""); err != nil {
+		if err := own(tmpName, info.Ino, token, false); err != nil {
 			return err
 		}
+	}
+	if p.stall != nil {
+		var one [1]byte
+		n, rerr := r.Read(one[:])
+		if n > 0 {
+			if _, werr := f.Write(one[:n]); werr != nil {
+				return werr
+			}
+		}
+		if rerr != nil && rerr != io.EOF {
+			return rerr
+		}
+		p.stall("copy")
 	}
 	if _, copyErr := io.Copy(f, r); copyErr != nil {
 		return copyErr
 	}
 	if err := f.Sync(); err != nil {
 		return err
-	}
-	if err := syscall.Fstat(int(f.Fd()), &info); err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	sum, err := sha256Hex(f)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if own := pathTempOwner(ctx); own != nil {
-		if err := own(tmpName, info.Ino, statMtime(info), sum); err != nil {
-			return err
-		}
 	}
 	if p.stall != nil {
 		p.stall("hash")
@@ -787,9 +834,8 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 			return ErrChecksum
 		}
 	}
-	if err := f.Close(); err != nil {
-		return err
-	}
+	// The descriptor stays open, so this process keeps the exclusive lock
+	// until the rename and the directory sync have finished.
 	if p.stall != nil {
 		p.stall("rename")
 	}
@@ -797,28 +843,15 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 		return pathError("rename", name, err)
 	}
 	tmpName = ""
-	if own := pathTempOwner(ctx); own != nil {
-		if err := own("", 0, 0, ""); err != nil {
-			return fmt.Errorf("%w: temp ownership: %v", ErrRemoteUncertain, err)
-		}
-	}
-	// The new name is visible. A failed directory sync must not become a
-	// confirmed receipt, and it must not be a definite rejection: that would
-	// delete the object and drop ownership. A later read can still see it.
 	if err := p.syncDirectory(dir, "file"); err != nil {
 		return fmt.Errorf("%w: directory sync after rename: %v", ErrRemoteUncertain, err)
 	}
+	if own := pathTempOwner(ctx); own != nil {
+		if err := own("", 0, "", true); err != nil {
+			return fmt.Errorf("%w: temp ownership: %v", ErrRemoteUncertain, err)
+		}
+	}
 	return nil
-}
-
-func (p *PathDestination) removeTemp(dir *os.File, name string) {
-	if name == "" || dir == nil {
-		return
-	}
-	if p.stall != nil {
-		p.stall("remove")
-	}
-	_ = syscall.Unlinkat(int(dir.Fd()), name)
 }
 
 func (p *PathDestination) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -929,15 +962,41 @@ func ownedTempName(name string) bool {
 }
 
 // RemoveOwnedTemp unlinks one recorded temporary file when its inode still
-// matches and no process holds its lock. A different inode or a symlink is
-// left in place. A missing name, including after a successful rename, is done.
-func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, name string, inode uint64, mtime int64, digest string) error {
+// carries the ownership token and no process holds its lock. The wait is the
+// same bounded tracked filesystem operation as an upload. A timeout leaves
+// that operation registered and does not report the removal as finished.
+// A different inode, a missing token, a symlink, or a directory is left in
+// place. Absence is acknowledged only after the directory sync.
+func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, name string, inode uint64, token string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !ownedTempName(name) || inode == 0 || mtime == 0 {
+	if !ownedTempName(name) || inode == 0 || !ownedTempToken(token) {
 		return fmt.Errorf("temp name: %w", ErrBadRequest)
 	}
+	wait, cancel := destinationContext(ctx)
+	defer cancel()
+	return trackFS(remoteKey(p.ID(), name), wait, func() error {
+		if p.stall != nil {
+			p.stall("cleanup")
+		}
+		return p.removeOwnedTemp(name, inode, token)
+	})
+}
+
+func ownedTempToken(token string) bool {
+	if len(token) != 32 {
+		return false
+	}
+	for _, c := range token {
+		if c < '0' || (c > '9' && c < 'a') || c > 'f' {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *PathDestination) removeOwnedTemp(name string, inode uint64, token string) error {
 	dir, err := p.openNamespace(false)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -949,35 +1008,50 @@ func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, name string, inod
 	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDWR|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		if err == syscall.ENOENT {
-			return nil
+			return p.acknowledgeTempGone(dir, name)
+		}
+		if err == syscall.ELOOP || err == syscall.EISDIR {
+			return errTempIdentity
 		}
 		return err
 	}
-	file := os.NewFile(uintptr(fd), name)
-	defer file.Close()
+	defer syscall.Close(fd)
 	var info syscall.Stat_t
 	if err := syscall.Fstat(fd, &info); err != nil {
 		return err
 	}
-	if digest == "" || info.Ino != inode || statMtime(info) != mtime {
+	if info.Mode&syscall.S_IFMT != syscall.S_IFREG || info.Ino != inode {
+		return errTempIdentity
+	}
+	got, gerr := fgetxattr(fd, tempTokenAttr)
+	if gerr != nil || got != token {
 		return errTempIdentity
 	}
 	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errTempBusy
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)
-	hashed, err := sha256Hex(file)
+	if err := syscall.Unlinkat(int(dir.Fd()), name); err != nil && err != syscall.ENOENT {
+		return err
+	}
+	return p.acknowledgeTempGone(dir, name)
+}
+
+// acknowledgeTempGone syncs the directory and checks the name again. A sync
+// failure or a name that is still present keeps the caller from forgetting it.
+func (p *PathDestination) acknowledgeTempGone(dir *os.File, name string) error {
+	if err := p.syncDirectory(dir, "delete"); err != nil {
+		return fmt.Errorf("%w: directory sync after temp delete: %v", ErrRemoteUncertain, err)
+	}
+	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err == syscall.ENOENT {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	if hashed != digest {
-		return errTempIdentity
-	}
-	err = syscall.Unlinkat(int(dir.Fd()), name)
-	if err != nil && err != syscall.ENOENT {
-		return err
-	}
-	return nil
+	syscall.Close(fd)
+	return errTempIdentity
 }
 
 func (p *PathDestination) Delete(ctx context.Context, name string) error {
@@ -1215,12 +1289,16 @@ type OwnedObject struct {
 	// validate a copy after local retention has removed the metadata file.
 	Digest string `json:"digest,omitempty"`
 	// Temp is the exact unpublished file for this upload. TempInode and
-	// TempMtime are the identity recorded when that file was created.
-	// Recovery removes only that identity. A recreated name is left alone.
-	Temp       string `json:"temp,omitempty"`
-	TempInode  uint64 `json:"temp_inode,omitempty"`
-	TempMtime  int64  `json:"temp_mtime,omitempty"`
-	TempDigest string `json:"temp_digest,omitempty"`
+	// TempToken are recorded when that file is created, before its bytes are
+	// copied. The token lives on the inode and stays valid through a partial
+	// write. Recovery removes only that inode. releaseTemp lets a verified
+	// removal or publication clear the record.
+	Temp        string `json:"temp,omitempty"`
+	TempInode   uint64 `json:"temp_inode,omitempty"`
+	TempToken   string `json:"temp_token,omitempty"`
+	TempMtime   int64  `json:"temp_mtime,omitempty"`
+	TempDigest  string `json:"temp_digest,omitempty"`
+	releaseTemp bool
 }
 
 // PruneDestination deletes owned archives older than retention. It does not
@@ -1292,6 +1370,12 @@ func (b *ReceiptBook) Add(obj OwnedObject) error {
 		replaced := false
 		for i := range all {
 			if all[i].DestinationID == obj.DestinationID && all[i].Name == obj.Name {
+				if !obj.releaseTemp && obj.Temp == "" {
+					obj.Temp = all[i].Temp
+					obj.TempInode = all[i].TempInode
+					obj.TempToken = all[i].TempToken
+				}
+				obj.releaseTemp = false
 				all[i] = obj
 				replaced = true
 			}
@@ -1315,6 +1399,9 @@ func (b *ReceiptBook) Remove(destID, name string) error {
 		kept := all[:0]
 		for _, obj := range all {
 			if obj.DestinationID == destID && obj.Name == name {
+				if obj.Temp != "" {
+					kept = append(kept, obj)
+				}
 				continue
 			}
 			kept = append(kept, obj)

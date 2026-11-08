@@ -467,12 +467,17 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := s.noteReceipt(receipts, OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
 		return err
 	}
-	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, mtime int64, digest string) error {
-		return s.noteReceipt(receipts, OwnedObject{
+	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, token string, release bool) error {
+		obj := OwnedObject{
 			DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt,
 			State: receiptPending, Digest: meta.SHA256,
-			Temp: temp, TempInode: inode, TempMtime: mtime, TempDigest: digest,
-		})
+			Temp: temp, TempInode: inode, TempToken: token,
+		}
+		if release {
+			obj.releaseTemp = true
+			obj.Temp, obj.TempInode, obj.TempToken = "", 0, ""
+		}
+		return s.noteReceipt(receipts, obj)
 	})
 	if err := dest.Put(putCtx, name, f, meta.SHA256); err != nil {
 		return s.recordMutation(ctx, dest, receipts, name, meta.CreatedAt, err)
@@ -813,29 +818,29 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 
 func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, receipts *ReceiptBook, owned []OwnedObject) error {
 	cleaner, ok := dest.(interface {
-		RemoveOwnedTemp(context.Context, string, uint64, int64, string) error
+		RemoveOwnedTemp(context.Context, string, uint64, string) error
 	})
 	if !ok {
 		return nil
 	}
 	for _, obj := range owned {
-		if obj.Temp == "" || obj.TempInode == 0 || obj.TempMtime == 0 || obj.TempDigest == "" {
+		if obj.Temp == "" || obj.TempInode == 0 || obj.TempToken == "" {
 			continue
 		}
 		if remoteBusy(remoteKey(dest.ID(), obj.Name)) || remoteBusy(remoteKey(dest.ID(), obj.Temp)) {
 			continue
 		}
-		err := cleaner.RemoveOwnedTemp(ctx, obj.Temp, obj.TempInode, obj.TempMtime, obj.TempDigest)
+		err := cleaner.RemoveOwnedTemp(ctx, obj.Temp, obj.TempInode, obj.TempToken)
 		if errors.Is(err, errTempBusy) || errors.Is(err, errTempIdentity) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
+		obj.releaseTemp = true
 		obj.Temp = ""
 		obj.TempInode = 0
-		obj.TempMtime = 0
-		obj.TempDigest = ""
+		obj.TempToken = ""
 		if err := s.noteReceipt(receipts, obj); err != nil {
 			return err
 		}
@@ -1646,7 +1651,7 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 		}
 		var stable []OwnedObject
 		for _, obj := range owned {
-			if obj.State == receiptPending || obj.State == receiptUncertain || obj.State == receiptRejected || obj.State == receiptObserved {
+			if obj.Temp != "" || obj.State == receiptPending || obj.State == receiptUncertain || obj.State == receiptRejected || obj.State == receiptObserved {
 				continue
 			}
 			if strings.HasSuffix(obj.Name, ".tgbk") && s.sidecarUnsettled(book, dest.ID(), strings.TrimSuffix(obj.Name, ".tgbk")) {
