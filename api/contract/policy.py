@@ -1439,7 +1439,7 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         "actor": "module" if call.get("module_id") and not call.get("human_session") and not call.get("role") else "human",
         "human_session": bool(call.get("human_session") or call.get("role")),
         "role": call.get("role"),
-        "scopes": list(call.get("approved_scopes") or call.get("token_scopes") or []),
+        "scopes": list(call["approved_scopes"]) if "approved_scopes" in call else list(call.get("token_scopes") or []),
         "module_id": call.get("module_id"),
         "path_module_id": call.get("path_module_id"),
         "owner_module_id": call.get("owner_module_id"),
@@ -1453,6 +1453,8 @@ def _principal_code(operation: dict, call: dict) -> str | None:
     for name in ("label", "color", "target", "heading"):
         if name in call:
             adapted[name] = call.get(name)
+    if call.get("grant_revoked") or call.get("installed") is False:
+        return "forbidden"
     if scope == "help:write":
         return module_help_registration(operation, adapted)
     if scope == "markers:write":
@@ -1520,6 +1522,24 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
         return issue_api_token(operation, call)["result"]
     if access.get("recipient") == "self":
         return notification_recipient_decision(operation, call)
+    return None
+
+
+def _batch_matter_denial(access: dict, call: dict) -> str | None:
+    """Every item matter is authorized before any batch effect. One off-wall item rejects the batch."""
+    if not access.get("matter_wall"):
+        return None
+    items = call.get("items") if isinstance(call.get("items"), list) else None
+    if not items:
+        return None
+    for item in items:
+        if not isinstance(item, dict):
+            return "not_found"
+        matter_id = item.get("matter_id")
+        if not matter_id:
+            continue
+        if not matter_visible(call, {"matter_id": matter_id, "matter_walled": True}, single_record=True):
+            return "not_found"
     return None
 
 
@@ -1692,6 +1712,8 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if access.get("admin_bypasses_wall") or access.get("firmwide_bypass") or access.get("grants_admin"):
         return {"result": "forbidden", **denied}
     subject = dict(call)
+    if subject.get("module_id") and subject.get("grant_revoked"):
+        return {"result": "forbidden", **denied}
     workflow = _workflow_code(spec, operation, subject)
     if workflow is not None:
         if workflow != "allowed":
@@ -1706,6 +1728,10 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         if subject.get("grant_revoked"):
             return {"result": "forbidden", **denied}
         subject = _module_scope_intersection(subject)
+    if not subject.get("noninteractive_accepted"):
+        batch = _batch_matter_denial(access, subject)
+        if batch:
+            return {"result": batch, **denied}
     conditional = _conditional_scope_code(spec, operation, subject)
     if conditional is not None and conditional != "allowed":
         return {"result": conditional, **denied}
@@ -1858,6 +1884,15 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "contact_id": body.get("contact_id", call.get("contact_id")),
         "method": body.get("method", call.get("method")),
         "payment_id": path.get("payment_id") or call.get("payment_id"),
+        "client_id": body.get("client_id", call.get("client_id")),
+        "owner_user_id": body.get("owner_user_id", call.get("owner_user_id")),
+        "name": body.get("name", call.get("name")),
+        "requested_scopes": list(body["scopes"]) if isinstance(body.get("scopes"), list) else list(call.get("requested_scopes") or []),
+        "credential": call.get("credential") or ("bearer" if call.get("authorization") else None),
+        "caller_scopes": list(call.get("caller_scopes") or []),
+        "owner_role_scopes": list(call.get("owner_role_scopes") or []),
+        "module_approved_scopes": list(call.get("module_approved_scopes") or []),
+        "balances": list(call.get("balances") or []) if isinstance(call.get("balances"), list) else [],
         "trust_linked": call.get("trust_linked"),
         "domain_handlers": call.get("domain_handlers"),
         "include": published_include(query["include"]) if "include" in query else published_include(call.get("include")),
@@ -1875,6 +1910,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "queue": body.get("queue", call.get("queue")),
         "replay": bool(call.get("replay")),
     }
+    if isinstance(body.get("module_id"), str):
+        subject["bound_module_id"] = body["module_id"]
     for name in ("label", "color", "target"):
         if name in body or name in call:
             subject[name] = body[name] if name in body else call.get(name)
@@ -2549,14 +2586,16 @@ def issue_api_token(operation: dict, call: dict) -> dict:
         return denied
     if call.get("caller_module_id") or call.get("role") not in access.get("roles", []):
         return denied
-    requested = list(call.get("scopes") or [])
+    requested = list(call["requested_scopes"]) if "requested_scopes" in call else list(call.get("scopes") or [])
     if not requested:
         return {"result": "validation_failed", "token": None, "secret": None}
     effective = set(call.get("token_scopes") or []) if call.get("credential") == "bearer" else set(call.get("caller_scopes") or [])
     if any(scope not in effective for scope in requested):
         return {"result": "scope_denied", "token": None, "secret": None}
     owner = call.get("owner_user_id")
-    module_id = call.get("module_id")
+    module_id = call.get("bound_module_id")
+    if module_id is None and not call.get("caller_module_id"):
+        module_id = call.get("module_id")
     if bool(owner) == bool(module_id) or (module_id is not None and not module_id_slug(module_id)):
         return {"result": "validation_failed", "token": None, "secret": None}
     if owner:
@@ -4067,6 +4106,21 @@ def publish_trust_debit(spec: dict) -> None:
         operation_by_id(spec, operation_id)["x-togavsu-access"]["trust_debit"] = dict(rule)
 
 
+def _trust_openings(row: dict) -> dict:
+    """Matter, client, and account openings stay separate. A lone balance_cents is only the fallback for a dimension the row does not name."""
+    nested = row.get("opening") if isinstance(row.get("opening"), dict) else {}
+
+    def cents(name: str) -> int:
+        for source in (nested, row):
+            value = source.get(name)
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+        value = row.get("balance_cents", 0)
+        return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+    return {"matter_cents": cents("matter_cents"), "client_cents": cents("client_cents"), "account_cents": cents("account_cents")}
+
+
 def trust_debit_decision(call: dict) -> dict:
     """Select the client and trust account before any ledger post. Denial changes nothing."""
     denied = {"ledger_mutated": False, "debited_account_id": None, "amount_cents": 0, "events": []}
@@ -4094,10 +4148,7 @@ def trust_debit_decision(call: dict) -> dict:
         return {"result": "forbidden", **denied}
     amount = call.get("amount_cents")
     debit = abs(amount) if isinstance(amount, int) and not isinstance(amount, bool) else 0
-    resulting = call.get("balance_after", 0)
-    if isinstance(resulting, bool) or not isinstance(resulting, int):
-        resulting = 0
-    opening_cents = resulting + debit
+    opening = _trust_openings(row)
     events = trust_ledger_events(
         {
             "operationId": "trustDebit",
@@ -4108,7 +4159,7 @@ def trust_debit_decision(call: dict) -> dict:
             {
                 "entry_type": "transfer_to_operating",
                 "amount_cents": debit,
-                "opening": {"matter_cents": opening_cents, "client_cents": opening_cents, "account_cents": opening_cents},
+                "opening": opening,
                 "matter_id": call.get("matter_id"),
                 "client_id": call.get("client_id"),
                 "trust_account_id": row["trust_account_id"],
@@ -4118,14 +4169,16 @@ def trust_debit_decision(call: dict) -> dict:
         ],
         committed=True,
     )
+    posted = next((event for event in events if event.get("type") == "trust.entry_posted"), {})
     return {
         "result": "allowed",
         "ledger_mutated": True,
         "debited_account_id": row["trust_account_id"],
         "client_id": row["client_id"],
-        "amount_cents": call["amount_cents"],
-        "below_zero": resulting < 0,
+        "amount_cents": call.get("amount_cents"),
+        "below_zero": any(event.get("type") == "trust.flag_raised" for event in events),
         "events": events,
+        "balances": dict(posted.get("balances") or {}),
     }
 
 

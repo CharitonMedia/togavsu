@@ -4799,6 +4799,245 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(inactive["result"], "conflict")
         self.assertFalse(inactive["effects"])
 
+    def test_mcp_dispatcher_covers_special_authorization_families(self):
+        """Every published family that takes a special authorization path is decided by mcp_tool_dispatch."""
+        families = {"batch": set(), "module_principal": set(), "issuance": set(), "trust_debit": set()}
+        for _method, _path, operation in _ops(self.spec):
+            access = operation["x-togavsu-access"]
+            name = operation["operationId"]
+            if access.get("batch_authorization") == "all_or_nothing" and access.get("matter_wall"):
+                families["batch"].add(name)
+            if access.get("module_principal"):
+                families["module_principal"].add(name)
+            if access.get("issuance") == "admin_only":
+                families["issuance"].add(name)
+            if access.get("trust_debit"):
+                families["trust_debit"].add(name)
+        self.assertEqual(
+            families,
+            {
+                "batch": {"bulkCustomFieldValue", "bulkEvent", "bulkInvoice"},
+                "module_principal": {
+                    "createModuleHelpPage",
+                    "replaceModuleHelpPages",
+                    "deleteModuleHelpPage",
+                    "createModuleMarker",
+                    "updateModuleMarker",
+                    "revokeModuleMarker",
+                },
+                "issuance": {"createApiToken"},
+                "trust_debit": {"applyTrustToInvoice", "applyFlatFee"},
+            },
+        )
+
+        def bearer(**extra):
+            return {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, **extra}
+
+        visible = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        hidden = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        membership = {visible: True, hidden: False}
+        client = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        owner = "018f1a00-7b3c-7d4e-8a11-555555555555"
+
+        def item(matter_id):
+            return {
+                "action": "noted",
+                "record_type": "matter",
+                "record_id": matter_id,
+                "summary": "Batch row",
+                "matter_id": matter_id,
+                "matter_walled": False,
+                "on_wall": True,
+            }
+
+        for operation_id in sorted(families["batch"]):
+            operation = _operation(self.spec, operation_id)
+            role = operation["x-togavsu-access"]["roles"][0]
+            mixed = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(role=role, token_scopes=list(operation["x-togavsu-access"]["scopes"]), matter_membership=membership),
+                    "tool": operation_id,
+                    "arguments": {"body": {"items": [item(visible), item(hidden)]}},
+                },
+            )
+            self.assertEqual(mixed["result"], "not_found", operation_id)
+            self.assertFalse(mixed["effects"], operation_id)
+        admitted = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["events:write"], matter_membership=membership),
+                "tool": "bulkEvent",
+                "arguments": {"body": {"items": [item(visible), item(visible)]}},
+            },
+        )
+        self.assertEqual(admitted["result"], "allowed")
+        self.assertTrue(admitted["effects"])
+        _component_validator(self.spec, "EventWrite").validate({key: value for key, value in item(visible).items() if key in {"action", "record_type", "record_id", "summary", "matter_id"}})
+        unscoped = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=[], matter_membership=membership),
+                "tool": "bulkEvent",
+                "arguments": {"body": {"items": [item(visible)]}},
+            },
+        )
+        self.assertEqual(unscoped["result"], "scope_denied")
+        self.assertFalse(unscoped["effects"])
+        help_body = {"path": {"module_id": "matter-clock"}, "body": {"heading": "matter-clock"}}
+        help_ok = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], installed=True, grant_revoked=False), "tool": "createModuleHelpPage", "arguments": help_body},
+        )
+        self.assertEqual(help_ok["result"], "allowed")
+        self.assertTrue(help_ok["effects"])
+        for operation_id in sorted(families["module_principal"]):
+            operation = _operation(self.spec, operation_id)
+            scope = operation["x-togavsu-access"]["module_principal"]["scope"]
+            module_id = "intake" if scope == "markers:write" else "matter-clock"
+            arguments = {"path": {"module_id": module_id}}
+            if scope == "help:write":
+                arguments["body"] = {"heading": module_id}
+            else:
+                arguments["body"] = {"marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111", "label": "After hours", "color": "#336699"}
+                arguments["path"]["marker_id"] = "018f1a00-7b3c-7d4e-8a11-111111111111"
+            empty = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(viewer_present=False, module_id=module_id, approved_scopes=[], token_scopes=[scope], installed=True),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(empty["result"], "scope_denied", operation_id)
+            self.assertFalse(empty["effects"], operation_id)
+            revoked = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(viewer_present=False, module_id=module_id, approved_scopes=[scope], token_scopes=[scope], installed=True, grant_revoked=True),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(revoked["result"], "forbidden", operation_id)
+            self.assertFalse(revoked["effects"], operation_id)
+            uninstalled = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(viewer_present=False, module_id=module_id, approved_scopes=[scope], installed=False),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(uninstalled["result"], "forbidden", operation_id)
+            self.assertFalse(uninstalled["effects"], operation_id)
+        issued = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="admin", token_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]),
+                "tool": "createApiToken",
+                "arguments": {"body": {"name": "Desk", "owner_user_id": owner, "scopes": ["profile:read"]}},
+            },
+        )
+        self.assertEqual(issued["result"], "allowed")
+        self.assertTrue(issued["effects"])
+        _component_validator(self.spec, "ApiTokenWrite").validate({"name": "Desk", "owner_user_id": owner, "scopes": ["profile:read"]})
+        nameless = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="admin", token_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]),
+                "tool": "createApiToken",
+                "arguments": {"body": {"owner_user_id": owner}},
+            },
+        )
+        self.assertEqual(nameless["result"], "validation_failed")
+        self.assertFalse(nameless["effects"])
+        openings = {
+            "trust_account_id": account,
+            "client_id": client,
+            "matter_id": visible,
+            "matter_cents": 1000,
+            "client_cents": 5000,
+            "account_cents": 4000,
+            "active": True,
+            "authorized": True,
+            "firm_id": "firm-1",
+        }
+        hinted = trust_debit_decision(
+            {
+                "role": "attorney",
+                "token_scopes": ["trust:withdraw"],
+                "client_id": client,
+                "trust_account_id": account,
+                "matter_id": visible,
+                "amount_cents": 1500,
+                "balance_after": 0,
+                "matter_walled": False,
+                "balances": [openings],
+                "firm_id": "firm-1",
+            }
+        )
+        self.assertEqual(hinted["result"], "allowed")
+        self.assertTrue(hinted["below_zero"])
+        self.assertEqual(hinted["balances"], {"matter_cents": -500, "client_cents": 3500, "account_cents": 2500})
+        self.assertEqual([event["type"] for event in hinted["events"]], ["trust.entry_posted", "trust.flag_raised"])
+        trust_body = {"client_id": client, "trust_account_id": account, "amount_cents": 1500}
+        _component_validator(self.spec, "FlatFeeApply").validate(trust_body)
+        _component_validator(self.spec, "ApplyTrust").validate(trust_body)
+        for operation_id, arguments in (
+            ("applyFlatFee", {"path": {"matter_id": visible}, "body": trust_body}),
+            ("applyTrustToInvoice", {"path": {"invoice_id": "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbbb"}, "body": trust_body}),
+        ):
+            posted = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(role="attorney", token_scopes=["trust:withdraw"], matter_id=visible, balances=[openings], firm_id="firm-1", matter_walled=False),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(posted["result"], "allowed", operation_id)
+            self.assertTrue(posted["effects"], operation_id)
+            missing_balances = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(role="attorney", token_scopes=["trust:withdraw"], matter_id=visible, matter_walled=False),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(missing_balances["result"], "not_found", operation_id)
+            self.assertFalse(missing_balances["effects"], operation_id)
+            bare = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(role="attorney", token_scopes=[], matter_id=visible, balances=[openings], firm_id="firm-1", matter_walled=False),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(bare["result"], "scope_denied", operation_id)
+            self.assertFalse(bare["effects"], operation_id)
+            off_wall = mcp_tool_dispatch(
+                self.spec,
+                {
+                    **bearer(
+                        role="attorney",
+                        token_scopes=["trust:withdraw"],
+                        matter_id=visible,
+                        balances=[openings],
+                        firm_id="firm-1",
+                        matter_walled=True,
+                        matter_membership={visible: False},
+                    ),
+                    "tool": operation_id,
+                    "arguments": arguments,
+                },
+            )
+            self.assertEqual(off_wall["result"], "not_found", operation_id)
+            self.assertFalse(off_wall["effects"], operation_id)
+
     def test_owner_bound_events_follow_the_read_policy(self):
         owners = self.spec["x-togavsu-event-owners"]
         order = self.spec["webhooks"]["moduleEvent"]["post"]["x-togavsu-delivery-authorization"]["order"]
