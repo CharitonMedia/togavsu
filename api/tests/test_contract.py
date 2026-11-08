@@ -4707,7 +4707,7 @@ class ContractTest(unittest.TestCase):
         paired = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                **bearer(role="staff", token_scopes=["matters:read", "views:matter-clock.targets:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
                 "tool": "listMatter",
                 "arguments": {"query": {"include": "matter-clock.targets, other.secret"}},
             },
@@ -4717,7 +4717,7 @@ class ContractTest(unittest.TestCase):
         listed = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                **bearer(role="staff", token_scopes=["matters:read", "views:matter-clock.targets:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
                 "tool": "listMatter",
                 "arguments": {"query": {"include": ["matter-clock.targets"]}},
             },
@@ -4727,7 +4727,7 @@ class ContractTest(unittest.TestCase):
         named = mcp_tool_dispatch(
             self.spec,
             {
-                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                **bearer(role="staff", token_scopes=["matters:read", "views:matter-clock.targets:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
                 "tool": "listMatter",
                 "arguments": {"query": {"include": "matter-clock.targets"}},
             },
@@ -4957,7 +4957,7 @@ class ContractTest(unittest.TestCase):
             uninstalled = mcp_tool_dispatch(
                 self.spec,
                 {
-                    **bearer(viewer_present=False, module_id=module_id, approved_scopes=[scope], installed=False),
+                    **bearer(viewer_present=False, module_id=module_id, approved_scopes=[scope], token_scopes=[scope], installed=False),
                     "tool": operation_id,
                     "arguments": arguments,
                 },
@@ -6736,6 +6736,52 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(pulled["result"], "yanked")
         self.assertIsNone(pulled["package"])
 
+    def test_custom_acceptance_cannot_skip_operation_scopes(self):
+        """A custom policy may narrow a call. It does not waive the operation's own scopes."""
+        custom = (
+            "trust_debit",
+            "entry_type_scopes",
+            "payment_reversal",
+            "payment_effect",
+            "record_type_domain",
+            "item_privileges",
+            "external_effects",
+            "processor_issuance",
+            "issuance",
+            "recipient",
+            "authorization_category",
+        )
+        checked = []
+        for _method, _path, operation in _ops(self.spec):
+            access = operation["x-togavsu-access"]
+            scopes = list(access.get("scopes") or [])
+            if not scopes or access.get("noninteractive_workflow"):
+                continue
+            if access.get("entry_type_scopes") or access.get("scope_combination") == "per_item":
+                continue
+            if not any(access.get(key) for key in custom):
+                continue
+            role = next(iter(access.get("roles") or []), None)
+            if role is None:
+                continue
+            decision = mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": scopes[1:],
+                    "tool": operation["operationId"],
+                    "arguments": {},
+                },
+            )
+            self.assertEqual(decision["result"], "scope_denied", operation["operationId"])
+            self.assertFalse(decision["effects"], operation["operationId"])
+            checked.append(operation["operationId"])
+        self.assertIn("createApiToken", checked)
+        self.assertIn("initiateProcessorPayment", checked)
+
     def test_dispatcher_parity_matrix(self):
         """Schema-valid MCP calls for every authorization family the adapter reaches.
 
@@ -6833,6 +6879,8 @@ class ContractTest(unittest.TestCase):
         help_body = {"id": "start", "title": "Start", "markdown": "Hello"}
         marker_body = {"label": "After hours", "color": "#336699"}
         token_body = {"name": "Desk", "owner_user_id": owner, "scopes": ["profile:read"]}
+        processor_operating = {"processor_module_id": "lawpay", "contact_id": client, "matter_id": visible, "amount_cents": 2500, "destination": "operating"}
+        processor_trust = {**processor_operating, "destination": "trust", "trust_account_id": account}
         withdrawal = {"trust_account_id": account, "client_id": client, "matter_id": visible, "entry_type": "withdrawal", "amount_cents": 100, "method": "check", "description": "Distribution"}
         payment = {"contact_id": client, "matter_id": visible, "amount_cents": 100, "destination": "operating", "method": "check", "status": "pending"}
         archive_body = {"file_ids": [file_id], "confirm_quarantine": True}
@@ -6848,6 +6896,8 @@ class ContractTest(unittest.TestCase):
             ("createModuleHelpPage", help_body),
             ("createModuleMarker", marker_body),
             ("createApiToken", token_body),
+            ("initiateProcessorPayment", processor_operating),
+            ("initiateProcessorPayment", processor_trust),
             ("postTrustEntry", withdrawal),
             ("createPayment", payment),
             ("createFileArchive", archive_body),
@@ -6881,9 +6931,13 @@ class ContractTest(unittest.TestCase):
             {"family": "session_or_bearer", "name": "empty bearer notifications", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[], owner="self", caller_user_id=owner), "tool": "listNotification", "arguments": {}}},
             {"family": "include", "name": "unpublished extension", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"], extensions=[extension], published_views=[]), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
             {"family": "include", "name": "other module unpublished extension", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"], extensions=[extension], published_views=[], caller_module_id="other-module"), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
-            {"family": "include", "name": "published view", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
-            {"family": "include", "name": "revoked view scope", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read"], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
-            {"family": "include", "name": "absent current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "published view", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "published view minimal scopes", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read", view_scope], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "published view empty token", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "published view omitted token", "result": "scope_denied", "call": {**bearer(role="staff", approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "cookie published view", "result": "allowed", "call": {**cookie(role="staff", approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "revoked view scope", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read", view_scope], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read"], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "absent current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read", view_scope], approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
             {"family": "include", "name": "explicit empty current approval", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=[], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
             {"family": "include", "name": "missing extension context", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"]), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
             {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": archive_body}}},
@@ -6910,6 +6964,13 @@ class ContractTest(unittest.TestCase):
             {"family": "issuance", "name": "cookie issues within role", "result": "allowed", "call": {**cookie(role="admin", caller_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
             {"family": "issuance", "name": "empty bearer cannot issue", "result": "scope_denied", "call": {**bearer(role="admin", token_scopes=[], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
             {"family": "issuance", "name": "session without caller scopes", "result": "scope_denied", "call": {**cookie(role="admin", owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "issuance", "name": "bearer missing tokens:write", "result": "scope_denied", "call": {**bearer(role="admin", token_scopes=["profile:read"], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "issuance", "name": "bearer minimal tokens:write", "result": "allowed", "call": {**bearer(role="admin", token_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "processor_issuance", "name": "trust init payments write only", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=["payments:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
+            {"family": "processor_issuance", "name": "trust init unregistered", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=False, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
+            {"family": "processor_issuance", "name": "trust init empty current approval", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=[], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
+            {"family": "processor_issuance", "name": "trust init omitted current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
+            {"family": "processor_issuance", "name": "trust init minimal scopes", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
             {"family": "entry_type_scopes", "name": "cookie attorney withdrawal", "result": "allowed", "call": {**cookie(role="attorney"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
             {"family": "entry_type_scopes", "name": "empty bearer withdrawal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[]), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
             {"family": "entry_type_scopes", "name": "cookie staff withdrawal", "result": "forbidden", "call": {**cookie(role="staff"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},

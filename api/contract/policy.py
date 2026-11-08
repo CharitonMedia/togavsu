@@ -975,12 +975,58 @@ def _principal_code(operation: dict, call: dict) -> str | None:
     return "forbidden"
 
 
+def _processor_initialization_code(spec: dict, operation: dict, call: dict) -> str:
+    """The declared processor_issuance policy. Registration, caller scopes, and current approvals all apply."""
+    name = operation["x-togavsu-access"].get("processor_issuance")
+    policy = (spec.get("x-togavsu-module-delegation") or {}).get("noninteractive", {}).get(name or "")
+    if not isinstance(policy, dict):
+        return "forbidden"
+    if policy.get("initialization_requires_viewer") and call.get("role") not in (operation["x-togavsu-access"].get("roles") or []):
+        return "forbidden"
+    approved = list(call.get("approved_scopes") or [])
+    if "current_approved_scopes" in call:
+        current = set(call.get("current_approved_scopes") or [])
+        approved = [scope for scope in approved if scope in current]
+    if session_authorizes(call):
+        caller_scopes = list(call.get("caller_scopes") or [])
+    elif call.get("credential") == "bearer" or "token_scopes" in call:
+        caller_scopes = list(call.get("token_scopes") or [])
+    else:
+        caller_scopes = list(call.get("caller_scopes") or [])
+    module = {
+        "registered": bool(call.get("registered")),
+        "module_id": call.get("module_id"),
+        "recipient_id": call.get("recipient_id") or call.get("module_id"),
+        "approved_scopes": approved,
+    }
+    initialization = {
+        "processor_module_id": call.get("processor_module_id"),
+        "initialization_id": call.get("initialization_id"),
+        "reserved_payment_id": call.get("reserved_payment_id"),
+        "matter_id": call.get("matter_id"),
+        "contact_id": call.get("contact_id"),
+        "invoice_id": call.get("invoice_id"),
+        "amount_cents": call.get("amount_cents"),
+        "destination": call.get("destination"),
+        "trust_account_id": call.get("trust_account_id"),
+        "caller_scopes": caller_scopes,
+        "expires_at": call.get("expires_at"),
+        "matter_walled": bool(call.get("matter_walled")),
+        "on_wall": call.get("on_wall"),
+        "matter_membership": call.get("matter_membership"),
+        "trust_accounts": call.get("trust_accounts"),
+        "firm_id": call.get("firm_id"),
+    }
+    return processor_issuance(policy, module, initialization)["result"]
+
+
 def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | None:
     """None when this operation has no conditional financial or per-item scope rule."""
-    del spec
     access = operation["x-togavsu-access"]
     if call.get("noninteractive_accepted"):
         return None
+    if access.get("processor_issuance"):
+        return _processor_initialization_code(spec, operation, call)
     if access.get("trust_debit"):
         if not call.get("role"):
             return "forbidden"
@@ -1146,6 +1192,12 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         if subject.get("grant_revoked"):
             return {"result": "forbidden", **denied}
         subject = _module_scope_intersection(subject)
+    # Base operation scopes are mandatory. A custom policy may narrow the decision. It cannot skip this check.
+    # entry_type_scopes and per-item scope lists are alternatives, not a conjunction. Their own rule selects one.
+    # A noninteractive grant already applied its scopes. A session is authorized by role.
+    menu = bool(access.get("entry_type_scopes") or access.get("scope_combination") == "per_item")
+    if not menu and not subject.get("noninteractive_accepted") and bearer_lacks_scopes(subject, access.get("scopes") or []):
+        return {"result": "scope_denied", **denied}
     principal = _principal_code(operation, subject)
     if principal is not None:
         if principal != "allowed":
@@ -1158,13 +1210,10 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     conditional = _conditional_scope_code(spec, operation, subject)
     if conditional is not None and conditional != "allowed":
         return {"result": conditional, **denied}
-    if not subject.get("noninteractive_accepted") and conditional is None:
-        if not subject.get("principal_accepted"):
-            roles = access.get("roles") or []
-            if not roles or subject.get("role") not in roles:
-                return {"result": "forbidden", **denied}
-        if bearer_lacks_scopes(subject, access.get("scopes") or []):
-            return {"result": "scope_denied", **denied}
+    if not subject.get("noninteractive_accepted") and conditional is None and not subject.get("principal_accepted"):
+        roles = access.get("roles") or []
+        if not roles or subject.get("role") not in roles:
+            return {"result": "forbidden", **denied}
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
         if matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
@@ -1343,6 +1392,10 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "trust_accounts": call.get("trust_accounts"),
         "firm_id": call.get("firm_id"),
         "amount_cents": body.get("amount_cents", call.get("amount_cents")),
+        "processor_module_id": body.get("processor_module_id", call.get("processor_module_id")),
+        "initialization_id": call.get("initialization_id"),
+        "reserved_payment_id": call.get("reserved_payment_id"),
+        "recipient_id": call.get("recipient_id"),
         "contact_id": body.get("contact_id", call.get("contact_id")),
         "method": body.get("method", call.get("method")),
         "payment_id": path.get("payment_id") or call.get("payment_id"),
@@ -1778,6 +1831,13 @@ def issue_api_token(operation: dict, call: dict) -> dict:
     requested = list(call["requested_scopes"]) if "requested_scopes" in call else list(call.get("scopes") or [])
     if not requested:
         return {"result": "validation_failed", "token": None, "secret": None}
+    # tokens:write is the operation scope. It is not implied by the child scope being inside the same credential.
+    if call.get("credential") == "bearer" or "token_scopes" in call:
+        issuing = set(call.get("token_scopes") or [])
+    else:
+        issuing = set(call.get("caller_scopes") or [])
+    if any(scope not in issuing for scope in (access.get("scopes") or [])):
+        return {"result": "scope_denied", "token": None, "secret": None}
     effective = set(call.get("token_scopes") or []) if call.get("credential") == "bearer" else set(call.get("caller_scopes") or [])
     if any(scope not in effective for scope in requested):
         return {"result": "scope_denied", "token": None, "secret": None}
@@ -3074,6 +3134,10 @@ def include_views_decision(operation: dict, call: dict) -> str:
         # Section 9.9: another module may include a published view only after the admin approves this scope.
         if needed not in approved:
             return "forbidden"
+        # A presented bearer also needs that view scope on the token. Approvals alone do not add it.
+        if (call.get("credential") == "bearer" or "token_scopes" in call) and not session_authorizes(call):
+            if bearer_lacks_scopes(call, [needed]):
+                return "scope_denied"
     return "allowed"
 
 
