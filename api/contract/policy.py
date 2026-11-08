@@ -1218,18 +1218,18 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
             return {"result": "forbidden", **denied}
     if operation.get("operationId") == "mergeMatter":
         return _merge_matter_decision(subject)
-    if operation.get("operationId") in _REPARENT_OPERATIONS and subject.get("reparent_requested"):
-        events = list(operation.get("x-togavsu-events") or [])
-        reparent = _file_reparent_decision(subject, events)
-        if reparent["result"] != "allowed" or reparent.get("reparented"):
-            return reparent
     if operation.get("operationId") == "resetTotp":
         return _totp_reset_authorization(operation, subject)
     if operation.get("operationId") == "regenerateRecoveryCodes":
         return _recovery_regeneration_authorization(operation, subject)
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
-        if matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
+        walls = subject.get("matter_walls")
+        if isinstance(matter_id, str) and isinstance(walls, dict) and matter_id in walls:
+            walled = walls[matter_id]
+            if type(walled) is not bool or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
+                return {"result": "not_found", **denied, "events": []}
+        elif matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
             row = {"matter_id": matter_id, "matter_walled": bool(subject.get("matter_walled", subject.get("matter_membership") is not None))}
             if not matter_visible(subject, row, single_record=matter_id is not None):
                 return {"result": "not_found", **denied}
@@ -1277,9 +1277,19 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     routed = _replacement_decision(operation, subject)
     if routed:
         return {**denied, **routed, "public": False}
+    subject["matter_null_allowed"] = _matter_null_allowed(spec, operation)
+    destination = _requested_matter_denial(subject)
+    if destination:
+        return {"result": destination, **denied, "events": [], "reparented": False}
     allowed = {"result": "allowed", "effects": True, "public": False}
     if subject.get("_patch_events") is not None:
         allowed["events"] = subject["_patch_events"]
+    elif subject.get("destination_requested") and subject.get("requested_matter_id") != subject.get("stored_matter_id"):
+        allowed["events"] = list(operation.get("x-togavsu-events") or [])
+        if subject.get("requested_matter_id") is None:
+            allowed["cleared"] = True
+        else:
+            allowed["reparented"] = True
     return allowed
 
 
@@ -1306,27 +1316,37 @@ def _merge_matter_decision(subject: dict) -> dict:
     return {"result": "allowed", "effects": True, "public": False, "events": ["matter.merged"], "relinked": True, "archived": True}
 
 
-_REPARENT_OPERATIONS = {"updateFileMetadata", "resolveDocTenderException"}
+def _matter_null_allowed(spec: dict, operation: dict) -> bool:
+    content = ((operation.get("requestBody") or {}).get("content") or {}).get("application/json") or {}
+    schema = content.get("schema") or {}
+    if isinstance(schema.get("$ref"), str):
+        schema = spec["components"]["schemas"].get(schema["$ref"].rsplit("/", 1)[-1]) or {}
+    prop = (schema.get("properties") or {}).get("matter_id")
+    if not isinstance(prop, dict):
+        return False
+    options = prop.get("anyOf") or prop.get("oneOf") or []
+    return any(isinstance(item, dict) and item.get("type") == "null" for item in options)
 
 
-def _file_reparent_decision(subject: dict, events: list[str]) -> dict:
-    """Stored file matter and requested destination are different identities. Both need a boolean wall."""
-    quiet = {"effects": False, "public": False, "events": [], "reparented": False}
-    stored = subject.get("stored_matter_id")
+def _requested_matter_denial(subject: dict) -> str | None:
+    """Deny a requested matter. This never grants, and null clears only after the source gates."""
+    if not subject.get("destination_requested"):
+        return None
+    if subject.get("stored_matter_state") == "unresolved":
+        return "not_found"
     requested = subject.get("requested_matter_id")
-    if not isinstance(stored, str) or not stored:
-        return {"result": "not_found", **quiet}
-    if requested == stored:
-        return {"result": "allowed", "effects": True, "public": False, "reparented": False}
+    if requested is None:
+        return None if subject.get("matter_null_allowed") else "validation_failed"
     if not isinstance(requested, str) or not requested:
-        return {"result": "validation_failed", **quiet}
+        return "not_found"
+    if subject.get("stored_matter_state") == "matter" and requested == subject.get("stored_matter_id"):
+        return None
     walls = subject.get("matter_walls")
-    for matter_id in (stored, requested):
-        if not isinstance(walls, dict) or matter_id not in walls or type(walls[matter_id]) is not bool:
-            return {"result": "not_found", **quiet}
-        if not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walls[matter_id]}, single_record=True):
-            return {"result": "not_found", **quiet}
-    return {"result": "allowed", "effects": True, "public": False, "events": events, "reparented": True}
+    if not isinstance(walls, dict) or requested not in walls or type(walls[requested]) is not bool:
+        return "not_found"
+    if not matter_visible(subject, {"matter_id": requested, "matter_walled": walls[requested]}, single_record=True):
+        return "not_found"
+    return None
 
 
 def _matter_patch_decision(subject: dict) -> dict:
@@ -1556,16 +1576,26 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         if key in call:
             subject[key] = call[key]
     path_matter = path.get("matter_id") if isinstance(path.get("matter_id"), str) else None
-    stored_matter = call.get("matter_id") if isinstance(call.get("matter_id"), str) else None
-    subject["stored_matter_id"] = path_matter or stored_matter
-    if "matter_id" in body:
+    resource_update = any(key != "matter_id" for key in path)
+    if "matter_id" in call:
+        stored_value = call.get("matter_id")
+        if stored_value is None:
+            subject["stored_matter_state"] = "unassigned"
+        elif isinstance(stored_value, str) and stored_value:
+            subject["stored_matter_state"] = "matter"
+            subject["stored_matter_id"] = stored_value
+        else:
+            subject["stored_matter_state"] = "unresolved"
+    else:
+        subject["stored_matter_state"] = "absent"
+    if "matter_id" in body and (resource_update or "matter_id" in call):
+        subject["destination_requested"] = True
         subject["requested_matter_id"] = body.get("matter_id")
-        subject["reparent_requested"] = bool(subject["stored_matter_id"]) and operation.get("operationId") in _REPARENT_OPERATIONS
     if path_matter:
         subject["matter_id"] = path_matter
-    elif stored_matter:
-        subject["matter_id"] = stored_matter
-    elif isinstance(body.get("matter_id"), str):
+    elif subject.get("stored_matter_state") == "matter":
+        subject["matter_id"] = subject["stored_matter_id"]
+    elif not subject.get("destination_requested") and isinstance(body.get("matter_id"), str):
         subject["matter_id"] = body.get("matter_id")
     if "status" in body:
         subject["patch_status"] = body.get("status")
@@ -1630,7 +1660,7 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
     decision = operation_authorization(spec, operation, _mcp_operation_call(call, arguments, operation))
     forwarded = {
         key: decision[key]
-        for key in ("routed", "events", "relinked", "archived", "status", "closed_on", "close_reason", "reparented", "challenge_issued", "codes_issued", "old_secret_active")
+        for key in ("routed", "events", "relinked", "archived", "status", "closed_on", "close_reason", "reparented", "cleared", "challenge_issued", "codes_issued", "old_secret_active")
         if key in decision
     }
     return {"result": decision["result"], "effects": decision.get("effects", False), "public": False, **forwarded}
@@ -3304,7 +3334,14 @@ def project_record(operation: dict, caller: dict, record: dict) -> dict:
 
 
 def _reauthentication_denial(call: dict, action: str) -> str | None:
-    """None when an existing factor or a server-issued proof was verified. A request boolean is ignored."""
+    """None only for an explicit trusted verifier outcome.
+
+    This model does not read a clock and does not consume a proof. The Go identity
+    owner checks the owner, the action, freshness, and that the proof is unused,
+    then sets password_matches, existing_totp_matches, recovery_code_matches, or
+    reauthentication_proof["valid"] to True. A missing or unknown flag is not success.
+    A request boolean is ignored.
+    """
     token = call.get("reauthentication_token")
     if isinstance(token, str) and token:
         proof = call.get("reauthentication_proof")
@@ -3316,6 +3353,8 @@ def _reauthentication_denial(call: dict, action: str) -> str | None:
             return "forbidden"
         if proof.get("action") != action:
             return "forbidden"
+        if proof.get("valid") is not True:
+            return "unauthenticated"
         return None
     if isinstance(call.get("current_password"), str) and call.get("current_password"):
         return None if call.get("password_matches") is True else "unauthenticated"

@@ -2818,12 +2818,85 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7376-7434",
+      "source": "api/tests/test_contract.py:7376-7523",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 27,
-      "loop_count": 0,
-      "literal_rows": [],
+      "assertion_call_sites": 64,
+      "loop_count": 1,
+      "literal_rows": [
+        {
+          "line": 7460,
+          "literal_rows": 3,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "resolveDocTenderException"
+              },
+              {
+                "kind": "constant",
+                "value": "doc_tender:write"
+              },
+              {
+                "kind": "constant",
+                "value": "attorney"
+              },
+              {
+                "kind": "constant",
+                "value": "exception_id"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateTimeEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "time:write"
+              },
+              {
+                "kind": "constant",
+                "value": "staff"
+              },
+              {
+                "kind": "constant",
+                "value": "time_entry_id"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateCalendarEvent"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar:write"
+              },
+              {
+                "kind": "constant",
+                "value": "staff"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar_event_id"
+              },
+              {
+                "kind": "List"
+              }
+            ]
+          ],
+          "text": "rows = ( (\"resolveDocTenderException\", \"doc_tender:write\", \"attorney\", \"exception_id\", [\"doc_tender.exception_resolved\"]), (\"updateTimeEntry\", \"time:write\", \"staff\", \"time_entry_id\", [\"time_entry.updated\"]), (\"updateCalendarEvent\", \"calendar:write\", \"staff\", \"calendar_event_id\", [\"calendar_event.updated\"]), )",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
       "assertion_statements": [
         "self.assertEqual(same[\"result\"], \"allowed\")",
         "self.assertTrue(same[\"effects\"])",
@@ -2837,21 +2910,58 @@
         "self.assertEqual(staff_into_wall[\"events\"], [])",
         "self.assertEqual(attorney_from_wall[\"result\"], \"not_found\")",
         "self.assertFalse(attorney_from_wall[\"effects\"])",
-        "self.assertFalse(attorney_from_wall[\"reparented\"])",
+        "self.assertFalse(attorney_from_wall.get(\"reparented\"))",
+        "self.assertEqual(attorney_from_wall.get(\"events\") or [], [])",
         "self.assertEqual(unresolved[\"result\"], \"not_found\")",
         "self.assertFalse(unresolved[\"effects\"])",
         "self.assertFalse(unresolved[\"reparented\"])",
         "self.assertEqual(missing_destination[\"result\"], \"not_found\")",
         "self.assertFalse(missing_destination[\"reparented\"])",
-        "self.assertEqual(cleared[\"result\"], \"validation_failed\")",
-        "self.assertFalse(cleared[\"effects\"])",
-        "self.assertFalse(cleared[\"reparented\"])",
+        "self.assertEqual(cleared[\"result\"], \"allowed\")",
+        "self.assertTrue(cleared[\"effects\"])",
+        "self.assertTrue(cleared[\"cleared\"])",
+        "self.assertFalse(cleared.get(\"reparented\"))",
+        "self.assertEqual(cleared[\"events\"], [\"file.updated\"])",
+        "self.assertEqual(blocked_clear[\"result\"], \"not_found\")",
+        "self.assertFalse(blocked_clear[\"effects\"])",
+        "self.assertEqual(blocked_clear[\"events\"], [])",
+        "self.assertFalse(blocked_clear.get(\"cleared\"))",
+        "self.assertEqual(attorney_only[\"result\"], \"not_found\")",
+        "self.assertFalse(attorney_only[\"effects\"])",
+        "self.assertEqual(attorney_only.get(\"events\") or [], [])",
+        "self.assertFalse(attorney_only.get(\"reparented\"))",
         "self.assertEqual(authorized_walls[\"result\"], \"allowed\")",
         "self.assertTrue(authorized_walls[\"reparented\"])",
+        "self.assertEqual(assigned[\"result\"], \"allowed\")",
+        "self.assertTrue(assigned[\"reparented\"])",
+        "self.assertEqual(assigned[\"events\"], [\"file.updated\"])",
+        "self.assertEqual(unresolved_source[\"result\"], \"not_found\")",
+        "self.assertFalse(unresolved_source[\"effects\"])",
+        "self.assertEqual(unresolved_source[\"events\"], [])",
+        "self.assertFalse(unresolved_source.get(\"reparented\"))",
+        "self.assertEqual(staff_decision[\"result\"], \"forbidden\")",
+        "self.assertFalse(staff_decision[\"effects\"])",
+        "self.assertEqual(staff_decision.get(\"events\") or [], [])",
         "self.assertEqual(http[\"result\"], mcp[\"result\"])",
         "self.assertEqual(http[\"effects\"], mcp[\"effects\"])",
         "self.assertEqual(http.get(\"reparented\"), mcp.get(\"reparented\"))",
-        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"))"
+        "self.assertEqual(http.get(\"cleared\"), mcp.get(\"cleared\"))",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"))",
+        "self.assertEqual(denied[\"result\"], \"not_found\", operation_id)",
+        "self.assertFalse(denied[\"effects\"], operation_id)",
+        "self.assertEqual(denied.get(\"events\") or [], [], operation_id)",
+        "self.assertEqual(opened[\"result\"], \"allowed\", operation_id)",
+        "self.assertTrue(opened[\"effects\"], operation_id)",
+        "self.assertEqual(opened[\"events\"], events, operation_id)",
+        "self.assertEqual(http[\"result\"], mcp[\"result\"], _operation[\"operationId\"])",
+        "self.assertEqual(http[\"effects\"], mcp[\"effects\"], _operation[\"operationId\"])",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"), _operation[\"operationId\"])",
+        "self.assertEqual(blank[\"result\"], \"validation_failed\", operation_id)",
+        "self.assertFalse(blank[\"effects\"], operation_id)",
+        "self.assertEqual(blank.get(\"events\") or [], [], operation_id)",
+        "self.assertEqual(blank[\"result\"], \"allowed\", operation_id)",
+        "self.assertTrue(blank.get(\"cleared\"), operation_id)",
+        "self.assertEqual(blank[\"events\"], events, operation_id)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -3186,10 +3296,10 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:7436-7515",
+      "source": "api/tests/test_contract.py:7525-7617",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 40,
+      "assertion_call_sites": 47,
       "loop_count": 0,
       "literal_rows": [],
       "assertion_statements": [
@@ -3225,6 +3335,13 @@
         "self.assertEqual(codes_ok[\"events\"], [\"user.recovery_codes_regenerated\"])",
         "self.assertEqual(codes_wrong_action[\"result\"], \"forbidden\")",
         "self.assertFalse(codes_wrong_action[\"codes_issued\"])",
+        "self.assertEqual(unresolved_proof[\"result\"], \"unauthenticated\")",
+        "self.assertFalse(unresolved_proof[\"effects\"])",
+        "self.assertFalse(unresolved_proof[\"challenge_issued\"])",
+        "self.assertEqual(bound[\"result\"], \"allowed\")",
+        "self.assertTrue(bound[\"challenge_issued\"])",
+        "self.assertTrue(bound[\"old_secret_active\"])",
+        "self.assertEqual(bound[\"events\"], [\"user.totp_reset_started\"])",
         "with self.assertRaises(Exception):",
         "self.assertEqual(http[\"result\"], mcp[\"result\"])",
         "self.assertEqual(http[\"effects\"], mcp[\"effects\"])",
@@ -7215,8 +7332,8 @@
     "files": {
       "go_owner": "files",
       "methods": 6,
-      "assertion_call_sites": 163,
-      "literal_rows": 30,
+      "assertion_call_sites": 200,
+      "literal_rows": 33,
       "method_names": [
         "test_malware_scan_uses_the_event_grant_for_the_whole_sequence",
         "test_file_byte_downloads_are_audited_and_highlighted",
@@ -7231,7 +7348,7 @@
     "identity": {
       "go_owner": "identity",
       "methods": 4,
-      "assertion_call_sites": 130,
+      "assertion_call_sites": 137,
       "literal_rows": 14,
       "method_names": [
         "test_first_admin_enrolls_totp_before_a_session",

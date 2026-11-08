@@ -7379,25 +7379,27 @@ class ContractTest(unittest.TestCase):
         file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
         operation = _operation(self.spec, "updateFileMetadata")
 
-        def decide(role, walls, body, membership=None):
+        def decide(role, walls, body, membership=None, stored=source, **extra):
             raw = {
                 "authorization": "Bearer secret",
                 "authorization_scheme": "Bearer",
                 "credential_valid": True,
                 "role": role,
                 "token_scopes": ["files:write"],
-                "matter_id": source,
+                "matter_id": stored,
                 "matter_walled": False,
                 "matter_walls": walls,
                 "matter_membership": {} if membership is None else membership,
                 "tool": "updateFileMetadata",
                 "arguments": {"path": {"file_id": file_id}, "body": body},
+                **extra,
             }
             mcp = mcp_tool_dispatch(self.spec, raw)
             http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
             self.assertEqual(http["result"], mcp["result"])
             self.assertEqual(http["effects"], mcp["effects"])
             self.assertEqual(http.get("reparented"), mcp.get("reparented"))
+            self.assertEqual(http.get("cleared"), mcp.get("cleared"))
             self.assertEqual(http.get("events"), mcp.get("events"))
             return mcp
 
@@ -7417,7 +7419,8 @@ class ContractTest(unittest.TestCase):
         attorney_from_wall = decide("attorney", {source: True, destination: False}, {"matter_id": destination, "matter_walled": False}, {source: False, destination: True})
         self.assertEqual(attorney_from_wall["result"], "not_found")
         self.assertFalse(attorney_from_wall["effects"])
-        self.assertFalse(attorney_from_wall["reparented"])
+        self.assertFalse(attorney_from_wall.get("reparented"))
+        self.assertEqual(attorney_from_wall.get("events") or [], [])
         unresolved = decide("staff", {source: False, destination: None}, {"matter_id": destination, "matter_walled": False})
         self.assertEqual(unresolved["result"], "not_found")
         self.assertFalse(unresolved["effects"])
@@ -7426,12 +7429,98 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(missing_destination["result"], "not_found")
         self.assertFalse(missing_destination["reparented"])
         cleared = decide("staff", {source: False}, {"matter_id": None})
-        self.assertEqual(cleared["result"], "validation_failed")
-        self.assertFalse(cleared["effects"])
-        self.assertFalse(cleared["reparented"])
+        self.assertEqual(cleared["result"], "allowed")
+        self.assertTrue(cleared["effects"])
+        self.assertTrue(cleared["cleared"])
+        self.assertFalse(cleared.get("reparented"))
+        self.assertEqual(cleared["events"], ["file.updated"])
+        blocked_clear = decide("staff", {source: True}, {"matter_id": None, "matter_walled": False}, {source: False})
+        self.assertEqual(blocked_clear["result"], "not_found")
+        self.assertFalse(blocked_clear["effects"])
+        self.assertEqual(blocked_clear["events"], [])
+        self.assertFalse(blocked_clear.get("cleared"))
+        attorney_only = decide("staff", {source: False, destination: False}, {"matter_id": destination, "attorney_only": False}, attorney_only=True)
+        self.assertEqual(attorney_only["result"], "not_found")
+        self.assertFalse(attorney_only["effects"])
+        self.assertEqual(attorney_only.get("events") or [], [])
+        self.assertFalse(attorney_only.get("reparented"))
         authorized_walls = decide("attorney", {source: True, destination: True}, {"matter_id": destination}, {source: True, destination: True})
         self.assertEqual(authorized_walls["result"], "allowed")
         self.assertTrue(authorized_walls["reparented"])
+        assigned = decide("staff", {destination: False}, {"matter_id": destination}, stored=None)
+        self.assertEqual(assigned["result"], "allowed")
+        self.assertTrue(assigned["reparented"])
+        self.assertEqual(assigned["events"], ["file.updated"])
+        unresolved_source = decide("staff", {destination: False}, {"matter_id": destination, "matter_walled": False}, stored=0)
+        self.assertEqual(unresolved_source["result"], "not_found")
+        self.assertFalse(unresolved_source["effects"])
+        self.assertEqual(unresolved_source["events"], [])
+        self.assertFalse(unresolved_source.get("reparented"))
+
+        rows = (
+            ("resolveDocTenderException", "doc_tender:write", "attorney", "exception_id", ["doc_tender.exception_resolved"]),
+            ("updateTimeEntry", "time:write", "staff", "time_entry_id", ["time_entry.updated"]),
+            ("updateCalendarEvent", "calendar:write", "staff", "calendar_event_id", ["calendar_event.updated"]),
+        )
+        for operation_id, scope, role, path_key, events in rows:
+            target = _operation(self.spec, operation_id)
+
+            def one(body, walls, membership=None, stored=source, _operation=target, _scope=scope, _role=role, _path=path_key, **extra):
+                raw = {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": _role,
+                    "token_scopes": [_scope],
+                    "matter_id": stored,
+                    "matter_walls": walls,
+                    "matter_membership": {} if membership is None else membership,
+                    "tool": _operation["operationId"],
+                    "arguments": {"path": {_path: file_id}, "body": body},
+                    **extra,
+                }
+                mcp = mcp_tool_dispatch(self.spec, raw)
+                http = operation_authorization(self.spec, _operation, _mcp_operation_call(raw, raw["arguments"], _operation))
+                self.assertEqual(http["result"], mcp["result"], _operation["operationId"])
+                self.assertEqual(http["effects"], mcp["effects"], _operation["operationId"])
+                self.assertEqual(http.get("events"), mcp.get("events"), _operation["operationId"])
+                return mcp
+
+            denied = one({"matter_id": destination, "attorney_only": False}, {source: False, destination: True}, {destination: False})
+            self.assertEqual(denied["result"], "not_found", operation_id)
+            self.assertFalse(denied["effects"], operation_id)
+            self.assertEqual(denied.get("events") or [], [], operation_id)
+            opened = one({"matter_id": destination}, {source: False, destination: False})
+            self.assertEqual(opened["result"], "allowed", operation_id)
+            self.assertTrue(opened["effects"], operation_id)
+            self.assertEqual(opened["events"], events, operation_id)
+            if operation_id == "updateTimeEntry":
+                blank = one({"matter_id": None}, {source: False})
+                self.assertEqual(blank["result"], "validation_failed", operation_id)
+                self.assertFalse(blank["effects"], operation_id)
+                self.assertEqual(blank.get("events") or [], [], operation_id)
+            else:
+                blank = one({"matter_id": None}, {source: False})
+                self.assertEqual(blank["result"], "allowed", operation_id)
+                self.assertTrue(blank.get("cleared"), operation_id)
+                self.assertEqual(blank["events"], events, operation_id)
+        exception = _operation(self.spec, "resolveDocTenderException")
+        staff_raw = {
+            "authorization": "Bearer secret",
+            "authorization_scheme": "Bearer",
+            "credential_valid": True,
+            "role": "staff",
+            "token_scopes": ["doc_tender:write"],
+            "matter_id": source,
+            "attorney_only": True,
+            "matter_walls": {source: False, destination: False},
+            "tool": "resolveDocTenderException",
+            "arguments": {"path": {"exception_id": file_id}, "body": {"action": "assign_matter", "matter_id": destination, "attorney_only": False}},
+        }
+        staff_decision = mcp_tool_dispatch(self.spec, staff_raw)
+        self.assertEqual(staff_decision["result"], "forbidden")
+        self.assertFalse(staff_decision["effects"])
+        self.assertEqual(staff_decision.get("events") or [], [])
 
     def test_factor_reset_requires_reauthentication(self):
         reset = _operation(self.spec, "resetTotp")
@@ -7513,6 +7602,19 @@ class ContractTest(unittest.TestCase):
         codes_wrong_action = decide(regenerate, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp"})
         self.assertEqual(codes_wrong_action["result"], "forbidden")
         self.assertFalse(codes_wrong_action["codes_issued"])
+        unresolved_proof = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp"})
+        self.assertEqual(unresolved_proof["result"], "unauthenticated")
+        self.assertFalse(unresolved_proof["effects"])
+        self.assertFalse(unresolved_proof["challenge_issued"])
+        bound = decide(
+            reset,
+            {"reauthentication_token": "proof-1"},
+            reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp", "valid": True},
+        )
+        self.assertEqual(bound["result"], "allowed")
+        self.assertTrue(bound["challenge_issued"])
+        self.assertTrue(bound["old_secret_active"])
+        self.assertEqual(bound["events"], ["user.totp_reset_started"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:
