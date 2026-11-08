@@ -986,6 +986,318 @@ func TestRolledBackRecoveryKeepsRecreatedFreshDatabase(t *testing.T) {
 	}
 }
 
+func TestLostCreateAcknowledgmentRecoversWriters(t *testing.T) {
+	psql := psqlBin(t)
+	admin := postgres17Admin(t)
+	product := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
+	if product == "" {
+		t.Fatal("TOGAVSU_TEST_DATABASE_URL is required")
+	}
+	neighbor := "togavsu_restore_ackkeep"
+	dropDatabaseIfExists(psql, admin, neighbor)
+	if err := psqlExec(context.Background(), psql, admin, "CREATE DATABASE "+neighbor); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dropDatabaseIfExists(psql, admin, neighbor) })
+	store := testStore(t)
+	meta, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "core-1", State: "running"}}}
+	ops := &Operations{
+		Store:      store,
+		Gate:       &Gate{},
+		Now:        store.Now,
+		Journal:    OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl")),
+		Runtime:    rt,
+		Catalog:    PostgresCatalog{Bin: psql, AdminURL: admin},
+		Passphrase: func() (string, error) { return store.Passphrase, nil },
+		ApplyRestore: func(ctx context.Context, payload RestorePayload) error {
+			return RestoreIntoCleanDatabase(ctx, loseCreateAck(t, psql), admin, product, payload.Dump, nil)
+		},
+	}
+	rec, err := ops.Restore(context.Background(), meta.ID)
+	if !errors.Is(err, errSwapUnobserved) || rec.Status == "failed" || rec.Status == "completed" || containsStep(order, "restart:core-1") {
+		t.Fatalf("restore did not stay pending: %+v %v %v", rec, err, order)
+	}
+	saved, ok, lerr := ops.Journal.Latest(rec.ID)
+	if lerr != nil || !ok || saved.Database == nil {
+		t.Fatal(saved, ok, lerr)
+	}
+	db := saved.Database
+	if !db.Allocated || db.SwapIntended || db.ClusterID == "" || db.ConfiguredOID == "" || db.FreshOID == "" || db.OpID == "" {
+		t.Fatalf("production allocation was not journaled: %+v", db)
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped: %v", order)
+	}
+	got, ok, lerr := ops.LookupRestore(rec.ID)
+	if lerr != nil || !ok || got.Status != "failed" || got.Status == "running" {
+		t.Fatalf("%+v %v %v", got, ok, lerr)
+	}
+	if databaseExists(t, psql, admin, db.Fresh) || !databaseExists(t, psql, admin, neighbor) || !databaseExists(t, psql, admin, "togavsu") {
+		t.Fatal("recovery deleted the wrong database")
+	}
+	if opState(t, psql, admin, db.OpID) != "cancelled" {
+		t.Fatal("allocation was not cancelled")
+	}
+}
+
+func TestSwapIntentBeforePromoteCannotCommitAfterRecovery(t *testing.T) {
+	psql := psqlBin(t)
+	admin := postgres17Admin(t)
+	orig, fresh, replaced := swapPair(t, psql, admin)
+	cluster, cfgOID, freshOID := dbIdentity(t, psql, admin, orig, fresh)
+	opID, err := newRestoreOpID(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureRestoreSchema(context.Background(), psql, admin); err != nil {
+		t.Fatal(err)
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, fresh_oid, configured_oid) VALUES (" +
+		opLit + ", '" + orig + "', '" + fresh + "', '" + replaced + "', '" + cluster + "', 'loading', '" + freshOID + "', '" + cfgOID + "')"
+	if err := psqlExec(context.Background(), psql, admin, insert); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	ready := filepath.Join(dir, "ready")
+	release := filepath.Join(dir, "release")
+	bin := pauseOwnedPromotion(t, psql, ready, release)
+	var order []string
+	rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+	ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+	if err := ops.Journal.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-before-promote", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseSwapIntended,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: orig, Fresh: fresh, Replaced: replaced,
+			Allocated: true, SwapIntended: true, OpID: opID,
+			ClusterID: cluster, ConfiguredOID: cfgOID, FreshOID: freshOID,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	errc := make(chan error, 1)
+	go func() {
+		ctx := WithRestoreOpID(context.Background(), opID)
+		errc <- swapDatabase(ctx, bin, admin, orig, fresh, hexSuffixOf(orig))
+	}()
+	waitPath(t, ready)
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, lerr := ops.LookupRestore("restore-before-promote")
+	if lerr != nil || !ok || got.Status != "failed" || got.Recovery != "catalog_old_intact" {
+		t.Fatalf("%+v %v %v", got, ok, lerr)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped: %v", order)
+	}
+	if note(t, psql, admin, orig) != "old" || databaseExists(t, psql, admin, fresh) || databaseExists(t, psql, admin, replaced) {
+		t.Fatal("recovery did not leave the original database")
+	}
+	if err := os.WriteFile(release, []byte("go\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-errc:
+		if err == nil {
+			t.Fatal("late promote committed the rename")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("delayed promote did not finish")
+	}
+	if note(t, psql, admin, orig) != "old" || databaseExists(t, psql, admin, replaced) {
+		t.Fatal("late command changed the catalog")
+	}
+	if opState(t, psql, admin, opID) != "cancelled" {
+		t.Fatal("operation was not cancelled")
+	}
+}
+
+func TestReplacedCleanupVerifiesIdentity(t *testing.T) {
+	psql := psqlBin(t)
+	admin := postgres17Admin(t)
+	cluster, freshOID, _ := dbIdentity(t, psql, admin, "togavsu", "")
+	put := func(t *testing.T, id, replaced, cfgOID, opID, catalog string) *Operations {
+		t.Helper()
+		ops := recoveryOps(t, &scriptRuntime{order: &[]string{}, states: map[string]string{}}, PostgresCatalog{Bin: psql, AdminURL: catalog})
+		if err := ops.Journal.Put(journalRecord{
+			Record: RestoreRecord{
+				ID: id, BackupID: "backup", Status: "completed", Cleanup: "pending", Error: "cleanup_pending",
+				Started: time.Now().UTC(), Finished: time.Now().UTC(),
+			},
+			Phase: phaseCompleted,
+			Database: &databaseIntent{
+				Configured: "togavsu", Fresh: "togavsu_restore_gone", Replaced: replaced,
+				SwapIntended: true, SwapCommitted: true, OpID: opID,
+				ClusterID: cluster, ConfiguredOID: cfgOID, FreshOID: freshOID,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return ops
+	}
+	t.Run("recreated name", func(t *testing.T) {
+		name := "tgclean_recreated"
+		dropDatabaseIfExists(psql, admin, name)
+		seedMarker(t, psql, admin, name, "old")
+		oldOID, err := databaseOID(context.Background(), psql, admin, name)
+		if err != nil || oldOID == "" {
+			t.Fatal(oldOID, err)
+		}
+		dropDatabaseIfExists(psql, admin, name)
+		seedMarker(t, psql, admin, name, "new")
+		t.Cleanup(func() { dropDatabaseIfExists(psql, admin, name) })
+		opID, err := newRestoreOpID(time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ops := put(t, "restore-recreated-replaced", name, oldOID, opID, admin)
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-recreated-replaced")
+		if lerr != nil || !ok || got.Cleanup != "pending" || got.Status != "completed" {
+			t.Fatalf("%+v %v %v", got, ok, lerr)
+		}
+		if note(t, psql, admin, name) != "new" {
+			t.Fatal("recreated database was removed")
+		}
+	})
+	t.Run("wrong cluster", func(t *testing.T) {
+		other := os.Getenv("TOGAVSU_TEST_DATABASE_URL_B")
+		if other == "" {
+			t.Fatal("TOGAVSU_TEST_DATABASE_URL_B is required")
+		}
+		adminB, err := withDatabase(other, "postgres")
+		if err != nil {
+			t.Fatal(err)
+		}
+		name := "tgclean_other"
+		dropDatabaseIfExists(psql, adminB, name)
+		if err := psqlExec(context.Background(), psql, adminB, "CREATE DATABASE "+name); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { dropDatabaseIfExists(psql, adminB, name) })
+		opID, err := newRestoreOpID(time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ops := put(t, "restore-other-replaced", name, "1", opID, adminB)
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-other-replaced")
+		if lerr != nil || !ok || got.Cleanup != "pending" {
+			t.Fatalf("%+v %v %v", got, ok, lerr)
+		}
+		if !databaseExists(t, psql, adminB, name) || !databaseExists(t, psql, adminB, "togavsu") {
+			t.Fatal("other cluster was mutated")
+		}
+	})
+	t.Run("valid drop keeps an unrelated session", func(t *testing.T) {
+		name := "tgclean_valid"
+		dropDatabaseIfExists(psql, admin, name)
+		seedMarker(t, psql, admin, name, "old")
+		t.Cleanup(func() { dropDatabaseIfExists(psql, admin, name) })
+		oid, err := databaseOID(context.Background(), psql, admin, name)
+		if err != nil || oid == "" {
+			t.Fatal(oid, err)
+		}
+		opID, err := newRestoreOpID(time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureRestoreSchema(context.Background(), psql, admin); err != nil {
+			t.Fatal(err)
+		}
+		opLit, err := sqlText(opID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, fresh_oid, configured_oid) VALUES (" +
+			opLit + ", 'togavsu', 'togavsu_restore_gone', '" + name + "', '" + cluster + "', 'committed', '" + freshOID + "', '" + oid + "')"
+		if err := psqlExec(context.Background(), psql, admin, insert); err != nil {
+			t.Fatal(err)
+		}
+		sleeper := startSleeper(t, psql, admin)
+		ops := put(t, "restore-valid-replaced", name, oid, opID, admin)
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-valid-replaced")
+		if lerr != nil || !ok || got.Status != "completed" || got.Cleanup != "" {
+			t.Fatalf("%+v %v %v", got, ok, lerr)
+		}
+		if databaseExists(t, psql, admin, name) {
+			t.Fatal("verified replaced database remained")
+		}
+		if !backendAlive(t, psql, admin, sleeper) {
+			t.Fatal("unrelated session was terminated")
+		}
+	})
+	t.Run("retry after a transient drop failure", func(t *testing.T) {
+		name := "tgclean_retry"
+		dropDatabaseIfExists(psql, admin, name)
+		seedMarker(t, psql, admin, name, "old")
+		t.Cleanup(func() { dropDatabaseIfExists(psql, admin, name) })
+		oid, err := databaseOID(context.Background(), psql, admin, name)
+		if err != nil || oid == "" {
+			t.Fatal(oid, err)
+		}
+		opID, err := newRestoreOpID(time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureRestoreSchema(context.Background(), psql, admin); err != nil {
+			t.Fatal(err)
+		}
+		opLit, err := sqlText(opID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, fresh_oid, configured_oid) VALUES (" +
+			opLit + ", 'togavsu', 'togavsu_restore_gone', '" + name + "', '" + cluster + "', 'committed', '" + freshOID + "', '" + oid + "')"
+		if err := psqlExec(context.Background(), psql, admin, insert); err != nil {
+			t.Fatal(err)
+		}
+		ops := put(t, "restore-retry-replaced", name, oid, opID, admin)
+		ops.Catalog = PostgresCatalog{Bin: failDrop(t, psql), AdminURL: admin}
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !databaseExists(t, psql, admin, name) {
+			t.Fatal("database was removed by the failed attempt")
+		}
+		got, _, _ := ops.LookupRestore("restore-retry-replaced")
+		if got.Cleanup != "pending" {
+			t.Fatalf("%+v", got)
+		}
+		ops.Catalog = PostgresCatalog{Bin: psql, AdminURL: admin}
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, lerr := ops.LookupRestore("restore-retry-replaced")
+		if lerr != nil || !ok || got.Cleanup != "" || databaseExists(t, psql, admin, name) {
+			t.Fatalf("%+v %v exists %v", got, ok, databaseExists(t, psql, admin, name))
+		}
+	})
+}
+
 func TestDifferentClusterIsRejected(t *testing.T) {
 	other := os.Getenv("TOGAVSU_TEST_DATABASE_URL_B")
 	if other == "" {
@@ -1172,6 +1484,53 @@ func ownedFresh(t *testing.T, psql, admin string) []string {
 		}
 	}
 	return live
+}
+
+func pauseOwnedPromotion(t *testing.T, real, ready, release string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "psql")
+	script := fmt.Sprintf("#!/bin/sh\nREAL=%q\nREADY=%q\nRELEASE=%q\n", real, ready, release) + `cmd=
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--command" ]; then cmd=$arg; fi
+  prev=$arg
+done
+case "$cmd" in
+  *"SET state = 'owned'"*)
+    : > "$READY"
+    while [ ! -f "$RELEASE" ]; do sleep 0.05; done
+    exec "$REAL" "$@"
+    ;;
+esac
+exec "$REAL" "$@"
+`
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func failDrop(t *testing.T, real string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "psql")
+	script := fmt.Sprintf("#!/bin/sh\nREAL=%q\n", real) + `cmd=
+prev=
+for arg in "$@"; do
+  if [ "$prev" = "--command" ]; then cmd=$arg; fi
+  prev=$arg
+done
+case "$cmd" in
+  "DROP DATABASE "*)
+    echo "drop refused" >&2
+    exit 1
+    ;;
+esac
+exec "$REAL" "$@"
+`
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func delayBeforeRename(t *testing.T, real, ready, release string) string {

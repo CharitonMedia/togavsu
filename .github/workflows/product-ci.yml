@@ -97,3 +97,26 @@ jobs:
         run: sh scripts/ci/build-core-image.sh
       - name: Core image smoke
         run: sh scripts/ci/test-core-smoke.sh
+
+  api:
+    name: API bootstrap validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Validate API bootstrap
+        run: |
+          if [ ! -d api ]; then
+            echo "API not yet integrated; validation pending"
+            exit 0
+          fi
+          if [ ! -f api/requirements-dev.txt ] || [ ! -f api/check.sh ]; then
+            echo "API tree is present but api/requirements-dev.txt or api/check.sh is absent" >&2
+            exit 1
+          fi
+          python -m pip install -r api/requirements-dev.txt
+          sh api/check.sh

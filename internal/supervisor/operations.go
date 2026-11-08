@@ -692,15 +692,42 @@ func (o *Operations) retryReplacedDrop(rec RestoreRecord) (bool, error) {
 	if !st.replaced {
 		return true, nil
 	}
-	cleaner, ok := o.Catalog.(interface {
-		Drop(context.Context, string) error
-	})
-	if !ok {
-		return false, errors.New("catalog cannot drop the replaced database")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
-	dropErr := cleaner.Drop(ctx, db.Replaced)
+	var dropErr error
+	if db.ClusterID != "" || db.ConfiguredOID != "" {
+		if err := o.confirmCluster(ctx, db); err != nil {
+			return false, err
+		}
+		if db.OpID == "" || db.ConfiguredOID == "" {
+			return false, errSwapUnobserved
+		}
+		look, ok := o.Catalog.(interface {
+			DatabaseOID(context.Context, string) (string, error)
+		})
+		if !ok {
+			return false, errSwapUnobserved
+		}
+		replacedOID, err := look.DatabaseOID(ctx, db.Replaced)
+		if err != nil || replacedOID == "" || replacedOID != db.ConfiguredOID {
+			return false, errSwapUnobserved
+		}
+		dropper, ok := o.Catalog.(interface {
+			DropVerifiedReplaced(context.Context, string, string, string) error
+		})
+		if !ok {
+			return false, errSwapUnobserved
+		}
+		dropErr = dropper.DropVerifiedReplaced(ctx, db.OpID, db.Replaced, db.ConfiguredOID)
+	} else {
+		cleaner, ok := o.Catalog.(interface {
+			Drop(context.Context, string) error
+		})
+		if !ok {
+			return false, errors.New("catalog cannot drop the replaced database")
+		}
+		dropErr = cleaner.Drop(ctx, db.Replaced)
+	}
 	st, observed = o.observeSwap(rec)
 	if observed && st.configured && !st.fresh && !st.replaced {
 		return true, nil
@@ -836,8 +863,11 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 	// Unchanged names are not a rollback until this operation row is
 	// cancelled. That cancel commits before writers restart. A lock timeout
 	// or a missing row stays pending. A committed row is never cancelled.
+	// The same fence applies after reconciliation has already removed the
+	// fresh database: identity, not the missing name, decides the outcome.
 	state := ""
-	if st[db.Configured] && st[db.Fresh] && !st[db.Replaced] {
+	removedFresh := st[db.Configured] && !st[db.Fresh] && !st[db.Replaced] && db.ConfiguredOID != ""
+	if (st[db.Configured] && st[db.Fresh] && !st[db.Replaced]) || removedFresh {
 		var ferr error
 		state, ferr = o.fenceSwap(ctx, db)
 		if ferr != nil || state == "absent" {
@@ -849,6 +879,9 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 		}
 	}
 	decision := decisionFromCatalog(st, db)
+	if state == "cancelled" && st[db.Configured] && !st[db.Fresh] && !st[db.Replaced] && o.originalDatabase(ctx, db) {
+		decision = decisionOldIntact
+	}
 	if state != "" && state != "cancelled" && state != "committed" {
 		return decisionUnknown, false
 	}
@@ -957,6 +990,22 @@ func (o *Operations) confirmCluster(ctx context.Context, db *databaseIntent) err
 		return nil
 	}
 	return fmt.Errorf("%w: configured database identity", errSwapUnobserved)
+}
+
+// originalDatabase reports that the configured name still has the oid from
+// before the rename. A missing oid record is not that proof.
+func (o *Operations) originalDatabase(ctx context.Context, db *databaseIntent) bool {
+	if db == nil || db.ConfiguredOID == "" || o == nil || o.Catalog == nil {
+		return false
+	}
+	look, ok := o.Catalog.(interface {
+		DatabaseOID(context.Context, string) (string, error)
+	})
+	if !ok {
+		return false
+	}
+	oid, err := look.DatabaseOID(ctx, db.Configured)
+	return err == nil && oid != "" && oid == db.ConfiguredOID
 }
 
 func (o *Operations) fenceSwap(ctx context.Context, db *databaseIntent) (string, error) {
@@ -1269,6 +1318,13 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 		}
 		return nil
 	}
+	// An allocation that never reached the rename is reconciled before any
+	// catalog-uncertainty guard. A lost CREATE acknowledgment is not terminal
+	// while the original database is still verified and the operation can be
+	// fenced.
+	if item.Database != nil && item.Database.Allocated && !item.Database.SwapCommitted && !item.Database.SwapIntended {
+		return o.recoverOneTail(rec)
+	}
 	if item.Database == nil || !item.Database.SwapIntended {
 		switch rec.Recovery {
 		case "catalog_unobserved", "catalog_ambiguous", "configured_database_absent":
@@ -1366,10 +1422,29 @@ func (o *Operations) recoverCommitted(item journalRecord) error {
 	return nil
 }
 
+func (o *Operations) freshRemains(rec RestoreRecord) bool {
+	db := o.databaseOf(rec.ID)
+	if db == nil || db.Fresh == "" || o.Catalog == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
+	defer cancel()
+	st, err := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
+	return err == nil && st != nil && st[db.Fresh]
+}
+
 func (o *Operations) recoverOneTail(rec RestoreRecord) error {
 	if db := o.databaseOf(rec.ID); db != nil && db.Allocated && !db.SwapCommitted {
 		if err := o.finishAllocation(rec, db); err != nil {
 			return err
+		}
+		if o.freshRemains(rec) {
+			rec.Cleanup = "pending"
+			saved, err := o.closeStopped(rec, nil, errors.New("unverified restore database was retained"), "allocation_retained")
+			if saved.Status == "running" {
+				return err
+			}
+			return nil
 		}
 	}
 	saved, err := o.closeStopped(rec, nil, errors.New("restore interrupted after writers stopped and before the database rename"), "restarted_writers")

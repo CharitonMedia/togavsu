@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+// TestOtherProcessWaitsForTheLiveScratchWorkspace uses two Store values in
+// this process. Each opens its own lock descriptor. It does not spawn an OS child.
 func TestOtherProcessWaitsForTheLiveScratchWorkspace(t *testing.T) {
 	s := testStore(t)
 	work, cleanup, err := s.plaintextWorkspace("staging-")

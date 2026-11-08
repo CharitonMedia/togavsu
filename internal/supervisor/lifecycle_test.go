@@ -1627,6 +1627,109 @@ func TestAllocationWithoutOIDRestartsWhenCreateDidNotHappen(t *testing.T) {
 	}
 }
 
+func TestUnobservedAllocationIsReconciledBeforeTheGuard(t *testing.T) {
+	j := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	if err := j.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-alloc-unknown", BackupID: "backup", Status: "running", Recovery: "catalog_unobserved", Started: time.Now().UTC()},
+		Phase:  phaseSwapIntended,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+			Allocated: true, OpID: "restore-alloc-unknown", FreshOID: "10",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	cat := &allocCatalog{scriptCatalog: scriptCatalog{present: map[string]bool{"origdb": true, "freshdb": true}}}
+	ops := &Operations{Gate: &Gate{}, Journal: j, Runtime: &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}, Catalog: cat}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cat.droppedOID != "10" || !containsStep(order, "restart:core-1") || cat.present["freshdb"] {
+		t.Fatalf("oid %s order %v present %v", cat.droppedOID, order, cat.present)
+	}
+	got, ok, err := ops.LookupRestore("restore-alloc-unknown")
+	if err != nil || !ok || got.Status != "failed" || got.Cleanup != "" {
+		t.Fatalf("%+v %v %v", got, ok, err)
+	}
+}
+
+func TestCancelledSwapWithoutFreshRestartsWhenIdentityMatches(t *testing.T) {
+	put := func(live string) (*Operations, *[]string, *identityCatalog) {
+		j := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+		if err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-removed-fresh", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{
+				Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+				SwapIntended: true, OpID: "op", ClusterID: "100", ConfiguredOID: "10", FreshOID: "11",
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var order []string
+		cat := &identityCatalog{
+			scriptCatalog: scriptCatalog{present: map[string]bool{"origdb": true}},
+			cluster:       "100",
+			oids:          map[string]string{"origdb": live},
+		}
+		ops := &Operations{Gate: &Gate{}, Journal: j, Runtime: &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}, Catalog: cat}
+		return ops, &order, cat
+	}
+	t.Run("original oid", func(t *testing.T) {
+		ops, order, cat := put("10")
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !cat.fenced || !containsStep(*order, "restart:core-1") {
+			t.Fatalf("fenced %v order %v", cat.fenced, *order)
+		}
+		got, _, _ := ops.LookupRestore("restore-removed-fresh")
+		if got.Status != "failed" || got.Recovery != "catalog_old_intact" {
+			t.Fatalf("%+v", got)
+		}
+	})
+	t.Run("restored oid", func(t *testing.T) {
+		ops, order, _ := put("11")
+		if err := ops.Recover(context.Background()); err == nil || containsStep(*order, "restart:core-1") {
+			t.Fatalf("committed identity restarted writers: %v", err)
+		}
+	})
+}
+
+type allocCatalog struct {
+	scriptCatalog
+	droppedOID string
+}
+
+func (c *allocCatalog) DropVerified(_ context.Context, _, fresh, oid string) error {
+	c.droppedOID = oid
+	c.present[fresh] = false
+	return nil
+}
+
+type identityCatalog struct {
+	scriptCatalog
+	cluster string
+	oids    map[string]string
+	fenced  bool
+}
+
+func (c *identityCatalog) Cluster(context.Context) (string, error) { return c.cluster, nil }
+func (c *identityCatalog) DatabaseOID(_ context.Context, name string) (string, error) {
+	return c.oids[name], nil
+}
+func (c *identityCatalog) Fence(context.Context, string, string, string) (string, error) {
+	c.fenced = true
+	return "cancelled", nil
+}
+
 func TestRolledBackRecordRestartsAfterTheLoadedNameIsGone(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "restore-journal.jsonl")
 	j := OpenJournal(path)

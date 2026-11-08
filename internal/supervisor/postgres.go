@@ -397,8 +397,17 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, opID, orig, fresh, re
 		}
 		switch {
 		case st[orig] && !st[fresh] && !st[replaced]:
-			// The pair committed and the previous database is gone, including
-			// when the final acknowledgment was lost.
+			// The fresh name is gone. That is a committed swap only when this
+			// operation row says so. Recovery may already have dropped a
+			// cancelled allocation, and that must not look like success.
+			opLit, lerr := sqlText(opID)
+			if lerr != nil {
+				return lerr
+			}
+			lines, qerr := psqlLines(ctx, bin, adminURL, "SELECT state FROM togavsu_restore_op WHERE op_id = "+opLit)
+			if qerr != nil || len(lines) != 1 || lines[0] != "committed" {
+				return fmt.Errorf("%w: restore operation did not commit", errSwapUnobserved)
+			}
 			return nil
 		case st[orig] && !st[fresh] && st[replaced]:
 			if err := recordSwapCommitted(hookCtx, orig, fresh, replaced); err != nil {
@@ -935,6 +944,53 @@ func dropVerifiedDatabase(ctx context.Context, bin, adminURL, opID, fresh, oid s
 		return err
 	}
 	return psqlExec(ctx, bin, adminURL, "UPDATE togavsu_restore_op SET state = 'cancelled' WHERE op_id = "+opLit+" AND fresh_oid = '"+oid+"' AND state IN ('owned', 'allocating', 'loading')")
+}
+
+// DropVerifiedReplaced drops name only when that oid is the operation's
+// original configured database and the connected cluster matches the row.
+// A mismatch drops nothing and does not complete cleanup.
+func (p PostgresCatalog) DropVerifiedReplaced(ctx context.Context, opID, name, oid string) error {
+	if p.AdminURL == "" {
+		return errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return dropVerifiedReplaced(ctx, bin, p.AdminURL, opID, name, oid)
+}
+
+func dropVerifiedReplaced(ctx context.Context, bin, adminURL, opID, name, oid string) error {
+	if oid == "" || strings.Trim(oid, "0123456789") != "" {
+		return fmt.Errorf("database oid: %w", ErrBadRequest)
+	}
+	if !ident(name) {
+		return fmt.Errorf("database name: %w", ErrBadRequest)
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		return err
+	}
+	live, err := clusterID(ctx, bin, adminURL)
+	if err != nil {
+		return err
+	}
+	lines, err := psqlLines(ctx, bin, adminURL, "SELECT datname FROM pg_database WHERE oid = "+oid+"::oid")
+	if err != nil {
+		return err
+	}
+	if len(lines) != 1 || lines[0] != name {
+		return errSwapUnobserved
+	}
+	owned, err := psqlLines(ctx, bin, adminURL, "SELECT op_id FROM togavsu_restore_op WHERE op_id = "+opLit+" AND replaced = '"+name+"' AND configured_oid = '"+oid+"' AND cluster_id = '"+live+"' AND state = 'committed'")
+	if err != nil {
+		return err
+	}
+	if len(owned) != 1 {
+		return fmt.Errorf("%w: replaced database is not owned", errSwapUnobserved)
+	}
+	_, _ = psqlLines(ctx, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+name+"' AND pid <> pg_backend_pid()")
+	return psqlExec(ctx, bin, adminURL, "DROP DATABASE "+name)
 }
 
 func reconcileOwnedDatabases(ctx context.Context, bin, adminURL string) error {

@@ -350,6 +350,10 @@ case "$cmd" in
     echo cancelled
     exit 0
     ;;
+  *"SELECT state FROM togavsu_restore_op"*)
+    echo committed
+    exit 0
+    ;;
   "SELECT datname"*)
     if [ "$MODE" = "blind" ]; then
       echo "connection reset" >&2
