@@ -513,7 +513,8 @@ func uncertainRemote(err error, destID, name string) bool {
 }
 
 // remoteStatusError is a completed remote response with an explicit status.
-// The server answered, so the mutation was not a lost response.
+// A 4xx other than 408 refuses the write. A 408 or 5xx does not: a gateway
+// can return 504 while the storage write is still running.
 type remoteStatusError struct {
 	Status int
 	Detail string
@@ -529,19 +530,21 @@ func (e *remoteStatusError) Error() string {
 	return fmt.Sprintf("remote status %d: %s", e.Status, e.Detail)
 }
 
-// ambiguousRemote reports a mutating request whose response was lost.
-// EOF, a wrapped EOF, an unexpected EOF, a reset, a broken pipe, and a
-// timeout are lost responses even when the parent context is still live.
-// A definite failure requires explicit evidence: a known sentinel, an HTTP
-// status, a finished command, or a local path error. Wording inside an
-// error string is not that evidence.
+// ambiguousRemote reports a mutating request whose outcome is not known.
+// EOF, a wrapped EOF, an unexpected EOF, a reset, a broken pipe, a timeout,
+// and an HTTP 408 or 5xx do not prove the write stopped. A definite failure
+// is a known sentinel, an explicit 4xx other than 408, or a local path error.
+// Wording inside an error string is not that evidence.
 func ambiguousRemote(err error) bool {
 	if err == nil || errors.Is(err, ErrRemoteUncertain) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrBadRequest) || errors.Is(err, ErrChecksum) {
 		return false
 	}
 	var status *remoteStatusError
 	if errors.As(err, &status) {
-		return false
+		if status == nil {
+			return false
+		}
+		return ambiguousHTTPStatus(status.Status)
 	}
 	// An SFTP client exit, including a group kill or a dropped connection,
 	// does not prove the remote write was rejected.
@@ -564,6 +567,12 @@ func ambiguousRemote(err error) bool {
 		return false
 	}
 	return true
+}
+
+// ambiguousHTTPStatus is a response that can arrive before the storage write
+// finishes. 408 and every 5xx are in that set. A 403 or other 4xx is a refusal.
+func ambiguousHTTPStatus(code int) bool {
+	return code == 408 || code >= 500
 }
 
 // markUncertain records when the acknowledgment was lost. Created stays the
@@ -637,7 +646,8 @@ func (s *Store) removeReceipt(receipts *ReceiptBook, destID, name string) error 
 }
 
 // definiteRejection is an explicit remote or local failure. A lost response,
-// including EOF and a timeout, is not a rejection.
+// a timeout, and an HTTP 408 or 5xx are not rejections. Delete plus a missing
+// read must not drop that receipt, because the write can still publish.
 func definiteRejection(err error) bool {
 	if err == nil || errors.Is(err, ErrRemoteUncertain) {
 		return false

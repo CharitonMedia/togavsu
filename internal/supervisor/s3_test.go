@@ -862,6 +862,12 @@ func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 		os.ErrDeadlineExceeded,
 		exec.Command("false").Run(),
 		fmt.Errorf("sftp: %w: %v", context.DeadlineExceeded, exec.Command("false").Run()),
+		&remoteStatusError{Status: http.StatusInternalServerError, Detail: "busy"},
+		&remoteStatusError{Status: http.StatusBadGateway, Detail: "proxy"},
+		&remoteStatusError{Status: http.StatusServiceUnavailable, Detail: "slow"},
+		&remoteStatusError{Status: http.StatusGatewayTimeout, Detail: "gateway"},
+		&remoteStatusError{Status: http.StatusRequestTimeout, Detail: "timeout"},
+		fmt.Errorf("wrapped: %w", &remoteStatusError{Status: http.StatusGatewayTimeout, Detail: "gateway"}),
 	} {
 		if !ambiguousRemote(err) {
 			t.Fatalf("%v was treated as a definite failure", err)
@@ -872,6 +878,8 @@ func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 		ErrBadRequest,
 		ErrChecksum,
 		&remoteStatusError{Status: http.StatusForbidden, Detail: "denied"},
+		&remoteStatusError{Status: http.StatusBadRequest, Detail: "malformed"},
+		&remoteStatusError{Status: http.StatusConflict, Detail: "conflict"},
 		&os.PathError{Op: "open", Path: "archive", Err: os.ErrPermission},
 	} {
 		if ambiguousRemote(err) {
@@ -880,6 +888,155 @@ func TestLostNetworkResponsesStayUncertain(t *testing.T) {
 	}
 	if !ambiguousRemote(errors.New("timeout")) {
 		t.Fatal("a bare timeout string was treated as reliable evidence")
+	}
+	if definiteRejection(&remoteStatusError{Status: http.StatusGatewayTimeout}) || definiteRejection(&remoteStatusError{Status: http.StatusInternalServerError}) {
+		t.Fatal("a 5xx was a definite rejection")
+	}
+	if !definiteRejection(&remoteStatusError{Status: http.StatusForbidden}) {
+		t.Fatal("403 was not a definite rejection")
+	}
+}
+
+func TestServerErrorKeepsOwnershipUntilLatePublication(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		suffix string
+	}{
+		{name: "archive", status: http.StatusGatewayTimeout, suffix: ".tgbk"},
+		{name: "sidecar", status: http.StatusInternalServerError, suffix: ".sha256"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var mu sync.Mutex
+			visible := map[string][]byte{"/backups/other-firm/keep": []byte("keep")}
+			held := map[string][]byte{}
+			var puts int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodPut:
+					body, _ := io.ReadAll(r.Body)
+					mu.Lock()
+					puts++
+					if strings.HasSuffix(r.URL.Path, tc.suffix) && held[r.URL.Path] == nil && !strings.Contains(r.URL.Path, "other-firm") {
+						held[r.URL.Path] = append([]byte(nil), body...)
+						mu.Unlock()
+						http.Error(w, "gateway", tc.status)
+						return
+					}
+					visible[r.URL.Path] = append([]byte(nil), body...)
+					mu.Unlock()
+					w.WriteHeader(http.StatusOK)
+				case http.MethodGet:
+					mu.Lock()
+					body, ok := visible[r.URL.Path]
+					mu.Unlock()
+					if !ok {
+						http.NotFound(w, r)
+						return
+					}
+					_, _ = w.Write(body)
+				case http.MethodDelete:
+					mu.Lock()
+					_, ok := visible[r.URL.Path]
+					if ok {
+						delete(visible, r.URL.Path)
+					}
+					mu.Unlock()
+					if !ok {
+						http.NotFound(w, r)
+						return
+					}
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			s := testStore(t)
+			s.Book = &DestinationBook{Path: filepath.Join(s.Dir, "destinations.json")}
+			if _, err := s.Book.Put(DestinationSpec{
+				ID: "share", Kind: "s3", Endpoint: srv.URL, Region: "us-east-1",
+				Bucket: "backups", AccessKey: "AKID", SecretKey: "secret", RetentionDays: 7,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			s.OpenDestination = func(spec DestinationSpec) (Destination, error) {
+				return &S3Destination{Spec: spec, HTTP: srv.Client(), Now: s.Now}, nil
+			}
+			meta, err := s.Create(context.Background(), reasonManual)
+			if err != nil || len(meta.DestinationErrors) != 1 || !strings.Contains(meta.DestinationErrors[0], "uncertain") {
+				t.Fatalf("create %+v %v", meta.DestinationErrors, err)
+			}
+			name := meta.ID + ".tgbk"
+			side := meta.ID + ".sha256"
+			owned, err := s.receiptBook().List("share")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.suffix == ".tgbk" {
+				if len(owned) != 1 || !receiptState(owned, name, receiptUncertain) || receiptState(owned, name, "") || receiptState(owned, name, receiptRejected) {
+					t.Fatalf("archive receipt %+v", owned)
+				}
+			} else if len(owned) != 2 || !receiptState(owned, name, receiptPending) || !receiptState(owned, side, receiptUncertain) || receiptState(owned, name, "") || receiptState(owned, side, "") {
+				t.Fatalf("sidecar receipt %+v", owned)
+			}
+			specs, err := s.Book.Specs()
+			if err != nil || len(specs) != 1 {
+				t.Fatal(err)
+			}
+			dest, err := s.openDest(specs[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.reconcileDestination(context.Background(), dest); err != nil {
+				t.Fatal(err)
+			}
+			owned, err = s.receiptBook().List("share")
+			if err != nil || receiptState(owned, name, "") || receiptState(owned, side, "") || len(owned) == 0 {
+				t.Fatalf("missing read discharged ownership: %+v %v", owned, err)
+			}
+			if err := s.Delete(context.Background(), meta.ID); err == nil {
+				t.Fatal("delete succeeded while publication was still possible")
+			}
+			if _, err := os.Stat(filepath.Join(s.Dir, name)); err != nil {
+				t.Fatalf("local archive removed: %v", err)
+			}
+			owned, err = s.receiptBook().List("share")
+			if err != nil || len(owned) == 0 {
+				t.Fatalf("delete discharged ownership: %+v %v", owned, err)
+			}
+			mu.Lock()
+			for path, body := range held {
+				visible[path] = body
+			}
+			putsBefore := puts
+			mu.Unlock()
+			if err := s.reconcileDestination(context.Background(), dest); err != nil {
+				t.Fatal(err)
+			}
+			mu.Lock()
+			keep := string(visible["/backups/other-firm/keep"])
+			var late bool
+			for path := range visible {
+				if strings.Contains(path, meta.ID) {
+					late = true
+				}
+			}
+			putsAfter := puts
+			mu.Unlock()
+			if late || keep != "keep" || putsAfter != putsBefore {
+				t.Fatalf("late=%v puts %d->%d other %q", late, putsBefore, putsAfter, keep)
+			}
+			if owned, err = s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+				t.Fatalf("late object did not settle: %+v %v", owned, err)
+			}
+			if err := s.Delete(context.Background(), meta.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.lookup(meta.ID); !errors.Is(err, ErrNotFound) {
+				t.Fatalf("local metadata remained: %v", err)
+			}
+		})
 	}
 }
 
