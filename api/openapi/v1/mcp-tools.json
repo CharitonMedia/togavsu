@@ -556,6 +556,10 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -563,7 +567,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "body"
         ]
       }
     },
@@ -625,6 +630,10 @@
         "shape": "path_query_body",
         "path": "Object of path parameters.",
         "query": "Object of query parameters.",
+        "body": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
         "result": {
           "encoding": "json",
           "media_type": "application/json"
@@ -632,7 +641,8 @@
         "arguments": [
           "path",
           "query",
-          "idempotency_key"
+          "idempotency_key",
+          "body"
         ]
       }
     },

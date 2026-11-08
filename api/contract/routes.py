@@ -571,7 +571,9 @@ def _identity(api: Contract) -> None:
         operation_id="resetTotp",
         summary="Reset two-factor",
         description=(
-            "Starts a replacement enrollment for the signed-in user. "
+            "Starts a replacement enrollment for the signed-in user only after recent reauthentication. "
+            "The body is a current password, a code from the current authenticator, an unused recovery code, or a server-issued reauthentication token bound to this user and resetTotp. "
+            "A boolean, or a code from the new secret, is not proof. "
             "The current secret stays active until confirmTotpReset accepts the first code. "
             "The response includes a single-use enrollment_token that expires. "
             "Another user's reset is not_found."
@@ -580,6 +582,7 @@ def _identity(api: Contract) -> None:
         features=["auth"],
         roles=ANY,
         scopes=["profile:write"],
+        body="FactorReauthentication",
         response="TotpResetChallenge",
         events=["user.totp_reset_started"],
         extra_access={**OWN, "old_secret": "active_until_confirm", "token": "single_use_bounded"},
@@ -610,11 +613,15 @@ def _identity(api: Contract) -> None:
         "/api/v1/me/recovery-codes",
         operation_id="regenerateRecoveryCodes",
         summary="Regenerate recovery codes",
-        description="Replaces the user's recovery codes. The new codes are returned once.",
+        description=(
+            "Replaces the user's recovery codes only after the same recent reauthentication as resetTotp. "
+            "The proof must be bound to regenerateRecoveryCodes. The new codes are returned once."
+        ),
         tag="Identity",
         features=["auth"],
         roles=ANY,
         scopes=["profile:write"],
+        body="FactorReauthentication",
         response="RecoveryCodes",
         extra_access=OWN,
     )
@@ -952,7 +959,8 @@ def _practice(api: Contract) -> None:
             "Relinks module rows to the survivor in the same transaction and archives this matter. "
             "The caller must be allowed to see both this matter and the survivor. "
             "A missing or unresolved survivor is not treated as accessible. "
-            "An inaccessible matter is not_found. Nothing is relinked, archived, or emitted unless both are allowed. "
+            "An inaccessible matter is not_found. Each matter's wall state must be a resolved boolean. "
+            "Nothing is relinked, archived, or emitted unless both are allowed. "
             "A hard delete is not available."
         ),
         tag="Matters",
@@ -2521,7 +2529,9 @@ def _files(api: Contract) -> None:
             "A person with files:write may change a field a person previously locked. "
             "Doc Tender and other automated actors receive field_locked and do not replace it. "
             "Name stays on rename. Folder stays on move. "
-            "The edit is audited. Staff are not_found for an attorney-only file or a file on a walled matter."
+            "The edit is audited. Staff are not_found for an attorney-only file or a file on a walled matter. "
+            "Moving the file to another matter requires access to both the file's current matter and the destination. "
+            "A request flag does not supply that wall state."
         ),
         tag="Files",
         features=["files"],

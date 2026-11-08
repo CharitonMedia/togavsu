@@ -378,6 +378,21 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "stopTimer's TimerStopResult now references StoppedTimer, whose status is stopped. The MCP tool still names TimerStopResult. Active Timer values stay running or paused.",
             },
+            {
+                "id": "merge-wall-boolean",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "mergeMatter's description says each wall value must be a resolved boolean. Null is not unwalled.",
+            },
+            {
+                "id": "file-reparent-both-matters",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "updateFileMetadata's description requires access to the file's current matter and the destination. The stored matter id is not replaced by the request.",
+            },
+            {
+                "id": "factor-reauthentication",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
+                "change": "resetTotp and regenerateRecoveryCodes require FactorReauthentication. The MCP catalog records that JSON body. A boolean is not proof.",
+            },
         ],
         "intentional_corrections": [
             {

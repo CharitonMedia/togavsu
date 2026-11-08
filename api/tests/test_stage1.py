@@ -96,6 +96,7 @@ class Stage1InventoryTest(unittest.TestCase):
         self.assertGreaterEqual(self.inventory["counts"]["behavioral_methods"], 46)
         self.assertEqual(len(self.inventory["blocking_gaps"]), self.inventory["counts"]["blocking_gaps"])
         self.assertEqual(self.inventory["counting"]["unittest_tests"], self.classification["unittest_tests"])
+        self.assertGreaterEqual(self.classification["unittest_tests"], 105)
         self.assertEqual(self.inventory["counting"]["setup_methods"], 1)
         self.assertEqual(
             self.inventory["counting"]["contract_test_methods_including_setup"],
@@ -322,20 +323,23 @@ class Stage1InventoryTest(unittest.TestCase):
                 "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa",
             }[rel])
             self.assertEqual(self.inventory["artifacts"][rel], digest, rel)
-        self.assertNotEqual(
-            self.inventory["artifacts"]["api/openapi/v1/openapi.json"],
-            self.inventory["baseline_artifacts"]["api/openapi/v1/openapi.json"],
-        )
-        for rel in (
-            "api/openapi/marketplace/openapi.json",
-            "api/openapi/v1/mcp-tools.json",
-            "docs/api/coverage.md",
-        ):
-            self.assertEqual(self.inventory["artifacts"][rel], self.inventory["baseline_artifacts"][rel], rel)
+        changed = {
+            rel
+            for rel, digest in self.inventory["artifacts"].items()
+            if digest != self.inventory["baseline_artifacts"][rel]
+        }
+        self.assertEqual(changed, {"api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"})
         delta_ids = {row["id"] for row in self.inventory["intentional_generated_deltas"]}
         self.assertEqual(
             delta_ids,
-            {"merge-matter-both-walls", "matter-patch-cannot-reopen", "stopped-timer-response"},
+            {
+                "merge-matter-both-walls",
+                "matter-patch-cannot-reopen",
+                "stopped-timer-response",
+                "merge-wall-boolean",
+                "file-reparent-both-matters",
+                "factor-reauthentication",
+            },
         )
 
     def test_builder_does_not_import_the_simulator(self):

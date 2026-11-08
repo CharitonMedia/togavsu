@@ -1218,6 +1218,15 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
             return {"result": "forbidden", **denied}
     if operation.get("operationId") == "mergeMatter":
         return _merge_matter_decision(subject)
+    if operation.get("operationId") in _REPARENT_OPERATIONS and subject.get("reparent_requested"):
+        events = list(operation.get("x-togavsu-events") or [])
+        reparent = _file_reparent_decision(subject, events)
+        if reparent["result"] != "allowed" or reparent.get("reparented"):
+            return reparent
+    if operation.get("operationId") == "resetTotp":
+        return _totp_reset_authorization(operation, subject)
+    if operation.get("operationId") == "regenerateRecoveryCodes":
+        return _recovery_regeneration_authorization(operation, subject)
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
         if matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
@@ -1288,10 +1297,36 @@ def _merge_matter_decision(subject: dict) -> dict:
     if not isinstance(walls, dict) or source not in walls or target not in walls:
         return {"result": "not_found", **quiet}
     for matter_id in (source, target):
-        row = {"matter_id": matter_id, "matter_walled": bool(walls[matter_id])}
+        walled = walls[matter_id]
+        if type(walled) is not bool:
+            return {"result": "not_found", **quiet}
+        row = {"matter_id": matter_id, "matter_walled": walled}
         if not matter_visible(subject, row, single_record=True):
             return {"result": "not_found", **quiet}
     return {"result": "allowed", "effects": True, "public": False, "events": ["matter.merged"], "relinked": True, "archived": True}
+
+
+_REPARENT_OPERATIONS = {"updateFileMetadata", "resolveDocTenderException"}
+
+
+def _file_reparent_decision(subject: dict, events: list[str]) -> dict:
+    """Stored file matter and requested destination are different identities. Both need a boolean wall."""
+    quiet = {"effects": False, "public": False, "events": [], "reparented": False}
+    stored = subject.get("stored_matter_id")
+    requested = subject.get("requested_matter_id")
+    if not isinstance(stored, str) or not stored:
+        return {"result": "not_found", **quiet}
+    if requested == stored:
+        return {"result": "allowed", "effects": True, "public": False, "reparented": False}
+    if not isinstance(requested, str) or not requested:
+        return {"result": "validation_failed", **quiet}
+    walls = subject.get("matter_walls")
+    for matter_id in (stored, requested):
+        if not isinstance(walls, dict) or matter_id not in walls or type(walls[matter_id]) is not bool:
+            return {"result": "not_found", **quiet}
+        if not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walls[matter_id]}, single_record=True):
+            return {"result": "not_found", **quiet}
+    return {"result": "allowed", "effects": True, "public": False, "events": events, "reparented": True}
 
 
 def _matter_patch_decision(subject: dict) -> dict:
@@ -1385,6 +1420,10 @@ _PRESERVED_CONTEXT = (
     "status_before_close",
     "closed_on",
     "close_reason",
+    "password_matches",
+    "existing_totp_matches",
+    "recovery_code_matches",
+    "reauthentication_proof",
     "core_history",
 )
 
@@ -1438,7 +1477,6 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "subscriptions": list(call.get("subscriptions") or []),
         "installed": call.get("installed"),
         "token_revoked": call.get("token_revoked"),
-        "matter_id": path.get("matter_id") or body.get("matter_id") or call.get("matter_id"),
         "survivor_id": body.get("survivor_id") if isinstance(body.get("survivor_id"), str) else None,
         "matter_walled": call.get("matter_walled"),
         "matter_membership": call.get("matter_membership"),
@@ -1517,10 +1555,25 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
     for key in _PRESERVED_CONTEXT:
         if key in call:
             subject[key] = call[key]
+    path_matter = path.get("matter_id") if isinstance(path.get("matter_id"), str) else None
+    stored_matter = call.get("matter_id") if isinstance(call.get("matter_id"), str) else None
+    subject["stored_matter_id"] = path_matter or stored_matter
+    if "matter_id" in body:
+        subject["requested_matter_id"] = body.get("matter_id")
+        subject["reparent_requested"] = bool(subject["stored_matter_id"]) and operation.get("operationId") in _REPARENT_OPERATIONS
+    if path_matter:
+        subject["matter_id"] = path_matter
+    elif stored_matter:
+        subject["matter_id"] = stored_matter
+    elif isinstance(body.get("matter_id"), str):
+        subject["matter_id"] = body.get("matter_id")
     if "status" in body:
         subject["patch_status"] = body.get("status")
     if "reason" in body and operation.get("operationId") == "reopenMatter":
         subject["reason"] = body.get("reason")
+    for name in ("current_password", "totp_code", "recovery_code", "reauthentication_token"):
+        if name in body:
+            subject[name] = body.get(name)
     if isinstance(body, dict) and "scope" in body:
         subject["scope"] = body["scope"]
     elif "scope" in call:
@@ -1577,7 +1630,7 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
     decision = operation_authorization(spec, operation, _mcp_operation_call(call, arguments, operation))
     forwarded = {
         key: decision[key]
-        for key in ("routed", "events", "relinked", "archived", "status", "closed_on", "close_reason")
+        for key in ("routed", "events", "relinked", "archived", "status", "closed_on", "close_reason", "reparented", "challenge_issued", "codes_issued", "old_secret_active")
         if key in decision
     }
     return {"result": decision["result"], "effects": decision.get("effects", False), "public": False, **forwarded}
@@ -3250,10 +3303,76 @@ def project_record(operation: dict, caller: dict, record: dict) -> dict:
     return {"result": "allowed", "record": copied, "redacted_fields": redacted}
 
 
+def _reauthentication_denial(call: dict, action: str) -> str | None:
+    """None when an existing factor or a server-issued proof was verified. A request boolean is ignored."""
+    token = call.get("reauthentication_token")
+    if isinstance(token, str) and token:
+        proof = call.get("reauthentication_proof")
+        if not isinstance(proof, dict) or proof.get("token") != token:
+            return "unauthenticated"
+        if proof.get("used") or proof.get("expired"):
+            return "unauthenticated"
+        if proof.get("owner_user_id") != call.get("caller_user_id"):
+            return "forbidden"
+        if proof.get("action") != action:
+            return "forbidden"
+        return None
+    if isinstance(call.get("current_password"), str) and call.get("current_password"):
+        return None if call.get("password_matches") is True else "unauthenticated"
+    if isinstance(call.get("totp_code"), str) and call.get("totp_code"):
+        return None if call.get("existing_totp_matches") is True else "unauthenticated"
+    if isinstance(call.get("recovery_code"), str) and call.get("recovery_code"):
+        return None if call.get("recovery_code_matches") is True else "unauthenticated"
+    return "unauthenticated"
+
+
+def _totp_reset_authorization(operation: dict, call: dict) -> dict:
+    decision = start_totp_reset(operation, call)
+    issued = decision["result"] == "allowed"
+    return {
+        "result": decision["result"],
+        "effects": issued,
+        "public": False,
+        "events": ["user.totp_reset_started"] if issued else [],
+        "old_secret_active": decision["old_secret_active"],
+        "activated": decision["activated"],
+        "challenge_issued": issued,
+    }
+
+
+def _recovery_regeneration_authorization(operation: dict, call: dict) -> dict:
+    decision = regenerate_recovery_codes(operation, call)
+    issued = decision["result"] == "allowed"
+    return {
+        "result": decision["result"],
+        "effects": issued,
+        "public": False,
+        "events": ["user.recovery_codes_regenerated"] if issued else [],
+        "codes_issued": issued,
+    }
+
+
+def regenerate_recovery_codes(operation: dict, call: dict) -> dict:
+    """Replace recovery codes only after recent reauthentication. The new codes are synthetic in this model."""
+    quiet = {"codes": None}
+    access = operation["x-togavsu-access"]
+    denial = _reauthentication_denial(call, "regenerateRecoveryCodes")
+    if denial:
+        return {"result": denial, **quiet}
+    if call.get("role") not in access.get("roles", []) or call.get("owner") not in (None, "self"):
+        return {"result": "forbidden", **quiet}
+    if call.get("user_id") not in (None, call.get("caller_user_id")):
+        return {"result": "not_found", **quiet}
+    return {"result": "allowed", "codes": ["synthetic-recovery-1", "synthetic-recovery-2"]}
+
+
 def start_totp_reset(operation: dict, call: dict) -> dict:
     """Begin a reset without retiring the current secret. The challenge token is single-use and expires."""
     denied = {"result": "forbidden", "old_secret_active": True, "activated": False, "challenge": None}
     access = operation["x-togavsu-access"]
+    denial = _reauthentication_denial(call, "resetTotp")
+    if denial:
+        return {"result": denial, "old_secret_active": True, "activated": False, "challenge": None}
     if call.get("role") not in access.get("roles", []) or call.get("owner") not in (None, "self"):
         return denied
     if call.get("user_id") not in (None, call.get("caller_user_id")):

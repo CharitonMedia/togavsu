@@ -2810,6 +2810,56 @@
       "retirement_status": "pending"
     },
     {
+      "id": "ContractTest.test_file_reparent_authorizes_source_and_destination",
+      "go_owner": "files",
+      "acceptance": [
+        "AC-039"
+      ],
+      "prd": [
+        "8.19"
+      ],
+      "source": "api/tests/test_contract.py:7376-7434",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 27,
+      "loop_count": 0,
+      "literal_rows": [],
+      "assertion_statements": [
+        "self.assertEqual(same[\"result\"], \"allowed\")",
+        "self.assertTrue(same[\"effects\"])",
+        "self.assertFalse(same.get(\"reparented\"))",
+        "self.assertEqual(moved[\"result\"], \"allowed\")",
+        "self.assertTrue(moved[\"reparented\"])",
+        "self.assertEqual(moved[\"events\"], [\"file.updated\"])",
+        "self.assertEqual(staff_into_wall[\"result\"], \"not_found\")",
+        "self.assertFalse(staff_into_wall[\"effects\"])",
+        "self.assertFalse(staff_into_wall[\"reparented\"])",
+        "self.assertEqual(staff_into_wall[\"events\"], [])",
+        "self.assertEqual(attorney_from_wall[\"result\"], \"not_found\")",
+        "self.assertFalse(attorney_from_wall[\"effects\"])",
+        "self.assertFalse(attorney_from_wall[\"reparented\"])",
+        "self.assertEqual(unresolved[\"result\"], \"not_found\")",
+        "self.assertFalse(unresolved[\"effects\"])",
+        "self.assertFalse(unresolved[\"reparented\"])",
+        "self.assertEqual(missing_destination[\"result\"], \"not_found\")",
+        "self.assertFalse(missing_destination[\"reparented\"])",
+        "self.assertEqual(cleared[\"result\"], \"validation_failed\")",
+        "self.assertFalse(cleared[\"effects\"])",
+        "self.assertFalse(cleared[\"reparented\"])",
+        "self.assertEqual(authorized_walls[\"result\"], \"allowed\")",
+        "self.assertTrue(authorized_walls[\"reparented\"])",
+        "self.assertEqual(http[\"result\"], mcp[\"result\"])",
+        "self.assertEqual(http[\"effects\"], mcp[\"effects\"])",
+        "self.assertEqual(http.get(\"reparented\"), mcp.get(\"reparented\"))",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"))"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
       "id": "ContractTest.test_first_admin_enrolls_totp_before_a_session",
       "go_owner": "identity",
       "acceptance": [
@@ -3122,6 +3172,67 @@
         "self.assertNotIn(secret, str(denied), (event_type, label))",
         "self.assertNotIn(summary, str(denied), (event_type, label))",
         "self.assertEqual(delivered[\"record_id\"], secret, event_type)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_factor_reset_requires_reauthentication",
+      "go_owner": "identity",
+      "acceptance": [],
+      "prd": [
+        "6"
+      ],
+      "source": "api/tests/test_contract.py:7436-7515",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 40,
+      "loop_count": 0,
+      "literal_rows": [],
+      "assertion_statements": [
+        "self.assertEqual(alone[\"result\"], \"unauthenticated\")",
+        "self.assertFalse(alone[\"effects\"])",
+        "self.assertEqual(alone[\"events\"], [])",
+        "self.assertFalse(alone[\"challenge_issued\"])",
+        "self.assertTrue(alone[\"old_secret_active\"])",
+        "self.assertEqual(spoofed[\"result\"], \"unauthenticated\")",
+        "self.assertFalse(spoofed[\"effects\"])",
+        "self.assertFalse(spoofed[\"challenge_issued\"])",
+        "self.assertEqual(stale[\"result\"], \"unauthenticated\")",
+        "self.assertEqual(reused[\"result\"], \"unauthenticated\")",
+        "self.assertEqual(wrong_owner[\"result\"], \"forbidden\")",
+        "self.assertFalse(wrong_owner[\"effects\"])",
+        "self.assertEqual(wrong_action[\"result\"], \"forbidden\")",
+        "self.assertFalse(wrong_action[\"challenge_issued\"])",
+        "self.assertEqual(new_code[\"result\"], \"unauthenticated\")",
+        "self.assertFalse(new_code[\"challenge_issued\"])",
+        "self.assertEqual(reset_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(reset_ok[\"effects\"])",
+        "self.assertTrue(reset_ok[\"challenge_issued\"])",
+        "self.assertTrue(reset_ok[\"old_secret_active\"])",
+        "self.assertEqual(reset_ok[\"events\"], [\"user.totp_reset_started\"])",
+        "self.assertEqual(factor_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(factor_ok[\"challenge_issued\"])",
+        "self.assertEqual(codes_alone[\"result\"], \"unauthenticated\")",
+        "self.assertFalse(codes_alone[\"effects\"])",
+        "self.assertFalse(codes_alone[\"codes_issued\"])",
+        "self.assertEqual(codes_alone[\"events\"], [])",
+        "self.assertEqual(codes_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(codes_ok[\"codes_issued\"])",
+        "self.assertEqual(codes_ok[\"events\"], [\"user.recovery_codes_regenerated\"])",
+        "self.assertEqual(codes_wrong_action[\"result\"], \"forbidden\")",
+        "self.assertFalse(codes_wrong_action[\"codes_issued\"])",
+        "with self.assertRaises(Exception):",
+        "self.assertEqual(http[\"result\"], mcp[\"result\"])",
+        "self.assertEqual(http[\"effects\"], mcp[\"effects\"])",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"))",
+        "self.assertEqual(http.get(\"challenge_issued\"), mcp.get(\"challenge_issued\"))",
+        "self.assertEqual(http.get(\"codes_issued\"), mcp.get(\"codes_issued\"))",
+        "self.assertNotIn(\"secret\", mcp)",
+        "self.assertNotIn(\"codes\", mcp)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -6021,6 +6132,43 @@
       "retirement_status": "pending"
     },
     {
+      "id": "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
+      "go_owner": "practice",
+      "acceptance": [
+        "AC-003"
+      ],
+      "prd": [
+        "8"
+      ],
+      "source": "api/tests/test_contract.py:7329-7374",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 14,
+      "loop_count": 1,
+      "literal_rows": [],
+      "assertion_statements": [
+        "self.assertEqual(allowed[\"result\"], \"allowed\")",
+        "self.assertTrue(allowed[\"relinked\"])",
+        "self.assertTrue(allowed[\"archived\"])",
+        "self.assertEqual(allowed[\"events\"], [\"matter.merged\"])",
+        "self.assertEqual(http[\"result\"], mcp[\"result\"])",
+        "self.assertEqual(http[\"effects\"], mcp[\"effects\"])",
+        "self.assertEqual(http.get(\"relinked\"), mcp.get(\"relinked\"))",
+        "self.assertEqual(http.get(\"archived\"), mcp.get(\"archived\"))",
+        "self.assertEqual(http.get(\"events\"), mcp.get(\"events\"))",
+        "self.assertNotEqual(denied[\"result\"], \"allowed\", walls)",
+        "self.assertFalse(denied[\"effects\"], walls)",
+        "self.assertFalse(denied[\"relinked\"], walls)",
+        "self.assertFalse(denied[\"archived\"], walls)",
+        "self.assertEqual(denied[\"events\"], [], walls)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
       "id": "ContractTest.test_trust_entry_scopes_deny_a_deposit_only_token",
       "go_owner": "trust",
       "acceptance": [
@@ -7066,28 +7214,30 @@
     },
     "files": {
       "go_owner": "files",
-      "methods": 5,
-      "assertion_call_sites": 136,
+      "methods": 6,
+      "assertion_call_sites": 163,
       "literal_rows": 30,
       "method_names": [
         "test_malware_scan_uses_the_event_grant_for_the_whole_sequence",
         "test_file_byte_downloads_are_audited_and_highlighted",
         "test_published_versions_emit_after_commit",
         "test_attorney_only_files_are_omitted_from_aggregates",
-        "test_background_file_publication_grant"
+        "test_background_file_publication_grant",
+        "test_file_reparent_authorizes_source_and_destination"
       ],
       "status": "not_converted",
       "complete": false
     },
     "identity": {
       "go_owner": "identity",
-      "methods": 3,
-      "assertion_call_sites": 90,
+      "methods": 4,
+      "assertion_call_sites": 130,
       "literal_rows": 14,
       "method_names": [
         "test_first_admin_enrolls_totp_before_a_session",
         "test_api_token_reads_are_self_or_admin",
-        "test_owner_bound_events_follow_the_read_policy"
+        "test_owner_bound_events_follow_the_read_policy",
+        "test_factor_reset_requires_reauthentication"
       ],
       "status": "not_converted",
       "complete": false
@@ -7141,8 +7291,8 @@
     },
     "practice": {
       "go_owner": "practice",
-      "methods": 7,
-      "assertion_call_sites": 199,
+      "methods": 8,
+      "assertion_call_sites": 213,
       "literal_rows": 11,
       "method_names": [
         "test_matter_wall_is_inherited_on_named_flows",
@@ -7151,7 +7301,8 @@
         "test_history_inherits_the_underlying_record",
         "test_record_mutations_emit_events_only_after_commit",
         "test_merge_matter_authorizes_both_records",
-        "test_matter_patch_cannot_reopen"
+        "test_matter_patch_cannot_reopen",
+        "test_merge_wall_values_must_be_resolved_booleans"
       ],
       "status": "not_converted",
       "complete": false

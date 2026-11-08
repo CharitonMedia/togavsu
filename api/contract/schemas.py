@@ -2027,6 +2027,19 @@ SCHEMAS = _register(
             ["event_reminder_offsets_days", "deadline_reminder_offsets_days", "time_zone", "mode", "text_size", "idle_timeout_seconds"],
         ),
         "PasswordChange": _obj({"current_password": {"type": "string"}, "new_password": {"type": "string", "minLength": 12}}, ["current_password", "new_password"]),
+        "FactorReauthentication": {
+            "description": (
+                "Recent proof of an existing factor, required before resetTotp or regenerateRecoveryCodes. "
+                "A boolean is not accepted. totp_code is a code for the current secret, not the replacement. "
+                "reauthentication_token is a server-issued proof bound to this user and this action."
+            ),
+            "oneOf": [
+                _obj({"current_password": {"type": "string", "minLength": 1}}, ["current_password"], "The current password."),
+                _obj({"totp_code": {"type": "string", "minLength": 6, "maxLength": 8}}, ["totp_code"], "A code from the current authenticator."),
+                _obj({"recovery_code": {"type": "string", "minLength": 1}}, ["recovery_code"], "An unused recovery code."),
+                _obj({"reauthentication_token": {"type": "string", "minLength": 1}}, ["reauthentication_token"], "Server-issued proof for this user and action."),
+            ],
+        },
         "RecoveryCodes": _obj({"codes": _arr({"type": "string"})}, ["codes"], "Shown once."),
         "SidebarState": _obj(
             {

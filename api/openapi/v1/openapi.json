@@ -2093,7 +2093,7 @@
       "post": {
         "operationId": "resetTotp",
         "summary": "Reset two-factor",
-        "description": "Starts a replacement enrollment for the signed-in user. The current secret stays active until confirmTotpReset accepts the first code. The response includes a single-use enrollment_token that expires. Another user's reset is not_found.",
+        "description": "Starts a replacement enrollment for the signed-in user only after recent reauthentication. The body is a current password, a code from the current authenticator, an unused recovery code, or a server-issued reauthentication token bound to this user and resetTotp. A boolean, or a code from the new secret, is not proof. The current secret stays active until confirmTotpReset accepts the first code. The response includes a single-use enrollment_token that expires. Another user's reset is not_found.",
         "tags": [
           "Identity"
         ],
@@ -2176,6 +2176,10 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
             "result": {
               "encoding": "json",
               "media_type": "application/json"
@@ -2183,7 +2187,8 @@
             "arguments": [
               "path",
               "query",
-              "idempotency_key"
+              "idempotency_key",
+              "body"
             ]
           }
         },
@@ -2194,7 +2199,17 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorReauthentication"
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/me/totp/reset/confirm": {
@@ -2327,7 +2342,7 @@
       "post": {
         "operationId": "regenerateRecoveryCodes",
         "summary": "Regenerate recovery codes",
-        "description": "Replaces the user's recovery codes. The new codes are returned once.",
+        "description": "Replaces the user's recovery codes only after the same recent reauthentication as resetTotp. The proof must be bound to regenerateRecoveryCodes. The new codes are returned once.",
         "tags": [
           "Identity"
         ],
@@ -2408,6 +2423,10 @@
             "shape": "path_query_body",
             "path": "Object of path parameters.",
             "query": "Object of query parameters.",
+            "body": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
             "result": {
               "encoding": "json",
               "media_type": "application/json"
@@ -2415,7 +2434,8 @@
             "arguments": [
               "path",
               "query",
-              "idempotency_key"
+              "idempotency_key",
+              "body"
             ]
           }
         },
@@ -2426,7 +2446,17 @@
           {
             "bearerAuth": []
           }
-        ]
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactorReauthentication"
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/me/settings": {
@@ -10369,7 +10399,7 @@
       "post": {
         "operationId": "mergeMatter",
         "summary": "Merge a matter",
-        "description": "Relinks module rows to the survivor in the same transaction and archives this matter. The caller must be allowed to see both this matter and the survivor. A missing or unresolved survivor is not treated as accessible. An inaccessible matter is not_found. Nothing is relinked, archived, or emitted unless both are allowed. A hard delete is not available.",
+        "description": "Relinks module rows to the survivor in the same transaction and archives this matter. The caller must be allowed to see both this matter and the survivor. A missing or unresolved survivor is not treated as accessible. An inaccessible matter is not_found. Each matter's wall state must be a resolved boolean. Nothing is relinked, archived, or emitted unless both are allowed. A hard delete is not available.",
         "tags": [
           "Matters"
         ],
@@ -37281,7 +37311,7 @@
       "patch": {
         "operationId": "updateFileMetadata",
         "summary": "Update file metadata",
-        "description": "Sets attorney_only, shared_with_client, category, matter, or contact without adding a version. A person with files:write may change a field a person previously locked. Doc Tender and other automated actors receive field_locked and do not replace it. Name stays on rename. Folder stays on move. The edit is audited. Staff are not_found for an attorney-only file or a file on a walled matter.",
+        "description": "Sets attorney_only, shared_with_client, category, matter, or contact without adding a version. A person with files:write may change a field a person previously locked. Doc Tender and other automated actors receive field_locked and do not replace it. Name stays on rename. Folder stays on move. The edit is audited. Staff are not_found for an attorney-only file or a file on a walled matter. Moving the file to another matter requires access to both the file's current matter and the destination. A request flag does not supply that wall state.",
         "tags": [
           "Files"
         ],
@@ -70947,6 +70977,68 @@
         "required": [
           "current_password",
           "new_password"
+        ]
+      },
+      "FactorReauthentication": {
+        "description": "Recent proof of an existing factor, required before resetTotp or regenerateRecoveryCodes. A boolean is not accepted. totp_code is a code for the current secret, not the replacement. reauthentication_token is a server-issued proof bound to this user and this action.",
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "current_password": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "current_password"
+            ],
+            "description": "The current password."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "totp_code": {
+                "type": "string",
+                "minLength": 6,
+                "maxLength": 8
+              }
+            },
+            "required": [
+              "totp_code"
+            ],
+            "description": "A code from the current authenticator."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "recovery_code": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "recovery_code"
+            ],
+            "description": "An unused recovery code."
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "reauthentication_token": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "reauthentication_token"
+            ],
+            "description": "Server-issued proof for this user and action."
+          }
         ]
       },
       "RecoveryCodes": {

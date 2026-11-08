@@ -11,29 +11,29 @@
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
   "counting": {
-    "contract_test_methods_including_setup": 106,
-    "unittest_tests": 105,
+    "contract_test_methods_including_setup": 109,
+    "unittest_tests": 108,
     "setup_methods": 1,
-    "meaning": "106 ContractTest methods are 105 unittest tests plus 1 setUpClass.",
+    "meaning": "109 ContractTest methods are 108 unittest tests plus 1 setUpClass.",
     "top_level_helpers": 23,
-    "nested_functions_inside_test_methods": 22,
+    "nested_functions_inside_test_methods": 25,
     "nested_structural_helpers_inside_top_level_helpers": [
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 7444,
+        "line": 7632,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 7467,
+        "line": 7655,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 7583,
+        "line": 7771,
         "structural": true
       }
     ],
@@ -41,7 +41,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 2744,
+        "line": 2797,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -59,7 +59,7 @@
       "module_ui_targets": "sidebar_entries"
     },
     "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
-    "behavioral_methods": 50,
+    "behavioral_methods": 53,
     "behavioral_methods_are_not_scenarios": true,
     "converted_for_retirement": 0,
     "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one."
@@ -67,21 +67,21 @@
   "counts": {
     "contract_tests": 56,
     "simulator_tests": 1,
-    "mixed_tests": 49,
-    "test_methods": 106,
-    "behavioral_methods": 50,
+    "mixed_tests": 52,
+    "test_methods": 109,
+    "behavioral_methods": 53,
     "local_helpers": 23,
     "simulator_helpers": 9,
-    "nested_helpers": 22,
-    "blocking_gaps": 50,
+    "nested_helpers": 25,
+    "blocking_gaps": 53,
     "explicit_cases_in_behavioral_methods": 215,
-    "assertion_calls_in_behavioral_methods": 1645,
+    "assertion_calls_in_behavioral_methods": 1726,
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "c8938e788bd4a1ef60a58c3016313c40ac02236a83de01a011e2e6bd3c34a452",
+    "api/openapi/v1/openapi.json": "b23a9541d5bb1ab6d00ac616c82c486f5538e75e6de6aa6d1c3f098f4c865905",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
-    "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+    "api/openapi/v1/mcp-tools.json": "4bf25cad4192d03866d4defc4902e2d1f4df8fdf5bd43ba09ae2493b7cc0b2d2",
     "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa"
   },
   "intentional_generated_deltas": [
@@ -105,6 +105,28 @@
         "api/openapi/v1/openapi.json"
       ],
       "change": "stopTimer's TimerStopResult now references StoppedTimer, whose status is stopped. The MCP tool still names TimerStopResult. Active Timer values stay running or paused."
+    },
+    {
+      "id": "merge-wall-boolean",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "mergeMatter's description says each wall value must be a resolved boolean. Null is not unwalled."
+    },
+    {
+      "id": "file-reparent-both-matters",
+      "files": [
+        "api/openapi/v1/openapi.json"
+      ],
+      "change": "updateFileMetadata's description requires access to the file's current matter and the destination. The stored matter id is not replaced by the request."
+    },
+    {
+      "id": "factor-reauthentication",
+      "files": [
+        "api/openapi/v1/openapi.json",
+        "api/openapi/v1/mcp-tools.json"
+      ],
+      "change": "resetTotp and regenerateRecoveryCodes require FactorReauthentication. The MCP catalog records that JSON body. A boolean is not proof."
     }
   ],
   "intentional_corrections": [
@@ -2790,6 +2812,79 @@
       "gap": "",
       "complete": false,
       "retirement_status": "not_behavioral"
+    },
+    {
+      "id": "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
+      "source": "api/tests/test_contract.py",
+      "line": 7329,
+      "end_line": 7374,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "practice",
+      "acceptance": [
+        "AC-003"
+      ],
+      "prd": [
+        "8"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 14,
+      "loop_count": 1,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_file_reparent_authorizes_source_and_destination",
+      "source": "api/tests/test_contract.py",
+      "line": 7376,
+      "end_line": 7434,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "files",
+      "acceptance": [
+        "AC-039"
+      ],
+      "prd": [
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 27,
+      "loop_count": 0,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_factor_reset_requires_reauthentication",
+      "source": "api/tests/test_contract.py",
+      "line": 7436,
+      "end_line": 7515,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "identity",
+      "acceptance": [],
+      "prd": [
+        "6"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 40,
+      "loop_count": 0,
+      "explicit_case_count": 0,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
     }
   ],
   "helpers": [
@@ -2800,112 +2895,112 @@
     },
     {
       "name": "_operation",
-      "line": 7330,
+      "line": 7518,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 7337,
+      "line": 7525,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 7343,
+      "line": 7531,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 7347,
+      "line": 7535,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 7368,
+      "line": 7556,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 7372,
+      "line": 7560,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 7381,
+      "line": 7569,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 7389,
+      "line": 7577,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 7408,
+      "line": 7596,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 7414,
+      "line": 7602,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 7436,
+      "line": 7624,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 7460,
+      "line": 7648,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 7482,
+      "line": 7670,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 7503,
+      "line": 7691,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 7520,
+      "line": 7708,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 7528,
+      "line": 7716,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 7537,
+      "line": 7725,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 7551,
+      "line": 7739,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 7564,
+      "line": 7752,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 7573,
+      "line": 7761,
       "kind": "simulator_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 7580,
+      "line": 7768,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 7599,
+      "line": 7787,
       "kind": "contract_helper"
     }
   ],
@@ -3019,6 +3114,21 @@
       "test": "ContractTest.test_matter_patch_cannot_reopen",
       "name": "call",
       "line": 7197
+    },
+    {
+      "test": "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
+      "name": "decide",
+      "line": 7334
+    },
+    {
+      "test": "ContractTest.test_file_reparent_authorizes_source_and_destination",
+      "name": "decide",
+      "line": 7382
+    },
+    {
+      "test": "ContractTest.test_factor_reset_requires_reauthentication",
+      "name": "decide",
+      "line": 7447
     }
   ],
   "behavioral_helpers": [
@@ -3082,7 +3192,10 @@
     "ContractTest.test_custom_acceptance_cannot_skip_operation_scopes",
     "ContractTest.test_dispatcher_parity_matrix",
     "ContractTest.test_merge_matter_authorizes_both_records",
-    "ContractTest.test_matter_patch_cannot_reopen"
+    "ContractTest.test_matter_patch_cannot_reopen",
+    "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
+    "ContractTest.test_file_reparent_authorizes_source_and_destination",
+    "ContractTest.test_factor_reset_requires_reauthentication"
   ],
   "hidden_runtime_consumers": [],
   "non_python_consumers": [],

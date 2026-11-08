@@ -1290,7 +1290,7 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(_schema_name(reset["responses"]["200"]), "TotpResetChallenge")
         self.assertEqual(reset["x-togavsu-events"], ["user.totp_reset_started"])
         self.assertEqual(confirm_reset["x-togavsu-events"], ["user.totp_reset"])
-        started = start_totp_reset(reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "user_id": "user-1", "issued_token": "reset-1", "expires_at": "2026-11-07T18:10:00Z"})
+        started = start_totp_reset(reset, {"role": "staff", "owner": "self", "caller_user_id": "user-1", "user_id": "user-1", "issued_token": "reset-1", "expires_at": "2026-11-07T18:10:00Z", "current_password": "correct-horse", "password_matches": True})
         self.assertEqual(started["result"], "allowed")
         self.assertTrue(started["old_secret_active"])
         self.assertFalse(started["activated"])
@@ -7325,6 +7325,194 @@ class ContractTest(unittest.TestCase):
         _component_validator(self.spec, "Timer").validate({**active, "status": "running"})
         with self.assertRaises(Exception):
             _component_validator(self.spec, "Timer").validate({**active, "status": "stopped"})
+
+    def test_merge_wall_values_must_be_resolved_booleans(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        survivor = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        operation = _operation(self.spec, "mergeMatter")
+
+        def decide(walls, body):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "attorney",
+                "token_scopes": ["matters:write"],
+                "matter_walls": walls,
+                "matter_membership": {},
+                "tool": "mergeMatter",
+                "arguments": {"path": {"matter_id": source}, "body": body},
+            }
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"])
+            self.assertEqual(http["effects"], mcp["effects"])
+            self.assertEqual(http.get("relinked"), mcp.get("relinked"))
+            self.assertEqual(http.get("archived"), mcp.get("archived"))
+            self.assertEqual(http.get("events"), mcp.get("events"))
+            return mcp
+
+        allowed = decide({source: False, survivor: False}, {"survivor_id": survivor, "matter_walled": False})
+        self.assertEqual(allowed["result"], "allowed")
+        self.assertTrue(allowed["relinked"])
+        self.assertTrue(allowed["archived"])
+        self.assertEqual(allowed["events"], ["matter.merged"])
+        for walls in (
+            {source: None, survivor: False},
+            {source: False, survivor: None},
+            {source: "false", survivor: False},
+            {source: False, survivor: 0},
+            {source: False, survivor: []},
+            {survivor: False},
+            {source: False},
+        ):
+            denied = decide(walls, {"survivor_id": survivor, "matter_walled": False})
+            self.assertNotEqual(denied["result"], "allowed", walls)
+            self.assertFalse(denied["effects"], walls)
+            self.assertFalse(denied["relinked"], walls)
+            self.assertFalse(denied["archived"], walls)
+            self.assertEqual(denied["events"], [], walls)
+
+    def test_file_reparent_authorizes_source_and_destination(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        destination = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        operation = _operation(self.spec, "updateFileMetadata")
+
+        def decide(role, walls, body, membership=None):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": role,
+                "token_scopes": ["files:write"],
+                "matter_id": source,
+                "matter_walled": False,
+                "matter_walls": walls,
+                "matter_membership": {} if membership is None else membership,
+                "tool": "updateFileMetadata",
+                "arguments": {"path": {"file_id": file_id}, "body": body},
+            }
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"])
+            self.assertEqual(http["effects"], mcp["effects"])
+            self.assertEqual(http.get("reparented"), mcp.get("reparented"))
+            self.assertEqual(http.get("events"), mcp.get("events"))
+            return mcp
+
+        same = decide("staff", {source: False}, {"matter_id": source, "matter_walled": False})
+        self.assertEqual(same["result"], "allowed")
+        self.assertTrue(same["effects"])
+        self.assertFalse(same.get("reparented"))
+        moved = decide("staff", {source: False, destination: False}, {"matter_id": destination})
+        self.assertEqual(moved["result"], "allowed")
+        self.assertTrue(moved["reparented"])
+        self.assertEqual(moved["events"], ["file.updated"])
+        staff_into_wall = decide("staff", {source: False, destination: True}, {"matter_id": destination, "matter_walled": False}, {destination: False})
+        self.assertEqual(staff_into_wall["result"], "not_found")
+        self.assertFalse(staff_into_wall["effects"])
+        self.assertFalse(staff_into_wall["reparented"])
+        self.assertEqual(staff_into_wall["events"], [])
+        attorney_from_wall = decide("attorney", {source: True, destination: False}, {"matter_id": destination, "matter_walled": False}, {source: False, destination: True})
+        self.assertEqual(attorney_from_wall["result"], "not_found")
+        self.assertFalse(attorney_from_wall["effects"])
+        self.assertFalse(attorney_from_wall["reparented"])
+        unresolved = decide("staff", {source: False, destination: None}, {"matter_id": destination, "matter_walled": False})
+        self.assertEqual(unresolved["result"], "not_found")
+        self.assertFalse(unresolved["effects"])
+        self.assertFalse(unresolved["reparented"])
+        missing_destination = decide("staff", {source: False}, {"matter_id": destination})
+        self.assertEqual(missing_destination["result"], "not_found")
+        self.assertFalse(missing_destination["reparented"])
+        cleared = decide("staff", {source: False}, {"matter_id": None})
+        self.assertEqual(cleared["result"], "validation_failed")
+        self.assertFalse(cleared["effects"])
+        self.assertFalse(cleared["reparented"])
+        authorized_walls = decide("attorney", {source: True, destination: True}, {"matter_id": destination}, {source: True, destination: True})
+        self.assertEqual(authorized_walls["result"], "allowed")
+        self.assertTrue(authorized_walls["reparented"])
+
+    def test_factor_reset_requires_reauthentication(self):
+        reset = _operation(self.spec, "resetTotp")
+        regenerate = _operation(self.spec, "regenerateRecoveryCodes")
+        schema = _component_validator(self.spec, "FactorReauthentication")
+        schema.validate({"current_password": "correct-horse"})
+        schema.validate({"reauthentication_token": "proof-1"})
+        with self.assertRaises(Exception):
+            schema.validate({"reauthenticated": True})
+        owner = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        other = "018f1a00-7b3c-7d4e-8a11-666666666666"
+
+        def decide(operation, body, **trusted):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "owner": "self",
+                "token_scopes": ["profile:write"],
+                "caller_user_id": owner,
+                "user_id": owner,
+                "tool": operation["operationId"],
+                "arguments": {"body": body},
+                **trusted,
+            }
+            mcp = mcp_tool_dispatch(self.spec, raw)
+            http = operation_authorization(self.spec, operation, _mcp_operation_call(raw, raw["arguments"], operation))
+            self.assertEqual(http["result"], mcp["result"])
+            self.assertEqual(http["effects"], mcp["effects"])
+            self.assertEqual(http.get("events"), mcp.get("events"))
+            self.assertEqual(http.get("challenge_issued"), mcp.get("challenge_issued"))
+            self.assertEqual(http.get("codes_issued"), mcp.get("codes_issued"))
+            self.assertNotIn("secret", mcp)
+            self.assertNotIn("codes", mcp)
+            return mcp
+
+        alone = decide(reset, {})
+        self.assertEqual(alone["result"], "unauthenticated")
+        self.assertFalse(alone["effects"])
+        self.assertEqual(alone["events"], [])
+        self.assertFalse(alone["challenge_issued"])
+        self.assertTrue(alone["old_secret_active"])
+        spoofed = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "other-proof", "owner_user_id": owner, "action": "resetTotp"})
+        self.assertEqual(spoofed["result"], "unauthenticated")
+        self.assertFalse(spoofed["effects"])
+        self.assertFalse(spoofed["challenge_issued"])
+        stale = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp", "expired": True})
+        self.assertEqual(stale["result"], "unauthenticated")
+        reused = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp", "used": True})
+        self.assertEqual(reused["result"], "unauthenticated")
+        wrong_owner = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": other, "action": "resetTotp"})
+        self.assertEqual(wrong_owner["result"], "forbidden")
+        self.assertFalse(wrong_owner["effects"])
+        wrong_action = decide(reset, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "regenerateRecoveryCodes"})
+        self.assertEqual(wrong_action["result"], "forbidden")
+        self.assertFalse(wrong_action["challenge_issued"])
+        new_code = decide(reset, {"totp_code": "123456"})
+        self.assertEqual(new_code["result"], "unauthenticated")
+        self.assertFalse(new_code["challenge_issued"])
+        reset_ok = decide(reset, {"current_password": "correct-horse"}, password_matches=True)
+        self.assertEqual(reset_ok["result"], "allowed")
+        self.assertTrue(reset_ok["effects"])
+        self.assertTrue(reset_ok["challenge_issued"])
+        self.assertTrue(reset_ok["old_secret_active"])
+        self.assertEqual(reset_ok["events"], ["user.totp_reset_started"])
+        factor_ok = decide(reset, {"totp_code": "654321"}, existing_totp_matches=True)
+        self.assertEqual(factor_ok["result"], "allowed")
+        self.assertTrue(factor_ok["challenge_issued"])
+        codes_alone = decide(regenerate, {})
+        self.assertEqual(codes_alone["result"], "unauthenticated")
+        self.assertFalse(codes_alone["effects"])
+        self.assertFalse(codes_alone["codes_issued"])
+        self.assertEqual(codes_alone["events"], [])
+        codes_ok = decide(regenerate, {"current_password": "correct-horse"}, password_matches=True)
+        self.assertEqual(codes_ok["result"], "allowed")
+        self.assertTrue(codes_ok["codes_issued"])
+        self.assertEqual(codes_ok["events"], ["user.recovery_codes_regenerated"])
+        codes_wrong_action = decide(regenerate, {"reauthentication_token": "proof-1"}, reauthentication_proof={"token": "proof-1", "owner_user_id": owner, "action": "resetTotp"})
+        self.assertEqual(codes_wrong_action["result"], "forbidden")
+        self.assertFalse(codes_wrong_action["codes_issued"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:
