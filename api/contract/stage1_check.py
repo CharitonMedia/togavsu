@@ -393,6 +393,16 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
                 "change": "resetTotp and regenerateRecoveryCodes require FactorReauthentication. The MCP catalog records that JSON body. A boolean is not proof.",
             },
+            {
+                "id": "opaque-task-credential",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
+                "change": "The caller presents task_authorization as an opaque string. The issued TaskAuthorization object stays on the webhook the core sends. A caller claim object is not a grant.",
+            },
+            {
+                "id": "mcp-cookie-csrf",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"],
+                "change": "POST /mcp publishes X-CSRF-Token, and the MCP catalog names that header. Cookie tools/call writes require it. Bearer calls and cookie reads do not.",
+            },
         ],
         "intentional_corrections": [
             {

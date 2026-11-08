@@ -704,7 +704,7 @@ class ContractTest(unittest.TestCase):
                 call["token_scopes"] = token
             if approved is not None:
                 call["approved_scopes"] = approved
-            return mcp_tool_dispatch(self.spec, call)
+            return mcp_tool_dispatch(self.spec, _as_trusted_grant_fixture(call))
 
         allowed_scan = scan()
         self.assertEqual(allowed_scan["result"], "allowed")
@@ -795,7 +795,7 @@ class ContractTest(unittest.TestCase):
                 call["token_scopes"] = token
             if approved is not None:
                 call["approved_scopes"] = approved
-            return mcp_tool_dispatch(self.spec, call)
+            return mcp_tool_dispatch(self.spec, _as_trusted_grant_fixture(call))
 
         operating_callback = callback(operating_grant)
         self.assertEqual(operating_callback["result"], "allowed")
@@ -900,15 +900,17 @@ class ContractTest(unittest.TestCase):
         publication["grant"]["upload_ids"] = ["up-1"]
         owned = mcp_tool_dispatch(
             self.spec,
-            {
-                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder", token_scopes=["files:write"], approved_scopes=["files:write"]),
-                "tool": "getFileUpload",
-                "module_scopes": ["files:write"],
-                "registered": True,
-                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
-                "owner": {"type": "module", "id": "drop-folder"},
-                "arguments": {"task_authorization": publication["grant"], "path": {"upload_id": "up-1"}},
-            },
+            _as_trusted_grant_fixture(
+                {
+                    **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder", token_scopes=["files:write"], approved_scopes=["files:write"]),
+                    "tool": "getFileUpload",
+                    "module_scopes": ["files:write"],
+                    "registered": True,
+                    "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                    "owner": {"type": "module", "id": "drop-folder"},
+                    "arguments": {"task_authorization": publication["grant"], "path": {"upload_id": "up-1"}},
+                }
+            ),
         )
         self.assertEqual(owned["result"], "allowed")
         self.assertTrue(owned["effects"])
@@ -925,14 +927,16 @@ class ContractTest(unittest.TestCase):
         self.assertFalse(fabricated["effects"])
         revoked_publication = mcp_tool_dispatch(
             self.spec,
-            {
-                **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder"),
-                "tool": "getFileUpload",
-                "module_scopes": ["files:write"],
-                "registered": True,
-                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
-                "arguments": {"task_authorization": {**publication["grant"], "revoked": True}, "path": {"upload_id": "up-1"}},
-            },
+            _as_trusted_grant_fixture(
+                {
+                    **bearer(viewer_present=False, module_id="drop-folder", caller_module_id="drop-folder"),
+                    "tool": "getFileUpload",
+                    "module_scopes": ["files:write"],
+                    "registered": True,
+                    "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                    "arguments": {"task_authorization": {**publication["grant"], "revoked": True}, "path": {"upload_id": "up-1"}},
+                }
+            ),
         )
         self.assertEqual(revoked_publication["result"], "forbidden")
         self.assertFalse(revoked_publication["effects"])
@@ -4028,12 +4032,14 @@ class ContractTest(unittest.TestCase):
         def mcp_get(arguments, **overrides):
             self.assertIsNone(mcp_credential_rejection(arguments))
             task = arguments.get("task_authorization")
+            if isinstance(task, dict) or isinstance(task, bool):
+                return "forbidden"
             http_call = {
                 "registered": True,
                 "subscriptions": ["file.version_created"],
                 "caller_module_id": overrides.get("caller_module_id", "malware"),
                 "module_scopes": ["files:read", "files:write"],
-                "grant": task,
+                "grant": overrides.get("claims"),
                 "matter_id": "matter-1",
                 "file_id": "file-1",
                 "version_id": "ver-1",
@@ -4043,12 +4049,13 @@ class ContractTest(unittest.TestCase):
             }
             return _malware_call(malware, operation, http_call)
 
-        allowed_args = {"context_token": "ctx", "task_authorization": grant, "path": {"file_id": "file-1"}, "query": {}}
-        self.assertEqual(mcp_get(allowed_args), "allowed")
+        allowed_args = {"context_token": "ctx", "task_authorization": "scan-token", "path": {"file_id": "file-1"}, "query": {}}
+        self.assertEqual(mcp_get(allowed_args, claims=grant), "allowed")
         self.assertEqual(mcp_get({"context_token": "ctx", "path": {}, "query": {}}), "forbidden")
-        self.assertEqual(mcp_get({"task_authorization": {**grant, "expired": True}}), "forbidden")
-        self.assertEqual(mcp_get({"task_authorization": grant}, caller_module_id="other-module"), "forbidden")
-        self.assertEqual(_malware_call(malware, operation, {"registered": True, "subscriptions": ["file.version_created"], "caller_module_id": "malware", "module_scopes": ["files:read", "files:write"], "grant": grant, "matter_id": "matter-1", "file_id": "file-1", "version_id": "ver-1", "operation": "getFile", "field": "name"}), mcp_get(allowed_args))
+        self.assertEqual(mcp_get({"task_authorization": grant}), "forbidden")
+        self.assertEqual(mcp_get({"task_authorization": "scan-token"}, claims={**grant, "expired": True}), "forbidden")
+        self.assertEqual(mcp_get({"task_authorization": "scan-token"}, claims=grant, caller_module_id="other-module"), "forbidden")
+        self.assertEqual(_malware_call(malware, operation, {"registered": True, "subscriptions": ["file.version_created"], "caller_module_id": "malware", "module_scopes": ["files:read", "files:write"], "grant": grant, "matter_id": "matter-1", "file_id": "file-1", "version_id": "ver-1", "operation": "getFile", "field": "name"}), mcp_get(allowed_args, claims=grant))
         payment_policy = self.spec["x-togavsu-module-delegation"]["noninteractive"]["payment_processor"]
         pay_module = {"registered": True, "module_id": "lawpay", "recipient_id": "lawpay", "approved_scopes": ["payments:write"]}
         pay_grant = processor_issuance(
@@ -7111,7 +7118,7 @@ class ContractTest(unittest.TestCase):
         )
         self.assertTrue(present <= {case["family"] for case in cases})
         for case in cases:
-            decision = mcp_tool_dispatch(self.spec, case["call"])
+            decision = mcp_tool_dispatch(self.spec, _session_csrf(_as_trusted_grant_fixture(case["call"])))
             self.assertEqual(decision["result"], case["result"], case["name"])
             expected_effects = case["effects"] if "effects" in case else case["result"] == "allowed"
             self.assertEqual(decision["effects"], expected_effects, case["name"])
@@ -7679,8 +7686,9 @@ class ContractTest(unittest.TestCase):
                 "credential_valid": True,
                 "role": "staff",
                 "matter_walls": walls,
+                "csrf_verifier": {"valid": True, "token": "csrf-1"},
                 "tool": "bulkTimeEntry",
-                "arguments": {"body": {"items": items}},
+                "arguments": {"headers": {"X-CSRF-Token": "csrf-1"}, "body": {"items": items}},
                 **extra,
             }
             if membership is not None:
@@ -7710,6 +7718,244 @@ class ContractTest(unittest.TestCase):
         mixed_hidden = batch({source: False, destination: True}, [entry, other], {destination: False})
         self.assertEqual(mixed_hidden["result"], "not_found")
         self.assertFalse(mixed_hidden["effects"])
+
+    def test_trusted_wall_grant_and_csrf(self):
+        source = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        destination = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        version_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3"
+        other_version = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4"
+        event_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa5"
+        activity = "018f1a00-7b3c-7d4e-8a11-121212121212"
+        _component_validator(self.spec, "FileMetadataWrite").validate({"matter_id": None})
+        _component_validator(self.spec, "FileMetadataWrite").validate({"matter_id": destination})
+        _component_validator(self.spec, "ContactWrite").validate({"kind": "person", "given_name": "Ada"})
+        _component_validator(self.spec, "CalendarEventWritePatch").validate({"matter_id": destination})
+        _component_validator(self.spec, "CalendarEventWritePatch").validate({"matter_id": None})
+        issued = {
+            "module_id": "malware",
+            "event_id": event_id,
+            "event_type": "file.version_created",
+            "file_id": file_id,
+            "version_id": version_id,
+            "matter_id": source,
+            "allowed_operations": ["downloadFileVersion"],
+            "allowed_fields": ["name", "extension"],
+            "expires_at": "2026-11-07T18:00:00Z",
+            "revoked": False,
+            "issued_by": "core",
+            "expired": False,
+            "invalid": False,
+        }
+        fabricated = {**issued, "file_id": other_file, "version_id": other_version, "matter_id": destination}
+        _component_validator(self.spec, "TaskAuthorization").validate({key: issued[key] for key in ("module_id", "event_id", "event_type", "file_id", "version_id", "matter_id", "allowed_operations", "allowed_fields", "expires_at", "revoked")})
+        _component_validator(self.spec, "TaskAuthorization").validate({key: fabricated[key] for key in ("module_id", "event_id", "event_type", "file_id", "version_id", "matter_id", "allowed_operations", "allowed_fields", "expires_at", "revoked")})
+        transport = _operation(self.spec, "postMcp")
+        self.assertIn("csrfToken", [_param_name(item) for item in transport["parameters"]])
+        from contract.build import render_mcp
+
+        catalog = render_mcp(self.spec)
+        self.assertEqual(catalog["csrf_header"], "X-CSRF-Token")
+        download = next(tool for tool in catalog["tools"] if tool["name"] == "downloadFileVersion")
+        credential = download["transfer"]["credentials"]["task_authorization"]
+        self.assertEqual(credential["schema"]["type"], "string")
+        self.assertFalse(credential["claims_from_arguments"])
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            self.assertFalse(decision.get("cleared"))
+            return decision
+
+        def file_call(body, **trusted):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["files:write"],
+                "tool": "updateFileMetadata",
+                "arguments": {"path": {"file_id": file_id}, "body": body},
+                **trusted,
+            }
+            return mcp_tool_dispatch(self.spec, raw)
+
+        for label, trusted in (
+            ("null", {"matter_id": source, "matter_walled": None}),
+            ("omitted", {"matter_id": source}),
+            ("string", {"matter_id": source, "matter_walled": "false"}),
+            ("zero", {"matter_id": source, "matter_walled": 0}),
+            ("list map", {"matter_id": source, "matter_walls": ["nope"], "matter_walled": False}),
+            ("null map", {"matter_id": source, "matter_walls": {source: None}, "matter_walled": False}),
+        ):
+            denied = quiet(file_call({"matter_id": None}, **trusted))
+            self.assertEqual(denied["result"], "not_found", label)
+        cleared = file_call({"matter_id": None}, matter_id=source, matter_walled=False)
+        self.assertEqual(cleared["result"], "allowed")
+        self.assertTrue(cleared["effects"])
+        self.assertTrue(cleared["cleared"])
+        on_wall = file_call({"matter_id": None}, matter_id=source, matter_walled=True, matter_membership={source: True})
+        self.assertEqual(on_wall["result"], "allowed")
+        self.assertTrue(on_wall["cleared"])
+        off_wall = quiet(file_call({"matter_id": None}, matter_id=source, matter_walled=True))
+        self.assertEqual(off_wall["result"], "not_found")
+        map_wins = file_call({"matter_id": None}, matter_id=source, matter_walls={source: False}, matter_walled=True)
+        self.assertEqual(map_wins["result"], "allowed")
+        self.assertTrue(map_wins["cleared"])
+        reassign = quiet(file_call({"matter_id": destination}, matter_id=source, matter_walled=False))
+        self.assertEqual(reassign["result"], "not_found")
+        reassign_scalar = quiet(file_call({"matter_id": destination}, matter_id=source, matter_walled=None, matter_walls={destination: False}))
+        self.assertEqual(reassign_scalar["result"], "not_found")
+        created = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["time:write"],
+                "matter_walled": False,
+                "tool": "createTimeEntry",
+                "arguments": {"body": {"matter_id": source, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}},
+            },
+        )
+        self.assertEqual(created["result"], "allowed")
+        self.assertTrue(created["effects"])
+
+        def scan(arguments, **trusted):
+            raw = {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "viewer_present": False,
+                "module_id": "malware",
+                "caller_module_id": "malware",
+                "tool": "downloadFileVersion",
+                "module_scopes": ["files:read"],
+                "token_scopes": ["files:read"],
+                "approved_scopes": ["files:read"],
+                "registered": True,
+                "subscriptions": ["file.version_created"],
+                "matter_id": issued["matter_id"],
+                "arguments": arguments,
+                **trusted,
+            }
+            return mcp_tool_dispatch(self.spec, raw)
+
+        verified = scan(
+            {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}},
+            task_verifier={"valid": True, "credential": "scan-token", "claims": issued},
+        )
+        self.assertEqual(verified["result"], "allowed")
+        self.assertTrue(verified["effects"])
+        for label, arguments, trusted in (
+            ("fabricated", {"task_authorization": fabricated, "path": {"file_id": other_file, "version_id": other_version}}, {"matter_id": destination}),
+            ("override", {"task_authorization": fabricated, "path": {"file_id": other_file, "version_id": other_version}}, {"grant": issued, "matter_id": destination}),
+            ("boolean", {"task_authorization": True, "path": {"file_id": file_id, "version_id": version_id}}, {}),
+            ("unverified", {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}}, {}),
+            ("valid missing", {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}}, {"task_verifier": {"credential": "scan-token", "claims": issued}}),
+            ("invalid", {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}}, {"task_verifier": {"valid": True, "credential": "scan-token", "claims": {**issued, "invalid": True}}}),
+            ("expired", {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}}, {"task_verifier": {"valid": True, "credential": "scan-token", "claims": {**issued, "expired": True}}}),
+            ("revoked", {"task_authorization": "scan-token", "path": {"file_id": file_id, "version_id": version_id}}, {"task_verifier": {"valid": True, "credential": "scan-token", "claims": {**issued, "revoked": True}}}),
+        ):
+            denied = quiet(scan(arguments, **trusted))
+            self.assertEqual(denied["result"], "forbidden", label)
+        unrelated = quiet(
+            scan(
+                {"task_authorization": "scan-token", "path": {"file_id": other_file, "version_id": other_version}},
+                task_verifier={"valid": True, "credential": "scan-token", "claims": issued},
+                matter_id=destination,
+            )
+        )
+        self.assertEqual(unrelated["result"], "not_found")
+
+        def cookie_call(tool, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {"cookie": "togavsu_session", "credential_valid": True, "role": "staff", "tool": tool, "arguments": arguments, **trusted},
+            )
+
+        contact = {"kind": "person", "given_name": "Ada"}
+        missing_csrf = quiet(cookie_call("createContact", {"body": contact}))
+        self.assertEqual(missing_csrf["result"], "csrf_required")
+        flagged = quiet(cookie_call("createContact", {"body": contact, "csrf_valid": True}))
+        self.assertEqual(flagged["result"], "csrf_required")
+        mismatched = quiet(cookie_call("createContact", {"headers": {"X-CSRF-Token": "nope"}, "body": contact}, csrf_verifier={"valid": True, "token": "csrf-1"}))
+        self.assertEqual(mismatched["result"], "csrf_required")
+        created_contact = cookie_call("createContact", {"headers": {"X-CSRF-Token": "csrf-1"}, "body": contact}, csrf_verifier={"valid": True, "token": "csrf-1"})
+        self.assertEqual(created_contact["result"], "allowed")
+        self.assertTrue(created_contact["effects"])
+        listed = cookie_call("listMatter", {})
+        self.assertEqual(listed["result"], "allowed")
+        bearer_contact = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["contacts:write"],
+                "tool": "createContact",
+                "arguments": {"body": contact},
+            },
+        )
+        self.assertEqual(bearer_contact["result"], "allowed")
+        self.assertTrue(bearer_contact["effects"])
+        handler = {"calendar": {"replaced": True, "available": True, "module_id": "cal-mod"}}
+        hidden = quiet(
+            cookie_call(
+                "updateCalendarEvent",
+                {"path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+                matter_id=source,
+                matter_walls={source: False, destination: True},
+                matter_membership={destination: False},
+                domain_handlers=handler,
+            )
+        )
+        self.assertEqual(hidden["result"], "csrf_required")
+        hidden_verified = quiet(
+            cookie_call(
+                "updateCalendarEvent",
+                {"headers": {"X-CSRF-Token": "csrf-1"}, "path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+                csrf_verifier={"valid": True, "token": "csrf-1"},
+                matter_id=source,
+                matter_walls={source: False, destination: True},
+                matter_membership={destination: False},
+                domain_handlers=handler,
+            )
+        )
+        self.assertEqual(hidden_verified["result"], "not_found")
+        routed = cookie_call(
+            "updateCalendarEvent",
+            {"headers": {"X-CSRF-Token": "csrf-1"}, "path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+            csrf_verifier={"valid": True, "token": "csrf-1"},
+            matter_id=source,
+            matter_walls={source: False, destination: False},
+            domain_handlers=handler,
+        )
+        self.assertEqual(routed["result"], "allowed")
+        self.assertFalse(routed["effects"])
+        self.assertEqual(routed["routed"], "cal-mod")
+        bearer_routed = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "staff",
+                "token_scopes": ["calendar:write"],
+                "matter_id": source,
+                "matter_walls": {source: False, destination: False},
+                "domain_handlers": handler,
+                "tool": "updateCalendarEvent",
+                "arguments": {"path": {"calendar_event_id": file_id}, "body": {"matter_id": destination}},
+            },
+        )
+        self.assertEqual(bearer_routed["result"], "allowed")
+        self.assertFalse(bearer_routed["effects"])
+        self.assertEqual(bearer_routed["routed"], "cal-mod")
 
     def test_factor_reset_requires_reauthentication(self):
         reset = _operation(self.spec, "resetTotp")
@@ -7821,6 +8067,27 @@ def _schema_name(node: dict) -> str:
 
 def _schema_name_from_page(operation: dict) -> str:
     return operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"]["data"]["items"]["$ref"].rsplit("/", 1)[1]
+
+
+def _as_trusted_grant_fixture(call: dict, token: str = "fixture-task") -> dict:
+    """Move a fixture claim object into trusted verifier context. A caller dict is not a grant."""
+    arguments = dict(call.get("arguments") or {})
+    task = arguments.get("task_authorization")
+    if not isinstance(task, dict):
+        return call
+    arguments["task_authorization"] = token
+    return {**call, "arguments": arguments, "task_verifier": {"valid": True, "credential": token, "claims": task}}
+
+
+def _session_csrf(call: dict, token: str = "csrf-1") -> dict:
+    """Existing cookie scenarios present a verified token. Bearer calls are unchanged."""
+    if not call.get("cookie") or call.get("authorization"):
+        return call
+    arguments = dict(call.get("arguments") or {})
+    headers = dict(arguments.get("headers") or {})
+    headers.setdefault("X-CSRF-Token", token)
+    arguments["headers"] = headers
+    return {**call, "arguments": arguments, "csrf_verifier": call.get("csrf_verifier") or {"valid": True, "token": token}}
 
 
 def _issue_malware_grant(policy: dict, module: dict) -> dict | None:

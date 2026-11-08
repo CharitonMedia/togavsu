@@ -1,5 +1,6 @@
 {
   "transport": "POST /mcp",
+  "csrf_header": "X-CSRF-Token",
   "tools": [
     {
       "name": "getOpenAPI",
@@ -7757,6 +7758,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -7949,6 +7955,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -10472,6 +10483,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -10527,6 +10543,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -10623,6 +10644,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -10678,6 +10704,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11051,6 +11082,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11247,6 +11283,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11303,6 +11344,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11392,6 +11438,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11538,6 +11589,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11592,6 +11648,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11643,6 +11704,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -11698,6 +11764,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -13619,6 +13690,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -15452,6 +15528,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -15506,6 +15587,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },
@@ -15903,6 +15989,11 @@
           "task_authorization": {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "claims_from_arguments": false,
             "roles_from_arguments": false
           }
         },

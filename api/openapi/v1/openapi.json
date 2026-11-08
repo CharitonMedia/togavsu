@@ -402,11 +402,15 @@
       "post": {
         "operationId": "postMcp",
         "summary": "MCP transport",
-        "description": "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools and need no credential. tools/call runs one OpenAPI operation: params.name is the operationId, and params.arguments carries path parameters, query parameters, idempotency_key, and body. Authorization is decided from that operation before any effect. A public operation, including first-run setup, login, and TOTP enrollment, is reachable with no session and no bearer. Every other tool requires the same session cookie or bearer as its HTTP operation. An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. Arguments must not carry Authorization, Host, or roles. A tool error uses the problem body and sets the JSON-RPC error data to that problem.",
+        "description": "JSON-RPC 2.0 endpoint. initialize and tools/list describe the tools and need no credential. tools/call runs one OpenAPI operation: params.name is the operationId, and params.arguments carries path parameters, query parameters, idempotency_key, and body. Authorization is decided from that operation before any effect. A public operation, including first-run setup, login, and TOTP enrollment, is reachable with no session and no bearer. Every other tool requires the same session cookie or bearer as its HTTP operation. An invalid credential is unauthenticated. Cookie and bearer together are ambiguous_auth. Arguments must not carry Authorization, Host, or roles. A cookie tools/call that changes state sends X-CSRF-Token. The core verifies that token. A caller flag is not proof. A bearer call does not send it. A read-only cookie call does not need it. A tool error uses the problem body and sets the JSON-RPC error data to that problem.",
         "tags": [
           "Platform"
         ],
-        "parameters": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Success.",
@@ -27198,6 +27202,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -27938,6 +27947,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -37092,6 +37106,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -37280,6 +37299,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -37624,6 +37648,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -37811,6 +37840,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -39123,6 +39157,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -39866,6 +39905,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -40069,6 +40113,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -40418,6 +40467,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -40918,6 +40972,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -41067,6 +41126,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -41221,6 +41285,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -41392,6 +41461,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -47381,6 +47455,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -54251,6 +54330,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -54405,6 +54489,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -55991,6 +56080,11 @@
               "task_authorization": {
                 "header": "X-Togavsu-Task-Authorization",
                 "argument": "task_authorization",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "claims_from_arguments": false,
                 "roles_from_arguments": false
               }
             },
@@ -61515,7 +61609,7 @@
       "post": {
         "operationId": "deliverModuleEvent",
         "summary": "Deliver a signed event to a subscribed module.",
-        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the same grant on those later calls. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
+        "description": "Before any WebhookEvent body is serialized, the core checks that the module is installed, subscribed to the event type, approved for that event's read scope, and allowed through the matter wall. An attorney-only conflict record is not serialized. A module that fails any check receives no POST and no record id or summary. The core POSTs the event only after those checks, and only to an installed module whose manifest event_subscriptions include the event type. X-Togavsu-Signature is sha256= plus the lowercase hex HMAC-SHA256 of the raw body bytes, keyed with the module webhook secret. A plain SHA-256 of the body is not accepted. X-Togavsu-Timestamp is unix seconds. Retries follow webhooks.retry_attempts across webhooks.retry_window_hours. The starting values are 8 attempts and 24 hours. For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. That grant is issued by the core for this delivery's module id, event, file, and version. It names the operations and metadata fields the module may call with no iframe and no viewer context. The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. The core verifies that credential. A caller-supplied claim object is not a grant. An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. A revoked module bearer is unauthenticated. A different module id is forbidden. Another matter, file, or version is not_found. An operation outside the grant is forbidden. A field outside the grant is field_locked. An attorney-only field stays not_found. The approved scopes on each operation are still required. The grant is not an admin or firm-wide bypass. file.background_authorized delivers background_file_authorization to the installed module that holds files:write. That grant is one matter the service principal can access, the publication sequence, and an expiry. payment.processor_authorized delivers processor_authorization the same way, to the registered processor only. That grant binds the initialization, payment, matter, contact, amount, and destination. createPayment and updatePaymentStatus may use it with no iframe and no signed-in viewer. An unregistered processor receives no grant. A missing, expired, or revoked grant is forbidden and writes no payment.",
         "x-togavsu-task-delivery": {
           "event_type": "file.version_created",
           "delivered_on": "moduleEvent",
@@ -61911,7 +62005,7 @@
             "schema": {
               "type": "string"
             },
-            "description": "Present on file.version_created and payment.processor_authorized. The same claims are in the matching body field. Absent when the event has no task grant."
+            "description": "Opaque credential. The core verifies it. The issued claim object is in the matching body field. A caller cannot send that object back as proof. Absent when the event has no task grant."
           }
         ],
         "requestBody": {

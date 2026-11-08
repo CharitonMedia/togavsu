@@ -1079,14 +1079,37 @@ def _conditional_scope_code(spec: dict, operation: dict, call: dict) -> str | No
     return None
 
 
+def _resolved_source_wall(subject: dict, matter_id: str) -> bool | None:
+    """Resolved wall boolean for one known matter.
+
+    A matter_walls map wins, including when its value is unresolved. Null, strings, numbers, and a
+    map that is not an object do not fall through to a permissive scalar. An absent map uses the
+    trusted scalar, which must itself be a boolean. Omitted evidence is unresolved.
+    """
+    if "matter_walls" in subject and subject.get("matter_walls") is not None:
+        walls = subject.get("matter_walls")
+        if not isinstance(walls, dict) or matter_id not in walls:
+            return None
+        value = walls[matter_id]
+        return value if type(value) is bool else None
+    if "matter_walled" not in subject:
+        return None
+    value = subject.get("matter_walled")
+    return value if type(value) is bool else None
+
+
 def _item_matter_walled(call: dict, matter_id: str) -> bool | None:
     """A resolved wall boolean, or None when the trusted value is not a boolean.
 
     An id absent from the map stays walled. Null, strings, and numbers are unresolved, not unwalled.
-    The item body is not a source.
+    A map that is not an object does not fall through to the scalar. The item body is not a source.
     """
-    walls = call.get("matter_walls")
-    if isinstance(walls, dict) and matter_id in walls:
+    if "matter_walls" in call and call.get("matter_walls") is not None:
+        walls = call.get("matter_walls")
+        if not isinstance(walls, dict):
+            return None
+        if matter_id not in walls:
+            return True
         value = walls[matter_id]
         return value if type(value) is bool else None
     if call.get("matter_id") == matter_id and "matter_walled" in call:
@@ -1180,6 +1203,8 @@ def grant_scope_denial(call: dict, needed) -> str | None:
 def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     """One decision for the HTTP operation. MCP tools/call uses it before effects."""
     denied = {"effects": False, "public": False}
+    if call.get("_credential_denial"):
+        return {"result": call["_credential_denial"], **denied, "events": []}
     access = operation.get("x-togavsu-access") or {}
     unknown = [key for key in access if key not in SUPPORTED_QUALIFIERS]
     if unknown:
@@ -1231,14 +1256,20 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
         walls = subject.get("matter_walls")
-        if isinstance(matter_id, str) and isinstance(walls, dict):
+        known_source = subject.get("existing_record") and subject.get("stored_matter_state") == "matter" and isinstance(subject.get("stored_matter_id"), str)
+        wall_evidence = "matter_walled" in subject or ("matter_walls" in subject and subject.get("matter_walls") is not None)
+        if known_source:
+            walled = _resolved_source_wall(subject, subject["stored_matter_id"])
+            if walled is None or not matter_visible(subject, {"matter_id": subject["stored_matter_id"], "matter_walled": walled}, single_record=True):
+                return {"result": "not_found", **denied, "events": []}
+        elif isinstance(matter_id, str) and isinstance(walls, dict):
             walled = walls.get(matter_id)
             if matter_id not in walls or type(walled) is not bool or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
                 return {"result": "not_found", **denied, "events": []}
-        elif matter_id is not None or subject.get("matter_walled") or subject.get("matter_membership") is not None:
-            row = {"matter_id": matter_id, "matter_walled": bool(subject.get("matter_walled", subject.get("matter_membership") is not None))}
-            if not matter_visible(subject, row, single_record=matter_id is not None):
-                return {"result": "not_found", **denied}
+        elif wall_evidence and isinstance(matter_id, str):
+            walled = _resolved_source_wall(subject, matter_id)
+            if walled is None or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
+                return {"result": "not_found", **denied, "events": []}
     if operation.get("operationId") == "updateMatter":
         patch = _matter_patch_decision(subject)
         if patch["result"] != "allowed":
@@ -1477,16 +1508,60 @@ def mcp_credential_rejection(arguments: dict) -> str | None:
     return None
 
 
+def _task_grant(call: dict, arguments: dict) -> tuple[dict | None, str | None]:
+    """Opaque task credential. Verified claims come only from trusted context.
+
+    A dictionary, boolean, or other caller value is not a grant and cannot replace one.
+    task_verifier["valid"] must be True and its credential must be the presented string.
+    This model does not check a signature, a clock, or whether the credential was already used.
+    Go verifies the binding to the operation, module, file, version, expiry, and revocation,
+    then passes that explicit result.
+    """
+    if "task_authorization" not in arguments:
+        existing = call.get("grant")
+        return (existing, None) if isinstance(existing, dict) else (None, None)
+    presented = arguments.get("task_authorization")
+    if not isinstance(presented, str) or not presented:
+        return None, "forbidden"
+    verifier = call.get("task_verifier")
+    if not isinstance(verifier, dict) or verifier.get("valid") is not True or verifier.get("credential") != presented:
+        return None, "forbidden"
+    claims = verifier.get("claims")
+    if not isinstance(claims, dict):
+        return None, "forbidden"
+    existing = call.get("grant")
+    if isinstance(existing, dict) and existing != claims:
+        return None, "forbidden"
+    return claims, None
+
+
+def _cookie_csrf_denial(call: dict, arguments: dict) -> str | None:
+    """Cookie writes need a trusted CSRF result. A caller flag is not that result.
+
+    The model does not mint or expire the token. Go checks the session binding and passes valid.
+    """
+    headers = arguments.get("headers") if isinstance(arguments.get("headers"), dict) else {}
+    presented = None
+    for name, value in headers.items():
+        if str(name).lower() == "x-csrf-token":
+            presented = value
+            break
+    verifier = call.get("csrf_verifier")
+    if not isinstance(verifier, dict) or verifier.get("valid") is not True:
+        return "csrf_required"
+    token = verifier.get("token")
+    if not isinstance(presented, str) or not isinstance(token, str) or not presented or presented != token:
+        return "csrf_required"
+    return None
+
+
 def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
     """Credential context plus path, query, and body. Arguments cannot supply a role, wall, or scope."""
     path = arguments.get("path") if isinstance(arguments.get("path"), dict) else {}
     query = arguments.get("query") if isinstance(arguments.get("query"), dict) else {}
     body = arguments.get("body") if isinstance(arguments.get("body"), dict) else {}
     items = body.get("items") if isinstance(body.get("items"), list) else None
-    grant = call.get("grant") if isinstance(call.get("grant"), dict) else None
-    task = arguments.get("task_authorization")
-    if isinstance(task, dict):
-        grant = task
+    grant, credential_denial = _task_grant(call, arguments)
     principal = operation["x-togavsu-access"].get("module_principal") or {}
     action = {"createModuleMarker": "create", "updateModuleMarker": "update", "revokeModuleMarker": "revoke"}.get(operation["operationId"])
     subject = {
@@ -1500,13 +1575,13 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "human_session": bool(call.get("human_session") or call.get("role")),
         "viewer_present": bool(call.get("viewer_present")),
         "grant": grant,
+        "_credential_denial": credential_denial,
         "operation": operation["operationId"],
         "registered": call.get("registered", False),
         "subscriptions": list(call.get("subscriptions") or []),
         "installed": call.get("installed"),
         "token_revoked": call.get("token_revoked"),
         "survivor_id": body.get("survivor_id") if isinstance(body.get("survivor_id"), str) else None,
-        "matter_walled": call.get("matter_walled"),
         "matter_membership": call.get("matter_membership"),
         "on_wall": call.get("on_wall"),
         "owner": call.get("owner"),
@@ -1566,6 +1641,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "queue": body.get("queue", call.get("queue")),
         "replay": bool(call.get("replay")),
     }
+    if "matter_walled" in call:
+        subject["matter_walled"] = call.get("matter_walled")
     if subject.get("credential") == "session":
         subject.pop("token_scopes", None)
     elif "token_scopes" in call:
@@ -1666,6 +1743,8 @@ def mcp_tool_dispatch(spec: dict, call: dict) -> dict:
         return {"result": "allowed", "effects": True, "public": True}
     if not presented_bearer and not presented_cookie:
         return {"result": "unauthenticated", **denied}
+    if presented_cookie and not presented_bearer and operation.get("x-togavsu-writes") and _cookie_csrf_denial(call, arguments):
+        return {"result": "csrf_required", **denied}
     decision = operation_authorization(spec, operation, _mcp_operation_call(call, arguments, operation))
     forwarded = {
         key: decision[key]

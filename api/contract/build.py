@@ -292,7 +292,7 @@ def render_mcp(spec: dict) -> dict:
             if payment_status:
                 tool["payment_status"] = payment_status
             tools.append(tool)
-    return {"transport": "POST /mcp", "tools": tools}
+    return {"transport": "POST /mcp", "csrf_header": "X-CSRF-Token", "tools": tools}
 
 
 def dump(document: dict) -> str:
@@ -330,7 +330,8 @@ def _webhooks() -> dict:
                     "For file.version_created the core also sends X-Togavsu-Task-Authorization and task_authorization in the body. "
                     "That grant is issued by the core for this delivery's module id, event, file, and version. "
                     "It names the operations and metadata fields the module may call with no iframe and no viewer context. "
-                    "The module presents the same grant on those later calls. "
+                    "The module presents the opaque X-Togavsu-Task-Authorization credential on those later calls. "
+                    "The core verifies that credential. A caller-supplied claim object is not a grant. "
                     "An expired grant, a revoked grant, or a grant whose signature does not check is forbidden. "
                     "A revoked module bearer is unauthenticated. "
                     "A different module id is forbidden. Another matter, file, or version is not_found. "
@@ -371,7 +372,7 @@ def _webhooks() -> dict:
                         "in": "header",
                         "required": False,
                         "schema": {"type": "string"},
-                        "description": "Present on file.version_created and payment.processor_authorized. The same claims are in the matching body field. Absent when the event has no task grant.",
+                        "description": "Opaque credential. The core verifies it. The issued claim object is in the matching body field. A caller cannot send that object back as proof. Absent when the event has no task grant.",
                     },
                 ],
                 "requestBody": {

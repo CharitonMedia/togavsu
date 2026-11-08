@@ -833,6 +833,8 @@ def _attach_mcp_transfer(operation: dict) -> None:
         credentials["task_authorization"] = {
             "header": "X-Togavsu-Task-Authorization",
             "argument": "task_authorization",
+            "schema": {"type": "string", "minLength": 1},
+            "claims_from_arguments": False,
             "roles_from_arguments": False,
         }
         arguments.append("task_authorization")

@@ -339,6 +339,8 @@ class Stage1InventoryTest(unittest.TestCase):
                 "merge-wall-boolean",
                 "file-reparent-both-matters",
                 "factor-reauthentication",
+                "opaque-task-credential",
+                "mcp-cookie-csrf",
             },
         )
 
