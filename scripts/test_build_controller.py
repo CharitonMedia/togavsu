@@ -529,7 +529,7 @@ class ControllerTests(unittest.TestCase):
             self.controller.tick()
         self.restart()
         self.remote.agent = lambda r: {"status": "ACTIVE", "run_id": "run-old", "updated_at": "now", "git": {}}
-        with self.advance(91):
+        with self.advance(31):
             self.controller.tick()
         self.assertEqual(self.record["stalled"]["kind"], "active_run")
         self.assertEqual(self.controller.state["health"], "needs_attention")

@@ -442,7 +442,7 @@ class Controller:
                 watch = record["active_watch"] = {"run_id": snapshot.get("run_id"), "since": now()}
                 if record.get("stalled", {}).get("kind") == "active_run":
                     record.pop("stalled")
-            if age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 5400):
+            if age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 1800):
                 record["stalled"] = {"kind": "active_run", "reason":
                     "Cursor run exceeded observation deadline; integration lead must inspect this run before any replacement",
                     "run_id": snapshot.get("run_id"), "since": watch["since"]}
