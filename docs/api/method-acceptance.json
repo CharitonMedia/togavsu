@@ -112,5 +112,6 @@
   "test_concrete_matter_and_selected_files": {"go_owner": "multiple", "tasks": ["practice", "files"], "acceptance": ["AC-003", "AC-039"], "prd": ["8", "8.19"]},
   "test_record_owner_and_client_file_access": {"go_owner": "multiple", "tasks": ["billing", "calendar", "files"], "acceptance": ["AC-008", "AC-011", "AC-039"], "prd": ["8", "8.19"]},
   "test_parent_schema_and_client_file_reads": {"go_owner": "multiple", "tasks": ["billing", "trust", "files"], "acceptance": ["AC-004", "AC-005", "AC-039"], "prd": ["8", "8.19"]},
-  "test_factor_reset_requires_reauthentication": {"go_owner": "identity", "tasks": ["identity"], "acceptance": [], "prd": ["6"], "acceptance_note": "Identity owns two-factor reset. No acceptance id states the reauthentication step."}
+  "test_factor_reset_requires_reauthentication": {"go_owner": "identity", "tasks": ["identity"], "acceptance": [], "prd": ["6"], "acceptance_note": "Identity owns two-factor reset. No acceptance id states the reauthentication step."},
+  "test_trusted_resource_facts_match_the_route": {"go_owner": "multiple", "tasks": ["api", "files", "billing", "trust", "modules"], "acceptance": ["AC-002", "AC-004", "AC-005", "AC-008", "AC-012", "AC-039"], "prd": ["4", "8.3", "8.4", "8.19", "9"]}
 }

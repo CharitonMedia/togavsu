@@ -8610,44 +8610,11 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(quiet(link)["result"], "not_found")
 
     def test_parent_schema_and_client_file_reads(self):
-        from contract.policy import _parent_matter_mode, iter_operations
-
         matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
         foreign = "018f1a00-7b3c-7d4e-8a11-333333333339"
         contact = "018f1a00-7b3c-7d4e-8a11-222222222222"
         file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
         version_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
-        named = {
-            "getInvoice": "required",
-            "updateInvoice": "required",
-            "historyInvoice": "required",
-            "getInvoicePdf": "required",
-            "getTrustEntry": "required",
-            "historyTimeEntry": "required",
-            "getTimeEntry": "required",
-            "updateTimeEntry": "required",
-            "stopTimer": "required",
-            "pauseTimer": "required",
-            "getTimer": "required",
-            "getCalendarEvent": "nullable",
-            "getFile": "nullable",
-            "downloadFileVersion": "nullable",
-            "deleteNotification": "absent",
-            "markNotificationRead": "absent",
-        }
-        found = {}
-        for _method, path, operation in iter_operations(self.spec):
-            if not operation["x-togavsu-access"].get("matter_wall"):
-                continue
-            if not any(part.startswith("{") and part != "{matter_id}" for part in path.split("/")):
-                continue
-            found[operation["operationId"]] = _parent_matter_mode(self.spec, operation)
-        for operation_id, mode in named.items():
-            self.assertEqual(found[operation_id], mode, operation_id)
-        self.assertGreater(len(found), len(named))
-        self.assertNotIn("listMatter", found)
-        self.assertNotIn("createTimeEntry", found)
-        self.assertTrue(all(mode in {"required", "nullable", "absent"} for mode in found.values()))
 
         def quiet(decision):
             self.assertFalse(decision["effects"])
@@ -8761,6 +8728,303 @@ class ContractTest(unittest.TestCase):
             },
         )
         self.assertEqual(staff_read["result"], "allowed")
+
+    def test_trusted_resource_facts_match_the_route(self):
+        """File, invoice, trust-flag, and module-context facts. Expectations are the route and schema rules."""
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        foreign = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        contact = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        version_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9"
+        invoice_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        flag_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa5"
+        entry_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4"
+        time_id = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        timer_id = "018f1a00-7b3c-7d4e-8a11-333333333331"
+        trust_entry_id = "018f1a00-7b3c-7d4e-8a11-222222222221"
+        stamp = "2026-11-07T18:00:00Z"
+        actor = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        _component_validator(self.spec, "ContextTokenRequest").validate({})
+        _component_validator(self.spec, "ContextTokenRequest").validate({"matter_id": None})
+        _component_validator(self.spec, "ContextTokenRequest").validate({"matter_id": matter})
+        _component_validator(self.spec, "FileMetadataWrite").validate({"attorney_only": False})
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def call(tool, role, scopes, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        def file_row(**flags):
+            row = {
+                "id": file_id,
+                "matter_id": matter,
+                "matter_walled": False,
+                "attorney_only": False,
+                "shared_with_client": True,
+                "quarantined": False,
+                "contact_id": contact,
+            }
+            row.update(flags)
+            return row
+
+        hidden = file_row(attorney_only=True)
+        for tool, scopes, arguments in (
+            ("getFile", ["files:read"], {"path": {"file_id": file_id}}),
+            ("downloadFileVersion", ["files:read"], {"path": {"file_id": file_id, "version_id": version_id}, "query": {"confirm_quarantine": True}}),
+            ("downloadFileRendition", ["files:read"], {"path": {"file_id": file_id, "rendition_id": version_id}, "query": {"confirm_quarantine": True}}),
+            ("historyFile", ["files:read"], {"path": {"file_id": file_id}}),
+            ("listFileVersions", ["files:read"], {"path": {"file_id": file_id}}),
+            ("updateFileMetadata", ["files:write"], {"path": {"file_id": file_id}, "body": {"attorney_only": False}}),
+        ):
+            omitted = quiet(call(tool, "staff", scopes, arguments, stored_file=hidden))
+            self.assertEqual(omitted["result"], "not_found", tool)
+            forced = quiet(call(tool, "staff", scopes, arguments, stored_file=hidden, attorney_only=False))
+            self.assertEqual(forced["result"], "not_found", tool)
+            if tool != "updateFileMetadata":
+                client_hidden = quiet(call(tool, "client", scopes, arguments, stored_file=hidden, client_matter_ids=[matter], shared=True, owner="self"))
+                self.assertEqual(client_hidden["result"], "not_found", tool)
+            attorney = call(tool, "attorney", scopes, arguments, stored_file=hidden, attorney_only=False)
+            self.assertEqual(attorney["result"], "allowed", tool)
+            self.assertTrue(attorney["effects"], tool)
+        ordinary = call("getFile", "staff", ["files:read"], {"path": {"file_id": file_id}}, stored_file=file_row())
+        self.assertEqual(ordinary["result"], "allowed")
+        self.assertTrue(ordinary["effects"])
+        client_own = call(
+            "getFile",
+            "client",
+            ["files:read"],
+            {"path": {"file_id": file_id}},
+            stored_file=file_row(),
+            client_matter_ids=[matter],
+            client_contact_id=contact,
+        )
+        self.assertEqual(client_own["result"], "allowed")
+        self.assertTrue(client_own["effects"])
+        mismatch = quiet(call("getFile", "staff", ["files:read"], {"path": {"file_id": file_id}}, stored_file=file_row(id=other_file)))
+        self.assertEqual(mismatch["result"], "not_found")
+        missing_flag = file_row()
+        missing_flag.pop("attorney_only")
+        invalid = quiet(call("getFile", "staff", ["files:read"], {"path": {"file_id": file_id}}, stored_file=missing_flag, attorney_only=False))
+        self.assertEqual(invalid["result"], "not_found")
+        held = quiet(
+            call(
+                "downloadFileVersion",
+                "staff",
+                ["files:read"],
+                {"path": {"file_id": file_id, "version_id": version_id}},
+                stored_file=file_row(quarantined=True),
+                quarantined=True,
+            )
+        )
+        self.assertEqual(held["result"], "quarantine_confirmation_required")
+        released = call(
+            "downloadFileVersion",
+            "staff",
+            ["files:read"],
+            {"path": {"file_id": file_id, "version_id": version_id}, "query": {"confirm_quarantine": True}},
+            stored_file=file_row(quarantined=True),
+            quarantined=True,
+            confirm=True,
+        )
+        self.assertEqual(released["result"], "allowed")
+        self.assertTrue(released["effects"])
+        archive_hidden = quiet(
+            call(
+                "createFileArchive",
+                "staff",
+                ["files:read"],
+                {"body": {"file_ids": [file_id]}},
+                stored_files=[file_row(attorney_only=True)],
+                attorney_only=False,
+            )
+        )
+        self.assertEqual(archive_hidden["result"], "not_found")
+        link_hidden = quiet(
+            call(
+                "createFileLink",
+                "staff",
+                ["files:write"],
+                {"path": {"file_id": file_id}, "body": {"to_file_id": other_file, "relationship": "attachment", "attorney_only": False}},
+                stored_files=[file_row(attorney_only=True), file_row(id=other_file)],
+                attorney_only=False,
+            )
+        )
+        self.assertEqual(link_hidden["result"], "not_found")
+
+        def invoice(tool, role, scopes, arguments, **trusted):
+            return call(tool, role, scopes, arguments, **trusted)
+
+        spoof = {"shared": True, "owner": "self", "client_matter_ids": []}
+        for tool, scopes, arguments in (
+            ("getInvoice", ["invoices:read"], {"path": {"invoice_id": invoice_id}}),
+            ("historyInvoice", ["invoices:read"], {"path": {"invoice_id": invoice_id}}),
+            ("getInvoicePdf", ["invoices:read"], {"path": {"invoice_id": invoice_id}, "query": {"confirm_quarantine": True}}),
+        ):
+            missing = quiet(invoice(tool, "client", scopes, arguments, matter_id=foreign, matter_walled=False))
+            self.assertEqual(missing["result"], "not_found", tool)
+            empty = quiet(invoice(tool, "client", scopes, arguments, matter_id=foreign, matter_walled=False, **spoof))
+            self.assertEqual(empty["result"], "not_found", tool)
+            foreign_list = quiet(invoice(tool, "client", scopes, arguments, matter_id=foreign, matter_walled=False, client_matter_ids=[matter], shared=True, owner="self"))
+            self.assertEqual(foreign_list["result"], "not_found", tool)
+            ambiguous = quiet(invoice(tool, "client", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter, matter]))
+            self.assertEqual(ambiguous["result"], "not_found", tool)
+            malformed = quiet(invoice(tool, "client", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter, None]))
+            self.assertEqual(malformed["result"], "not_found", tool)
+            own = invoice(tool, "client", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter])
+            self.assertEqual(own["result"], "allowed", tool)
+            self.assertTrue(own["effects"], tool)
+            walled = quiet(invoice(tool, "client", scopes, arguments, matter_id=matter, matter_walls={matter: True}, matter_membership={matter: False}, client_matter_ids=[matter], shared=True))
+            self.assertEqual(walled["result"], "not_found", tool)
+        listed_missing = quiet(invoice("listInvoice", "client", ["invoices:read"], {}))
+        self.assertEqual(listed_missing["result"], "not_found")
+        listed = invoice("listInvoice", "client", ["invoices:read"], {}, client_matter_ids=[matter])
+        self.assertEqual(listed["result"], "allowed")
+        self.assertTrue(listed["effects"])
+        listed_foreign = quiet(invoice("listInvoice", "client", ["invoices:read"], {"query": {"matter_id": foreign}}, client_matter_ids=[matter], shared=True, owner="self"))
+        self.assertEqual(listed_foreign["result"], "not_found")
+        staff_invoice = invoice("getInvoice", "staff", ["invoices:read"], {"path": {"invoice_id": invoice_id}}, matter_id=matter, matter_walled=False)
+        self.assertEqual(staff_invoice["result"], "allowed")
+        accountant_invoice = invoice("getInvoice", "accountant", ["invoices:read"], {"path": {"invoice_id": invoice_id}}, matter_id=matter, matter_walled=False)
+        self.assertEqual(accountant_invoice["result"], "allowed")
+        client_write = quiet(invoice("updateInvoice", "client", ["invoices:write"], {"path": {"invoice_id": invoice_id}, "body": {}}, matter_id=matter, matter_walled=False, client_matter_ids=[matter]))
+        self.assertEqual(client_write["result"], "forbidden")
+
+        def flag(scope, **extra):
+            row = {
+                "id": flag_id,
+                "created_at": stamp,
+                "created_by": actor,
+                "updated_at": stamp,
+                "trust_entry_id": entry_id,
+                "balance_cents": -5,
+                "scope": scope,
+                "status": "open",
+            }
+            row.update(extra)
+            return row
+
+        client_flag = flag("client", client_id=contact)
+        account_flag = flag("account", trust_account_id=account)
+        matter_flag = flag("matter", client_id=contact, matter_id=matter)
+        _component_validator(self.spec, "TrustFlag").validate(client_flag)
+        _component_validator(self.spec, "TrustFlag").validate(account_flag)
+        _component_validator(self.spec, "TrustFlag").validate(matter_flag)
+        for stored, label in ((client_flag, "client"), (account_flag, "account")):
+            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored)
+            self.assertEqual(read["result"], "allowed", label)
+            self.assertTrue(read["effects"], label)
+            resolved = call(
+                "resolveTrustFlag",
+                "attorney",
+                ["trust:write"],
+                {"path": {"trust_flag_id": flag_id}, "body": {"note": "Corrected offline"}},
+                stored_record=stored,
+            )
+            self.assertEqual(resolved["result"], "allowed", label)
+            self.assertTrue(resolved["effects"], label)
+        matter_read = call(
+            "getTrustFlag",
+            "staff",
+            ["trust:read"],
+            {"path": {"trust_flag_id": flag_id}},
+            stored_record=matter_flag,
+            matter_walled=False,
+        )
+        self.assertEqual(matter_read["result"], "allowed")
+        self.assertTrue(matter_read["effects"])
+        matter_hidden = quiet(
+            call(
+                "getTrustFlag",
+                "staff",
+                ["trust:read"],
+                {"path": {"trust_flag_id": flag_id}},
+                stored_record=matter_flag,
+                matter_walls={matter: True},
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(matter_hidden["result"], "not_found")
+        for stored in (
+            None,
+            flag("firm"),
+            flag("matter", client_id=contact),
+            flag("client"),
+            flag("client", client_id=contact, matter_id=matter),
+            flag("account"),
+        ):
+            trusted = {} if stored is None else {"stored_record": stored}
+            denied_flag = quiet(call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, matter_walled=False, **trusted))
+            self.assertEqual(denied_flag["result"], "not_found")
+        listed_flags = call("listTrustFlag", "staff", ["trust:read"], {})
+        self.assertEqual(listed_flags["result"], "allowed")
+        self.assertTrue(listed_flags["effects"])
+
+        open_token = call("createModuleContextToken", "staff", ["modules:read"], {"path": {"module_id": "intake"}, "body": {}})
+        self.assertEqual(open_token["result"], "allowed")
+        self.assertTrue(open_token["effects"])
+        self.assertFalse(open_token.get("reparented"))
+        null_token = call("createModuleContextToken", "staff", ["modules:read"], {"path": {"module_id": "intake"}, "body": {"matter_id": None}})
+        self.assertEqual(null_token["result"], "allowed")
+        self.assertTrue(null_token["effects"])
+        scoped = call(
+            "createModuleContextToken",
+            "staff",
+            ["modules:read"],
+            {"path": {"module_id": "intake"}, "body": {"matter_id": matter}},
+            matter_walls={matter: False},
+        )
+        self.assertEqual(scoped["result"], "allowed")
+        self.assertTrue(scoped["effects"])
+        self.assertFalse(scoped.get("reparented"))
+        unknown_matter = quiet(call("createModuleContextToken", "staff", ["modules:read"], {"path": {"module_id": "intake"}, "body": {"matter_id": matter}}))
+        self.assertEqual(unknown_matter["result"], "not_found")
+        walled_matter = quiet(
+            call(
+                "createModuleContextToken",
+                "staff",
+                ["modules:read"],
+                {"path": {"module_id": "intake"}, "body": {"matter_id": matter}},
+                matter_walls={matter: True},
+                matter_membership={matter: False},
+            )
+        )
+        self.assertEqual(walled_matter["result"], "not_found")
+        for tool, scopes, path in (
+            ("getInvoice", ["invoices:read"], {"invoice_id": invoice_id}),
+            ("getTrustEntry", ["trust:read"], {"trust_entry_id": trust_entry_id}),
+            ("stopTimer", ["time:write"], {"timer_id": timer_id}),
+            ("historyTimeEntry", ["time:read"], {"time_entry_id": time_id}),
+            ("getTimeEntry", ["time:read"], {"time_entry_id": time_id}),
+        ):
+            denied_parent = quiet(call(tool, "staff", scopes, {"path": path}))
+            self.assertEqual(denied_parent["result"], "not_found", tool)
+            allowed_parent = call(tool, "staff", scopes, {"path": path}, matter_id=matter, matter_walled=False)
+            self.assertEqual(allowed_parent["result"], "allowed", tool)
+            self.assertTrue(allowed_parent["effects"], tool)
+        unassigned_event = call("getCalendarEvent", "staff", ["calendar:read"], {"path": {"calendar_event_id": time_id}}, matter_id=None)
+        self.assertEqual(unassigned_event["result"], "allowed")
+        self.assertTrue(unassigned_event["effects"])
+        staff_list = call("listInvoice", "staff", ["invoices:read"], {})
+        self.assertEqual(staff_list["result"], "allowed")
+        self.assertTrue(staff_list["effects"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

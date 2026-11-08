@@ -11,29 +11,29 @@
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
   "counting": {
-    "contract_test_methods_including_setup": 115,
-    "unittest_tests": 114,
+    "contract_test_methods_including_setup": 116,
+    "unittest_tests": 115,
     "setup_methods": 1,
-    "meaning": "115 ContractTest methods are 114 unittest tests plus 1 setUpClass.",
+    "meaning": "116 ContractTest methods are 115 unittest tests plus 1 setUpClass.",
     "top_level_helpers": 25,
-    "nested_functions_inside_test_methods": 54,
+    "nested_functions_inside_test_methods": 59,
     "nested_structural_helpers_inside_top_level_helpers": [
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 8899,
+        "line": 9163,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 8922,
+        "line": 9186,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 9038,
+        "line": 9302,
         "structural": true
       }
     ],
@@ -41,7 +41,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 3255,
+        "line": 3441,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -59,7 +59,7 @@
       "module_ui_targets": "sidebar_entries"
     },
     "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
-    "behavioral_methods": 59,
+    "behavioral_methods": 60,
     "behavioral_methods_are_not_scenarios": true,
     "converted_for_retirement": 0,
     "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one."
@@ -67,15 +67,15 @@
   "counts": {
     "contract_tests": 56,
     "simulator_tests": 1,
-    "mixed_tests": 58,
-    "test_methods": 115,
-    "behavioral_methods": 59,
+    "mixed_tests": 59,
+    "test_methods": 116,
+    "behavioral_methods": 60,
     "local_helpers": 25,
     "simulator_helpers": 9,
-    "nested_helpers": 54,
-    "blocking_gaps": 59,
-    "explicit_cases_in_behavioral_methods": 262,
-    "assertion_calls_in_behavioral_methods": 2023,
+    "nested_helpers": 59,
+    "blocking_gaps": 60,
+    "explicit_cases_in_behavioral_methods": 278,
+    "assertion_calls_in_behavioral_methods": 2079,
     "runtime_fixtures": 52
   },
   "artifacts": {
@@ -3060,7 +3060,7 @@
       "id": "ContractTest.test_parent_schema_and_client_file_reads",
       "source": "api/tests/test_contract.py",
       "line": 8612,
-      "end_line": 8763,
+      "end_line": 8730,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3075,9 +3075,43 @@
       ],
       "source_line_basis": "current_worktree",
       "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
-      "assertion_count": 26,
-      "loop_count": 3,
+      "assertion_count": 21,
+      "loop_count": 1,
       "explicit_case_count": 5,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "source": "api/tests/test_contract.py",
+      "line": 8732,
+      "end_line": 9027,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-002",
+        "AC-004",
+        "AC-005",
+        "AC-008",
+        "AC-012",
+        "AC-039"
+      ],
+      "prd": [
+        "4",
+        "8.3",
+        "8.4",
+        "8.19",
+        "9"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 61,
+      "loop_count": 5,
+      "explicit_case_count": 16,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
       "gap": "Pending. This method is not converted. The source index does not make it complete.",
@@ -3093,122 +3127,122 @@
     },
     {
       "name": "_operation",
-      "line": 8766,
+      "line": 9030,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 8773,
+      "line": 9037,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 8779,
+      "line": 9043,
       "kind": "contract_helper"
     },
     {
       "name": "_as_trusted_grant_fixture",
-      "line": 8783,
+      "line": 9047,
       "kind": "contract_helper"
     },
     {
       "name": "_session_csrf",
-      "line": 8793,
+      "line": 9057,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 8802,
+      "line": 9066,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 8823,
+      "line": 9087,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 8827,
+      "line": 9091,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 8836,
+      "line": 9100,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 8844,
+      "line": 9108,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 8863,
+      "line": 9127,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 8869,
+      "line": 9133,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 8891,
+      "line": 9155,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 8915,
+      "line": 9179,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 8937,
+      "line": 9201,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 8958,
+      "line": 9222,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 8975,
+      "line": 9239,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 8983,
+      "line": 9247,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 8992,
+      "line": 9256,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 9006,
+      "line": 9270,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 9019,
+      "line": 9283,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 9028,
+      "line": 9292,
       "kind": "simulator_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 9035,
+      "line": 9299,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 9054,
+      "line": 9318,
       "kind": "contract_helper"
     }
   ],
@@ -3466,22 +3500,47 @@
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "quiet",
-      "line": 8652
+      "line": 8619
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "staff",
-      "line": 8658
+      "line": 8625
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "file_row",
-      "line": 8703
+      "line": 8670
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "client_read",
-      "line": 8716
+      "line": 8683
+    },
+    {
+      "test": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "name": "quiet",
+      "line": 8754
+    },
+    {
+      "test": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "name": "call",
+      "line": 8760
+    },
+    {
+      "test": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "name": "file_row",
+      "line": 8775
+    },
+    {
+      "test": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "name": "invoice",
+      "line": 8872
+    },
+    {
+      "test": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "name": "flag",
+      "line": 8910
     }
   ],
   "behavioral_helpers": [
@@ -3554,7 +3613,8 @@
     "ContractTest.test_transport_link_and_matter_grant",
     "ContractTest.test_concrete_matter_and_selected_files",
     "ContractTest.test_record_owner_and_client_file_access",
-    "ContractTest.test_parent_schema_and_client_file_reads"
+    "ContractTest.test_parent_schema_and_client_file_reads",
+    "ContractTest.test_trusted_resource_facts_match_the_route"
   ],
   "hidden_runtime_consumers": [],
   "non_python_consumers": [],

@@ -1321,6 +1321,77 @@ def grant_scope_denial(call: dict, needed) -> str | None:
     return None
 
 
+def _bind_file_row_restrictions(operation: dict, subject: dict) -> str | None:
+    """Copy file restrictions from the trusted row. A caller flag cannot replace them.
+
+    Archive and link authorize every selected row in their own binders. Invoice PDF is not a file row.
+    """
+    access = operation.get("x-togavsu-access") or {}
+    if access.get("access_inherits") != "file":
+        return None
+    if operation.get("operationId") in {"getInvoicePdf", "createFileLink", "createFileArchive"}:
+        return None
+    file_id = subject.get("file_id")
+    rows: list[dict] = []
+    one = subject.get("stored_file")
+    if isinstance(one, dict):
+        rows.append(one)
+    rows.extend(row for row in subject.get("stored_files") or [] if isinstance(row, dict))
+    if not rows or not isinstance(file_id, str) or not file_id:
+        return None
+    matches = [row for row in rows if row.get("id") == file_id or row.get("file_id") == file_id]
+    if len(matches) != 1:
+        return "not_found"
+    row = matches[0]
+    if type(row.get("attorney_only")) is not bool:
+        return "not_found"
+    subject["attorney_only"] = row["attorney_only"]
+    if type(row.get("shared_with_client")) is bool:
+        subject["shared"] = row["shared_with_client"]
+    return None
+
+
+def _trusted_client_matters(subject: dict) -> list[str] | None:
+    """The authenticated client's matters. Empty, null, duplicate, or non-string membership is not a grant."""
+    raw = subject.get("client_matter_ids")
+    if not isinstance(raw, list) or not raw:
+        return None
+    if any(type(item) is not str or not item for item in raw):
+        return None
+    if len(set(raw)) != len(raw):
+        return None
+    return raw
+
+
+def _invoice_client_read(spec: dict, operation: dict) -> bool:
+    """Client reads of an invoice. A new read under /api/v1/invoices uses this same rule."""
+    access = operation.get("x-togavsu-access") or {}
+    if access.get("client") != "shared" or "client" not in (access.get("roles") or []):
+        return False
+    if operation.get("x-togavsu-writes"):
+        return False
+    path = _operation_path(spec, operation) or ""
+    return path == "/api/v1/invoices" or path.startswith("/api/v1/invoices/")
+
+
+def _invoice_relationship_denial(subject: dict) -> str | None:
+    """None when this client is tied to the invoice matter. Caller owner and shared flags are ignored."""
+    matters = _trusted_client_matters(subject)
+    if matters is None:
+        return "not_found"
+    if "filter_matter_id" in subject:
+        requested = subject.get("filter_matter_id")
+        if type(requested) is not str or requested not in matters:
+            return "not_found"
+        return None
+    if subject.get("existing_record"):
+        if subject.get("stored_matter_state") != "matter" or type(subject.get("stored_matter_id")) is not str:
+            return "not_found"
+        if subject["stored_matter_id"] not in matters:
+            return "not_found"
+    return None
+
+
 def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     """One decision for the HTTP operation. MCP tools/call uses it before effects."""
     denied = {"effects": False, "public": False}
@@ -1333,6 +1404,8 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if access.get("admin_bypasses_wall") or access.get("firmwide_bypass") or access.get("grants_admin"):
         return {"result": "forbidden", **denied}
     subject = dict(call)
+    if _is_matter_free_create(spec, operation):
+        subject["existing_record"] = False
     if subject.get("module_id") and subject.get("grant_revoked"):
         return {"result": "forbidden", **denied}
     workflow = _workflow_code(spec, operation, subject)
@@ -1374,9 +1447,17 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         return _totp_reset_authorization(operation, subject)
     if operation.get("operationId") == "regenerateRecoveryCodes":
         return _recovery_regeneration_authorization(operation, subject)
+    file_lookup = _bind_file_row_restrictions(operation, subject)
+    if file_lookup:
+        return {"result": file_lookup, **denied, "events": []}
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
+        variant = _variant_matter_requirement(spec, operation, subject)
+        if variant == "deny":
+            return {"result": "not_found", **denied, "events": []}
         matter_id = None
-        if subject.get("existing_record"):
+        if variant == "none":
+            matter_id = None
+        elif subject.get("existing_record"):
             state = subject.get("stored_matter_state")
             mode = _parent_matter_mode(spec, operation)
             if mode == "absent":
@@ -1415,7 +1496,13 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         return {"result": "not_found", **denied}
     if client in {"own", "own_matter"} and role == "client" and subject.get("owner") not in (None, "self"):
         return {"result": "not_found", **denied}
-    if client == "shared" and role == "client" and access.get("access_inherits") == "file" and subject.get("file_id"):
+    if _invoice_client_read(spec, operation) and role == "client":
+        if _invoice_relationship_denial(subject):
+            return {"result": "not_found", **denied, "events": []}
+        # The relationship is the grant. A caller owner or shared flag is not.
+        subject["shared"] = True
+        subject["owner"] = "self"
+    elif client == "shared" and role == "client" and access.get("access_inherits") == "file" and subject.get("file_id"):
         row = _stored_file_for_request(subject)
         if row is None or _client_file_denied(subject, row):
             return {"result": "not_found", **denied, "events": []}
@@ -1448,7 +1535,7 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     allowed = {"result": "allowed", "effects": True, "public": False}
     if subject.get("_patch_events") is not None:
         allowed["events"] = subject["_patch_events"]
-    elif subject.get("destination_requested") and subject.get("requested_matter_id") != subject.get("stored_matter_id"):
+    elif subject.get("existing_record") and subject.get("destination_requested") and subject.get("requested_matter_id") != subject.get("stored_matter_id"):
         allowed["events"] = list(operation.get("x-togavsu-events") or [])
         if subject.get("requested_matter_id") is None:
             allowed["cleared"] = True
@@ -1721,7 +1808,10 @@ def _parent_item_schema(spec: dict, operation: dict) -> dict | None:
 
 
 def _parent_matter_mode(spec: dict, operation: dict) -> str:
-    """required, nullable, or absent. A wrapper or oneOf does not make a matter-bound record matter-free."""
+    """required, nullable, or absent. A wrapper or oneOf does not make a matter-bound record matter-free.
+
+    Scope-discriminated records do not use this union. _variant_matter_requirement reads the trusted variant.
+    """
     modes = _collect_matter_modes(spec, _response_record_schema(spec, operation) or {})
     parent = _parent_item_schema(spec, operation)
     if parent:
@@ -1733,6 +1823,98 @@ def _parent_matter_mode(spec: dict, operation: dict) -> str:
     if (operation.get("x-togavsu-access") or {}).get("access_inherits") == "file":
         return "nullable"
     return "absent"
+
+
+def _method_and_path(spec: dict, operation: dict) -> tuple[str | None, str | None]:
+    for path, item in spec.get("paths", {}).items():
+        if not isinstance(item, dict):
+            continue
+        for method, candidate in item.items():
+            if method.startswith("x-") or not isinstance(candidate, dict):
+                continue
+            if candidate.get("operationId") == operation.get("operationId"):
+                return method, path
+    return None, None
+
+
+def _record_schema_has_matter(spec: dict, schema: dict) -> bool:
+    """True when this record itself has matter_id. Nested wrappers are not a parent matter."""
+    schema = _deref_schema(spec, schema)
+    branches = schema.get("oneOf") or schema.get("anyOf") or []
+    if branches:
+        return any(_record_schema_has_matter(spec, branch) for branch in branches if isinstance(branch, dict))
+    return "matter_id" in (schema.get("properties") or {})
+
+
+def _is_matter_free_create(spec: dict, operation: dict) -> bool:
+    """A create whose parent resource stores no matter. The path id is not a stored matter target."""
+    method, path = _method_and_path(spec, operation)
+    if method != "post" or not str(operation.get("operationId") or "").startswith("create"):
+        return False
+    if not path or "{" not in path:
+        return False
+    parent = _parent_item_schema(spec, operation)
+    if not isinstance(parent, dict):
+        return False
+    return not _record_schema_has_matter(spec, parent)
+
+
+def _scope_variants(spec: dict, schema: dict) -> dict[str, dict] | None:
+    """scope const branches, or None when the record is not a scope discriminator."""
+    schema = _deref_schema(spec, schema)
+    branches = schema.get("oneOf")
+    if not isinstance(branches, list) or len(branches) < 2:
+        return None
+    found: dict[str, dict] = {}
+    for branch in branches:
+        if not isinstance(branch, dict):
+            return None
+        branch = _deref_schema(spec, branch)
+        scope = (branch.get("properties") or {}).get("scope")
+        if not isinstance(scope, dict) or type(scope.get("const")) is not str:
+            return None
+        found[scope["const"]] = branch
+    return found or None
+
+
+def _variant_matter_requirement(spec: dict, operation: dict, subject: dict) -> str | None:
+    """matter, none, or deny for a scope-discriminated existing record. None for every other operation.
+
+    The trusted stored record selects the branch. An unknown or mismatched branch fails closed.
+    """
+    if not subject.get("existing_record"):
+        return None
+    variants = _scope_variants(spec, _response_record_schema(spec, operation) or {})
+    if not variants:
+        return None
+    record = subject.get("stored_record")
+    if not isinstance(record, dict):
+        return "deny"
+    scope = record.get("scope")
+    branch = variants.get(scope) if type(scope) is str else None
+    if branch is None:
+        return "deny"
+    props = branch.get("properties") or {}
+    matter = record.get("matter_id", None)
+    if "matter_id" in props:
+        client = record.get("client_id")
+        if type(matter) is not str or not matter or ("client_id" in props and (type(client) is not str or not client)):
+            return "deny"
+        subject["stored_matter_state"] = "matter"
+        subject["stored_matter_id"] = matter
+        subject["matter_id"] = matter
+        if type(record.get("matter_walled")) is bool and "matter_walled" not in subject:
+            subject["matter_walled"] = record["matter_walled"]
+        return "matter"
+    if type(matter) is str and matter:
+        return "deny"
+    for name in ("client_id", "trust_account_id"):
+        if name not in props:
+            continue
+        value = record.get(name)
+        if type(value) is not str or not value:
+            return "deny"
+    return "none"
 
 
 def _credential_kind(call: dict) -> str | None:
@@ -1982,6 +2164,10 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
     for key in _PRESERVED_CONTEXT:
         if key in call:
             subject[key] = call[key]
+    if isinstance(call.get("stored_record"), dict):
+        subject["stored_record"] = dict(call["stored_record"])
+    if operation.get("operationId") == "listInvoice" and "matter_id" in query:
+        subject["filter_matter_id"] = query.get("matter_id")
     path_matter = path.get("matter_id") if isinstance(path.get("matter_id"), str) else None
     resource_update = any(key != "matter_id" for key in path)
     subject["existing_record"] = resource_update

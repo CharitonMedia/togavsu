@@ -6734,14 +6734,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8612-8763",
+      "source": "api/tests/test_contract.py:8612-8730",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 26,
-      "loop_count": 3,
+      "assertion_call_sites": 21,
+      "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8673,
+          "line": 8640,
           "literal_rows": 5,
           "rows": [
             [
@@ -6831,10 +6831,6 @@
         }
       ],
       "assertion_statements": [
-        "self.assertGreater(len(found), len(named))",
-        "self.assertNotIn(\"listMatter\", found)",
-        "self.assertNotIn(\"createTimeEntry\", found)",
-        "self.assertTrue(all(mode in {\"required\", \"nullable\", \"absent\"} for mode in found.values()))",
         "self.assertEqual(routed_denied[\"result\"], \"not_found\")",
         "self.assertEqual(routed[\"result\"], \"allowed\")",
         "self.assertFalse(routed[\"effects\"])",
@@ -6849,7 +6845,6 @@
         "self.assertEqual(contact_only[\"result\"], \"allowed\")",
         "self.assertEqual(contact_on_foreign[\"result\"], \"not_found\")",
         "self.assertEqual(staff_read[\"result\"], \"allowed\")",
-        "self.assertEqual(found[operation_id], mode, operation_id)",
         "self.assertFalse(decision[\"effects\"])",
         "self.assertEqual(decision.get(\"events\") or [], [])",
         "self.assertIsNone(decision.get(\"routed\"))",
@@ -6857,6 +6852,384 @@
         "self.assertEqual(rescued[\"result\"], \"not_found\", tool)",
         "self.assertEqual(allowed[\"result\"], \"allowed\", tool)",
         "self.assertTrue(allowed[\"effects\"], tool)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_trusted_resource_facts_match_the_route",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-002",
+        "AC-004",
+        "AC-005",
+        "AC-008",
+        "AC-012",
+        "AC-039"
+      ],
+      "prd": [
+        "4",
+        "8.3",
+        "8.4",
+        "8.19",
+        "9"
+      ],
+      "source": "api/tests/test_contract.py:8732-9027",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 61,
+      "loop_count": 5,
+      "literal_rows": [
+        {
+          "line": 8789,
+          "literal_rows": 6,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getFile"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "downloadFileVersion"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "query"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "downloadFileRendition"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "query"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "historyFile"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "listFileVersions"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateFileMetadata"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "body"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for tool, scopes, arguments in ( (\"getFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"downloadFileVersion\", [\"files:read\"], {\"path\": {\"file_id\": file_id, \"version_id\": version_id}, \"query\": {\"confirm_quarantine\": True}}), (\"downloadFileRendition\", [\"files:read\"], {\"path\": {\"file_id\": file_id, \"rendition_id\": version_id}, \"query\": {\"confirm_quarantine\": True}}), (\"historyFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"listFileVersions\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"updateFileMetadata\", [\"files:write\"], {\"path\": {\"file_id\": file_id}, \"body\": {\"attorney_only\": False}}), ): omitted = quiet(call(tool, \"staff\", scopes, arguments, stored_file=hidden)) self.assertEqual(omitted[\"result\"], \"not_found\", tool) forced = quiet(call(tool, \"staff\", scopes, arguments, stored_file=hidden, attorney_only=False)) self.assertEqual(forced[\"result\"], \"not_found\", tool) if tool != \"updateFileMetadata\": client_hidden = quiet(call(tool, \"client\", scopes, arguments, stored_file=hidden, client_matter_ids=[matter], shared=True, owner=\"self\")) self.assertEqual(client_hidden[\"result\"], \"not_found\", tool) attorney = call(tool, \"attorney\", scopes, arguments, stored_file=hidden, attorney_only=False) self.assertEqual(attorney[\"result\"], \"allowed\", tool) self.assertTrue(attorney[\"effects\"], tool)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 8876,
+          "literal_rows": 3,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getInvoice"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "historyInvoice"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getInvoicePdf"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "query"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for tool, scopes, arguments in ( (\"getInvoice\", [\"invoices:read\"], {\"path\": {\"invoice_id\": invoice_id}}), (\"historyInvoice\", [\"invoices:read\"], {\"path\": {\"invoice_id\": invoice_id}}), (\"getInvoicePdf\", [\"invoices:read\"], {\"path\": {\"invoice_id\": invoice_id}, \"query\": {\"confirm_quarantine\": True}}), ): missing = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=foreign, matter_walled=False)) self.assertEqual(missing[\"result\"], \"not_found\", tool) empty = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=foreign, matter_walled=False, **spoof)) self.assertEqual(empty[\"result\"], \"not_found\", tool) foreign_list = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=foreign, matter_walled=False, client_matter_ids=[matter], shared=True, owner=\"self\")) self.assertEqual(foreign_list[\"result\"], \"not_found\", tool) ambiguous = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter, matter])) self.assertEqual(ambiguous[\"result\"], \"not_found\", tool) malformed = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter, None])) self.assertEqual(malformed[\"result\"], \"not_found\", tool) own = invoice(tool, \"client\", scopes, arguments, matter_id=matter, matter_walled=False, client_matter_ids=[matter]) self.assertEqual(own[\"result\"], \"allowed\", tool) self.assertTrue(own[\"effects\"], tool) walled = quiet(invoice(tool, \"client\", scopes, arguments, matter_id=matter, matter_walls={matter: True}, matter_membership={matter: False}, client_matter_ids=[matter], shared=True)) self.assertEqual(walled[\"result\"], \"not_found\", tool)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 8930,
+          "literal_rows": 2,
+          "rows": [
+            [
+              {
+                "kind": "name",
+                "id": "client_flag"
+              },
+              {
+                "kind": "constant",
+                "value": "client"
+              }
+            ],
+            [
+              {
+                "kind": "name",
+                "id": "account_flag"
+              },
+              {
+                "kind": "constant",
+                "value": "account"
+              }
+            ]
+          ],
+          "text": "for stored, label in ((client_flag, \"client\"), (account_flag, \"account\")): read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored) self.assertEqual(read[\"result\"], \"allowed\", label) self.assertTrue(read[\"effects\"], label) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Corrected offline\"}}, stored_record=stored, ) self.assertEqual(resolved[\"result\"], \"allowed\", label) self.assertTrue(resolved[\"effects\"], label)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 9010,
+          "literal_rows": 5,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getInvoice"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "invoice_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getTrustEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "trust_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "stopTimer"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "timer_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "historyTimeEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "time_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getTimeEntry"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "time_entry_id"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for tool, scopes, path in ( (\"getInvoice\", [\"invoices:read\"], {\"invoice_id\": invoice_id}), (\"getTrustEntry\", [\"trust:read\"], {\"trust_entry_id\": trust_entry_id}), (\"stopTimer\", [\"time:write\"], {\"timer_id\": timer_id}), (\"historyTimeEntry\", [\"time:read\"], {\"time_entry_id\": time_id}), (\"getTimeEntry\", [\"time:read\"], {\"time_entry_id\": time_id}), ): denied_parent = quiet(call(tool, \"staff\", scopes, {\"path\": path})) self.assertEqual(denied_parent[\"result\"], \"not_found\", tool) allowed_parent = call(tool, \"staff\", scopes, {\"path\": path}, matter_id=matter, matter_walled=False) self.assertEqual(allowed_parent[\"result\"], \"allowed\", tool) self.assertTrue(allowed_parent[\"effects\"], tool)",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertEqual(ordinary[\"result\"], \"allowed\")",
+        "self.assertTrue(ordinary[\"effects\"])",
+        "self.assertEqual(client_own[\"result\"], \"allowed\")",
+        "self.assertTrue(client_own[\"effects\"])",
+        "self.assertEqual(mismatch[\"result\"], \"not_found\")",
+        "self.assertEqual(invalid[\"result\"], \"not_found\")",
+        "self.assertEqual(held[\"result\"], \"quarantine_confirmation_required\")",
+        "self.assertEqual(released[\"result\"], \"allowed\")",
+        "self.assertTrue(released[\"effects\"])",
+        "self.assertEqual(archive_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(link_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(listed_missing[\"result\"], \"not_found\")",
+        "self.assertEqual(listed[\"result\"], \"allowed\")",
+        "self.assertTrue(listed[\"effects\"])",
+        "self.assertEqual(listed_foreign[\"result\"], \"not_found\")",
+        "self.assertEqual(staff_invoice[\"result\"], \"allowed\")",
+        "self.assertEqual(accountant_invoice[\"result\"], \"allowed\")",
+        "self.assertEqual(client_write[\"result\"], \"forbidden\")",
+        "self.assertEqual(matter_read[\"result\"], \"allowed\")",
+        "self.assertTrue(matter_read[\"effects\"])",
+        "self.assertEqual(matter_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(listed_flags[\"result\"], \"allowed\")",
+        "self.assertTrue(listed_flags[\"effects\"])",
+        "self.assertEqual(open_token[\"result\"], \"allowed\")",
+        "self.assertTrue(open_token[\"effects\"])",
+        "self.assertFalse(open_token.get(\"reparented\"))",
+        "self.assertEqual(null_token[\"result\"], \"allowed\")",
+        "self.assertTrue(null_token[\"effects\"])",
+        "self.assertEqual(scoped[\"result\"], \"allowed\")",
+        "self.assertTrue(scoped[\"effects\"])",
+        "self.assertFalse(scoped.get(\"reparented\"))",
+        "self.assertEqual(unknown_matter[\"result\"], \"not_found\")",
+        "self.assertEqual(walled_matter[\"result\"], \"not_found\")",
+        "self.assertEqual(unassigned_event[\"result\"], \"allowed\")",
+        "self.assertTrue(unassigned_event[\"effects\"])",
+        "self.assertEqual(staff_list[\"result\"], \"allowed\")",
+        "self.assertTrue(staff_list[\"effects\"])",
+        "self.assertFalse(decision[\"effects\"])",
+        "self.assertEqual(decision.get(\"events\") or [], [])",
+        "self.assertIsNone(decision.get(\"routed\"))",
+        "self.assertEqual(omitted[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(forced[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(attorney[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(attorney[\"effects\"], tool)",
+        "self.assertEqual(missing[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(empty[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(foreign_list[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(ambiguous[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(malformed[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(own[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(own[\"effects\"], tool)",
+        "self.assertEqual(walled[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(read[\"result\"], \"allowed\", label)",
+        "self.assertTrue(read[\"effects\"], label)",
+        "self.assertEqual(resolved[\"result\"], \"allowed\", label)",
+        "self.assertTrue(resolved[\"effects\"], label)",
+        "self.assertEqual(denied_flag[\"result\"], \"not_found\")",
+        "self.assertEqual(denied_parent[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(allowed_parent[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(allowed_parent[\"effects\"], tool)",
+        "self.assertEqual(client_hidden[\"result\"], \"not_found\", tool)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -8541,9 +8914,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 14,
-      "assertion_call_sites": 472,
-      "literal_rows": 94,
+      "methods": 15,
+      "assertion_call_sites": 528,
+      "literal_rows": 110,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -8558,7 +8931,8 @@
         "test_transport_link_and_matter_grant",
         "test_concrete_matter_and_selected_files",
         "test_record_owner_and_client_file_access",
-        "test_parent_schema_and_client_file_reads"
+        "test_parent_schema_and_client_file_reads",
+        "test_trusted_resource_facts_match_the_route"
       ],
       "status": "not_converted",
       "complete": false
