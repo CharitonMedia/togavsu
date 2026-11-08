@@ -61,13 +61,22 @@ def review_problem(findings):
     normalized = []
     for finding in findings:
         file = finding.get("file")
-        path = re.sub(r"(?::\d+(?::\d+)?(?:-\d+)?|#L\d+(?:-L?\d+)?)$", "", file) if file else file
+        location = r"(?::\d+(?::\d+)?(?:-\d+(?::\d+)?)?|#L\d+(?:-L?\d+)?)"
+        path = re.sub(location + "$", "", file) if file else file
         detail = " ".join(finding.get("detail", "").split())
-        if file and path != file:
-            detail = detail.replace(file, path)
-        detail = re.sub(r"\blines?\s+\d+(?:\s*[-–]\s*\d+)?\b", "line <location>", detail, flags=re.I)
+        if path:
+            detail = re.sub(re.escape(path) + location + r"(?![\w:])", lambda _: path, detail)
+        detail = re.sub(r"\blines?\s+\d+(?::\d+)?(?:\s*[-–]\s*\d+(?::\d+)?)?\b",
+            "line <location>", detail, flags=re.I)
         normalized.append({"file": path, "detail": detail})
     return {"review_findings": sorted(normalized, key=lambda f: json.dumps(f, sort_keys=True))}
+
+
+def unobserved_run(record, snapshot):
+    # A successful POST reserves a slot until its run becomes visible. A stale
+    # predecessor is never evidence that the acknowledged worker is finished.
+    return bool(record.get("last_dispatched_run") and "last_dispatch_source_run" in record
+        and (not snapshot.get("run_id") or snapshot["run_id"] == record["last_dispatch_source_run"]))
 
 
 def atomic(path, obj):
@@ -306,15 +315,6 @@ class Controller:
         if record.get("intent"):
             self.halt(task, record, "Unreconciled delivery intent; refusing duplicate agent prompt")
             return
-        if (record.get("last_dispatch_source_run") is not None
-                and snapshot.get("run_id") == record["last_dispatch_source_run"]):
-            record["waiting"] = "Await observation of acknowledged Cursor run; no duplicate prompt"
-            if age(record["last_dispatch_at"]) >= 900:
-                record["stalled"] = {"kind": "run_observation", "reason":
-                    "Acknowledged Cursor run not observed within 15 minutes; inspect existing run, do not replay"}
-            return
-        if record.get("stalled", {}).get("kind") == "run_observation":
-            record.pop("stalled")
         if repair:
             # A new SHA/run ID alone is not evidence that a repeated defect improved.
             fingerprint = hashlib.sha256(json.dumps(problem if problem is not None else key.split(":")[0],
@@ -432,8 +432,18 @@ class Controller:
                     record.pop("halted")
                 self.event(task, "Reconciled uncertain prompt with existing Cursor run")
             else:
-                self.halt(task, record, "Delivery outcome uncertain; no automatic replay")
+                if not record.get("halted"):
+                    self.halt(task, record, "Delivery outcome uncertain; no automatic replay")
                 return False
+        if unobserved_run(record, snapshot):
+            record["waiting"] = "Await observation of acknowledged Cursor run; no duplicate prompt"
+            if age(record["last_dispatch_at"]) >= 900:
+                record["stalled"] = {"kind": "run_observation", "reason":
+                    "Acknowledged Cursor run not observed within 15 minutes; inspect existing run, do not replay"}
+            return False
+        if record.get("stalled", {}).get("kind") == "run_observation":
+            record.pop("stalled")
+            record.pop("waiting", None)
         if record.get("halted") or record.get("completed"):
             return False
         record["agent_status"] = snapshot["status"]
@@ -861,7 +871,7 @@ class Controller:
                     record["last_error"] = type(error).__name__ + ": agent observation unavailable"
                     continue
             snapshot = snapshots[task]
-            if snapshot["status"] in ACTIVE or record.get("intent"):
+            if snapshot["status"] in ACTIVE or record.get("intent") or unobserved_run(record, snapshot):
                 self.occupied += 1
         for task, snapshot in snapshots.items():
             record = self.tasks[task]

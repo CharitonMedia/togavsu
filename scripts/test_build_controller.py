@@ -407,6 +407,15 @@ class ControllerTests(unittest.TestCase):
         moved[0] = {"file": "other.go:12", "detail": first[0]["detail"]}
         self.assertNotEqual(review_problem(first), review_problem(moved))
 
+    def test_inline_paths_and_full_line_column_ranges_normalize(self):
+        first = [{"file": "internal/api.go", "detail": "At internal/api.go:20, missing HTTP 401 check"}]
+        moved = [{"file": "internal/api.go:21:5-23:8", "detail": "At internal/api.go:21:5-23:8, missing HTTP 401 check"}]
+        self.assertEqual(review_problem(first), review_problem(moved))
+        moved[0] = {"file": "internal/api.go#L45-L46", "detail": "At internal/api.go#L45-L46, missing HTTP 401 check"}
+        self.assertEqual(review_problem(first), review_problem(moved))
+        moved[0]["detail"] = "At internal/api.go:22, missing HTTP 403 check"
+        self.assertNotEqual(review_problem(first), review_problem(moved))
+
     def test_many_distinct_submissions_are_not_lifetime_limited(self):
         self.failed_review()
         self.record["repair_count"] = 38
@@ -531,6 +540,89 @@ class ControllerTests(unittest.TestCase):
         self.process()
         self.assertEqual(self.record["halted"], "Ownership mismatch")
         self.assertFalse(self.posts())
+
+    def test_unrelated_halt_survives_predecessor_then_new_run_reconciliation(self):
+        self.record["intent"] = {"key": "old", "repair": True, "previous_run": "run-old",
+            "time": "2026-11-08T00:00:00+00:00"}
+        self.record["halted"] = "Ownership mismatch"
+        self.process()
+        self.assertEqual(self.record["halted"], "Ownership mismatch")
+        self.assertIn("intent", self.record)
+        self.restart()
+        self.remote.run_id, self.remote.run_status = "run-arrived", "RUNNING"
+        self.process()
+        self.assertNotIn("intent", self.record)
+        self.assertEqual(self.record["halted"], "Ownership mismatch")
+        self.assertFalse(self.remote.calls)
+        self.assertNotIn("completed", self.record)
+
+    def test_unobserved_acknowledged_run_reserves_capacity_across_restart(self):
+        self.failed_review()
+        for i in range(3):
+            task = "active-" + str(i)
+            self.controller.plan["tasks"].append({"id": task, "depends_on": []})
+            self.controller.tasks[task] = {"agent_id": task, "submitted": True}
+        self.controller.plan["tasks"].append({"id": "five", "depends_on": []})
+        original = self.remote.agent
+        self.remote.agent = lambda r: original(r) if r["agent_id"] == "bc-one" else {
+            "status": "RUNNING", "run_id": "active", "git": {}}
+        with self.advance(0):
+            self.controller.tick()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.controller.occupied, 4)
+        self.restart()
+        with self.advance(1):
+            self.controller.tick()
+        self.assertEqual(self.controller.occupied, 4)
+        self.assertNotIn("five", self.controller.tasks)
+        self.assertFalse(any(c[1] == "/agents" for c in self.remote.calls))
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_unobserved_acknowledged_run_blocks_green_merge_and_pr_actions(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+        self.remote.report.update(verdict="pass", findings=[])
+        self.remote.check_rows["Codex checkpoint"]["conclusion"] = "success"
+        self.restart()
+        self.remote.calls.clear()
+        with self.advance(1):
+            self.controller.tick()
+        self.assertNotIn("completed", self.record)
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertFalse(any(c[1].startswith("pulls/") for c in self.remote.calls))
+
+    def test_unobserved_run_deadline_precedes_pending_checks_and_clears_on_active(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+        self.remote.check_rows["Codex checkpoint"]["status"] = "in_progress"
+        self.restart()
+        with self.advance(16):
+            self.controller.tick()
+        self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.remote.run_id = self.record["last_dispatched_run"]
+        self.remote.run_status = "RUNNING"
+        self.restart()
+        with self.advance(17):
+            self.controller.tick()
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(self.controller.state["health"], "observing")
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_missing_snapshot_run_id_reserves_acknowledged_worker(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+        self.remote.run_id = None
+        self.restart()
+        with self.advance(16):
+            self.controller.tick()
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+        self.assertEqual(len(self.posts()), 1)
 
     def test_acknowledged_run_not_yet_visible_never_replays_and_flags_stall(self):
         self.failed_review()
