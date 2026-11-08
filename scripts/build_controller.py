@@ -25,6 +25,7 @@ REPO = "CharitonMedia/togavsu"
 ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK", "ACTIVE"}
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
+LEGACY_REPAIR_HALT = "Three correction cycles exhausted; independent work may continue"
 CHECK_WORKFLOWS = {"Codex checkpoint": ".github/workflows/codex-checkpoint.yml",
                    "Setup checks": ".github/workflows/setup-checks.yml"}
 for _name in ("Core tests", "API contract tests", "QA harness tests", "Supervisor tests", "Backup integration", "Supervisor image", "Full acceptance"):
@@ -49,6 +50,17 @@ class ReviewSuperseded(Exception):
 
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def age(timestamp):
+    return (dt.datetime.fromisoformat(now()) - dt.datetime.fromisoformat(timestamp)).total_seconds()
+
+
+def review_problem(findings):
+    # Review identity/summary/ordering/priority are metadata, not defect progress.
+    return {"review_findings": sorted(({
+        "file": f.get("file"), "detail": " ".join(f.get("detail", "").split())
+    } for f in findings), key=lambda f: json.dumps(f, sort_keys=True))}
 
 
 def atomic(path, obj):
@@ -282,17 +294,62 @@ class Controller:
             return None
         return function()
 
-    def followup(self, task, record, snapshot, key, prompt, repair=True):
+    def followup(self, task, record, snapshot, key, prompt, repair=True, problem=None):
         # Persist intent BEFORE non-idempotent POST; ambiguous replies never cause a replay.
-        if key in record.get("delivered", []):
-            if snapshot.get("run_id") == record.get("last_dispatched_run") and snapshot.get("status") == "FINISHED":
-                self.halt(task, record, "Correction finished without changing the failing revision; no-progress stop")
-            return
         if record.get("intent"):
             self.halt(task, record, "Unreconciled delivery intent; refusing duplicate agent prompt")
             return
-        if repair and record.get("repair_count", 0) >= self.plan["max_repairs"]:
-            self.halt(task, record, "Three correction cycles exhausted; independent work may continue")
+        if (record.get("last_dispatch_source_run") is not None
+                and snapshot.get("run_id") == record["last_dispatch_source_run"]):
+            record["waiting"] = "Await observation of acknowledged Cursor run; no duplicate prompt"
+            if age(record["last_dispatch_at"]) >= 900:
+                record["stalled"] = {"kind": "run_observation", "reason":
+                    "Acknowledged Cursor run not observed within 15 minutes; inspect existing run, do not replay"}
+            return
+        if record.get("stalled", {}).get("kind") == "run_observation":
+            record.pop("stalled")
+        if repair:
+            # A new SHA/run ID alone is not evidence that a repeated defect improved.
+            fingerprint = hashlib.sha256(json.dumps(problem if problem is not None else key.split(":")[0],
+                sort_keys=True).encode()).hexdigest()
+            windows = record.setdefault("repair_problems", {})
+            previous = record.get("repair_window", {})
+            if previous:
+                windows.setdefault(previous["fingerprint"], previous)
+            window = windows.get(fingerprint)
+            if window is None:
+                window = {"fingerprint": fingerprint, "attempts": 0}
+                # Preserve old delivered keys. A known completed old correction gets a
+                # bounded recovery, never a blind replay while Cursor still shows its predecessor.
+                if key in record.get("delivered", []):
+                    if snapshot.get("run_id") != record.get("last_dispatched_run"):
+                        record["waiting"] = "Await observation of previously delivered correction"
+                        return
+                    window.update(attempts=1, last_dispatch_at=now())
+                windows[fingerprint] = window
+            record["repair_window"] = window
+            if previous.get("fingerprint") != fingerprint:
+                if record.get("stalled", {}).get("kind") == "no_progress":
+                    record.pop("stalled")
+            if window["attempts"] >= self.plan["max_repairs"]:
+                record["stalled"] = {"kind": "no_progress", "reason":
+                    "Repeated problem exhausted recovery budget; integration lead must inspect the existing agent and PR",
+                    "fingerprint": fingerprint}
+                record.pop("waiting", None)
+                self.save()
+                return
+            delay = min(1800, 300 * 2 ** max(0, window["attempts"] - 1))
+            if window["attempts"] and age(window["last_dispatch_at"]) < delay:
+                record["waiting"] = "Repeated problem backoff until " + (dt.datetime.fromisoformat(
+                    window["last_dispatch_at"]) + dt.timedelta(seconds=delay)).isoformat()
+                return
+            key += ":recovery:" + fingerprint + ":" + str(window["attempts"] + 1)
+            if window["attempts"]:
+                prompt = ("The same problem remains after a completed correction. Diagnose why the prior approach "
+                    "made no progress, use a different approach within this assignment, and report concrete blockers.\n\n" + prompt)
+        elif key in record.get("delivered", []):
+            if snapshot.get("run_id") == record.get("last_dispatched_run"):
+                self.halt(task, record, "Integration correction finished without advancing its revision")
             return
         if not repair and record.get("sync_count", 0) >= 3:
             self.halt(task, record, "Three integration conflict attempts exhausted")
@@ -305,6 +362,8 @@ class Controller:
             self.effect("followup " + task + " " + key, lambda: None)
             return
         record["intent"] = {"key": key, "previous_run": snapshot.get("run_id"), "time": now(), "repair": repair}
+        if repair:
+            record["intent"]["problem"] = fingerprint
         self.save()
         try:
             result = self.remote.cursor("POST", "/agents/" + record["agent_id"] + "/runs", {"prompt": {"text": prompt}})
@@ -320,9 +379,17 @@ class Controller:
         record.setdefault("delivered", []).append(intent["key"])
         if intent["repair"]:
             record["repair_count"] = record.get("repair_count", 0) + 1
+            if intent.get("problem"):
+                window = record["repair_window"]
+                window["attempts"] += 1
+                window["last_dispatch_at"] = intent["time"]
+                record["repair_problems"][intent["problem"]] = window
         else:
             record["sync_count"] = record.get("sync_count", 0) + 1
         record["last_dispatched_run"] = run_id
+        record["last_dispatch_source_run"] = intent["previous_run"]
+        record["last_dispatch_at"] = intent["time"]
+        record.pop("waiting", None)
         self.save()
 
     def pr_for(self, record, snapshot):
@@ -346,10 +413,16 @@ class Controller:
 
     def process(self, spec, record, snapshot, main):
         task = spec["id"]
+        if record.get("halted") == LEGACY_REPAIR_HALT:
+            record.setdefault("recovered_halts", []).append({"reason": record.pop("halted"), "time": now()})
+            self.event(task, "Recovered obsolete lifetime correction cap; history retained, bounded recovery policy applies")
+            self.save()
         if record.get("intent"):
             if snapshot.get("run_id") and snapshot["run_id"] != record["intent"]["previous_run"]:
                 self.acknowledge(record, snapshot["run_id"])
-                record.pop("halted", None)
+                if record.get("halted") in {"Delivery outcome uncertain; no automatic replay",
+                        "Unreconciled delivery intent; refusing duplicate agent prompt"}:
+                    record.pop("halted")
                 self.event(task, "Reconciled uncertain prompt with existing Cursor run")
             else:
                 self.halt(task, record, "Delivery outcome uncertain; no automatic replay")
@@ -363,7 +436,20 @@ class Controller:
                 record["expected_branch"] = branches[0]["branch"]
                 self.save()
         if snapshot["status"] in ACTIVE:
+            record["waiting"] = "Cursor run active; awaiting completion"
+            watch = record.setdefault("active_watch", {"run_id": snapshot.get("run_id"), "since": now()})
+            if watch["run_id"] != snapshot.get("run_id"):
+                watch = record["active_watch"] = {"run_id": snapshot.get("run_id"), "since": now()}
+                if record.get("stalled", {}).get("kind") == "active_run":
+                    record.pop("stalled")
+            if age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 5400):
+                record["stalled"] = {"kind": "active_run", "reason":
+                    "Cursor run exceeded observation deadline; integration lead must inspect this run before any replacement",
+                    "run_id": snapshot.get("run_id"), "since": watch["since"]}
             return False
+        record.pop("active_watch", None)
+        if record.get("stalled", {}).get("kind") == "active_run":
+            record.pop("stalled")
         if snapshot["status"] != "FINISHED":
             self.followup(task, record, snapshot, "interrupted:" + str(snapshot.get("run_id")),
                 "Your previous run ended with status " + str(snapshot["status"]) + ". Resume the same assignment and branch, "
@@ -385,6 +471,8 @@ class Controller:
             self.halt(task, record, "Unexpected PR repository or target branch")
             return False
         head, number = pr["head"]["sha"], pr["number"]
+        if record.get("last_submission", {}).get("head") != head:
+            record["last_submission"] = {"head": head, "observed_at": now()}
         if record.get("merge_intent", {}).get("result_sha"):
             return self.verify_merge(task, record, pr)  # Reconcile, never resubmit an accepted merge.
         if pr.get("merged"):
@@ -466,7 +554,8 @@ class Controller:
             if missing and elapsed > 900 and checks and all(c["status"] == "completed" for c in checks.values()):
                 self.followup(task, record, snapshot, "missing-checks:" + head,
                     "Your PR is missing required executable CI jobs: " + ", ".join(missing) + ". Wire the actual tests into CI, "
-                    "run them and push on the same branch. Do not add placeholder success jobs or weaken required checks.")
+                    "run them and push on the same branch. Do not add placeholder success jobs or weaken required checks.",
+                    problem={"missing_checks": missing})
             elif elapsed > 5400:
                 self.halt(task, record, "Required CI missing or stalled for 90 minutes; no merge or duplicate job launch")
             return False
@@ -501,14 +590,16 @@ class Controller:
                 "Independent Codex checkpoint failed for your existing PR #" + str(number) + ". Resolve ALL findings below "
                 "with regression tests on the SAME branch. Preserve PRD scope. Do not merge or weaken gates. "
                 "Rerun the complete applicable test suite and REWRITE THE ORIGINAL PR BODY with the tested revision, current "
-                "commands/results and per-finding resolutions. New pushes automatically rerun review.\n\n" + json.dumps(report))
+                "commands/results and per-finding resolutions. New pushes automatically rerun review.\n\n" + json.dumps(report),
+                problem=review_problem(report["findings"]))
             return False
         failures = self.remote.test_failures(checks)
         if failures:
             self.followup(task, record, snapshot, "tests:" + head,
                 "Codex review passed, but CI failed on your existing PR #" + str(number) + ". Read the failing Actions logs, "
                 "fix the causes with regression tests, rerun all applicable tests and update original PR evidence. "
-                "Do not bypass checks or merge. Failures: " + json.dumps(failures))
+                "Do not bypass checks or merge. Failures: " + json.dumps(failures),
+                problem={"failed_checks": sorted(c["name"] for c in failures)})
             return False
         if codex.get("conclusion") != "success":
             self.halt(task, record, "Passing review artifact conflicts with failed checkpoint status")
@@ -524,7 +615,8 @@ class Controller:
                 self.followup(task, record, snapshot, "phase-evidence:" + head,
                     "Your required integration report " + spec["report_path"] + " is invalid: " + str(error) +
                     ". Complete the assigned integration and actual tests, record honest results and push. "
-                    "Never fabricate acceptance or change a failed result to pass. Report external blockers explicitly.")
+                    "Never fabricate acceptance or change a failed result to pass. Report external blockers explicitly.",
+                    problem={"phase_evidence": str(error)})
                 return False
         protection = self.remote.gh("branches/main/protection")
         required_config = protection.get("required_status_checks") or {}
@@ -603,6 +695,8 @@ class Controller:
             self.save()
             return False
         record["completed"] = {"pr": pr["number"], "merge_sha": merged, "head": intent["head"], "report": pr["html_url"]}
+        record.pop("stalled", None)
+        self.state["last_productive_progress"] = {"time": now(), "task": task, "merge_sha": merged}
         self.event(task, "Verified protected merge on main: " + merged)
         self.save()
         return True
@@ -700,11 +794,30 @@ class Controller:
         if (self.dir / "STOP").exists():
             print("Paused by STOP file; no mutations", flush=True)
             return
+        self.occupied, self.actions = 0, []
+        self.state["tick"] += 1
+        self.state["last_tick"] = now()
+        self.state.pop("tick_error", None)
+        try:
+            self._tick()
+        except Exception as error:
+            self.state["tick_error"] = type(error).__name__ + ": " + str(error)[:1800]
+            raise
+        finally:
+            attention = [task for task, rec in self.tasks.items() if not rec.get("completed")
+                and any(rec.get(field) for field in ("halted", "stalled", "last_error", "launch_uncertain", "intent"))]
+            self.state["health"] = "needs_attention" if attention or self.state.get("tick_error") else "observing"
+            if attention or self.state.get("tick_error"):
+                self.state["last_result"] = "Needs supervision: " + (", ".join(attention) or "controller request failed")
+            if not self.state.get("tick_error") and not any(r.get("last_error") or r.get("launch_uncertain") for r in self.tasks.values()):
+                self.state["last_successful_tick"] = now()  # Control heartbeat only, never product progress.
+            self.save()
+            self.publish()
+
+    def _tick(self):
         self.adopt()
         main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
         specs = {t["id"]: t for t in self.plan["tasks"]}
-        self.state["tick"] += 1
-        self.state["last_tick"] = now()
         snapshots = {}
         # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
         for task, record in list(self.tasks.items()):
@@ -767,18 +880,20 @@ class Controller:
             try:
                 self.launch(spec, main)
             except Exception as error:
+                self.tasks[task]["last_error"] = "Launch outcome unconfirmed: " + type(error).__name__
                 self.event(task, "Launch not confirmed; durable agent ID retained: " + type(error).__name__)
                 self.save()
         self.state["last_result"] = "Waiting for agents/checks or ready work"
-        self.state["last_successful_tick"] = now()
         self.save()
-        self.publish()
 
     def publish(self):
         if self.dry:
             return
-        summary = {"updated": now(), "tick": self.state["tick"], "tasks": {
-            k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "completed", "halted", "last_error", "waiting") if field in v}
+        summary = {"updated": now(), "tick": self.state["tick"], "health": self.state.get("health", "unknown"),
+            "last_productive_progress": self.state.get("last_productive_progress"),
+            "tick_error": self.state.get("tick_error"), "tasks": {
+            k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "repair_window", "last_submission", "active_watch",
+                "completed", "halted", "stalled", "last_error", "waiting", "launch_uncertain", "intent") if field in v}
             for k, v in self.tasks.items()}}
         atomic(self.dir / "status.json", summary)
         # Only publish a changed state, not every timer heartbeat.
@@ -788,9 +903,19 @@ class Controller:
         digest = hashlib.sha256(json.dumps(public, sort_keys=True).encode()).hexdigest()
         if digest != self.state.get("published_digest"):
             body = "## Automatic build controller\n\nUpdated: " + summary["updated"] + "\n\n"
+            body += "Health: " + summary["health"] + ". Timer heartbeat is not product progress.\n\n"
+            progress = summary["last_productive_progress"]
+            if progress:
+                body += "Last verified protected merge: " + progress["task"] + " at " + progress["time"] + " (" + progress["merge_sha"] + ").\n\n"
+            if summary["tick_error"]:
+                body += "Control error: " + summary["tick_error"] + "\n\n"
             body += "| Assignment | PR | State | Corrections |\n|---|---|---|---|\n"
             for task, rec in self.tasks.items():
-                status = "merged" if rec.get("completed") else "STOPPED: " + rec["halted"] if rec.get("halted") else rec.get("waiting", rec.get("agent_status", "submitted"))
+                status = ("merged" if rec.get("completed") else "STOPPED: " + rec["halted"] if rec.get("halted")
+                    else "STALLED: " + rec["stalled"]["reason"] if rec.get("stalled")
+                    else "CONTROL ERROR: " + rec["last_error"] if rec.get("last_error")
+                    else "Launch outcome uncertain; inspect durable agent ID" if rec.get("launch_uncertain")
+                    else rec.get("waiting", rec.get("agent_status", "submitted")))
                 body += "| " + task + " | " + ("#" + str(rec["pr"]) if rec.get("pr") else "pending") + " | " + status.replace("|", "/") + " | " + str(rec.get("repair_count", 0)) + " |\n"
             body += "\nProtected checks stay enforced. Merged assignments are bounded work, not completed product acceptance.\n"
             if self.state.get("status_comment"):

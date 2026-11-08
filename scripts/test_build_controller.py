@@ -11,7 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, atomic, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -72,7 +72,8 @@ class FakeRemote:
         self.calls.append((method, path, body))
         if self.fail_post:
             raise TimeoutError("ambiguous delivery")
-        return {"run": {"id": "run-new"}, "agent": {"id": "bc-one"}}
+        count = len([c for c in self.calls if c[0] == "POST" and c[1].endswith("/runs")])
+        return {"run": {"id": "run-new" + ("-" + str(count) if count > 1 else "")}, "agent": {"id": "bc-one"}}
 
     def checks(self, head):
         return copy.deepcopy(self.check_rows)
@@ -119,12 +120,14 @@ class ControllerTests(unittest.TestCase):
         self.process()
         self.assertFalse(self.posts())
 
-    def test_existing_repair_budget_is_respected(self):
+    def test_lifetime_repair_total_does_not_stop_new_work(self):
         self.failed_review()
-        self.record["repair_count"] = 3
+        self.record["repair_count"] = 38
         self.process()
-        self.assertIn("exhausted", self.record["halted"])
-        self.assertFalse(self.posts())
+        self.assertNotIn("halted", self.record)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["repair_count"], 39)
+        self.assertEqual(self.record["repair_window"]["attempts"], 1)
 
     def test_ambiguous_delivery_is_durable_and_not_replayed(self):
         self.failed_review()
@@ -279,13 +282,329 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(self.posts())
         self.assertIn("slots occupied", self.record["waiting"])
 
-    def test_finished_correction_with_unchanged_failed_head_stops_explicitly(self):
+    def test_finished_correction_with_unchanged_failed_head_backs_off(self):
         self.failed_review()
         self.process()
         self.remote.run_id = "run-new"
         self.process()
         self.assertEqual(len(self.posts()), 1)
-        self.assertIn("no-progress", self.record["halted"])
+        self.assertIn("backoff", self.record["waiting"])
+        self.assertNotIn("halted", self.record)
+
+    def restart(self):
+        self.controller.save()
+        self.controller = Controller(self.remote, self.controller.plan, self.temp.name)
+        self.record = self.controller.tasks["one"]
+
+    def advance(self, minutes):
+        return patch("build_controller.now", return_value=(dt.datetime(2026, 11, 8,
+            tzinfo=dt.timezone.utc) + dt.timedelta(minutes=minutes)).isoformat())
+
+    def finish_correction(self, revision=None):
+        self.remote.run_id = self.record["last_dispatched_run"]
+        self.remote.run_status = "FINISHED"
+        if revision:
+            self.remote.pr["head"]["sha"] = revision
+            self.remote.context["head"] = revision
+            self.remote.report["reviewed_head"] = revision
+
+    def test_three_repeated_problems_back_off_then_surface_stall_across_restarts(self):
+        self.failed_review()
+        for minutes, total in [(0, 1), (4, 1), (5, 2), (14, 2), (15, 3), (30, 3)]:
+            with self.advance(minutes):
+                self.process()
+                self.assertEqual(len(self.posts()), total)
+                self.finish_correction()
+                self.restart()
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        self.assertEqual(self.record["repair_count"], 5)
+        self.assertEqual(len(set(c[2]["prompt"]["text"] for c in self.posts())), 2)
+        self.assertEqual(len(set(self.record["delivered"])), 3)
+        self.assertNotIn("completed", self.record)
+
+    def test_new_sha_and_run_ids_do_not_reset_identical_findings_budget(self):
+        self.failed_review()
+        for i in range(4):
+            with self.advance(i * 30):
+                self.remote.cursor = lambda *args, **kwargs: self.unique_run_post(*args, **kwargs)
+                self.process()
+                self.finish_correction(str(i + 1) * 40)
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+
+    def unique_run_post(self, method, path, body=None):
+        self.remote.calls.append((method, path, body))
+        return {"run": {"id": "run-" + str(len(self.posts()))}}
+
+    def test_new_findings_continue_after_repeated_problem_stall(self):
+        self.failed_review()
+        for i in range(4):
+            with self.advance(i * 30):
+                self.process()
+                self.finish_correction()
+        self.assertIn("stalled", self.record)
+        self.remote.report["findings"] = [{"detail": "Different independently reviewed defect"}]
+        self.finish_correction(NEW)
+        with self.advance(91):
+            self.process()
+        self.assertEqual(len(self.posts()), 4)
+        self.assertEqual(self.record["repair_window"]["attempts"], 1)
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(self.record["repair_count"], 6)
+
+    def test_alternating_findings_do_not_reset_previously_consumed_budget(self):
+        self.failed_review()
+        for i, defect in enumerate(("A", "B", "A", "B", "A", "B", "A")):
+            with self.advance(i * 30):
+                self.remote.report["findings"] = [{"detail": defect}]
+                self.process()
+                self.finish_correction(format(i + 1, "040x"))
+                self.restart()
+        self.assertEqual(len(self.posts()), 6)
+        self.assertEqual(self.record["repair_window"]["attempts"], 3)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        self.assertEqual(len(self.record["repair_problems"]), 2)
+
+    def test_review_metadata_and_order_changes_do_not_reset_budget(self):
+        self.failed_review()
+        findings = [{"file": "one.go", "detail": "Same defect", "priority": "P1"},
+                    {"file": "two.go", "detail": "Another defect", "priority": "P2"}]
+        for i in range(4):
+            with self.advance(i * 30):
+                self.remote.report["findings"] = copy.deepcopy(findings[::1 if i % 2 else -1])
+                for finding in self.remote.report["findings"]:
+                    finding["priority"] = "P0" if i % 2 else "P2"
+                self.remote.report["summary"] = "Summary " + str(i)
+                self.remote.pr["body"] = self.remote.context["body"] = "Evidence " + str(i)
+                self.remote.check_rows["Codex checkpoint"]["id"] = i + 1
+                self.process()
+                self.finish_correction(format(i + 1, "040x"))
+                self.restart()
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(len(self.record["repair_problems"]), 1)
+        self.assertIn("stalled", self.record)
+
+    def test_many_distinct_submissions_are_not_lifetime_limited(self):
+        self.failed_review()
+        self.record["repair_count"] = 38
+        for i in range(8):
+            self.remote.report["findings"] = [{"detail": "Defect " + str(i)}]
+            self.finish_correction(format(i + 1, "040x")) if i else None
+            with self.advance(i):
+                self.process()
+                self.restart()
+        self.assertEqual(len(self.posts()), 8)
+        self.assertEqual(self.record["repair_count"], 46)
+        self.assertNotIn("halted", self.record)
+
+    def test_interrupted_and_missing_pr_loops_are_bounded_despite_new_run_ids(self):
+        for status in ("ERROR", "FINISHED"):
+            with self.subTest(status=status):
+                self.setUp()
+                self.record.pop("pr")
+                self.remote.run_status = status
+                self.remote.cursor = self.unique_run_post
+                for i in range(4):
+                    with self.advance(i * 30):
+                        self.process()
+                        self.remote.run_id = self.record["last_dispatched_run"]
+                self.assertEqual(len(self.posts()), 3)
+                self.assertIn("stalled", self.record)
+
+    def test_repeated_ci_failure_is_bounded_across_heads(self):
+        self.remote.check_rows["Core tests"] = check("Core tests", "failure")
+        self.remote.cursor = self.unique_run_post
+        for i in range(4):
+            with self.advance(i * 30):
+                self.process()
+                self.finish_correction(format(i + 1, "040x"))
+        self.assertEqual(len(self.posts()), 3)
+        self.assertIn("stalled", self.record)
+
+    def test_only_obsolete_lifetime_cap_is_recovered_and_history_survives(self):
+        self.failed_review()
+        self.record.update(halted=LEGACY_REPAIR_HALT, repair_count=38, delivered=["old-delivery"])
+        self.process()
+        self.assertNotIn("halted", self.record)
+        self.assertEqual(self.record["recovered_halts"][0]["reason"], LEGACY_REPAIR_HALT)
+        self.assertEqual(self.record["repair_count"], 39)
+        self.assertIn("old-delivery", self.record["delivered"])
+        self.restart()
+        self.process()
+        self.assertEqual(len(self.record["recovered_halts"]), 1)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_other_safety_halts_never_clear_for_new_revisions_or_runs(self):
+        for reason in ("Worker changed protected control-plane file; requires independent control-plane review",
+                "Branch protection changed or no longer enforces required checkpoints", "Assignment PR closed without merge",
+                "Correction finished without changing the failing revision; no-progress stop"):
+            with self.subTest(reason=reason):
+                self.setUp()
+                self.record["halted"] = reason
+                self.remote.pr["head"]["sha"] = NEW
+                self.remote.run_id = "different-run"
+                self.process()
+                self.assertEqual(self.record["halted"], reason)
+                self.assertFalse(self.remote.calls)
+
+    def test_legacy_delivered_correction_gets_bounded_recovery_only_after_observation(self):
+        self.failed_review()
+        self.record.update(delivered=["review:" + HEAD], last_dispatched_run="legacy-run")
+        with self.advance(0):
+            self.process()
+            self.assertFalse(self.posts())
+            self.remote.run_id = "legacy-run"
+            self.process()
+            self.assertFalse(self.posts())
+        with self.advance(5):
+            self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["repair_window"]["attempts"], 2)
+
+    def test_ambiguous_recovery_keeps_budget_and_intent_across_restart(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+            self.finish_correction()
+        self.remote.fail_post = True
+        with self.advance(5):
+            with self.assertRaises(TimeoutError):
+                self.process()
+            self.restart()
+            self.process()
+            self.assertEqual(len(self.posts()), 2)
+            self.assertEqual(self.record["repair_window"]["attempts"], 1)
+            self.assertIn("intent", self.record)
+            self.remote.run_id, self.remote.run_status = "recovered-run", "RUNNING"
+            self.process()
+            self.assertEqual(self.record["repair_window"]["attempts"], 2)
+            self.assertNotIn("intent", self.record)
+            self.assertNotIn("halted", self.record)
+            self.assertEqual(len(self.posts()), 2)
+            self.restart()
+            fingerprint = self.record["repair_window"]["fingerprint"]
+            self.assertEqual(self.record["repair_problems"][fingerprint]["attempts"], 2)
+
+    def test_crash_after_intent_before_post_never_blindly_replays(self):
+        self.failed_review()
+        original = self.controller.save
+        def crash():
+            original()
+            if self.record.get("intent"):
+                raise RuntimeError("simulated crash before POST")
+        self.controller.save = crash
+        with self.assertRaises(RuntimeError):
+            self.process()
+        self.controller.save = original
+        self.restart()
+        self.process()
+        self.assertFalse(self.posts())
+        self.assertIn("intent", self.record)
+        self.assertEqual(self.record["repair_window"]["attempts"], 0)
+
+    def test_reconciling_intent_does_not_clear_unrelated_safety_halt(self):
+        self.record["intent"] = {"key": "old", "repair": True, "previous_run": "prior", "time": "2026-11-08T00:00:00+00:00"}
+        self.record["halted"] = "Ownership mismatch"
+        self.process()
+        self.assertEqual(self.record["halted"], "Ownership mismatch")
+        self.assertFalse(self.posts())
+
+    def test_acknowledged_run_not_yet_visible_never_replays_and_flags_stall(self):
+        self.failed_review()
+        with self.advance(0):
+            self.process()
+        with self.advance(16):
+            self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+        self.finish_correction()
+        with self.advance(17):
+            self.process()
+        self.assertEqual(len(self.posts()), 2)
+        self.assertNotIn("stalled", self.record)
+
+    def test_active_timeout_survives_restart_and_heartbeat_without_duplicate_runs(self):
+        self.remote.run_status = "RUNNING"
+        with self.advance(0):
+            self.controller.tick()
+        self.restart()
+        self.remote.agent = lambda r: {"status": "ACTIVE", "run_id": "run-old", "updated_at": "now", "git": {}}
+        with self.advance(91):
+            self.controller.tick()
+        self.assertEqual(self.record["stalled"]["kind"], "active_run")
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.assertFalse(self.posts())
+        self.assertNotIn("last_productive_progress", self.controller.state)
+        self.assertIn("last_successful_tick", self.controller.state)
+        status = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertEqual(status["health"], "needs_attention")
+        self.assertIn("STALLED", [c for c in self.remote.calls if c[0] == "PATCH"][-1][2]["body"])
+
+    def test_new_active_run_or_finished_run_clears_only_active_stall(self):
+        self.remote.run_status = "RUNNING"
+        with self.advance(0):
+            self.process()
+        with self.advance(91):
+            self.process()
+            self.remote.run_id = "new-active"
+            self.process()
+        self.assertNotIn("stalled", self.record)
+        with self.advance(182):
+            self.process()
+            self.assertIn("stalled", self.record)
+            self.remote.run_status = "FINISHED"
+            self.failed_review()
+            self.process()
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(len(self.posts()), 1)
+
+    def test_all_halted_tick_is_visible_and_not_product_progress(self):
+        self.record["halted"] = "Ownership mismatch"
+        self.controller.tick()
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.assertIn("Needs supervision", self.controller.state["last_result"])
+        self.assertNotIn("last_productive_progress", self.controller.state)
+
+    def test_observation_failure_publishes_control_error_without_capacity_leak(self):
+        self.remote.agent = lambda r: (_ for _ in ()).throw(TimeoutError("unreachable"))
+        for _ in range(2):
+            self.controller.tick()
+            self.assertEqual(self.controller.occupied, 1)
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.assertNotIn("last_successful_tick", self.controller.state)
+        self.assertFalse(self.posts())
+        status = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertIn("last_error", status["tasks"]["one"])
+
+    def test_global_control_error_is_saved_even_before_worker_observation(self):
+        original = self.remote.gh
+        def fail_main(path, *args, **kwargs):
+            if path == "git/ref/heads/main":
+                raise TimeoutError("GitHub unavailable")
+            return original(path, *args, **kwargs)
+        self.remote.gh = fail_main
+        with self.assertRaises(TimeoutError):
+            self.controller.tick()
+        status = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertEqual(status["health"], "needs_attention")
+        self.assertIn("GitHub unavailable", status["tick_error"])
+        self.assertNotIn("last_successful_tick", self.controller.state)
+
+    def test_merge_publishes_progress_on_same_tick_before_early_return(self):
+        self.controller.tick()
+        status = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertEqual(status["last_productive_progress"]["merge_sha"], NEW)
+        self.assertEqual(status["last_productive_progress"]["task"], "one")
+        self.assertIn("completed", status["tasks"]["one"])
+
+    def test_dry_run_legacy_migration_and_recovery_do_not_write_or_send(self):
+        self.failed_review()
+        self.record["halted"] = LEGACY_REPAIR_HALT
+        self.controller.dry = True
+        self.controller.tick()
+        self.assertFalse(any(c[0] != "GET" for c in self.remote.calls))
+        self.assertFalse((Path(self.temp.name) / "controller.json").exists())
+        self.assertFalse((Path(self.temp.name) / "status.json").exists())
 
     def evidence_fixture(self):
         spec = dict(SPEC, acceptance_ids=["AC-001", "AC-002"], phase_acceptance={"setup": ["AC-001"]})

@@ -12,22 +12,43 @@ The controller runs on Render-1 as Patrick's systemd user timer, togavsu-build-c
 - Record the protected merge as a bounded dependency. Launch ready assignments automatically, with at most four occupied implementation slots and a durable UUID per new agent.
 - Cloud integration assignments compose the separate packages into the actual running product and must provide real product CI and passing integration reports. The final release remains subject to all 52 criteria; merged scaffolding is never full product acceptance.
 
-## Limits and stops
-The standing limit is three correction rounds per assignment, including rounds already dispatched manually. At that limit, pause the affected assignment and record its reason; independent tasks may continue. Routine Git conflict resolution has a separate three-attempt bound and does not consume code-defect correction rounds. An unavailable review gets one infrastructure rerun for a given base/head. An ambiguous prompt delivery, closed unmerged PR, protected control-file edit, missing/pending integration evidence or failed protection check never gets a fabricated pass.
+## Limits and recovery
+The controller allows three correction attempts for the same problem in an assignment. The lifetime `repair_count` remains an audit total, so a fourth or fortieth correction doesn't stop work that has reached different independent findings. `max_repairs` in the existing pinned plan now sets the per-problem limit; the plan needs no migration.
+
+Problem identity comes from sorted Codex finding files/details, failed CI job names, missing CI job names, or the integration-evidence error. Review summaries, priorities, ordering, base/head SHAs, check URLs, PR body edits and Cursor run IDs don't reset that budget. Interrupted runs, missing PRs and persistent drafts each have their own stable problem identity. Counts stay in `repair_problems`, including when problems alternate. Reworded findings can form a new identity; this is deterministic duplicate detection, not a claim that the code improved.
+
+After a completed correction leaves the same problem, the controller waits five minutes before a second attempt and ten minutes before a third, measured from dispatch. Each recovery asks the same worker to diagnose why its prior approach failed. It requires an observed terminal run, preserves the original delivery history, persists a fresh intent before POST, and shares the four-worker limit. A lost response never triggers an automatic replay. An acknowledged run that still isn't visible after fifteen minutes is reported as stalled.
+
+At the per-problem limit, the assignment reports `stalled.kind=no_progress` with an instruction for the integration lead to inspect its existing agent and PR. Observation continues, so genuinely different findings can proceed without manually clearing state; independent tasks also continue. The integration lead handles routine diagnosis within the approved assignment. Don't delete state, reset counters to make the status look healthy, or relaunch a worker whose delivery outcome is unknown.
+
+The exact obsolete halt `Three correction cycles exhausted; independent work may continue` is automatically archived in `recovered_halts` and cleared. No other old halt is automatically cleared by this migration. Routine Git conflict resolution retains its separate three-attempt bound. An unavailable review still gets one infrastructure rerun per base/head. Ownership, protected-file, review, branch-protection, acceptance and ambiguous-delivery gates stay fail-closed.
 
 A failed control request is recorded and retried by later observation, not by bypassing checks. External service failures may prevent progress. Status is persisted in .build-state/status.json and a dedicated comment on GitHub build issue #1 is updated when task state changes.
 
 ## Freeze and recovery
 Immediate freeze: stop both togavsu-build-controller.timer and togavsu-build-controller.service through systemctl --user. Create .build-state/STOP to keep it paused across a later timer start. A STOP file is checked at the beginning of each tick.
 
-State lives in the control checkout's ignored .build-state directory: controller.json contains durable IDs, delivery/merge intents, correction budgets and results; agents.json preserves the original launches. Do not delete state to retry a task. Investigate a stopped item, reconcile its external run and PR, then deliberately clear the affected halt or grant a new budget only with Patrick's direction.
+State lives in the control checkout's ignored .build-state directory: controller.json contains durable IDs, delivery/merge intents, correction budgets and results; agents.json preserves the original launches. Investigate a stopped item and reconcile its external run, PR and independent evidence before the authorized integration lead makes a targeted recovery. Routine supervision doesn't wait for Patrick. Recovery can't waive review, CI, ownership, protection or product acceptance.
+
+## Health and supervision
+
+`status.json` is written on every non-paused tick, including a merge tick and a failed top-level control request. `updated` is the last status publication time, not evidence of product progress. The issue #1 status comment changes only when its substantive state changes. A monitor should read the local status as well as the issue because GitHub itself can be unavailable.
+
+- `health` is `needs_attention` if any unfinished assignment is halted, stalled, has a control error or has an unresolved launch/delivery outcome. Otherwise it is `observing`; that doesn't assert product acceptance.
+- `tick_error` records a top-level observation failure. Task `last_error` records an assignment control failure. `last_successful_tick` in controller.json is only a successful control heartbeat.
+- `last_productive_progress` is null until a protected merge is verified under this policy. It then gives `time`, `task` and `merge_sha`. A bounded merge doesn't complete a phase or release.
+- Each task's `last_submission` gives `head` and `observed_at`. A new candidate is not accepted progress. `repair_window` gives the current problem fingerprint, attempts and, after dispatch, `last_dispatch_at`. Lifetime `repair_count` remains visible.
+- `active_watch` gives the current `run_id` and the time it was first observed active. At ninety minutes the task reports `stalled.kind=active_run`, including that run ID and start time. Changing status/heartbeat timestamps doesn't extend the deadline. The optional plan field `active_run_timeout_seconds` overrides the default 5400 seconds. This is an inspection deadline, not proof the worker failed: it never cancels or replaces the run. A finished or newly observed run clears only that active-run warning.
+- `stalled.kind=run_observation` means an acknowledged run wasn't visible after fifteen minutes. `stalled.kind=no_progress` means repeated-problem recovery is exhausted. Both include a concrete `reason`. `halted` remains a safety stop and carries its reason.
+
+Monitor `health=needs_attention` promptly. Investigate a status older than ten minutes while the two-minute timer is enabled, and check STOP/service state before considering recovery. A read-only supervisor may inspect the existing run, PR and checks; it must reconcile uncertainty before any new dispatch. Successful timer exits never justify reporting that the product is advancing.
 
 ## Deployment and credentials
 The running controller and plan are copied from a reviewed commit into /home/patrick/.local/share/togavsu-controller. They are pinned; a worker changing main cannot replace the running controller. The installed receipt records the source commit and file hashes.
 
 The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local credential file. GitHub uses the existing authenticated gh configuration. No key values are in the repository or unit files, and no control credentials are injected into build VMs. Codex reviews use the GitHub secret already configured and API billing.
 
-The deterministic controller tests cover feedback dispatch/deduplication, ambiguous requests, retry exhaustion, branch conflicts, stale or forged reviews, required CI, merge races, protection rejection, dependency launches and pause behavior. A live dry-run against existing PRs precedes enabling the timer.
+The deterministic controller tests cover feedback dispatch/deduplication, crash/restart durability, repeated and alternating problems, bounded backoff, legacy-cap recovery, active-run deadlines, health publication, ambiguous requests, branch conflicts, stale or forged reviews, required CI, merge races, protection rejection, dependency launches and pause behavior. A live dry-run against existing PRs precedes deployment. Run control-only validation with `python3 -m unittest discover -s scripts -p 'test_*.py'`, `python3 scripts/check_setup.py` and `git diff --check`. No product build or install belongs on Render-1.
 
 Integration evidence is bound to a tested 40-character code revision; only report-file commits may follow that revision. Reports must exhaustively partition assigned acceptance IDs and pass every named phase case with its test command and mapped criteria. Final release permits no pending criterion. Integration leads are serialized through the dependency graph to preserve shared-file ownership. Correction dispatch and new launches share the same pre-observed four-worker capacity limit.
 
