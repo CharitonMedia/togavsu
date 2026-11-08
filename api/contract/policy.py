@@ -332,6 +332,21 @@ def _confirmation_input(operation: dict) -> dict | None:
     return None
 
 
+def _requested_confirmation(operation: dict, query: dict, body: dict, trusted: dict):
+    """The operation's declared input. A query flag does not confirm a body field, or the reverse."""
+    declared = (operation.get("x-togavsu-access") or {}).get("quarantine_confirmation_input")
+    if not isinstance(declared, dict):
+        declared = _confirmation_input(operation)
+    if isinstance(declared, dict):
+        source = body if declared.get("in") == "body" else query if declared.get("in") == "query" else {}
+        name = declared.get("name")
+        if isinstance(source, dict) and isinstance(name, str) and name in source:
+            return source[name]
+    if "confirm" in trusted:
+        return trusted.get("confirm")
+    return None
+
+
 def apply_file_download_contract(spec: dict) -> None:
     for _method, _path, operation in iter_operations(spec):
         if not is_core_file_download(operation):
@@ -619,7 +634,7 @@ def payment_reversal_decision(operation: dict, call: dict) -> dict:
     if not matter_visible(call, call, single_record=True):
         return _denied("not_found")
     branch = policy["trust_linked"] if call.get("trust_linked") else policy["operating"]
-    if any(scope not in call["token_scopes"] for scope in branch["scopes"]):
+    if bearer_lacks_scopes(call, branch["scopes"]):
         return _denied(policy["insufficient_scopes"])
     account_id = None
     compensation = None
@@ -767,7 +782,7 @@ def payment_effect_decision(operation: dict, call: dict) -> dict:
         already = item.get("trust_already_posted", call.get("trust_already_posted", False))
         needs_trust = destination == "trust" and status == "completed" and not already
         needed = policy["trust_destination"]["scopes"] if needs_trust else policy["operating"]["scopes"]
-        if any(scope not in call["token_scopes"] for scope in needed):
+        if bearer_lacks_scopes(call, needed):
             return _denied(policy["insufficient_scopes"])
         failure = trust_account_failure({**call, **item, "trust_accounts": call.get("trust_accounts"), "firm_id": call.get("firm_id")})
         if failure:
@@ -1205,13 +1220,12 @@ def custom_field_bulk_apply(operation: dict, call: dict, items: list[dict], hand
         return {"result": "forbidden", **quiet}
     if call.get("role") not in access.get("roles", []):
         return {"result": "forbidden", **quiet}
-    scopes = set(call.get("token_scopes") or [])
     domains = access.get("record_type_domain") or {}
     planned = []
     for item in items:
         record_type = item.get("record_type")
         needed = (access.get("record_type_scopes") or {}).get(record_type)
-        if not needed or any(scope not in scopes for scope in needed):
+        if not needed or bearer_lacks_scopes(call, needed):
             return {"result": "scope_denied", **quiet}
         if item.get("matter_id") or item.get("matter_walled"):
             if not matter_visible(call, {"matter_id": item.get("matter_id"), "matter_walled": item.get("matter_walled")}):
@@ -1360,8 +1374,7 @@ def trust_entry_authorization(operation: dict, call: dict) -> str:
         needed = (access.get("entry_type_scopes") or {}).get(kind)
         if not roles or not needed:
             return "validation_failed"
-        held = set(call.get("token_scopes") or [])
-        if any(scope not in held for scope in needed):
+        if bearer_lacks_scopes(call, needed):
             return "scope_denied"
         if call.get("role") not in roles:
             return "forbidden"
@@ -1375,19 +1388,41 @@ def trust_entry_authorization(operation: dict, call: dict) -> str:
     return "allowed"
 
 
+def canonical_owner(value) -> dict | None:
+    """One owner shape. Events use type/id. FileUpload uses owner_kind and the matching id field."""
+    if not isinstance(value, dict):
+        return None
+    kind = value.get("type")
+    ident = value.get("id")
+    if kind in {"user", "module"} and isinstance(ident, str) and ident:
+        return {"type": kind, "id": ident}
+    kind = value.get("owner_kind")
+    if kind == "user" and isinstance(value.get("owner_user_id"), str) and value["owner_user_id"]:
+        return {"type": "user", "id": value["owner_user_id"]}
+    if kind == "module" and isinstance(value.get("owner_module_id"), str) and value["owner_module_id"]:
+        return {"type": "module", "id": value["owner_module_id"]}
+    return None
+
+
 def _tagged_owner_denial(operation: dict, call: dict) -> str | None:
     """A tagged user or module owner is the record owner. A fabricated user id does not pass for a module."""
     access = operation["x-togavsu-access"]
-    tagged = call.get("owner") if isinstance(call.get("owner"), dict) else None
-    if tagged is None:
-        record = call.get("record") if isinstance(call.get("record"), dict) else None
-        if isinstance(record, dict) and isinstance(record.get("owner"), dict):
-            tagged = record["owner"]
-    if isinstance(tagged, dict):
-        if tagged.get("type") not in {"user", "module"} or not isinstance(tagged.get("id"), str) or not tagged["id"]:
+    tagged = None
+    supplied = call.get("owner")
+    if isinstance(supplied, dict):
+        tagged = canonical_owner(supplied)
+        if tagged is None:
             return "not_found"
+    elif supplied in (None,):
+        record = call.get("record") if isinstance(call.get("record"), dict) else None
+        published = record.get("owner") if isinstance(record, dict) else None
+        if isinstance(published, dict):
+            tagged = canonical_owner(published)
+            if tagged is None:
+                return "not_found"
+    if tagged is not None:
         rule = {"binding": "owner", "admin_bypass": access.get("owner") == "self_or_admin" or access.get("feed_owner") == "self_or_admin"}
-        stored = {"type": "file_upload.created", "context": {"owner": {"type": tagged["type"], "id": tagged["id"]}}}
+        stored = {"type": "file_upload.created", "context": {"owner": tagged}}
         if not _principal_can_read(rule, call, stored):
             return "not_found"
         return None
@@ -1439,7 +1474,7 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         "actor": "module" if call.get("module_id") and not call.get("human_session") and not call.get("role") else "human",
         "human_session": bool(call.get("human_session") or call.get("role")),
         "role": call.get("role"),
-        "scopes": list(call["approved_scopes"]) if "approved_scopes" in call else list(call.get("token_scopes") or []),
+        "scopes": list(call.get("approved_scopes") or []) if "approved_scopes" in call else [],
         "module_id": call.get("module_id"),
         "path_module_id": call.get("path_module_id"),
         "owner_module_id": call.get("owner_module_id"),
@@ -1549,6 +1584,8 @@ def _module_scope_intersection(call: dict) -> dict:
     if call.get("grant_revoked"):
         return call
     approved = set(call.get("approved_scopes") or [])
+    if "current_approved_scopes" in call:
+        approved &= set(call.get("current_approved_scopes") or [])
     narrowed = dict(call)
     narrowed["token_scopes"] = [scope for scope in call.get("token_scopes") or [] if scope in approved]
     return narrowed
@@ -1702,6 +1739,28 @@ def require_supported_qualifiers(spec: dict) -> None:
         raise RuntimeError("unsupported access qualifiers: " + ", ".join(sorted(unknown)))
 
 
+def session_authorizes(call: dict) -> bool:
+    """A cookie session is authorized by role. A bearer is not, including when its scope list is empty."""
+    if call.get("credential") == "session":
+        return True
+    if call.get("credential") == "bearer":
+        return False
+    return bool(call.get("cookie")) and not call.get("authorization")
+
+
+def bearer_lacks_scopes(call: dict, needed) -> bool:
+    """True when a bearer is missing a required scope.
+
+    Sessions skip this check. An absent scope list and an explicit empty list both deny.
+    Neither falls back to another grant.
+    """
+    required = [scope for scope in (needed or [])]
+    if not required or session_authorizes(call):
+        return False
+    held = set(call.get("token_scopes") or []) if "token_scopes" in call else set()
+    return any(scope not in held for scope in required)
+
+
 def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     """One decision for the HTTP operation. MCP tools/call uses it before effects."""
     denied = {"effects": False, "public": False}
@@ -1739,9 +1798,7 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         roles = access.get("roles") or []
         if not roles or subject.get("role") not in roles:
             return {"result": "forbidden", **denied}
-        needed = list(access.get("scopes") or [])
-        held = set(subject.get("token_scopes") or [])
-        if any(scope not in held for scope in needed):
+        if bearer_lacks_scopes(subject, access.get("scopes") or []):
             return {"result": "scope_denied", **denied}
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
         matter_id = subject.get("matter_id")
@@ -1815,6 +1872,44 @@ def _access_case_matches(case: dict, call: dict) -> bool:
     return True
 
 
+# Copied from the authenticated call only when that key is present. Arguments never write these.
+# include_views_decision reads current approvals, extensions, and published views.
+# payment_reversal_decision reads the stored opening and the original ledger row.
+# inherited history, notifications, and wall replacement read rows, caller_user_id, and user_ids.
+_PRESERVED_CONTEXT = (
+    "current_approved_scopes",
+    "extensions",
+    "published_views",
+    "rows",
+    "caller_user_id",
+    "opening",
+    "original_entry",
+    "existing_reversal",
+    "posted_entry_id",
+    "trust_entry_id",
+    "reversal_account_id",
+    "batch_max",
+    "matter_ids",
+    "from_date",
+    "to_date",
+    "user_ids",
+    "current_wall",
+    "viewer_role",
+    "description",
+)
+
+
+def _credential_kind(call: dict) -> str | None:
+    named = call.get("credential")
+    if named in {"session", "bearer"}:
+        return named
+    if call.get("cookie") and not call.get("authorization"):
+        return "session"
+    if call.get("authorization"):
+        return "bearer"
+    return None
+
+
 def mcp_credential_rejection(arguments: dict) -> str | None:
     planted = ("Authorization", "Host", "roles", "role", "on_wall", "matter_membership", "token_scopes", "scopes", "approved_scopes")
     if any(name in arguments for name in planted):
@@ -1841,7 +1936,7 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "role": call.get("role"),
         "token_scopes": list(call.get("token_scopes") or []),
         "approved_scopes": list(call.get("approved_scopes") or []),
-        "module_scopes": list(call.get("module_scopes") or call.get("approved_scopes") or []),
+        "module_scopes": list(call.get("module_scopes") or []),
         "module_id": call.get("module_id"),
         "caller_module_id": call.get("caller_module_id") or call.get("module_id"),
         "grant_revoked": call.get("grant_revoked"),
@@ -1888,7 +1983,7 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "owner_user_id": body.get("owner_user_id", call.get("owner_user_id")),
         "name": body.get("name", call.get("name")),
         "requested_scopes": list(body["scopes"]) if isinstance(body.get("scopes"), list) else list(call.get("requested_scopes") or []),
-        "credential": call.get("credential") or ("bearer" if call.get("authorization") else None),
+        "credential": _credential_kind(call),
         "caller_scopes": list(call.get("caller_scopes") or []),
         "owner_role_scopes": list(call.get("owner_role_scopes") or []),
         "module_approved_scopes": list(call.get("module_approved_scopes") or []),
@@ -1898,7 +1993,7 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "include": published_include(query["include"]) if "include" in query else published_include(call.get("include")),
         "stored_definition": dict(call["stored_definition"]) if isinstance(call.get("stored_definition"), dict) else None,
         "stored_definitions": [dict(row) for row in call.get("stored_definitions") or [] if isinstance(row, dict)],
-        "confirm": query.get("confirm", query.get("confirm_quarantine", call.get("confirm"))),
+        "confirm": _requested_confirmation(operation, query, body, call),
         "quarantined": call.get("quarantined"),
         "principal_user_id": call.get("principal_user_id") or call.get("user_id"),
         "user_id": call.get("user_id"),
@@ -1910,6 +2005,31 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "queue": body.get("queue", call.get("queue")),
         "replay": bool(call.get("replay")),
     }
+    if subject.get("credential") == "session":
+        subject.pop("token_scopes", None)
+    elif "token_scopes" in call:
+        subject["token_scopes"] = list(call.get("token_scopes") or [])
+    elif subject.get("credential") == "bearer":
+        subject["token_scopes"] = []
+    if "approved_scopes" in call:
+        subject["approved_scopes"] = list(call.get("approved_scopes") or [])
+    else:
+        subject.pop("approved_scopes", None)
+    if "module_scopes" in call:
+        subject["module_scopes"] = list(call.get("module_scopes") or [])
+    else:
+        subject.pop("module_scopes", None)
+    for key in _PRESERVED_CONTEXT:
+        if key in call:
+            subject[key] = call[key]
+    if isinstance(body, dict) and "scope" in body:
+        subject["scope"] = body["scope"]
+    elif "scope" in call:
+        subject["scope"] = call["scope"]
+    if "idempotency_key" in call:
+        subject["idempotency_key"] = call["idempotency_key"]
+    elif isinstance(arguments.get("idempotency_key"), str):
+        subject["idempotency_key"] = arguments["idempotency_key"]
     if isinstance(body.get("module_id"), str):
         subject["bound_module_id"] = body["module_id"]
     for name in ("label", "color", "target"):
@@ -2786,8 +2906,7 @@ def attach_matter_marker(store: dict, call: dict) -> dict:
     quiet = {"attachment": None, "events": [], "mutated": False}
     if call.get("role") not in {"admin", "attorney", "staff"}:
         return {"result": "forbidden", **quiet}
-    scopes = set(call.get("scopes") or call.get("token_scopes") or [])
-    if "matters:write" not in scopes:
+    if bearer_lacks_scopes(call, ["matters:write"]):
         return {"result": "scope_denied", **quiet}
     if not call.get("matter_id"):
         return {"result": "validation_failed", **quiet}
@@ -2903,9 +3022,9 @@ def _stored_subject(record: dict, rule: dict) -> dict | None:
     source = record.get("predelete") if deleted else record.get("context")
     if not isinstance(source, dict):
         return None
-    tagged = source.get("owner")
-    if isinstance(tagged, dict) and tagged.get("type") in {"user", "module"} and isinstance(tagged.get("id"), str) and tagged["id"]:
-        return {"type": tagged["type"], "id": tagged["id"]}
+    owner = canonical_owner(source.get("owner"))
+    if owner:
+        return owner
     field = "recipient_user_id" if rule.get("binding") == "recipient" else "owner_user_id"
     value = source.get(field)
     if isinstance(value, str) and value:
@@ -3267,8 +3386,10 @@ def commit_concurrent_publishes(policy: dict, operation: dict, grant: dict, uplo
 
 
 def _notification_scope(access: dict, call: dict) -> str | None:
-    """A presented bearer must hold the operation scope. A session call with no token list is unchanged."""
-    if "token_scopes" not in call:
+    """A presented bearer must hold the operation scope. A session call is authorized by role."""
+    if session_authorizes(call):
+        return None
+    if "token_scopes" not in call and call.get("credential") != "bearer":
         return None
     needed = list(access.get("scopes") or [])
     held = set(call.get("token_scopes") or [])
@@ -3806,8 +3927,11 @@ def replace_matter_wall(operation: dict, call: dict) -> dict:
     role = call.get("viewer_role", call.get("role"))
     if role not in access.get("roles", []):
         return {"result": "forbidden", **unchanged}
-    scopes = call.get("module_scopes") if call.get("caller_module_id") else call.get("token_scopes")
-    if scopes is not None and any(scope not in scopes for scope in access.get("scopes", [])):
+    if call.get("caller_module_id"):
+        module_scopes = call.get("module_scopes") if "module_scopes" in call else []
+        if any(scope not in module_scopes for scope in access.get("scopes", [])):
+            return {"result": "scope_denied", **unchanged}
+    elif bearer_lacks_scopes(call, access.get("scopes", [])):
         return {"result": "scope_denied", **unchanged}
     if not matter_visible(call, call, single_record=True):
         return {"result": "not_found", **unchanged}
@@ -3903,8 +4027,7 @@ def external_effect_decision(operation: dict, call: dict) -> dict:
     denied = {"effects": silent, "provider_invoked": False, "log_written": False, "mutated": False}
     if call.get("role") not in access.get("roles", []):
         return {"result": "forbidden", **denied}
-    held = set(call.get("token_scopes") or [])
-    if any(scope not in held for scope in access.get("scopes") or []):
+    if bearer_lacks_scopes(call, access.get("scopes") or []):
         return {"result": "scope_denied", **denied}
     matter_id = call.get("matter_id")
     scope = call.get("scope")
@@ -4128,7 +4251,7 @@ def trust_debit_decision(call: dict) -> dict:
         return {"result": "forbidden", **denied}
     if not matter_visible(call, call, single_record=True):
         return {"result": "not_found", **denied}
-    if "trust:withdraw" not in call.get("token_scopes", []):
+    if bearer_lacks_scopes(call, ["trust:withdraw"]):
         return {"result": "scope_denied", **denied}
     if not call.get("client_id") or not call.get("trust_account_id"):
         return {"result": "validation_failed", **denied}
@@ -4235,7 +4358,7 @@ def invoice_draft_decision(operation: dict, call: dict, matters: list[dict]) -> 
     access = operation["x-togavsu-access"]
     if call.get("role") not in access.get("roles", []):
         return {"result": "forbidden", **quiet}
-    if "invoices:write" not in set(call.get("token_scopes") or []):
+    if bearer_lacks_scopes(call, ["invoices:write"]):
         return {"result": "scope_denied", **quiet}
     mode, reason = _draft_modes(call)
     if mode is None:
@@ -4267,7 +4390,7 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
     """Every scope is authorized from the source ledger entry before a row, count, or cursor is returned."""
     if caller.get("role") not in {"admin", "attorney", "staff", "accountant"}:
         return {"result": "forbidden", "rows": [], "total": 0, "next_cursor": None}
-    if "trust:read" not in set(caller.get("token_scopes") or caller.get("scopes") or []):
+    if bearer_lacks_scopes(caller, ["trust:read"]):
         return {"result": "scope_denied", "rows": [], "total": 0, "next_cursor": None}
     query = query or {}
     current = {
@@ -4398,7 +4521,7 @@ def bulk_privilege_expansions(spec: dict) -> list[str]:
 def _privilege_denial(rule: dict, call: dict) -> str | None:
     if call.get("role") not in rule["roles"]:
         return "forbidden"
-    if any(scope not in set(call.get("token_scopes") or []) for scope in rule["scopes"]):
+    if bearer_lacks_scopes(call, rule["scopes"]):
         return "scope_denied"
     return None
 
@@ -4579,7 +4702,7 @@ def bulk_invoice_apply(store: dict, operation: dict, call: dict) -> dict:
     quiet = {"written": False, "data": None, "events": [], "invoice_count": len(store["invoices"])}
     if call.get("role") not in access.get("roles", []):
         return {"result": "forbidden", **quiet}
-    if any(scope not in set(call.get("token_scopes") or []) for scope in access.get("scopes") or []):
+    if bearer_lacks_scopes(call, access.get("scopes") or []):
         return {"result": "scope_denied", **quiet}
     items = call.get("items")
     if not isinstance(items, list) or not items or len(items) > int(call.get("batch_max") or 500):

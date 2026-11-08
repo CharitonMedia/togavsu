@@ -73,6 +73,8 @@ from contract.policy import (
     open_widget_target,
     page_size_decision,
     sidebar_entries,
+    _mcp_operation_call,
+    _module_upload_document,
     background_grant_issuance,
     doc_tender_events,
     inherited_history_rows,
@@ -6703,6 +6705,258 @@ class ContractTest(unittest.TestCase):
         pulled = marketplace_package({"trusted_key_ids": ["key-1"], "listings": {"matter-clock": {"pulled": True, "versions": catalog["listings"]["matter-clock"]["versions"]}}}, {"listing_id": "matter-clock", "version": "0.1.0"})
         self.assertEqual(pulled["result"], "yanked")
         self.assertIsNone(pulled["package"])
+
+    def test_dispatcher_parity_matrix(self):
+        """Schema-valid MCP calls for every authorization family the adapter reaches.
+
+        Trusted context stays on the call. Requested values stay in path, query, and body.
+        """
+        visible = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        hidden = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        client = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        other_account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00002"
+        missing_account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00009"
+        owner = "018f1a00-7b3c-7d4e-8a11-555555555555"
+        other_user = "018f1a00-7b3c-7d4e-8a11-666666666666"
+        upload_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        backend_a = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1"
+        backend_b = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb2"
+        entry_a = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        entry_b = "018f1a00-7b3c-7d4e-8a11-ccccccccccc2"
+        view = "matter-clock.targets"
+        extension = "matter-clock.matter_targets"
+        view_scope = "views:matter-clock.targets:read"
+
+        def cookie(**extra):
+            return {"cookie": "togavsu_session", "credential_valid": True, **extra}
+
+        def bearer(**extra):
+            return {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, **extra}
+
+        def validate(operation_id, body):
+            operation = _operation(self.spec, operation_id)
+            schema = operation["requestBody"]["content"]["application/json"]["schema"]
+            if "$ref" in schema:
+                _component_validator(self.spec, schema["$ref"].rsplit("/", 1)[1]).validate(body)
+            else:
+                _schema_validator(self.spec, schema).validate(body)
+
+        list_matter = _operation(self.spec, "listMatter")
+        archive = _operation(self.spec, "createFileArchive")
+        session_subject = _mcp_operation_call(
+            {
+                "role": "staff",
+                "cookie": "togavsu_session",
+                "current_approved_scopes": [],
+                "extensions": [extension],
+                "published_views": [view],
+                "balances": [{"trust_account_id": account, "client_id": client, "matter_id": visible}],
+            },
+            {"query": {"confirm_quarantine": True}, "body": {"role": "admin", "token_scopes": ["matters:write"], "balances": [], "scopes": ["admin:all"]}},
+            list_matter,
+        )
+        self.assertEqual(session_subject["credential"], "session")
+        self.assertNotIn("token_scopes", session_subject)
+        self.assertEqual(session_subject["role"], "staff")
+        self.assertEqual(session_subject["current_approved_scopes"], [])
+        self.assertEqual(session_subject["extensions"], [extension])
+        self.assertEqual(session_subject["published_views"], [view])
+        self.assertEqual(session_subject["balances"][0]["trust_account_id"], account)
+        empty_bearer = _mcp_operation_call({"role": "staff", "authorization": "Bearer secret"}, {"path": {}, "query": {}, "body": {}}, list_matter)
+        self.assertEqual(empty_bearer["credential"], "bearer")
+        self.assertEqual(empty_bearer["token_scopes"], [])
+        self.assertIs(_mcp_operation_call({"role": "staff", "authorization": "Bearer secret", "token_scopes": ["files:read"], "quarantined": True}, {"query": {"confirm_quarantine": False}, "body": {"file_ids": [file_id], "confirm_quarantine": True}}, archive)["confirm"], True)
+        self.assertIs(_mcp_operation_call({"role": "staff", "authorization": "Bearer secret", "token_scopes": ["files:read"], "quarantined": True}, {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id], "confirm_quarantine": False}}, archive)["confirm"], False)
+        self.assertIs(_mcp_operation_call({"role": "staff", "authorization": "Bearer secret", "token_scopes": ["files:read"], "quarantined": True}, {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}, archive)["confirm"], None)
+
+        issuance = _operation(self.spec, "issueFilePublicationGrant")
+        issued = background_grant_issuance(
+            issuance,
+            {"installed": True, "registered": True, "module_id": "email", "approved_scopes": ["files:write"]},
+            {"module_id": "email", "source": "email", "matter_id": visible, "expires_at": "2026-11-07T20:00:00Z", "matter_walled": False},
+        )
+        self.assertEqual(issued["result"], "allowed")
+        grant = issued["grant"]
+        publication = self.spec["x-togavsu-module-delegation"]["noninteractive"]["background_file_publication"]
+        created = background_file_step(
+            {"uploads": {}, "files": {}, "events": []},
+            publication,
+            _operation(self.spec, "createFileUpload"),
+            {"grant": grant, "caller_module_id": "email", "module_scopes": ["files:write"], "matter_id": visible, "viewer_present": False, "operation": "createFileUpload", "upload_id": upload_id},
+        )
+        module_upload = created["upload"]
+        self.assertEqual(module_upload, _module_upload_document(upload_id, grant, "receiving"))
+        _component_validator(self.spec, "FileUpload").validate(module_upload)
+        user_upload = {
+            "id": upload_id,
+            "owner": {"owner_kind": "user", "owner_user_id": owner},
+            "chunk_size_bytes": 8388608,
+            "next_offset": 0,
+            "size_bytes": 0,
+            "expires_at": "2026-11-07T20:00:00Z",
+            "status": "receiving",
+        }
+        _component_validator(self.spec, "FileUpload").validate(user_upload)
+        grant["upload_ids"] = [upload_id]
+        help_body = {"id": "start", "title": "Start", "markdown": "Hello"}
+        marker_body = {"label": "After hours", "color": "#336699"}
+        token_body = {"name": "Desk", "owner_user_id": owner, "scopes": ["profile:read"]}
+        withdrawal = {"trust_account_id": account, "client_id": client, "matter_id": visible, "entry_type": "withdrawal", "amount_cents": 100, "method": "check", "description": "Distribution"}
+        payment = {"contact_id": client, "matter_id": visible, "amount_cents": 100, "destination": "operating", "method": "check", "status": "pending"}
+        archive_body = {"file_ids": [file_id], "confirm_quarantine": True}
+        fee_body = {"client_id": client, "trust_account_id": account, "amount_cents": 1500}
+        move_all = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "all"}
+        move_matter = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "matter", "matter_id": visible}
+        move_matter_blank = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "matter"}
+        move_all_named = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "all", "matter_id": visible}
+        reason = {"reason": "Correct the deposit"}
+        event_row = {"action": "noted", "record_type": "matter", "record_id": visible, "summary": "Batch row", "matter_id": visible}
+        hidden_row = {**event_row, "record_id": hidden, "matter_id": hidden}
+        for operation_id, body in (
+            ("createModuleHelpPage", help_body),
+            ("createModuleMarker", marker_body),
+            ("createApiToken", token_body),
+            ("postTrustEntry", withdrawal),
+            ("createPayment", payment),
+            ("createFileArchive", archive_body),
+            ("applyFlatFee", fee_body),
+            ("createStorageMove", move_all),
+            ("createStorageMove", move_matter),
+            ("createStorageMove", move_matter_blank),
+            ("createStorageMove", move_all_named),
+            ("reversePayment", reason),
+            ("bulkEvent", {"items": [event_row, hidden_row]}),
+        ):
+            validate(operation_id, body)
+        owned_balance = {"trust_account_id": account, "client_id": client, "matter_id": visible, "matter_cents": 1000, "client_cents": 5000, "account_cents": 4000, "active": True, "authorized": True, "firm_id": "firm-1"}
+        other_balance = {"trust_account_id": other_account, "client_id": client, "matter_id": visible, "matter_cents": 9000, "client_cents": 9000, "account_cents": 9000, "active": True, "authorized": True, "firm_id": "firm-1"}
+        separated = trust_debit_decision(
+            {"role": "attorney", "credential": "session", "client_id": client, "trust_account_id": account, "matter_id": visible, "amount_cents": 1500, "matter_walled": False, "balances": [owned_balance, other_balance], "firm_id": "firm-1"}
+        )
+        self.assertEqual(separated["result"], "allowed")
+        self.assertEqual(separated["balances"], {"matter_cents": -500, "client_cents": 3500, "account_cents": 2500})
+        membership = {visible: True, hidden: False}
+        malware = self.spec["x-togavsu-module-delegation"]["noninteractive"]["malware_scan"]
+        scan_grant = _issue_malware_grant(
+            malware,
+            {"registered": True, "subscriptions": ["file.version_created"], "module_id": "malware", "recipient_id": "malware", "file_id": file_id, "version_id": upload_id, "matter_id": visible},
+        )
+        cases = [
+            {"family": "session_or_bearer", "name": "cookie listMatter", "result": "allowed", "call": {**cookie(role="staff"), "tool": "listMatter", "arguments": {}}},
+            {"family": "session_or_bearer", "name": "empty bearer listMatter", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[]), "tool": "listMatter", "arguments": {}}},
+            {"family": "session_or_bearer", "name": "absent bearer scopes", "result": "scope_denied", "call": {**bearer(role="staff"), "tool": "listMatter", "arguments": {}}},
+            {"family": "session_or_bearer", "name": "cookie notifications", "result": "allowed", "call": {**cookie(role="staff", owner="self", caller_user_id=owner), "tool": "listNotification", "arguments": {}}},
+            {"family": "session_or_bearer", "name": "empty bearer notifications", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[], owner="self", caller_user_id=owner), "tool": "listNotification", "arguments": {}}},
+            {"family": "include", "name": "unpublished extension", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"], extensions=[extension], published_views=[]), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
+            {"family": "include", "name": "other module unpublished extension", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"], extensions=[extension], published_views=[], caller_module_id="other-module"), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
+            {"family": "include", "name": "published view", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "revoked view scope", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=["matters:read"], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "absent current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "explicit empty current approval", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=[], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
+            {"family": "include", "name": "missing extension context", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"]), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
+            {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": archive_body}}},
+            {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
+            {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
+            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
+            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "upload_owner", "name": "module resume", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "upload_owner", "name": "user resume", "result": "allowed", "call": {**cookie(role="staff", user_id=owner), "tool": "getFileUpload", "record": user_upload, "arguments": {"path": {"upload_id": upload_id}}}},
+            {"family": "upload_owner", "name": "other user resume", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["files:write"], user_id=other_user), "tool": "getFileUpload", "record": user_upload, "arguments": {"path": {"upload_id": upload_id}}}},
+            {"family": "upload_owner", "name": "staff is not the module owner", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["files:write"], user_id=owner), "tool": "getFileUpload", "record": module_upload, "arguments": {"path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "revoked publication grant", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": {**grant, "revoked": True}, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "empty module scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": [], "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "background_file", "name": "absent module scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", approved_scopes=["files:write"]), "tool": "getFileUpload", "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
+            {"family": "malware_scan", "name": "revoked scan grant", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="malware", caller_module_id="malware"), "tool": "downloadFileVersion", "module_scopes": ["files:read"], "registered": True, "subscriptions": ["file.version_created"], "matter_id": visible, "arguments": {"task_authorization": {**scan_grant, "revoked": True}, "path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "payment_processor", "name": "revoked processor grant", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="lawpay", caller_module_id="lawpay"), "tool": "createPayment", "registered": True, "arguments": {"task_authorization": {"revoked": True}}}},
+            {"family": "module_principal", "name": "empty help approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=[], token_scopes=["help:write"], installed=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
+            {"family": "module_principal", "name": "absent help approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="matter-clock", token_scopes=["help:write"], installed=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
+            {"family": "module_principal", "name": "empty marker approval", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="intake", approved_scopes=[], token_scopes=["markers:write"], installed=True), "tool": "createModuleMarker", "arguments": {"path": {"module_id": "intake"}, "body": marker_body}}},
+            {"family": "module_principal", "name": "revoked module install", "result": "forbidden", "call": {**bearer(viewer_present=False, module_id="matter-clock", approved_scopes=["help:write"], installed=True, grant_revoked=True), "tool": "createModuleHelpPage", "arguments": {"path": {"module_id": "matter-clock"}, "body": help_body}}},
+            {"family": "issuance", "name": "cookie issues within role", "result": "allowed", "call": {**cookie(role="admin", caller_scopes=["tokens:write", "profile:read"], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "issuance", "name": "empty bearer cannot issue", "result": "scope_denied", "call": {**bearer(role="admin", token_scopes=[], owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "issuance", "name": "session without caller scopes", "result": "scope_denied", "call": {**cookie(role="admin", owner_role_scopes=["profile:read"]), "tool": "createApiToken", "arguments": {"body": token_body}}},
+            {"family": "entry_type_scopes", "name": "cookie attorney withdrawal", "result": "allowed", "call": {**cookie(role="attorney"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
+            {"family": "entry_type_scopes", "name": "empty bearer withdrawal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[]), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
+            {"family": "entry_type_scopes", "name": "cookie staff withdrawal", "result": "forbidden", "call": {**cookie(role="staff"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
+            {"family": "payment_effect", "name": "cookie pending payment", "result": "allowed", "call": {**cookie(role="staff"), "tool": "createPayment", "arguments": {"body": payment}}},
+            {"family": "payment_effect", "name": "empty bearer payment", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[]), "tool": "createPayment", "arguments": {"body": payment}}},
+            {"family": "payment_reversal", "name": "cookie operating reversal", "result": "allowed", "call": {**cookie(role="attorney", trust_linked=False, matter_walled=False), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
+            {"family": "payment_reversal", "name": "empty bearer trust reversal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[], trust_linked=True, matter_walled=False, trust_account_id=account), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
+            {"family": "trust_debit", "name": "cookie flat fee", "result": "allowed", "call": {**cookie(role="attorney", balances=[owned_balance, other_balance], firm_id="firm-1", matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": fee_body}}},
+            {"family": "trust_debit", "name": "empty bearer flat fee", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[], balances=[owned_balance, other_balance], firm_id="firm-1", matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": fee_body}}},
+            {"family": "trust_debit", "name": "other account balance", "result": "not_found", "call": {**bearer(role="attorney", token_scopes=["trust:withdraw"], balances=[other_balance], firm_id="firm-1", matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": {**fee_body, "trust_account_id": account}}}},
+            {"family": "trust_debit", "name": "missing balances", "result": "not_found", "call": {**bearer(role="attorney", token_scopes=["trust:withdraw"], matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": {**fee_body, "trust_account_id": missing_account}}}},
+            {"family": "external_effects", "name": "cookie firm move", "result": "allowed", "call": {**cookie(role="admin"), "tool": "createStorageMove", "arguments": {"body": move_all}}},
+            {"family": "external_effects", "name": "empty bearer move", "result": "scope_denied", "call": {**bearer(role="admin", token_scopes=[]), "tool": "createStorageMove", "arguments": {"body": move_all}}},
+            {"family": "external_effects", "name": "matter move without matter", "result": "validation_failed", "call": {**bearer(role="admin", token_scopes=["files:write"]), "tool": "createStorageMove", "arguments": {"body": move_matter_blank}}},
+            {"family": "external_effects", "name": "off-wall matter move", "result": "not_found", "call": {**bearer(role="admin", token_scopes=["files:write"], matter_walled=True, matter_membership={visible: False}), "tool": "createStorageMove", "arguments": {"body": move_matter}}},
+            {"family": "external_effects", "name": "firm move names a matter", "result": "validation_failed", "call": {**bearer(role="admin", token_scopes=["files:write"]), "tool": "createStorageMove", "arguments": {"body": move_all_named}}},
+            {"family": "batch_wall", "name": "mixed off-wall batch", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["events:write"], matter_membership=membership), "tool": "bulkEvent", "arguments": {"body": {"items": [event_row, hidden_row]}}}},
+            {"family": "batch_wall", "name": "cookie on-wall batch", "result": "allowed", "call": {**cookie(role="staff", matter_membership=membership), "tool": "bulkEvent", "arguments": {"body": {"items": [event_row, event_row]}}}},
+            {"family": "batch_wall", "name": "empty bearer batch", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[], matter_membership=membership), "tool": "bulkEvent", "arguments": {"body": {"items": [event_row]}}}},
+        ]
+        present = set()
+        for _method, _path, operation in _ops(self.spec):
+            access = operation["x-togavsu-access"]
+            workflow = access.get("noninteractive_workflow")
+            if workflow == "malware_scan":
+                present.add("malware_scan")
+            elif workflow == "payment_processor":
+                present.add("payment_processor")
+            elif workflow == "background_file_publication":
+                present.add("background_file")
+            if access.get("module_principal"):
+                present.add("module_principal")
+            if access.get("trust_debit"):
+                present.add("trust_debit")
+            if access.get("entry_type_scopes"):
+                present.add("entry_type_scopes")
+            if access.get("payment_effect"):
+                present.add("payment_effect")
+            if access.get("payment_reversal"):
+                present.add("payment_reversal")
+            if access.get("external_effects"):
+                present.add("external_effects")
+            if access.get("include_scope_pattern"):
+                present.add("include")
+            if access.get("quarantine_confirmation") == "required":
+                present.add("quarantine")
+            if access.get("batch_authorization") == "all_or_nothing" and access.get("matter_wall"):
+                present.add("batch_wall")
+            if access.get("issuance") == "admin_only":
+                present.add("issuance")
+            if access.get("owner") == "self" and operation["operationId"] == "getFileUpload":
+                present.add("upload_owner")
+            if access.get("scopes") and operation.get("security") != []:
+                present.add("session_or_bearer")
+        self.assertEqual(
+            present,
+            {
+                "malware_scan",
+                "payment_processor",
+                "background_file",
+                "module_principal",
+                "trust_debit",
+                "entry_type_scopes",
+                "payment_effect",
+                "payment_reversal",
+                "external_effects",
+                "include",
+                "quarantine",
+                "batch_wall",
+                "issuance",
+                "upload_owner",
+                "session_or_bearer",
+            },
+        )
+        self.assertTrue(present <= {case["family"] for case in cases})
+        for case in cases:
+            decision = mcp_tool_dispatch(self.spec, case["call"])
+            self.assertEqual(decision["result"], case["result"], case["name"])
+            self.assertEqual(decision["effects"], case["result"] == "allowed", case["name"])
+            self.assertFalse(decision["public"], case["name"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

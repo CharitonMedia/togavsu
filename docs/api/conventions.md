@@ -9,7 +9,7 @@ Two schemes, either one is enough:
 - Cookie `togavsu_session` for the browser. HTTP-only, Secure, SameSite=Lax.
 - `Authorization: Bearer` for agents and modules. The admin issues the token, ties it to a user or a module, and can revoke it.
 
-A bearer token must hold every scope on the operation, and the role check still runs. An admin issues API tokens. The new token's scopes cannot exceed that issuing credential or the bound user's role or the module's approved permissions. The owner can still read and revoke their own token. Resetting two-factor returns a single-use enrollment token and keeps the current secret until that token's code is confirmed. A session is authorized by role. Sending both the cookie and a bearer token on one call returns `ambiguous_auth`.
+A bearer token must hold every scope on the operation, and the role check still runs. An admin issues API tokens. The new token's scopes cannot exceed that issuing credential or the bound user's role or the module's approved permissions. The owner can still read and revoke their own token. Resetting two-factor returns a single-use enrollment token and keeps the current secret until that token's code is confirmed. A session is authorized by role. A bearer with an omitted or empty scope list is `scope_denied`. An omitted approval list and an explicit empty list both deny, and neither is replaced by a wider token. Sending both the cookie and a bearer token on one call returns `ambiguous_auth`.
 
 Unsafe cookie calls send `X-CSRF-Token`. Bearer calls omit it. Missing CSRF on a cookie write returns `csrf_required`.
 

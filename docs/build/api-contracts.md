@@ -40,7 +40,7 @@ AC-002 is not met as product behavior. The OpenAPI documents validate, and every
 
 One builder emits the document, the tool list, and the coverage matrix, so the three cannot drift. CRUD, cursor pages, problem responses, idempotency, and the MCP extension go through `Contract.resource` and `Contract.add`.
 
-Net lines are in the PR. Debt count for this task: 1.
+Net lines are in the PR. Debt count for this task: 1. The MCP adapter correction does not add a debt entry. `PONYTAIL-DEBT.md` still lists 6.
 
 ```
 file: api/contract/model.py
