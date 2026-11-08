@@ -70,6 +70,12 @@ jobs:
             --allowedTools "Read,Glob,Grep"
             --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
             --json-schema '${{ steps.prep.outputs.schema }}'
+      - name: Report reviewer error
+        if: failure() && steps.review.outcome == 'failure'
+        run: |
+          f="$RUNNER_TEMP/claude-execution-output.json"
+          test -f "$f" || exit 0
+          jq -r '[.[] | select(.type == "result")] | last | "subtype=\(.subtype) is_error=\(.is_error) result=\((.result // "") | tostring | .[0:400])"' "$f"
       - name: Write review result
         if: always()
         env:
