@@ -467,15 +467,15 @@ func (s *Store) copyOne(ctx context.Context, dest Destination, meta BackupMeta) 
 	if err := s.noteReceipt(receipts, OwnedObject{DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt, State: receiptPending, Digest: meta.SHA256}); err != nil {
 		return err
 	}
-	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, token string, release bool) error {
+	putCtx := WithPathTemp(ctx, func(temp string, inode uint64, token, link string, release bool) error {
 		obj := OwnedObject{
 			DestinationID: dest.ID(), Name: name, Created: meta.CreatedAt,
 			State: receiptPending, Digest: meta.SHA256,
-			Temp: temp, TempInode: inode, TempToken: token,
+			Temp: temp, TempInode: inode, TempToken: token, TempLink: link,
 		}
 		if release {
 			obj.releaseTemp = true
-			obj.Temp, obj.TempInode, obj.TempToken = "", 0, ""
+			obj.Temp, obj.TempInode, obj.TempToken, obj.TempLink = "", 0, "", ""
 		}
 		return s.noteReceipt(receipts, obj)
 	})
@@ -806,7 +806,7 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 				continue
 			}
 			switch obj.State {
-			case receiptPending, receiptUncertain, receiptRejected, receiptObserved:
+			case receiptPending, receiptUncertain, receiptRejected, receiptObserved, receiptAborted:
 				if err := s.reconcilePending(ctx, dest, receipts, obj); err != nil {
 					return err
 				}
@@ -818,7 +818,7 @@ func (s *Store) reconcileDestination(ctx context.Context, dest Destination) erro
 
 func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, receipts *ReceiptBook, owned []OwnedObject) error {
 	cleaner, ok := dest.(interface {
-		RemoveOwnedTemp(context.Context, string, uint64, string) error
+		RemoveOwnedTemp(context.Context, OwnedObject) error
 	})
 	if !ok {
 		return nil
@@ -830,7 +830,15 @@ func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, recei
 		if remoteBusy(remoteKey(dest.ID(), obj.Name)) || remoteBusy(remoteKey(dest.ID(), obj.Temp)) {
 			continue
 		}
-		err := cleaner.RemoveOwnedTemp(ctx, obj.Temp, obj.TempInode, obj.TempToken)
+		err := cleaner.RemoveOwnedTemp(ctx, obj)
+		var displaced tempDisplacedError
+		if errors.As(err, &displaced) {
+			obj.TempHold = displaced.hold
+			if err := s.noteReceipt(receipts, obj); err != nil {
+				return err
+			}
+			continue
+		}
 		if errors.Is(err, errTempBusy) || errors.Is(err, errTempIdentity) {
 			continue
 		}
@@ -841,8 +849,23 @@ func (s *Store) reconcileOwnedTemps(ctx context.Context, dest Destination, recei
 		obj.Temp = ""
 		obj.TempInode = 0
 		obj.TempToken = ""
+		obj.TempLink = ""
+		obj.TempHold = ""
+		if !remoteBusy(remoteKey(dest.ID(), obj.Name)) {
+			rc, gerr := dest.Get(ctx, obj.Name)
+			if errors.Is(gerr, ErrNotFound) {
+				obj.State = receiptAborted
+			} else if rc != nil {
+				rc.Close()
+			}
+		}
 		if err := s.noteReceipt(receipts, obj); err != nil {
 			return err
+		}
+		if obj.State == receiptAborted {
+			if err := s.reconcileRejected(ctx, dest, receipts, obj); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -870,7 +893,7 @@ func (s *Store) reconcilePending(ctx context.Context, dest Destination, receipts
 	// A crash leaves remoteBusy false while the server may still publish.
 	// Absence is not completion and is not permission to forget the intent.
 	// A rejected mutation is different: the server already refused it.
-	if obj.State == receiptRejected {
+	if obj.State == receiptRejected || obj.State == receiptAborted {
 		return s.reconcileRejected(ctx, dest, receipts, obj)
 	}
 	if obj.State == receiptObserved {
@@ -1371,7 +1394,7 @@ func (s *Store) deleteRemotes(ctx context.Context, id string) error {
 				blocked = true
 				continue
 			}
-			if obj.State == receiptRejected {
+			if obj.State == receiptRejected || obj.State == receiptAborted {
 				if err := s.reconcileRejected(ctx, dest, receipts, obj); err != nil {
 					return err
 				}
@@ -1603,7 +1626,7 @@ func (s *Store) remoteRecoveryOpen(id string) bool {
 			continue
 		}
 		switch obj.State {
-		case receiptPending, receiptUncertain, receiptRejected, receiptObserved:
+		case receiptPending, receiptUncertain, receiptRejected, receiptObserved, receiptAborted:
 			return true
 		}
 	}
@@ -1651,7 +1674,7 @@ func (s *Store) pruneDestinationsLocked(ctx context.Context) (int, error) {
 		}
 		var stable []OwnedObject
 		for _, obj := range owned {
-			if obj.Temp != "" || obj.State == receiptPending || obj.State == receiptUncertain || obj.State == receiptRejected || obj.State == receiptObserved {
+			if obj.Temp != "" || obj.State == receiptPending || obj.State == receiptUncertain || obj.State == receiptRejected || obj.State == receiptObserved || obj.State == receiptAborted {
 				continue
 			}
 			if strings.HasSuffix(obj.Name, ".tgbk") && s.sidecarUnsettled(book, dest.ID(), strings.TrimSuffix(obj.Name, ".tgbk")) {

@@ -315,14 +315,14 @@ func pathDest(root string) *PathDestination {
 
 func pathTempContext(book string) context.Context {
 	receipts := &ReceiptBook{Path: book}
-	return WithPathTemp(context.Background(), func(temp string, inode uint64, token string, release bool) error {
+	return WithPathTemp(context.Background(), func(temp string, inode uint64, token, link string, release bool) error {
 		obj := OwnedObject{
 			DestinationID: "share", Name: "backup.tgbk", State: receiptPending,
-			Temp: temp, TempInode: inode, TempToken: token,
+			Temp: temp, TempInode: inode, TempToken: token, TempLink: link,
 		}
 		if release {
 			obj.releaseTemp = true
-			obj.Temp, obj.TempInode, obj.TempToken = "", 0, ""
+			obj.Temp, obj.TempInode, obj.TempToken, obj.TempLink = "", 0, "", ""
 		}
 		return receipts.Add(obj)
 	})
@@ -548,6 +548,9 @@ func runPathUploadChild() {
 	book := os.Getenv("TOGAVSU_PATH_RECEIPT")
 	ready := os.Getenv("TOGAVSU_PATH_READY")
 	dest := pathDest(root)
+	if os.Getenv("TOGAVSU_NO_XATTR") == "1" {
+		dest.noXattr = true
+	}
 	switch os.Getenv("TOGAVSU_PATH_MODE") {
 	case "copy":
 		dest.stall = func(step string) {
@@ -712,6 +715,276 @@ func TestPathTempRestoreStall(t *testing.T) {
 	}
 	if !kept {
 		t.Fatal("the late worker cleared ownership without a new reconciliation")
+	}
+}
+
+func TestPathShareFallback(t *testing.T) {
+	if os.Getenv("TOGAVSU_PATH_CHILD") == "noxattr" {
+		runPathUploadChild()
+		return
+	}
+	t.Run("probe sidecar and archive", func(t *testing.T) { testPathNoXattrSuccess(t) })
+	t.Run("killed copy recovers", func(t *testing.T) { testPathNoXattrKill(t) })
+}
+
+func testPathNoXattrSuccess(t *testing.T) {
+	t.Helper()
+	root, _ := pathTempFixture(t)
+	dest := pathDest(root)
+	dest.noXattr = true
+	if err := dest.Test(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsownedtmp", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	share := &PathDestination{Spec: spec, noXattr: true}
+	if err := s.copyOne(context.Background(), share, meta); err != nil {
+		t.Fatal(err)
+	}
+	ns := filepath.Join(root, spec.Namespace)
+	body, err := os.ReadFile(filepath.Join(ns, meta.ID+".tgbk"))
+	if err != nil || bytes.Contains(body, []byte("TGVTMP1")) {
+		t.Fatalf("published archive: %v prefix %v", err, bytes.Contains(body, []byte("TGVTMP1")))
+	}
+	side, err := os.ReadFile(filepath.Join(ns, meta.ID+".sha256"))
+	if err != nil || !bytes.Contains(side, []byte(meta.SHA256)) {
+		t.Fatalf("sidecar: %q %v", side, err)
+	}
+}
+
+func testPathNoXattrKill(t *testing.T) {
+	t.Helper()
+	root, book := pathTempFixture(t)
+	decoy := filepath.Join(root, "nsownedtmp", ".togavsu-ffffffffffffffffffffffffffffffff.tmp")
+	if err := os.MkdirAll(filepath.Dir(decoy), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(decoy, []byte("foreign-temp"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready := filepath.Join(t.TempDir(), "ready")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestPathShareFallback$", "-test.count=1")
+	cmd.Env = append(os.Environ(),
+		"TOGAVSU_PATH_CHILD=noxattr",
+		"TOGAVSU_PATH_MODE=copy",
+		"TOGAVSU_NO_XATTR=1",
+		"TOGAVSU_PATH_DIR="+root,
+		"TOGAVSU_PATH_RECEIPT="+book,
+		"TOGAVSU_PATH_READY="+ready,
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitPathFile(t, ready)
+	_ = cmd.Process.Signal(syscall.SIGKILL)
+	_, _ = cmd.Process.Wait()
+	owned := pathReceipts(t, book)
+	if len(owned) != 1 || owned[0].TempToken == "" {
+		t.Fatalf("no-xattr ownership was not durable: %+v", owned)
+	}
+	if err := pathReconcile(t, root, book); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "nsownedtmp", owned[0].Temp)); !os.IsNotExist(err) {
+		t.Fatalf("partial temp remained: %v", err)
+	}
+	got, err := os.ReadFile(decoy)
+	if err != nil || string(got) != "foreign-temp" {
+		t.Fatalf("foreign temp changed: %q %v", got, err)
+	}
+}
+
+func TestPathDisposeRestoresForeign(t *testing.T) {
+	old := destinationIOTimeout
+	destinationIOTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
+	root, book := pathTempFixture(t)
+	ns := filepath.Join(root, "nsownedtmp")
+	if err := os.MkdirAll(ns, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	name := ".togavsu-abababababababababababababababab.tmp"
+	path := filepath.Join(ns, name)
+	if err := os.WriteFile(path, []byte("owned-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inode, token := stampTemp(t, path)
+	link := tempLinkName(name)
+	if err := os.Link(path, filepath.Join(ns, link)); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&ReceiptBook{Path: book}).Add(OwnedObject{
+		DestinationID: "share", Name: "backup.tgbk", State: receiptPending,
+		Temp: name, TempInode: inode, TempToken: token, TempLink: link,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	started := make(chan struct{})
+	var once sync.Once
+	dest := pathDest(root)
+	dest.stall = func(step string) {
+		if step == "dispose" {
+			once.Do(func() { close(started) })
+			<-release
+		}
+	}
+	s := pathStore(t, book)
+	errc := make(chan error, 1)
+	go func() {
+		errc <- s.reconcileDestination(context.Background(), dest)
+	}()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("disposition did not start")
+	}
+	aside := filepath.Join(ns, "owned-aside")
+	if err := os.Rename(path, aside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("foreign-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-errc:
+		if !errors.Is(err, ErrRemoteUncertain) {
+			t.Fatalf("cleanup returned %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed-out disposition did not return")
+	}
+	kept := pathReceipts(t, book)
+	if len(kept) != 1 || kept[0].TempToken != token {
+		t.Fatalf("timed-out cleanup cleared ownership: %+v", kept)
+	}
+	if !remoteBusy(remoteKey("share", name)) {
+		t.Fatal("timed-out disposition dropped its tracking")
+	}
+	close(release)
+	deadline := time.Now().Add(3 * time.Second)
+	for remoteBusy(remoteKey("share", name)) {
+		if time.Now().After(deadline) {
+			t.Fatal("disposition worker did not finish")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "foreign-bytes" {
+		t.Fatalf("foreign file: %q %v", got, err)
+	}
+	got, err = os.ReadFile(aside)
+	if err != nil || string(got) != "owned-bytes" {
+		t.Fatalf("owned inode was not recoverable: %q %v", got, err)
+	}
+}
+
+func TestAbortedPathUpload(t *testing.T) {
+	if os.Getenv("TOGAVSU_COPY_CHILD") == "1" {
+		runStoreCopyChild()
+		return
+	}
+	s := testStore(t)
+	meta, err := s.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(t.TempDir(), "share")
+	s.Book = &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(s.Dir, "destinations.json")}
+	spec, err := s.Book.Put(DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsownedtmp", RetentionDays: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns := filepath.Join(root, spec.Namespace)
+	if err := os.MkdirAll(ns, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	decoy := filepath.Join(ns, ".togavsu-ffffffffffffffffffffffffffffffff.tmp")
+	if err := os.WriteFile(decoy, []byte("foreign-temp"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ready := filepath.Join(t.TempDir(), "ready")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAbortedPathUpload$", "-test.count=1")
+	cmd.Env = append(os.Environ(),
+		"TOGAVSU_COPY_CHILD=1",
+		"TOGAVSU_COPY_DIR="+s.Dir,
+		"TOGAVSU_COPY_ROOT="+root,
+		"TOGAVSU_COPY_NS="+spec.Namespace,
+		"TOGAVSU_COPY_ID="+meta.ID,
+		"TOGAVSU_COPY_SHA="+meta.SHA256,
+		"TOGAVSU_COPY_CREATED="+meta.CreatedAt.Format(time.RFC3339Nano),
+		"TOGAVSU_COPY_READY="+ready,
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitPathFile(t, ready)
+	_ = cmd.Process.Signal(syscall.SIGKILL)
+	_, _ = cmd.Process.Wait()
+	if err := s.reconcileDestination(context.Background(), &PathDestination{Spec: spec}); err != nil {
+		t.Fatal(err)
+	}
+	if owned, err := s.receiptBook().List("share"); err != nil || len(owned) != 0 {
+		t.Fatalf("aborted upload still recorded: %+v %v", owned, err)
+	}
+	got, err := os.ReadFile(decoy)
+	if err != nil || string(got) != "foreign-temp" {
+		t.Fatalf("foreign temp changed: %q %v", got, err)
+	}
+	meta.CreatedAt = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := writeFileAtomic(filepath.Join(s.Dir, meta.ID+".json"), mustJSON(meta), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.Prune(context.Background(), time.Hour)
+	if err != nil || n != 1 {
+		t.Fatalf("retention = %d %v", n, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, meta.ID+".tgbk")); !os.IsNotExist(err) {
+		t.Fatalf("local archive remained: %v", err)
+	}
+	if err := s.DeleteDestination("share"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func runStoreCopyChild() {
+	dir := os.Getenv("TOGAVSU_COPY_DIR")
+	created, err := time.Parse(time.RFC3339Nano, os.Getenv("TOGAVSU_COPY_CREATED"))
+	if err != nil {
+		os.Exit(2)
+	}
+	s := &Store{
+		Dir:        dir,
+		Passphrase: "synthetic-passphrase",
+		Book:       &DestinationBook{Key: testInstallerKey(), Path: filepath.Join(dir, "destinations.json")},
+		Now:        func() time.Time { return created },
+	}
+	dest := &PathDestination{
+		Spec: DestinationSpec{
+			ID: "share", Kind: "path",
+			Path: os.Getenv("TOGAVSU_COPY_ROOT"), Namespace: os.Getenv("TOGAVSU_COPY_NS"),
+		},
+		stall: func(step string) {
+			if step == "copy" {
+				_ = os.WriteFile(os.Getenv("TOGAVSU_COPY_READY"), []byte("ok"), 0o600)
+				time.Sleep(time.Minute)
+			}
+		},
+	}
+	err = s.copyOne(context.Background(), dest, BackupMeta{
+		ID: os.Getenv("TOGAVSU_COPY_ID"), SHA256: os.Getenv("TOGAVSU_COPY_SHA"), CreatedAt: created,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 

@@ -2164,7 +2164,7 @@ func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
 	if err := dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "root,namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,link,file" {
 		t.Fatalf("new directory syncs = %v", steps)
 	}
 	rc, err := dest.Get(context.Background(), "owned.tgbk")
@@ -2186,7 +2186,7 @@ func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
 	if err := dest.Put(context.Background(), "second.tgbk", bytes.NewReader(second), secondSum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "root,namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,link,file" {
 		t.Fatalf("existing directory syncs = %v", steps)
 	}
 	rc, err = dest.Get(context.Background(), "second.tgbk")
@@ -2216,7 +2216,7 @@ func TestPathPutSyncsNewAndExistingDirectories(t *testing.T) {
 	if err := freshNS.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "root,namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,link,file" {
 		t.Fatalf("new namespace syncs = %v", steps)
 	}
 }
@@ -2413,7 +2413,7 @@ func TestParentDirectorySyncIsRetriedBeforeTheCopyIsConfirmed(t *testing.T) {
 	if err := reopened.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "root,namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,link,file" {
 		t.Fatalf("reopened put syncs = %v", steps)
 	}
 	rc, err := reopened.Get(context.Background(), "owned.tgbk")
@@ -2445,7 +2445,7 @@ func TestParentDirectorySyncIsRetriedBeforeTheCopyIsConfirmed(t *testing.T) {
 	if err := nsAgain.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(steps, ",") != "root,namespace,file" {
+	if strings.Join(steps, ",") != "root,namespace,link,file" {
 		t.Fatalf("reopened namespace syncs = %v", steps)
 	}
 

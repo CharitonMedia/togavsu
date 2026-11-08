@@ -487,6 +487,9 @@ type PathDestination struct {
 	Spec    DestinationSpec
 	stall   func(step string)
 	dirSync func(step string) error
+	// noXattr forces the in-file token used when a mounted share returns
+	// ENOTSUP for user xattrs. Production still tries the xattr first.
+	noXattr bool
 }
 
 func (p *PathDestination) ID() string   { return p.Spec.ID }
@@ -699,22 +702,55 @@ func (p *PathDestination) Put(ctx context.Context, name string, r io.Reader, sha
 type pathTempKey struct{}
 
 // WithPathTemp records the exact temporary file before its bytes can be
-// abandoned. The token is written onto that inode and does not change while
-// the upload is copied. release drops the record only after publication or a
-// synced removal has already been verified.
-func WithPathTemp(ctx context.Context, fn func(name string, inode uint64, token string, release bool) error) context.Context {
+// abandoned. The token does not change while the upload is copied. link is
+// the private hardlink when the filesystem provides one. release drops the
+// record only after publication or a synced removal has already been verified.
+func WithPathTemp(ctx context.Context, fn func(name string, inode uint64, token, link string, release bool) error) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, pathTempKey{}, fn)
 }
 
-func pathTempOwner(ctx context.Context) func(string, uint64, string, bool) error {
+func pathTempOwner(ctx context.Context) func(string, uint64, string, string, bool) error {
 	if ctx == nil {
 		return nil
 	}
-	fn, _ := ctx.Value(pathTempKey{}).(func(string, uint64, string, bool) error)
+	fn, _ := ctx.Value(pathTempKey{}).(func(string, uint64, string, string, bool) error)
 	return fn
+}
+
+func tempPrefix(token string) string {
+	return "TGVTMP1\n" + token + "\n"
+}
+
+func tempLinkName(tmp string) string {
+	return strings.TrimSuffix(tmp, ".tmp") + ".own"
+}
+
+func tempHex(name string) (string, bool) {
+	const prefix = ".togavsu-"
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(name, prefix)
+	hexPart := rest
+	if i := strings.IndexByte(rest, '.'); i >= 0 {
+		hexPart = rest[:i]
+	}
+	if len(hexPart) != 32 {
+		return "", false
+	}
+	for _, c := range hexPart {
+		if c < '0' || (c > '9' && c < 'a') || c > 'f' {
+			return "", false
+		}
+	}
+	return hexPart, true
+}
+
+func xattrUnsupported(err error) bool {
+	return errors.Is(err, syscall.EOPNOTSUPP) || errors.Is(err, syscall.ENOTSUP)
 }
 
 const tempTokenAttr = "user.togavsu.own"
@@ -772,16 +808,23 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 	if err != nil {
 		return err
 	}
+	var info syscall.Stat_t
+	var linkName string
+	journaled := false
 	defer func() {
 		if tmpName != "" {
-			_ = syscall.Unlinkat(int(dir.Fd()), tmpName)
+			if journaled && info.Ino != 0 {
+				_ = p.disposeExact(dir, tmpName, info.Ino)
+				_ = p.disposeExact(dir, linkName, info.Ino)
+			} else {
+				_ = syscall.Unlinkat(int(dir.Fd()), tmpName)
+			}
 		}
 		f.Close()
 	}()
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		return err
 	}
-	var info syscall.Stat_t
 	if err := syscall.Fstat(int(f.Fd()), &info); err != nil {
 		return err
 	}
@@ -789,16 +832,42 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 	if err != nil {
 		return err
 	}
-	if err := fsetxattr(int(f.Fd()), tempTokenAttr, []byte(token)); err != nil {
-		return err
+	header := false
+	xerr := error(syscall.EOPNOTSUPP)
+	if !p.noXattr {
+		xerr = fsetxattr(int(f.Fd()), tempTokenAttr, []byte(token))
+	}
+	if xerr != nil {
+		if !xattrUnsupported(xerr) && !p.noXattr {
+			return xerr
+		}
+		if _, err := f.Write([]byte(tempPrefix(token))); err != nil {
+			return err
+		}
+		header = true
 	}
 	if err := f.Sync(); err != nil {
 		return err
 	}
-	if own := pathTempOwner(ctx); own != nil {
-		if err := own(tmpName, info.Ino, token, false); err != nil {
+	linkName = tempLinkName(tmpName)
+	if err := linkAt(int(dir.Fd()), tmpName, int(dir.Fd()), linkName); err != nil {
+		if !xattrUnsupported(err) {
 			return err
 		}
+		linkName = ""
+	}
+	if err := p.syncDirectory(dir, "link"); err != nil {
+		return err
+	}
+	if own := pathTempOwner(ctx); own != nil {
+		if err := own(tmpName, info.Ino, token, linkName, false); err != nil {
+			return err
+		}
+	}
+	journaled = true
+	payloadAt := int64(0)
+	if header {
+		payloadAt = int64(len(tempPrefix(token)))
 	}
 	if p.stall != nil {
 		var one [1]byte
@@ -823,7 +892,7 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 		p.stall("hash")
 	}
 	if sha != "" {
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
+		if _, err := f.Seek(payloadAt, io.SeekStart); err != nil {
 			return err
 		}
 		got, err := sha256Hex(f)
@@ -835,19 +904,50 @@ func (p *PathDestination) putFile(ctx context.Context, name string, r io.Reader,
 		}
 	}
 	// The descriptor stays open, so this process keeps the exclusive lock
-	// until the rename and the directory sync have finished.
+	// until the published name and the directory sync have finished.
+	publish := tmpName
+	if header {
+		cleanName, clean, err := exclusiveTemp(dir)
+		if err != nil {
+			return err
+		}
+		if _, err := f.Seek(payloadAt, io.SeekStart); err != nil {
+			clean.Close()
+			_ = syscall.Unlinkat(int(dir.Fd()), cleanName)
+			return err
+		}
+		if _, err := io.Copy(clean, f); err != nil {
+			clean.Close()
+			_ = syscall.Unlinkat(int(dir.Fd()), cleanName)
+			return err
+		}
+		if err := clean.Sync(); err != nil {
+			clean.Close()
+			_ = syscall.Unlinkat(int(dir.Fd()), cleanName)
+			return err
+		}
+		clean.Close()
+		publish = cleanName
+	}
 	if p.stall != nil {
 		p.stall("rename")
 	}
-	if err := syscall.Renameat(int(dir.Fd()), tmpName, int(dir.Fd()), name); err != nil {
+	if err := syscall.Renameat(int(dir.Fd()), publish, int(dir.Fd()), name); err != nil {
+		if publish != tmpName {
+			_ = syscall.Unlinkat(int(dir.Fd()), publish)
+		}
 		return pathError("rename", name, err)
 	}
-	tmpName = ""
 	if err := p.syncDirectory(dir, "file"); err != nil {
 		return fmt.Errorf("%w: directory sync after rename: %v", ErrRemoteUncertain, err)
 	}
+	if header {
+		_ = p.disposeExact(dir, tmpName, info.Ino)
+	}
+	_ = p.disposeExact(dir, linkName, info.Ino)
+	tmpName = ""
 	if own := pathTempOwner(ctx); own != nil {
-		if err := own("", 0, "", true); err != nil {
+		if err := own("", 0, "", "", true); err != nil {
 			return fmt.Errorf("%w: temp ownership: %v", ErrRemoteUncertain, err)
 		}
 	}
@@ -967,21 +1067,32 @@ func ownedTempName(name string) bool {
 // that operation registered and does not report the removal as finished.
 // A different inode, a missing token, a symlink, or a directory is left in
 // place. Absence is acknowledged only after the directory sync.
-func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, name string, inode uint64, token string) error {
+func (p *PathDestination) RemoveOwnedTemp(ctx context.Context, obj OwnedObject) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !ownedTempName(name) || inode == 0 || !ownedTempToken(token) {
+	if !ownedTempName(obj.Temp) || obj.TempInode == 0 || !ownedTempToken(obj.TempToken) {
 		return fmt.Errorf("temp name: %w", ErrBadRequest)
 	}
 	wait, cancel := destinationContext(ctx)
 	defer cancel()
-	return trackFS(remoteKey(p.ID(), name), wait, func() error {
+	return trackFS(remoteKey(p.ID(), obj.Temp), wait, func() error {
 		if p.stall != nil {
 			p.stall("cleanup")
 		}
-		return p.removeOwnedTemp(name, inode, token)
+		return p.removeOwnedTemp(obj)
 	})
+}
+
+// tempDisplacedError means the directory entry was not the owned inode.
+// hold is the quarantine name that still contains the other file because the
+// original name was no longer free. The owned inode is not deleted.
+type tempDisplacedError struct {
+	hold string
+}
+
+func (e tempDisplacedError) Error() string {
+	return "temp disposition kept a different file"
 }
 
 func ownedTempToken(token string) bool {
@@ -996,7 +1107,7 @@ func ownedTempToken(token string) bool {
 	return true
 }
 
-func (p *PathDestination) removeOwnedTemp(name string, inode uint64, token string) error {
+func (p *PathDestination) removeOwnedTemp(obj OwnedObject) error {
 	dir, err := p.openNamespace(false)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -1005,14 +1116,176 @@ func (p *PathDestination) removeOwnedTemp(name string, inode uint64, token strin
 		return err
 	}
 	defer dir.Close()
-	fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDWR|syscall.O_NOFOLLOW, 0)
+	fd, err := p.openOwned(dir, obj)
 	if err != nil {
+		if errors.Is(err, errTempIdentity) || errors.Is(err, errTempBusy) {
+			return err
+		}
+		if os.IsNotExist(err) || err == syscall.ENOENT {
+			if obj.TempLink != "" {
+				_ = p.acknowledgeTempGone(dir, obj.TempLink)
+			}
+			return p.acknowledgeTempGone(dir, obj.Temp)
+		}
+		return err
+	}
+	defer syscall.Close(fd)
+	if p.stall != nil {
+		p.stall("dispose")
+	}
+	err = p.disposeExact(dir, obj.Temp, obj.TempInode)
+	if errors.Is(err, errTempIdentity) || errors.As(err, new(tempDisplacedError)) {
+		if obj.TempLink != "" {
+			if lerr := p.disposeExact(dir, obj.TempLink, obj.TempInode); lerr != nil && !errors.Is(lerr, errTempIdentity) {
+				return lerr
+			}
+		}
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if obj.TempLink != "" {
+		if err := p.disposeExact(dir, obj.TempLink, obj.TempInode); err != nil {
+			return err
+		}
+	}
+	if err := p.acknowledgeTempGone(dir, obj.Temp); err != nil {
+		return err
+	}
+	if obj.TempLink != "" {
+		return p.acknowledgeTempGone(dir, obj.TempLink)
+	}
+	return nil
+}
+
+// openOwned opens the recorded temp, or its private hardlink when the temp
+// name no longer has the owned inode. A symlink or directory is not opened.
+func (p *PathDestination) openOwned(dir *os.File, obj OwnedObject) (int, error) {
+	missing := 0
+	checked := 0
+	for _, name := range []string{obj.Temp, obj.TempLink} {
+		if name == "" {
+			continue
+		}
+		checked++
+		fd, err := syscall.Openat(int(dir.Fd()), name, syscall.O_RDWR|syscall.O_NOFOLLOW, 0)
 		if err == syscall.ENOENT {
-			return p.acknowledgeTempGone(dir, name)
+			missing++
+			continue
 		}
 		if err == syscall.ELOOP || err == syscall.EISDIR {
-			return errTempIdentity
+			continue
 		}
+		if err != nil {
+			return -1, err
+		}
+		var info syscall.Stat_t
+		if err := syscall.Fstat(fd, &info); err != nil {
+			syscall.Close(fd)
+			return -1, err
+		}
+		if info.Mode&syscall.S_IFMT != syscall.S_IFREG || info.Ino != obj.TempInode || !tokenOnFile(fd, obj.TempToken) {
+			syscall.Close(fd)
+			continue
+		}
+		if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			syscall.Close(fd)
+			return -1, errTempBusy
+		}
+		return fd, nil
+	}
+	if checked > 0 && missing == checked {
+		return -1, syscall.ENOENT
+	}
+	return -1, errTempIdentity
+}
+
+func tokenOnFile(fd int, token string) bool {
+	if got, err := fgetxattr(fd, tempTokenAttr); err == nil && got == token {
+		return true
+	}
+	buf := make([]byte, len(tempPrefix(token)))
+	n, err := syscall.Pread(fd, buf, 0)
+	return err == nil && n == len(buf) && string(buf) == tempPrefix(token)
+}
+
+const (
+	sysRenameat2    = 316
+	renameNoReplace = 1
+)
+
+func linkAt(oldDir int, oldName string, newDir int, newName string) error {
+	oldPtr, err := syscall.BytePtrFromString(oldName)
+	if err != nil {
+		return err
+	}
+	newPtr, err := syscall.BytePtrFromString(newName)
+	if err != nil {
+		return err
+	}
+	_, _, errno := syscall.Syscall6(syscall.SYS_LINKAT, uintptr(oldDir), uintptr(unsafe.Pointer(oldPtr)), uintptr(newDir), uintptr(unsafe.Pointer(newPtr)), 0, 0)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+func renameNoReplaceAt(oldDir int, oldName string, newDir int, newName string) error {
+	oldPtr, err := syscall.BytePtrFromString(oldName)
+	if err != nil {
+		return err
+	}
+	newPtr, err := syscall.BytePtrFromString(newName)
+	if err != nil {
+		return err
+	}
+	_, _, errno := syscall.Syscall6(sysRenameat2, uintptr(oldDir), uintptr(unsafe.Pointer(oldPtr)), uintptr(newDir), uintptr(unsafe.Pointer(newPtr)), renameNoReplace, 0)
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+// disposeExact moves one directory entry aside and deletes it only when the
+// moved inode is the owned one. A different inode is renamed back. If the
+// original name is no longer free, the other file stays under the quarantine
+// name and the caller journals that name.
+func (p *PathDestination) disposeExact(dir *os.File, name string, inode uint64) error {
+	if name == "" || inode == 0 {
+		return nil
+	}
+	hexPart, ok := tempHex(name)
+	if !ok {
+		return errTempIdentity
+	}
+	suffix := ".qrt"
+	if strings.HasSuffix(name, ".own") {
+		suffix = ".oqr"
+	}
+	hold := ".togavsu-" + hexPart + suffix
+	err := renameNoReplaceAt(int(dir.Fd()), name, int(dir.Fd()), hold)
+	if err == syscall.ENOENT {
+		return nil
+	}
+	if err == syscall.EEXIST {
+		return errTempIdentity
+	}
+	if err != nil {
+		return err
+	}
+	fd, err := syscall.Openat(int(dir.Fd()), hold, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err == syscall.ELOOP || err == syscall.EISDIR {
+		restore := renameNoReplaceAt(int(dir.Fd()), hold, int(dir.Fd()), name)
+		if restore == syscall.EEXIST || restore == syscall.ENOENT {
+			return tempDisplacedError{hold: hold}
+		}
+		if restore != nil {
+			return restore
+		}
+		return errTempIdentity
+	}
+	if err != nil {
 		return err
 	}
 	defer syscall.Close(fd)
@@ -1021,20 +1294,19 @@ func (p *PathDestination) removeOwnedTemp(name string, inode uint64, token strin
 		return err
 	}
 	if info.Mode&syscall.S_IFMT != syscall.S_IFREG || info.Ino != inode {
+		restore := renameNoReplaceAt(int(dir.Fd()), hold, int(dir.Fd()), name)
+		if restore == syscall.EEXIST || restore == syscall.ENOENT {
+			return tempDisplacedError{hold: hold}
+		}
+		if restore != nil {
+			return restore
+		}
 		return errTempIdentity
 	}
-	got, gerr := fgetxattr(fd, tempTokenAttr)
-	if gerr != nil || got != token {
-		return errTempIdentity
-	}
-	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errTempBusy
-	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-	if err := syscall.Unlinkat(int(dir.Fd()), name); err != nil && err != syscall.ENOENT {
+	if err := syscall.Unlinkat(int(dir.Fd()), hold); err != nil && err != syscall.ENOENT {
 		return err
 	}
-	return p.acknowledgeTempGone(dir, name)
+	return nil
 }
 
 // acknowledgeTempGone syncs the directory and checks the name again. A sync
@@ -1262,6 +1534,7 @@ const (
 	receiptUncertain = "uncertain"
 	receiptRejected  = "rejected"
 	receiptObserved  = "observed"
+	receiptAborted   = "aborted"
 )
 
 // maxChecksumSidecar is the most a checksum sidecar may contain. A SHA-256
@@ -1296,6 +1569,8 @@ type OwnedObject struct {
 	Temp        string `json:"temp,omitempty"`
 	TempInode   uint64 `json:"temp_inode,omitempty"`
 	TempToken   string `json:"temp_token,omitempty"`
+	TempLink    string `json:"temp_link,omitempty"`
+	TempHold    string `json:"temp_hold,omitempty"`
 	TempMtime   int64  `json:"temp_mtime,omitempty"`
 	TempDigest  string `json:"temp_digest,omitempty"`
 	releaseTemp bool
@@ -1313,7 +1588,7 @@ func PruneDestination(ctx context.Context, dest Destination, retention time.Dura
 		if dest.ID() != "" && obj.DestinationID != "" && obj.DestinationID != dest.ID() {
 			continue
 		}
-		if obj.State == receiptUncertain || obj.State == receiptPending || obj.State == receiptRejected || obj.State == receiptObserved || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
+		if obj.State == receiptUncertain || obj.State == receiptPending || obj.State == receiptRejected || obj.State == receiptObserved || obj.State == receiptAborted || obj.Name == "" || strings.HasPrefix(obj.Name, "togavsu-destination-test") || !strings.HasSuffix(obj.Name, ".tgbk") {
 			continue
 		}
 		when := obj.Created
@@ -1374,6 +1649,8 @@ func (b *ReceiptBook) Add(obj OwnedObject) error {
 					obj.Temp = all[i].Temp
 					obj.TempInode = all[i].TempInode
 					obj.TempToken = all[i].TempToken
+					obj.TempLink = all[i].TempLink
+					obj.TempHold = all[i].TempHold
 				}
 				obj.releaseTemp = false
 				all[i] = obj

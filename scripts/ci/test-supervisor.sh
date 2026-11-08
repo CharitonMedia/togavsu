@@ -7,7 +7,7 @@ if [ -f "$root/go.mod" ]; then
   cd "$root"
   go test ./internal/supervisor/ ./cmd/supervisor/
   go test -race ./internal/supervisor/ ./cmd/supervisor/
-  go test -count=1 -timeout 180s -v ./internal/supervisor/ -run '^(TestPathOwnedTemp|TestPathTempRestoreStall)$'
+  go test -count=1 -timeout 180s -v ./internal/supervisor/ -run '^(TestPathOwnedTemp|TestPathTempRestoreStall|TestPathShareFallback|TestPathDisposeRestoresForeign|TestAbortedPathUpload)$'
   go build -o /dev/null ./cmd/supervisor
   exit 0
 fi
@@ -20,5 +20,5 @@ printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
 cd "$work"
 go test ./internal/supervisor/ ./cmd/supervisor/
 go test -race ./internal/supervisor/ ./cmd/supervisor/
-go test -count=1 -timeout 180s -v ./internal/supervisor/ -run '^(TestPathOwnedTemp|TestPathTempRestoreStall)$'
+go test -count=1 -timeout 180s -v ./internal/supervisor/ -run '^(TestPathOwnedTemp|TestPathTempRestoreStall|TestPathShareFallback|TestPathDisposeRestoresForeign|TestAbortedPathUpload)$'
 go build -o /dev/null ./cmd/supervisor
