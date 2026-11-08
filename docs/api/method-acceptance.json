@@ -109,5 +109,6 @@
   "test_association_walls_fail_closed": {"go_owner": "multiple", "tasks": ["files", "billing", "calendar"], "acceptance": ["AC-008", "AC-011", "AC-039"], "prd": ["8", "8.19"]},
   "test_trusted_wall_grant_and_csrf": {"go_owner": "multiple", "tasks": ["api", "files", "modules"], "acceptance": ["AC-002", "AC-012", "AC-039"], "prd": ["7", "9"]},
   "test_transport_link_and_matter_grant": {"go_owner": "multiple", "tasks": ["api", "files", "modules"], "acceptance": ["AC-002", "AC-012", "AC-039"], "prd": ["7", "8.19", "9"]},
+  "test_concrete_matter_and_selected_files": {"go_owner": "multiple", "tasks": ["practice", "files"], "acceptance": ["AC-003", "AC-039"], "prd": ["8", "8.19"]},
   "test_factor_reset_requires_reauthentication": {"go_owner": "identity", "tasks": ["identity"], "acceptance": [], "prd": ["6"], "acceptance_note": "Identity owns two-factor reset. No acceptance id states the reauthentication step."}
 }

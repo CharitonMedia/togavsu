@@ -2818,14 +2818,14 @@
       "prd": [
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7384-7531",
+      "source": "api/tests/test_contract.py:7385-7532",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 64,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 7468,
+          "line": 7469,
           "literal_rows": 3,
           "rows": [
             [
@@ -3296,7 +3296,7 @@
       "prd": [
         "6"
       ],
-      "source": "api/tests/test_contract.py:7964-8056",
+      "source": "api/tests/test_contract.py:7965-8057",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 47,
@@ -5514,14 +5514,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:6793-7128",
+      "source": "api/tests/test_contract.py:6793-7129",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 23,
       "loop_count": 4,
       "literal_rows": [
         {
-          "line": 6903,
+          "line": 6904,
           "literal_rows": 15,
           "rows": [
             [
@@ -5726,14 +5726,14 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:7533-7722",
+      "source": "api/tests/test_contract.py:7534-7723",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 7638,
+          "line": 7639,
           "literal_rows": 2,
           "rows": [
             [
@@ -5851,14 +5851,14 @@
         "7",
         "9"
       ],
-      "source": "api/tests/test_contract.py:7724-7962",
+      "source": "api/tests/test_contract.py:7725-7963",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 41,
       "loop_count": 2,
       "literal_rows": [
         {
-          "line": 7787,
+          "line": 7788,
           "literal_rows": 6,
           "rows": [
             [
@@ -5952,7 +5952,7 @@
           "is_scenario": false
         },
         {
-          "line": 7855,
+          "line": 7856,
           "literal_rows": 8,
           "rows": [
             [
@@ -6188,14 +6188,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8058-8269",
+      "source": "api/tests/test_contract.py:8059-8270",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 43,
       "loop_count": 1,
       "literal_rows": [
         {
-          "line": 8190,
+          "line": 8191,
           "literal_rows": 6,
           "rows": [
             [
@@ -6324,6 +6324,213 @@
         "self.assertEqual(denied[\"result\"], \"not_found\", label)",
         "self.assertIsNone(denied[\"grant\"], label)",
         "self.assertEqual(denied[\"events\"], [], label)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_concrete_matter_and_selected_files",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-003",
+        "AC-039"
+      ],
+      "prd": [
+        "8",
+        "8.19"
+      ],
+      "source": "api/tests/test_contract.py:8272-8426",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 41,
+      "loop_count": 2,
+      "literal_rows": [
+        {
+          "line": 8307,
+          "literal_rows": 6,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "missing evidence"
+              },
+              {
+                "kind": "dict",
+                "keys": [],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "null map"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "matter_walls"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "absent entry"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "matter_walls"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "null value"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "matter_walls"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "string value"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "matter_walls"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "membership denied"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "matter_walls",
+                  "matter_membership"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for label, trusted in ( (\"missing evidence\", {}), (\"null map\", {\"matter_walls\": None}), (\"absent entry\", {\"matter_walls\": {}}), (\"null value\", {\"matter_walls\": {matter: None}}), (\"string value\", {\"matter_walls\": {matter: \"false\"}}), (\"membership denied\", {\"matter_walls\": {matter: True}, \"matter_membership\": {matter: False}}), ): denied = quiet(matter_call(\"getMatter\", [\"matters:read\"], {\"path\": {\"matter_id\": matter}}, **trusted)) self.assertEqual(denied[\"result\"], \"not_found\", label) denied_write = quiet(matter_call(\"updateMatter\", [\"matters:write\"], {\"path\": {\"matter_id\": matter}, \"body\": {\"status\": \"open\"}}, stored_status=\"open\", **trusted)) self.assertEqual(denied_write[\"result\"], \"not_found\", label)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 8357,
+          "literal_rows": 5,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "no rows"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "both unresolved"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "source only"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "target only"
+              },
+              {
+                "kind": "List"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "mismatched id"
+              },
+              {
+                "kind": "List"
+              }
+            ]
+          ],
+          "text": "for label, records in ( (\"no rows\", []), (\"both unresolved\", [{\"id\": file_id, \"matter_id\": matter}, {\"id\": other_file, \"matter_id\": matter}]), (\"source only\", [row(file_id)]), (\"target only\", [row(other_file)]), (\"mismatched id\", [row(file_id), row(\"018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3\")]), ): denied = quiet(link(records)) self.assertEqual(denied[\"result\"], \"not_found\", label)",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertIn({\"from_visible\": False, \"to_visible\": False, \"result\": \"not_found\"}, _operation(self.spec, \"createFileLink\")[\"x-togavsu-access\"][\"access_cases\"])",
+        "self.assertEqual(unwalled[\"result\"], \"allowed\")",
+        "self.assertTrue(unwalled[\"effects\"])",
+        "self.assertEqual(on_wall[\"result\"], \"allowed\")",
+        "self.assertTrue(on_wall[\"effects\"])",
+        "self.assertEqual(written[\"result\"], \"allowed\")",
+        "self.assertTrue(written[\"effects\"])",
+        "self.assertEqual(listed[\"result\"], \"allowed\")",
+        "self.assertEqual(missing_time[\"result\"], \"not_found\")",
+        "self.assertEqual(created[\"result\"], \"allowed\")",
+        "self.assertTrue(created[\"effects\"])",
+        "self.assertEqual(both_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(linked[\"result\"], \"allowed\")",
+        "self.assertTrue(linked[\"effects\"])",
+        "self.assertEqual(mixed[\"result\"], \"not_found\")",
+        "self.assertEqual(attorney_only[\"result\"], \"not_found\")",
+        "self.assertEqual(client_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(client_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(client_ok[\"effects\"])",
+        "self.assertEqual(accountant_mixed[\"result\"], \"not_found\")",
+        "self.assertEqual(accountant_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(accountant_ok[\"effects\"])",
+        "self.assertEqual(unknown[\"result\"], \"not_found\")",
+        "self.assertEqual(duplicate[\"result\"], \"not_found\")",
+        "self.assertEqual(both_selectors[\"result\"], \"validation_failed\")",
+        "self.assertFalse(both_selectors[\"effects\"])",
+        "self.assertEqual(unknown_folder[\"result\"], \"not_found\")",
+        "self.assertEqual(hidden_member[\"result\"], \"not_found\")",
+        "self.assertEqual(folder_ok[\"result\"], \"allowed\")",
+        "self.assertTrue(folder_ok[\"effects\"])",
+        "self.assertEqual(unassigned[\"result\"], \"allowed\")",
+        "self.assertTrue(unassigned[\"effects\"])",
+        "self.assertEqual(quarantined[\"result\"], \"quarantine_confirmation_required\")",
+        "self.assertEqual(confirmed[\"result\"], \"allowed\")",
+        "self.assertTrue(confirmed[\"effects\"])",
+        "self.assertFalse(decision[\"effects\"])",
+        "self.assertEqual(decision.get(\"events\") or [], [])",
+        "self.assertIsNone(decision.get(\"routed\"))",
+        "self.assertEqual(denied[\"result\"], \"not_found\", label)",
+        "self.assertEqual(denied_write[\"result\"], \"not_found\", label)",
+        "self.assertEqual(denied[\"result\"], \"not_found\", label)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -6753,7 +6960,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7130-7193",
+      "source": "api/tests/test_contract.py:7131-7194",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 34,
@@ -6810,7 +7017,7 @@
       "prd": [
         "8.12"
       ],
-      "source": "api/tests/test_contract.py:7195-7273",
+      "source": "api/tests/test_contract.py:7196-7274",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 42,
@@ -6875,7 +7082,7 @@
       "prd": [
         "8"
       ],
-      "source": "api/tests/test_contract.py:7337-7382",
+      "source": "api/tests/test_contract.py:7338-7383",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 14,
@@ -8008,9 +8215,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 11,
-      "assertion_call_sites": 365,
-      "literal_rows": 72,
+      "methods": 12,
+      "assertion_call_sites": 406,
+      "literal_rows": 83,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -8022,7 +8229,8 @@
         "test_dispatcher_parity_matrix",
         "test_association_walls_fail_closed",
         "test_trusted_wall_grant_and_csrf",
-        "test_transport_link_and_matter_grant"
+        "test_transport_link_and_matter_grant",
+        "test_concrete_matter_and_selected_files"
       ],
       "status": "not_converted",
       "complete": false

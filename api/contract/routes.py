@@ -2634,7 +2634,7 @@ def _files(api: Contract) -> None:
         summary="Link an attachment",
         description=(
             "Creates an attachment link from this file to to_file_id. "
-            "Both files are authorized. If either file is behind a wall or attorney-only for the caller, the result is not_found. "
+            "Both files are authorized. If either file is missing, unresolved, behind a wall, or attorney-only for the caller, the result is not_found. "
             "If both files name a matter and the matters differ, the result is matter_mismatch and no link is written. "
             "conversion_of and grouped_photo_source cannot be created or edited here. The relationship does not change after create."
         ),
@@ -2654,6 +2654,7 @@ def _files(api: Contract) -> None:
             "relationship_immutable": True,
             "server_owned_relationships": ["conversion_of", "grouped_photo_source"],
             "access_cases": FILE_ACCESS_CASES + [
+                {"from_visible": False, "to_visible": False, "result": "not_found"},
                 {"from_visible": False, "to_visible": True, "result": "not_found"},
                 {"from_visible": True, "to_visible": False, "result": "not_found"},
                 {"from_visible": True, "to_visible": True, "same_matter": False, "result": "matter_mismatch"},

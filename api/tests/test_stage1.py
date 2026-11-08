@@ -342,6 +342,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "opaque-task-credential",
                 "mcp-cookie-csrf",
                 "csrf-header-is-transport",
+                "file-link-both-unresolved",
             },
         )
 

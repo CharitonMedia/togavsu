@@ -408,6 +408,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "POST /mcp and JsonRpcRequest say X-CSRF-Token is the HTTP header on the transport, not a tools/call argument.",
             },
+            {
+                "id": "file-link-both-unresolved",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "createFileLink is not_found when neither file resolves. The access cases include from_visible false with to_visible false.",
+            },
         ],
         "intentional_corrections": [
             {

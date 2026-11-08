@@ -39753,7 +39753,7 @@
       "post": {
         "operationId": "createFileLink",
         "summary": "Link an attachment",
-        "description": "Creates an attachment link from this file to to_file_id. Both files are authorized. If either file is behind a wall or attorney-only for the caller, the result is not_found. If both files name a matter and the matters differ, the result is matter_mismatch and no link is written. conversion_of and grouped_photo_source cannot be created or edited here. The relationship does not change after create.",
+        "description": "Creates an attachment link from this file to to_file_id. Both files are authorized. If either file is missing, unresolved, behind a wall, or attorney-only for the caller, the result is not_found. If both files name a matter and the matters differ, the result is matter_mismatch and no link is written. conversion_of and grouped_photo_source cannot be created or edited here. The relationship does not change after create.",
         "tags": [
           "Files"
         ],
@@ -39845,6 +39845,11 @@
               "role": "staff",
               "matter_walled": true,
               "on_wall": false,
+              "result": "not_found"
+            },
+            {
+              "from_visible": false,
+              "to_visible": false,
               "result": "not_found"
             },
             {

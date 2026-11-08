@@ -6892,6 +6892,7 @@ class ContractTest(unittest.TestCase):
         withdrawal = {"trust_account_id": account, "client_id": client, "matter_id": visible, "entry_type": "withdrawal", "amount_cents": 100, "method": "check", "description": "Distribution"}
         payment = {"contact_id": client, "matter_id": visible, "amount_cents": 100, "destination": "operating", "method": "check", "status": "pending"}
         archive_body = {"file_ids": [file_id], "confirm_quarantine": True}
+        archive_row = {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}
         fee_body = {"client_id": client, "trust_account_id": account, "amount_cents": 1500}
         move_all = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "all"}
         move_matter = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "matter", "matter_id": visible}
@@ -6948,9 +6949,9 @@ class ContractTest(unittest.TestCase):
             {"family": "include", "name": "absent current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["matters:read", view_scope], approved_scopes=["matters:read", view_scope], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
             {"family": "include", "name": "explicit empty current approval", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", view_scope], current_approved_scopes=[], published_views=[view]), "tool": "listMatter", "arguments": {"query": {"include": view}}}},
             {"family": "include", "name": "missing extension context", "result": "forbidden", "call": {**bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"]), "tool": "listMatter", "arguments": {"query": {"include": extension}}}},
-            {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": archive_body}}},
-            {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
-            {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
+            {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": archive_body}}},
+            {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
+            {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
             {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
             {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
             {"family": "background_file", "name": "module resume omitted scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
@@ -6979,10 +6980,10 @@ class ContractTest(unittest.TestCase):
             {"family": "processor_issuance", "name": "trust init empty current approval", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=[], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
             {"family": "processor_issuance", "name": "trust init omitted current approval", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
             {"family": "processor_issuance", "name": "trust init minimal scopes", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["payments:write", "trust:write"], registered=True, module_id="lawpay", recipient_id="lawpay", approved_scopes=["payments:write", "trust:write"], current_approved_scopes=["payments:write", "trust:write"], initialization_id=upload_id, reserved_payment_id=file_id, expires_at="2026-11-07T18:00:00Z", trust_accounts=[{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}], firm_id="firm-1", matter_walled=False), "tool": "initiateProcessorPayment", "arguments": {"body": processor_trust}}},
-            {"family": "entry_type_scopes", "name": "cookie attorney withdrawal", "result": "allowed", "call": {**cookie(role="attorney"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
+            {"family": "entry_type_scopes", "name": "cookie attorney withdrawal", "result": "allowed", "call": {**cookie(role="attorney", matter_walled=False), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
             {"family": "entry_type_scopes", "name": "empty bearer withdrawal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[]), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
             {"family": "entry_type_scopes", "name": "cookie staff withdrawal", "result": "forbidden", "call": {**cookie(role="staff"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
-            {"family": "payment_effect", "name": "cookie pending payment", "result": "allowed", "call": {**cookie(role="staff"), "tool": "createPayment", "arguments": {"body": payment}}},
+            {"family": "payment_effect", "name": "cookie pending payment", "result": "allowed", "call": {**cookie(role="staff", matter_walled=False), "tool": "createPayment", "arguments": {"body": payment}}},
             {"family": "payment_effect", "name": "empty bearer payment", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[]), "tool": "createPayment", "arguments": {"body": payment}}},
             {"family": "payment_reversal", "name": "cookie operating reversal", "result": "allowed", "call": {**cookie(role="attorney", trust_linked=False, matter_walled=False), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
             {"family": "payment_reversal", "name": "empty bearer trust reversal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[], trust_linked=True, matter_walled=False, trust_account_id=account), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
@@ -8267,6 +8268,162 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(null_map["result"], "not_found")
         self.assertFalse(null_map.get("cleared"))
+
+    def test_concrete_matter_and_selected_files(self):
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        other = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        folder_id = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1"
+        activity = "018f1a00-7b3c-7d4e-8a11-121212121212"
+        link_body = {"to_file_id": other_file, "relationship": "attachment"}
+        _component_validator(self.spec, "FileLinkWrite").validate(link_body)
+        _component_validator(self.spec, "FileArchiveRequest").validate({"file_ids": [file_id, other_file]})
+        _component_validator(self.spec, "FileArchiveRequest").validate({"folder_id": folder_id})
+        _component_validator(self.spec, "MatterWritePatch").validate({"status": "open"})
+        self.assertIn({"from_visible": False, "to_visible": False, "result": "not_found"}, _operation(self.spec, "createFileLink")["x-togavsu-access"]["access_cases"])
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def matter_call(tool, scopes, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        for label, trusted in (
+            ("missing evidence", {}),
+            ("null map", {"matter_walls": None}),
+            ("absent entry", {"matter_walls": {}}),
+            ("null value", {"matter_walls": {matter: None}}),
+            ("string value", {"matter_walls": {matter: "false"}}),
+            ("membership denied", {"matter_walls": {matter: True}, "matter_membership": {matter: False}}),
+        ):
+            denied = quiet(matter_call("getMatter", ["matters:read"], {"path": {"matter_id": matter}}, **trusted))
+            self.assertEqual(denied["result"], "not_found", label)
+            denied_write = quiet(matter_call("updateMatter", ["matters:write"], {"path": {"matter_id": matter}, "body": {"status": "open"}}, stored_status="open", **trusted))
+            self.assertEqual(denied_write["result"], "not_found", label)
+        unwalled = matter_call("getMatter", ["matters:read"], {"path": {"matter_id": matter}}, matter_walls={matter: False})
+        self.assertEqual(unwalled["result"], "allowed")
+        self.assertTrue(unwalled["effects"])
+        on_wall = matter_call("getMatter", ["matters:read"], {"path": {"matter_id": matter}}, matter_walls={matter: True}, matter_membership={matter: True})
+        self.assertEqual(on_wall["result"], "allowed")
+        self.assertTrue(on_wall["effects"])
+        written = matter_call("updateMatter", ["matters:write"], {"path": {"matter_id": matter}, "body": {"status": "open"}}, stored_status="open", matter_walled=False)
+        self.assertEqual(written["result"], "allowed")
+        self.assertTrue(written["effects"])
+        listed = matter_call("listMatter", ["matters:read"], {})
+        self.assertEqual(listed["result"], "allowed")
+        time_body = {"matter_id": matter, "worked_on": "2026-11-07", "increments": 2, "description": "Review", "activity_type_id": activity}
+        _component_validator(self.spec, "TimeEntryWrite").validate(time_body)
+        missing_time = quiet(matter_call("createTimeEntry", ["time:write"], {"body": time_body}))
+        self.assertEqual(missing_time["result"], "not_found")
+        created = matter_call("createTimeEntry", ["time:write"], {"body": time_body}, matter_walled=False)
+        self.assertEqual(created["result"], "allowed")
+        self.assertTrue(created["effects"])
+
+        def link(records, body=None, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "token_scopes": ["files:write"],
+                    "stored_files": records,
+                    "tool": "createFileLink",
+                    "arguments": {"path": {"file_id": file_id}, "body": body or {**link_body, "from_visible": True, "to_visible": True, "same_matter": True}},
+                    **trusted,
+                },
+            )
+
+        def row(row_id, matter_id=matter, **flags):
+            return {"id": row_id, "matter_id": matter_id, "matter_walled": False, "attorney_only": False, "shared_with_client": True, "quarantined": False, "folder_id": folder_id, **flags}
+
+        for label, records in (
+            ("no rows", []),
+            ("both unresolved", [{"id": file_id, "matter_id": matter}, {"id": other_file, "matter_id": matter}]),
+            ("source only", [row(file_id)]),
+            ("target only", [row(other_file)]),
+            ("mismatched id", [row(file_id), row("018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3")]),
+        ):
+            denied = quiet(link(records))
+            self.assertEqual(denied["result"], "not_found", label)
+        both_hidden = quiet(link([row(file_id, matter_walled=True), row(other_file, matter_walled=True)], matter_membership={matter: False}))
+        self.assertEqual(both_hidden["result"], "not_found")
+        linked = link([row(file_id), row(other_file)])
+        self.assertEqual(linked["result"], "allowed")
+        self.assertTrue(linked["effects"])
+
+        def archive(body, records, role="staff", **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": ["files:read"],
+                    "stored_files": records,
+                    "tool": "createFileArchive",
+                    "arguments": {"body": body},
+                    **trusted,
+                },
+            )
+
+        mixed = quiet(archive({"file_ids": [file_id, other_file]}, [row(file_id), row(other_file, matter_walled=True)], matter_membership={matter: False}, attorney_only=False, matter_walled=False))
+        self.assertEqual(mixed["result"], "not_found")
+        attorney_only = quiet(archive({"file_ids": [file_id]}, [row(file_id, attorney_only=True)], attorney_only=False))
+        self.assertEqual(attorney_only["result"], "not_found")
+        client_hidden = quiet(archive({"file_ids": [file_id]}, [row(file_id, shared_with_client=False)], role="client", shared=True))
+        self.assertEqual(client_hidden["result"], "not_found")
+        client_ok = archive({"file_ids": [file_id]}, [row(file_id)], role="client")
+        self.assertEqual(client_ok["result"], "allowed")
+        self.assertTrue(client_ok["effects"])
+        ordinary = row(other_file)
+        ordinary.pop("financial_classification", None)
+        receipt = row(file_id, financial_classification="receipt")
+        accountant_mixed = quiet(archive({"file_ids": [file_id, other_file]}, [receipt, ordinary], role="accountant"))
+        self.assertEqual(accountant_mixed["result"], "not_found")
+        accountant_ok = archive({"file_ids": [file_id]}, [receipt], role="accountant")
+        self.assertEqual(accountant_ok["result"], "allowed")
+        self.assertTrue(accountant_ok["effects"])
+        unknown = quiet(archive({"file_ids": [file_id, other_file]}, [row(file_id)]))
+        self.assertEqual(unknown["result"], "not_found")
+        duplicate = quiet(archive({"file_ids": [file_id, file_id]}, [row(file_id)]))
+        self.assertEqual(duplicate["result"], "not_found")
+        both_selectors = archive({"file_ids": [file_id], "folder_id": folder_id}, [row(file_id)])
+        self.assertEqual(both_selectors["result"], "validation_failed")
+        self.assertFalse(both_selectors["effects"])
+        unknown_folder = quiet(archive({"folder_id": folder_id}, [row(file_id)], stored_folders=[]))
+        self.assertEqual(unknown_folder["result"], "not_found")
+        hidden_member = quiet(archive({"folder_id": folder_id}, [row(file_id), row(other_file, matter_walled=True)], stored_folders=[{"id": folder_id}], matter_membership={matter: False}))
+        self.assertEqual(hidden_member["result"], "not_found")
+        folder_ok = archive({"folder_id": folder_id}, [row(file_id), row(other_file)], stored_folders=[{"id": folder_id}])
+        self.assertEqual(folder_ok["result"], "allowed")
+        self.assertTrue(folder_ok["effects"])
+        unassigned = archive({"file_ids": [file_id]}, [row(file_id, matter_id=None)])
+        self.assertEqual(unassigned["result"], "allowed")
+        self.assertTrue(unassigned["effects"])
+        quarantined = quiet(archive({"file_ids": [file_id]}, [row(file_id, quarantined=True)]))
+        self.assertEqual(quarantined["result"], "quarantine_confirmation_required")
+        confirmed = archive({"file_ids": [file_id], "confirm_quarantine": True}, [row(file_id, quarantined=True)])
+        self.assertEqual(confirmed["result"], "allowed")
+        self.assertTrue(confirmed["effects"])
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

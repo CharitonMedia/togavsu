@@ -794,7 +794,8 @@ def _accountant_financial_denial(operation: dict, call: dict) -> str | None:
     if operation.get("operationId") == "listFile":
         return None
     if operation.get("operationId") == "createFileArchive":
-        if not records or any(_financial_classification(row) is None or _stored_file_hidden(call, row) for row in records):
+        selected = call.get("archive_rows") if isinstance(call.get("archive_rows"), list) else records
+        if not selected or any(_financial_classification(row) is None or _stored_file_hidden(call, row) for row in selected):
             return "not_found"
         return None
     file_id = call.get("file_id")
@@ -808,8 +809,86 @@ def _accountant_financial_denial(operation: dict, call: dict) -> str | None:
     return None
 
 
+def _file_row_denial(subject: dict, row: dict) -> str | None:
+    """None when this caller can read this trusted file row. Caller flags are not the row."""
+    if _trusted_file([row], row.get("id")) is None:
+        return "not_found"
+    if row.get("attorney_only") is True and subject.get("role") not in ("attorney", "admin"):
+        return "not_found"
+    if not matter_visible(subject, {"matter_id": row.get("matter_id"), "matter_walled": row["matter_walled"]}, single_record=isinstance(row.get("matter_id"), str)):
+        return "not_found"
+    if subject.get("role") == "client" and (row.get("shared_with_client") is not True or row.get("owner") == "other_client"):
+        return "not_found"
+    if subject.get("role") == "accountant" and _financial_classification(row) is None:
+        return "not_found"
+    if "quarantined" in row and type(row.get("quarantined")) is not bool:
+        return "not_found"
+    return None
+
+
+def _bind_archive(subject: dict, call: dict, body: dict) -> None:
+    """Every requested file or folder member must resolve. Inaccessible rows are not dropped."""
+    file_ids = body.get("file_ids") if "file_ids" in body else None
+    folder_id = body.get("folder_id") if isinstance(body.get("folder_id"), str) and body.get("folder_id") else None
+    has_files = isinstance(file_ids, list)
+    if has_files == (folder_id is not None) or (has_files and not file_ids):
+        subject["archive_result"] = "validation_failed"
+        subject["archive_rows"] = []
+        return
+    records = [row for row in call.get("stored_files") or [] if isinstance(row, dict)]
+    if folder_id is not None:
+        folders = call.get("stored_folders") if isinstance(call.get("stored_folders"), list) else []
+        if not any(isinstance(folder, dict) and folder.get("id") == folder_id for folder in folders):
+            subject["archive_result"] = "not_found"
+            subject["archive_rows"] = []
+            return
+        rows = []
+        for row in records:
+            if row.get("folder_id") != folder_id:
+                continue
+            resolved = _trusted_file([row], row.get("id"))
+            if resolved is None:
+                subject["archive_result"] = "not_found"
+                subject["archive_rows"] = []
+                return
+            rows.append(resolved)
+        if not rows:
+            subject["archive_result"] = "not_found"
+            subject["archive_rows"] = []
+            return
+        subject["archive_rows"] = rows
+        return
+    if len(file_ids) != len(set(file_ids)) or any(not isinstance(item, str) or not item for item in file_ids):
+        subject["archive_result"] = "not_found"
+        subject["archive_rows"] = []
+        return
+    rows = []
+    for file_id in file_ids:
+        resolved = _trusted_file(records, file_id)
+        if resolved is None:
+            subject["archive_result"] = "not_found"
+            subject["archive_rows"] = []
+            return
+        rows.append(resolved)
+    subject["archive_rows"] = rows
+
+
 def file_download_decision(operation: dict, call: dict) -> str:
     access = operation["x-togavsu-access"]
+    if operation.get("operationId") == "createFileArchive":
+        if "file.downloaded" not in operation.get("x-togavsu-events", []):
+            return "missing_event"
+        if call.get("archive_result"):
+            return call["archive_result"]
+        rows = call.get("archive_rows")
+        if not isinstance(rows, list) or not rows:
+            return "not_found"
+        for row in rows:
+            if _file_row_denial(call, row):
+                return "not_found"
+        if any(row.get("quarantined") is True for row in rows) and call.get("confirm") is not True:
+            return "quarantine_confirmation_required"
+        return "highlighted" if call.get("role") == "client" else "audited"
     if "file.downloaded" not in operation.get("x-togavsu-events", []):
         return "missing_event"
     if access.get("quarantine_confirmation") == "required" and not access.get("quarantine_confirmation_input"):
@@ -1254,19 +1333,10 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if operation.get("operationId") == "regenerateRecoveryCodes":
         return _recovery_regeneration_authorization(operation, subject)
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
-        matter_id = subject.get("matter_id")
-        walls = subject.get("matter_walls")
-        known_source = subject.get("existing_record") and subject.get("stored_matter_state") == "matter" and isinstance(subject.get("stored_matter_id"), str)
-        wall_evidence = "matter_walled" in subject or ("matter_walls" in subject and subject.get("matter_walls") is not None)
-        if known_source:
-            walled = _resolved_source_wall(subject, subject["stored_matter_id"])
-            if walled is None or not matter_visible(subject, {"matter_id": subject["stored_matter_id"], "matter_walled": walled}, single_record=True):
-                return {"result": "not_found", **denied, "events": []}
-        elif isinstance(matter_id, str) and isinstance(walls, dict):
-            walled = walls.get(matter_id)
-            if matter_id not in walls or type(walled) is not bool or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
-                return {"result": "not_found", **denied, "events": []}
-        elif wall_evidence and isinstance(matter_id, str):
+        matter_id = subject.get("matter_id") if isinstance(subject.get("matter_id"), str) and subject.get("matter_id") else None
+        if matter_id is None and subject.get("existing_record") and subject.get("stored_matter_state") == "matter":
+            matter_id = subject.get("stored_matter_id") if isinstance(subject.get("stored_matter_id"), str) else None
+        if isinstance(matter_id, str):
             walled = _resolved_source_wall(subject, matter_id)
             if walled is None or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
                 return {"result": "not_found", **denied, "events": []}
@@ -1296,7 +1366,7 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         return {"result": "not_found", **denied}
     if access.get("quarantine_confirmation") == "required" and not subject.get("noninteractive_accepted"):
         download = file_download_decision(operation, subject)
-        if download in {"not_found", "missing_event", "missing_confirm_input", "quarantine_confirmation_required"}:
+        if download in {"not_found", "missing_event", "missing_confirm_input", "quarantine_confirmation_required", "validation_failed"}:
             return {"result": download, **denied}
     if "include_scope_pattern" in access and not subject.get("noninteractive_accepted") and not subject.get("principal_accepted"):
         viewed = include_views_decision(operation, subject)
@@ -1777,6 +1847,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         subject["invoice_id"] = body["invoice_id"] if "invoice_id" in body else call.get("invoice_id")
     if operation.get("operationId") == "createFileLink":
         _bind_file_link(subject, call, path, body)
+    if operation.get("operationId") == "createFileArchive":
+        _bind_archive(subject, call, body)
     return subject
 
 
