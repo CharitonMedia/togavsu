@@ -22,7 +22,7 @@ Open a small PR using the template with task ID, PRD sections, acceptance IDs, t
 
 Setup checks validate metadata only. Platform must add real Go/unit/integration, Postgres and end-to-end CI. Product phases require those executable tests; a metadata pass does not establish product acceptance.
 
-The required Codex checkpoint reads the trusted base instructions and candidate diff in a read-only sandbox. It emits JSON with base/head SHAs, verdict and actionable findings; the report remains an Actions artifact and summary. Missing keys, malformed output, unavailable reviews, timeouts and fail verdicts block merging. Cursor fixes findings and every new commit reruns the gate. The implementation agent never approves itself.
+The required Codex checkpoint reads the trusted base instructions and candidate diff with read-only tools (Read, Glob, Grep). Deny rules keep those tools away from process data, runner files and git credentials, and a result that contains a credential is withheld. It emits JSON with base/head SHAs, verdict and actionable findings; the report remains an Actions artifact and summary. Missing keys, malformed output, unavailable reviews, timeouts and fail verdicts block merging. Cursor fixes findings and every new commit reruns the gate. The implementation agent never approves itself.
 
 The integration lead updates the branch against current main, resolves integration issues and merges only when all required checks pass and findings are resolved. The strict branch gate requires retesting after main changes. Never force-push, directly push main, or bypass protection.
 
@@ -35,7 +35,7 @@ Final acceptance additionally requires the full suite on a fresh Docker Desktop 
 Cursor does not assume Ponytail's Claude Code slash commands or hooks work. Preserve their substance explicitly: reuse existing code and the Go standard library first, review each phase diff for unnecessary complexity, apply only cuts that preserve PRD requirements, rerun tests, and record net lines and PONYTAIL-DEBT.md count. Every deliberate shortcut needs a ceiling, upgrade path and concrete upgrade trigger. Perform a whole-repo audit before the release tag.
 
 ## Credentials and cost
-The Codex GitHub Action uses the OPENAI_API_KEY repository secret and API billing, separate from Cursor/ChatGPT subscription allowances. The native Codex GitHub integration is optional extra review and is not automatically enabled by this setup.
+The review gate runs Opus through the Claude Code GitHub Action, authenticated by the CLAUDE_CODE_OAUTH_TOKEN repository secret (a `claude setup-token` token on the Max subscription). The check keeps the name Codex checkpoint so branch protection and the build controller are unchanged.
 Keys remain in the control environment or GitHub Secrets. Do not copy local credential files into cloud VMs or the repository.
 
 ## Repository enforcement
