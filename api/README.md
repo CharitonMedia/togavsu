@@ -7,7 +7,7 @@ Versioned OpenAPI 3.1 for the Togavsu core and a separate marketplace read/opera
 | `openapi/v1/openapi.json` | Core contract. Paths under `/api/v1`, plus `/mcp`, `/llms.txt`, `/healthz`, `/help/guide`, and `/ical/{secret}.ics`. |
 | `openapi/v1/mcp-tools.json` | One MCP tool per operation, generated from the core document. |
 | `openapi/marketplace/openapi.json` | Marketplace service the core polls. Host is a placeholder. |
-| `contract/` | Builder. Edit this, then regenerate. |
+| `contract/` | Builder. Edit this, then regenerate. `metadata.py` publishes the document. `policy.py` is the call simulator and is not imported by the builder. |
 | `tests/test_contract.py` | Validator and parity checks. |
 
 Regenerate and check:

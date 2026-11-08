@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 
-from contract.policy import CORE_PAGE_TARGETS, MODULE_ID_PATTERN
+from contract.metadata import CORE_PAGE_TARGETS, MODULE_ID_PATTERN
 from contract.settings import SETTINGS, setting_keys
 
 PROBLEM_CODES = [

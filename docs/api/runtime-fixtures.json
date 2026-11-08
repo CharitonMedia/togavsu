@@ -1,0 +1,1453 @@
+{
+  "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+  "stage": 1,
+  "runtime_status": "runtime_pending",
+  "note": "Structure and traceability only. These fixtures are not executed and are not acceptance evidence.",
+  "fixtures": [
+    {
+      "id": "reg-createModuleMarker-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createModuleMarker-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": [
+          "markers:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-updateModuleMarker-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "updateModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "updateModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-updateModuleMarker-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "updateModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "updateModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": [
+          "markers:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-revokeModuleMarker-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "revokeModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "revokeModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-revokeModuleMarker-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "revokeModuleMarker",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "revokeModuleMarker",
+        "arguments": {
+          "path": {
+            "module_id": "intake",
+            "marker_id": "018f1a00-7b3c-7d4e-8a11-111111111111"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "intake",
+        "installed": true,
+        "approved_scopes": [
+          "markers:write"
+        ],
+        "module_scopes": [
+          "markers:write"
+        ],
+        "token_scopes": [
+          "markers:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createModuleHelpPage-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createModuleHelpPage-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-replaceModuleHelpPages-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "replaceModuleHelpPages",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "replaceModuleHelpPages",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-replaceModuleHelpPages-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "replaceModuleHelpPages",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "replaceModuleHelpPages",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-deleteModuleHelpPage-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "deleteModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Empty token scopes do not fall back to approved or module scopes."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "deleteModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock",
+            "page_id": "start"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-deleteModuleHelpPage-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "deleteModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Explicit empty current approvals do not fall back to stale module permissions."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "deleteModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock",
+            "page_id": "start"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "module_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": []
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createModuleHelpPage-current-match",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createModuleHelpPage",
+      "requirement": {
+        "prd": [
+          "7",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A bearer scope that is also in the current approval is allowed."
+      },
+      "go_owner": "modules",
+      "request": {
+        "tool": "createModuleHelpPage",
+        "arguments": {
+          "path": {
+            "module_id": "matter-clock"
+          },
+          "body": {
+            "id": "start",
+            "title": "Start",
+            "markdown": "Hello"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "matter-clock",
+        "installed": true,
+        "approved_scopes": [
+          "help:write"
+        ],
+        "token_scopes": [
+          "help:write"
+        ],
+        "current_approved_scopes": [
+          "help:write"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-issueFilePublicationGrant-effective",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "issueFilePublicationGrant",
+      "requirement": {
+        "prd": [
+          "7",
+          "8.19",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Matching token and approval scopes can issue the grant."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "issueFilePublicationGrant",
+        "arguments": {
+          "body": {
+            "assignment": "matter",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "source": "email"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "installed": true,
+        "registered": true,
+        "expires_at": "2026-11-07T20:00:00Z",
+        "matter_walled": false,
+        "approved_scopes": [
+          "files:write"
+        ],
+        "token_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-issueFilePublicationGrant-empty-approval",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "issueFilePublicationGrant",
+      "requirement": {
+        "prd": [
+          "7",
+          "8.19",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An explicit empty approval list does not fall back to module_scopes."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "issueFilePublicationGrant",
+        "arguments": {
+          "body": {
+            "assignment": "matter",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "source": "email"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "installed": true,
+        "registered": true,
+        "expires_at": "2026-11-07T20:00:00Z",
+        "matter_walled": false,
+        "approved_scopes": [],
+        "token_scopes": [
+          "files:write"
+        ],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-issueFilePublicationGrant-empty-token",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "issueFilePublicationGrant",
+      "requirement": {
+        "prd": [
+          "7",
+          "8.19",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An explicit empty token list does not fall back to module_scopes."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "issueFilePublicationGrant",
+        "arguments": {
+          "body": {
+            "assignment": "matter",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "source": "email"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "installed": true,
+        "registered": true,
+        "expires_at": "2026-11-07T20:00:00Z",
+        "matter_walled": false,
+        "approved_scopes": [
+          "files:write"
+        ],
+        "token_scopes": [],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-issueFilePublicationGrant-empty-current",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "issueFilePublicationGrant",
+      "requirement": {
+        "prd": [
+          "7",
+          "8.19",
+          "9.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An explicit empty current approval list does not fall back to module_scopes."
+      },
+      "go_owner": "files",
+      "request": {
+        "tool": "issueFilePublicationGrant",
+        "arguments": {
+          "body": {
+            "assignment": "matter",
+            "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+            "source": "email"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "viewer_present": false,
+        "module_id": "email",
+        "installed": true,
+        "registered": true,
+        "expires_at": "2026-11-07T20:00:00Z",
+        "matter_walled": false,
+        "approved_scopes": [
+          "files:write"
+        ],
+        "token_scopes": [
+          "files:write"
+        ],
+        "current_approved_scopes": [],
+        "module_scopes": [
+          "files:write"
+        ]
+      },
+      "expected": {
+        "result": "scope_denied",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-listCalendarEvent-routed",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "listCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A live read of a replaced calendar domain routes to the module."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "listCalendarEvent",
+        "arguments": {}
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:read"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": true,
+            "module_id": "cal-mod"
+          }
+        }
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": false,
+        "routed": "cal-mod"
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-getCalendarEvent-routed",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "getCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A live read of one replaced calendar event routes to the module."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "getCalendarEvent",
+        "arguments": {
+          "path": {
+            "calendar_event_id": "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee1"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:read"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": true,
+            "module_id": "cal-mod"
+          }
+        }
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": false,
+        "routed": "cal-mod"
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-listCalendarEvent-core-history",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "listCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "core_history reads retained core rows and does not route."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "listCalendarEvent",
+        "arguments": {}
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:read"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": true,
+            "module_id": "cal-mod"
+          }
+        },
+        "core_history": true
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true,
+        "routed": null
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-listCalendarEvent-unavailable",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "listCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An unavailable replacement module is forbidden."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "listCalendarEvent",
+        "arguments": {}
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:read"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": false,
+            "module_id": "cal-mod"
+          }
+        }
+      },
+      "expected": {
+        "result": "forbidden",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-listCalendarEvent-core",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "listCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "Without a replacement, the core serves the list."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "listCalendarEvent",
+        "arguments": {}
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:read"
+        ]
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true,
+        "routed": null
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createCalendarEvent-routed",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A write of a replaced calendar domain routes to the module."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "createCalendarEvent",
+        "arguments": {
+          "body": {
+            "title": "Hearing",
+            "kind": "court_date",
+            "starts_at": "2026-11-07T18:00:00Z",
+            "ends_at": "2026-11-07T19:00:00Z"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:write"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": true,
+            "module_id": "cal-mod"
+          }
+        }
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": false,
+        "routed": "cal-mod"
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-createCalendarEvent-history-does-not-keep-write",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "createCalendarEvent",
+      "requirement": {
+        "prd": [
+          "9.5"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "core_history does not keep a write on the core."
+      },
+      "go_owner": "calendar",
+      "request": {
+        "tool": "createCalendarEvent",
+        "arguments": {
+          "body": {
+            "title": "Hearing",
+            "kind": "court_date",
+            "starts_at": "2026-11-07T18:00:00Z",
+            "ends_at": "2026-11-07T19:00:00Z"
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "calendar:write"
+        ],
+        "domain_handlers": {
+          "calendar": {
+            "replaced": true,
+            "available": true,
+            "module_id": "cal-mod"
+          }
+        },
+        "core_history": true
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": false,
+        "routed": "cal-mod"
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-bulkTimeEntry-unwalled",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An unwalled matter does not need artificial wall membership."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "cookie": "togavsu_session",
+        "credential_valid": true,
+        "role": "staff",
+        "matter_walls": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": false
+        }
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-bulkTimeEntry-call-flag",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "The trusted call wall flag applies to that matter."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "cookie": "togavsu_session",
+        "credential_valid": true,
+        "role": "staff",
+        "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+        "matter_walled": false
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-bulkTimeEntry-mixed-off-wall",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "One inaccessible item rejects the batch and has no effect."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              },
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333339",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "cookie": "togavsu_session",
+        "credential_valid": true,
+        "role": "staff",
+        "matter_walls": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": false,
+          "018f1a00-7b3c-7d4e-8a11-333333333339": true
+        },
+        "matter_membership": {
+          "018f1a00-7b3c-7d4e-8a11-333333333339": false
+        }
+      },
+      "expected": {
+        "result": "not_found",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-bulkTimeEntry-mixed-on-wall",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "An unwalled item and an on-wall item are both allowed."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              },
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333339",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "cookie": "togavsu_session",
+        "credential_valid": true,
+        "role": "staff",
+        "matter_walls": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": false,
+          "018f1a00-7b3c-7d4e-8a11-333333333339": true
+        },
+        "matter_membership": {
+          "018f1a00-7b3c-7d4e-8a11-333333333339": true
+        }
+      },
+      "expected": {
+        "result": "allowed",
+        "effects": true
+      },
+      "runtime_status": "runtime_pending"
+    },
+    {
+      "id": "reg-bulkTimeEntry-item-flag-ignored",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6901,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A matter_walled flag on the item does not clear the trusted wall."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212",
+                "matter_walled": false
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "time:write"
+        ],
+        "matter_walls": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": true
+        },
+        "matter_membership": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": false
+        }
+      },
+      "expected": {
+        "result": "not_found",
+        "effects": false
+      },
+      "runtime_status": "runtime_pending"
+    }
+  ]
+}

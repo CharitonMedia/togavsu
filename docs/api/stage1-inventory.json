@@ -1,0 +1,4654 @@
+{
+  "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+  "stage": 1,
+  "purpose": "Separate the OpenAPI builder from the Python call simulator without retiring simulator behavior.",
+  "acceptance": {
+    "id": "AC-002",
+    "phase_1": "Real OpenAPI validation and broken-spec rejection. Not REST or MCP runtime.",
+    "phase_7_pending": "Every core feature on /api/v1 and /mcp.",
+    "sources": [
+      "tests/harness/cases.py",
+      "tests/acceptance/matrix.json",
+      "docs/build/tasks.json"
+    ]
+  },
+  "counts": {
+    "metadata_definitions": 77,
+    "simulator_functions": 135,
+    "contract_tests": 61,
+    "simulator_tests": 1,
+    "mixed_tests": 40,
+    "test_methods": 102,
+    "local_helpers": 23,
+    "simulator_helpers": 10,
+    "nested_helpers": 20,
+    "blocking_gaps": 41,
+    "runtime_fixtures": 29,
+    "baseline_function_definitions": 176,
+    "metadata_functions": 41,
+    "metadata_names_including_constants": 77
+  },
+  "artifacts": {
+    "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",
+    "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
+    "api/openapi/v1/mcp-tools.json": "4581fcdcb373bf6d4e17dbd1676a618089604c77836d4840b8d85f5b85363fc6",
+    "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa"
+  },
+  "builder_module": "api/contract/metadata.py",
+  "simulator_module": "api/contract/policy.py",
+  "metadata_exports": [
+    "BACKGROUND_FILE_PUBLICATION",
+    "BACKGROUND_FILE_SEQUENCE",
+    "CORE_PAGE_TARGETS",
+    "EVENT_EXEMPTIONS",
+    "FILE_DOWNLOAD",
+    "FILE_GRANT_FIELDS",
+    "GENERIC_NONINTERACTIVE",
+    "HISTORY_RESPONSE_SCHEMAS",
+    "MALWARE_DELIVERY",
+    "MALWARE_SEQUENCE",
+    "MODULE_GUIDE",
+    "MODULE_ID_PATTERN",
+    "MUTATION_EVENTS",
+    "NONINTERACTIVE_OPERATIONS",
+    "PAYMENT_PROCESSOR",
+    "PAYMENT_STATUS_GRAPH",
+    "PRIVATE_GRANT_FIELDS",
+    "REQUIRED_BACKGROUND_EVENTS",
+    "SERVICE_PRINCIPAL_ISSUANCE",
+    "SUPPORTED_QUALIFIERS",
+    "VERSION_GRANT_FIELDS",
+    "WEBHOOK_DELIVERY",
+    "_CONFIRM_QUERY",
+    "_CONTEXT_QUALIFIERS",
+    "_CORE_FILE_FEATURES",
+    "_EVENT_OWNERS",
+    "_EVENT_SCOPE_REGISTRY",
+    "_EXCLUDED_DOWNLOAD_FEATURES",
+    "_FILE_BYTE_TYPES",
+    "_FLAG_METADATA",
+    "_GATE_QUALIFIERS",
+    "_PATH_EVENT_FAMILY",
+    "_SCOPE_READ_ALIAS",
+    "_TRUST_FLAG",
+    "_TRUST_POST",
+    "_confirmation_input",
+    "_domain_read",
+    "_ensure_code",
+    "_event_scope_choice",
+    "_json_schema_slot",
+    "_owner_binding",
+    "_path_event_family",
+    "_payment_effect",
+    "_payment_reversal",
+    "_response_schema_names",
+    "_schema_names_matter",
+    "_setting_value",
+    "_success_medias",
+    "align_event_scopes_to_gets",
+    "apply_file_download_contract",
+    "attach_grant_projections",
+    "client_context_operation_ids",
+    "ensure_mutation_events",
+    "finalize",
+    "is_core_file_download",
+    "is_published_client_read",
+    "iter_operations",
+    "operation_by_id",
+    "operation_names_matter",
+    "page_limit",
+    "publish_client_context",
+    "publish_client_projections",
+    "publish_event_owners",
+    "publish_event_scopes",
+    "publish_extension_include",
+    "publish_inherited_history",
+    "publish_invoice_item_privileges",
+    "publish_matter_effect_order",
+    "publish_owner_read_scopes",
+    "publish_page_sizes",
+    "publish_payment_policy",
+    "publish_trust_debit",
+    "publish_trust_flags",
+    "require_supported_qualifiers",
+    "tag_noninteractive_workflows",
+    "version_publication"
+  ],
+  "simulator_functions": [
+    "_access_case_matches",
+    "_accountant_financial_denial",
+    "_attorney_only_fields",
+    "_attorney_only_file",
+    "_background_denied",
+    "_balance_value",
+    "_batch_matter_denial",
+    "_bulk_upload_problem",
+    "_caller_can_open",
+    "_capability_bound",
+    "_composed_payment_events",
+    "_conditional_scope_code",
+    "_credential_kind",
+    "_denied",
+    "_draft_modes",
+    "_effect_items",
+    "_event_name",
+    "_exact_cents",
+    "_financial_classification",
+    "_hides_attorney_only_record",
+    "_history_owner_visible",
+    "_idempotency_scope",
+    "_inherited_record_denial",
+    "_inverted_trust_amount",
+    "_invoice_item_denial",
+    "_invoice_off_wall",
+    "_iso_day",
+    "_item_matter_walled",
+    "_item_payment_status",
+    "_ledger_delta",
+    "_marker_color",
+    "_marker_label",
+    "_marker_label_taken",
+    "_marker_row",
+    "_matter_billable",
+    "_matter_filter_hidden",
+    "_mcp_operation_call",
+    "_module_scope_intersection",
+    "_module_upload_document",
+    "_normalized_processor_request",
+    "_notification_scope",
+    "_post_trust_once",
+    "_posted_trust_events",
+    "_principal_can_read",
+    "_principal_code",
+    "_privilege_denial",
+    "_processor_body",
+    "_processor_success",
+    "_registered_view_names",
+    "_replacement_decision",
+    "_requested_confirmation",
+    "_reversal_compensation",
+    "_row_record_type",
+    "_safe_href",
+    "_same_processor_body",
+    "_scope_is_granted",
+    "_store_processor_receipt",
+    "_stored_file_hidden",
+    "_stored_subject",
+    "_tagged_owner_denial",
+    "_trust_flag_from_event",
+    "_trust_openings",
+    "_trusted_file_records",
+    "_unique_ids",
+    "_workflow_code",
+    "accountant_file_rows",
+    "attach_matter_marker",
+    "authorized_badge_counts",
+    "background_file_step",
+    "background_grant_authorization",
+    "background_grant_issuance",
+    "bearer_lacks_scopes",
+    "bulk_invoice_apply",
+    "bulk_privilege_expansions",
+    "canonical_owner",
+    "commit_concurrent_processor_creates",
+    "commit_concurrent_publishes",
+    "committed_events",
+    "confirm_totp_reset",
+    "custom_field_bulk_apply",
+    "custom_fields_batch",
+    "custom_fields_outcome",
+    "decide_module_permissions",
+    "doc_tender_events",
+    "event_read_scopes",
+    "external_effect_decision",
+    "file_download_decision",
+    "include_views_decision",
+    "inherited_history_rows",
+    "invoice_draft_decision",
+    "invoice_reconciliation_error",
+    "issue_api_token",
+    "malware_scan_decision",
+    "manifest_contributions",
+    "manifest_custom_fields",
+    "marketplace_package",
+    "matter_page",
+    "matter_visible",
+    "mcp_credential_rejection",
+    "mcp_tool_dispatch",
+    "module_help_registration",
+    "module_id_slug",
+    "module_marker_registration",
+    "normalize_manifest_permissions",
+    "normalize_module_target",
+    "notification_page",
+    "notification_recipient_decision",
+    "open_widget_target",
+    "operation_authorization",
+    "page_size_decision",
+    "payment_effect_decision",
+    "payment_lifecycle_events",
+    "payment_reversal_decision",
+    "payment_status_transition",
+    "processor_apply",
+    "processor_callback",
+    "processor_issuance",
+    "project_invoice_for_role",
+    "project_record",
+    "published_include",
+    "published_version_events",
+    "rendered_markdown",
+    "replace_matter_wall",
+    "session_authorizes",
+    "sidebar_entries",
+    "sidebar_panel",
+    "start_totp_reset",
+    "trust_account_failure",
+    "trust_debit_decision",
+    "trust_entry_authorization",
+    "trust_flag_rows",
+    "trust_ledger_events",
+    "webhook_envelope",
+    "webhook_signature",
+    "webhook_signature_matches"
+  ],
+  "importers": {
+    "contract.policy": [
+      "api/tests/test_contract.py"
+    ],
+    "contract.metadata": [
+      "api/contract/build.py",
+      "api/contract/model.py",
+      "api/contract/policy.py",
+      "api/contract/routes.py",
+      "api/contract/schemas.py"
+    ]
+  },
+  "non_python_consumers": [],
+  "hidden_runtime_consumers": [],
+  "deletion_blocked": true,
+  "deletion_block_reason": "Simulator tests and unexpanded scenarios remain. Independent inventory review has not accepted retirement.",
+  "tests": [
+    {
+      "id": "ContractTest.setUpClass",
+      "source": "api/tests/test_contract.py",
+      "line": 327,
+      "end_line": 329,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "build_marketplace",
+        "build_spec"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_core_spec_validates",
+      "source": "api/tests/test_contract.py",
+      "line": 331,
+      "end_line": 332,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "validate"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_marketplace_spec_validates",
+      "source": "api/tests/test_contract.py",
+      "line": 334,
+      "end_line": 335,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "validate"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_validator_rejects_a_broken_spec",
+      "source": "api/tests/test_contract.py",
+      "line": 337,
+      "end_line": 355,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertRaises",
+        "validate"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_version_and_conventions",
+      "source": "api/tests/test_contract.py",
+      "line": 357,
+      "end_line": 367,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertTrue",
+        "startswith"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_prd_paths_exist",
+      "source": "api/tests/test_contract.py",
+      "line": 369,
+      "end_line": 371,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertIn"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_required_features_have_an_mcp_tool",
+      "source": "api/tests/test_contract.py",
+      "line": 373,
+      "end_line": 383,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_ops",
+        "assertEqual",
+        "set",
+        "sorted",
+        "update"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_mcp_parity_rules",
+      "source": "api/tests/test_contract.py",
+      "line": 385,
+      "end_line": 401,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_ops",
+        "add",
+        "assertEqual",
+        "assertGreater",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "len",
+        "set"
+      ],
+      "operation_literals": [
+        "operationId",
+        "postMcp"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_public_and_authenticated_security",
+      "source": "api/tests/test_contract.py",
+      "line": 403,
+      "end_line": 430,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "assertEqual",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "bearerAuth",
+        "confirmPasswordReset",
+        "confirmTotpEnrollment",
+        "createSetup",
+        "downloadIcal",
+        "getHealth",
+        "getHealthz",
+        "getLlmsTxt",
+        "getLlmsTxtV1",
+        "getOpenAPI",
+        "getSetup",
+        "operationId",
+        "postMcp",
+        "requestPasswordReset",
+        "sessionCookie",
+        "startTotpEnrollment",
+        "verifyRecoveryCode",
+        "verifyTotp"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_mcp_public_bootstrap_tools_need_no_credential",
+      "source": "api/tests/test_contract.py",
+      "line": 432,
+      "end_line": 575,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertTrue",
+        "mcp_tool_dispatch"
+      ],
+      "operation_literals": [
+        "confirmTotpEnrollment",
+        "createPayment",
+        "createSetup",
+        "getMatter",
+        "issueFilePublicationGrant",
+        "listMatter",
+        "startTotpEnrollment",
+        "updateSetting"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 577,
+      "end_line": 908,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_issue_malware_grant",
+        "_operation",
+        "_ops",
+        "assertEqual",
+        "assertFalse",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertRaises",
+        "assertTrue",
+        "background_grant_issuance",
+        "bearer",
+        "callback",
+        "deepcopy",
+        "get",
+        "mcp_tool_dispatch",
+        "pop",
+        "processor_issuance",
+        "require_supported_qualifiers",
+        "scan",
+        "set",
+        "update"
+      ],
+      "operation_literals": [
+        "createModuleHelpPage",
+        "createModuleMarker",
+        "createPayment",
+        "downloadFileVersion",
+        "getFileUpload",
+        "issueFilePublicationGrant",
+        "postTrustEntry",
+        "updateSetting"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_writes_accept_idempotency_keys",
+      "source": "api/tests/test_contract.py",
+      "line": 910,
+      "end_line": 917,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_ops",
+        "_param_name",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "idempotencyKey"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_list_operations_use_cursor_pages",
+      "source": "api/tests/test_contract.py",
+      "line": 919,
+      "end_line": 982,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "_param_name",
+        "assertEqual",
+        "assertGreaterEqual",
+        "assertIn",
+        "get",
+        "next",
+        "page_size_decision",
+        "render_mcp",
+        "startswith"
+      ],
+      "operation_literals": [
+        "listEvents",
+        "listMatter",
+        "listNote",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_trust_ledger_is_append_only",
+      "source": "api/tests/test_contract.py",
+      "line": 984,
+      "end_line": 989,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertIn",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_below_zero_posts_and_flags",
+      "source": "api/tests/test_contract.py",
+      "line": 991,
+      "end_line": 1004,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertIn",
+        "assertNotIn",
+        "lower"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_accountant_cannot_write_billing_or_trust",
+      "source": "api/tests/test_contract.py",
+      "line": 1006,
+      "end_line": 1012,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_ops",
+        "assertNotIn",
+        "startswith"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_conflict_decisions_are_attorney_only",
+      "source": "api/tests/test_contract.py",
+      "line": 1014,
+      "end_line": 1017,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertIn",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_search_is_staff_only_and_walled",
+      "source": "api/tests/test_contract.py",
+      "line": 1019,
+      "end_line": 1024,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertNotIn",
+        "assertTrue",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_matter_reads_are_walled",
+      "source": "api/tests/test_contract.py",
+      "line": 1026,
+      "end_line": 1030,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_param_name",
+        "assertIn",
+        "assertTrue"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_layout_cap",
+      "source": "api/tests/test_contract.py",
+      "line": 1032,
+      "end_line": 1035,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertIn"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_audit_log_has_no_write",
+      "source": "api/tests/test_contract.py",
+      "line": 1037,
+      "end_line": 1038,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_file_versions_have_no_mutation",
+      "source": "api/tests/test_contract.py",
+      "line": 1040,
+      "end_line": 1044,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertFalse",
+        "items",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_available_dates_do_not_write_events",
+      "source": "api/tests/test_contract.py",
+      "line": 1046,
+      "end_line": 1049,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertFalse"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_guide_hides_from_clients",
+      "source": "api/tests/test_contract.py",
+      "line": 1051,
+      "end_line": 1059,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_editor_pin",
+      "source": "api/tests/test_contract.py",
+      "line": 1061,
+      "end_line": 1066,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_naming_refuses_a_status_token",
+      "source": "api/tests/test_contract.py",
+      "line": 1068,
+      "end_line": 1070,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertIn"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_settings_defaults_and_locked_admin_totp",
+      "source": "api/tests/test_contract.py",
+      "line": 1072,
+      "end_line": 1079,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertIn",
+        "assertTrue",
+        "items",
+        "set"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_doc_category_seed",
+      "source": "api/tests/test_contract.py",
+      "line": 1081,
+      "end_line": 1084,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "len"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_widget_manifest_requires_a_target",
+      "source": "api/tests/test_contract.py",
+      "line": 1086,
+      "end_line": 1088,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertIn"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_close_warns_without_a_block",
+      "source": "api/tests/test_contract.py",
+      "line": 1090,
+      "end_line": 1094,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertIn",
+        "lower"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_disk_matches_the_builder",
+      "source": "api/tests/test_contract.py",
+      "line": 1096,
+      "end_line": 1100,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "dump",
+        "read_text",
+        "render_coverage",
+        "render_mcp"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_trust_entry_scopes_deny_a_deposit_only_token",
+      "source": "api/tests/test_contract.py",
+      "line": 1102,
+      "end_line": 1120,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_scope_decision",
+        "assertEqual",
+        "assertGreaterEqual",
+        "assertIn",
+        "len"
+      ],
+      "operation_literals": [
+        "bulkTrustEntry",
+        "postTrustEntry"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_matter_wall_is_inherited_on_named_flows",
+      "source": "api/tests/test_contract.py",
+      "line": 1122,
+      "end_line": 1236,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertTrue",
+        "authorized_badge_counts",
+        "get",
+        "inherited_history_rows",
+        "items",
+        "matter_page",
+        "replace_matter_wall",
+        "str"
+      ],
+      "operation_literals": [
+        "cancelTrustReplenishment",
+        "getBillingWorklist",
+        "getConflictRecord",
+        "getDocTenderException",
+        "getDocTenderResult",
+        "getMatter",
+        "getMatterWall",
+        "getNavContext",
+        "listConflictRecord",
+        "listDocTenderException",
+        "listEvents",
+        "listMatter",
+        "pauseTimer",
+        "putMatterWall",
+        "quarantineFileVersion",
+        "reportArAging",
+        "resolveDocTenderException",
+        "satisfyTrustReplenishment",
+        "stopTimer",
+        "updateFileMetadata",
+        "widgetMyOpenMatters"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_first_admin_enrolls_totp_before_a_session",
+      "source": "api/tests/test_contract.py",
+      "line": 1238,
+      "end_line": 1286,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotEqual",
+        "assertTrue",
+        "confirm_totp_reset",
+        "start_totp_reset"
+      ],
+      "operation_literals": [
+        "confirmTotpEnrollment",
+        "confirmTotpReset",
+        "resetTotp",
+        "startTotpEnrollment"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_mcp_binary_upload_and_download",
+      "source": "api/tests/test_contract.py",
+      "line": 1288,
+      "end_line": 1303,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "next",
+        "render_mcp"
+      ],
+      "operation_literals": [
+        "downloadFileVersion",
+        "getInvoicePdf",
+        "putFileChunk"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_local_module_install_is_multipart",
+      "source": "api/tests/test_contract.py",
+      "line": 1305,
+      "end_line": 1316,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "installModule",
+        "requestBody"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_restore_accepts_a_downloaded_archive_and_passphrase",
+      "source": "api/tests/test_contract.py",
+      "line": 1318,
+      "end_line": 1331,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "createBackupUpload",
+        "createRestore",
+        "downloadBackup"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_upload_staging_is_separate_from_publication",
+      "source": "api/tests/test_contract.py",
+      "line": 1333,
+      "end_line": 1347,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn"
+      ],
+      "operation_literals": [
+        "addFileVersion",
+        "bulkFile",
+        "completeFileUpload",
+        "publishFile"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_draft_invoice_lines_are_editable",
+      "source": "api/tests/test_contract.py",
+      "line": 1349,
+      "end_line": 1361,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn"
+      ],
+      "operation_literals": [
+        "updateInvoiceDraft"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_file_metadata_edit_respects_locks",
+      "source": "api/tests/test_contract.py",
+      "line": 1363,
+      "end_line": 1378,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "get"
+      ],
+      "operation_literals": [
+        "renameFile",
+        "updateFileMetadata"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_complete_module_manifest_validates",
+      "source": "api/tests/test_contract.py",
+      "line": 1380,
+      "end_line": 1953,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_operation",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "decide_module_permissions",
+        "deepcopy",
+        "dict",
+        "get",
+        "include_views_decision",
+        "isinstance",
+        "issue_api_token",
+        "items",
+        "len",
+        "lower",
+        "manifest_contributions",
+        "manifest_custom_fields",
+        "module_help_registration",
+        "module_id_slug",
+        "module_ui_targets",
+        "next",
+        "normalize_module_target",
+        "open_widget_target",
+        "rendered_markdown",
+        "rewrite",
+        "rsplit",
+        "sidebar_entries",
+        "sidebar_panel",
+        "startswith",
+        "str",
+        "validate",
+        "values"
+      ],
+      "operation_literals": [
+        "createApiToken",
+        "createModuleHelpPage",
+        "getMatter",
+        "getModule",
+        "installModule",
+        "listDeadline"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_doc_tender_result_is_readable",
+      "source": "api/tests/test_contract.py",
+      "line": 1955,
+      "end_line": 1980,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "committed_events",
+        "doc_tender_events",
+        "set",
+        "update"
+      ],
+      "operation_literals": [
+        "getDocTenderResult",
+        "oneOf",
+        "retryDocTenderJob"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_profile_edit_rejects_admin_fields",
+      "source": "api/tests/test_contract.py",
+      "line": 1982,
+      "end_line": 2001,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn",
+        "assertRaises",
+        "validate"
+      ],
+      "operation_literals": [
+        "requestBody",
+        "updateMe"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_file_writes_use_the_file_wall",
+      "source": "api/tests/test_contract.py",
+      "line": 2003,
+      "end_line": 2024,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "get"
+      ],
+      "operation_literals": [
+        "acquireEditLock",
+        "addFileVersion",
+        "convertFile",
+        "downloadFileVersion",
+        "getFile",
+        "markFileStatus",
+        "moveFile",
+        "releaseEditLock",
+        "renameFile",
+        "renewEditLock",
+        "restoreFile",
+        "restoreFileVersion",
+        "runEditor",
+        "trashFile"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_batches_and_context_tokens_reject_walled_matters",
+      "source": "api/tests/test_contract.py",
+      "line": 2026,
+      "end_line": 2036,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertTrue"
+      ],
+      "operation_literals": [
+        "bulkCustomFieldValue",
+        "bulkEvent",
+        "createModuleContextToken"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_module_help_token_is_not_an_admin",
+      "source": "api/tests/test_contract.py",
+      "line": 2038,
+      "end_line": 2069,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertTrue",
+        "decide_module_permissions",
+        "get",
+        "module_help_registration"
+      ],
+      "operation_literals": [
+        "createHelpSection",
+        "createModuleHelpPage",
+        "deleteModuleHelpPage",
+        "replaceModuleHelpPages"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_module_update_keeps_the_old_version_on_failure",
+      "source": "api/tests/test_contract.py",
+      "line": 2071,
+      "end_line": 2081,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "requestBody",
+        "updateModule"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_matter_archive_is_an_mcp_tool",
+      "source": "api/tests/test_contract.py",
+      "line": 2083,
+      "end_line": 2088,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "archiveMatter"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_paused_timer_resumes_without_resetting_elapsed_time",
+      "source": "api/tests/test_contract.py",
+      "line": 2090,
+      "end_line": 2097,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "createTimer",
+        "resumeTimer"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_file_links_and_conversion_result",
+      "source": "api/tests/test_contract.py",
+      "line": 2099,
+      "end_line": 2107,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "set"
+      ],
+      "operation_literals": [
+        "convertFile",
+        "listFileLinks"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_file_history_is_not_admin_only",
+      "source": "api/tests/test_contract.py",
+      "line": 2109,
+      "end_line": 2117,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertNotEqual",
+        "set"
+      ],
+      "operation_literals": [
+        "historyFile"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_bulk_endpoints_cover_record_types",
+      "source": "api/tests/test_contract.py",
+      "line": 2119,
+      "end_line": 2147,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertTrue",
+        "get",
+        "items",
+        "join"
+      ],
+      "operation_literals": [
+        "bulkCalendarEvent",
+        "bulkConflictRecord",
+        "bulkContact",
+        "bulkCustomFieldValue",
+        "bulkDeadline",
+        "bulkEvent",
+        "bulkExpense",
+        "bulkFeeAgreement",
+        "bulkFile",
+        "bulkInvoice",
+        "bulkMatter",
+        "bulkMatterMarker",
+        "bulkMatterParty",
+        "bulkNote",
+        "bulkPayment",
+        "bulkTimeEntry",
+        "bulkTrustEntry",
+        "bulkTrustReconciliation",
+        "bulkTrustReplenishment"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_bulk_invoice_reconciles_or_writes_nothing",
+      "source": "api/tests/test_contract.py",
+      "line": 2149,
+      "end_line": 2254,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "assertRaises",
+        "bulk_invoice_apply",
+        "bulk_privilege_expansions",
+        "items",
+        "len",
+        "project_invoice_for_role",
+        "validate"
+      ],
+      "operation_literals": [
+        "bulkInvoice"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_expense_and_payment_includes",
+      "source": "api/tests/test_contract.py",
+      "line": 2256,
+      "end_line": 2271,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_param_name",
+        "assertEqual",
+        "assertIn",
+        "assertTrue"
+      ],
+      "operation_literals": [
+        "getExpense",
+        "getPayment",
+        "listExpense",
+        "listPayment"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_trust_balance_rows_name_their_owners",
+      "source": "api/tests/test_contract.py",
+      "line": 2273,
+      "end_line": 2295,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_operation",
+        "_schema_name_from_page",
+        "assertEqual",
+        "assertIn",
+        "assertIsNotNone",
+        "assertNotIn",
+        "next"
+      ],
+      "operation_literals": [
+        "getTrustBalances",
+        "oneOf"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_mcp_arguments_use_path_and_query_objects",
+      "source": "api/tests/test_contract.py",
+      "line": 2297,
+      "end_line": 2321,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Path",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "loads",
+        "read_text",
+        "set",
+        "split"
+      ],
+      "operation_literals": [
+        "getMatter",
+        "putFileChunk"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_marketplace_flag_requires_a_note",
+      "source": "api/tests/test_contract.py",
+      "line": 2323,
+      "end_line": 2330,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertIn",
+        "assertNotIn"
+      ],
+      "operation_literals": [
+        "requestBody"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_ical_feeds_are_owner_bound_and_wall_filtered",
+      "source": "api/tests/test_contract.py",
+      "line": 2332,
+      "end_line": 2344,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertTrue",
+        "get"
+      ],
+      "operation_literals": [
+        "createIcalFeed",
+        "downloadIcal",
+        "getIcalFeed",
+        "listIcalFeed",
+        "revokeIcalFeed"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_client_invoice_hides_internal_notes_and_history",
+      "source": "api/tests/test_contract.py",
+      "line": 2346,
+      "end_line": 2458,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "__import__",
+        "_operation",
+        "assertEqual",
+        "assertNotIn",
+        "assertRaises",
+        "items",
+        "list",
+        "next",
+        "project_invoice_for_role",
+        "project_record",
+        "render_mcp",
+        "set",
+        "validate"
+      ],
+      "operation_literals": [
+        "getInvoice",
+        "historyInvoice",
+        "listInvoice"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_complete_marketplace_listing_validates",
+      "source": "api/tests/test_contract.py",
+      "line": 2460,
+      "end_line": 2498,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "assertIn",
+        "deepcopy",
+        "get",
+        "isinstance",
+        "rewrite",
+        "rsplit",
+        "startswith",
+        "validate",
+        "values"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_archive_quarantine_requires_confirmation",
+      "source": "api/tests/test_contract.py",
+      "line": 2500,
+      "end_line": 2506,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertIn"
+      ],
+      "operation_literals": [
+        "createFileArchive"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_citation_requires_a_location",
+      "source": "api/tests/test_contract.py",
+      "line": 2508,
+      "end_line": 2518,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "assertRaises",
+        "validate"
+      ],
+      "operation_literals": [],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_ai_call_log_includes_cost",
+      "source": "api/tests/test_contract.py",
+      "line": 2520,
+      "end_line": 2606,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_operation",
+        "_ops",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertRaises",
+        "assertTrue",
+        "dict",
+        "endswith",
+        "external_effect_decision",
+        "get",
+        "items",
+        "operation_names_matter",
+        "validate"
+      ],
+      "operation_literals": [
+        "confirmStorageMove",
+        "createAiCall",
+        "createStorageMove",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_module_delegation_does_not_escalate_the_viewer",
+      "source": "api/tests/test_contract.py",
+      "line": 2608,
+      "end_line": 2648,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_background_result",
+        "_delegation_result",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertNotEqual",
+        "assertTrue",
+        "get",
+        "set"
+      ],
+      "operation_literals": [
+        "createNote",
+        "createTimeEntry",
+        "createUser",
+        "getMatter",
+        "listApiToken",
+        "listAuditLog",
+        "listMatter",
+        "postTrustEntry",
+        "requestEmailChange",
+        "runEditor",
+        "updateFileMetadata",
+        "updateMe",
+        "updateSetting"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_malware_scan_uses_the_event_grant_for_the_whole_sequence",
+      "source": "api/tests/test_contract.py",
+      "line": 2650,
+      "end_line": 2725,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_issue_malware_grant",
+        "_malware_call",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertIsNotNone"
+      ],
+      "operation_literals": [
+        "downloadFileVersion",
+        "getFile",
+        "listFile",
+        "listFileVersions",
+        "moduleEvent",
+        "quarantineFileVersion"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_file_byte_downloads_are_audited_and_highlighted",
+      "source": "api/tests/test_contract.py",
+      "line": 2727,
+      "end_line": 2755,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_download_outcome",
+        "_file_byte_downloads",
+        "assertEqual",
+        "assertGreaterEqual",
+        "assertIn",
+        "assertIsNotNone",
+        "assertNotIn",
+        "assertTrue",
+        "get",
+        "len",
+        "list",
+        "startswith"
+      ],
+      "operation_literals": [
+        "createFileArchive",
+        "downloadBackup",
+        "downloadFileRendition",
+        "downloadFileVersion",
+        "getHelpGuide",
+        "getHelpGuidePdf",
+        "getInvoicePdf",
+        "getLlmsTxt",
+        "operationId",
+        "putFileChunk"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
+      "source": "api/tests/test_contract.py",
+      "line": 2757,
+      "end_line": 2913,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "accountant_file_rows",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "file_download_decision",
+        "get",
+        "http",
+        "items",
+        "mcp_tool_dispatch",
+        "opened",
+        "operation_authorization",
+        "pop",
+        "stored",
+        "update",
+        "validate"
+      ],
+      "operation_literals": [
+        "downloadFileVersion",
+        "getFile",
+        "getInvoicePdf",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_client_context_token_is_own_matter_only",
+      "source": "api/tests/test_contract.py",
+      "line": 2915,
+      "end_line": 3015,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_client_context_result",
+        "_operation",
+        "_ops",
+        "_upload_step_result",
+        "add",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "fromkeys",
+        "operation_denies_other_client",
+        "rsplit",
+        "set"
+      ],
+      "operation_literals": [
+        "additionalProperties",
+        "createFileArchive",
+        "createModuleContextToken",
+        "createUser",
+        "downloadFileRendition",
+        "downloadFileVersion",
+        "getFile",
+        "getFileUpload",
+        "getInvoice",
+        "getInvoicePdf",
+        "historyInvoice",
+        "listAuditLog",
+        "listFile",
+        "listFileVersions",
+        "listInvoice",
+        "operationId",
+        "postTrustEntry",
+        "reversePayment",
+        "updateMe",
+        "updateSetting"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_invoicing_is_time_domain_and_trust_posts_once",
+      "source": "api/tests/test_contract.py",
+      "line": 3017,
+      "end_line": 3073,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_trust_poster",
+        "assertEqual",
+        "assertFalse",
+        "assertIsNone",
+        "assertNotIn",
+        "assertTrue",
+        "get"
+      ],
+      "operation_literals": [
+        "applyFlatFee",
+        "applyTrustToInvoice",
+        "approveInvoice",
+        "bulkPayment",
+        "createExpense",
+        "createInvoiceDrafts",
+        "createPayment",
+        "createTimeEntry",
+        "getBillingWorklist",
+        "getInvoice",
+        "getInvoicePdf",
+        "getPayment",
+        "historyInvoice",
+        "listCalendarEvent",
+        "listExpense",
+        "listFeeAgreement",
+        "listInvoice",
+        "listPayment",
+        "listTimeEntry",
+        "listTrustEntry",
+        "postTrustEntry",
+        "putDomainHandler",
+        "reportArAging",
+        "reportPaymentsReceived",
+        "reportReconciliations",
+        "reportTimeByUser",
+        "reportTrustBalances",
+        "reportUnbilledTime",
+        "reportWriteOffs",
+        "requestInvoiceReplenishment",
+        "reversePayment",
+        "sendInvoice",
+        "updateInvoice",
+        "updateInvoiceDraft",
+        "updatePaymentStatus",
+        "voidInvoice",
+        "writeOffInvoice"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_api_token_reads_are_self_or_admin",
+      "source": "api/tests/test_contract.py",
+      "line": 3075,
+      "end_line": 3180,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "get",
+        "issue_api_token"
+      ],
+      "operation_literals": [
+        "createApiToken",
+        "getApiToken",
+        "listApiToken",
+        "oneOf",
+        "revokeApiToken"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_trust_adjustment_credit_and_debit",
+      "source": "api/tests/test_contract.py",
+      "line": 3182,
+      "end_line": 3206,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_adjustment_body",
+        "_adjustment_row",
+        "_operation",
+        "assertEqual",
+        "assertNotIn",
+        "assertRaises",
+        "dict",
+        "pop",
+        "validate"
+      ],
+      "operation_literals": [
+        "postTrustEntry"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_attachment_link_authorizes_both_files",
+      "source": "api/tests/test_contract.py",
+      "line": 3208,
+      "end_line": 3221,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "assertTrue",
+        "get"
+      ],
+      "operation_literals": [
+        "createFileLink"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_verified_email_change_keeps_privileged_fields_rejected",
+      "source": "api/tests/test_contract.py",
+      "line": 3223,
+      "end_line": 3233,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_schema_name",
+        "assertEqual",
+        "assertIn",
+        "assertNotIn"
+      ],
+      "operation_literals": [
+        "confirmEmailChange",
+        "requestEmailChange",
+        "updateMe"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_trust_moving_payments_are_scoped_before_mutation",
+      "source": "api/tests/test_contract.py",
+      "line": 3235,
+      "end_line": 3400,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertRaises",
+        "assertTrue",
+        "items",
+        "payment_effect_decision",
+        "payment_reversal_decision",
+        "validate"
+      ],
+      "operation_literals": [
+        "bulkPayment",
+        "createPayment",
+        "operationId",
+        "reversePayment",
+        "updatePaymentStatus"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_processor_callback_records_and_finishes_without_a_viewer",
+      "source": "api/tests/test_contract.py",
+      "line": 3402,
+      "end_line": 3714,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "callback",
+        "items",
+        "iter",
+        "len",
+        "next",
+        "processor_apply",
+        "processor_issuance",
+        "render_mcp",
+        "validate",
+        "values"
+      ],
+      "operation_literals": [
+        "createPayment",
+        "initiateProcessorPayment",
+        "listPayment",
+        "moduleEvent",
+        "reversePayment",
+        "updatePaymentStatus"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_processor_initialization_binds_one_payment",
+      "source": "api/tests/test_contract.py",
+      "line": 3716,
+      "end_line": 3884,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertRaises",
+        "assertTrue",
+        "commit_concurrent_processor_creates",
+        "get",
+        "len",
+        "processor_apply",
+        "processor_issuance",
+        "sum",
+        "validate"
+      ],
+      "operation_literals": [
+        "createPayment",
+        "updatePaymentStatus"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_custom_fields_are_written_with_the_record",
+      "source": "api/tests/test_contract.py",
+      "line": 3886,
+      "end_line": 3964,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertRaises",
+        "assertTrue",
+        "custom_fields_batch",
+        "custom_fields_outcome",
+        "endswith",
+        "extend",
+        "get",
+        "items",
+        "len",
+        "set",
+        "validate"
+      ],
+      "operation_literals": [
+        "additionalProperties",
+        "bulkContact",
+        "bulkExpense",
+        "bulkMatter",
+        "bulkTimeEntry",
+        "requestBody"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_mcp_forwards_context_and_task_grants",
+      "source": "api/tests/test_contract.py",
+      "line": 3966,
+      "end_line": 4058,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_issue_malware_grant",
+        "_malware_call",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotIn",
+        "get",
+        "mcp_credential_rejection",
+        "mcp_get",
+        "next",
+        "processor_callback",
+        "processor_issuance",
+        "render_mcp"
+      ],
+      "operation_literals": [
+        "createPayment",
+        "getFile"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_invoice_pdf_confirmation_is_a_real_input",
+      "source": "api/tests/test_contract.py",
+      "line": 4060,
+      "end_line": 4077,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "__import__",
+        "_file_byte_downloads",
+        "_operation",
+        "assertEqual",
+        "assertIn",
+        "file_download_decision",
+        "get",
+        "next",
+        "render_mcp"
+      ],
+      "operation_literals": [
+        "getInvoicePdf",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_client_context_reads_follow_published_access",
+      "source": "api/tests/test_contract.py",
+      "line": 4079,
+      "end_line": 4109,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_client_portal_result",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "list"
+      ],
+      "operation_literals": [
+        "createModuleContextToken",
+        "downloadFileVersion",
+        "getFile",
+        "getFileUpload",
+        "getInvoice",
+        "getInvoicePdf",
+        "historyInvoice",
+        "listFile",
+        "listInvoice",
+        "updateMe"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_published_versions_emit_after_commit",
+      "source": "api/tests/test_contract.py",
+      "line": 4111,
+      "end_line": 4148,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertGreaterEqual",
+        "assertIn",
+        "assertNotIn",
+        "get",
+        "len",
+        "published_version_events"
+      ],
+      "operation_literals": [
+        "addFileVersion",
+        "bulkFile",
+        "completeFileUpload",
+        "convertFile",
+        "createFileUpload",
+        "operationId",
+        "publishFile",
+        "putFileChunk",
+        "restoreFileVersion",
+        "runEditor",
+        "updateFileMetadata"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_malware_grant_responses_match_projection_schemas",
+      "source": "api/tests/test_contract.py",
+      "line": 4150,
+      "end_line": 4208,
+      "kind": "contract_validation",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "Draft202012Validator",
+        "_component_validator",
+        "_operation",
+        "_schema_validator",
+        "assertEqual",
+        "assertFalse",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "items",
+        "set",
+        "validate"
+      ],
+      "operation_literals": [
+        "additionalProperties",
+        "downloadFileVersion",
+        "getFile",
+        "listFileVersions",
+        "quarantineFileVersion"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "api",
+      "runtime_status": "contract_check",
+      "blocking_removal": false
+    },
+    {
+      "id": "ContractTest.test_webhook_delivery_is_authorized_before_serialization",
+      "source": "api/tests/test_contract.py",
+      "line": 4210,
+      "end_line": 4281,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "assertEqual",
+        "assertIsNone",
+        "assertIsNotNone",
+        "assertLess",
+        "assertNotIn",
+        "index",
+        "items",
+        "str",
+        "validate",
+        "webhook_envelope"
+      ],
+      "operation_literals": [
+        "moduleEvent"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_every_emitted_event_uses_its_resource_read_scope",
+      "source": "api/tests/test_contract.py",
+      "line": 4283,
+      "end_line": 4398,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_ops",
+        "assertEqual",
+        "assertFalse",
+        "assertGreater",
+        "assertIn",
+        "assertIsNone",
+        "assertIsNotNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertTrue",
+        "endswith",
+        "event_read_scopes",
+        "get",
+        "hexdigest",
+        "len",
+        "set",
+        "sha256",
+        "sorted",
+        "startswith",
+        "update",
+        "validate",
+        "values",
+        "webhook_envelope",
+        "webhook_signature",
+        "webhook_signature_matches"
+      ],
+      "operation_literals": [
+        "moduleEvent"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_include_views_cover_extensible_core_records",
+      "source": "api/tests/test_contract.py",
+      "line": 4400,
+      "end_line": 4526,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "_param_name",
+        "_response_record_schemas",
+        "assertEqual",
+        "assertIn",
+        "assertIsNone",
+        "assertNotIn",
+        "get",
+        "include_views_decision",
+        "project_record",
+        "set",
+        "sorted",
+        "str",
+        "update"
+      ],
+      "operation_literals": [
+        "getConflictRecord",
+        "getContact",
+        "getFile",
+        "getMatter",
+        "listUser",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_notifications_are_limited_to_the_recipient",
+      "source": "api/tests/test_contract.py",
+      "line": 4528,
+      "end_line": 4598,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertTrue",
+        "get",
+        "notification_page",
+        "notification_recipient_decision",
+        "str"
+      ],
+      "operation_literals": [
+        "createNotification",
+        "deleteNotification",
+        "getNotification",
+        "listNotification",
+        "markAllNotificationsRead",
+        "markNotificationRead"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
+      "source": "api/tests/test_contract.py",
+      "line": 4600,
+      "end_line": 4802,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertFalse",
+        "assertTrue",
+        "bearer",
+        "dict",
+        "mcp_tool_dispatch"
+      ],
+      "operation_literals": [
+        "createNotification",
+        "deleteNotification",
+        "listMatter",
+        "listNotification",
+        "revokeModuleMarker",
+        "updateModuleMarker"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
+      "source": "api/tests/test_contract.py",
+      "line": 4804,
+      "end_line": 5041,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "_ops",
+        "add",
+        "assertEqual",
+        "assertFalse",
+        "assertTrue",
+        "bearer",
+        "get",
+        "item",
+        "items",
+        "list",
+        "mcp_tool_dispatch",
+        "set",
+        "sorted",
+        "trust_debit_decision",
+        "validate"
+      ],
+      "operation_literals": [
+        "applyFlatFee",
+        "applyTrustToInvoice",
+        "bulkCustomFieldValue",
+        "bulkEvent",
+        "bulkInvoice",
+        "createApiToken",
+        "createModuleHelpPage",
+        "createModuleMarker",
+        "deleteModuleHelpPage",
+        "operationId",
+        "replaceModuleHelpPages",
+        "revokeModuleMarker",
+        "updateModuleMarker"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_owner_bound_events_follow_the_read_policy",
+      "source": "api/tests/test_contract.py",
+      "line": 5043,
+      "end_line": 5157,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertIsNotNone",
+        "assertLess",
+        "assertNotIn",
+        "dict",
+        "endswith",
+        "event_for",
+        "index",
+        "inherited_history_rows",
+        "items",
+        "pop",
+        "startswith",
+        "str",
+        "subscriber",
+        "update",
+        "values",
+        "webhook_envelope"
+      ],
+      "operation_literals": [
+        "listWebhookDeliveries",
+        "moduleEvent"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_invoice_drafts_accept_a_date_range",
+      "source": "api/tests/test_contract.py",
+      "line": 5159,
+      "end_line": 5236,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "assertRaises",
+        "get",
+        "invoice_draft_decision",
+        "lower",
+        "str",
+        "validate"
+      ],
+      "operation_literals": [
+        "createInvoiceDrafts"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_attorney_only_files_are_omitted_from_aggregates",
+      "source": "api/tests/test_contract.py",
+      "line": 5238,
+      "end_line": 5287,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertIsNone",
+        "assertNotIn",
+        "inherited_history_rows",
+        "str"
+      ],
+      "operation_literals": [
+        "historyFile",
+        "listAuditLog",
+        "listEvents",
+        "reportArAging",
+        "widgetRecentActivity"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_bulk_custom_fields_follow_the_time_domain",
+      "source": "api/tests/test_contract.py",
+      "line": 5289,
+      "end_line": 5334,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertNotIn",
+        "assertTrue",
+        "custom_field_bulk_apply",
+        "get"
+      ],
+      "operation_literals": [
+        "bulkCustomFieldValue",
+        "putExpenseCustomFields",
+        "putTimeEntryCustomFields"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_module_owned_upload_events_use_the_tagged_owner",
+      "source": "api/tests/test_contract.py",
+      "line": 5336,
+      "end_line": 5403,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "any",
+        "assertEqual",
+        "assertIsNone",
+        "assertNotIn",
+        "endswith",
+        "event_read_scopes",
+        "inherited_history_rows",
+        "next",
+        "render_mcp",
+        "str",
+        "webhook_envelope"
+      ],
+      "operation_literals": [
+        "getFileUpload",
+        "getStorageBackend",
+        "listStorageBackend",
+        "listWebhookDeliveries",
+        "operationId"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_account_trust_flags_match_the_emitted_scope",
+      "source": "api/tests/test_contract.py",
+      "line": 5405,
+      "end_line": 5512,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertIsNone",
+        "assertNotIn",
+        "items",
+        "range",
+        "set",
+        "str",
+        "trust_flag_rows",
+        "trust_ledger_events",
+        "validate"
+      ],
+      "operation_literals": [
+        "oneOf",
+        "postTrustEntry"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_history_inherits_the_underlying_record",
+      "source": "api/tests/test_contract.py",
+      "line": 5514,
+      "end_line": 5664,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "_ops",
+        "_schema_validator",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotIn",
+        "assertTrue",
+        "inherited_history_rows",
+        "str",
+        "validate"
+      ],
+      "operation_literals": [
+        "historyFile",
+        "historyInvoice",
+        "historyMatter",
+        "listAiCalls",
+        "listAuditLog",
+        "listEvents",
+        "listMatterTimeline",
+        "listWebhookDeliveries",
+        "operationId",
+        "reportArAging",
+        "widgetRecentActivity"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_background_file_publication_grant",
+      "source": "api/tests/test_contract.py",
+      "line": 5666,
+      "end_line": 5831,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "background_file_step",
+        "background_grant_issuance",
+        "commit_concurrent_publishes",
+        "items",
+        "len",
+        "validate",
+        "webhook_envelope"
+      ],
+      "operation_literals": [
+        "bulkFile",
+        "completeFileUpload",
+        "createFileUpload",
+        "issueFilePublicationGrant",
+        "publishFile",
+        "putFileChunk",
+        "reviewUnassignedFile"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_trust_application_selects_the_account_and_client",
+      "source": "api/tests/test_contract.py",
+      "line": 5833,
+      "end_line": 5879,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertNotEqual",
+        "assertRaises",
+        "trust_debit_decision",
+        "validate"
+      ],
+      "operation_literals": [
+        "applyFlatFee",
+        "applyTrustToInvoice"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_module_marker_registration_owns_its_namespace",
+      "source": "api/tests/test_contract.py",
+      "line": 5881,
+      "end_line": 6042,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "attach_matter_marker",
+        "decide_module_permissions",
+        "len",
+        "module_marker_registration",
+        "next",
+        "render_mcp",
+        "validate"
+      ],
+      "operation_literals": [
+        "createMarkerDefinition",
+        "createModuleMarker",
+        "revokeModuleMarker",
+        "updateModuleMarker"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_trust_flag_follows_the_committed_balance",
+      "source": "api/tests/test_contract.py",
+      "line": 6044,
+      "end_line": 6552,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "assertEqual",
+        "assertFalse",
+        "assertGreaterEqual",
+        "assertIn",
+        "assertIsNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertRaises",
+        "assertTrue",
+        "event_read_scopes",
+        "get",
+        "items",
+        "len",
+        "payment_reversal_decision",
+        "processor_apply",
+        "processor_issuance",
+        "row",
+        "trust_debit_decision",
+        "trust_ledger_events",
+        "validate",
+        "webhook_envelope",
+        "write_body"
+      ],
+      "operation_literals": [
+        "applyFlatFee",
+        "applyTrustToInvoice",
+        "bulkPayment",
+        "bulkTrustEntry",
+        "createPayment",
+        "postTrustEntry",
+        "reversePayment",
+        "reverseTrustEntry",
+        "updatePaymentStatus"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_record_mutations_emit_events_only_after_commit",
+      "source": "api/tests/test_contract.py",
+      "line": 6554,
+      "end_line": 6646,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_operation",
+        "_ops",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertNotIn",
+        "assertTrue",
+        "committed_events",
+        "get",
+        "payment_lifecycle_events",
+        "trust_ledger_events"
+      ],
+      "operation_literals": [
+        "bulkCustomFieldValue",
+        "bulkPayment",
+        "cancelTrustReplenishment",
+        "createPayment",
+        "operationId",
+        "postMcp",
+        "putFileChunk",
+        "reversePayment",
+        "satisfyTrustReplenishment",
+        "updatePaymentStatus"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_marketplace_flag_and_pull",
+      "source": "api/tests/test_contract.py",
+      "line": 6648,
+      "end_line": 6707,
+      "kind": "simulator_behavior",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "assertEqual",
+        "assertFalse",
+        "assertIn",
+        "assertIsNone",
+        "assertNotIn",
+        "marketplace_package"
+      ],
+      "operation_literals": [
+        "additionalProperties"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6709,
+      "end_line": 7026,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "calls": [
+        "_component_validator",
+        "_issue_malware_grant",
+        "_mcp_operation_call",
+        "_module_upload_document",
+        "_operation",
+        "_ops",
+        "_schema_validator",
+        "add",
+        "append",
+        "assertEqual",
+        "assertFalse",
+        "assertIs",
+        "assertNotIn",
+        "assertTrue",
+        "background_file_step",
+        "background_grant_issuance",
+        "bearer",
+        "cookie",
+        "extend",
+        "get",
+        "mcp_tool_dispatch",
+        "rsplit",
+        "set",
+        "trust_debit_decision",
+        "validate"
+      ],
+      "operation_literals": [
+        "applyFlatFee",
+        "bulkEvent",
+        "bulkTimeEntry",
+        "createApiToken",
+        "createCalendarEvent",
+        "createFileArchive",
+        "createFileUpload",
+        "createModuleHelpPage",
+        "createModuleMarker",
+        "createPayment",
+        "createStorageMove",
+        "deleteModuleHelpPage",
+        "downloadFileVersion",
+        "getCalendarEvent",
+        "getFileUpload",
+        "issueFilePublicationGrant",
+        "listCalendarEvent",
+        "listMatter",
+        "listNotification",
+        "operationId",
+        "postTrustEntry",
+        "replaceModuleHelpPages",
+        "requestBody",
+        "reversePayment",
+        "revokeModuleMarker",
+        "updateModuleMarker"
+      ],
+      "visible_expectations": [],
+      "acceptance": [
+        "AC-002"
+      ],
+      "prd": [
+        "6",
+        "8",
+        "9"
+      ],
+      "go_owner": "unmapped",
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Required regressions are fixtured. Other dynamic cases in this method are not expanded into one request and trusted context each."
+    }
+  ],
+  "helpers": [
+    {
+      "name": "_ops",
+      "source": "api/tests/test_contract.py",
+      "line": 317,
+      "kind": "contract_helper",
+      "calls": [
+        "items",
+        "startswith"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_operation",
+      "source": "api/tests/test_contract.py",
+      "line": 7029,
+      "kind": "contract_helper",
+      "calls": [
+        "AssertionError",
+        "_ops"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_schema_name",
+      "source": "api/tests/test_contract.py",
+      "line": 7036,
+      "kind": "contract_helper",
+      "calls": [
+        "rsplit"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_schema_name_from_page",
+      "source": "api/tests/test_contract.py",
+      "line": 7042,
+      "kind": "contract_helper",
+      "calls": [
+        "rsplit"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_issue_malware_grant",
+      "source": "api/tests/test_contract.py",
+      "line": 7046,
+      "kind": "simulator_helper",
+      "calls": [
+        "get",
+        "list"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_malware_call",
+      "source": "api/tests/test_contract.py",
+      "line": 7067,
+      "kind": "simulator_helper",
+      "calls": [
+        "malware_scan_decision"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_case_matches",
+      "source": "api/tests/test_contract.py",
+      "line": 7071,
+      "kind": "contract_helper",
+      "calls": [
+        "get",
+        "items"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "operation_denies_other_client",
+      "source": "api/tests/test_contract.py",
+      "line": 7080,
+      "kind": "simulator_helper",
+      "calls": [
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_upload_step_result",
+      "source": "api/tests/test_contract.py",
+      "line": 7088,
+      "kind": "simulator_helper",
+      "calls": [
+        "_case_matches",
+        "_client_context_result",
+        "_operation",
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_file_byte_downloads",
+      "source": "api/tests/test_contract.py",
+      "line": 7107,
+      "kind": "contract_helper",
+      "calls": [
+        "_ops",
+        "is_core_file_download"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_client_portal_result",
+      "source": "api/tests/test_contract.py",
+      "line": 7113,
+      "kind": "simulator_helper",
+      "calls": [
+        "_operation",
+        "any",
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_schema_validator",
+      "source": "api/tests/test_contract.py",
+      "line": 7135,
+      "kind": "contract_helper",
+      "calls": [
+        "Draft202012Validator",
+        "deepcopy",
+        "get",
+        "isinstance",
+        "rewrite",
+        "rsplit",
+        "startswith",
+        "values"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_component_validator",
+      "source": "api/tests/test_contract.py",
+      "line": 7159,
+      "kind": "contract_helper",
+      "calls": [
+        "Draft202012Validator",
+        "deepcopy",
+        "get",
+        "isinstance",
+        "rewrite",
+        "rsplit",
+        "startswith",
+        "values"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_download_outcome",
+      "source": "api/tests/test_contract.py",
+      "line": 7181,
+      "kind": "simulator_helper",
+      "calls": [
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_background_result",
+      "source": "api/tests/test_contract.py",
+      "line": 7202,
+      "kind": "simulator_helper",
+      "calls": [
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_client_context_result",
+      "source": "api/tests/test_contract.py",
+      "line": 7219,
+      "kind": "simulator_helper",
+      "calls": [
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_trust_poster",
+      "source": "api/tests/test_contract.py",
+      "line": 7227,
+      "kind": "contract_helper",
+      "calls": [],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_delegation_result",
+      "source": "api/tests/test_contract.py",
+      "line": 7236,
+      "kind": "simulator_helper",
+      "calls": [
+        "get"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_adjustment_body",
+      "source": "api/tests/test_contract.py",
+      "line": 7250,
+      "kind": "contract_helper",
+      "calls": [],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_adjustment_row",
+      "source": "api/tests/test_contract.py",
+      "line": 7263,
+      "kind": "contract_helper",
+      "calls": [],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_scope_decision",
+      "source": "api/tests/test_contract.py",
+      "line": 7272,
+      "kind": "simulator_helper",
+      "calls": [
+        "all"
+      ],
+      "note": "Local helper that drives or reimplements a call decision. It is not the OpenAPI contract. Removing the simulator is blocked until each caller is fixtured."
+    },
+    {
+      "name": "_response_record_schemas",
+      "source": "api/tests/test_contract.py",
+      "line": 7279,
+      "kind": "contract_helper",
+      "calls": [
+        "add",
+        "get",
+        "isinstance",
+        "rsplit",
+        "set",
+        "startswith",
+        "values",
+        "walk"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    },
+    {
+      "name": "_param_name",
+      "source": "api/tests/test_contract.py",
+      "line": 7298,
+      "kind": "contract_helper",
+      "calls": [
+        "rsplit"
+      ],
+      "note": "Local test helper. A simulator helper duplicates or drives call decisions and is not a second contract."
+    }
+  ],
+  "nested_helpers": [
+    {
+      "test": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "name": "bearer",
+      "line": 580,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "name": "scan",
+      "line": 684,
+      "calls": [
+        "bearer",
+        "mcp_tool_dispatch",
+        "pop"
+      ]
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "name": "callback",
+      "line": 758,
+      "calls": [
+        "bearer",
+        "get",
+        "mcp_tool_dispatch",
+        "pop"
+      ]
+    },
+    {
+      "test": "ContractTest.test_complete_module_manifest_validates",
+      "name": "rewrite",
+      "line": 1387,
+      "calls": [
+        "get",
+        "isinstance",
+        "rewrite",
+        "rsplit",
+        "startswith",
+        "values"
+      ]
+    },
+    {
+      "test": "ContractTest.test_complete_marketplace_listing_validates",
+      "name": "rewrite",
+      "line": 2480,
+      "calls": [
+        "get",
+        "isinstance",
+        "rewrite",
+        "rsplit",
+        "startswith",
+        "values"
+      ]
+    },
+    {
+      "test": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
+      "name": "stored",
+      "line": 2765,
+      "calls": [
+        "update"
+      ]
+    },
+    {
+      "test": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
+      "name": "http",
+      "line": 2796,
+      "calls": [
+        "file_download_decision",
+        "get",
+        "operation_authorization"
+      ]
+    },
+    {
+      "test": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
+      "name": "opened",
+      "line": 2875,
+      "calls": [
+        "mcp_tool_dispatch",
+        "pop"
+      ]
+    },
+    {
+      "test": "ContractTest.test_processor_callback_records_and_finishes_without_a_viewer",
+      "name": "callback",
+      "line": 3505,
+      "calls": [
+        "_operation",
+        "assertEqual",
+        "len",
+        "processor_apply"
+      ]
+    },
+    {
+      "test": "ContractTest.test_mcp_forwards_context_and_task_grants",
+      "name": "mcp_get",
+      "line": 3998,
+      "calls": [
+        "_malware_call",
+        "assertIsNone",
+        "get",
+        "mcp_credential_rejection"
+      ]
+    },
+    {
+      "test": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
+      "name": "bearer",
+      "line": 4601,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
+      "name": "bearer",
+      "line": 4835,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
+      "name": "item",
+      "line": 4845,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_owner_bound_events_follow_the_read_policy",
+      "name": "subscriber",
+      "line": 5071,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_owner_bound_events_follow_the_read_policy",
+      "name": "event_for",
+      "line": 5084,
+      "calls": [
+        "endswith"
+      ]
+    },
+    {
+      "test": "ContractTest.test_trust_flag_follows_the_committed_balance",
+      "name": "row",
+      "line": 6082,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_trust_flag_follows_the_committed_balance",
+      "name": "write_body",
+      "line": 6101,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_dispatcher_parity_matrix",
+      "name": "cookie",
+      "line": 6732,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_dispatcher_parity_matrix",
+      "name": "bearer",
+      "line": 6735,
+      "calls": []
+    },
+    {
+      "test": "ContractTest.test_dispatcher_parity_matrix",
+      "name": "validate",
+      "line": 6738,
+      "calls": [
+        "_component_validator",
+        "_operation",
+        "_schema_validator",
+        "rsplit",
+        "validate"
+      ]
+    }
+  ],
+  "blocking_gaps": [
+    {
+      "test": "ContractTest.test_mcp_public_bootstrap_tools_need_no_credential",
+      "line": 432,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
+      "line": 577,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_list_operations_use_cursor_pages",
+      "line": 919,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_matter_wall_is_inherited_on_named_flows",
+      "line": 1122,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_first_admin_enrolls_totp_before_a_session",
+      "line": 1238,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_complete_module_manifest_validates",
+      "line": 1380,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_doc_tender_result_is_readable",
+      "line": 1955,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_module_help_token_is_not_an_admin",
+      "line": 2038,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_bulk_invoice_reconciles_or_writes_nothing",
+      "line": 2149,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_client_invoice_hides_internal_notes_and_history",
+      "line": 2346,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_ai_call_log_includes_cost",
+      "line": 2520,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_malware_scan_uses_the_event_grant_for_the_whole_sequence",
+      "line": 2650,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_accountant_reads_only_stored_receipts_and_invoice_pdfs",
+      "line": 2757,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_api_token_reads_are_self_or_admin",
+      "line": 3075,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_trust_moving_payments_are_scoped_before_mutation",
+      "line": 3235,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_processor_callback_records_and_finishes_without_a_viewer",
+      "line": 3402,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_processor_initialization_binds_one_payment",
+      "line": 3716,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_custom_fields_are_written_with_the_record",
+      "line": 3886,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_mcp_forwards_context_and_task_grants",
+      "line": 3966,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_invoice_pdf_confirmation_is_a_real_input",
+      "line": 4060,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_published_versions_emit_after_commit",
+      "line": 4111,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_webhook_delivery_is_authorized_before_serialization",
+      "line": 4210,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_every_emitted_event_uses_its_resource_read_scope",
+      "line": 4283,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_include_views_cover_extensible_core_records",
+      "line": 4400,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_notifications_are_limited_to_the_recipient",
+      "line": 4528,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
+      "line": 4600,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
+      "line": 4804,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_owner_bound_events_follow_the_read_policy",
+      "line": 5043,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_invoice_drafts_accept_a_date_range",
+      "line": 5159,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_attorney_only_files_are_omitted_from_aggregates",
+      "line": 5238,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_bulk_custom_fields_follow_the_time_domain",
+      "line": 5289,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_module_owned_upload_events_use_the_tagged_owner",
+      "line": 5336,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_account_trust_flags_match_the_emitted_scope",
+      "line": 5405,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_history_inherits_the_underlying_record",
+      "line": 5514,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_background_file_publication_grant",
+      "line": 5666,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_trust_application_selects_the_account_and_client",
+      "line": 5833,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_module_marker_registration_owns_its_namespace",
+      "line": 5881,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_trust_flag_follows_the_committed_balance",
+      "line": 6044,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_record_mutations_emit_events_only_after_commit",
+      "line": 6554,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_marketplace_flag_and_pull",
+      "line": 6648,
+      "reason": "Simulator assertions are recorded at method granularity. They are not expanded into separate request and trusted-context fixtures, so removing the simulator is blocked."
+    },
+    {
+      "test": "ContractTest.test_dispatcher_parity_matrix",
+      "line": 6709,
+      "reason": "Required regressions are fixtured. Other dynamic cases in this method are not expanded into one request and trusted context each."
+    }
+  ],
+  "required_regressions": [
+    "empty token scopes on every module-principal operation",
+    "empty current approvals on every module-principal operation",
+    "publication grant does not use stale module_scopes",
+    "replaced calendar reads route, with core_history for retained rows",
+    "unwalled and mixed bulkTimeEntry batches"
+  ]
+}

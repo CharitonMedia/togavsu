@@ -42,6 +42,10 @@ One builder emits the document, the tool list, and the coverage matrix, so the t
 
 Net lines are in the PR. Debt count for this task: 1. The MCP adapter correction does not add a debt entry. `PONYTAIL-DEBT.md` still lists 6.
 
+## Stage 1 split
+
+Baseline `b4350f8af3803b8dc8439b2b2e7a431f198583d9`. Builder metadata is `api/contract/metadata.py`. The call simulator remains `api/contract/policy.py` and its tests still run. `docs/api/stage1-inventory.json` lists every current contract test, and `docs/api/runtime-fixtures.json` holds runtime-pending regressions. Those fixtures are not executed and are not AC-002 acceptance. Unexpanded simulator scenarios block later removal. Phase 1 still means the OpenAPI documents validate. REST and MCP behavior stays with the Go work.
+
 ```
 file: api/contract/model.py
 marker: ponytail

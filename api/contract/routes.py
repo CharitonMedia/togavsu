@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from contract.model import Contract, _batch
-from contract.policy import FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
+from contract.metadata import FILE_DOWNLOAD, MODULE_GUIDE, finalize, version_publication
 
 ADMIN = ["admin"]
 ATTORNEY = ["admin", "attorney"]

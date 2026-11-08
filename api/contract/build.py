@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from contract.model import MALWARE_DELIVERY, PAYMENT_PROCESSOR, Contract
-from contract.policy import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY
+from contract.metadata import BACKGROUND_FILE_PUBLICATION, WEBHOOK_DELIVERY
 from contract.routes import add_routes
 from contract.scopes import SCOPE_PATTERNS, SCOPES
 from contract.seeds import DOC_CATEGORIES, LAWCRAFT_COMMIT, NAMING_TOKENS, PARTY_ROLES

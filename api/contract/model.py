@@ -8,7 +8,7 @@ Trigger: the core serves /api/v1/openapi.json.
 
 from __future__ import annotations
 
-from contract.policy import (
+from contract.metadata import (
     BACKGROUND_FILE_PUBLICATION,
     MALWARE_DELIVERY,
     NONINTERACTIVE_OPERATIONS,
