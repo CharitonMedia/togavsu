@@ -11,7 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, validate_review
+from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, review_problem, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -384,6 +384,29 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(self.record["repair_problems"]), 1)
         self.assertIn("stalled", self.record)
 
+    def test_line_locations_do_not_reset_same_defect_budget(self):
+        self.failed_review()
+        for i in range(4):
+            with self.advance(i * 30):
+                file = "internal/api.go:" + str(20 + i)
+                self.remote.report["findings"] = [{"file": file,
+                    "detail": "Missing authorization in " + file + " (line " + str(20 + i) + ")"}]
+                self.process()
+                self.finish_correction(format(i + 1, "040x"))
+                self.restart()
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(len(self.record["repair_problems"]), 1)
+        self.assertIn("stalled", self.record)
+
+    def test_location_normalization_preserves_defect_numbers_and_file_identity(self):
+        first = [{"file": "api.go:12:3", "detail": "Wrong HTTP 401 (lines 12-14)"}]
+        moved = [{"file": "api.go#L40-L42", "detail": "Wrong HTTP 401 (line 40)"}]
+        self.assertEqual(review_problem(first), review_problem(moved))
+        moved[0]["detail"] = "Wrong HTTP 403 (line 40)"
+        self.assertNotEqual(review_problem(first), review_problem(moved))
+        moved[0] = {"file": "other.go:12", "detail": first[0]["detail"]}
+        self.assertNotEqual(review_problem(first), review_problem(moved))
+
     def test_many_distinct_submissions_are_not_lifetime_limited(self):
         self.failed_review()
         self.record["repair_count"] = 38
@@ -591,11 +614,14 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("last_successful_tick", self.controller.state)
 
     def test_merge_publishes_progress_on_same_tick_before_early_return(self):
+        self.record["last_error"] = "Previous observation failed"
         self.controller.tick()
         status = json.loads((Path(self.temp.name) / "status.json").read_text())
         self.assertEqual(status["last_productive_progress"]["merge_sha"], NEW)
         self.assertEqual(status["last_productive_progress"]["task"], "one")
         self.assertIn("completed", status["tasks"]["one"])
+        self.assertNotIn("last_error", status["tasks"]["one"])
+        self.assertIn("last_successful_tick", self.controller.state)
 
     def test_dry_run_legacy_migration_and_recovery_do_not_write_or_send(self):
         self.failed_review()

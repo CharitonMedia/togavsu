@@ -58,9 +58,16 @@ def age(timestamp):
 
 def review_problem(findings):
     # Review identity/summary/ordering/priority are metadata, not defect progress.
-    return {"review_findings": sorted(({
-        "file": f.get("file"), "detail": " ".join(f.get("detail", "").split())
-    } for f in findings), key=lambda f: json.dumps(f, sort_keys=True))}
+    normalized = []
+    for finding in findings:
+        file = finding.get("file")
+        path = re.sub(r"(?::\d+(?::\d+)?(?:-\d+)?|#L\d+(?:-L?\d+)?)$", "", file) if file else file
+        detail = " ".join(finding.get("detail", "").split())
+        if file and path != file:
+            detail = detail.replace(file, path)
+        detail = re.sub(r"\blines?\s+\d+(?:\s*[-–]\s*\d+)?\b", "line <location>", detail, flags=re.I)
+        normalized.append({"file": path, "detail": detail})
+    return {"review_findings": sorted(normalized, key=lambda f: json.dumps(f, sort_keys=True))}
 
 
 def atomic(path, obj):
@@ -861,6 +868,7 @@ class Controller:
             try:
                 if self.process(specs[task], record, snapshot, main):
                     # Main changed: avoid acting against stale base on other PRs this tick.
+                    record.pop("last_error", None)
                     self.state["last_result"] = "Merged " + task + "; re-evaluate next tick"
                     self.save()
                     return
