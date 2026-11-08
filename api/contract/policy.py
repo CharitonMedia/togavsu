@@ -817,13 +817,32 @@ def _file_row_denial(subject: dict, row: dict) -> str | None:
         return "not_found"
     if not matter_visible(subject, {"matter_id": row.get("matter_id"), "matter_walled": row["matter_walled"]}, single_record=isinstance(row.get("matter_id"), str)):
         return "not_found"
-    if subject.get("role") == "client" and (row.get("shared_with_client") is not True or row.get("owner") == "other_client"):
+    if _client_file_denied(subject, row):
         return "not_found"
     if subject.get("role") == "accountant" and _financial_classification(row) is None:
         return "not_found"
-    if "quarantined" in row and type(row.get("quarantined")) is not bool:
+    if type(row.get("quarantined")) is not bool:
         return "not_found"
     return None
+
+
+def _client_file_denied(subject: dict, row: dict) -> bool:
+    """A client needs sharing plus a trusted matter or contact that belongs to that client."""
+    if subject.get("role") != "client":
+        return False
+    if row.get("shared_with_client") is not True:
+        return True
+    matters = subject.get("client_matter_ids")
+    matter_ok = (
+        isinstance(row.get("matter_id"), str)
+        and isinstance(matters, list)
+        and bool(matters)
+        and all(isinstance(item, str) and item for item in matters)
+        and row["matter_id"] in matters
+    )
+    contact = subject.get("client_contact_id")
+    contact_ok = isinstance(row.get("contact_id"), str) and bool(row.get("contact_id")) and isinstance(contact, str) and bool(contact) and row["contact_id"] == contact
+    return not (matter_ok or contact_ok)
 
 
 def _bind_archive(subject: dict, call: dict, body: dict) -> None:
@@ -858,7 +877,11 @@ def _bind_archive(subject: dict, call: dict, body: dict) -> None:
             return
         subject["archive_rows"] = rows
         return
-    if len(file_ids) != len(set(file_ids)) or any(not isinstance(item, str) or not item for item in file_ids):
+    if any(not isinstance(item, str) or not item for item in file_ids):
+        subject["archive_result"] = "validation_failed"
+        subject["archive_rows"] = []
+        return
+    if len(file_ids) != len(set(file_ids)):
         subject["archive_result"] = "not_found"
         subject["archive_rows"] = []
         return
@@ -1333,9 +1356,20 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     if operation.get("operationId") == "regenerateRecoveryCodes":
         return _recovery_regeneration_authorization(operation, subject)
     if access.get("matter_wall") and not subject.get("noninteractive_accepted"):
-        matter_id = subject.get("matter_id") if isinstance(subject.get("matter_id"), str) and subject.get("matter_id") else None
-        if matter_id is None and subject.get("existing_record") and subject.get("stored_matter_state") == "matter":
-            matter_id = subject.get("stored_matter_id") if isinstance(subject.get("stored_matter_id"), str) else None
+        matter_id = None
+        if subject.get("existing_record"):
+            state = subject.get("stored_matter_state")
+            mode = _parent_matter_mode(spec, operation)
+            if mode == "absent":
+                matter_id = subject.get("matter_id") if isinstance(subject.get("matter_id"), str) and subject.get("matter_id") else None
+            elif state == "matter" and isinstance(subject.get("stored_matter_id"), str):
+                matter_id = subject["stored_matter_id"]
+            elif state == "unassigned" and mode == "nullable":
+                matter_id = None
+            else:
+                return {"result": "not_found", **denied, "events": []}
+        elif isinstance(subject.get("matter_id"), str) and subject.get("matter_id"):
+            matter_id = subject["matter_id"]
         if isinstance(matter_id, str):
             walled = _resolved_source_wall(subject, matter_id)
             if walled is None or not matter_visible(subject, {"matter_id": matter_id, "matter_walled": walled}, single_record=True):
@@ -1554,7 +1588,57 @@ _PRESERVED_CONTEXT = (
     "recovery_code_matches",
     "reauthentication_proof",
     "core_history",
+    "client_matter_ids",
+    "client_contact_id",
 )
+
+
+def _deref_schema(spec: dict, schema: dict | None) -> dict:
+    if not isinstance(schema, dict):
+        return {}
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
+        return spec.get("components", {}).get("schemas", {}).get(ref.rsplit("/", 1)[-1]) or {}
+    return schema
+
+
+def _response_record_schema(spec: dict, operation: dict) -> dict | None:
+    responses = operation.get("responses") or {}
+    for code in ("200", "201"):
+        content = ((responses.get(code) or {}).get("content") or {}).get("application/json") or {}
+        if isinstance(content.get("schema"), dict):
+            return _deref_schema(spec, content["schema"])
+    for path_item in spec.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        matched = False
+        for method, candidate in path_item.items():
+            if method.startswith("x-") or not isinstance(candidate, dict):
+                continue
+            if candidate.get("operationId") == operation.get("operationId"):
+                matched = True
+                break
+        if not matched:
+            continue
+        getter = path_item.get("get")
+        if isinstance(getter, dict) and getter.get("operationId") != operation.get("operationId"):
+            return _response_record_schema(spec, getter)
+        return None
+    return None
+
+
+def _parent_matter_mode(spec: dict, operation: dict) -> str:
+    """required, nullable, or absent. absent means this record contract has no parent matter."""
+    schema = _response_record_schema(spec, operation) or {}
+    prop = (schema.get("properties") or {}).get("matter_id")
+    if isinstance(prop, dict):
+        options = prop.get("anyOf") or prop.get("oneOf") or []
+        if any(isinstance(item, dict) and item.get("type") == "null" for item in options):
+            return "nullable"
+        return "required"
+    if (operation.get("x-togavsu-access") or {}).get("access_inherits") == "file":
+        return "nullable"
+    return "absent"
 
 
 def _credential_kind(call: dict) -> str | None:
@@ -1663,6 +1747,8 @@ def _trusted_file_visible(subject: dict, row: dict | None) -> bool:
         return False
     if row.get("attorney_only") and subject.get("role") not in ("attorney", "admin"):
         return False
+    if _client_file_denied(subject, row):
+        return False
     return matter_visible(subject, {"matter_id": row.get("matter_id"), "matter_walled": row["matter_walled"]}, single_record=isinstance(row.get("matter_id"), str))
 
 
@@ -1684,7 +1770,15 @@ def _bind_file_link(subject: dict, call: dict, path: dict, body: dict) -> None:
     target_matter = target.get("matter_id")
     subject["same_matter"] = not (isinstance(source_matter, str) and isinstance(target_matter, str) and source_matter != target_matter)
     subject["shared"] = source.get("shared_with_client") is True and target.get("shared_with_client") is True
-    if isinstance(source_matter, str):
+    if "matter_id" in call and call.get("matter_id") != source_matter:
+        subject["stored_matter_state"] = "unresolved"
+        return
+    if source_matter is None:
+        subject["stored_matter_state"] = "unassigned"
+        subject["matter_id"] = None
+    else:
+        subject["stored_matter_state"] = "matter"
+        subject["stored_matter_id"] = source_matter
         subject["matter_id"] = source_matter
     subject["matter_walled"] = source["matter_walled"]
 
@@ -1807,7 +1901,20 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         else:
             subject["stored_matter_state"] = "unresolved"
     else:
-        subject["stored_matter_state"] = "absent"
+        record = call.get("stored_file") if isinstance(call.get("stored_file"), dict) else None
+        if record is None and isinstance(call.get("stored_record"), dict):
+            record = call["stored_record"]
+        if isinstance(record, dict) and "matter_id" in record:
+            stored_value = record.get("matter_id")
+            if stored_value is None:
+                subject["stored_matter_state"] = "unassigned"
+            elif isinstance(stored_value, str) and stored_value:
+                subject["stored_matter_state"] = "matter"
+                subject["stored_matter_id"] = stored_value
+            else:
+                subject["stored_matter_state"] = "unresolved"
+        else:
+            subject["stored_matter_state"] = "absent"
     if "matter_id" in body and (resource_update or "matter_id" in call):
         subject["destination_requested"] = True
         subject["requested_matter_id"] = body.get("matter_id")

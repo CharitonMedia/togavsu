@@ -11,29 +11,29 @@
   "deletion_blocked": true,
   "deletion_block_reason": "Simulator tests remain. Unexpanded domain batches are not complete. Runtime fixtures are not executed.",
   "counting": {
-    "contract_test_methods_including_setup": 113,
-    "unittest_tests": 112,
+    "contract_test_methods_including_setup": 114,
+    "unittest_tests": 113,
     "setup_methods": 1,
-    "meaning": "113 ContractTest methods are 112 unittest tests plus 1 setUpClass.",
+    "meaning": "114 ContractTest methods are 113 unittest tests plus 1 setUpClass.",
     "top_level_helpers": 25,
-    "nested_functions_inside_test_methods": 46,
+    "nested_functions_inside_test_methods": 50,
     "nested_structural_helpers_inside_top_level_helpers": [
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 8562,
+        "line": 8742,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 8585,
+        "line": 8765,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 8701,
+        "line": 8881,
         "structural": true
       }
     ],
@@ -41,7 +41,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 3052,
+        "line": 3159,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -59,7 +59,7 @@
       "module_ui_targets": "sidebar_entries"
     },
     "alias_note": "module_ui_targets is sidebar_entries. Counting it again would double one function.",
-    "behavioral_methods": 57,
+    "behavioral_methods": 58,
     "behavioral_methods_are_not_scenarios": true,
     "converted_for_retirement": 0,
     "retirement_note": "All behavioral methods remain pending. A fixture or a source index entry does not convert one."
@@ -67,15 +67,15 @@
   "counts": {
     "contract_tests": 56,
     "simulator_tests": 1,
-    "mixed_tests": 56,
-    "test_methods": 113,
-    "behavioral_methods": 57,
+    "mixed_tests": 57,
+    "test_methods": 114,
+    "behavioral_methods": 58,
     "local_helpers": 25,
     "simulator_helpers": 9,
-    "nested_helpers": 46,
-    "blocking_gaps": 57,
-    "explicit_cases_in_behavioral_methods": 251,
-    "assertion_calls_in_behavioral_methods": 1957,
+    "nested_helpers": 50,
+    "blocking_gaps": 58,
+    "explicit_cases_in_behavioral_methods": 257,
+    "assertion_calls_in_behavioral_methods": 1996,
     "runtime_fixtures": 52
   },
   "artifacts": {
@@ -3005,7 +3005,7 @@
       "id": "ContractTest.test_concrete_matter_and_selected_files",
       "source": "api/tests/test_contract.py",
       "line": 8272,
-      "end_line": 8426,
+      "end_line": 8431,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3019,9 +3019,37 @@
       ],
       "source_line_basis": "current_worktree",
       "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
-      "assertion_count": 41,
+      "assertion_count": 44,
       "loop_count": 2,
       "explicit_case_count": 11,
+      "runtime_status": "runtime_pending",
+      "blocking_removal": true,
+      "gap": "Pending. This method is not converted. The source index does not make it complete.",
+      "complete": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_record_owner_and_client_file_access",
+      "source": "api/tests/test_contract.py",
+      "line": 8433,
+      "end_line": 8606,
+      "kind": "both",
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-008",
+        "AC-011",
+        "AC-039"
+      ],
+      "prd": [
+        "8",
+        "8.19"
+      ],
+      "source_line_basis": "current_worktree",
+      "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
+      "assertion_count": 36,
+      "loop_count": 1,
+      "explicit_case_count": 6,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
       "gap": "Pending. This method is not converted. The source index does not make it complete.",
@@ -3037,122 +3065,122 @@
     },
     {
       "name": "_operation",
-      "line": 8429,
+      "line": 8609,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 8436,
+      "line": 8616,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 8442,
+      "line": 8622,
       "kind": "contract_helper"
     },
     {
       "name": "_as_trusted_grant_fixture",
-      "line": 8446,
+      "line": 8626,
       "kind": "contract_helper"
     },
     {
       "name": "_session_csrf",
-      "line": 8456,
+      "line": 8636,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 8465,
+      "line": 8645,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 8486,
+      "line": 8666,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 8490,
+      "line": 8670,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 8499,
+      "line": 8679,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 8507,
+      "line": 8687,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 8526,
+      "line": 8706,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 8532,
+      "line": 8712,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 8554,
+      "line": 8734,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 8578,
+      "line": 8758,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 8600,
+      "line": 8780,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 8621,
+      "line": 8801,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 8638,
+      "line": 8818,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 8646,
+      "line": 8826,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 8655,
+      "line": 8835,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 8669,
+      "line": 8849,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 8682,
+      "line": 8862,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 8691,
+      "line": 8871,
       "kind": "simulator_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 8698,
+      "line": 8878,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 8717,
+      "line": 8897,
       "kind": "contract_helper"
     }
   ],
@@ -3386,6 +3414,26 @@
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "archive",
       "line": 8372
+    },
+    {
+      "test": "ContractTest.test_record_owner_and_client_file_access",
+      "name": "quiet",
+      "line": 8447
+    },
+    {
+      "test": "ContractTest.test_record_owner_and_client_file_access",
+      "name": "call",
+      "line": 8453
+    },
+    {
+      "test": "ContractTest.test_record_owner_and_client_file_access",
+      "name": "file_row",
+      "line": 8545
+    },
+    {
+      "test": "ContractTest.test_record_owner_and_client_file_access",
+      "name": "client_archive",
+      "line": 8557
     }
   ],
   "behavioral_helpers": [
@@ -3456,7 +3504,8 @@
     "ContractTest.test_trusted_wall_grant_and_csrf",
     "ContractTest.test_factor_reset_requires_reauthentication",
     "ContractTest.test_transport_link_and_matter_grant",
-    "ContractTest.test_concrete_matter_and_selected_files"
+    "ContractTest.test_concrete_matter_and_selected_files",
+    "ContractTest.test_record_owner_and_client_file_access"
   ],
   "hidden_runtime_consumers": [],
   "non_python_consumers": [],

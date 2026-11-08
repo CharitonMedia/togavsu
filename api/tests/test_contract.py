@@ -2943,7 +2943,7 @@ class ContractTest(unittest.TestCase):
         staff_read = opened("getFile", ordinary, role="staff")
         self.assertEqual(staff_read["result"], "allowed")
         self.assertTrue(staff_read["effects"])
-        pdf = opened("getInvoicePdf", None, token_scopes=["invoices:read"])
+        pdf = opened("getInvoicePdf", None, token_scopes=["invoices:read"], matter_id=matter, matter_walled=False)
         self.assertEqual(pdf["result"], "allowed")
         self.assertTrue(pdf["effects"])
 
@@ -6952,8 +6952,8 @@ class ContractTest(unittest.TestCase):
             {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": archive_body}}},
             {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
             {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
-            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
-            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
+            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
             {"family": "background_file", "name": "module resume omitted scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume minimal scopes", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=["files:write"], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume empty token", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=[], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
@@ -6985,7 +6985,7 @@ class ContractTest(unittest.TestCase):
             {"family": "entry_type_scopes", "name": "cookie staff withdrawal", "result": "forbidden", "call": {**cookie(role="staff"), "tool": "postTrustEntry", "arguments": {"body": withdrawal}}},
             {"family": "payment_effect", "name": "cookie pending payment", "result": "allowed", "call": {**cookie(role="staff", matter_walled=False), "tool": "createPayment", "arguments": {"body": payment}}},
             {"family": "payment_effect", "name": "empty bearer payment", "result": "scope_denied", "call": {**bearer(role="staff", token_scopes=[]), "tool": "createPayment", "arguments": {"body": payment}}},
-            {"family": "payment_reversal", "name": "cookie operating reversal", "result": "allowed", "call": {**cookie(role="attorney", trust_linked=False, matter_walled=False), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
+            {"family": "payment_reversal", "name": "cookie operating reversal", "result": "allowed", "call": {**cookie(role="attorney", trust_linked=False, matter_id=visible, matter_walled=False), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
             {"family": "payment_reversal", "name": "empty bearer trust reversal", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[], trust_linked=True, matter_walled=False, trust_account_id=account), "tool": "reversePayment", "arguments": {"path": {"payment_id": entry_a}, "body": reason}}},
             {"family": "trust_debit", "name": "cookie flat fee", "result": "allowed", "call": {**cookie(role="attorney", balances=[owned_balance, other_balance], firm_id="firm-1", matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": fee_body}}},
             {"family": "trust_debit", "name": "empty bearer flat fee", "result": "scope_denied", "call": {**bearer(role="attorney", token_scopes=[], balances=[owned_balance, other_balance], firm_id="firm-1", matter_walled=False), "tool": "applyFlatFee", "arguments": {"path": {"matter_id": visible}, "body": fee_body}}},
@@ -7042,7 +7042,7 @@ class ContractTest(unittest.TestCase):
         cases.extend(
             [
                 {"family": "replacement", "name": "calendar list routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**staff_read, "domain_handlers": calendar, "tool": "listCalendarEvent", "arguments": {}}},
-                {"family": "replacement", "name": "calendar get routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**staff_read, "domain_handlers": calendar, "tool": "getCalendarEvent", "arguments": {"path": {"calendar_event_id": event_id}}}},
+                {"family": "replacement", "name": "calendar get routes", "result": "allowed", "effects": False, "routed": "cal-mod", "call": {**staff_read, "matter_id": None, "domain_handlers": calendar, "tool": "getCalendarEvent", "arguments": {"path": {"calendar_event_id": event_id}}}},
                 {"family": "replacement", "name": "calendar history stays on core", "result": "allowed", "effects": True, "routed": None, "call": {**staff_read, "domain_handlers": calendar, "core_history": True, "tool": "listCalendarEvent", "arguments": {}}},
                 {"family": "replacement", "name": "unavailable calendar read", "result": "forbidden", "call": {**staff_read, "domain_handlers": calendar_down, "tool": "listCalendarEvent", "arguments": {}}},
                 {"family": "replacement", "name": "core calendar list", "result": "allowed", "effects": True, "routed": None, "call": {**staff_read, "tool": "listCalendarEvent", "arguments": {}}},
@@ -8389,9 +8389,9 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(mixed["result"], "not_found")
         attorney_only = quiet(archive({"file_ids": [file_id]}, [row(file_id, attorney_only=True)], attorney_only=False))
         self.assertEqual(attorney_only["result"], "not_found")
-        client_hidden = quiet(archive({"file_ids": [file_id]}, [row(file_id, shared_with_client=False)], role="client", shared=True))
+        client_hidden = quiet(archive({"file_ids": [file_id]}, [row(file_id, shared_with_client=False)], role="client", shared=True, client_matter_ids=[matter]))
         self.assertEqual(client_hidden["result"], "not_found")
-        client_ok = archive({"file_ids": [file_id]}, [row(file_id)], role="client")
+        client_ok = archive({"file_ids": [file_id]}, [row(file_id)], role="client", client_matter_ids=[matter])
         self.assertEqual(client_ok["result"], "allowed")
         self.assertTrue(client_ok["effects"])
         ordinary = row(other_file)
@@ -8424,6 +8424,186 @@ class ContractTest(unittest.TestCase):
         confirmed = archive({"file_ids": [file_id], "confirm_quarantine": True}, [row(file_id, quarantined=True)])
         self.assertEqual(confirmed["result"], "allowed")
         self.assertTrue(confirmed["effects"])
+        omitted_scan = quiet(archive({"file_ids": [file_id]}, [row(file_id, quarantined=None)]))
+        self.assertEqual(omitted_scan["result"], "not_found")
+        bad_ids = archive({"file_ids": [{"id": file_id}]}, [row(file_id)])
+        self.assertEqual(bad_ids["result"], "validation_failed")
+        self.assertFalse(bad_ids["effects"])
+
+    def test_record_owner_and_client_file_access(self):
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        foreign = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        entry = "018f1a00-7b3c-7d4e-8a11-ccccccccccc1"
+        event = "018f1a00-7b3c-7d4e-8a11-eeeeeeeeeee1"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        job = "018f1a00-7b3c-7d4e-8a11-ddddddddddd1"
+        contact = "018f1a00-7b3c-7d4e-8a11-222222222222"
+        time_patch = {"description": "Review"}
+        _component_validator(self.spec, "TimeEntryWritePatch").validate(time_patch)
+        _component_validator(self.spec, "CalendarEventWritePatch").validate({"matter_id": None})
+        _component_validator(self.spec, "FileArchiveRequest").validate({"file_ids": [file_id]})
+
+        def quiet(decision):
+            self.assertFalse(decision["effects"])
+            self.assertEqual(decision.get("events") or [], [])
+            self.assertIsNone(decision.get("routed"))
+            return decision
+
+        def call(tool, scopes, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "staff",
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        handler = {"time": {"replaced": True, "available": True, "module_id": "time-mod"}}
+        calendar = {"calendar": {"replaced": True, "available": True, "module_id": "cal-mod"}}
+        for tool, scope, path_key, path_id in (
+            ("getTimeEntry", "time:read", "time_entry_id", entry),
+            ("updateTimeEntry", "time:write", "time_entry_id", entry),
+            ("deleteCalendarEvent", "calendar:write", "calendar_event_id", event),
+            ("getCalendarEvent", "calendar:read", "calendar_event_id", event),
+            ("getFile", "files:read", "file_id", file_id),
+            ("getDocTenderJob", "doc_tender:read", "job_id", job),
+        ):
+            body = {"body": time_patch} if tool == "updateTimeEntry" else {}
+            denied = quiet(call(tool, [scope], {"path": {path_key: path_id}, **body}, matter_walls=None, matter_walled=False))
+            self.assertEqual(denied["result"], "not_found", tool)
+        absent = quiet(call("getTimeEntry", ["time:read"], {"path": {"time_entry_id": entry}}))
+        self.assertEqual(absent["result"], "not_found")
+        malformed = quiet(call("getTimeEntry", ["time:read"], {"path": {"time_entry_id": entry}}, matter_id=0, matter_walled=False))
+        self.assertEqual(malformed["result"], "not_found")
+        null_time = quiet(call("updateTimeEntry", ["time:write"], {"path": {"time_entry_id": entry}, "body": time_patch}, matter_id=None, matter_walled=False))
+        self.assertEqual(null_time["result"], "not_found")
+        body_rescue = quiet(
+            call(
+                "updateTimeEntry",
+                ["time:write"],
+                {"path": {"time_entry_id": entry}, "body": {"matter_id": matter, "description": "Review"}},
+                matter_walled=False,
+                matter_walls={matter: False},
+            )
+        )
+        self.assertEqual(body_rescue["result"], "not_found")
+        hidden = quiet(call("getTimeEntry", ["time:read"], {"path": {"time_entry_id": entry}}, matter_id=matter, matter_walls={matter: True}, matter_membership={matter: False}))
+        self.assertEqual(hidden["result"], "not_found")
+        assigned = call("getTimeEntry", ["time:read"], {"path": {"time_entry_id": entry}}, matter_id=matter, matter_walled=False)
+        self.assertEqual(assigned["result"], "allowed")
+        self.assertTrue(assigned["effects"])
+        updated = call("updateTimeEntry", ["time:write"], {"path": {"time_entry_id": entry}, "body": time_patch}, matter_id=matter, matter_walls={matter: False})
+        self.assertEqual(updated["result"], "allowed")
+        self.assertTrue(updated["effects"])
+        removed = call("deleteCalendarEvent", ["calendar:write"], {"path": {"calendar_event_id": event}}, matter_id=matter, matter_walled=False)
+        self.assertEqual(removed["result"], "allowed")
+        self.assertTrue(removed["effects"])
+        unassigned_event = call("getCalendarEvent", ["calendar:read"], {"path": {"calendar_event_id": event}}, matter_id=None)
+        self.assertEqual(unassigned_event["result"], "allowed")
+        self.assertTrue(unassigned_event["effects"])
+        unassigned_file = call("getFile", ["files:read"], {"path": {"file_id": file_id}}, matter_id=None)
+        self.assertEqual(unassigned_file["result"], "allowed")
+        routed_hidden = quiet(
+            call(
+                "updateTimeEntry",
+                ["time:write"],
+                {"path": {"time_entry_id": entry}, "body": time_patch},
+                matter_walls=None,
+                domain_handlers=handler,
+            )
+        )
+        self.assertEqual(routed_hidden["result"], "not_found")
+        routed = call(
+            "updateTimeEntry",
+            ["time:write"],
+            {"path": {"time_entry_id": entry}, "body": time_patch},
+            matter_id=matter,
+            matter_walled=False,
+            domain_handlers=handler,
+        )
+        self.assertEqual(routed["result"], "allowed")
+        self.assertFalse(routed["effects"])
+        self.assertEqual(routed["routed"], "time-mod")
+        routed_clear = call(
+            "updateCalendarEvent",
+            ["calendar:write"],
+            {"path": {"calendar_event_id": event}, "body": {"matter_id": None}},
+            matter_id=None,
+            domain_handlers=calendar,
+        )
+        self.assertEqual(routed_clear["result"], "allowed")
+        self.assertFalse(routed_clear["effects"])
+        self.assertEqual(routed_clear["routed"], "cal-mod")
+
+        def file_row(row_id, matter_id, **flags):
+            return {
+                "id": row_id,
+                "matter_id": matter_id,
+                "matter_walled": False,
+                "attorney_only": False,
+                "shared_with_client": True,
+                "quarantined": False,
+                "contact_id": contact,
+                **flags,
+            }
+
+        def client_archive(records, body=None, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": "client",
+                    "token_scopes": ["files:read"],
+                    "stored_files": records,
+                    "tool": "createFileArchive",
+                    "arguments": {"body": body or {"file_ids": [row["id"] for row in records]}},
+                    **trusted,
+                },
+            )
+
+        foreign_open = quiet(client_archive([file_row(file_id, foreign)]))
+        self.assertEqual(foreign_open["result"], "not_found")
+        with self.assertRaises(Exception):
+            _component_validator(self.spec, "FileArchiveRequest").validate({"file_ids": [file_id], "owner": "self", "shared_with_client": True})
+        spoofed = quiet(client_archive([file_row(file_id, foreign)], {"file_ids": [file_id], "owner": "self", "shared_with_client": True}))
+        self.assertEqual(spoofed["result"], "not_found")
+        foreign_wall = quiet(client_archive([file_row(file_id, foreign, matter_walled=True)], client_matter_ids=[matter], matter_membership={foreign: False}))
+        self.assertEqual(foreign_wall["result"], "not_found")
+        missing_relationship = quiet(client_archive([file_row(file_id, matter)], client_matter_ids=None, client_contact_id=None))
+        self.assertEqual(missing_relationship["result"], "not_found")
+        mixed = quiet(client_archive([file_row(file_id, matter), file_row(other_file, foreign)], client_matter_ids=[matter]))
+        self.assertEqual(mixed["result"], "not_found")
+        own = client_archive([file_row(file_id, matter)], client_matter_ids=[matter])
+        self.assertEqual(own["result"], "allowed")
+        self.assertTrue(own["effects"])
+        own_contact = client_archive([file_row(file_id, None, contact_id=contact)], client_contact_id=contact)
+        self.assertEqual(own_contact["result"], "allowed")
+        unshared = quiet(client_archive([file_row(file_id, matter, shared_with_client=False)], client_matter_ids=[matter], shared=True))
+        self.assertEqual(unshared["result"], "not_found")
+        link = mcp_tool_dispatch(
+            self.spec,
+            {
+                "authorization": "Bearer secret",
+                "authorization_scheme": "Bearer",
+                "credential_valid": True,
+                "role": "client",
+                "token_scopes": ["files:write"],
+                "stored_files": [file_row(file_id, foreign), file_row(other_file, foreign)],
+                "tool": "createFileLink",
+                "arguments": {"path": {"file_id": file_id}, "body": {"to_file_id": other_file, "relationship": "attachment", "shared_with_client": True}},
+                "client_matter_ids": [matter],
+            },
+        )
+        self.assertEqual(quiet(link)["result"], "not_found")
 
 
 def _operation(spec: dict, operation_id: str) -> dict:

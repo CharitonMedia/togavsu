@@ -6342,10 +6342,10 @@
         "8",
         "8.19"
       ],
-      "source": "api/tests/test_contract.py:8272-8426",
+      "source": "api/tests/test_contract.py:8272-8431",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 41,
+      "assertion_call_sites": 44,
       "loop_count": 2,
       "literal_rows": [
         {
@@ -6525,12 +6525,195 @@
         "self.assertEqual(quarantined[\"result\"], \"quarantine_confirmation_required\")",
         "self.assertEqual(confirmed[\"result\"], \"allowed\")",
         "self.assertTrue(confirmed[\"effects\"])",
+        "self.assertEqual(omitted_scan[\"result\"], \"not_found\")",
+        "self.assertEqual(bad_ids[\"result\"], \"validation_failed\")",
+        "self.assertFalse(bad_ids[\"effects\"])",
         "self.assertFalse(decision[\"effects\"])",
         "self.assertEqual(decision.get(\"events\") or [], [])",
         "self.assertIsNone(decision.get(\"routed\"))",
         "self.assertEqual(denied[\"result\"], \"not_found\", label)",
         "self.assertEqual(denied_write[\"result\"], \"not_found\", label)",
         "self.assertEqual(denied[\"result\"], \"not_found\", label)"
+      ],
+      "runtime_status": "runtime_pending",
+      "complete": false,
+      "is_scenario": false,
+      "executed": false,
+      "retirement_status": "pending"
+    },
+    {
+      "id": "ContractTest.test_record_owner_and_client_file_access",
+      "go_owner": "multiple",
+      "acceptance": [
+        "AC-008",
+        "AC-011",
+        "AC-039"
+      ],
+      "prd": [
+        "8",
+        "8.19"
+      ],
+      "source": "api/tests/test_contract.py:8433-8606",
+      "source_line_basis": "current_worktree",
+      "kind": "both",
+      "assertion_call_sites": 36,
+      "loop_count": 1,
+      "literal_rows": [
+        {
+          "line": 8470,
+          "literal_rows": 6,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "getTimeEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "time:read"
+              },
+              {
+                "kind": "constant",
+                "value": "time_entry_id"
+              },
+              {
+                "kind": "name",
+                "id": "entry"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "updateTimeEntry"
+              },
+              {
+                "kind": "constant",
+                "value": "time:write"
+              },
+              {
+                "kind": "constant",
+                "value": "time_entry_id"
+              },
+              {
+                "kind": "name",
+                "id": "entry"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "deleteCalendarEvent"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar:write"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar_event_id"
+              },
+              {
+                "kind": "name",
+                "id": "event"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getCalendarEvent"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar:read"
+              },
+              {
+                "kind": "constant",
+                "value": "calendar_event_id"
+              },
+              {
+                "kind": "name",
+                "id": "event"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getFile"
+              },
+              {
+                "kind": "constant",
+                "value": "files:read"
+              },
+              {
+                "kind": "constant",
+                "value": "file_id"
+              },
+              {
+                "kind": "name",
+                "id": "file_id"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "getDocTenderJob"
+              },
+              {
+                "kind": "constant",
+                "value": "doc_tender:read"
+              },
+              {
+                "kind": "constant",
+                "value": "job_id"
+              },
+              {
+                "kind": "name",
+                "id": "job"
+              }
+            ]
+          ],
+          "text": "for tool, scope, path_key, path_id in ( (\"getTimeEntry\", \"time:read\", \"time_entry_id\", entry), (\"updateTimeEntry\", \"time:write\", \"time_entry_id\", entry), (\"deleteCalendarEvent\", \"calendar:write\", \"calendar_event_id\", event), (\"getCalendarEvent\", \"calendar:read\", \"calendar_event_id\", event), (\"getFile\", \"files:read\", \"file_id\", file_id), (\"getDocTenderJob\", \"doc_tender:read\", \"job_id\", job), ): body = {\"body\": time_patch} if tool == \"updateTimeEntry\" else {} denied = quiet(call(tool, [scope], {\"path\": {path_key: path_id}, **body}, matter_walls=None, matter_walled=False)) self.assertEqual(denied[\"result\"], \"not_found\", tool)",
+          "complete": false,
+          "is_scenario": false
+        }
+      ],
+      "assertion_statements": [
+        "self.assertEqual(absent[\"result\"], \"not_found\")",
+        "self.assertEqual(malformed[\"result\"], \"not_found\")",
+        "self.assertEqual(null_time[\"result\"], \"not_found\")",
+        "self.assertEqual(body_rescue[\"result\"], \"not_found\")",
+        "self.assertEqual(hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(assigned[\"result\"], \"allowed\")",
+        "self.assertTrue(assigned[\"effects\"])",
+        "self.assertEqual(updated[\"result\"], \"allowed\")",
+        "self.assertTrue(updated[\"effects\"])",
+        "self.assertEqual(removed[\"result\"], \"allowed\")",
+        "self.assertTrue(removed[\"effects\"])",
+        "self.assertEqual(unassigned_event[\"result\"], \"allowed\")",
+        "self.assertTrue(unassigned_event[\"effects\"])",
+        "self.assertEqual(unassigned_file[\"result\"], \"allowed\")",
+        "self.assertEqual(routed_hidden[\"result\"], \"not_found\")",
+        "self.assertEqual(routed[\"result\"], \"allowed\")",
+        "self.assertFalse(routed[\"effects\"])",
+        "self.assertEqual(routed[\"routed\"], \"time-mod\")",
+        "self.assertEqual(routed_clear[\"result\"], \"allowed\")",
+        "self.assertFalse(routed_clear[\"effects\"])",
+        "self.assertEqual(routed_clear[\"routed\"], \"cal-mod\")",
+        "self.assertEqual(foreign_open[\"result\"], \"not_found\")",
+        "self.assertEqual(spoofed[\"result\"], \"not_found\")",
+        "self.assertEqual(foreign_wall[\"result\"], \"not_found\")",
+        "self.assertEqual(missing_relationship[\"result\"], \"not_found\")",
+        "self.assertEqual(mixed[\"result\"], \"not_found\")",
+        "self.assertEqual(own[\"result\"], \"allowed\")",
+        "self.assertTrue(own[\"effects\"])",
+        "self.assertEqual(own_contact[\"result\"], \"allowed\")",
+        "self.assertEqual(unshared[\"result\"], \"not_found\")",
+        "self.assertEqual(quiet(link)[\"result\"], \"not_found\")",
+        "self.assertFalse(decision[\"effects\"])",
+        "self.assertEqual(decision.get(\"events\") or [], [])",
+        "self.assertIsNone(decision.get(\"routed\"))",
+        "self.assertEqual(denied[\"result\"], \"not_found\", tool)",
+        "with self.assertRaises(Exception):"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -8215,9 +8398,9 @@
     },
     "multiple": {
       "go_owner": "multiple",
-      "methods": 12,
-      "assertion_call_sites": 406,
-      "literal_rows": 83,
+      "methods": 13,
+      "assertion_call_sites": 445,
+      "literal_rows": 89,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
@@ -8230,7 +8413,8 @@
         "test_association_walls_fail_closed",
         "test_trusted_wall_grant_and_csrf",
         "test_transport_link_and_matter_grant",
-        "test_concrete_matter_and_selected_files"
+        "test_concrete_matter_and_selected_files",
+        "test_record_owner_and_client_file_access"
       ],
       "status": "not_converted",
       "complete": false
