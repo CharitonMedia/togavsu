@@ -466,6 +466,14 @@ def write_stage1_documents() -> None:
             fixture["fixture_kind"] = "policy_probe"
             fixture["label"] = "Malformed TimeEntryWrite. matter_walled is not a published field. The trusted wall still denies the item."
             rewritten.append(fixture)
+            valid_id = "reg-bulkTimeEntry-trusted-wall"
+            if valid_id not in existing_ids:
+                valid = json.loads(json.dumps(fixture))
+                valid["id"] = valid_id
+                valid["fixture_kind"] = "endpoint"
+                valid["label"] = "Schema-valid TimeEntryWrite. The same trusted wall denies the item. The item body does not carry matter_walled."
+                valid["request"]["arguments"]["body"]["items"][0].pop("matter_walled", None)
+                rewritten.append(valid)
         else:
             fixture.setdefault("fixture_kind", "endpoint")
             rewritten.append(fixture)

@@ -68,7 +68,7 @@
     "blocking_gaps": 47,
     "explicit_cases_in_behavioral_methods": 213,
     "assertion_calls_in_behavioral_methods": 1565,
-    "runtime_fixtures": 51
+    "runtime_fixtures": 52
   },
   "artifacts": {
     "api/openapi/v1/openapi.json": "e2aad30720be7394306142b786649c0414d620fc595c175d63a924989e3d8195",

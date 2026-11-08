@@ -191,6 +191,11 @@ class Stage1InventoryTest(unittest.TestCase):
         ignored = by_id["reg-bulkTimeEntry-item-flag-ignored"]
         self.assertEqual(ignored["expected"]["result"], "not_found")
         self.assertEqual(ignored["fixture_kind"], "policy_probe")
+        trusted_wall = by_id["reg-bulkTimeEntry-trusted-wall"]
+        self.assertEqual(trusted_wall["fixture_kind"], "endpoint")
+        self.assertEqual(trusted_wall["expected"]["result"], "not_found")
+        self.assertFalse(trusted_wall["expected"]["effects"])
+        self.assertNotIn("matter_walled", trusted_wall["request"]["arguments"]["body"]["items"][0])
         self.assertTrue(ignored["trusted_context"]["matter_walls"]["018f1a00-7b3c-7d4e-8a11-333333333333"])
         for operation_id in ("createModuleMarker", "updateModuleMarker", "createModuleHelpPage", "replaceModuleHelpPages"):
             for suffix in ("empty-token", "empty-current"):

@@ -2195,6 +2195,70 @@
       "public_assertion_line": 7059
     },
     {
+      "id": "reg-bulkTimeEntry-trusted-wall",
+      "inventory_id": "ContractTest.test_dispatcher_parity_matrix",
+      "source": "api/tests/test_contract.py",
+      "line": 6994,
+      "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
+      "operation": "bulkTimeEntry",
+      "requirement": {
+        "prd": [
+          "8.1",
+          "8.3"
+        ],
+        "acceptance": [
+          "AC-002"
+        ],
+        "review_finding": "A matter_walled flag on the item does not clear the trusted wall."
+      },
+      "go_owner": "billing",
+      "request": {
+        "tool": "bulkTimeEntry",
+        "arguments": {
+          "body": {
+            "items": [
+              {
+                "matter_id": "018f1a00-7b3c-7d4e-8a11-333333333333",
+                "worked_on": "2026-11-07",
+                "increments": 2,
+                "description": "Review",
+                "activity_type_id": "018f1a00-7b3c-7d4e-8a11-121212121212"
+              }
+            ]
+          }
+        }
+      },
+      "trusted_context": {
+        "authorization": "Bearer secret",
+        "authorization_scheme": "Bearer",
+        "credential_valid": true,
+        "role": "staff",
+        "token_scopes": [
+          "time:write"
+        ],
+        "matter_walls": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": true
+        },
+        "matter_membership": {
+          "018f1a00-7b3c-7d4e-8a11-333333333333": false
+        }
+      },
+      "expected": {
+        "result": "not_found",
+        "effects": false,
+        "public": false
+      },
+      "runtime_status": "runtime_pending",
+      "fixture_kind": "endpoint",
+      "label": "Schema-valid TimeEntryWrite. The same trusted wall denies the item. The item body does not carry matter_walled.",
+      "source_line": 6994,
+      "source_range": [
+        6994,
+        6994
+      ],
+      "public_assertion_line": 7059
+    },
+    {
       "id": "reg-downloadFileVersion-minimal-scopes",
       "inventory_id": "ContractTest.test_mcp_dispatch_reuses_the_operation_policy",
       "source": "api/tests/test_contract.py",
