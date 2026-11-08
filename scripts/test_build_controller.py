@@ -800,6 +800,62 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("stalled", self.record)
         self.assertEqual(len(self.posts()), 1)
 
+    def test_initial_active_run_keeps_deadline_through_unknown_id_and_restart(self):
+        self.remote.run_status = "RUNNING"
+        for minute, run_id in ((0, "run-A"), (31, None), (32, "run-A"), (33, None)):
+            with self.advance(minute):
+                self.remote.run_id = run_id
+                self.controller.tick()
+                self.assertEqual(self.record["active_watch"]["since"], "2026-11-08T00:00:00+00:00")
+                self.assertEqual(self.record["active_watch"]["run_id"], "run-A")
+                self.assertEqual(self.record["active_watch"]["observed_run_id"], run_id)
+                self.assertEqual(self.controller.occupied, 1)
+                if minute:
+                    self.assertEqual(self.record["stalled"]["kind"], "active_run")
+                    self.assertEqual(self.controller.state["health"], "needs_attention")
+                self.restart()
+        self.assertFalse(self.posts())
+        self.remote.run_id = "run-B"
+        with self.advance(34):
+            self.controller.tick()
+        self.assertEqual(self.record["active_watch"]["since"], "2026-11-08T00:34:00+00:00")
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(self.controller.occupied, 1)
+
+    def test_unknown_initial_run_binds_known_id_without_resetting_expired_watch(self):
+        self.remote.run_status, self.remote.run_id = "RUNNING", None
+        with self.advance(0):
+            self.controller.tick()
+        self.restart()
+        with self.advance(31):
+            self.controller.tick()
+        self.assertIsNone(self.record["active_watch"]["run_id"])
+        self.assertIsNone(self.record["active_watch"]["observed_run_id"])
+        self.assertEqual(self.record["stalled"]["kind"], "active_run")
+        self.restart()
+        self.remote.run_id = "run-A"
+        with self.advance(32):
+            self.controller.tick()
+        self.assertEqual(self.record["active_watch"]["run_id"], "run-A")
+        self.assertEqual(self.record["active_watch"]["since"], "2026-11-08T00:00:00+00:00")
+        self.assertEqual(self.record["stalled"]["kind"], "active_run")
+        self.assertEqual(self.record["stalled"]["run_id"], "run-A")
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.assertFalse(self.posts())
+
+    def test_active_identity_changes_never_replace_unrelated_warning(self):
+        self.remote.run_status = "RUNNING"
+        warning = {"kind": "no_progress", "reason": "Existing repeated defect requires inspection", "fingerprint": "existing"}
+        self.record["stalled"] = dict(warning)
+        for minute, run_id in ((0, None), (31, "run-A"), (32, None), (33, "run-A"), (34, "run-B")):
+            with self.advance(minute):
+                self.remote.run_id = run_id
+                self.controller.tick()
+                self.assertEqual(self.record["stalled"], warning)
+                self.assertEqual(self.controller.state["health"], "needs_attention")
+                self.restart()
+        self.assertFalse(self.posts())
+
     def test_all_halted_tick_is_visible_and_not_product_progress(self):
         self.record["halted"] = "Ownership mismatch"
         self.controller.tick()

@@ -481,16 +481,24 @@ class Controller:
                 record["expected_branch"] = branches[0]["branch"]
                 self.save()
         if snapshot["status"] in ACTIVE:
-            record["waiting"] = "Cursor run active; awaiting completion"
-            watch = record.setdefault("active_watch", {"run_id": snapshot.get("run_id"), "since": now()})
-            if watch["run_id"] != snapshot.get("run_id"):
-                watch = record["active_watch"] = {"run_id": snapshot.get("run_id"), "since": now()}
+            run_id = snapshot.get("run_id")
+            if not isinstance(run_id, str) or not run_id:
+                run_id = None
+            record["waiting"] = ("Cursor run active; awaiting completion" if run_id else
+                "Cursor run active; run ID unavailable; original observation deadline retained")
+            watch = record.setdefault("active_watch", {"run_id": run_id, "since": now()})
+            if run_id and watch.get("run_id") and watch["run_id"] != run_id:
+                watch = record["active_watch"] = {"run_id": run_id, "since": now()}
                 if record.get("stalled", {}).get("kind") == "active_run":
                     record.pop("stalled")
-            if age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 1800):
+            elif run_id and not watch.get("run_id"):
+                watch["run_id"] = run_id  # Binding an unknown run does not prove a new run started.
+            watch["observed_run_id"] = run_id
+            if (age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 1800)
+                    and record.get("stalled", {}).get("kind") in {None, "active_run"}):
                 record["stalled"] = {"kind": "active_run", "reason":
                     "Cursor run exceeded observation deadline; integration lead must inspect this run before any replacement",
-                    "run_id": snapshot.get("run_id"), "since": watch["since"]}
+                    "run_id": watch["run_id"], "since": watch["since"]}
             return False
         record.pop("active_watch", None)
         if record.get("stalled", {}).get("kind") == "active_run":
