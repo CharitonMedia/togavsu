@@ -624,6 +624,54 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.record["stalled"]["kind"], "run_observation")
         self.assertEqual(len(self.posts()), 1)
 
+    def test_base_format_acknowledgement_reserves_slot_and_blocks_pr_across_restarts(self):
+        self.record.update(last_dispatched_run="legacy-run", delivered=["review:" + HEAD], repair_count=38,
+            halted=LEGACY_REPAIR_HALT)
+        for i in range(3):
+            task = "active-" + str(i)
+            self.controller.plan["tasks"].append({"id": task, "depends_on": []})
+            self.controller.tasks[task] = {"agent_id": task, "submitted": True}
+        self.controller.plan["tasks"].append({"id": "five", "depends_on": []})
+        original = self.remote.agent
+        self.remote.agent = lambda r: original(r) if r["agent_id"] == "bc-one" else {
+            "status": "RUNNING", "run_id": "active", "git": {}}
+        self.restart()  # Load exactly the old persisted shape, with no source or dispatch time.
+        for minute in (0, 1, 16):
+            with self.advance(minute):
+                self.controller.tick()
+                self.assertEqual(self.controller.occupied, 4)
+                self.assertNotIn("five", self.controller.tasks)
+                self.assertNotIn("completed", self.record)
+                self.assertFalse(any(c[1].startswith("pulls/") or c[1] == "/agents" for c in self.remote.calls))
+                self.assertFalse(self.posts())
+                self.assertNotIn("last_dispatch_at", self.record)
+                self.assertEqual(self.record["dispatch_visibility_since"], "2026-11-08T00:00:00+00:00")
+                self.restart()
+        self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.remote.run_id, self.remote.run_status = "legacy-run", "RUNNING"
+        with self.advance(17):
+            self.controller.tick()
+        self.assertNotIn("stalled", self.record)
+        self.assertNotIn("dispatch_visibility_since", self.record)
+        self.assertEqual(self.controller.occupied, 4)
+        self.assertNotIn("five", self.controller.tasks)
+
+    def test_base_format_run_must_match_before_green_merge(self):
+        self.record["last_dispatched_run"] = "legacy-run"
+        self.restart()
+        with self.advance(0):
+            self.controller.tick()
+        self.assertNotIn("completed", self.record)
+        self.assertEqual(self.controller.occupied, 1)
+        self.restart()
+        self.remote.run_id = "legacy-run"
+        with self.advance(1):
+            self.controller.tick()
+        self.assertIn("completed", self.record)
+        self.assertFalse(self.posts())
+        self.assertNotIn("dispatch_visibility_since", self.record)
+
     def test_acknowledged_run_not_yet_visible_never_replays_and_flags_stall(self):
         self.failed_review()
         with self.advance(0):
@@ -704,6 +752,88 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(status["health"], "needs_attention")
         self.assertIn("GitHub unavailable", status["tick_error"])
         self.assertNotIn("last_successful_tick", self.controller.state)
+
+    def test_post_and_patch_publication_failure_is_local_unhealthy_and_recovers(self):
+        for comment_id in (None, 99):
+            with self.subTest(comment_id=comment_id):
+                self.setUp()
+                self.remote.run_status = "RUNNING"
+                previous_success = "2026-11-07T23:00:00+00:00"
+                self.controller.state["last_successful_tick"] = previous_success
+                if comment_id:
+                    self.controller.state["status_comment"] = comment_id
+                target = "issues/comments/99" if comment_id else "issues/1/comments"
+                method = "PATCH" if comment_id else "POST"
+                original = self.remote.gh
+                def fail_publication(path, requested_method="GET", payload=None, **kwargs):
+                    if path == target and requested_method == method:
+                        self.remote.calls.append((requested_method, path, payload))
+                        raise RuntimeError("publication unavailable")
+                    return original(path, requested_method, payload, **kwargs)
+                self.remote.gh = fail_publication
+                for minute in (0, 1):
+                    with self.advance(minute):
+                        with self.assertRaisesRegex(RuntimeError, "publication unavailable"):
+                            self.controller.tick()
+                        summary = json.loads((Path(self.temp.name) / "status.json").read_text())
+                        self.assertEqual(summary["health"], "needs_attention")
+                        self.assertEqual(summary["publication_error"], "RuntimeError: publication unavailable")
+                        self.assertEqual(summary["updated"], "2026-11-08T00:0" + str(minute) + ":00+00:00")
+                        self.assertEqual(self.controller.state["last_successful_tick"], previous_success)
+                        self.assertEqual(len([c for c in self.remote.calls if c[0] == method and c[1] == target]), minute + 1)
+                        self.restart()
+                self.remote.gh = original
+                with self.advance(2):
+                    self.controller.tick()
+                summary = json.loads((Path(self.temp.name) / "status.json").read_text())
+                self.assertEqual(summary["health"], "observing")
+                self.assertIsNone(summary["publication_error"])
+                self.assertNotIn("publication_error", self.controller.state)
+                self.assertEqual(self.controller.state["last_successful_tick"], "2026-11-08T00:02:00+00:00")
+                self.assertEqual(len([c for c in self.remote.calls if c[0] == method and c[1] == target]), 3)
+
+    def test_publication_recovery_preserves_current_task_observation_error(self):
+        self.remote.agent = lambda r: (_ for _ in ()).throw(TimeoutError("Cursor unavailable"))
+        original = self.remote.gh
+        def fail_publication(path, method="GET", payload=None, **kwargs):
+            if method == "POST" and path == "issues/1/comments":
+                self.remote.calls.append((method, path, payload))
+                raise RuntimeError("publication unavailable")
+            return original(path, method, payload, **kwargs)
+        self.remote.gh = fail_publication
+        with self.assertRaisesRegex(RuntimeError, "publication unavailable"):
+            self.controller.tick()
+        summary = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertIn("last_error", summary["tasks"]["one"])
+        self.assertIn("publication unavailable", summary["publication_error"])
+        self.assertNotIn("last_successful_tick", self.controller.state)
+        self.remote.gh = original
+        self.restart()
+        self.controller.tick()
+        summary = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertEqual(summary["health"], "needs_attention")
+        self.assertIn("last_error", summary["tasks"]["one"])
+        self.assertIsNone(summary["publication_error"])
+        self.assertNotIn("last_successful_tick", self.controller.state)
+
+    def test_publication_error_does_not_mask_global_observation_exception(self):
+        original = self.remote.gh
+        def fail_both(path, method="GET", payload=None, **kwargs):
+            if path == "git/ref/heads/main":
+                raise TimeoutError("main unavailable")
+            if method == "POST" and path == "issues/1/comments":
+                self.remote.calls.append((method, path, payload))
+                raise RuntimeError("publication unavailable")
+            return original(path, method, payload, **kwargs)
+        self.remote.gh = fail_both
+        with self.assertRaisesRegex(TimeoutError, "main unavailable"):
+            self.controller.tick()
+        summary = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertEqual(summary["tick_error"], "TimeoutError: main unavailable")
+        self.assertEqual(summary["publication_error"], "RuntimeError: publication unavailable")
+        self.assertEqual(summary["health"], "needs_attention")
+        self.assertNotIn("last_successful_tick", self.controller.state)
+        self.assertEqual(len([c for c in self.remote.calls if c[0] == "POST"]), 1)
 
     def test_merge_publishes_progress_on_same_tick_before_early_return(self):
         self.record["last_error"] = "Previous observation failed"

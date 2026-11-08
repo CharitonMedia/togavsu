@@ -75,8 +75,14 @@ def review_problem(findings):
 def unobserved_run(record, snapshot):
     # A successful POST reserves a slot until its run becomes visible. A stale
     # predecessor is never evidence that the acknowledged worker is finished.
-    return bool(record.get("last_dispatched_run") and "last_dispatch_source_run" in record
-        and (not snapshot.get("run_id") or snapshot["run_id"] == record["last_dispatch_source_run"]))
+    expected = record.get("last_dispatched_run")
+    if not expected:
+        return False
+    if "last_dispatch_source_run" not in record:
+        # The base controller saved only the acknowledged ID. Without its
+        # predecessor, a different snapshot cannot prove this worker finished.
+        return snapshot.get("run_id") != expected
+    return not snapshot.get("run_id") or snapshot["run_id"] == record["last_dispatch_source_run"]
 
 
 def atomic(path, obj):
@@ -437,10 +443,14 @@ class Controller:
                 return False
         if unobserved_run(record, snapshot):
             record["waiting"] = "Await observation of acknowledged Cursor run; no duplicate prompt"
-            if age(record["last_dispatch_at"]) >= 900:
+            # Legacy records have no dispatch time. Start an honest inspection
+            # clock on first uncertainty instead of inventing a historical time.
+            since = record.get("last_dispatch_at") or record.setdefault("dispatch_visibility_since", now())
+            if age(since) >= 900:
                 record["stalled"] = {"kind": "run_observation", "reason":
                     "Acknowledged Cursor run not observed within 15 minutes; inspect existing run, do not replay"}
             return False
+        record.pop("dispatch_visibility_since", None)
         if record.get("stalled", {}).get("kind") == "run_observation":
             record.pop("stalled")
             record.pop("waiting", None)
@@ -815,6 +825,7 @@ class Controller:
         self.state["tick"] += 1
         self.state["last_tick"] = now()
         self.state.pop("tick_error", None)
+        self.state.pop("publication_error", None)
         try:
             self._tick()
         except Exception as error:
@@ -826,10 +837,22 @@ class Controller:
             self.state["health"] = "needs_attention" if attention or self.state.get("tick_error") else "observing"
             if attention or self.state.get("tick_error"):
                 self.state["last_result"] = "Needs supervision: " + (", ".join(attention) or "controller request failed")
-            if not self.state.get("tick_error") and not any(r.get("last_error") or r.get("launch_uncertain") for r in self.tasks.values()):
-                self.state["last_successful_tick"] = now()  # Control heartbeat only, never product progress.
             self.save()
-            self.publish()
+            try:
+                self.publish()
+            except Exception as error:
+                self.state["publication_error"] = type(error).__name__ + ": " + str(error)[:1800]
+                self.state["health"] = "needs_attention"
+                self.state["last_result"] += "; status publication failed"
+                self.save()
+                self.write_status()  # Local only. Never recursively retry the remote mutation.
+                if not self.state.get("tick_error"):
+                    raise  # Preserve an already-raised observation error, if any.
+            else:
+                if not self.state.get("tick_error") and not any(r.get("last_error") or r.get("launch_uncertain")
+                        for r in self.tasks.values() if not r.get("completed")):
+                    self.state["last_successful_tick"] = now()  # Control heartbeat only, never product progress.
+                    self.save()
 
     def _tick(self):
         self.adopt()
@@ -904,16 +927,22 @@ class Controller:
         self.state["last_result"] = "Waiting for agents/checks or ready work"
         self.save()
 
-    def publish(self):
+    def write_status(self):
         if self.dry:
             return
         summary = {"updated": now(), "tick": self.state["tick"], "health": self.state.get("health", "unknown"),
             "last_productive_progress": self.state.get("last_productive_progress"),
-            "tick_error": self.state.get("tick_error"), "tasks": {
+            "tick_error": self.state.get("tick_error"), "publication_error": self.state.get("publication_error"), "tasks": {
             k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "repair_window", "last_submission", "active_watch",
                 "completed", "halted", "stalled", "last_error", "waiting", "launch_uncertain", "intent") if field in v}
             for k, v in self.tasks.items()}}
         atomic(self.dir / "status.json", summary)
+        return summary
+
+    def publish(self):
+        if self.dry:
+            return
+        summary = self.write_status()
         # Only publish a changed state, not every timer heartbeat.
         public = dict(summary)
         public.pop("updated")
