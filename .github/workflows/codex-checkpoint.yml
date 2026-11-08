@@ -11,7 +11,7 @@ jobs:
   review:
     name: Codex checkpoint
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - name: Check trusted source
         env:
@@ -94,10 +94,14 @@ jobs:
           prompt: |
             Read docs/build/prompts/codex-review.md in the workspace root and follow it exactly.
             It is the trusted review policy. Return only the structured result it asks for.
+            Do the whole review yourself in this session; there are no helper agents.
+            Large diffs are expected. Take the turns you need and read every changed
+            file that bears on the assignment before you decide.
           claude_args: >-
             --model opus
             --allowedTools "Read,Glob,Grep"
-            --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+            --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch,Task,Agent"
+            --max-turns 400
             --json-schema '${{ steps.prep.outputs.schema }}'
       - name: Report reviewer error
         if: failure() && steps.review.outcome == 'failure'
