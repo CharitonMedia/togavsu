@@ -11,7 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
-from build_controller import Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
+from build_controller import AgentNotFound, Controller, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
 SPEC = {"id": "one", "depends_on": [], "prompt": "bounded task"}
@@ -1006,6 +1006,173 @@ class ControllerTests(unittest.TestCase):
         status = json.loads((Path(self.temp.name) / "status.json").read_text())
         self.assertIn("last_error", status["tasks"]["one"])
 
+    def occupy_other_slots(self):
+        for i in range(3):
+            task = "active-" + str(i)
+            self.controller.plan["tasks"].append({"id": task, "depends_on": []})
+            self.controller.tasks[task] = {"agent_id": task, "submitted": True}
+        self.controller.plan["tasks"].append({"id": "five", "depends_on": []})
+
+    def test_worker_observation_errors_never_free_capacity_or_overwrite_holds(self):
+        errors = [urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one/runs/R3", 404, "missing run", {}, None),
+                  urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one", 403, "forbidden", {}, None),
+                  urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one", 503, "unavailable", {}, None),
+                  TimeoutError("unreachable"), AgentNotFound("Cursor agent endpoint returned HTTP 404")]
+        for error in errors:
+            for pending in ("acknowledged", "intent", "initial"):
+                with self.subTest(error=type(error).__name__, pending=pending):
+                    self.setUp()
+                    self.record["halted"] = "Ownership mismatch"
+                    if pending != "initial":
+                        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2")
+                    if pending == "intent":
+                        self.record["intent"] = {"key": "pending", "repair": True, "previous_run": "R3", "time": "2026-11-08T00:00:00+00:00"}
+                    before = copy.deepcopy(self.record)
+                    self.occupy_other_slots()
+                    def unavailable(record):
+                        if record["agent_id"] == "bc-one":
+                            raise error
+                        return {"status": "RUNNING", "run_id": "active", "git": {}}
+                    self.remote.agent = unavailable
+                    for minute in (0, 1):
+                        self.restart()
+                        with self.advance(minute):
+                            self.controller.tick()
+                        self.assertEqual(self.controller.occupied, 4)
+                        self.assertNotIn("five", self.controller.tasks)
+                        self.assertNotIn("completed", self.record)
+                        self.assertEqual(self.record["halted"], "Ownership mismatch")
+                        self.assertEqual(self.record.get("intent"), before.get("intent"))
+                        self.assertEqual(self.record.get("last_dispatched_run"), before.get("last_dispatched_run"))
+                        self.assertIn("last_error", self.record)
+                        self.assertEqual(self.controller.state["health"], "needs_attention")
+                        self.assertNotIn("last_successful_tick", self.controller.state)
+                        self.assertFalse(any(c[1].startswith("pulls/") or c[1] == "/agents" for c in self.remote.calls))
+                        self.assertFalse(self.posts())
+
+    def test_run_404_during_launch_reconciliation_keeps_slot_until_observed(self):
+        self.record["submitted"] = False
+        self.occupy_other_slots()
+        def unavailable(record):
+            if record["agent_id"] == "bc-one":
+                raise urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one/runs/R3", 404, "missing run", {}, None)
+            return {"status": "RUNNING", "run_id": "active", "git": {}}
+        self.remote.agent = unavailable
+        for minute in (0, 1):
+            self.restart()
+            with self.advance(minute):
+                self.controller.tick()
+            self.assertTrue(self.record["launch_uncertain"])
+            self.assertFalse(self.record["submitted"])
+            self.assertNotIn("halted", self.record)
+            self.assertEqual(self.controller.occupied, 4)
+            self.assertNotIn("five", self.controller.tasks)
+        self.remote.agent = lambda record: {"status": "RUNNING", "run_id": "R3", "git": {}}
+        self.restart()
+        with self.advance(2):
+            self.controller.tick()
+        self.assertTrue(self.record["submitted"])
+        self.assertNotIn("launch_uncertain", self.record)
+        self.assertNotIn("last_error", self.record)
+        self.assertEqual(self.controller.occupied, 4)
+        self.assertFalse(any(c[1] == "/agents" for c in self.remote.calls))
+        self.assertFalse(self.posts())
+
+    def test_failed_create_or_conflict_inspection_keeps_slot_and_durable_id(self):
+        for outcome in ("timeout", "conflict"):
+            with self.subTest(outcome=outcome):
+                self.setUp()
+                self.record["submitted"] = False
+                self.record["starting_sha"] = BASE
+                self.occupy_other_slots()
+                def absent(record):
+                    if record["agent_id"] == "bc-one":
+                        raise AgentNotFound("Cursor agent endpoint returned HTTP 404")
+                    return {"status": "RUNNING", "run_id": "active", "git": {}}
+                self.remote.agent = absent
+                def uncertain(method, path, payload=None):
+                    self.remote.calls.append((method, path, payload))
+                    if outcome == "timeout":
+                        raise TimeoutError("creation response lost")
+                    raise urllib.error.HTTPError("https://api.cursor.com/v1" + path,
+                        409 if method == "POST" else 404, "unavailable", {}, None)
+                self.remote.cursor = uncertain
+                with self.advance(0):
+                    self.controller.tick()
+                self.assertEqual(self.controller.occupied, 4)
+                self.assertNotIn("five", self.controller.tasks)
+                self.assertIn("last_error", self.record)
+                launches = [c for c in self.remote.calls if c[0] == "POST" and c[1] == "/agents"]
+                self.assertEqual(len(launches), 1)
+                self.assertEqual(launches[0][2]["agentId"], "bc-one")
+                self.remote.agent = lambda record: {"status": "RUNNING", "run_id": "active", "git": {}}
+                self.restart()
+                with self.advance(1):
+                    self.controller.tick()
+                self.assertEqual(self.controller.occupied, 4)
+                self.assertNotIn("five", self.controller.tasks)
+                self.assertTrue(self.record["submitted"])
+                self.assertEqual(self.record["agent_id"], "bc-one")
+                self.assertEqual(len([c for c in self.remote.calls if c[0] == "POST" and c[1] == "/agents"]), 1)
+
+    def test_agent_endpoint_absence_cannot_discard_pending_dispatch(self):
+        for pending in ("acknowledged", "intent", "halted"):
+            with self.subTest(pending=pending):
+                self.setUp()
+                self.record["submitted"] = False
+                if pending == "acknowledged":
+                    self.record["last_dispatched_run"] = "R3"
+                elif pending == "intent":
+                    self.record["intent"] = {"key": "pending", "repair": True, "previous_run": "R2", "time": "2026-11-08T00:00:00+00:00"}
+                else:
+                    self.record["halted"] = "Ownership mismatch"
+                self.occupy_other_slots()
+                def unavailable(record):
+                    if record["agent_id"] == "bc-one":
+                        raise AgentNotFound("Cursor agent endpoint returned HTTP 404")
+                    return {"status": "RUNNING", "run_id": "active", "git": {}}
+                self.remote.agent = unavailable
+                for minute in (0, 1):
+                    self.restart()
+                    with self.advance(minute):
+                        self.controller.tick()
+                    self.assertEqual(self.controller.occupied, 4)
+                    self.assertNotIn("five", self.controller.tasks)
+                    self.assertTrue(self.record["launch_uncertain"])
+                    if pending == "halted":
+                        self.assertEqual(self.record["halted"], "Ownership mismatch")
+                    self.assertFalse(any(c[1] == "/agents" for c in self.remote.calls))
+                    self.assertFalse(self.posts())
+
+    def test_transient_run_404_blocks_green_merge_until_exact_run_is_visible(self):
+        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2")
+        original = self.remote.agent
+        def unavailable(record):
+            raise urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one/runs/R3", 404, "missing run", {}, None)
+        self.remote.agent = unavailable
+        for minute in (0, 1):
+            self.restart()
+            with self.advance(minute):
+                self.controller.tick()
+            self.assertEqual(self.controller.occupied, 1)
+            self.assertNotIn("halted", self.record)
+            self.assertNotIn("completed", self.record)
+            self.assertFalse(any(c[1].startswith("pulls/") for c in self.remote.calls))
+        self.remote.agent = original
+        self.remote.run_id = "R1"
+        self.restart()
+        with self.advance(2):
+            self.controller.tick()
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertNotIn("completed", self.record)
+        self.assertFalse(any(c[1].startswith("pulls/") for c in self.remote.calls))
+        self.remote.run_id = "R3"
+        self.restart()
+        with self.advance(3):
+            self.controller.tick()
+        self.assertIn("completed", self.record)
+        self.assertFalse(self.posts())
+
     def test_global_control_error_is_saved_even_before_worker_observation(self):
         original = self.remote.gh
         def fail_main(path, *args, **kwargs):
@@ -1188,7 +1355,7 @@ class ControllerTests(unittest.TestCase):
         self.controller.tasks.clear()
         (Path(self.temp.name) / "agents.json").write_text(json.dumps({"one": {"agent_id": "bc-existing", "starting_sha": BASE, "submitted": False}}))
         def absent(record):
-            raise urllib.error.HTTPError("test", 404, "missing", {}, None)
+            raise AgentNotFound("Cursor agent endpoint returned HTTP 404")
         self.remote.agent = absent
         self.controller.tick()
         launches = [c for c in self.remote.calls if c[1] == "/agents"]
@@ -1415,6 +1582,22 @@ class ControllerTests(unittest.TestCase):
 
 
 class ReviewDataTests(unittest.TestCase):
+    def test_only_agent_endpoint_404_establishes_agent_absence(self):
+        for endpoint, code in (("agent", 404), ("run", 404), ("agent", 403), ("run", 503)):
+            with self.subTest(endpoint=endpoint, code=code):
+                remote = Remote()
+                calls = []
+                def cursor(method, path, body=None):
+                    calls.append(path)
+                    if endpoint == "agent" or path.endswith("/runs/R3"):
+                        raise urllib.error.HTTPError("https://api.cursor.com/v1" + path, code, "unavailable", {}, None)
+                    return {"id": "bc-one", "latestRunId": "R3", "status": "RUNNING"}
+                remote.cursor = cursor
+                expected = AgentNotFound if endpoint == "agent" and code == 404 else urllib.error.HTTPError
+                with self.assertRaises(expected):
+                    remote.agent({"agent_id": "bc-one"})
+                self.assertEqual(calls, ["/agents/bc-one"] + (["/agents/bc-one/runs/R3"] if endpoint == "run" else []))
+
     def test_state_durability_orders_file_sync_replace_then_directory_sync(self):
         events = []
         sync, replace = os.fsync, os.replace

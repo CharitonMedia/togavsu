@@ -48,6 +48,10 @@ class ReviewSuperseded(Exception):
     pass
 
 
+class AgentNotFound(Exception):
+    """The agent endpoint itself returned 404, not its latest-run endpoint."""
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -179,7 +183,12 @@ class Remote:
             return json.load(response)
 
     def agent(self, record):
-        agent = self.cursor("GET", "/agents/" + record["agent_id"])
+        try:
+            agent = self.cursor("GET", "/agents/" + record["agent_id"])
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                raise AgentNotFound("Cursor agent endpoint returned HTTP 404") from error
+            raise
         run_id = agent.get("latestRunId")
         run = self.cursor("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id) if run_id else {}
         return {"status": run.get("status", agent.get("status")), "run_id": run_id,
@@ -888,36 +897,32 @@ class Controller:
         for task, record in list(self.tasks.items()):
             if task not in specs or record.get("completed"):
                 continue
-            if not record.get("submitted"):
-                try:
-                    snapshots[task] = self.remote.agent(record)
+            try:
+                snapshots[task] = self.remote.agent(record)
+                if not record.get("submitted"):
                     record["submitted"] = True  # Reconcile an uncertain idempotent create.
                     record.pop("launch_uncertain", None)
-                except urllib.error.HTTPError as error:
-                    if error.code == 404:
-                        record.pop("launch_uncertain", None)
-                        continue
+            except AgentNotFound as error:
+                if (not record.get("submitted") and not record.get("halted") and not record.get("intent")
+                        and "last_dispatched_run" not in record):
+                    # Only the agent endpoint can establish this case. Retry the
+                    # original idempotent create with its existing durable ID.
+                    record.pop("launch_uncertain", None)
+                    continue
+                self.occupied += 1  # A 404 does not prove a submitted worker stopped.
+                record["last_error"] = str(error) + "; existing worker requires inspection"
+                if not record.get("submitted"):
                     record["launch_uncertain"] = True
-                    self.occupied += 1
-                    continue
-                except Exception:
+                if not record.get("halted"):
+                    self.halt(task, record, "Cursor agent unavailable; verify existing worker before recovery")
+                continue
+            except Exception as error:
+                self.occupied += 1  # Includes run-endpoint 404 and every unknown observation outcome.
+                if not record.get("submitted"):
                     record["launch_uncertain"] = True
-                    self.occupied += 1
-                    continue
-            else:
-                try:
-                    snapshots[task] = self.remote.agent(record)
-                except urllib.error.HTTPError as error:
-                    if error.code == 404:
-                        self.halt(task, record, "Previously submitted Cursor agent no longer exists; not recreating blindly")
-                    else:
-                        self.occupied += 1
-                        record["last_error"] = "Cursor observation HTTP " + str(error.code)
-                    continue
-                except Exception as error:
-                    self.occupied += 1  # Unknown occupancy must reserve capacity, not create another job.
-                    record["last_error"] = type(error).__name__ + ": agent observation unavailable"
-                    continue
+                record["last_error"] = ("Cursor observation HTTP " + str(error.code) if isinstance(error, urllib.error.HTTPError)
+                    else type(error).__name__ + ": agent observation unavailable")
+                continue
             snapshot = snapshots[task]
             if snapshot["status"] in ACTIVE or record.get("intent") or unobserved_run(record, snapshot):
                 self.occupied += 1
@@ -939,7 +944,8 @@ class Controller:
             if self.occupied >= self.plan["max_implementation_agents"]:
                 break
             record = self.tasks.get(task, {})
-            if record.get("submitted") or record.get("halted") or record.get("launch_uncertain"):
+            if (record.get("submitted") or record.get("halted") or record.get("launch_uncertain")
+                    or record.get("intent") or "last_dispatched_run" in record):
                 continue
             if not all(self.tasks.get(dep, {}).get("completed") for dep in spec["depends_on"]):
                 continue
