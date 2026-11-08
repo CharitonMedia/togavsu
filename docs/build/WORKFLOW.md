@@ -35,7 +35,7 @@ Final acceptance additionally requires the full suite on a fresh Docker Desktop 
 Cursor does not assume Ponytail's Claude Code slash commands or hooks work. Preserve their substance explicitly: reuse existing code and the Go standard library first, review each phase diff for unnecessary complexity, apply only cuts that preserve PRD requirements, rerun tests, and record net lines and PONYTAIL-DEBT.md count. Every deliberate shortcut needs a ceiling, upgrade path and concrete upgrade trigger. Perform a whole-repo audit before the release tag.
 
 ## Credentials and cost
-The Codex GitHub Action uses the OPENAI_API_KEY repository secret and API billing, separate from Cursor/ChatGPT subscription allowances. The native Codex GitHub integration is optional extra review and is not automatically enabled by this setup.
+The review gate runs Opus through the Claude Code GitHub Action, authenticated by the CLAUDE_CODE_OAUTH_TOKEN repository secret (a `claude setup-token` token on the Max subscription). The check keeps the name Codex checkpoint so branch protection and the build controller are unchanged.
 Keys remain in the control environment or GitHub Secrets. Do not copy local credential files into cloud VMs or the repository.
 
 ## Repository enforcement

@@ -46,26 +46,35 @@ jobs:
           }))
           PY
           git -C candidate diff "$BASE_SHA...$HEAD_SHA" > review.diff
-      - name: Prepare unprivileged reviewer
+      - name: Prepare review output
+        id: prep
         run: |
-          sudo useradd --create-home --shell /bin/bash codex-reviewer
-          sudo chmod a+rx /home/runner /home/runner/work "$RUNNER_TEMP"
-          sudo chmod -R a+rX "$GITHUB_WORKSPACE"
           mkdir -p "$RUNNER_TEMP/codex-review-output"
-          sudo chown codex-reviewer "$RUNNER_TEMP/codex-review-output"
-      - name: Independent Codex review
-        id: codex
-        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
+          echo "schema=$(jq -c . docs/build/review.schema.json)" >> "$GITHUB_OUTPUT"
+      # Opus on the Max subscription replaces the OpenAI Codex action. The
+      # check name, artifact name and result path stay the same so the build
+      # controller and check_review.py need no change. Read-only tools only:
+      # no shell, no edits, no web, so candidate code is never executed.
+      - name: Independent Opus review
+        id: review
+        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1.0.255
         with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          prompt-file: docs/build/prompts/codex-review.md
-          output-schema-file: docs/build/review.schema.json
-          output-file: ${{ runner.temp }}/codex-review-output/review-result.json
-          sandbox: read-only
-          safety-strategy: unprivileged-user
-          codex-user: codex-reviewer
-          effort: high
-          allow-bot-users: cursor[bot]
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_bots: cursor[bot]
+          prompt: |
+            Read docs/build/prompts/codex-review.md in the workspace root and follow it exactly.
+            It is the trusted review policy. Return only the structured result it asks for.
+          claude_args: >-
+            --model opus
+            --allowedTools "Read,Glob,Grep"
+            --disallowedTools "Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch"
+            --json-schema '${{ steps.prep.outputs.schema }}'
+      - name: Write review result
+        if: always()
+        env:
+          RESULT: ${{ steps.review.outputs.structured_output }}
+        run: printf '%s' "$RESULT" > "$RUNNER_TEMP/codex-review-output/review-result.json"
       - name: Validate independent verdict
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
