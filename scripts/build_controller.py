@@ -86,15 +86,11 @@ def problem_fingerprints(problem):
 
 def unobserved_run(record, snapshot):
     # A successful POST reserves a slot until its run becomes visible. A stale
-    # predecessor is never evidence that the acknowledged worker is finished.
-    expected = record.get("last_dispatched_run")
-    if not expected:
+    # run, even one other than the immediate predecessor, proves nothing about it.
+    if "last_dispatched_run" not in record:
         return False
-    if "last_dispatch_source_run" not in record:
-        # The base controller saved only the acknowledged ID. Without its
-        # predecessor, a different snapshot cannot prove this worker finished.
-        return snapshot.get("run_id") != expected
-    return not snapshot.get("run_id") or snapshot["run_id"] == record["last_dispatch_source_run"]
+    expected = record.get("last_dispatched_run")
+    return not isinstance(expected, str) or not expected or snapshot.get("run_id") != expected
 
 
 def atomic(path, obj):
@@ -392,13 +388,17 @@ class Controller:
         try:
             result = self.remote.cursor("POST", "/agents/" + record["agent_id"] + "/runs", {"prompt": {"text": prompt}})
         except Exception:
-            self.event(task, "Delivery uncertain; next tick reconciles Cursor run identity before any replay")
+            self.event(task, "Delivery uncertain; integration lead must verify the dispatched run before reconciliation")
             raise
         self.acknowledge(record, result["run"]["id"])
         self.event(task, ("Cursor correction dispatched (cycle " + str(record.get("repair_count", 0)) + ")")
                    if repair else "Cursor integration conflict resolution dispatched")
 
     def acknowledge(self, record, run_id):
+        # Only a dispatch response (or independently verified delivery) binds an
+        # intent to a run. A different latestRunId alone is not that evidence.
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("Dispatch response missing a valid run ID; delivery remains uncertain")
         intent = record.pop("intent")
         record.setdefault("delivered", []).append(intent["key"])
         if intent["repair"]:
@@ -420,6 +420,9 @@ class Controller:
         record["last_dispatched_run"] = run_id
         record["last_dispatch_source_run"] = intent["previous_run"]
         record["last_dispatch_at"] = intent["time"]
+        if record.get("halted") in {"Delivery outcome uncertain; no automatic replay",
+                "Unreconciled delivery intent; refusing duplicate agent prompt"}:
+            record.pop("halted")
         record.pop("waiting", None)
         self.save()
 
@@ -449,16 +452,12 @@ class Controller:
             self.event(task, "Recovered obsolete lifetime correction cap; history retained, bounded recovery policy applies")
             self.save()
         if record.get("intent"):
-            if snapshot.get("run_id") and snapshot["run_id"] != record["intent"]["previous_run"]:
-                self.acknowledge(record, snapshot["run_id"])
-                if record.get("halted") in {"Delivery outcome uncertain; no automatic replay",
-                        "Unreconciled delivery intent; refusing duplicate agent prompt"}:
-                    record.pop("halted")
-                self.event(task, "Reconciled uncertain prompt with existing Cursor run")
-            else:
-                if not record.get("halted"):
-                    self.halt(task, record, "Delivery outcome uncertain; no automatic replay")
-                return False
+            # No acknowledgement survived. The snapshot may be any older run,
+            # not just previous_run, so it cannot establish delivery identity.
+            record["waiting"] = "Integration lead must verify delivery and reconcile the existing intent; no replay"
+            if not record.get("halted"):
+                self.halt(task, record, "Delivery outcome uncertain; no automatic replay")
+            return False
         if unobserved_run(record, snapshot):
             record["waiting"] = "Await observation of acknowledged Cursor run; no duplicate prompt"
             # Legacy records have no dispatch time. Start an honest inspection
