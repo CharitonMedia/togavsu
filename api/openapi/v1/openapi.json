@@ -67832,6 +67832,21 @@
               "received"
             ]
           },
+          "financial_classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "receipt",
+                  "invoice_pdf"
+                ],
+                "description": "Set by the core. receipt is an expense receipt. invoice_pdf is a stored invoice PDF. Every other file leaves this null. A caller cannot set it."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "attorney_only": {
             "type": "boolean"
           },
@@ -67941,7 +67956,7 @@
           "locked_fields",
           "warnings"
         ],
-        "description": "A core file record. Bytes live on a storage backend under an opaque key that this API does not return."
+        "description": "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it."
       },
       "FileRename": {
         "type": "object",

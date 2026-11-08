@@ -35,6 +35,7 @@ from contract.policy import (
     trust_flag_rows,
     custom_fields_outcome,
     event_read_scopes,
+    accountant_file_rows,
     file_download_decision,
     malware_scan_decision,
     operation_authorization,
@@ -2750,6 +2751,164 @@ class ContractTest(unittest.TestCase):
                 self.assertIn(confirm["name"], names, (operation["operationId"], path))
             for call, expected in calls:
                 self.assertEqual(_download_outcome(operation, call), expected, (operation["operationId"], path, call["role"]))
+
+    def test_accountant_reads_only_stored_receipts_and_invoice_pdfs(self):
+        self.assertIn("financial_classification", self.spec["components"]["schemas"]["File"]["properties"])
+        self.assertNotIn("financial_classification", self.spec["components"]["schemas"]["FileMetadataWrite"]["properties"])
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        stamp = "2026-11-07T18:00:00Z"
+        actor = "018f1a00-7b3c-7d4e-8a11-555555555555"
+
+        def stored(classification, **extra):
+            row = {
+                "id": file_id,
+                "created_at": stamp,
+                "updated_at": stamp,
+                "created_by": actor,
+                "name": "receipt.pdf",
+                "extension": "pdf",
+                "origin": "firm",
+                "attorney_only": False,
+                "shared_with_client": False,
+                "source": "upload",
+                "locked_fields": [],
+                "warnings": [],
+                "financial_classification": classification,
+                "matter_id": matter,
+            }
+            row.update(extra)
+            return row
+
+        receipt = stored("receipt")
+        invoice = stored("invoice_pdf", id="018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2", name="invoice.pdf")
+        ordinary = stored(None, id="018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa3", name="pleading.pdf")
+        absent = {key: value for key, value in stored(None, id="018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4").items() if key != "financial_classification"}
+        for row in (receipt, invoice, ordinary, absent):
+            _component_validator(self.spec, "File").validate(row)
+        download = _operation(self.spec, "downloadFileVersion")
+        get_file = _operation(self.spec, "getFile")
+        invoice_pdf = _operation(self.spec, "getInvoicePdf")
+        self.assertEqual(download["x-togavsu-access"]["accountant"], "receipts-and-invoice-pdfs")
+
+        def http(operation, record, **extra):
+            call = {
+                "role": "accountant",
+                "token_scopes": ["files:read"] if operation["operationId"] != "getInvoicePdf" else ["invoices:read"],
+                "file_id": None if record is None else record.get("id"),
+                "stored_file": record,
+                "matter_walled": False,
+                "attorney_only": False,
+                "on_wall": True,
+                "confirm": True,
+                "quarantined": False,
+                "shared": True,
+                **extra,
+            }
+            return file_download_decision(operation, call), operation_authorization(self.spec, operation, call)
+
+        for record in (receipt, invoice):
+            download_result, auth = http(download, record)
+            self.assertEqual(download_result, "audited", record["financial_classification"])
+            self.assertEqual(auth["result"], "allowed", record["financial_classification"])
+            self.assertTrue(auth["effects"], record["financial_classification"])
+            self.assertEqual(http(get_file, record)[1]["result"], "allowed", record["id"])
+        for label, record in (("ordinary", ordinary), ("absent", absent), ("missing", None)):
+            download_result, auth = http(download, record, file_id=file_id)
+            self.assertEqual(download_result, "not_found", label)
+            self.assertEqual(auth["result"], "not_found", label)
+            self.assertFalse(auth["effects"], label)
+        staff_download, staff_auth = http(download, ordinary, role="staff")
+        self.assertEqual(staff_download, "audited")
+        self.assertEqual(staff_auth["result"], "allowed")
+        self.assertTrue(staff_auth["effects"])
+        forged = {
+            "role": "accountant",
+            "token_scopes": ["files:read"],
+            "file_id": ordinary["id"],
+            "stored_file": ordinary,
+            "financial_classification": "receipt",
+            "matter_walled": False,
+            "confirm": True,
+            "quarantined": False,
+        }
+        self.assertEqual(file_download_decision(download, forged), "not_found")
+        self.assertFalse(operation_authorization(self.spec, download, forged)["effects"])
+        walled = {**receipt, "matter_walled": True}
+        wall_call = {
+            "role": "accountant",
+            "token_scopes": ["files:read"],
+            "file_id": receipt["id"],
+            "stored_file": walled,
+            "matter_membership": {matter: False},
+            "confirm": True,
+            "quarantined": False,
+        }
+        self.assertEqual(file_download_decision(download, wall_call), "not_found")
+        self.assertEqual(operation_authorization(self.spec, get_file, wall_call)["result"], "not_found")
+        hidden = {**receipt, "attorney_only": True}
+        hidden_call = {
+            "role": "accountant",
+            "token_scopes": ["files:read"],
+            "file_id": receipt["id"],
+            "stored_file": hidden,
+            "attorney_only": False,
+            "matter_walled": False,
+            "confirm": True,
+            "quarantined": False,
+        }
+        self.assertEqual(operation_authorization(self.spec, get_file, hidden_call)["result"], "not_found")
+        self.assertFalse(operation_authorization(self.spec, get_file, hidden_call)["effects"])
+        invoice_result, invoice_auth = http(invoice_pdf, None)
+        self.assertEqual(invoice_result, "audited")
+        self.assertEqual(invoice_auth["result"], "allowed")
+        self.assertTrue(invoice_auth["effects"])
+        visible = accountant_file_rows(
+            {"role": "accountant", "matter_membership": {matter: False}},
+            [receipt, invoice, ordinary, absent, hidden, walled],
+        )
+        self.assertEqual([row["id"] for row in visible], [receipt["id"], invoice["id"]])
+        self.assertEqual([row["id"] for row in accountant_file_rows({"role": "staff"}, [ordinary, receipt])], [ordinary["id"], receipt["id"]])
+
+        def opened(tool, record, **extra):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "tool": tool,
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": extra.pop("role", "accountant"),
+                    "token_scopes": extra.pop("token_scopes", ["files:read"]),
+                    "stored_file": record,
+                    "matter_walled": False,
+                    "confirm": True,
+                    "arguments": {
+                        "path": {
+                            "file_id": file_id if record is None else record["id"],
+                            "version_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa9",
+                        },
+                        "body": {"financial_classification": "receipt"},
+                        "query": {"financial_classification": "invoice_pdf"},
+                    },
+                    **extra,
+                },
+            )
+
+        allowed_download = opened("downloadFileVersion", receipt)
+        self.assertEqual(allowed_download["result"], "allowed")
+        self.assertTrue(allowed_download["effects"])
+        ordinary_read = opened("getFile", ordinary)
+        self.assertEqual(ordinary_read["result"], "not_found")
+        self.assertFalse(ordinary_read["effects"])
+        self.assertEqual(opened("getFile", None)["result"], "not_found")
+        self.assertFalse(opened("getFile", None)["effects"])
+        staff_read = opened("getFile", ordinary, role="staff")
+        self.assertEqual(staff_read["result"], "allowed")
+        self.assertTrue(staff_read["effects"])
+        pdf = opened("getInvoicePdf", None, token_scopes=["invoices:read"])
+        self.assertEqual(pdf["result"], "allowed")
+        self.assertTrue(pdf["effects"])
 
     def test_client_context_token_is_own_matter_only(self):
         operation = _operation(self.spec, "createModuleContextToken")

@@ -1362,6 +1362,12 @@ SCHEMAS = _register(
                 "category_id": _null(_uuid()),
                 "status": _null(_FILE_STATUS),
                 "origin": _enum(["firm", "received"]),
+                "financial_classification": _null(
+                    _enum(
+                        ["receipt", "invoice_pdf"],
+                        "Set by the core. receipt is an expense receipt. invoice_pdf is a stored invoice PDF. Every other file leaves this null. A caller cannot set it.",
+                    )
+                ),
                 "attorney_only": {"type": "boolean"},
                 "shared_with_client": {"type": "boolean"},
                 "source": {"type": "string"},
@@ -1375,7 +1381,7 @@ SCHEMAS = _register(
                 "included": _ref("Included"),
             },
             ["name", "extension", "origin", "attorney_only", "shared_with_client", "source", "locked_fields", "warnings"],
-            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return.",
+            "A core file record. Bytes live on a storage backend under an opaque key that this API does not return. financial_classification is server-owned: an expense receipt or a stored invoice PDF. Write requests cannot set it.",
         ),
         "FileRename": _obj({"name": {"type": "string", "minLength": 1}}, ["name"], "The extension stays. A rename is edit history."),
         "FileMove": _obj({"folder_id": _null(_uuid())}, ["folder_id"], "Moves the record between folders. Bytes stay where they are."),

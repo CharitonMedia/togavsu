@@ -1252,6 +1252,78 @@ def custom_fields_batch(items: list[dict]) -> str:
     return "allowed"
 
 
+_ACCOUNTANT_FILE_CLASSES = frozenset({"receipt", "invoice_pdf"})
+
+
+def _trusted_file_records(call: dict) -> list[dict]:
+    """Records the core loaded. A classification on the call or in tool arguments is not one of these."""
+    rows: list[dict] = []
+    one = call.get("stored_file")
+    if isinstance(one, dict):
+        rows.append(one)
+    many = call.get("stored_files")
+    if isinstance(many, list):
+        rows.extend(row for row in many if isinstance(row, dict))
+    return rows
+
+
+def _financial_classification(record: dict | None) -> str | None:
+    if not isinstance(record, dict):
+        return None
+    value = record.get("financial_classification")
+    if value in _ACCOUNTANT_FILE_CLASSES:
+        return value
+    return None
+
+
+def _stored_file_hidden(caller: dict, record: dict) -> bool:
+    if record.get("attorney_only") is True and caller.get("role") not in ("attorney", "admin"):
+        return True
+    matter_id = record.get("matter_id", caller.get("matter_id"))
+    walled = record.get("matter_walled")
+    if walled is True and not matter_visible(caller, {"matter_id": matter_id, "matter_walled": True}, single_record=True):
+        return True
+    return False
+
+
+def accountant_file_rows(caller: dict, rows: list[dict]) -> list[dict]:
+    """Accountants receive receipts and invoice PDFs. Other roles keep the rows they were given."""
+    if caller.get("role") != "accountant":
+        return list(rows)
+    visible = []
+    for row in rows:
+        if not isinstance(row, dict) or _financial_classification(row) is None or _stored_file_hidden(caller, row):
+            continue
+        visible.append(row)
+    return visible
+
+
+def _accountant_financial_denial(operation: dict, call: dict) -> str | None:
+    """None when this caller may read the file. Accountants need the core's classification."""
+    if operation.get("x-togavsu-access", {}).get("accountant") != "receipts-and-invoice-pdfs":
+        return None
+    if call.get("role") != "accountant":
+        return None
+    if operation.get("operationId") == "getInvoicePdf":
+        return None
+    records = _trusted_file_records(call)
+    if operation.get("operationId") == "listFile":
+        return None
+    if operation.get("operationId") == "createFileArchive":
+        if not records or any(_financial_classification(row) is None or _stored_file_hidden(call, row) for row in records):
+            return "not_found"
+        return None
+    file_id = call.get("file_id")
+    if file_id:
+        matches = [row for row in records if row.get("id") == file_id or row.get("file_id") == file_id]
+        record = matches[0] if matches else None
+    else:
+        record = records[0] if len(records) == 1 else None
+    if _financial_classification(record) is None or _stored_file_hidden(call, record or {}):
+        return "not_found"
+    return None
+
+
 def file_download_decision(operation: dict, call: dict) -> str:
     access = operation["x-togavsu-access"]
     if "file.downloaded" not in operation.get("x-togavsu-events", []):
@@ -1266,6 +1338,9 @@ def file_download_decision(operation: dict, call: dict) -> str:
         return "not_found"
     if call.get("owner") == "other_client":
         return "not_found"
+    denied = _accountant_financial_denial(operation, call)
+    if denied:
+        return denied
     if call.get("quarantined") and call.get("confirm") is not True:
         return "quarantine_confirmation_required"
     return "highlighted" if call.get("role") == "client" else "audited"
@@ -1458,7 +1533,6 @@ def _module_scope_intersection(call: dict) -> dict:
 # context: the key documents post-authorization behavior and does not by itself allow a call.
 _CONTEXT_QUALIFIERS = frozenset(
     {
-        "accountant",
         "anonymous_when",
         "archive_cases",
         "assigns_matter",
@@ -1538,6 +1612,7 @@ _GATE_QUALIFIERS = frozenset(
     {
         "access_cases",
         "access_inherits",
+        "accountant",
         "admin_bypasses_wall",
         "admin_sees_others",
         "attorney_only",
@@ -1674,6 +1749,9 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
     inherited = _inherited_record_denial(operation, subject)
     if inherited:
         return {"result": inherited, **denied}
+    financial = _accountant_financial_denial(operation, subject)
+    if financial:
+        return {"result": financial, **denied}
     routed = _replacement_decision(operation, subject)
     if routed:
         return {**denied, **routed, "public": False}
@@ -1753,6 +1831,8 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "attorney_only": call.get("attorney_only"),
         "shared": call.get("shared"),
         "file_id": path.get("file_id") or body.get("file_id") or call.get("file_id"),
+        "stored_file": call.get("stored_file") if isinstance(call.get("stored_file"), dict) else None,
+        "stored_files": [row for row in call.get("stored_files") or [] if isinstance(row, dict)],
         "version_id": path.get("version_id") or body.get("version_id") or call.get("version_id"),
         "upload_id": path.get("upload_id") or call.get("upload_id"),
         "field": call.get("field") or query.get("field"),
