@@ -1694,9 +1694,62 @@ func TestRolledBackRecordRestartsWhenOnlyTheConfiguredNameRemains(t *testing.T) 
 	if err != nil || !ok || got.Status != "failed" || got.Recovery != "rolled_back" || got.Status == "running" {
 		t.Fatalf("%+v %v %v", got, ok, err)
 	}
-	if len(cat.dropped) != 1 || cat.dropped[0] != "freshdb" || cat.present["origdb"] != true {
-		t.Fatalf("dropped %v present %v", cat.dropped, cat.present)
+	if len(cat.dropped) != 0 || cat.present["freshdb"] != true || cat.present["origdb"] != true {
+		t.Fatalf("unverified fresh database was removed: dropped %v present %v", cat.dropped, cat.present)
 	}
+}
+
+func TestRolledBackDropRequiresTheRecordedOID(t *testing.T) {
+	put := func(oid string) (*Operations, *verifyDropCatalog, *[]string) {
+		j := OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+		if err := j.Put(journalRecord{
+			Record: RestoreRecord{ID: "restore-rb-oid", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseRolledBack,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{
+				Configured: "origdb", Fresh: "freshdb", Replaced: "origdb_replaced_abcd",
+				SwapIntended: true, SwapRolledBack: true, OpID: "restore-rb-oid", FreshOID: oid,
+			},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var order []string
+		cat := &verifyDropCatalog{dropCatalog: dropCatalog{present: map[string]bool{"origdb": true, "freshdb": true}}, oid: "10"}
+		ops := &Operations{Gate: &Gate{}, Journal: j, Runtime: &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}, Catalog: cat}
+		return ops, cat, &order
+	}
+	t.Run("mismatch", func(t *testing.T) {
+		ops, cat, order := put("99")
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(*order, "restart:core-1") || len(cat.dropped) != 0 || cat.present["freshdb"] != true {
+			t.Fatalf("order %v dropped %v present %v", *order, cat.dropped, cat.present)
+		}
+	})
+	t.Run("match", func(t *testing.T) {
+		ops, cat, order := put("10")
+		if err := ops.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(*order, "restart:core-1") || len(cat.dropped) != 1 || cat.dropped[0] != "freshdb" || cat.present["origdb"] != true {
+			t.Fatalf("order %v dropped %v present %v", *order, cat.dropped, cat.present)
+		}
+	})
+}
+
+type verifyDropCatalog struct {
+	dropCatalog
+	oid string
+}
+
+func (d *verifyDropCatalog) DropVerified(_ context.Context, _, fresh, oid string) error {
+	if oid != d.oid {
+		return errSwapUnobserved
+	}
+	return d.Drop(context.Background(), fresh)
 }
 
 type dropCatalog struct {

@@ -119,7 +119,12 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return BackupMeta{}, err
 	}
-	if err := s.RecoverPlaintext(); err != nil {
+	unlock, err := s.lockScratch()
+	if err != nil {
+		return BackupMeta{}, err
+	}
+	defer unlock()
+	if err := s.recoverPlaintext(); err != nil {
 		return BackupMeta{}, err
 	}
 	now := s.now().UTC()
@@ -1699,7 +1704,17 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 		return fail(err)
 	}
 	defer rc.Close()
-	if err := s.RecoverPlaintext(); err != nil {
+	unlock, err := s.lockScratch()
+	if err != nil {
+		return fail(err)
+	}
+	locked := true
+	defer func() {
+		if locked {
+			unlock()
+		}
+	}()
+	if err := s.recoverPlaintext(); err != nil {
 		return fail(err)
 	}
 	work, cleanupWork, err := s.plaintextWorkspace("restore-")
@@ -1770,9 +1785,11 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 		return fail(err)
 	}
 	payload := RestorePayload{Dump: f, Manifest: man, Files: files}
+	locked = false
 	return payload, func() {
 		f.Close()
 		cleanupWork()
+		unlock()
 	}, nil
 }
 
@@ -1875,7 +1892,21 @@ func (s *Store) contained(id, suffix string) (string, error) {
 // RecoverPlaintext removes plaintext dumps left on the backup volume and in
 // this installation's scratch directory. A workspace this process still has
 // open is left in place. Symlinks are not removed and are not followed.
+// The scratch lock is shared with every other process using this backup
+// directory, so recovery waits instead of deleting a live workspace.
 func (s *Store) RecoverPlaintext() error {
+	if s == nil || s.Dir == "" {
+		return nil
+	}
+	unlock, err := s.lockScratch()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return s.recoverPlaintext()
+}
+
+func (s *Store) recoverPlaintext() error {
 	if s == nil || s.Dir == "" {
 		return nil
 	}
@@ -1887,6 +1918,30 @@ func (s *Store) RecoverPlaintext() error {
 		return err
 	}
 	return removeAbandonedPlaintext(root, s.activeScratch())
+}
+
+// lockScratch is an exclusive lock shared by every process that uses this
+// backup directory. It is held for the whole life of a plaintext workspace.
+func (s *Store) lockScratch() (func(), error) {
+	if s == nil || s.Dir == "" {
+		return func() {}, nil
+	}
+	root, err := s.scratchRoot()
+	if err != nil {
+		return func() {}, err
+	}
+	f, err := os.OpenFile(filepath.Join(root, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return func() {}, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return func() {}, err
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
 
 func (s *Store) activeScratch() map[string]struct{} {

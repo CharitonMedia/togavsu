@@ -1410,26 +1410,23 @@ func (o *Operations) keepPending(rec RestoreRecord, phase, recovery string, caus
 }
 
 // dropRolledBackFresh removes the loaded database only after the journal
-// already says the rename rolled back. A drop error does not block writer
-// recovery: the configured database still holds the previous data.
+// already says the rename rolled back, and only when the recorded oid still
+// bears that fresh name. A name with no oid, or a different oid, is left in
+// place. A drop error does not block writer recovery.
 func (o *Operations) dropRolledBackFresh(item journalRecord) {
 	db := item.Database
-	if db == nil || db.Fresh == "" || db.Fresh == db.Configured || o.Catalog == nil {
+	if db == nil || db.Fresh == "" || db.Fresh == db.Configured || db.OpID == "" || db.FreshOID == "" || o.Catalog == nil {
 		return
 	}
-	cleaner, ok := o.Catalog.(interface {
-		Drop(context.Context, string) error
+	dropper, ok := o.Catalog.(interface {
+		DropVerified(context.Context, string, string, string) error
 	})
 	if !ok {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), o.recoveryTimeout())
 	defer cancel()
-	st, err := o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
-	if err != nil || st == nil || !st[db.Fresh] {
-		return
-	}
-	_ = cleaner.Drop(ctx, db.Fresh)
+	_ = dropper.DropVerified(ctx, db.OpID, db.Fresh, db.FreshOID)
 }
 
 func (o *Operations) blockUnresolved() error {

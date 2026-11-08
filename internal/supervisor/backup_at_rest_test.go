@@ -17,6 +17,47 @@ import (
 	"time"
 )
 
+func TestOtherProcessWaitsForTheLiveScratchWorkspace(t *testing.T) {
+	s := testStore(t)
+	work, cleanup, err := s.plaintextWorkspace("staging-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "dump.sql"), []byte("LIVE"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := s.lockScratch()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := &Store{Dir: s.Dir}
+	done := make(chan error, 1)
+	go func() {
+		done <- other.RecoverPlaintext()
+	}()
+	select {
+	case err := <-done:
+		unlock()
+		cleanup()
+		t.Fatalf("recovery removed a locked workspace: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if _, err := os.Stat(filepath.Join(work, "dump.sql")); err != nil {
+		unlock()
+		t.Fatalf("live workspace was removed: %v", err)
+	}
+	cleanup()
+	unlock()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("recovery did not finish after the workspace lock was released")
+	}
+}
+
 func TestPlaintextWorkspacesStayOffTheBackupVolume(t *testing.T) {
 	s := testStore(t)
 	s.Dump = func(ctx context.Context, w io.Writer) error {

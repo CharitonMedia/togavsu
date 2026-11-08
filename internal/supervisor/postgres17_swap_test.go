@@ -771,8 +771,12 @@ func TestOwnedTempDatabaseSurvivesOnlyWhenVerified(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		cluster, err := clusterID(context.Background(), psql, admin)
+		if err != nil || cluster == "" {
+			t.Fatal(cluster, err)
+		}
 		insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, fresh_oid, configured_oid) VALUES (" +
-			opLit + ", 'togavsu', '" + keep + "', 'togavsu_replaced_reused', '1', 'owned', '" + wrong + "', '1')"
+			opLit + ", 'togavsu', '" + keep + "', 'togavsu_replaced_reused', '" + cluster + "', 'loading', '" + wrong + "', '1')"
 		if err := psqlExec(context.Background(), psql, admin, insert); err != nil {
 			t.Fatal(err)
 		}
@@ -918,6 +922,68 @@ func TestUnverifiedAllocationRestartsWriters(t *testing.T) {
 			t.Fatal("verified allocation was kept or an unrelated database was removed")
 		}
 	})
+}
+
+func TestRolledBackRecoveryKeepsRecreatedFreshDatabase(t *testing.T) {
+	psql := psqlBin(t)
+	admin := postgres17Admin(t)
+	orig, fresh, replaced := swapPair(t, psql, admin)
+	cluster, cfgOID, oldOID := dbIdentity(t, psql, admin, orig, fresh)
+	if oldOID == "" {
+		t.Fatal("fresh oid was not recorded")
+	}
+	dropDatabaseIfExists(psql, admin, fresh)
+	seedMarker(t, psql, admin, fresh, "recreated")
+	newOID, err := databaseOID(context.Background(), psql, admin, fresh)
+	if err != nil || newOID == "" || newOID == oldOID {
+		t.Fatal(newOID, err)
+	}
+	opID, err := newRestoreOpID(time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureRestoreSchema(context.Background(), psql, admin); err != nil {
+		t.Fatal(err)
+	}
+	opLit, err := sqlText(opID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	insert := "INSERT INTO togavsu_restore_op (op_id, configured, fresh, replaced, cluster_id, state, fresh_oid, configured_oid) VALUES (" +
+		opLit + ", '" + orig + "', '" + fresh + "', '" + replaced + "', '" + cluster + "', 'loading', '" + oldOID + "', '" + cfgOID + "')"
+	if err := psqlExec(context.Background(), psql, admin, insert); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+	ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+	if err := ops.Journal.Put(journalRecord{
+		Record: RestoreRecord{ID: "restore-recreated", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+		Phase:  phaseRolledBack,
+		Containers: []containerIntent{{
+			ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+		}},
+		Database: &databaseIntent{
+			Configured: orig, Fresh: fresh, Replaced: replaced,
+			SwapIntended: true, SwapRolledBack: true, OpID: opID,
+			ClusterID: cluster, ConfiguredOID: cfgOID, FreshOID: oldOID,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ops.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !containsStep(order, "restart:core-1") {
+		t.Fatalf("writers stayed stopped: %v", order)
+	}
+	if note(t, psql, admin, orig) != "old" || note(t, psql, admin, fresh) != "recreated" {
+		t.Fatal("rolled-back recovery removed the recreated database")
+	}
+	gotOID, err := databaseOID(context.Background(), psql, admin, fresh)
+	if err != nil || gotOID != newOID {
+		t.Fatalf("fresh oid changed from %s to %s (%v)", newOID, gotOID, err)
+	}
 }
 
 func TestDifferentClusterIsRejected(t *testing.T) {
