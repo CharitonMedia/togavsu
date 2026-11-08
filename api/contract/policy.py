@@ -1442,21 +1442,26 @@ def _principal_code(operation: dict, call: dict) -> str | None:
         "scopes": list(call.get("approved_scopes") or call.get("token_scopes") or []),
         "module_id": call.get("module_id"),
         "path_module_id": call.get("path_module_id"),
-        "heading": call.get("heading"),
-        "target": call.get("target"),
         "owner_module_id": call.get("owner_module_id"),
         "action": call.get("action"),
         "marker_id": call.get("marker_id"),
-        "label": call.get("label"),
-        "color": call.get("color"),
         "created_at": call.get("created_at"),
         "created_by": call.get("created_by"),
         "committed": True,
+        "replay": bool(call.get("replay")),
     }
+    for name in ("label", "color", "target", "heading"):
+        if name in call:
+            adapted[name] = call.get(name)
     if scope == "help:write":
         return module_help_registration(operation, adapted)
     if scope == "markers:write":
-        return module_marker_registration(operation, {"definitions": [], "attachments": []}, adapted)["result"]
+        rows = []
+        if isinstance(call.get("stored_definition"), dict):
+            rows.append(dict(call["stored_definition"]))
+        if isinstance(call.get("stored_definitions"), list):
+            rows.extend(dict(row) for row in call["stored_definitions"] if isinstance(row, dict))
+        return module_marker_registration(operation, {"definitions": rows, "attachments": []}, adapted)["result"]
     return "forbidden"
 
 
@@ -1842,8 +1847,6 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "owner_module_id": body.get("owner_module_id"),
         "action": action or call.get("action"),
         "marker_id": path.get("marker_id") or body.get("marker_id") or call.get("marker_id"),
-        "label": body.get("label", call.get("label")),
-        "color": body.get("color", call.get("color")),
         "created_at": call.get("created_at"),
         "created_by": call.get("created_by"),
         "entry_type": body.get("entry_type", call.get("entry_type")),
@@ -1857,7 +1860,9 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "payment_id": path.get("payment_id") or call.get("payment_id"),
         "trust_linked": call.get("trust_linked"),
         "domain_handlers": call.get("domain_handlers"),
-        "include": query.get("include") if isinstance(query.get("include"), list) else call.get("include"),
+        "include": published_include(query["include"]) if "include" in query else published_include(call.get("include")),
+        "stored_definition": dict(call["stored_definition"]) if isinstance(call.get("stored_definition"), dict) else None,
+        "stored_definitions": [dict(row) for row in call.get("stored_definitions") or [] if isinstance(row, dict)],
         "confirm": query.get("confirm", query.get("confirm_quarantine", call.get("confirm"))),
         "quarantined": call.get("quarantined"),
         "principal_user_id": call.get("principal_user_id") or call.get("user_id"),
@@ -1868,7 +1873,11 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "tenant_id": call.get("tenant_id"),
         "principal_matter_ids": call.get("principal_matter_ids"),
         "queue": body.get("queue", call.get("queue")),
+        "replay": bool(call.get("replay")),
     }
+    for name in ("label", "color", "target"):
+        if name in body or name in call:
+            subject[name] = body[name] if name in body else call.get(name)
     if items is not None:
         subject["items"] = items
     elif isinstance(call.get("items"), list):
@@ -3218,17 +3227,36 @@ def commit_concurrent_publishes(policy: dict, operation: dict, grant: dict, uplo
     return {"store": store, "first": first, "second": second}
 
 
+def _notification_scope(access: dict, call: dict) -> str | None:
+    """A presented bearer must hold the operation scope. A session call with no token list is unchanged."""
+    if "token_scopes" not in call:
+        return None
+    needed = list(access.get("scopes") or [])
+    held = set(call.get("token_scopes") or [])
+    if call.get("module_id"):
+        held &= set(call.get("approved_scopes") or [])
+    if any(scope not in held for scope in needed):
+        return "scope_denied"
+    return None
+
+
 def notification_recipient_decision(operation: dict, call: dict) -> str:
     """Reads and read-state changes are the caller's own rows. Creation may name another recipient."""
     access = operation["x-togavsu-access"]
     if access.get("creation_separate") or access.get("recipient") == "named_on_create":
         if call.get("role") not in access.get("roles", []):
             return "forbidden"
+        denied = _notification_scope(access, call)
+        if denied:
+            return denied
         return "allowed"
     if access.get("owner") != "self" or access.get("admin_sees_others"):
         return "forbidden"
     if call.get("role") not in access.get("roles_bound", []):
         return "forbidden"
+    denied = _notification_scope(access, call)
+    if denied:
+        return denied
     if call.get("owner") != "self":
         return "not_found"
     if call.get("recipient_user_id") not in (None, call.get("caller_user_id")):
@@ -3877,6 +3905,22 @@ def _hides_attorney_only_record(access: dict) -> bool:
     return value in (True, "excluded", "not_found")
 
 
+def published_include(value) -> list[str]:
+    """The published include parameter is a comma-separated string. A list is the same names."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, list):
+        names: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                return ["*"]
+            names.extend(part.strip() for part in item.split(",") if part.strip())
+        return names
+    return ["*"]
+
+
 def include_views_decision(operation: dict, call: dict) -> str:
     """include= is the approved view scope, not a bypass of role or wall."""
     access = operation["x-togavsu-access"]
@@ -3891,7 +3935,7 @@ def include_views_decision(operation: dict, call: dict) -> str:
     approved = set(call.get("approved_scopes") or [])
     if "current_approved_scopes" in call:
         approved &= set(call.get("current_approved_scopes") or [])
-    for view in call.get("include") or []:
+    for view in published_include(call.get("include")):
         if view.count(".") != 1:
             return "validation_failed"
         if "*" in view or "?" in view:

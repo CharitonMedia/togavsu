@@ -4595,6 +4595,210 @@ class ContractTest(unittest.TestCase):
             "not_found",
         )
 
+    def test_dispatch_checks_notification_scopes_include_strings_and_marker_updates(self):
+        def bearer(**extra):
+            return {"authorization": "Bearer secret", "authorization_scheme": "Bearer", "credential_valid": True, **extra}
+
+        caller = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        own = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["notifications:read"], owner="self", caller_user_id=caller),
+                "tool": "listNotification",
+                "arguments": {},
+            },
+        )
+        self.assertEqual(own["result"], "allowed")
+        self.assertTrue(own["effects"])
+        missing = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], owner="self", caller_user_id=caller),
+                "tool": "listNotification",
+                "arguments": {},
+            },
+        )
+        self.assertEqual(missing["result"], "scope_denied")
+        self.assertFalse(missing["effects"])
+        read_only_delete = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["notifications:read"], owner="self", caller_user_id=caller),
+                "tool": "deleteNotification",
+                "arguments": {"path": {"notification_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"}},
+            },
+        )
+        self.assertEqual(read_only_delete["result"], "scope_denied")
+        self.assertFalse(read_only_delete["effects"])
+        deleted = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["notifications:write"], owner="self", caller_user_id=caller),
+                "tool": "deleteNotification",
+                "arguments": {"path": {"notification_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaaa"}},
+            },
+        )
+        self.assertEqual(deleted["result"], "allowed")
+        self.assertTrue(deleted["effects"])
+        other = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["notifications:write"], owner="other_user", caller_user_id=caller),
+                "tool": "deleteNotification",
+                "arguments": {},
+            },
+        )
+        self.assertEqual(other["result"], "not_found")
+        self.assertFalse(other["effects"])
+        created = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["matters:read"]), "tool": "createNotification", "arguments": {}},
+        )
+        self.assertEqual(created["result"], "scope_denied")
+        self.assertFalse(created["effects"])
+        created_ok = mcp_tool_dispatch(
+            self.spec,
+            {**bearer(role="staff", token_scopes=["notifications:write"]), "tool": "createNotification", "arguments": {}},
+        )
+        self.assertEqual(created_ok["result"], "allowed")
+        self.assertTrue(created_ok["effects"])
+        secret_view = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"]),
+                "tool": "listMatter",
+                "arguments": {"query": {"include": "other.secret"}},
+            },
+        )
+        self.assertEqual(secret_view["result"], "forbidden")
+        self.assertFalse(secret_view["effects"])
+        paired = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                "tool": "listMatter",
+                "arguments": {"query": {"include": "matter-clock.targets, other.secret"}},
+            },
+        )
+        self.assertEqual(paired["result"], "forbidden")
+        self.assertFalse(paired["effects"])
+        listed = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                "tool": "listMatter",
+                "arguments": {"query": {"include": ["matter-clock.targets"]}},
+            },
+        )
+        self.assertEqual(listed["result"], "allowed")
+        self.assertTrue(listed["effects"])
+        named = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read", "views:matter-clock.targets:read"]),
+                "tool": "listMatter",
+                "arguments": {"query": {"include": "matter-clock.targets"}},
+            },
+        )
+        self.assertEqual(named["result"], "allowed")
+        self.assertTrue(named["effects"])
+        broken = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(role="staff", token_scopes=["matters:read"], approved_scopes=["matters:read"]),
+                "tool": "listMatter",
+                "arguments": {"query": {"include": 5}},
+            },
+        )
+        self.assertEqual(broken["result"], "validation_failed")
+        self.assertFalse(broken["effects"])
+        marker_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        definition = {
+            "id": marker_id,
+            "label": "After hours",
+            "color": "#336699",
+            "active": True,
+            "module_id": "intake",
+            "namespace": "intake",
+            "target": None,
+        }
+        updated = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=definition),
+                "tool": "updateModuleMarker",
+                "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}, "body": {"color": "#AABBCC"}},
+            },
+        )
+        self.assertEqual(updated["result"], "allowed")
+        self.assertTrue(updated["effects"])
+        self.assertTrue(definition["active"])
+        self.assertEqual(definition["color"], "#336699")
+        revoked = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=dict(definition)),
+                "tool": "revokeModuleMarker",
+                "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}},
+            },
+        )
+        self.assertEqual(revoked["result"], "allowed")
+        self.assertTrue(revoked["effects"])
+        self.assertTrue(definition["active"])
+        missing_marker = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"]),
+                "tool": "updateModuleMarker",
+                "arguments": {
+                    "path": {"module_id": "intake", "marker_id": marker_id},
+                    "body": {"definition": {**definition, "module_id": "intake"}, "color": "#000000"},
+                },
+            },
+        )
+        self.assertEqual(missing_marker["result"], "not_found")
+        self.assertFalse(missing_marker["effects"])
+        foreign = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(
+                    viewer_present=False,
+                    module_id="intake",
+                    approved_scopes=["markers:write"],
+                    stored_definition={**definition, "module_id": "victim"},
+                ),
+                "tool": "revokeModuleMarker",
+                "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}},
+            },
+        )
+        self.assertEqual(foreign["result"], "forbidden")
+        self.assertFalse(foreign["effects"])
+        replayed = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(viewer_present=False, module_id="intake", approved_scopes=["markers:write"], stored_definition=dict(definition), replay=True),
+                "tool": "revokeModuleMarker",
+                "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}},
+            },
+        )
+        self.assertEqual(replayed["result"], "original_result")
+        self.assertFalse(replayed["effects"])
+        inactive = mcp_tool_dispatch(
+            self.spec,
+            {
+                **bearer(
+                    viewer_present=False,
+                    module_id="intake",
+                    approved_scopes=["markers:write"],
+                    stored_definition={**definition, "active": False},
+                ),
+                "tool": "updateModuleMarker",
+                "arguments": {"path": {"module_id": "intake", "marker_id": marker_id}, "body": {"color": "#000000"}},
+            },
+        )
+        self.assertEqual(inactive["result"], "conflict")
+        self.assertFalse(inactive["effects"])
+
     def test_owner_bound_events_follow_the_read_policy(self):
         owners = self.spec["x-togavsu-event-owners"]
         order = self.spec["webhooks"]["moduleEvent"]["post"]["x-togavsu-delivery-authorization"]["order"]
