@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -69,20 +70,6 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	if err != nil {
 		return err
 	}
-	// The dump copy is a temp file, not a directory on the backup volume.
-	// CreateTemp with an empty dir uses the system temp directory.
-	tmp, err := os.CreateTemp("", "togavsu-restore-*.sql")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := io.Copy(tmp, dump); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
 	var raw [6]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return err
@@ -104,13 +91,9 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	if err != nil {
 		return err
 	}
-	f, err := os.Open(tmp.Name())
-	if err != nil {
-		return err
-	}
-	err = ApplyCommand(bin, target)(ctx, f)
-	f.Close()
-	if err != nil {
+	// The dump is already the managed restore workspace. Streaming it avoids a
+	// second plaintext file that SIGKILL would leave in the system temp dir.
+	if err := ApplyCommand(bin, target)(ctx, dump); err != nil {
 		return err
 	}
 	got, err := CountCommand(bin, target)(ctx)
@@ -248,8 +231,9 @@ func recoveryContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), limit)
 }
 
-// PostgresCatalog reads pg_database through the admin connection. It does not
-// rename or drop databases.
+// PostgresCatalog reads pg_database through the admin connection. Fence waits
+// until this operation's rename transaction has ended. It does not signal a
+// backend by pid.
 type PostgresCatalog struct {
 	Bin      string
 	AdminURL string
@@ -281,6 +265,20 @@ func (p PostgresCatalog) Observe(ctx context.Context, configured, fresh, replace
 	return observeDatabases(ctx, bin, p.AdminURL, configured, fresh, replaced)
 }
 
+// Fence acquires this operation's advisory lock. The rename transaction holds
+// that lock until it commits or aborts, so a successful fence means that
+// transaction can no longer commit. A timeout leaves the outcome unknown.
+func (p PostgresCatalog) Fence(ctx context.Context, configured, fresh, replaced string) error {
+	if p.AdminURL == "" {
+		return errSwapUnobserved
+	}
+	bin := p.Bin
+	if bin == "" {
+		bin = "psql"
+	}
+	return fenceSwapTransaction(ctx, bin, p.AdminURL, configured, fresh, replaced)
+}
+
 // swapDatabase renames orig to replaced and fresh to orig in one Postgres
 // transaction, then drops replaced. DROP DATABASE cannot run inside a
 // transaction block (verified on Postgres 17), so the drop stays outside.
@@ -303,7 +301,8 @@ func swapDatabase(ctx context.Context, bin, adminURL, orig, fresh, suffix string
 		}
 	}
 	_, _ = psqlLines(rec, bin, adminURL, "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '"+orig+"' AND pid <> pg_backend_pid()")
-	txn := "BEGIN; ALTER DATABASE " + orig + " RENAME TO " + replaced + "; ALTER DATABASE " + fresh + " RENAME TO " + orig + "; COMMIT;"
+	k1, k2 := swapLockKeys(orig, fresh, replaced)
+	txn := fmt.Sprintf("BEGIN; SELECT pg_advisory_xact_lock(%d, %d); ALTER DATABASE %s RENAME TO %s; ALTER DATABASE %s RENAME TO %s; COMMIT;", k1, k2, orig, replaced, fresh, orig)
 	txnErr := psqlExec(ctx, bin, adminURL, txn)
 	if txnErr != nil {
 		return reconcileSwap(ctx, bin, adminURL, orig, fresh, replaced, txnErr)
@@ -322,6 +321,7 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 	ctx, cancel := recoveryContext()
 	defer cancel()
 	last := stepErr
+	fenced := false
 	for attempt := 0; attempt < 4; attempt++ {
 		st, err := observeDatabases(ctx, bin, adminURL, orig, fresh, replaced)
 		if err != nil {
@@ -343,10 +343,17 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 			}
 			return nil
 		case st[orig] && st[fresh] && !st[replaced]:
-			// Nothing from the pair is visible. The transaction rolled back
-			// or never started. The configured name still has its writes.
-			// A failed step records that rollback before any caller deletes
-			// the loaded database. A nil step keeps the previous result.
+			// Unchanged names do not prove rollback while the rename
+			// transaction can still commit. The fence waits for that
+			// transaction's advisory lock, which it holds until commit or
+			// abort. A timeout stays unknown and does not restart writers.
+			if !fenced {
+				if err := fenceSwapTransaction(ctx, bin, adminURL, orig, fresh, replaced); err != nil {
+					return fmt.Errorf("%w: rename transaction is still in flight: %v", errSwapUnobserved, err)
+				}
+				fenced = true
+				continue
+			}
 			if stepErr != nil {
 				if err := recordSwapRolledBack(hookCtx, orig, fresh, replaced); err != nil {
 					return fmt.Errorf("%w: %v", errRollbackUnjournaled, err)
@@ -406,10 +413,50 @@ func reconcileSwap(hookCtx context.Context, bin, adminURL, orig, fresh, replaced
 	if st[replaced] && !st[fresh] {
 		return fmt.Errorf("%w: %s", ErrRestoreCleanup, Scrub(fmt.Sprint(last)))
 	}
-	if stepErr != nil && st[fresh] {
+	if stepErr != nil && st[fresh] && !st[replaced] {
+		if !fenced {
+			return fmt.Errorf("%w: rename transaction was not confirmed finished", errSwapUnobserved)
+		}
+		if err := recordSwapRolledBack(hookCtx, orig, fresh, replaced); err != nil {
+			return fmt.Errorf("%w: %v", errRollbackUnjournaled, err)
+		}
 		return stepErr
 	}
 	return nil
+}
+
+// swapFenceTimeout is how long recovery waits for the rename transaction to
+// end. A timeout is not evidence of rollback.
+var swapFenceTimeout = 5 * time.Second
+
+// swapLockKeys identifies one rename transaction. The key is derived from
+// that operation's database names, not from a backend pid.
+func swapLockKeys(orig, fresh, replaced string) (int32, int32) {
+	sum := sha256.Sum256([]byte("togavsu-swap-v1\x00" + orig + "\x00" + fresh + "\x00" + replaced))
+	k1 := int32(binary.BigEndian.Uint32(sum[0:4]) & 0x7fffffff)
+	k2 := int32(binary.BigEndian.Uint32(sum[4:8]) & 0x7fffffff)
+	if k1 == 0 && k2 == 0 {
+		k2 = 1
+	}
+	return k1, k2
+}
+
+// fenceSwapTransaction returns when this operation's rename transaction has
+// committed or aborted. It does not call pg_terminate_backend, so a reused
+// pid is never signaled. A lock timeout means the transaction is still live.
+func fenceSwapTransaction(ctx context.Context, bin, adminURL, orig, fresh, replaced string) error {
+	for _, name := range []string{orig, fresh, replaced} {
+		if !ident(name) {
+			return fmt.Errorf("database name: %w", ErrBadRequest)
+		}
+	}
+	ms := swapFenceTimeout.Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	k1, k2 := swapLockKeys(orig, fresh, replaced)
+	sql := fmt.Sprintf("SET lock_timeout = '%dms'; SELECT pg_advisory_lock(%d, %d); SELECT pg_advisory_unlock(%d, %d);", ms, k1, k2, k1, k2)
+	return psqlExec(ctx, bin, adminURL, sql)
 }
 
 func observeDatabases(ctx context.Context, bin, adminURL string, names ...string) (map[string]bool, error) {
@@ -547,19 +594,6 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		if adminURL == "" {
 			return nil, fmt.Errorf("ADMIN_DATABASE_URL: %w", ErrBadRequest)
 		}
-		// Same as restore: plaintext SQL stays off the backup volume.
-		tmp, err := os.CreateTemp("", "togavsu-measure-*.sql")
-		if err != nil {
-			return nil, err
-		}
-		defer os.Remove(tmp.Name())
-		if _, err := io.Copy(tmp, r); err != nil {
-			tmp.Close()
-			return nil, err
-		}
-		if err := tmp.Close(); err != nil {
-			return nil, err
-		}
 		var raw [6]byte
 		if _, err := rand.Read(raw[:]); err != nil {
 			return nil, err
@@ -577,13 +611,7 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		if err != nil {
 			return nil, err
 		}
-		f, err := os.Open(tmp.Name())
-		if err != nil {
-			return nil, err
-		}
-		err = ApplyCommand(bin, target)(ctx, f)
-		f.Close()
-		if err != nil {
+		if err := ApplyCommand(bin, target)(ctx, r); err != nil {
 			return nil, err
 		}
 		return CountCommand(bin, target)(ctx)

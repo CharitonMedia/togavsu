@@ -24,6 +24,7 @@ import (
 type scriptCatalog struct {
 	present  map[string]bool
 	err      error
+	fenceErr error
 	calls    int
 	failDrop int
 	drops    []string
@@ -44,6 +45,10 @@ func (c *scriptCatalog) Observe(context.Context, string, string, string) (map[st
 		}
 	}
 	return out, nil
+}
+
+func (c *scriptCatalog) Fence(context.Context, string, string, string) error {
+	return c.fenceErr
 }
 
 func (c *scriptCatalog) Drop(_ context.Context, name string) error {

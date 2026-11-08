@@ -811,15 +811,41 @@ func (o *Operations) classifyDatabase(rec RestoreRecord) (int, bool) {
 	if err != nil || st == nil {
 		return decisionUnknown, false
 	}
+	// Names that still match the pre-rename catalog are not a rollback until
+	// this operation's transaction is finished. A catalog that cannot fence
+	// that transaction stays unknown, and writers stay stopped.
+	if st[db.Configured] && st[db.Fresh] && !st[db.Replaced] {
+		if err := o.fenceSwap(ctx, db); err != nil {
+			return decisionUnknown, false
+		}
+		st, err = o.Catalog.Observe(ctx, db.Configured, db.Fresh, db.Replaced)
+		if err != nil || st == nil {
+			return decisionUnknown, false
+		}
+	}
+	return decisionFromCatalog(st, db), true
+}
+
+func (o *Operations) fenceSwap(ctx context.Context, db *databaseIntent) error {
+	fencer, ok := o.Catalog.(interface {
+		Fence(context.Context, string, string, string) error
+	})
+	if !ok || db == nil {
+		return errSwapUnobserved
+	}
+	return fencer.Fence(ctx, db.Configured, db.Fresh, db.Replaced)
+}
+
+func decisionFromCatalog(st map[string]bool, db *databaseIntent) int {
 	switch {
 	case !st[db.Configured]:
-		return decisionMissing, true
+		return decisionMissing
 	case st[db.Replaced] && !st[db.Fresh]:
-		return decisionCleanup, true
+		return decisionCleanup
 	case st[db.Fresh] && !st[db.Replaced]:
-		return decisionOldIntact, true
+		return decisionOldIntact
 	default:
-		return decisionAmbiguous, true
+		return decisionAmbiguous
 	}
 }
 

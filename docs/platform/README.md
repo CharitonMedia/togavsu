@@ -12,11 +12,11 @@ Read [interfaces](interfaces.md), [backup format](backup-format.md), [CI](ci.md)
 
 ## Simplification review
 
-Reviewed the diff from main `1b00ff0ce02d42bc03692509d9a8c24c085d91f9` to this branch. The change stays on the Go standard library and the existing supervisor, destination, and HTTP client paths. No PRD behavior was removed. HTTP 408 and 5xx stay inside `ambiguousRemote`, so `definiteRejection`, `recordMutation`, and the S3 client share one rule. The parent-directory retry, the post-rename uncertain receipt, and the delete directory sync are the durability behavior; cutting them would let a receipt be confirmed or dropped too early. Plaintext backup workspaces stay off the backup volume and are removed on recovery. Destination secrets are sealed with the existing installer field key. A raw local errno before publication is a completed failure. No further deletion was safe.
+Reviewed the diff from main `1b00ff0ce02d42bc03692509d9a8c24c085d91f9` to this branch. The change stays on the Go standard library and the existing supervisor, destination, and HTTP client paths. No PRD behavior was removed. HTTP 408 and 5xx stay inside `ambiguousRemote`, so `definiteRejection`, `recordMutation`, and the S3 client share one rule. The parent-directory retry, the post-rename uncertain receipt, and the delete directory sync are the durability behavior; cutting them would let a receipt be confirmed or dropped too early. Plaintext backup workspaces stay off the backup volume and are removed on recovery. Destination secrets are sealed with the existing installer field key. A raw local errno before publication is a completed failure. A rename is not called a rollback until that transaction's advisory lock is free, and restore SQL is streamed instead of copied into the system temp directory. No further deletion was safe.
 
-`git diff --numstat 1b00ff0ce02d42bc03692509d9a8c24c085d91f9`: 73 files, 23632 added, 1 removed, net 23631.
+`git diff --numstat 1b00ff0ce02d42bc03692509d9a8c24c085d91f9`: 73 files, 24031 added, 1 removed, net 24030.
 
-This pass against `850bdddb2f861c223a29183fb2eee92c6b22f496`: 19 files, 1016 added, 80 removed, net 936.
+This pass against `d3e5afa3e035f2ae92569903917ef4cb2c3fd32f`: 6 files, 456 added, 57 removed, net 399.
 
 `PONYTAIL-DEBT.md` debt count: 19.
 

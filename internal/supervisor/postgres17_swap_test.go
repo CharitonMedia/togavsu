@@ -3,11 +3,13 @@
 package supervisor
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -536,6 +538,239 @@ exec "$REAL" "$@"
 	}
 	_ = dropDatabase(context.Background(), psql, admin, fresh)
 	os.Exit(0)
+}
+
+func TestInFlightRenameCannotCommitAfterAFailedRestore(t *testing.T) {
+	admin := postgres17Admin(t)
+	psql := os.Getenv("TOGAVSU_PSQL")
+	if psql == "" {
+		psql = "psql"
+	}
+	if path, err := exec.LookPath(psql); err == nil {
+		psql = path
+	}
+	prev := swapFenceTimeout
+	swapFenceTimeout = 2 * time.Second
+	t.Cleanup(func() { swapFenceTimeout = prev })
+	ctx := context.Background()
+
+	t.Run("late commit is not reported as unchanged", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		sleeper := startSleeper(t, psql, admin)
+		held := startHeldSwap(t, psql, admin, orig, fresh, replaced)
+		rolled := false
+		hooked := WithSwapRolledBack(ctx, func(string, string, string) error {
+			rolled = true
+			return nil
+		})
+		err := reconcileSwap(hooked, psql, admin, orig, fresh, replaced, errors.New("client lost"))
+		if !errors.Is(err, errSwapUnobserved) || rolled {
+			held.stop()
+			t.Fatalf("in-flight rename was classified as rollback: %v rolled=%v", err, rolled)
+		}
+		if !backendAlive(t, psql, admin, sleeper) {
+			held.stop()
+			t.Fatal("an unrelated backend was terminated")
+		}
+		if !databaseExists(t, psql, admin, orig) || !databaseExists(t, psql, admin, fresh) || databaseExists(t, psql, admin, replaced) {
+			held.stop()
+			t.Fatal("catalog changed before the held transaction committed")
+		}
+		held.finish(t, "COMMIT;")
+		err = reconcileSwap(hooked, psql, admin, orig, fresh, replaced, errors.New("client lost"))
+		if err != nil || rolled {
+			t.Fatalf("late commit was not accepted as the swap: %v rolled=%v", err, rolled)
+		}
+		if note(t, psql, admin, orig) != "new" || databaseExists(t, psql, admin, fresh) || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("committed rename was not the visible database")
+		}
+		if !backendAlive(t, psql, admin, sleeper) {
+			t.Fatal("unrelated backend did not survive the commit reconciliation")
+		}
+	})
+
+	t.Run("rollback is classified only after the transaction ends", func(t *testing.T) {
+		orig, fresh, replaced := swapPair(t, psql, admin)
+		sleeper := startSleeper(t, psql, admin)
+		held := startHeldSwap(t, psql, admin, orig, fresh, replaced)
+		var order []string
+		rt := &scriptRuntime{order: &order, states: map[string]string{"core-1": "exited"}}
+		ops := recoveryOps(t, rt, PostgresCatalog{Bin: psql, AdminURL: admin})
+		rec := journalRecord{
+			Record: RestoreRecord{ID: "restore-inflight", BackupID: "backup", Status: "running", Started: time.Now().UTC()},
+			Phase:  phaseSwapIntended,
+			Containers: []containerIntent{{
+				ID: "core-1", Prior: "running", StopIntended: true, Observed: "exited",
+			}},
+			Database: &databaseIntent{Configured: orig, Fresh: fresh, Replaced: replaced, SwapIntended: true},
+		}
+		if err := ops.Journal.Put(rec); err != nil {
+			held.stop()
+			t.Fatal(err)
+		}
+		err := ops.Recover(ctx)
+		if err == nil || containsStep(order, "restart:core-1") {
+			held.stop()
+			t.Fatalf("writers restarted while the rename was in flight: %v %v", err, order)
+		}
+		got, _, _ := ops.LookupRestore(rec.Record.ID)
+		if got.Status == "failed" || got.Status == "completed" || got.Recovery == "catalog_old_intact" {
+			held.stop()
+			t.Fatalf("in-flight restore was reported finished: %+v", got)
+		}
+		if !backendAlive(t, psql, admin, sleeper) || !backendAlive(t, psql, admin, held.pid) {
+			held.stop()
+			t.Fatalf("backend was signaled sleeper=%d swap=%d", sleeper, held.pid)
+		}
+		held.finish(t, "ROLLBACK;")
+		if backendAlive(t, psql, admin, held.pid) {
+			t.Fatal("rollback left the rename backend running")
+		}
+		order = nil
+		if err := ops.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if !containsStep(order, "restart:core-1") {
+			t.Fatalf("writers stayed stopped after the transaction aborted: %v", order)
+		}
+		got, _, _ = ops.LookupRestore(rec.Record.ID)
+		if got.Status != "failed" || got.Recovery != "catalog_old_intact" {
+			t.Fatalf("%+v", got)
+		}
+		if note(t, psql, admin, orig) != "old" || note(t, psql, admin, fresh) != "new" || databaseExists(t, psql, admin, replaced) {
+			t.Fatal("a later commit swapped a restore that was reported unchanged")
+		}
+	})
+}
+
+type heldSwap struct {
+	cmd    *exec.Cmd
+	stdin  io.WriteCloser
+	done   chan error
+	pid    int
+	stderr bytes.Buffer
+}
+
+func startHeldSwap(t *testing.T, psql, admin, orig, fresh, replaced string) *heldSwap {
+	t.Helper()
+	k1, k2 := swapLockKeys(orig, fresh, replaced)
+	cmd := exec.Command(psql, "--set", "ON_ERROR_STOP=1", "--dbname", admin)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := &heldSwap{cmd: cmd, stdin: stdin, done: make(chan error, 1)}
+	cmd.Stderr = &held.stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() { held.done <- cmd.Wait() }()
+	script := fmt.Sprintf("BEGIN;\nSELECT pg_advisory_xact_lock(%d, %d);\nALTER DATABASE %s RENAME TO %s;\nALTER DATABASE %s RENAME TO %s;\n", k1, k2, orig, replaced, fresh, orig)
+	if _, err := io.WriteString(stdin, script); err != nil {
+		held.stop()
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		pid, ok := advisoryPID(psql, admin, k1, k2)
+		if ok {
+			held.pid = pid
+			t.Cleanup(held.stop)
+			return held
+		}
+		select {
+		case err := <-held.done:
+			t.Fatalf("rename session ended before the lock: %v %s", err, held.stderr.String())
+		default:
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	held.stop()
+	t.Fatalf("rename transaction did not take its lock: %s", held.stderr.String())
+	return nil
+}
+
+func (h *heldSwap) finish(t *testing.T, sql string) {
+	t.Helper()
+	if h == nil || h.cmd == nil || h.cmd.Process == nil {
+		t.Fatal("rename session is not running")
+	}
+	if _, err := io.WriteString(h.stdin, sql+"\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.stdin.Close()
+	select {
+	case err := <-h.done:
+		if err != nil {
+			t.Fatalf("%s: %v %s", sql, err, h.stderr.String())
+		}
+	case <-time.After(10 * time.Second):
+		h.stop()
+		t.Fatalf("%s did not finish", sql)
+	}
+	h.cmd = nil
+}
+
+func (h *heldSwap) stop() {
+	if h == nil || h.cmd == nil || h.cmd.Process == nil {
+		return
+	}
+	_ = h.cmd.Process.Kill()
+	select {
+	case <-h.done:
+	case <-time.After(2 * time.Second):
+	}
+	h.cmd = nil
+}
+
+func startSleeper(t *testing.T, psql, admin string) int {
+	t.Helper()
+	cmd := exec.Command(psql, "--dbname", admin, "--command", "SELECT pg_sleep(120)")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+			_, _ = cmd.Process.Wait()
+		}
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		lines, err := psqlLines(context.Background(), psql, admin, "SELECT pid FROM pg_stat_activity WHERE query LIKE 'SELECT pg_sleep(120)%' AND pid <> pg_backend_pid()")
+		if err == nil && len(lines) > 0 {
+			pid, conv := strconv.Atoi(lines[0])
+			if conv == nil {
+				return pid
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	_ = cmd.Process.Kill()
+	t.Fatal("sleeper backend was not visible")
+	return 0
+}
+
+func advisoryPID(psql, admin string, k1, k2 int32) (int, bool) {
+	sql := fmt.Sprintf("SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = %d AND objid = %d AND objsubid = 2 AND granted", k1, k2)
+	lines, err := psqlLines(context.Background(), psql, admin, sql)
+	if err != nil || len(lines) == 0 {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(lines[0])
+	if err != nil {
+		return 0, false
+	}
+	return pid, true
+}
+
+func backendAlive(t *testing.T, psql, admin string, pid int) bool {
+	t.Helper()
+	lines, err := psqlLines(context.Background(), psql, admin, fmt.Sprintf("SELECT pid FROM pg_stat_activity WHERE pid = %d", pid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(lines) == 1
 }
 
 func postgres17Admin(t *testing.T) string {

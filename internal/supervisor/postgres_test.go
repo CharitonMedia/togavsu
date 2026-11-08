@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestDumpCommandScrubsPassword(t *testing.T) {
@@ -23,6 +26,108 @@ func TestDumpCommandScrubsPassword(t *testing.T) {
 	if strings.Contains(err.Error(), "synthetic-postgres-password") {
 		t.Fatalf("password leaked: %v", err)
 	}
+}
+
+func TestKilledRestoreDoesNotLeavePlaintextSQL(t *testing.T) {
+	if mode := os.Getenv("TOGAVSU_PLAIN_CHILD"); mode != "" {
+		runPlaintextChild(mode)
+		return
+	}
+	for _, mode := range []string{"restore", "measure"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			ready := filepath.Join(dir, "ready")
+			bin := writeSleepPsql(t, ready)
+			before := plaintextSQLFiles()
+			cmd := exec.Command(os.Args[0], "-test.run", "^TestKilledRestoreDoesNotLeavePlaintextSQL$")
+			cmd.Env = append(os.Environ(),
+				"TOGAVSU_PLAIN_CHILD="+mode,
+				"TOGAVSU_PLAIN_PSQL="+bin,
+				"TOGAVSU_PLAIN_READY="+ready,
+			)
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.Now().Add(5 * time.Second)
+			for {
+				if _, err := os.Stat(ready); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					_ = cmd.Process.Kill()
+					_, _ = cmd.Process.Wait()
+					t.Fatal("child did not reach the database apply")
+				}
+				time.Sleep(20 * time.Millisecond)
+			}
+			if extra := newPlaintextSQL(before); len(extra) != 0 {
+				_ = cmd.Process.Kill()
+				t.Fatalf("plaintext SQL existed while apply was running: %v", extra)
+			}
+			if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = cmd.Process.Wait()
+			if extra := newPlaintextSQL(before); len(extra) != 0 {
+				t.Fatalf("plaintext SQL remained after the process was killed: %v", extra)
+			}
+		})
+	}
+}
+
+func runPlaintextChild(mode string) {
+	bin := os.Getenv("TOGAVSU_PLAIN_PSQL")
+	dump := strings.NewReader("SELECT 1;\n")
+	ctx := context.Background()
+	admin := "postgres://togavsu@127.0.0.1/postgres"
+	if mode == "measure" {
+		_, _ = MeasureCommand(bin, admin)(ctx, dump)
+		return
+	}
+	_ = RestoreIntoCleanDatabase(ctx, bin, admin, "postgres://togavsu@127.0.0.1/togavsu", dump, nil)
+}
+
+func writeSleepPsql(t *testing.T, ready string) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "psql")
+	script := "#!/bin/sh\nready=" + shellQuote(ready) + "\nprev=\ncmd=\nfor arg in \"$@\"; do\n" +
+		"  if [ \"$prev\" = \"--command\" ]; then cmd=$arg; fi\n  prev=$arg\ndone\n" +
+		"if [ -n \"$cmd\" ]; then exit 0; fi\n" +
+		": > \"$ready\"\nsleep 60\nexit 0\n"
+	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func shellQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", "'\\''") + "'"
+}
+
+func plaintextSQLFiles() map[string]struct{} {
+	out := map[string]struct{}{}
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return out
+	}
+	for _, ent := range entries {
+		name := ent.Name()
+		if strings.HasPrefix(name, "togavsu-restore-") || strings.HasPrefix(name, "togavsu-measure-") {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+func newPlaintextSQL(before map[string]struct{}) []string {
+	var extra []string
+	for name := range plaintextSQLFiles() {
+		if _, ok := before[name]; !ok {
+			extra = append(extra, name)
+		}
+	}
+	return extra
 }
 
 func TestQuoteTableRejectsInjection(t *testing.T) {
