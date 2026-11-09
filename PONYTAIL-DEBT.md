@@ -51,11 +51,11 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 6. `internal/audit/postgres.go` — `Rows` filters by entity, id, field, and time, and `audit_log_entity_idx` covers only entity and entity id. Ceiling: field and time are filtered across every audit row for that account. Upgrade path: the integration lead adds an index on (entity, entity_id, field, created_at). Trigger: one account's sign-in reads more than 10000 audit rows.
 7. `internal/identity/pgstore.go` — lockout serialization uses `pg_try_advisory_lock(hashtextextended(user id))` and gives up after two seconds. Waiters release the pooled connection between tries. Ceiling: the winner still holds one connection while the callback uses others, so `SetMaxOpenConns(1)` can stall, and two different ids that hash together wait on each other. Upgrade path: run the failure check, the audit write, and the session insert on that lock connection. Trigger: a sign-in with `SetMaxOpenConns(1)` does not return.
 
-## Practice ceilings
-
 ## scripts/build_controller.py lane workflow gate
 
 ponytail: ceiling: `ActionsRemote.workflow_safe` is a lexical check, not a workflow parser. An owned product workflow that a lane changes must set top-level permissions and never name secrets, write scopes or privileged triggers, so the owner-credential push can run it only with a read token. Upgrade path: parse the workflow and check effective permissions and triggers per job. trigger: a lane needs a secret or write scope in CI, or a lexical bypass is found; that change then goes through a control PR.
+
+## Practice ceilings
 
 1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: `Service` depends on the `Store` interface, and `Memory` is the only implementation. Upgrade path: a Postgres `Store` over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001, using the repository interfaces. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
 2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `events` in Postgres. On `audit_log`, the owning application role can grant UPDATE, DELETE and TRUNCATE back to itself after `InstallPrivileges`. Upgrade path: reject those statements for the application role without a business-logic trigger, and move `audit_log` ownership to a migration role. Trigger: AC-024-F4 is run against Postgres as the application role.

@@ -2281,6 +2281,7 @@ class FakeLaneRemote(build_controller.ActionsRemote):
         self.push_url = str(bare)
         self.bare = bare
         self.calls, self.runs, self.artifacts, self.pulls = [], [], {}, []
+        self.dispatch_error = None
 
     def gh(self, path, method="GET", payload=None, binary=False):
         self.calls.append((method, path, payload))
@@ -2292,6 +2293,8 @@ class FakeLaneRemote(build_controller.ActionsRemote):
                 raise RuntimeError("gh: Not Found (HTTP 404)")
             return {"object": {"sha": proc.stdout.strip()}}
         if path.endswith("/dispatches"):
+            if self.dispatch_error:
+                raise RuntimeError(self.dispatch_error)
             return {}
         if "/runs?event=workflow_dispatch" in path:
             return {"workflow_runs": self.runs}
@@ -2538,6 +2541,9 @@ class LaneBackendTests(unittest.TestCase):
             "owned workflow with secrets": {".github/workflows/product-ci.yml": safe + "# ${{ secrets.X }}\n"},
             "owned workflow without permissions": {".github/workflows/product-ci.yml": "on: [push]\njobs: {}\n"},
             "owned workflow write scope": {".github/workflows/product-ci.yml": safe.replace("read", "write")},
+            "non-ASCII workflow name": {".github/workflows/\u00e9.yml": safe + "# ${{ secrets.X }}\n"},
+            "backslash workflow name": {".github/workflows/a\\b.yml": safe},
+            "non-ASCII control file": {"deploy/controller/\u00e9.py": "pass\n"},
         }
         for label, files in cases.items():
             with self.subTest(label):
@@ -2557,6 +2563,51 @@ class LaneBackendTests(unittest.TestCase):
         self.finish(run_id, self.base, head, bundle)
         self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
         self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), head)
+
+    def test_refused_create_dispatch_leaves_no_agent_for_a_clean_retry(self):
+        self.remote.dispatch_error = "gh: No ref found for: main (HTTP 422)"
+        with self.assertRaises(RuntimeError):
+            self.launch()
+        with self.assertRaises(AgentNotFound):
+            self.remote.agent(self.record)
+        self.remote.dispatch_error = None
+        self.assertTrue(self.launch()["run"]["id"])
+
+    def test_refused_or_lost_followup_reports_error_not_creating(self):
+        self.launch()
+        self.remote.dispatch_error = "gh: Server Error (HTTP 422)"
+        with self.assertRaises(RuntimeError):
+            self.remote.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "fix"}})
+        self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
+        self.remote.dispatch_error = "gh: connection reset"  # Ambiguous: maybe created, so wait, then give up.
+        with self.assertRaises(RuntimeError):
+            self.remote.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "fix again"}})
+        self.assertEqual(self.remote.agent(self.record)["status"], "CREATING")
+        registry = json.loads((self.state / "lane-agents.json").read_text())
+        registry[LANE_AGENT]["runs"][-1]["dispatched_at"] = "2026-01-01T00:00:00+00:00"
+        (self.state / "lane-agents.json").write_text(json.dumps(registry))
+        self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
+
+    def test_operator_rehomes_a_stopped_cursor_record(self):
+        plan = {"worker_backend": "claude-actions", "max_implementation_agents": 4, "tasks": [
+            {"id": "one", "depends_on": [], "owned_paths": ["internal/one/"]}]}
+        cursor_agent = "bc-c1cb681b-2606-42d3-b619-5750b5561c4a"
+        stopped = {"agent_id": cursor_agent, "agent_status": "ERROR", "submitted": True, "halted": "Delivery outcome uncertain"}
+        (self.state / "controller.json").write_text(json.dumps({"tasks": {"one": dict(stopped)}, "events": [], "tick": 0}))
+        controller = Controller(self.remote, plan, self.state)
+        controller.rehome("one", "integration lead")
+        saved = json.loads((self.state / "controller.json").read_text())
+        self.assertNotIn("one", saved["tasks"])
+        self.assertEqual(saved["retired_records"]["one"][0]["record"]["agent_id"], cursor_agent)
+        self.assertIn("retired Cursor agent", saved["events"][-1]["message"])
+        refusals = {"open PR": dict(stopped, pr=40), "still running": {"agent_id": cursor_agent, "agent_status": "RUNNING"},
+                    "already a lane": dict(stopped, agent_id=LANE_AGENT), "finished": dict(stopped, completed={"pr": 1})}
+        self.launch()
+        for label, record in refusals.items():
+            with self.subTest(label):
+                controller.tasks["one"] = record
+                with self.assertRaises(ValueError):
+                    controller.rehome("one", "integration lead")
 
 
 class LanePackageScanTests(unittest.TestCase):

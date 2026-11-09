@@ -389,6 +389,7 @@ class Remote:
 LANE_WORKFLOW = ".github/workflows/lane-agent.yml"
 LANE_PROMPT_LIMIT = 60_000  # GitHub caps a workflow_dispatch payload at 65,535 characters.
 LANE_ARTIFACT_LIMIT = 300_000_000
+LANE_DISPATCH_GRACE = dt.timedelta(minutes=15)  # A dispatched run appears within seconds, even while queued.
 LANE_QUEUED = {"queued", "waiting", "requested", "pending"}
 LANE_OUTCOME = {"success": "FINISHED", "cancelled": "CANCELLED", "timed_out": "EXPIRED"}
 
@@ -491,10 +492,22 @@ class ActionsRemote(Remote):
         # Pushing with owner credentials runs the branch's workflow files with repository secrets, before the
         # controller's later protected-file halt sees the PR. So lane commits may not reach control files,
         # links or submodules, and may change only workflow files their assignment owns, kept read-only.
-        raw = self.git("log", "--format=", "--raw", "-m", "--no-renames", "--no-abbrev", base + ".." + ref)
+        # -z: paths arrive verbatim, never C-quoted, so a quoted name cannot slip past a prefix check.
+        raw = subprocess.run(["git", "-C", str(self.repo_dir), "log", "--format=", "--raw", "-z", "-m", "--no-renames",
+                              "--no-abbrev", base + ".." + ref], capture_output=True, timeout=120)
+        if raw.returncode:
+            raise RuntimeError("git log failed: " + raw.stderr.decode(errors="replace")[-1200:])
+        fields = raw.stdout.split(b"\0")
+        if fields and fields[-1] == b"":
+            fields.pop()
         files = [f for f in self.owned.get(task, []) if not f.endswith("/")]
-        for line in filter(None, raw.splitlines()):
-            meta, path = line.split("\t", 1)
+        if len(fields) % 2:
+            raise LaneRejected("Lane change list is malformed")
+        for meta, name in zip(fields[0::2], fields[1::2]):
+            meta = meta.strip(b"\n").decode("ascii", "replace")
+            path = name.decode("utf-8", "surrogateescape")
+            if not meta.startswith(":") or not path:
+                raise LaneRejected("Lane change list is malformed")
             modes = meta.lstrip(":").split()[:2]
             if any(m in {"120000", "160000"} for m in modes):
                 raise LaneRejected("Lane commits add a symlink or submodule: " + path)
@@ -526,9 +539,19 @@ class ActionsRemote(Remote):
         # Persist before the non-idempotent POST: a lost response leaves a findable run ID.
         agent["runs"].append({"id": run_id, "base": base, "dispatched_at": now(), "state": "dispatching"})
         self.store(registry)
-        self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/dispatches", "POST", {"ref": "main", "inputs": {
-            "agent_id": agent_id, "run_id": run_id, "task": agent["task"], "branch": agent["branch"],
-            "base": base, "prompt_z": packed}})
+        try:
+            self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/dispatches", "POST", {"ref": "main", "inputs": {
+                "agent_id": agent_id, "run_id": run_id, "task": agent["task"], "branch": agent["branch"],
+                "base": base, "prompt_z": packed}})
+        except RuntimeError as error:
+            if not re.search(r"HTTP 4\d\d", str(error)):
+                raise  # Ambiguous: the run may exist; run() finds it or reports it lost after the grace period.
+            agent["runs"][-1]["state"] = "dispatch_failed"
+            agent["runs"][-1]["error"] = str(error)[-300:]
+            if len(agent["runs"]) == 1:
+                registry.pop(agent_id)  # A refused create leaves no agent, like Cursor; the next launch retries.
+            self.store(registry)
+            raise
         agent["runs"][-1]["state"] = "dispatched"
         self.store(registry)
         return run_id
@@ -565,7 +588,14 @@ class ActionsRemote(Remote):
         if github and (github.get("path") != LANE_WORKFLOW or github.get("event") != "workflow_dispatch"
                 or github.get("head_branch") != "main" or github.get("display_title") != "Lane " + run_id):
             raise ObservationError("Workflow run does not belong to the protected Lane agent workflow")
-        if not github or github.get("status") in LANE_QUEUED:
+        if not github and (entry.get("state") == "dispatch_failed" or entry.get("lost") or
+                (parse_time(entry["dispatched_at"]) or dt.datetime.now(dt.timezone.utc))
+                < dt.datetime.now(dt.timezone.utc) - LANE_DISPATCH_GRACE):
+            if not entry.get("lost") and not self.dry:
+                entry["lost"] = now()  # GitHub never created the run; report it rather than wait forever.
+                self.store(registry)
+            status = "ERROR"
+        elif not github or github.get("status") in LANE_QUEUED:
             status = "CREATING"
         elif github.get("status") != "completed":
             status = "RUNNING"
@@ -867,6 +897,31 @@ class Controller:
             "run_id": run_id, "evidence": timing})
         self.event(task, "Operator " + operator + " reconciled delivery intent " + intent["key"] + " to run "
             + run_id + " (" + timing + "); no prompt sent")
+        self.save()
+
+    def rehome(self, task, operator):
+        # Operator path: retire a stopped Cursor record so the next tick launches the task as a fresh lane.
+        record = self.tasks.get(task)
+        if self.plan.get("worker_backend") != "claude-actions" or not isinstance(self.remote, ActionsRemote):
+            raise ValueError("Rehoming needs the claude-actions backend")
+        if not record or record.get("completed"):
+            raise ValueError("Task " + str(task) + " has no unfinished record")
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited rehome")
+        if record["agent_id"] in self.remote.load():
+            raise ValueError("Task " + task + " already runs as a lane")
+        if record.get("pr") or record.get("merge_intent"):
+            raise ValueError("Task " + task + " has a pull request; finish or close it first")
+        if record.get("agent_status") not in {"ERROR", "EXPIRED", "CANCELLED"} and not record.get("halted"):
+            raise ValueError("Task " + task + " is not stopped; rehome only a terminal or halted Cursor record")
+        if self.dry:
+            print("WOULD rehome " + task + " from Cursor agent " + record["agent_id"], flush=True)
+            return
+        self.state.setdefault("retired_records", {}).setdefault(task, []).append(
+            {"time": now(), "operator": operator, "reason": "rehomed to claude-actions lane", "record": record})
+        del self.tasks[task]
+        self.event(task, "Operator " + operator + " retired Cursor agent " + record["agent_id"]
+            + " for a fresh Claude Code lane launch")
         self.save()
 
     def flag_volume(self, record):
@@ -1495,10 +1550,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--reconcile-intent", nargs=2, metavar=("TASK", "RUN_ID"),
         help="bind TASK's outstanding delivery intent to RUN_ID after verifying it; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent")
+    parser.add_argument("--rehome", metavar="TASK",
+        help="retire TASK's stopped Cursor record so the next tick launches it as a lane; runs no tick")
+    parser.add_argument("--operator", help="name recorded with --reconcile-intent or --rehome")
     args = parser.parse_args()
-    if args.reconcile_intent and not args.operator:
-        parser.error("--reconcile-intent requires --operator")
+    if (args.reconcile_intent or args.rehome) and not args.operator:
+        parser.error("--reconcile-intent and --rehome require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1514,6 +1571,8 @@ def main():
         controller = Controller(remote, plan, state, args.dry_run)
         if args.reconcile_intent:
             controller.reconcile_intent(*args.reconcile_intent, args.operator)
+        elif args.rehome:
+            controller.rehome(args.rehome, args.operator)
         else:
             controller.tick()
 
