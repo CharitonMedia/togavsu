@@ -2847,6 +2847,7 @@ class ContractTest(unittest.TestCase):
                 "shared": True,
                 **extra,
             }
+            call = _with_served_version(call, operation["operationId"])
             return file_download_decision(operation, call), operation_authorization(self.spec, operation, call)
 
         for record in (receipt, invoice):
@@ -2915,7 +2916,7 @@ class ContractTest(unittest.TestCase):
         def opened(tool, record, **extra):
             return mcp_tool_dispatch(
                 self.spec,
-                {
+                _with_served_version({
                     "tool": tool,
                     "authorization": "Bearer secret",
                     "authorization_scheme": "Bearer",
@@ -2934,7 +2935,7 @@ class ContractTest(unittest.TestCase):
                         "query": {"financial_classification": "invoice_pdf"},
                     },
                     **extra,
-                },
+                }, tool),
             )
 
         allowed_download = opened("downloadFileVersion", receipt)
@@ -4108,14 +4109,45 @@ class ContractTest(unittest.TestCase):
         self.assertIn("confirm_quarantine", names)
         catalog_tool = next(tool for tool in __import__("contract.build", fromlist=["render_mcp"]).render_mcp(self.spec)["tools"] if tool["name"] == "getInvoicePdf")
         self.assertIn("query", catalog_tool["transfer"]["arguments"])
-        own = {"role": "client", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True, "quarantined": True}
+        invoice_id = "018f1a00-7b3c-7d4e-8a11-111111111111"
+        pdf_version = {"id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaab2", "file_id": "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaab3", "invoice_id": invoice_id, "quarantined": True}
+        own = {"role": "client", "shared": True, "owner": "self", "attorney_only": False, "on_wall": True, "path_invoice_id": invoice_id, "stored_version": pdf_version}
         self.assertEqual(file_download_decision(operation, {**own, "confirm": None}), "quarantine_confirmation_required")
         self.assertEqual(file_download_decision(operation, {**own, "confirm": False}), "quarantine_confirmation_required")
         self.assertEqual(file_download_decision(operation, {**own, "confirm": True}), "highlighted")
         self.assertEqual(file_download_decision(operation, {**own, "confirm": True, "shared": False}), "not_found")
         self.assertEqual(file_download_decision(operation, {**own, "confirm": True, "owner": "other_client"}), "not_found")
         self.assertEqual(file_download_decision(operation, {**own, "role": "staff", "confirm": True, "attorney_only": True}), "not_found")
-        self.assertEqual(file_download_decision(operation, {**own, "quarantined": False}), "highlighted")
+        # The PDF version row decides. A caller false or omitted flag does not lower it.
+        self.assertEqual(file_download_decision(operation, {**own, "quarantined": False}), "quarantine_confirmation_required")
+        clean = {**own, "stored_version": {**pdf_version, "quarantined": False}}
+        self.assertEqual(file_download_decision(operation, clean), "highlighted")
+        self.assertEqual(file_download_decision(operation, {**clean, "quarantined": True}), "quarantine_confirmation_required")
+        self.assertEqual(file_download_decision(operation, {**clean, "quarantined": True, "confirm": True}), "highlighted")
+        invoice_matter = "018f1a00-7b3c-7d4e-8a11-000000000001"
+        trusted_invoice = {"token_scopes": ["invoices:read"], "matter_id": invoice_matter, "matter_walled": False, "client_matter_ids": [invoice_matter]}
+        without_row = {key: value for key, value in own.items() if key != "stored_version"}
+        for label, broken in (
+            ("omitted row", without_row),
+            ("omitted row with caller flag", {**without_row, "quarantined": True}),
+            ("omitted flag", {**own, "stored_version": {key: value for key, value in pdf_version.items() if key != "quarantined"}}),
+            ("null flag", {**own, "stored_version": {**pdf_version, "quarantined": None}}),
+            ("string flag", {**own, "stored_version": {**pdf_version, "quarantined": "false"}}),
+            ("other invoice", {**own, "stored_version": {**pdf_version, "invoice_id": "018f1a00-7b3c-7d4e-8a11-111111111112"}}),
+            ("missing path id", {**own, "path_invoice_id": None}),
+            ("duplicated row", {**own, "stored_versions": [pdf_version]}),
+            ("no file id", {**own, "stored_version": {**pdf_version, "file_id": None}}),
+        ):
+            self.assertEqual(file_download_decision(operation, {**broken, "confirm": True}), "not_found", label)
+            decision = operation_authorization(self.spec, operation, {**broken, **trusted_invoice, "confirm": True})
+            self.assertEqual(decision["result"], "not_found", label)
+            self.assertFalse(decision["effects"], label)
+        held = operation_authorization(self.spec, operation, {**own, **trusted_invoice, "quarantined": False})
+        self.assertEqual(held["result"], "quarantine_confirmation_required")
+        self.assertFalse(held["effects"])
+        released = operation_authorization(self.spec, operation, {**own, **trusted_invoice, "confirm": True})
+        self.assertEqual(released["result"], "allowed")
+        self.assertTrue(released["effects"])
         for _method, _path, download in _file_byte_downloads(self.spec):
             self.assertIn("quarantine_confirmation_input", download["x-togavsu-access"], download["operationId"])
 
@@ -7276,6 +7308,8 @@ class ContractTest(unittest.TestCase):
         payment = {"contact_id": client, "matter_id": visible, "amount_cents": 100, "destination": "operating", "method": "check", "status": "pending"}
         archive_body = {"file_ids": [file_id], "confirm_quarantine": True}
         archive_row = {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}
+        served_version = {"id": upload_id, "file_id": file_id, "quarantined": True}
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaab1"
         fee_body = {"client_id": client, "trust_account_id": account, "amount_cents": 1500}
         move_all = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "all"}
         move_matter = {"from_backend_id": backend_a, "to_backend_id": backend_b, "scope": "matter", "matter_id": visible}
@@ -7335,8 +7369,13 @@ class ContractTest(unittest.TestCase):
             {"family": "quarantine", "name": "archive body confirms quarantine", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": archive_body}}},
             {"family": "quarantine", "name": "archive query does not confirm", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"query": {"confirm_quarantine": True}, "body": {"file_ids": [file_id]}}}},
             {"family": "quarantine", "name": "archive body false", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True), "stored_files": [archive_row], "tool": "createFileArchive", "arguments": {"body": {"file_ids": [file_id], "confirm_quarantine": False}}}},
-            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
-            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "version query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_version": served_version, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {_operation(self.spec, "downloadFileVersion")["x-togavsu-access"]["quarantine_confirmation_input"]["name"]: True}}}},
+            {"family": "quarantine", "name": "version query omitted", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_version": served_version, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "version row raises an omitted caller flag", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_version": served_version, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "caller false does not lower the version row", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=False, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_version": served_version, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}}}},
+            {"family": "quarantine", "name": "null version flag", "result": "not_found", "call": {**bearer(role="staff", token_scopes=["files:read"], quarantined=True, matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_version": {**served_version, "quarantined": None}, "tool": "downloadFileVersion", "arguments": {"path": {"file_id": file_id, "version_id": upload_id}, "query": {"confirm": True}}}},
+            {"family": "quarantine", "name": "rendition takes its version row", "result": "quarantine_confirmation_required", "call": {**bearer(role="staff", token_scopes=["files:read"], matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_rendition": {"id": rendition_id, "file_version_id": upload_id}, "stored_version": served_version, "tool": "downloadFileRendition", "arguments": {"path": {"file_id": file_id, "rendition_id": rendition_id}}}},
+            {"family": "quarantine", "name": "rendition query confirms", "result": "allowed", "call": {**bearer(role="staff", token_scopes=["files:read"], matter_id=None), "stored_file": {"id": file_id, "matter_id": None, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": True}, "stored_rendition": {"id": rendition_id, "file_version_id": upload_id}, "stored_version": served_version, "tool": "downloadFileRendition", "arguments": {"path": {"file_id": file_id, "rendition_id": rendition_id}, "query": {"confirm": True}}}},
             {"family": "background_file", "name": "module resume omitted scopes", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email"), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume minimal scopes", "result": "allowed", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=["files:write"], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
             {"family": "background_file", "name": "module resume empty token", "result": "scope_denied", "call": {**bearer(viewer_present=False, module_id="email", caller_module_id="email", token_scopes=[], approved_scopes=["files:write"]), "tool": "getFileUpload", "module_scopes": ["files:write"], "registered": True, "matter_id": visible, "record": module_upload, "arguments": {"task_authorization": grant, "path": {"upload_id": upload_id}}}},
@@ -9092,7 +9131,7 @@ class ContractTest(unittest.TestCase):
         def client_read(tool, row, path, **trusted):
             return mcp_tool_dispatch(
                 self.spec,
-                {
+                _with_served_version({
                     "authorization": "Bearer secret",
                     "authorization_scheme": "Bearer",
                     "credential_valid": True,
@@ -9106,7 +9145,7 @@ class ContractTest(unittest.TestCase):
                     "tool": tool,
                     "arguments": {"path": path},
                     **trusted,
-                },
+                }, tool),
             )
 
         foreign_read = quiet(client_read("getFile", file_row(foreign), {"file_id": file_id}))
@@ -9169,7 +9208,7 @@ class ContractTest(unittest.TestCase):
         def call(tool, role, scopes, arguments, **trusted):
             return mcp_tool_dispatch(
                 self.spec,
-                {
+                _with_served_version({
                     "authorization": "Bearer secret",
                     "authorization_scheme": "Bearer",
                     "credential_valid": True,
@@ -9178,7 +9217,7 @@ class ContractTest(unittest.TestCase):
                     "tool": tool,
                     "arguments": arguments,
                     **trusted,
-                },
+                }, tool),
             )
 
         def file_row(**flags):
@@ -9464,7 +9503,7 @@ class ContractTest(unittest.TestCase):
         def call(tool, role, scopes, arguments, **trusted):
             return mcp_tool_dispatch(
                 self.spec,
-                {
+                _with_served_version({
                     "authorization": "Bearer secret",
                     "authorization_scheme": "Bearer",
                     "credential_valid": True,
@@ -9473,7 +9512,7 @@ class ContractTest(unittest.TestCase):
                     "tool": tool,
                     "arguments": arguments,
                     **trusted,
-                },
+                }, tool),
             )
 
         def file_row(row_matter, **flags):
@@ -9775,6 +9814,146 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(staff["result"], "allowed")
         self.assertTrue(staff["effects"])
 
+    def test_single_download_quarantine_comes_from_the_served_version(self):
+        """PRD 8.19: file_versions carry the quarantined flag. A quarantined version downloads only after confirmation.
+
+        The served version row is the only source. A missing, malformed, duplicated, or mismatched row is
+        not_found, and a caller-context quarantined flag can raise the result but never lower it.
+        """
+        matter = "018f1a00-7b3c-7d4e-8a11-000000000001"
+        contact = "018f1a00-7b3c-7d4e-8a11-000000000002"
+        file_id = "018f1a00-7b3c-7d4e-8a11-abababababa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-abababababa2"
+        version_id = "018f1a00-7b3c-7d4e-8a11-abababababa3"
+        current_id = "018f1a00-7b3c-7d4e-8a11-abababababa4"
+        rendition_id = "018f1a00-7b3c-7d4e-8a11-abababababa5"
+        other_rendition = "018f1a00-7b3c-7d4e-8a11-abababababa6"
+
+        def file_row(**flags):
+            row = {
+                "id": file_id,
+                "matter_id": matter,
+                "matter_walled": False,
+                "attorney_only": False,
+                "shared_with_client": True,
+                "quarantined": False,
+                "contact_id": contact,
+                "current_version_id": current_id,
+            }
+            row.update(flags)
+            return row
+
+        def version(**flags):
+            row = {"id": version_id, "file_id": file_id, "quarantined": True}
+            row.update(flags)
+            return row
+
+        rendition = {"id": rendition_id, "file_version_id": version_id}
+
+        def call(tool, query=None, role="staff", **trusted):
+            path = {"file_id": file_id, "version_id": version_id} if tool == "downloadFileVersion" else {"file_id": file_id, "rendition_id": rendition_id}
+            arguments = {"path": path}
+            if query is not None:
+                arguments["query"] = query
+            context = {"stored_file": file_row(), "stored_version": version()}
+            if tool == "downloadFileRendition":
+                context["stored_rendition"] = rendition
+            if role == "client":
+                context.update({"client_matter_ids": [matter], "client_contact_id": contact})
+            context.update(trusted)
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": ["files:read"],
+                    "tool": tool,
+                    "arguments": arguments,
+                    **{key: value for key, value in context.items() if value is not _ABSENT},
+                },
+            )
+
+        def held(decision, label):
+            self.assertEqual(decision["result"], "quarantine_confirmation_required", label)
+            self.assertFalse(decision["effects"], label)
+            self.assertEqual(decision.get("events") or [], [], label)
+            return decision
+
+        def hidden(decision, label):
+            self.assertEqual(decision["result"], "not_found", label)
+            self.assertFalse(decision["effects"], label)
+            self.assertEqual(decision.get("events") or [], [], label)
+            return decision
+
+        confirm = {"confirm": True}
+        for tool in ("downloadFileVersion", "downloadFileRendition"):
+            self.assertEqual(_operation(self.spec, tool)["x-togavsu-access"]["quarantine_confirmation_input"], {"in": "query", "name": "confirm"})
+            # Row true: the caller flag omitted, null, or false does not lower it. Confirmation releases it.
+            held(call(tool), (tool, "caller omitted"))
+            held(call(tool, quarantined=None), (tool, "caller null"))
+            held(call(tool, quarantined=False), (tool, "caller false"))
+            held(call(tool, {"confirm": False}, quarantined=False), (tool, "confirm false"))
+            released = call(tool, confirm, quarantined=False)
+            self.assertEqual(released["result"], "allowed", tool)
+            self.assertTrue(released["effects"], tool)
+            # Row false: no confirmation is needed, and a caller true flag still raises it.
+            clean = call(tool, stored_version=version(quarantined=False))
+            self.assertEqual(clean["result"], "allowed", tool)
+            self.assertTrue(clean["effects"], tool)
+            held(call(tool, stored_version=version(quarantined=False), quarantined=True), (tool, "caller raises"))
+            # Other versions of the same file do not change the served row.
+            held(
+                call(tool, stored_version=_ABSENT, stored_versions=[version(), version(id=current_id, quarantined=False)]),
+                (tool, "sibling version"),
+            )
+            # A file row that names this version as current must agree with it.
+            agreeing = file_row(current_version_id=version_id, quarantined=True)
+            held(call(tool, stored_file=agreeing), (tool, "file row agrees"))
+            for label, trusted in (
+                ("omitted version row", {"stored_version": _ABSENT}),
+                ("omitted version row with caller flag", {"stored_version": _ABSENT, "quarantined": True}),
+                ("omitted flag", {"stored_version": {key: value for key, value in version().items() if key != "quarantined"}}),
+                ("null flag", {"stored_version": version(quarantined=None)}),
+                ("string flag", {"stored_version": version(quarantined="true")}),
+                ("other version", {"stored_version": version(id=current_id)}),
+                ("other file", {"stored_version": version(file_id=other_file)}),
+                ("duplicated version", {"stored_versions": [version()]}),
+                ("duplicated version list", {"stored_version": _ABSENT, "stored_versions": [version(), version(quarantined=False)]}),
+                ("file row disagrees", {"stored_file": file_row(current_version_id=version_id, quarantined=False)}),
+                ("null file flag", {"stored_file": file_row(quarantined=None)}),
+                ("omitted file row", {"stored_file": _ABSENT}),
+            ):
+                hidden(call(tool, confirm, **trusted), (tool, label))
+            client_held = held(call(tool, role="client", shared=True, owner="self"), (tool, "client"))
+            self.assertEqual(client_held["result"], "quarantine_confirmation_required")
+            client = call(tool, confirm, role="client")
+            self.assertEqual(client["result"], "allowed", tool)
+            self.assertTrue(client["effects"], tool)
+            hidden(call(tool, confirm, role="client", stored_version=_ABSENT, quarantined=False), (tool, "client omitted row"))
+            hidden(call(tool, confirm, role="client", stored_version=version(quarantined=None)), (tool, "client null flag"))
+        for label, trusted in (
+            ("omitted rendition row", {"stored_rendition": _ABSENT}),
+            ("other rendition", {"stored_rendition": {**rendition, "id": other_rendition}}),
+            ("duplicated rendition", {"stored_renditions": [rendition]}),
+            ("null source version", {"stored_rendition": {**rendition, "file_version_id": None}}),
+            ("rendition of another file", {"stored_rendition": {**rendition, "file_id": other_file}}),
+            ("source version not loaded", {"stored_version": version(id=current_id, quarantined=False)}),
+        ):
+            hidden(call("downloadFileRendition", confirm, **trusted), label)
+        listed = call("downloadFileRendition", stored_rendition=_ABSENT, stored_renditions=[rendition, {"id": other_rendition, "file_version_id": current_id}])
+        held(listed, "sibling rendition")
+
+        # The reviewer's case on the direct decision: the file row says quarantined and the call flag is omitted.
+        download = _operation(self.spec, "downloadFileVersion")
+        direct = {"role": "staff", "file_id": file_id, "version_id": version_id, "stored_file": file_row(quarantined=True, current_version_id=version_id)}
+        self.assertEqual(file_download_decision(download, direct), "not_found")
+        self.assertEqual(file_download_decision(download, {**direct, "stored_version": version()}), "quarantine_confirmation_required")
+        self.assertEqual(file_download_decision(download, {**direct, "stored_version": version(), "quarantined": False}), "quarantine_confirmation_required")
+        self.assertEqual(file_download_decision(download, {**direct, "stored_version": version(), "confirm": True}), "audited")
+        self.assertEqual(file_download_decision(download, {**direct, "stored_version": version(quarantined=None), "confirm": True}), "not_found")
+
 
 def _operation(spec: dict, operation_id: str) -> dict:
     for _method, _path, operation in _ops(spec):
@@ -10073,6 +10252,48 @@ def _with_canonical_file(raw: dict, file_id: str) -> dict:
         "quarantined": raw.get("quarantined") is True,
     }
     return {**raw, "stored_file": row}
+
+
+_ABSENT = object()
+_SERVED_VERSION_ID = "018f1a00-7b3c-7d4e-8a11-fffffffffff1"
+_SERVED_FILE_ID = "018f1a00-7b3c-7d4e-8a11-fffffffffff2"
+_SERVED_INVOICE_ID = "018f1a00-7b3c-7d4e-8a11-fffffffffff3"
+_VERSION_BYTE_TOOLS = ("downloadFileVersion", "downloadFileRendition", "getInvoicePdf")
+_SERVED_ROW_KEYS = ("stored_version", "stored_versions", "stored_rendition", "stored_renditions")
+
+
+def _with_served_version(raw: dict, tool: str) -> dict:
+    """Add the version row, and the rendition row, that the core loads for one byte download.
+
+    The version row copies the trusted file row's quarantined value, so the two agree. A scenario that
+    tests the served row itself passes its own stored_version, stored_versions, stored_rendition, or
+    stored_renditions, and this helper leaves it alone.
+    """
+    if tool not in _VERSION_BYTE_TOOLS or any(key in raw for key in _SERVED_ROW_KEYS):
+        return raw
+    direct = "arguments" not in raw
+    path = (raw.get("arguments") or {}).get("path") or {}
+    rows = [raw["stored_file"]] if isinstance(raw.get("stored_file"), dict) else [row for row in raw.get("stored_files") or [] if isinstance(row, dict)]
+    row = rows[0] if len(rows) == 1 else {}
+    quarantined = row.get("quarantined") is True
+    out = dict(raw)
+    if tool == "getInvoicePdf":
+        invoice_id = path.get("invoice_id") or raw.get("path_invoice_id") or _SERVED_INVOICE_ID
+        if "invoice_id" not in path:
+            out["path_invoice_id"] = invoice_id
+        out["stored_version"] = {"id": _SERVED_VERSION_ID, "file_id": row.get("id") or _SERVED_FILE_ID, "invoice_id": invoice_id, "quarantined": quarantined}
+        return out
+    file_id = path.get("file_id") or raw.get("file_id")
+    if tool == "downloadFileRendition":
+        rendition_id = path.get("rendition_id") or raw.get("rendition_id")
+        out["stored_rendition"] = {"id": rendition_id, "file_version_id": _SERVED_VERSION_ID}
+        out["stored_version"] = {"id": _SERVED_VERSION_ID, "file_id": file_id, "quarantined": quarantined}
+        return out
+    version_id = path.get("version_id") or raw.get("version_id") or _SERVED_VERSION_ID
+    if direct:
+        out["version_id"] = version_id
+    out["stored_version"] = {"id": version_id, "file_id": file_id, "quarantined": quarantined}
+    return out
 
 
 def _schema_accepts_included(schema: dict) -> bool:

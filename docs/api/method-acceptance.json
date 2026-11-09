@@ -117,5 +117,6 @@
   "test_parent_schema_and_client_file_reads": {"go_owner": "multiple", "tasks": ["billing", "trust", "files"], "acceptance": ["AC-004", "AC-005", "AC-039"], "prd": ["8", "8.19"]},
   "test_factor_reset_requires_reauthentication": {"go_owner": "identity", "tasks": ["identity"], "acceptance": [], "prd": ["6"], "acceptance_note": "Identity owns two-factor reset. No acceptance id states the reauthentication step."},
   "test_trusted_resource_facts_match_the_route": {"go_owner": "multiple", "tasks": ["api", "files", "billing", "trust", "modules"], "acceptance": ["AC-002", "AC-004", "AC-005", "AC-008", "AC-012", "AC-039"], "prd": ["4", "8.3", "8.4", "8.19", "9"]},
-  "test_canonical_file_flag_source_and_context_matter": {"go_owner": "multiple", "tasks": ["api", "files", "trust", "modules"], "acceptance": ["AC-002", "AC-005", "AC-012", "AC-039"], "prd": ["8.4", "8.19", "9"]}
+  "test_canonical_file_flag_source_and_context_matter": {"go_owner": "multiple", "tasks": ["api", "files", "trust", "modules"], "acceptance": ["AC-002", "AC-005", "AC-012", "AC-039"], "prd": ["8.4", "8.19", "9"]},
+  "test_single_download_quarantine_comes_from_the_served_version": {"go_owner": "files", "tasks": ["files"], "acceptance": ["AC-039"], "prd": ["8.19"]}
 }

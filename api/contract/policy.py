@@ -911,6 +911,73 @@ def _bind_archive(subject: dict, call: dict, body: dict) -> None:
     subject["archive_rows"] = rows
 
 
+# Single-file byte downloads. Each serves one stored version, so its quarantine comes from that version row.
+_VERSION_BYTE_DOWNLOADS = frozenset({"downloadFileVersion", "downloadFileRendition", "getInvoicePdf"})
+
+
+def _trusted_rows(call: dict, one: str, many: str) -> list[dict]:
+    rows: list[dict] = []
+    if isinstance(call.get(one), dict):
+        rows.append(call[one])
+    if isinstance(call.get(many), list):
+        rows.extend(row for row in call[many] if isinstance(row, dict))
+    return rows
+
+
+def _one_row(rows: list[dict], key: str, value) -> dict | None:
+    if type(value) is not str or not value:
+        return None
+    matches = [row for row in rows if row.get(key) == value]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _bound_download_quarantine(operation: dict, call: dict) -> bool | None:
+    """The served version's quarantined flag from trusted rows. None is not_found.
+
+    downloadFileVersion binds the path version id to one trusted version row of the path file.
+    downloadFileRendition binds the path rendition id to one trusted rendition row, and that row's
+    file_version_id to one trusted version row of the path file. getInvoicePdf binds the path invoice
+    id to the one trusted version row the core loaded for that invoice's PDF. The version row's
+    quarantined value must be a boolean. A missing, null, duplicated, or mismatched row is not_found.
+    A file row that carries quarantined must carry a boolean, and when it names this version as current
+    it must agree. The caller-context quarantined flag can only raise the result, never lower it.
+    """
+    if operation.get("operationId") not in _VERSION_BYTE_DOWNLOADS:
+        return call.get("quarantined") is True
+    versions = _trusted_rows(call, "stored_version", "stored_versions")
+    if operation["operationId"] == "getInvoicePdf":
+        version = _one_row(versions, "invoice_id", call.get("path_invoice_id"))
+        if version is None or type(version.get("id")) is not str or not version["id"]:
+            return None
+        if type(version.get("file_id")) is not str or not version["file_id"]:
+            return None
+        file_row = None
+    else:
+        file_id = call.get("file_id")
+        file_row = _stored_file_for_request(call)
+        if file_row is None or type(file_id) is not str or not file_id:
+            return None
+        version_id = call.get("version_id")
+        if operation["operationId"] == "downloadFileRendition":
+            rendition = _one_row(_trusted_rows(call, "stored_rendition", "stored_renditions"), "id", call.get("rendition_id"))
+            if rendition is None:
+                return None
+            if "file_id" in rendition and rendition["file_id"] != file_id:
+                return None
+            version_id = rendition.get("file_version_id")
+        version = _one_row(versions, "id", version_id)
+        if version is None or version.get("file_id") != file_id:
+            return None
+    if type(version.get("quarantined")) is not bool:
+        return None
+    if file_row is not None and "quarantined" in file_row:
+        if type(file_row["quarantined"]) is not bool:
+            return None
+        if file_row.get("current_version_id") == version["id"] and file_row["quarantined"] is not version["quarantined"]:
+            return None
+    return version["quarantined"] or call.get("quarantined") is True
+
+
 def file_download_decision(operation: dict, call: dict) -> str:
     access = operation["x-togavsu-access"]
     if operation.get("operationId") == "createFileArchive":
@@ -946,7 +1013,10 @@ def file_download_decision(operation: dict, call: dict) -> str:
     denied = _accountant_financial_denial(operation, call)
     if denied:
         return denied
-    if call.get("quarantined") and call.get("confirm") is not True:
+    quarantined = _bound_download_quarantine(operation, call)
+    if quarantined is None:
+        return "not_found"
+    if quarantined and call.get("confirm") is not True:
         return "quarantine_confirmation_required"
     return "highlighted" if call.get("role") == "client" else "audited"
 
@@ -2210,6 +2280,12 @@ def _mcp_operation_call(call: dict, arguments: dict, operation: dict) -> dict:
         "stored_file": call.get("stored_file") if isinstance(call.get("stored_file"), dict) else None,
         "stored_files": [row for row in call.get("stored_files") or [] if isinstance(row, dict)],
         "version_id": path.get("version_id") or body.get("version_id") or call.get("version_id"),
+        "rendition_id": path.get("rendition_id") or call.get("rendition_id"),
+        "path_invoice_id": path.get("invoice_id") or call.get("path_invoice_id"),
+        "stored_version": call.get("stored_version") if isinstance(call.get("stored_version"), dict) else None,
+        "stored_versions": [row for row in call.get("stored_versions") or [] if isinstance(row, dict)],
+        "stored_rendition": call.get("stored_rendition") if isinstance(call.get("stored_rendition"), dict) else None,
+        "stored_renditions": [row for row in call.get("stored_renditions") or [] if isinstance(row, dict)],
         "upload_id": path.get("upload_id") or call.get("upload_id"),
         "field": call.get("field") or query.get("field"),
         "path_module_id": path.get(principal.get("module_id_param") or "module_id"),

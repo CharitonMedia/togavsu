@@ -99,7 +99,7 @@ Routers match a literal path before a parameter. `/api/v1/settings/appearance` i
 
 Trust ledger entries, audit rows, events, and file versions have no update and no delete. A trust correction is `POST /api/v1/trust-ledger/{id}/reversals`. A payment correction is `POST /api/v1/payments/{id}/reverse`. Restoring a file version copies it forward as a new version.
 
-Storage keys stay off the API. Downloads check SHA-256. A mismatch fails the read and emails the admins. A quarantined version downloads only with `confirm=true`.
+Storage keys stay off the API. Downloads check SHA-256. A mismatch fails the read and emails the admins. A quarantined version downloads only with `confirm=true`. The quarantined flag comes from the stored version row the download serves. A rendition uses its source version's row. The caller cannot clear it.
 
 `completeFileUpload` stores bytes and sets the upload to `staged`. It does not create a file, a version, or a Doc Tender job, and it does not emit `file.version_created`. `publishFile`, `addFileVersion`, `restoreFileVersion`, `convertFile`, `runEditor`, and `bulkFile` publish versions. Each publication is one transaction. After it commits, every new version emits `file.version_created`. A failure leaves the upload staged and emits no version event. Importers use `bulkFile`.
 
