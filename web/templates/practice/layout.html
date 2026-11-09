@@ -1,0 +1,39 @@
+{{define "head"}}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Togavsu</title>
+<link rel="stylesheet" href="/practice/static/practice.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/practice/matters">Togavsu</a>
+  <nav>
+    <a href="/practice/matters">Matters</a>
+    <a href="/practice/contacts">Contacts</a>
+    <a href="/practice/notes">Notes</a>
+    <a href="/practice/activity">Activity</a>
+  </nav>
+  <form class="search" action="/practice/search" method="get">
+    <label for="search">Search</label>
+    <input id="search" name="q" value="{{.Query}}" placeholder="Search matters, people, invoices, files (Ctrl-K)" autocomplete="off">
+    <select name="scope" aria-label="Scope">
+      <option value="all" {{if eq .Scope "all"}}selected{{end}}>All</option>
+      <option value="matters" {{if eq .Scope "matters"}}selected{{end}}>Matters</option>
+      <option value="people" {{if eq .Scope "people"}}selected{{end}}>People</option>
+      <option value="invoices" {{if eq .Scope "invoices"}}selected{{end}}>Invoices</option>
+      <option value="files" {{if eq .Scope "files"}}selected{{end}}>Files</option>
+    </select>
+  </form>
+</header>
+<main>
+<h1>{{.Title}}</h1>
+{{end}}
+{{define "foot"}}
+</main>
+<script src="/practice/static/practice.js"></script>
+</body>
+</html>
+{{end}}

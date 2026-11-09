@@ -1,0 +1,14 @@
+{{template "head" .}}
+{{range .Search.Groups}}
+  <section>
+    <h2>{{.Scope}}</h2>
+    {{if .Hits}}
+      <ul>
+      {{range .Hits}}<li><a href="{{.TargetPath}}">{{.Title}}</a> <span class="muted">{{.Subtitle}}</span></li>{{end}}
+      </ul>
+    {{else}}
+      <p>No matches for {{$.Query}} in {{.Scope}}.</p>
+    {{end}}
+  </section>
+{{end}}
+{{template "foot" .}}

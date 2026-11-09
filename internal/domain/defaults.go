@@ -14,6 +14,19 @@ const (
 	MarketplaceAddress = "togavsu-marketplace"
 )
 
+// Registry fallbacks. Practice uses these only when the settings registry is absent.
+// The catalog defaults in the settings package are these same values.
+const (
+	ConflictScoreMinimum        = 60
+	BillingTimeIncrementMinutes = 6
+	SearchMinChars              = 2
+	SearchHitsAll               = 5
+	SearchHitsScope             = 8
+	ActivityWindowDays          = 30
+	ActivityPageSize            = 100
+	NotesPageSize               = 25
+)
+
 // DocCategory is one default filing category.
 type DocCategory struct {
 	Meta

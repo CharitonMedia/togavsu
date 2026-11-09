@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -38,11 +39,11 @@ var definitions = []Definition{
 	{Key: "security.api_rate_per_minute", Kind: KindInt, Default: "600", Min: 1, Max: 1000000, HasMin: true, HasMax: true, Tab: TabSecurity, Help: "API requests allowed per minute per token. Default 600.", PRD: true},
 
 	{Key: "practice.case_number_patterns", Kind: KindJSON, Default: jsonText([]string{domain.DefaultCasePattern}), Tab: TabPractice, Help: "Case-number patterns. The default matches Missouri docket numbers such as 23AR-CV00825.", PRD: true, Special: "regexp_list"},
-	{Key: "practice.conflict_score_minimum", Kind: KindInt, Default: "60", Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},
+	{Key: "practice.conflict_score_minimum", Kind: KindInt, Default: strconv.Itoa(domain.ConflictScoreMinimum), Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabPractice, Help: "Lowest conflict score shown, out of 100. Default 60.", PRD: true},
 	{Key: "practice.party_roles", Kind: KindJSON, Default: jsonText(domain.DefaultPartyRoles()), Tab: TabPractice, Help: "Party roles offered on a matter.", PRD: true},
 	{Key: "practice.markers", Kind: KindJSON, Default: jsonText(domain.DefaultMarkers()), Tab: TabPractice, Help: "Core matter markers. The firm can add its own.", PRD: true},
 
-	{Key: "billing.time_increment_minutes", Kind: KindEnum, Default: "6", Allowed: []string{"1", "6", "10", "15"}, Tab: TabBilling, Help: "Time increment in minutes. Default 6.", PRD: true},
+	{Key: "billing.time_increment_minutes", Kind: KindEnum, Default: strconv.Itoa(domain.BillingTimeIncrementMinutes), Allowed: []string{"1", strconv.Itoa(domain.BillingTimeIncrementMinutes), "10", "15"}, Tab: TabBilling, Help: "Time increment in minutes. Default 6.", PRD: true},
 	{Key: "billing.default_hourly_rate_cents", Kind: KindCents, Default: "0.00", Min: 0, HasMin: true, Tab: TabBilling, Help: "Default hourly rate for new users."},
 	{Key: "billing.expense_markup_percent", Kind: KindInt, Default: "0", Min: 0, Max: 1000, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Default expense markup percent. Default 0.", PRD: true},
 	{Key: "billing.payment_terms_days", Kind: KindInt, Default: "30", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Invoice payment terms in days. Default 30.", PRD: true},
@@ -101,14 +102,14 @@ var definitions = []Definition{
 
 	{Key: "home.max_saved_layouts", Kind: KindInt, Default: "10", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabHome, Help: "Saved layouts allowed per user. Default 10.", PRD: true},
 
-	{Key: "search.min_chars", Kind: KindInt, Default: "2", Min: 1, Max: 10, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Characters before search runs. Default 2.", PRD: true},
+	{Key: "search.min_chars", Kind: KindInt, Default: strconv.Itoa(domain.SearchMinChars), Min: 1, Max: 10, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Characters before search runs. Default 2.", PRD: true},
 	{Key: "search.delay", Kind: KindDuration, Default: "180ms", Min: 0, Max: int64(5 * time.Second), HasMin: true, HasMax: true, Tab: TabSearch, Help: "Delay after typing stops. Default 180 ms.", PRD: true},
-	{Key: "search.hits_all", Kind: KindInt, Default: "5", Min: 1, Max: 50, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Hits per scope on All. Default 5.", PRD: true},
-	{Key: "search.hits_scope", Kind: KindInt, Default: "8", Min: 1, Max: 50, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Hits shown in one scope. Default 8.", PRD: true},
+	{Key: "search.hits_all", Kind: KindInt, Default: strconv.Itoa(domain.SearchHitsAll), Min: 1, Max: 50, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Hits per scope on All. Default 5.", PRD: true},
+	{Key: "search.hits_scope", Kind: KindInt, Default: strconv.Itoa(domain.SearchHitsScope), Min: 1, Max: 50, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Hits shown in one scope. Default 8.", PRD: true},
 	{Key: "search.excerpt_chars", Kind: KindInt, Default: "120", Min: 40, Max: 1000, HasMin: true, HasMax: true, Tab: TabSearch, Help: "File-search excerpt length. Default 120 characters.", PRD: true},
-	{Key: "activity.window_days", Kind: KindInt, Default: "30", Min: 1, Max: 3650, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Activities Feed window in days. Default 30.", PRD: true},
-	{Key: "activity.page_size", Kind: KindInt, Default: "100", Min: 1, Max: 500, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Activities Feed page size. Default 100.", PRD: true},
-	{Key: "notes.page_size", Kind: KindInt, Default: "25", Min: 1, Max: 200, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Notes page size. Default 25.", PRD: true},
+	{Key: "activity.window_days", Kind: KindInt, Default: strconv.Itoa(domain.ActivityWindowDays), Min: 1, Max: 3650, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Activities Feed window in days. Default 30.", PRD: true},
+	{Key: "activity.page_size", Kind: KindInt, Default: strconv.Itoa(domain.ActivityPageSize), Min: 1, Max: 500, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Activities Feed page size. Default 100.", PRD: true},
+	{Key: "notes.page_size", Kind: KindInt, Default: strconv.Itoa(domain.NotesPageSize), Min: 1, Max: 200, HasMin: true, HasMax: true, Tab: TabSearch, Help: "Notes page size. Default 25.", PRD: true},
 
 	{Key: "mail.smtp_host", Kind: KindString, Tab: TabMail, Help: "SMTP host for system mail."},
 	{Key: "mail.smtp_port", Kind: KindInt, Min: 1, Max: 65535, HasMin: true, HasMax: true, Optional: true, Tab: TabMail, Help: "SMTP port."},

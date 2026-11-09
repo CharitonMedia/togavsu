@@ -1,0 +1,164 @@
+{{template "head" .}}
+<h1>{{.Matter.Matter.Number}} {{.Matter.Matter.Name}}</h1>
+<p>{{.Matter.Matter.Status}}
+  {{if .Matter.ClientName}} · Client {{.Matter.ClientName}}{{end}}
+  {{if .AttorneyName}} · Responsible attorney {{.AttorneyName}}{{end}}
+  {{if .Matter.Unchecked}} <span class="badge">Unchecked conflicts</span>{{end}}
+  {{range .Matter.Markers}} <span class="badge">{{.Label}}</span>{{end}}
+</p>
+<form class="card" method="post" action="/practice/matters/{{.Matter.Matter.ID}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Edit matter</h2>
+  <p><label>Name<br><input name="name" value="{{.Matter.Matter.Name}}" required></label></p>
+  <p><label>Court<br><input name="court" value="{{.Matter.Matter.Court}}"></label></p>
+  <p><label>Stage<br><input name="stage" value="{{.Matter.Matter.Stage}}"></label></p>
+  <p><label>Case number<br><input name="case_number" value="{{.Matter.Matter.CaseNumber}}"></label></p>
+  <p><label>Responsible attorney user id<br><input name="responsible_attorney_user_id" value="{{.Matter.Matter.ResponsibleAttorneyID}}"></label></p>
+  <button type="submit">Save matter</button>
+</form>
+<section class="glance" aria-label="At a glance">
+  <div><span class="muted">Stage</span><br>{{if .Matter.Glance.Stage}}{{.Matter.Glance.Stage}}{{else}}—{{end}}</div>
+  <div><span class="muted">Trust balance</span><br>{{.Matter.Glance.TrustCents}}</div>
+  <div><span class="muted">Time logged</span><br>{{.Matter.Glance.TimeHours}} h · {{.Matter.Glance.TimeEntries}}</div>
+  <div><span class="muted">Days open</span><br>{{.Matter.Glance.DaysOpen}}</div>
+  <div><span class="muted">Invoices</span><br>{{.Matter.Glance.Invoices}}</div>
+</section>
+<p><a href="/practice/matters/{{.Matter.Matter.ID}}/close">Close matter</a></p>
+{{if .CanReopen}}
+<form class="card" method="post" action="/practice/matters/{{.Matter.Matter.ID}}/reopen">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <p><label>Reopen reason<br><input name="reason" required></label></p>
+  <button type="submit">Reopen matter</button>
+</form>
+{{end}}
+
+<section class="card" id="parties">
+  <h2>Parties</h2>
+  <ul>
+  {{range .Matter.PartyLines}}<li>{{.Name}} · {{.Role}}{{if .Primary}} (primary){{end}}</li>{{else}}<li>No parties yet.</li>{{end}}
+  </ul>
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/parties">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p><label>Contact id<br><input name="contact_id" required></label></p>
+    <p><label>Role<br>
+      <select name="role">
+        {{range .PartyRoles}}<option>{{.}}</option>{{end}}
+      </select>
+    </label></p>
+    <p><label><input type="checkbox" name="primary" value="1"> Primary</label></p>
+    <button type="submit">Add party</button>
+  </form>
+</section>
+
+<section class="card" id="notes">
+  <h2>Notes</h2>
+  <ul>
+  {{range .MatterNotes}}<li><strong>{{.Title}}</strong> {{.Body}}</li>{{else}}<li>No notes yet.</li>{{end}}
+  </ul>
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/notes">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p><label>Title<br><input name="title" required></label></p>
+    <p><label>Body<br><textarea name="body"></textarea></label></p>
+    <button type="submit">Add note</button>
+  </form>
+</section>
+
+<section class="card" id="conflicts">
+  <h2>Conflict check</h2>
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/conflict-checks">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit">Run conflict check</button>
+  </form>
+  {{range .Checks}}
+    {{$check := .}}
+    <ul>
+    {{range .Hits}}
+      <li>{{.Name}} · {{.Score}} {{if .Decision}}· {{.Decision}}{{end}}
+        {{if not .Decision}}
+        <form method="post" action="/practice/conflict-checks/{{$check.ID}}/decisions">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <input type="hidden" name="hit_id" value="{{.ID}}">
+          <label>Decision
+            <select name="decision">
+              <option value="clear">clear</option>
+              <option value="escalate">escalate</option>
+              <option value="no_go">no-go</option>
+            </select>
+          </label>
+          <label>Reason <input name="reason"></label>
+          <button type="submit">Record decision</button>
+        </form>
+        {{end}}
+      </li>
+    {{else}}<li>No hits.</li>{{end}}
+    </ul>
+  {{end}}
+</section>
+
+<section class="card" id="custom-fields">
+  <h2>Custom fields</h2>
+  {{if .Matter.CustomFields}}
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/custom-fields">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range .Matter.CustomFields}}
+      <p><label>{{.Label}}{{if .Required}} (required){{end}}<br>
+        <input name="cf_{{.DefinitionID}}" value="{{.Value}}">
+      </label></p>
+    {{end}}
+    <button type="submit">Save custom fields</button>
+  </form>
+  {{else}}<p>No custom fields for this practice area.</p>{{end}}
+</section>
+
+<section class="card" id="markers">
+  <h2>Markers</h2>
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/markers">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p><label>Marker<br>
+      <select name="label">
+        {{range .MarkerChoices}}<option>{{.}}</option>{{end}}
+      </select>
+    </label></p>
+    <p><label>Practice area for Also asked about<br><input name="practice_area_id"></label></p>
+    <button type="submit">Set marker</button>
+  </form>
+  {{range .Matter.Markers}}
+  <form method="post" action="/practice/matters/{{$.Matter.Matter.ID}}/markers/remove">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="label" value="{{.Label}}">
+    <input type="hidden" name="practice_area_id" value="{{.PracticeAreaID}}">
+    <button type="submit">Remove {{.Label}}</button>
+  </form>
+  {{end}}
+</section>
+
+<section class="card" id="timeline">
+  <h2>Case timeline</h2>
+  <ol>
+  {{range .Timeline}}
+    <li {{if .ClientVisible}}class="client"{{end}}>{{.At.Format "2006-01-02 15:04"}} · {{if .ActorName}}{{.ActorName}}{{else}}{{.ActorKind}}{{end}} · {{.Summary}}</li>
+  {{else}}<li>No events yet.</li>{{end}}
+  </ol>
+</section>
+
+<details class="card" id="edit-history">
+  <summary>Edit history</summary>
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Role</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th><th>Note</th></tr></thead>
+    <tbody>
+    {{range .History}}
+      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}" data-reason="{{.Reason}}">
+        <td>{{.At.Format "2006-01-02 15:04"}}</td>
+        <td>{{if .ActorName}}{{.ActorName}}{{else}}{{.ActorID}}{{end}}</td>
+        <td>{{.Role}}</td>
+        <td>{{.Field}}</td>
+        <td>{{.Old}}</td>
+        <td>{{.New}}</td>
+        <td>{{.Kind}}</td>
+        <td>{{.Reason}}</td>
+      </tr>
+    {{else}}<tr><td colspan="8">No changes yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</details>
+{{template "foot" .}}
