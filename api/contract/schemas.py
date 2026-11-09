@@ -1828,6 +1828,7 @@ SCHEMAS = _register(
         ),
         "DocTenderResult": _obj(
             {
+                "id": _uuid("The doc_tender_results row. An extension table keys to this id."),
                 "file_id": _uuid(),
                 "file_version_id": _uuid(),
                 "summary": _readable_text(),
@@ -1841,7 +1842,7 @@ SCHEMAS = _register(
                 "matter_id": _null(_uuid()),
                 "markdown_rendition_id": _null(_uuid()),
             },
-            ["file_id", "file_version_id", "summary", "name_parts", "fields"],
+            ["id", "file_id", "file_version_id", "summary", "name_parts", "fields"],
             "Published Doc Tender labels for one file version. fields are the cited critical values.",
         ),
         "DocCategory": _meta(
@@ -3177,6 +3178,21 @@ SCHEMAS["Included"] = {
     "description": SCHEMAS["Included"]["description"],
     "additionalProperties": {"type": "object", "additionalProperties": True},
 }
+
+
+def _accept_included(schema: dict) -> None:
+    """Optional included on the record, or on every oneOf branch of it. Never required."""
+    branches = schema.get("oneOf")
+    if branches:
+        for branch in branches:
+            _accept_included(branch)
+        return
+    schema.setdefault("properties", {}).setdefault("included", _ref("Included"))
+
+
+# Every extension target's read schema carries optional included, so include= has somewhere to put rows.
+for _key, _schema_name, _scope, _reads in CORE_EXTENSION_TARGETS:
+    _accept_included(SCHEMAS[_schema_name])
 
 
 def _query(name: str, schema: dict, description: str, required: bool = False) -> dict:

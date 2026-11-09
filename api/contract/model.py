@@ -399,6 +399,9 @@ class Contract:
         if extra_access:
             for key, value in extra_access.items():
                 access[key] = value
+        if include:
+            # include= is always the approved view scope. Section 9.9.
+            access.setdefault("include_scope_pattern", "views:{module_id}.{view}:read")
         delegation_mode = _delegation_mode(access, public, mcp, operation_id)
         if delegation_mode:
             access["module_delegation"] = delegation_mode

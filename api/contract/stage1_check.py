@@ -418,6 +418,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "ManifestExtension and ManifestView include trust_entry and file_version. listTrustEntry, getTrustEntry, and listFileVersions take include, and those read schemas carry optional included. The MCP catalog still describes query as one object, so its bytes stay the same.",
             },
+            {
+                "id": "extension-section5-records",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "ManifestExtension and ManifestView add every section 5 record with a published read: contact addresses, emails, phones and tags, practice areas, counties, referral sources, timers, file renditions and links, court profiles, Doc Tender categories, jobs, results and exceptions, conflict checks and their reviews, trust flags, replenishment requests and reconciliations. Their list and get reads take include, their read schemas carry optional included, and DocTenderResult gains its row id. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
+            },
         ],
         "intentional_corrections": [
             {

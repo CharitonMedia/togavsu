@@ -344,6 +344,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "csrf-header-is-transport",
                 "file-link-both-unresolved",
                 "extension-trust-entry-file-version",
+                "extension-section5-records",
             },
         )
 

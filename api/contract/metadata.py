@@ -176,17 +176,29 @@ MODULE_GUIDE = {
     "runtime_registration": "pending",
 }
 # Section 9.9 records a module may extend by id. The manifest enum and include
-# reads both come from this list. Wrappers, credentials, admin catalogs, storage
-# infrastructure, and append-only streams are not records in this catalog.
-# file_version is listed by listFileVersions; it has no separate get.
+# reads both come from this list. Section 5 is the base every module links to
+# (PRD 5 and 9.9), so every section 5 record with a published read or list is
+# here unless CORE_EXTENSION_EXCLUSIONS names it with its reason.
+# file_version, file_rendition, and file_link are listed under their file; they
+# have no separate get. conflict_check is the published read of conflict_reviews;
+# each ConflictHit in it is one conflict_review row, keyed by the hit id.
+# doc_tender_result is read by its file.
 CORE_EXTENSION_TARGETS = (
     ("user", "User", "users:read", ("listUser", "getUser")),
     ("contact", "Contact", "contacts:read", ("listContact", "getContact")),
+    ("contact_address", "ContactAddress", "contacts:read", ("listContactAddress", "getContactAddress")),
+    ("contact_email", "ContactEmail", "contacts:read", ("listContactEmail", "getContactEmail")),
+    ("contact_phone", "ContactPhone", "contacts:read", ("listContactPhone", "getContactPhone")),
+    ("contact_tag", "ContactTag", "contacts:read", ("listContactTag", "getContactTag")),
     ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
     ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+    ("practice_area", "PracticeArea", "settings:read", ("listPracticeArea", "getPracticeArea")),
+    ("county", "County", "settings:read", ("listCounty", "getCounty")),
+    ("referral_source", "ReferralSource", "settings:read", ("listReferralSource", "getReferralSource")),
     ("note", "Note", "notes:read", ("listNote", "getNote")),
     ("fee_agreement", "FeeAgreement", "matters:read", ("listFeeAgreement", "getFeeAgreement")),
     ("time_entry", "TimeEntry", "time:read", ("listTimeEntry", "getTimeEntry")),
+    ("timer", "Timer", "time:read", ("listTimer", "getTimer")),
     ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
     ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
     ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
@@ -194,10 +206,79 @@ CORE_EXTENSION_TARGETS = (
     ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
     ("file", "File", "files:read", ("listFile", "getFile")),
     ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
+    ("file_rendition", "FileRendition", "files:read", ("listFileRenditions",)),
+    ("file_link", "FileLink", "files:read", ("listFileLinks",)),
+    ("court_profile", "CourtProfile", "files:read", ("listCourtProfile", "getCourtProfile")),
+    ("doc_category", "DocCategory", "doc_tender:read", ("listDocCategory", "getDocCategory")),
+    ("doc_tender_job", "DocTenderJob", "doc_tender:read", ("listDocTenderJobs", "getDocTenderJob")),
+    ("doc_tender_result", "DocTenderResult", "doc_tender:read", ("getDocTenderResult",)),
+    ("doc_tender_exception", "DocTenderException", "doc_tender:read", ("listDocTenderException", "getDocTenderException")),
     ("conflict_record", "ConflictRecord", "conflicts:read", ("listConflictRecord", "getConflictRecord")),
+    ("conflict_check", "ConflictCheck", "conflicts:read", ("listConflictChecks", "getConflictCheck")),
+    ("conflict_review", "ConflictHit", "conflicts:read", ("listConflictChecks", "getConflictCheck")),
     ("trust_account", "TrustAccount", "trust:read", ("listTrustAccount", "getTrustAccount")),
     ("trust_entry", "TrustEntry", "trust:read", ("listTrustEntry", "getTrustEntry")),
+    ("trust_flag", "TrustFlag", "trust:read", ("listTrustFlag", "getTrustFlag")),
+    ("trust_replenishment_request", "TrustReplenishment", "trust:read", ("listTrustReplenishment", "getTrustReplenishment")),
+    ("trust_reconciliation", "TrustReconciliation", "trust:read", ("listTrustReconciliation", "getTrustReconciliation")),
 )
+
+# Records with a published read that are not extension targets, each with its reason.
+# Keyed by the read schema. The contract test fails when a GET returns a record with an
+# id that is in neither this map nor CORE_EXTENSION_TARGETS.
+_CREDENTIAL = "credential (section 5 Staff, auth and permissions). A module never keys rows to sign-in material."
+_ADMIN_CATALOG = "admin catalog: a value list kept in the settings table (section 5 Firm settings), not a section 5 record table."
+_STORAGE = "storage infrastructure (section 8.19), not firm data. Files and their versions are the extension targets."
+_STREAM = "append-only stream (section 5 audit_log and events, section 8.7 AI call log). Rows are never updated, so there is nothing for an extension row to describe."
+_OUTSIDE = "not a section 5 record. Section 9.9 extends the section 5 base; this is a product, help, layout, or system record defined elsewhere."
+CORE_EXTENSION_EXCLUSIONS = {
+    "Session": ("sessions", _CREDENTIAL),
+    "ApiToken": ("api_tokens", _CREDENTIAL),
+    "Setting": ("settings", _ADMIN_CATALOG + " Rows are keyed by setting key and have no record id."),
+    "ActivityType": ("activity_types", _ADMIN_CATALOG),
+    "ExpenseType": ("expense_types", _ADMIN_CATALOG),
+    "PartyRole": ("party_roles", _ADMIN_CATALOG + " Section 5 names the roles as a fixed list on matter_parties."),
+    "CustomFieldDefinition": ("custom_field_definitions", _ADMIN_CATALOG + " Custom fields are the other 9.9 extension point, not a target of it."),
+    "StorageBackend": ("storage_backends", _STORAGE),
+    "StorageMove": ("storage_moves", _STORAGE),
+    "FileUpload": ("file_uploads", _STORAGE + " An upload session becomes a file and version when it completes."),
+    "AuditEntry": ("audit_log", _STREAM),
+    "Event": ("events", _STREAM),
+    "AiCall": ("ai_calls", _STREAM),
+    "MatterWall": (
+        "matter_walls",
+        "access control on the matter. getMatterWall publishes the matter's member list with no row id, and the same "
+        "schema is the putMatterWall body. A module keys its rows to the matter, which walls already protect.",
+    ),
+    "TrustBalanceRow": ("trust balances", "computed from trust_ledger for display (section 5 Trust). It has no row id; the ledger entries are targets."),
+    "FeeItem": ("fee_items", _OUTSIDE + " Section 8.15 billing catalog."),
+    "MarkerDefinition": ("marker definitions", _OUTSIDE + " Section 8.12 admin marker list."),
+    "MatterMarker": ("matter_markers", _OUTSIDE + " Section 8.12."),
+    "Folder": ("folders", _OUTSIDE + " Section 8.19; a folder is a file's location, not a record modules link to."),
+    "Notification": ("notifications", _OUTSIDE + " Section 8.9, per-user inbox."),
+    "HomeLayout": ("home_layouts", _OUTSIDE + " Section 8.6 per-user layout."),
+    "HelpItem": ("help_items", _OUTSIDE + " Section 8.11."),
+    "HelpSection": ("help_sections", _OUTSIDE + " Section 8.11."),
+    "HelpTopic": ("help topics", _OUTSIDE + " Section 8.11."),
+    "HelpPage": ("module help pages", _OUTSIDE + " Section 8.11; owned by its module."),
+    "IcalFeed": ("ical feeds", _OUTSIDE + " Section 8.5 revocable feed link."),
+    "ProblemReport": ("problem reports", _OUTSIDE + " Section 8.7 System tab."),
+    "ModuleAlert": ("module alerts", _OUTSIDE + " Section 8.7 admin dashboard."),
+    "Module": ("modules", _OUTSIDE + " Section 9 module registry."),
+    "MarketplaceListing": ("marketplace listings", _OUTSIDE + " Section 10."),
+    "TrustedKey": ("trusted signing keys", _OUTSIDE + " Section 8.7 Modules tab."),
+    "Backup": ("backups", _OUTSIDE + " Section 6 operations."),
+    "BackupDestination": ("backup destinations", _OUTSIDE + " Section 6 operations."),
+    "Restore": ("restores", _OUTSIDE + " Section 6 operations."),
+    "UpdateRecord": ("updates", _OUTSIDE + " Section 6 operations."),
+    "WebhookEvent": ("webhook deliveries", _STREAM.split(" (")[0] + ": the section 7 event delivery log."),
+    "Widget": ("home widgets", "wrapper: a computed home-screen view over core records, not a stored row."),
+    "WidgetCatalogItem": ("widget catalog", "wrapper: the list of widgets a role may place, not a stored row."),
+    "EditorCommand": ("editor commands", "wrapper: the pinned LawCraft command list, not a stored row."),
+}
+# Section 5 records that have no read or list operation of their own, so there is no read to take include=.
+# edit_locks is returned only by acquire and renew. doc_tender_units is internal to a job.
+CORE_RECORDS_WITHOUT_READS = ("edit_locks", "doc_tender_units")
 
 CORE_PAGE_TARGETS = {
     "time_entries": {"operation": "listTimeEntry", "scopes": ["time:read"], "roles": ["admin", "attorney", "staff", "accountant"], "matter_wall": True},
@@ -1240,6 +1321,8 @@ __all__ = [
     'BACKGROUND_FILE_PUBLICATION',
     'BACKGROUND_FILE_SEQUENCE',
     'CORE_EXTENSION_TARGETS',
+    'CORE_EXTENSION_EXCLUSIONS',
+    'CORE_RECORDS_WITHOUT_READS',
     'CORE_PAGE_TARGETS',
     'EVENT_EXEMPTIONS',
     'FILE_DOWNLOAD',

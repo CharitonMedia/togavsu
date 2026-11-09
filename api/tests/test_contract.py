@@ -6,6 +6,7 @@ AC-002 product acceptance: no HTTP handler is exercised.
 
 from __future__ import annotations
 
+import re
 import unittest
 
 from openapi_spec_validator import validate
@@ -23,7 +24,9 @@ from contract.build import (
 )
 from contract.policy import (
     CORE_PAGE_TARGETS,
+    CORE_EXTENSION_EXCLUSIONS,
     CORE_EXTENSION_TARGETS,
+    CORE_RECORDS_WITHOUT_READS,
     EXTENSIBLE_RECORDS,
     background_file_step,
     commit_concurrent_processor_creates,
@@ -4441,11 +4444,19 @@ class ContractTest(unittest.TestCase):
         expected = (
             ("user", "User", "users:read", ("listUser", "getUser")),
             ("contact", "Contact", "contacts:read", ("listContact", "getContact")),
+            ("contact_address", "ContactAddress", "contacts:read", ("listContactAddress", "getContactAddress")),
+            ("contact_email", "ContactEmail", "contacts:read", ("listContactEmail", "getContactEmail")),
+            ("contact_phone", "ContactPhone", "contacts:read", ("listContactPhone", "getContactPhone")),
+            ("contact_tag", "ContactTag", "contacts:read", ("listContactTag", "getContactTag")),
             ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
             ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+            ("practice_area", "PracticeArea", "settings:read", ("listPracticeArea", "getPracticeArea")),
+            ("county", "County", "settings:read", ("listCounty", "getCounty")),
+            ("referral_source", "ReferralSource", "settings:read", ("listReferralSource", "getReferralSource")),
             ("note", "Note", "notes:read", ("listNote", "getNote")),
             ("fee_agreement", "FeeAgreement", "matters:read", ("listFeeAgreement", "getFeeAgreement")),
             ("time_entry", "TimeEntry", "time:read", ("listTimeEntry", "getTimeEntry")),
+            ("timer", "Timer", "time:read", ("listTimer", "getTimer")),
             ("expense", "Expense", "expenses:read", ("listExpense", "getExpense")),
             ("invoice", "Invoice", "invoices:read", ("listInvoice", "getInvoice")),
             ("payment", "Payment", "payments:read", ("listPayment", "getPayment")),
@@ -4453,9 +4464,21 @@ class ContractTest(unittest.TestCase):
             ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
             ("file", "File", "files:read", ("listFile", "getFile")),
             ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
+            ("file_rendition", "FileRendition", "files:read", ("listFileRenditions",)),
+            ("file_link", "FileLink", "files:read", ("listFileLinks",)),
+            ("court_profile", "CourtProfile", "files:read", ("listCourtProfile", "getCourtProfile")),
+            ("doc_category", "DocCategory", "doc_tender:read", ("listDocCategory", "getDocCategory")),
+            ("doc_tender_job", "DocTenderJob", "doc_tender:read", ("listDocTenderJobs", "getDocTenderJob")),
+            ("doc_tender_result", "DocTenderResult", "doc_tender:read", ("getDocTenderResult",)),
+            ("doc_tender_exception", "DocTenderException", "doc_tender:read", ("listDocTenderException", "getDocTenderException")),
             ("conflict_record", "ConflictRecord", "conflicts:read", ("listConflictRecord", "getConflictRecord")),
+            ("conflict_check", "ConflictCheck", "conflicts:read", ("listConflictChecks", "getConflictCheck")),
+            ("conflict_review", "ConflictHit", "conflicts:read", ("listConflictChecks", "getConflictCheck")),
             ("trust_account", "TrustAccount", "trust:read", ("listTrustAccount", "getTrustAccount")),
             ("trust_entry", "TrustEntry", "trust:read", ("listTrustEntry", "getTrustEntry")),
+            ("trust_flag", "TrustFlag", "trust:read", ("listTrustFlag", "getTrustFlag")),
+            ("trust_replenishment_request", "TrustReplenishment", "trust:read", ("listTrustReplenishment", "getTrustReplenishment")),
+            ("trust_reconciliation", "TrustReconciliation", "trust:read", ("listTrustReconciliation", "getTrustReconciliation")),
         )
         self.assertEqual(CORE_EXTENSION_TARGETS, expected)
         self.assertEqual(EXTENSIBLE_RECORDS, {schema: scope for _key, schema, scope, _reads in expected})
@@ -4624,6 +4647,209 @@ class ContractTest(unittest.TestCase):
         )
         self.assertEqual(hidden_file["result"], "not_found")
         self.assertIsNone(hidden_file["record"])
+
+    def test_extension_catalog_classifies_every_record_read(self):
+        """Every GET that returns a stored record with an id is a target or a named exclusion."""
+        targets = {schema_name for _key, schema_name, _scope, _reads in CORE_EXTENSION_TARGETS}
+        self.assertFalse(targets & set(CORE_EXTENSION_EXCLUSIONS))
+        for schema_name, (record, reason) in CORE_EXTENSION_EXCLUSIONS.items():
+            self.assertIn(schema_name, self.spec["components"]["schemas"], schema_name)
+            self.assertTrue(record and len(reason) > 20, schema_name)
+        self.assertEqual(CORE_RECORDS_WITHOUT_READS, ("edit_locks", "doc_tender_units"))
+        schemas = self.spec["components"]["schemas"]
+
+        def record_names(schema):
+            if not isinstance(schema, dict):
+                return set()
+            if "$ref" in schema:
+                name = schema["$ref"].rsplit("/", 1)[-1]
+                page = schemas[name].get("properties") or {}
+                if "data" in page and "page" in page:
+                    return record_names(page["data"].get("items"))
+                return {name}
+            props = schema.get("properties") or {}
+            if "data" in props:
+                return record_names(props["data"].get("items"))
+            found = set()
+            for branch in schema.get("oneOf") or []:
+                found |= record_names(branch)
+            return found
+
+        def has_id(name):
+            schema = schemas[name]
+            branches = schema.get("oneOf") or [schema]
+            return all("id" in (branch.get("properties") or {}) for branch in branches)
+
+        projections = {"InvoiceClient": "Invoice", "FileGrantView": "File", "FileVersionGrantView": "FileVersion"}
+        # The client invoice allowlist and grant views return only their listed fields, so they do not carry included.
+        for projection in projections:
+            self.assertNotIn("included", schemas[projection].get("properties") or {}, projection)
+        unclassified = {}
+        for method, _path, operation in _ops(self.spec):
+            if method != "get":
+                continue
+            body = (operation["responses"].get("200") or {}).get("content", {}).get("application/json", {}).get("schema")
+            for name in record_names(body):
+                # A projection of a target is read through that target's operation.
+                name = projections.get(name, name)
+                if name in CORE_EXTENSION_EXCLUSIONS:
+                    continue
+                if name in targets:
+                    names = [_param_name(parameter) for parameter in operation.get("parameters") or []]
+                    self.assertIn("include", names, operation["operationId"])
+                    self.assertEqual(operation["x-togavsu-access"]["include_scope_pattern"], "views:{module_id}.{view}:read", operation["operationId"])
+                    continue
+                if has_id(name):
+                    unclassified.setdefault(name, []).append(operation["operationId"])
+        self.assertEqual(unclassified, {})
+        # Every section 5 record the review named reads with include=.
+        for operation_id in (
+            "listContactAddress", "getContactAddress", "listContactEmail", "getContactEmail", "listContactPhone", "getContactPhone",
+            "listContactTag", "getContactTag", "listTimer", "getTimer", "listTrustReplenishment", "getTrustReplenishment",
+            "listTrustReconciliation", "getTrustReconciliation", "listTrustFlag", "getTrustFlag", "listConflictChecks",
+            "getConflictCheck", "getDocTenderResult", "listPracticeArea", "getPracticeArea", "listCounty", "getCounty",
+            "listReferralSource", "getReferralSource",
+        ):
+            names = [_param_name(parameter) for parameter in _operation(self.spec, operation_id).get("parameters") or []]
+            self.assertIn("include", names, operation_id)
+        # Catalogs outside section 5 do not take include=.
+        for operation_id in ("listActivityType", "listExpenseType", "listPartyRole", "listSettings", "getMatterWall", "listStorageBackend", "listSessions"):
+            names = [_param_name(parameter) for parameter in _operation(self.spec, operation_id).get("parameters") or []]
+            self.assertNotIn("include", names, operation_id)
+            self.assertNotIn("include_scope_pattern", _operation(self.spec, operation_id)["x-togavsu-access"], operation_id)
+        self.assertIn("id", schemas["DocTenderResult"]["required"])
+        self.assertTrue(_schema_accepts_included(schemas["ConflictHit"]))
+        self.assertTrue(all(_schema_accepts_included(branch) for branch in schemas["TrustFlag"]["oneOf"]))
+
+    def test_new_extension_targets_include_through_the_full_path(self):
+        """include= on each added target goes through the same dispatch, scope, role, wall, and attorney-only checks as the read."""
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        entry = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa4"
+        record_id = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1"
+        account = "018f1a00-7b3c-7d4e-8a11-aaaaaaa00001"
+        stamp = "2026-11-07T18:00:00Z"
+        added = {
+            "contact_address", "contact_email", "contact_phone", "contact_tag", "practice_area", "county", "referral_source",
+            "timer", "file_rendition", "file_link", "court_profile", "doc_category", "doc_tender_job", "doc_tender_result",
+            "doc_tender_exception", "conflict_check", "conflict_review", "trust_flag", "trust_replenishment_request",
+            "trust_reconciliation",
+        }
+        self.assertEqual(added - {row[0] for row in CORE_EXTENSION_TARGETS}, set())
+
+        def trusted(walled=False, attorney_only=False, shared=True):
+            return {
+                "stored_file": {
+                    "id": file_id,
+                    "matter_id": matter,
+                    "matter_walled": walled,
+                    "attorney_only": attorney_only,
+                    "shared_with_client": shared,
+                    "quarantined": False,
+                },
+                "matter_id": matter,
+                "matter_walls": {matter: walled},
+                "matter_membership": {matter: False},
+                "stored_record": {
+                    "id": record_id,
+                    "created_at": stamp,
+                    "created_by": entry,
+                    "updated_at": stamp,
+                    "trust_entry_id": entry,
+                    "balance_cents": -5,
+                    "scope": "matter",
+                    "status": "open",
+                    "client_id": entry,
+                    "matter_id": matter,
+                    "source": {"trust_entry_id": entry, "matter_id": matter, "matter_walled": walled, "client_id": entry},
+                },
+            }
+
+        def call(operation_id, role, token_scopes, approved, view, **context):
+            path = next(path for method, path, operation in _ops(self.spec) if operation["operationId"] == operation_id)
+            arguments = {
+                "path": {name: (file_id if name == "file_id" else record_id) for name in re.findall(r"{(\w+)}", path)},
+                "query": {"include": view},
+            }
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": token_scopes,
+                    "approved_scopes": approved,
+                    "published_views": [view],
+                    "caller_module_id": "reader",
+                    "tool": operation_id,
+                    "arguments": arguments,
+                    **context,
+                },
+            )
+
+        def denied(decision, expected, label):
+            self.assertEqual(decision["result"], expected, label)
+            self.assertFalse(decision["effects"], label)
+
+        checked = 0
+        for key, _schema_name, scope, reads in CORE_EXTENSION_TARGETS:
+            if key not in added:
+                continue
+            view = f"clock.{key}"
+            view_scope = f"views:{view}:read"
+            granted = [scope, view_scope]
+            for operation_id in reads:
+                label = f"{key} {operation_id}"
+                access = _operation(self.spec, operation_id)["x-togavsu-access"]
+                roles = access["roles"]
+                allowed = call(operation_id, "admin", granted, granted, view, **trusted())
+                self.assertEqual(allowed["result"], "allowed", label)
+                self.assertTrue(allowed["effects"], label)
+                # The admin has not approved the view scope for the reading module.
+                denied(call(operation_id, "admin", [scope], [scope], view, **trusted()), "forbidden", label)
+                # Approved, but the presented token does not carry the view scope.
+                denied(call(operation_id, "admin", [scope], granted, view, **trusted()), "scope_denied", label)
+                # The base read scope is still required.
+                denied(call(operation_id, "admin", [view_scope], granted, view, **trusted()), "scope_denied", label)
+                # A malformed view name is rejected, not ignored.
+                denied(call(operation_id, "admin", granted, granted, "not-a-view", **trusted()), "validation_failed", label)
+                if "client" in roles:
+                    shared = call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted())
+                    self.assertEqual(shared["result"], "allowed", label)
+                    denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted(shared=False)), "not_found", label)
+                else:
+                    denied(call(operation_id, "client", granted, granted, view, client_matter_ids=[matter], **trusted()), "forbidden", label)
+                if "staff" not in roles:
+                    denied(call(operation_id, "staff", granted, granted, view, **trusted()), "forbidden", label)
+                inside = "staff" if "staff" in roles else "attorney"
+                if access["matter_wall"]:
+                    denied(call(operation_id, inside, granted, granted, view, **trusted(walled=True)), "not_found", label)
+                    on_wall = call(operation_id, inside, granted, granted, view, **{**trusted(walled=True), "matter_membership": {matter: True}})
+                    self.assertEqual(on_wall["result"], "allowed", label)
+                else:
+                    self.assertEqual(call(operation_id, inside, granted, granted, view, **trusted(walled=True))["result"], "allowed", label)
+                if access.get("attorney_only_files") == "not_found" and "staff" in roles:
+                    context = {**trusted(attorney_only=True), "attorney_only": True}
+                    denied(call(operation_id, "staff", granted, granted, view, **context), "not_found", label)
+                    self.assertEqual(call(operation_id, "attorney", granted, granted, view, **context)["result"], "allowed", label)
+                checked += 1
+        self.assertEqual(checked, 37)
+        # An account-scope trust flag the list omits is also hidden from include=.
+        account_flag = {**trusted()["stored_record"], "scope": "account", "trust_account_id": account}
+        account_flag.pop("client_id")
+        account_flag.pop("matter_id")
+        live = {"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}
+        granted = ["trust:read", "views:clock.trust_flag:read"]
+        for label, accounts in (
+            ("inactive", [{**live, "active": False}]),
+            ("unauthorized", [{**live, "authorized": False}]),
+            ("other firm", [{**live, "firm_id": "firm-2"}]),
+        ):
+            context = {"stored_record": account_flag, "matter_walled": False, "trust_accounts": accounts, "firm_id": "firm-1"}
+            denied(call("getTrustFlag", "admin", granted, granted, "clock.trust_flag", **context), "not_found", label)
+        current = call("getTrustFlag", "admin", granted, granted, "clock.trust_flag", stored_record=account_flag, matter_walled=False, trust_accounts=[live], firm_id="firm-1")
+        self.assertEqual(current["result"], "allowed")
 
     def test_notifications_are_limited_to_the_recipient(self):
         for operation_id in ("listNotification", "getNotification", "markNotificationRead", "markAllNotificationsRead", "deleteNotification"):
@@ -5753,6 +5979,7 @@ class ContractTest(unittest.TestCase):
         }
         _schema_validator(self.spec, _operation(self.spec, "listWebhookDeliveries")["responses"]["200"]["content"]["application/json"]["schema"]).validate(webhook_page)
         result = {
+            "id": "018f1a00-7b3c-7d4e-8a11-dddddddddd01",
             "file_id": matter,
             "file_version_id": actor,
             "summary": {"redacted": True},

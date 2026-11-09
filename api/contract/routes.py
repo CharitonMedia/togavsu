@@ -865,6 +865,7 @@ def _practice(api: Contract) -> None:
             read_scope="contacts:read",
             write_scope="contacts:write",
             bulk=True,
+            include=True,
             filters=["contact_id"],
             events={"created": "contact.updated", "updated": "contact.updated"},
         )
@@ -1255,6 +1256,7 @@ def _practice(api: Contract) -> None:
         scopes=["conflicts:read"],
         response_schema=_page("ConflictCheck"),
         paginate=True,
+        include=True,
         query=["matter_id"],
         writes=False,
         extra_access=WALL,
@@ -1270,6 +1272,7 @@ def _practice(api: Contract) -> None:
         roles=STAFF,
         scopes=["conflicts:read"],
         response="ConflictCheck",
+        include=True,
         writes=False,
         extra_access={**WALL, "attorney_only": ["reason"]},
     )
@@ -1423,6 +1426,9 @@ def _admin_lists(api: Contract) -> None:
         ("ExpenseType", "expense type", "expense types", "expense-types", "expense_type_id"),
         ("CustomFieldDefinition", "custom field definition", "custom field definitions", "custom-fields", "definition_id"),
     ]
+    # practice_areas, counties, and referral_sources are section 5 records, so their reads take include=.
+    # The other lists are settings-table catalogs (section 5 Firm settings) and are not extension targets.
+    section5 = {"PracticeArea", "County", "ReferralSource"}
     for schema, singular, plural, feature, id_param in specs:
         api.resource(
             collection=f"/api/v1/{feature}" if feature != "custom-fields" else "/api/v1/custom-field-definitions",
@@ -1437,6 +1443,7 @@ def _admin_lists(api: Contract) -> None:
             write_roles=ADMIN,
             read_scope="settings:read",
             write_scope="settings:write",
+            include=schema in section5,
             filters=["active"] if schema != "CustomFieldDefinition" else ["record_type", "practice_area_id"],
             events={"created": "setting.updated", "updated": "setting.updated"},
         )
@@ -1491,6 +1498,7 @@ def _billing(api: Contract) -> None:
         read_scope="time:read",
         write_scope="time:write",
         update=False,
+        include=True,
         events={"created": "timer.started"},
         replaceable="time",
         extra_access=WALL,
@@ -2173,6 +2181,7 @@ def _trust(api: Contract) -> None:
         write_scope="trust:write",
         create=False,
         update=False,
+        include=True,
         filters=["status", "matter_id", "trust_account_id", "flag_scope"],
         replaceable="trust",
         extra_access=WALL,
@@ -2207,6 +2216,7 @@ def _trust(api: Contract) -> None:
         write_scope="trust:write",
         update=False,
         bulk=True,
+        include=True,
         filters=["matter_id", "status"],
         events={"created": "trust.replenishment_requested"},
         replaceable="trust",
@@ -2256,6 +2266,7 @@ def _trust(api: Contract) -> None:
         write_scope="trust:write",
         update=False,
         bulk=True,
+        include=True,
         filters=["trust_account_id"],
         events={"created": "trust.reconciled"},
         replaceable="trust",
@@ -2626,6 +2637,7 @@ def _files(api: Contract) -> None:
         scopes=["files:read"],
         response_schema=_page("FileLink"),
         paginate=True,
+        include=True,
         writes=False,
         extra_access=SHARED,
     )
@@ -2733,6 +2745,7 @@ def _files(api: Contract) -> None:
         query=["kind"],
         response_schema=_page("FileRendition"),
         paginate=True,
+        include=True,
         writes=False,
         extra_access=SHARED,
     )
@@ -3067,6 +3080,7 @@ def _files(api: Contract) -> None:
         write_roles=STAFF,
         read_scope="files:read",
         write_scope="files:write",
+        include=True,
         events={"created": "court_profile.created", "updated": "court_profile.updated"},
     )
     api.add(
@@ -3178,6 +3192,7 @@ def _doc_tender(api: Contract) -> None:
         scopes=["doc_tender:read"],
         response_schema=_page("DocTenderJob"),
         paginate=True,
+        include=True,
         query=["matter_id", "status"],
         writes=False,
         extra_access=FILE_WALL,
@@ -3193,6 +3208,7 @@ def _doc_tender(api: Contract) -> None:
         roles=STAFF,
         scopes=["doc_tender:read"],
         response="DocTenderJob",
+        include=True,
         writes=False,
         extra_access=FILE_WALL,
     )
@@ -3237,6 +3253,7 @@ def _doc_tender(api: Contract) -> None:
         write_scope="doc_tender:write",
         create=False,
         update=False,
+        include=True,
         filters=["status", "kind"],
         extra_access=FILE_WALL,
     )
@@ -3270,6 +3287,7 @@ def _doc_tender(api: Contract) -> None:
         roles=STAFF,
         scopes=["doc_tender:read"],
         response="DocTenderResult",
+        include=True,
         writes=False,
         extra_access=FILE_WALL,
     )
@@ -3286,6 +3304,7 @@ def _doc_tender(api: Contract) -> None:
         write_roles=ADMIN,
         read_scope="doc_tender:read",
         write_scope="doc_tender:write",
+        include=True,
         filters=["active"],
         events={"created": "doc_tender.category_updated", "updated": "doc_tender.category_updated"},
     )
