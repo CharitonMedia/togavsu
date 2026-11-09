@@ -302,6 +302,14 @@ class ControllerTests(unittest.TestCase):
         launches = [c for c in self.remote.calls if c[1] == "/agents"]
         self.assertEqual(launches[0][2]["repos"][0]["startingRef"], BASE)
 
+    def test_held_task_waits_while_its_sibling_launches(self):
+        self.record["completed"] = {"merge_sha": BASE}
+        self.controller.plan["tasks"] = [SPEC, {"id": "two", "depends_on": ["one"]}, {"id": "three", "depends_on": ["one"]}]
+        self.controller.plan["held_tasks"] = ["three"]
+        self.controller.tick()
+        self.assertIn("two", self.controller.tasks)
+        self.assertNotIn("three", self.controller.tasks)
+
     def test_recovered_merge_refreshes_main_before_dependent_launch(self):
         for response_recorded in (False, True):
             with self.subTest(response_recorded=response_recorded):

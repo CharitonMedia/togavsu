@@ -1388,6 +1388,8 @@ class Controller:
                 continue
             if not all(self.tasks.get(dep, {}).get("completed") for dep in spec["depends_on"]):
                 continue
+            if task in self.plan.get("held_tasks", []):
+                continue  # Operator hold: launch only after Patrick approves this assignment.
             try:
                 self.launch(spec, main)
             except Exception as error:

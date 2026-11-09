@@ -70,3 +70,5 @@ The controller dispatches `.github/workflows/lane-agent.yml` on main with the ag
 When the run completes, the controller (Patrick's gh credentials on Render-1) downloads the artifact, checks that it belongs to that agent, run, task, branch and base, verifies the bundle, confirms the new head descends from the base and pushes without force. A moved branch or mismatched result is rejected, never overwritten. It then opens the PR once or updates its body. Follow-up instructions dispatch a new run from the current branch head with the original assignment attached. Dry runs never publish.
 
 Agent records live in `.build-state/lane-agents.json`. The entrypoint no longer reads CURSOR_API_KEY on this backend.
+
+Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. Calendar and files are held until Patrick approves them; releasing a hold is a reviewed plan change.
