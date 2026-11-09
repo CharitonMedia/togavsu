@@ -539,7 +539,15 @@ func wallDoc(matter domain.ID, rows []domain.MatterWall) map[string]any {
 }
 
 func pageDoc(n int) map[string]any {
-	return map[string]any{"limit": n, "next_cursor": ""}
+	return listPage(n, "")
+}
+
+func listPage(n int, next string) map[string]any {
+	return map[string]any{"limit": n, "next_cursor": next}
+}
+
+func listEnvelope(rows any, n int, next string) map[string]any {
+	return map[string]any{"data": rows, "page": listPage(n, next)}
 }
 
 func referralDoc(row domain.ReferralSource) map[string]any {

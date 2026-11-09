@@ -70,6 +70,13 @@ func (s *Service) SetCustomFields(ctx context.Context, p domain.Principal, recor
 	if err := s.gateRecord(ctx, p, recordType, recordID, domain.ActionWrite); err != nil {
 		return err
 	}
+	if recordType == RecordMatter {
+		row, err := s.db.Matter(ctx, recordID)
+		if err != nil {
+			return missing(err, "matter")
+		}
+		area = row.PracticeAreaID
+	}
 	return s.saveCustom(ctx, p, recordType, recordID, area, values)
 }
 

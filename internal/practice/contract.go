@@ -62,7 +62,7 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, doc)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+	writeJSON(w, http.StatusOK, listEnvelope(out, len(out), ""))
 }
 
 func (h *Handler) contactJSON(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +97,7 @@ func (h *Handler) phonesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, phoneDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) phoneJSON(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +149,7 @@ func (h *Handler) emailsJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, emailDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) emailJSON(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +200,7 @@ func (h *Handler) addressesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, addressDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) addressJSON(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func (h *Handler) tagsJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, tagDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) tagJSON(w http.ResponseWriter, r *http.Request) {
@@ -301,7 +301,7 @@ func (h *Handler) markersJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, markerDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) markerJSON(w http.ResponseWriter, r *http.Request) {
@@ -345,7 +345,7 @@ func (h *Handler) partiesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, partyDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) partyJSON(w http.ResponseWriter, r *http.Request) {
@@ -406,7 +406,7 @@ func (h *Handler) conflictsJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, conflictDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) conflictJSON(w http.ResponseWriter, r *http.Request) {
@@ -454,7 +454,7 @@ func (h *Handler) allChecksJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, checkDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) checkJSON(w http.ResponseWriter, r *http.Request) {
@@ -484,7 +484,7 @@ func (h *Handler) areasJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, areaDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) createAreaJSON(w http.ResponseWriter, r *http.Request) {
@@ -506,7 +506,7 @@ func (h *Handler) createAreaJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, areaDoc(row))
+	writeJSON(w, http.StatusCreated, areaDoc(row))
 }
 
 func (h *Handler) areaJSON(w http.ResponseWriter, r *http.Request) {
@@ -558,7 +558,7 @@ func (h *Handler) countiesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, countyDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) createCountyJSON(w http.ResponseWriter, r *http.Request) {
@@ -579,7 +579,7 @@ func (h *Handler) createCountyJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, countyDoc(row))
+	writeJSON(w, http.StatusCreated, countyDoc(row))
 }
 
 func (h *Handler) countyJSON(w http.ResponseWriter, r *http.Request) {
@@ -630,7 +630,7 @@ func (h *Handler) referralsJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, referralDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) createReferralJSON(w http.ResponseWriter, r *http.Request) {
@@ -652,7 +652,7 @@ func (h *Handler) createReferralJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, referralDoc(row))
+	writeJSON(w, http.StatusCreated, referralDoc(row))
 }
 
 func (h *Handler) referralJSON(w http.ResponseWriter, r *http.Request) {
@@ -704,7 +704,7 @@ func (h *Handler) fieldsJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, fieldDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) createFieldJSON(w http.ResponseWriter, r *http.Request) {
@@ -734,7 +734,7 @@ func (h *Handler) createFieldJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, fieldDoc(row))
+	writeJSON(w, http.StatusCreated, fieldDoc(row))
 }
 
 func (h *Handler) fieldJSON(w http.ResponseWriter, r *http.Request) {

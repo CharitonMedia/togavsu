@@ -499,7 +499,7 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		rows = kept
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": matterItems(rows)})
+	writeJSON(w, http.StatusOK, listEnvelope(matterItems(rows), len(rows), ""))
 }
 
 func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
@@ -539,12 +539,29 @@ func (h *Handler) writeHistory(w http.ResponseWriter, r *http.Request, entity, i
 	for _, row := range rows {
 		items = append(items, map[string]any{
 			"id": row.ID, "at": row.At.UTC().Format(timeRFC3339), "actor_id": row.ActorID,
-			"role": row.Role, "source": row.Source, "entity_type": row.Entity, "field": row.Field,
+			"actor_kind": historyActorKind(row.Source, row.Role), "role": row.Role, "source": row.Source,
+			"entity_type": row.Entity, "entity_id": row.EntityID, "field": row.Field,
 			"old_value": historyValue(row, row.Old), "new_value": historyValue(row, row.New),
 			"reason": historyValue(row, row.Reason), "kind": row.Kind,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
+}
+
+func historyActorKind(source, role string) string {
+	switch domain.ActorSource(source) {
+	case domain.SourceSystem:
+		return "system"
+	case domain.SourceAPIToken:
+		return "agent"
+	case domain.SourceUI, "":
+		if role == string(domain.RoleClient) {
+			return "client"
+		}
+		return "staff"
+	default:
+		return "module"
+	}
 }
 
 func historyValue(row HistoryRow, value string) any {

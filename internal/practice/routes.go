@@ -123,7 +123,7 @@ func (h *Handler) createContactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, doc)
+	writeJSON(w, http.StatusCreated, doc)
 }
 
 func (h *Handler) updateContactJSON(w http.ResponseWriter, r *http.Request) {
@@ -238,7 +238,7 @@ func (h *Handler) createPhoneJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, phoneDoc(row))
+	writeJSON(w, http.StatusCreated, phoneDoc(row))
 }
 
 func (h *Handler) createEmailJSON(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +262,7 @@ func (h *Handler) createEmailJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, emailDoc(row))
+	writeJSON(w, http.StatusCreated, emailDoc(row))
 }
 
 func (h *Handler) createAddressJSON(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +296,7 @@ func (h *Handler) createAddressJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, addressDoc(row))
+	writeJSON(w, http.StatusCreated, addressDoc(row))
 }
 
 func (h *Handler) createTagJSON(w http.ResponseWriter, r *http.Request) {
@@ -317,7 +317,7 @@ func (h *Handler) createTagJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, tagDoc(row))
+	writeJSON(w, http.StatusCreated, tagDoc(row))
 }
 
 func (h *Handler) createMatterJSON(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +342,7 @@ func (h *Handler) createMatterJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, matterItem(view))
+	writeJSON(w, http.StatusCreated, matterItem(view))
 }
 
 func (h *Handler) updateMatterJSON(w http.ResponseWriter, r *http.Request) {
@@ -460,7 +460,7 @@ func (h *Handler) createPartyJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, partyDoc(row))
+	writeJSON(w, http.StatusCreated, partyDoc(row))
 }
 
 func (h *Handler) updatePartyJSON(w http.ResponseWriter, r *http.Request) {
@@ -506,7 +506,7 @@ func (h *Handler) notesJSON(w http.ResponseWriter, r *http.Request) {
 	for _, note := range notes {
 		items = append(items, h.noteDoc(note))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), next))
 }
 
 func (h *Handler) createNoteJSON(w http.ResponseWriter, r *http.Request) {
@@ -524,7 +524,7 @@ func (h *Handler) createNoteJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, h.noteDoc(row))
+	writeJSON(w, http.StatusCreated, h.noteDoc(row))
 }
 
 func (h *Handler) noteJSON(w http.ResponseWriter, r *http.Request) {
@@ -555,7 +555,7 @@ func (h *Handler) createConflictJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, conflictDoc(row))
+	writeJSON(w, http.StatusCreated, conflictDoc(row))
 }
 
 func (h *Handler) runCheckJSON(w http.ResponseWriter, r *http.Request) {
@@ -568,7 +568,7 @@ func (h *Handler) runCheckJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, checkDoc(row))
+	writeJSON(w, http.StatusCreated, checkDoc(row))
 }
 
 func (h *Handler) listChecksJSON(w http.ResponseWriter, r *http.Request) {
@@ -585,7 +585,7 @@ func (h *Handler) listChecksJSON(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, checkDoc(row))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
 
 func (h *Handler) decideJSON(w http.ResponseWriter, r *http.Request) {
@@ -640,7 +640,7 @@ func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, markerDoc(row))
+	writeJSON(w, http.StatusCreated, markerDoc(row))
 }
 
 func (h *Handler) removeMarkerJSON(w http.ResponseWriter, r *http.Request) {

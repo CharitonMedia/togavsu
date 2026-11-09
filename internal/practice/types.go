@@ -270,6 +270,7 @@ type HistoryRow struct {
 	Role      string
 	Source    string
 	Entity    string
+	EntityID  domain.ID
 	Field     string
 	Old       string
 	New       string

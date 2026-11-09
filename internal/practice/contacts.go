@@ -218,7 +218,7 @@ func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain
 	if strings.TrimSpace(label) != "" {
 		nextLabel = strings.TrimSpace(label)
 	}
-	row, err := s.AddPhone(ctx, p, prev.ContactID, nextLabel, e164, from, true)
+	row, err := s.AddPhone(ctx, p, prev.ContactID, nextLabel, e164, from, wasPrimary)
 	if err != nil {
 		return domain.ContactPhone{}, err
 	}

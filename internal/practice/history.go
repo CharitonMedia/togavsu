@@ -234,7 +234,7 @@ func (s *Service) historyRow(ctx context.Context, p domain.Principal, row stored
 	}
 	out := HistoryRow{
 		ID: row.Entry.ID, At: row.Entry.CreatedAt, ActorID: row.Entry.ActorID, ActorName: name, Role: row.Entry.Role,
-		Source: row.Entry.Source, Entity: row.Entry.Entity, Field: row.Entry.Field,
+		Source: row.Entry.Source, Entity: row.Entry.Entity, EntityID: row.Entry.EntityID, Field: row.Entry.Field,
 		Old: row.Entry.OldValue, New: row.Entry.NewValue, Kind: kindOf(row.Entry.OldValue, row.Entry.NewValue),
 		Reason: row.Entry.Reason,
 	}

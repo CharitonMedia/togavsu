@@ -534,7 +534,7 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 	status, body := postJSON(t, svc, staff, "/api/v1/matters", map[string]any{
 		"name": "API matter", "practice_area_id": area, "billing_type": BillingHourly,
 	}, "")
-	if status != 200 || !strings.Contains(body, "API matter") || strings.Contains(body, "PracticeAreaID") {
+	if status != http.StatusCreated || !strings.Contains(body, "API matter") || strings.Contains(body, "PracticeAreaID") {
 		t.Fatalf("create matter %d %s", status, body)
 	}
 	var created struct {
@@ -546,7 +546,7 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 	status, body = postJSON(t, svc, staff, "/api/v1/contacts", map[string]any{
 		"kind": KindPerson, "given_name": "Ada", "family_name": "API",
 	}, "")
-	if status != 200 || !strings.Contains(body, "Ada API") || strings.Contains(body, "GivenName") {
+	if status != http.StatusCreated || !strings.Contains(body, "Ada API") || strings.Contains(body, "GivenName") {
 		t.Fatalf("create contact %d %s", status, body)
 	}
 	var contact struct {
@@ -558,13 +558,13 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 	status, body = postJSON(t, svc, staff, "/api/v1/matter-parties", map[string]any{
 		"matter_id": created.ID, "contact_id": contact.ID, "role": "client", "primary": true,
 	}, "")
-	if status != 200 {
+	if status != http.StatusCreated {
 		t.Fatalf("party %d %s", status, body)
 	}
 	status, body = postJSON(t, svc, staff, "/api/v1/notes", map[string]any{
 		"matter_id": created.ID, "title": "Tagged", "body": "hello", "tags": []string{"alpha"},
 	}, "")
-	if status != 200 {
+	if status != http.StatusCreated {
 		t.Fatalf("note %d %s", status, body)
 	}
 	status, body = getAPI(t, svc, staff, "/api/v1/notes?tag=alpha")
@@ -584,7 +584,7 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 		t.Fatalf("worklist %d %s", status, body)
 	}
 	status, _ = postJSON(t, svc, staff, "/api/v1/matters/"+string(created.ID)+"/conflict-checks", map[string]any{}, "")
-	if status != 200 {
+	if status != http.StatusCreated {
 		t.Fatalf("check %d", status)
 	}
 	page := getHTML(t, svc, staff, "/practice/notes?tag=alpha")
@@ -931,7 +931,7 @@ func TestMarkersAPIAndScreen(t *testing.T) {
 		t.Fatal("zero fee marker missing")
 	}
 	status, body := postJSON(t, svc, staff, "/api/v1/matter-markers", map[string]string{"matter_id": string(matter.ID), "marker_id": string(zero.ID)}, "")
-	if status != 200 || !strings.Contains(body, `"marker_id"`) || strings.Contains(body, "MarkerID") {
+	if status != http.StatusCreated || !strings.Contains(body, `"marker_id"`) || strings.Contains(body, "MarkerID") {
 		t.Fatalf("set %d %s", status, body)
 	}
 	view, err := svc.GetMatter(ctx, staff, matter.ID)
@@ -1121,7 +1121,7 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	attorney := person(tid(2), domain.RoleAttorney)
 	staff := person(tid(3), domain.RoleStaff)
 	status, body := postJSON(t, svc, admin, "/api/v1/practice-areas", map[string]any{"name": "Estate", "stages": []string{"Open"}}, "")
-	if status != 200 || !strings.Contains(body, "Estate") {
+	if status != http.StatusCreated || !strings.Contains(body, "Estate") {
 		t.Fatalf("area %d %s", status, body)
 	}
 	var area struct {
@@ -1137,7 +1137,7 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	status, body = postJSON(t, svc, admin, "/api/v1/custom-field-definitions", map[string]any{
 		"record_type": "matter", "label": "Heir", "field_type": "text", "practice_area_ids": []string{string(area.ID)},
 	}, "")
-	if status != 200 || !strings.Contains(body, "Heir") {
+	if status != http.StatusCreated || !strings.Contains(body, "Heir") {
 		t.Fatalf("field %d %s", status, body)
 	}
 	var field struct {
@@ -1164,7 +1164,7 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 		t.Fatalf("contact %d %s", status, body)
 	}
 	status, body = postJSON(t, svc, staff, "/api/v1/contact-phones", map[string]any{"contact_id": contact.ID, "e164": "+15555550100", "primary": true, "effective_from": "2026-01-01"}, "")
-	if status != 200 {
+	if status != http.StatusCreated {
 		t.Fatalf("phone %d %s", status, body)
 	}
 	var phone struct {
@@ -1211,7 +1211,7 @@ func TestPartialPatchKeepsOmittedFields(t *testing.T) {
 		"name": "Patch me", "practice_area_id": area, "billing_type": BillingHourly,
 		"court": "Circuit", "stage": "Intake", "responsible_attorney_user_id": attorney.UserID,
 	}, "")
-	if status != 200 || !strings.Contains(body, `"practice_area_id"`) {
+	if status != http.StatusCreated || !strings.Contains(body, `"practice_area_id"`) {
 		t.Fatalf("create %d %s", status, body)
 	}
 	var created struct {
@@ -1235,7 +1235,7 @@ func TestPartialPatchKeepsOmittedFields(t *testing.T) {
 	contactStatus, contactBody := postJSON(t, svc, staff, "/api/v1/contacts", map[string]any{
 		"kind": "person", "given_name": "Pat", "family_name": "Lee", "preferred_name": "Patsy",
 	}, "")
-	if contactStatus != 200 {
+	if contactStatus != http.StatusCreated {
 		t.Fatal(contactBody)
 	}
 	var contact struct {
@@ -1493,6 +1493,87 @@ func hitMatches(runs []ConflictRun, id domain.ID) bool {
 		}
 	}
 	return false
+}
+
+func TestNonPrimaryPhoneChangeLeavesThePrimary(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	staff := person(tid(3), domain.RoleStaff)
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Pat", FamilyName: "Lee"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mobile, err := svc.AddPhone(ctx, staff, contact.ID, "mobile", "+15555550100", "2026-01-01", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := svc.AddPhone(ctx, staff, contact.ID, "work", "+15555550101", "2026-01-02", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := svc.RevisePhone(ctx, staff, work.ID, "+15555550109", "", "")
+	if err != nil || next.Primary || next.PhoneE164 != "+15555550109" {
+		t.Fatal(err, next)
+	}
+	still, err := svc.GetPhone(ctx, staff, mobile.ID)
+	if err != nil || !still.Primary || still.PhoneE164 != "+15555550100" {
+		t.Fatal(err, still)
+	}
+}
+
+func TestMatterCustomFieldUsesTheStoredArea(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	probate := makeArea(t, svc, admin, "Probate")
+	criminal := makeArea(t, svc, admin, "Criminal")
+	field, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordMatter, Label: "Heir", FieldType: FieldText, PracticeAreaIDs: []domain.ID{probate}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matter := makeMatter(t, svc, staff, criminal, "Wrong area", "")
+	if err := svc.SetCustomFields(ctx, staff, RecordMatter, matter.ID, probate, []CustomInput{{DefinitionID: field.ID, Value: "niece"}}); err == nil {
+		t.Fatal("caller area overrode the matter area")
+	}
+	if len(svc.db.Values(matter.ID)) != 0 {
+		t.Fatal(svc.db.Values(matter.ID))
+	}
+	home := makeMatter(t, svc, staff, probate, "Right area", "")
+	if err := svc.SetCustomFields(ctx, staff, RecordMatter, home.ID, criminal, []CustomInput{{DefinitionID: field.ID, Value: "niece"}}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenAPIListCreateAndHistoryShape(t *testing.T) {
+	svc, _ := newSvc(t)
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	status, body := postJSON(t, svc, staff, "/api/v1/matters", map[string]any{
+		"name": "Shape", "practice_area_id": area, "billing_type": BillingHourly,
+	}, "")
+	if status != http.StatusCreated || strings.Contains(body, `"items"`) || !strings.Contains(body, `"practice_area_id"`) {
+		t.Fatalf("create %d %s", status, body)
+	}
+	var created struct {
+		ID domain.ID `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &created); err != nil || created.ID.IsZero() {
+		t.Fatal(err, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters")
+	if status != 200 || strings.Contains(body, `"items"`) || !strings.Contains(body, `"data"`) || !strings.Contains(body, `"page"`) {
+		t.Fatalf("list %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters/"+string(created.ID)+"/history")
+	if status != 200 || strings.Contains(body, `"items"`) || !strings.Contains(body, `"actor_kind"`) || !strings.Contains(body, `"entity_id"`) || !strings.Contains(body, `"data"`) {
+		t.Fatalf("history %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/contacts")
+	if status != 200 || strings.Contains(body, `"items"`) || !strings.Contains(body, `"data"`) || !strings.Contains(body, `"page"`) {
+		t.Fatalf("contacts %d %s", status, body)
+	}
 }
 
 func TestPhoneNumberChangeKeepsTheRequestedLabel(t *testing.T) {
