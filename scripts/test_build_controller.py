@@ -2275,8 +2275,9 @@ LANE_AGENT = "bc-12345678-1234-4234-8234-123456789abc"
 class FakeLaneRemote(build_controller.ActionsRemote):
     """ActionsRemote with GitHub replaced by memory and the push target replaced by a local bare repo."""
 
-    def __init__(self, state_dir, repo_dir, bare, dry=False):
-        super().__init__(state_dir, repo_dir, dry)
+    def __init__(self, state_dir, repo_dir, bare, dry=False, plan=None):
+        super().__init__(state_dir, repo_dir, dry, plan or {"tasks": [{"id": "one", "owned_paths": [
+            "internal/one/", ".github/workflows/product-ci.yml"]}]})
         self.push_url = str(bare)
         self.bare = bare
         self.calls, self.runs, self.artifacts, self.pulls = [], [], {}, []
@@ -2346,15 +2347,21 @@ class LaneBackendTests(unittest.TestCase):
         return self.remote.cursor("POST", "/agents", {"agentId": LANE_AGENT, "name": "Togavsu one",
             "prompt": {"text": prompt}, "repos": [{"url": "https://github.com/CharitonMedia/togavsu", "startingRef": self.base}]})
 
-    def lane_commit(self, base, text):
+    def lane_commit(self, base, text, files=None):
         if not self.worker.exists():
             subprocess.run(["git", "clone", "-q", str(self.bare), str(self.worker)], check=True)
             self.git(self.worker, "config", "user.email", "t@example.com")
             self.git(self.worker, "config", "user.name", "t")
         self.git(self.worker, "fetch", "-q", "origin")
         self.git(self.worker, "checkout", "-q", "-B", "lane", base)
-        (self.worker / "work.txt").write_text(text)
-        self.git(self.worker, "add", "work.txt")
+        for name, content in (files or {"work.txt": text}).items():
+            path = self.worker / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if content is None:
+                path.symlink_to(".github")
+            else:
+                path.write_text(content)
+            self.git(self.worker, "add", name)
         self.git(self.worker, "commit", "-q", "-m", text)
         head = self.git(self.worker, "rev-parse", "HEAD")
         bundle = Path(self.temp.name) / "lane.bundle"
@@ -2516,6 +2523,37 @@ class LaneBackendTests(unittest.TestCase):
         os.environ.pop("CURSOR_API_KEY")
         with self.assertRaises(AgentNotFound):
             self.remote.agent(legacy)
+
+    def test_lane_cannot_publish_control_or_unsafe_workflow_changes(self):
+        safe = "name: Product CI\non: [push]\npermissions:\n  contents: read\njobs: {}\n"
+        cases = {
+            "new workflow": {".github/workflows/x.yml": safe},
+            "review gate": {".github/workflows/codex-checkpoint.yml": safe},
+            "controller": {"scripts/build_controller.py": "pass\n"},
+            "installer": {"deploy/controller/run_controller.py": "pass\n"},
+            "symlink": {"internal/one/link": None},
+            "owned workflow with secrets": {".github/workflows/product-ci.yml": safe + "# ${{ secrets.X }}\n"},
+            "owned workflow without permissions": {".github/workflows/product-ci.yml": "on: [push]\njobs: {}\n"},
+            "owned workflow write scope": {".github/workflows/product-ci.yml": safe.replace("read", "write")},
+        }
+        for label, files in cases.items():
+            with self.subTest(label):
+                self.setUp()
+                run_id = self.launch()["run"]["id"]
+                head, bundle = self.lane_commit(self.base, label, files)
+                self.finish(run_id, self.base, head, bundle)
+                self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
+                self.assertNotEqual(subprocess.run(["git", "-C", str(self.bare), "rev-parse", "--verify", "-q",
+                    "refs/heads/claude/togavsu-one-12345678"], capture_output=True).returncode, 0)
+                self.assertFalse(self.remote.pulls)
+
+    def test_lane_may_change_its_owned_read_only_workflow(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "ci", {".github/workflows/product-ci.yml":
+            "name: Product CI\non: [push, pull_request]\npermissions:\n  contents: read\njobs: {}\n"})
+        self.finish(run_id, self.base, head, bundle)
+        self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
+        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), head)
 
 
 class LanePackageScanTests(unittest.TestCase):

@@ -408,7 +408,8 @@ class ActionsRemote(Remote):
 
     push_url = "https://github.com/" + REPO + ".git"  # Owner credentials via gh's git credential helper.
 
-    def __init__(self, state_dir, repo_dir, dry=False):
+    def __init__(self, state_dir, repo_dir, dry=False, plan=None):
+        self.owned = {t["id"]: t.get("owned_paths", []) for t in (plan or {}).get("tasks", [])}
         self.registry_path = Path(state_dir) / "lane-agents.json"
         self.work_dir = Path(state_dir)
         self.repo_dir = Path(repo_dir)
@@ -476,6 +477,36 @@ class ActionsRemote(Remote):
             "starting_sha": starting, "assignment": body["prompt"]["text"], "created_at": now(), "runs": []}
         run_id = self.dispatch(registry, agent_id, body["prompt"]["text"])
         return {"agent": {"id": agent_id}, "run": {"id": run_id}}
+
+    @staticmethod
+    def workflow_safe(text):
+        # ponytail: a lexical gate, not a workflow parser. Ceiling: an owned product workflow that never names
+        # secrets, write scopes or privileged triggers and sets top-level permissions. Upgrade trigger: a lane
+        # needs a secret or write scope in CI; that change then goes through a control PR instead.
+        return (re.search(r"^permissions:", text, re.M) is not None and not re.search(
+            r"(?i)secrets|tojson|write|pull_request_target|workflow_run|workflow_dispatch|repository_dispatch|"
+            r"id-token|self-hosted", text))
+
+    def check_paths(self, task, base, ref):
+        # Pushing with owner credentials runs the branch's workflow files with repository secrets, before the
+        # controller's later protected-file halt sees the PR. So lane commits may not reach control files,
+        # links or submodules, and may change only workflow files their assignment owns, kept read-only.
+        raw = self.git("log", "--format=", "--raw", "-m", "--no-renames", "--no-abbrev", base + ".." + ref)
+        files = [f for f in self.owned.get(task, []) if not f.endswith("/")]
+        for line in filter(None, raw.splitlines()):
+            meta, path = line.split("\t", 1)
+            modes = meta.lstrip(":").split()[:2]
+            if any(m in {"120000", "160000"} for m in modes):
+                raise LaneRejected("Lane commits add a symlink or submodule: " + path)
+            if path in PROTECTED or path.startswith(("deploy/controller/", ".git/")) or path == ".gitmodules":
+                raise LaneRejected("Lane commits change a protected control-plane file: " + path)
+            if path.startswith(".github/"):
+                if path not in files:
+                    raise LaneRejected("Lane commits change a GitHub file outside its assignment: " + path)
+                if modes[1] != "000000":
+                    content = self.git("show", ref + ":" + path)
+                    if not self.workflow_safe(content):
+                        raise LaneRejected("Lane workflow change needs secrets, write scope or privileged triggers: " + path)
 
     def branch_head(self, branch):
         try:
@@ -602,6 +633,7 @@ class ActionsRemote(Remote):
                                       capture_output=True, timeout=60)
                 if proc.returncode:
                     raise LaneRejected("Lane commits do not descend from the dispatched base")
+                self.check_paths(agent["task"], entry["base"], ref)
                 self.git("push", "--quiet", self.push_url, ref + ":refs/heads/" + agent["branch"], timeout=300)
             finally:
                 path.unlink(missing_ok=True)
@@ -1477,7 +1509,7 @@ def main():
             print("Another controller tick owns the lock")
             return
         # worker_backend selects who runs assignments; every gate after the PR is unchanged.
-        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run)
+        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run, plan)
                   if plan.get("worker_backend") == "claude-actions" else Remote())
         controller = Controller(remote, plan, state, args.dry_run)
         if args.reconcile_intent:

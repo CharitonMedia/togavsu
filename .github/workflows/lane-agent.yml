@@ -93,7 +93,12 @@ jobs:
           the tested code revision, test commands and results, and honest pending criteria. If a PR already
           exists, start from its body (gh pr view {os.environ['LANE_BRANCH']} --json body). Wherever the assignment
           asks for a pushed commit SHA, report your final local commit SHA. Never write credentials, tokens
-          or environment values into files, commits or the PR body.
+          or environment values into files, commits or the PR body. The controller rejects the whole result if
+          any commit touches a control-plane file (AGENTS.md, scripts/build_controller.py, docs/build/ plan and
+          task files, deploy/controller/, review gate workflows), adds a symlink or submodule, or changes a
+          .github/ file your assignment does not own. An owned workflow file must keep top-level read-only
+          permissions and never name secrets, write scopes or privileged triggers. Propose any such change in
+          the PR body instead of committing it.
 
           """
           (out / "prompt.md").write_text(preamble + assignment)
