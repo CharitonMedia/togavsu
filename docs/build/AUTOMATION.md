@@ -50,7 +50,7 @@ Monitor `health=needs_attention` promptly. Investigate a status older than ten m
 ## Deployment and credentials
 The running controller and plan are copied from a reviewed commit into /home/patrick/.local/share/togavsu-controller. They are pinned; a worker changing main cannot replace the running controller. The installed receipt records the source commit and file hashes.
 
-The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local credential file. GitHub uses the existing authenticated gh configuration. No key values are in the repository or unit files, and no control credentials are injected into build VMs. Codex reviews use the GitHub secret already configured and API billing.
+The entrypoint reads only the existing CURSOR_API_KEY from Patrick's local credential file. GitHub uses the existing authenticated gh configuration. No key values are in the repository or unit files, and no control credentials are injected into build VMs. The Codex checkpoint runs Opus on the CLAUDE_CODE_OAUTH_TOKEN repository secret, billed to the Max subscription.
 
 The deterministic controller tests cover feedback dispatch/deduplication, crash/restart durability, repeated and alternating problems, bounded backoff, legacy-cap recovery, active-run deadlines, health publication, ambiguous requests, branch conflicts, stale or forged reviews, required CI, merge races, protection rejection, dependency launches and pause behavior. A live dry-run against existing PRs precedes deployment. Run control-only validation with `python3 -m unittest discover -s scripts -p 'test_*.py'`, `python3 scripts/check_setup.py` and `git diff --check`. No product build or install belongs on Render-1.
 
