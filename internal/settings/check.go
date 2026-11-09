@@ -518,7 +518,7 @@ func fixedSite(path, fn string) bool {
 		case "argonTime", "argonMemory", "argonThreads", "argonKeyLen", "saltLen",
 			"totpBytes", "totpPeriod", "totpDigits", "totpSkew", "hotpDigits",
 			"recoveryCount", "recoveryCodeBytes", "tokenBytes", "minPassword", "aesKey",
-			"perMinuteWindow", "singleFactor":
+			"perMinuteWindow", "singleFactor", "lockWaitNanos", "lockPauseNanos":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/identity/totp.go"):

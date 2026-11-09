@@ -33,3 +33,9 @@ func perMinuteWindow() (time.Duration, error) {
 
 // singleFactor is the one-proof rule for reauthentication.
 func singleFactor(n int) bool { return n == 1 }
+
+// lockWaitNanos is how long a sign-in waits for another process to finish the same account.
+func lockWaitNanos() int64 { return 2000000000 }
+
+// lockPauseNanos is the pause between tries while that wait is running.
+func lockPauseNanos() int64 { return 20000000 }

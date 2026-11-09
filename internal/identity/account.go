@@ -21,7 +21,7 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 	if in.FirmName == "" || in.AdminName == "" || normalizeEmail(in.AdminEmail) == "" {
 		return Enrollment{}, domain.Invalid("firm_name", "firm name, admin name, and email are required")
 	}
-	if len(in.Password) < minPassword() || len(in.BackupPassphrase) < minPassword() {
+	if len([]rune(in.Password)) < minPassword() || len(in.BackupPassphrase) < minPassword() {
 		return Enrollment{}, domain.Invalid("password", "password is too short")
 	}
 	if _, err := domain.LoadZone(in.TimeZone); err != nil {
@@ -30,6 +30,13 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 	firm, err := s.settings.Get(ctx, "firm.name")
 	if err != nil {
 		return Enrollment{}, err
+	}
+	confirmed, err := s.adminConfirmed(ctx)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if confirmed {
+		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
 	}
 	admins, err := s.activeAdmins(ctx)
 	if err != nil {
@@ -136,6 +143,32 @@ func (s *Service) rollbackAdmin(ctx context.Context, user domain.User) bool {
 	return false
 }
 
+// adminConfirmed reports whether any admin, including an inactive one, has confirmed TOTP.
+// That closes first-run setup for good.
+func (s *Service) adminConfirmed(ctx context.Context) (bool, error) {
+	page, err := s.users.List(ctx, repository.Filter{})
+	if err != nil {
+		return false, err
+	}
+	for _, user := range page.Items {
+		roles, err := rolesOf(user)
+		if err != nil || !principalOf(user, roles).HasRole(domain.RoleAdmin) {
+			continue
+		}
+		secret, err := s.totp.GetByUser(ctx, user.ID)
+		if errors.Is(err, repository.ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if secret.Confirmed {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Ready reports whether firm name, an active admin, and confirmed admin TOTP are stored.
 func (s *Service) Ready(ctx context.Context) (bool, error) {
 	name, err := s.settings.Get(ctx, "firm.name")
@@ -203,7 +236,7 @@ func (s *Service) CreateUser(ctx context.Context, caller Caller, in NewUser) (do
 		return domain.User{}, err
 	}
 	email := normalizeEmail(in.Email)
-	if in.Name == "" || email == "" || len(in.Password) < minPassword() {
+	if in.Name == "" || email == "" || len([]rune(in.Password)) < minPassword() {
 		return domain.User{}, domain.Invalid("email", "name, email, and password are required")
 	}
 	encoded, err := domain.MarshalRoles(in.Roles)
@@ -224,6 +257,9 @@ func (s *Service) CreateUser(ctx context.Context, caller Caller, in NewUser) (do
 		return domain.User{}, err
 	}
 	if err := s.setPassword(ctx, user, in.Roles, in.Password, ""); err != nil {
+		if derr := s.markInactive(ctx, user, in.Roles, "user create rolled back"); derr != nil {
+			return domain.User{}, derr
+		}
 		return domain.User{}, err
 	}
 	if err := s.auditCreatedUser(ctx, caller.Principal, user); err != nil {
@@ -321,13 +357,17 @@ func (s *Service) setPassword(ctx context.Context, user domain.User, roles []dom
 }
 
 func (s *Service) deactivate(ctx context.Context, user domain.User, roles []domain.Role) error {
+	return s.markInactive(ctx, user, roles, "setup rolled back")
+}
+
+func (s *Service) markInactive(ctx context.Context, user domain.User, roles []domain.Role, reason string) error {
 	user.Active = false
 	user.UpdatedAt = s.now().UTC()
 	if err := s.users.Update(ctx, user); err != nil {
 		return err
 	}
 	return s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "user", EntityID: user.ID, Field: "active", Old: "true", New: "false", Reason: "setup rolled back",
+		Entity: "user", EntityID: user.ID, Field: "active", Old: "true", New: "false", Reason: reason,
 	})
 }
 

@@ -24,19 +24,25 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		return LoginResult{}, lookupErr
 	}
 	hash := ""
+	stored := false
 	if lookupErr == nil {
 		cred, err := s.passwords.GetByUser(ctx, user.ID)
 		if err == nil {
 			hash = cred.Argon2Hash
+			stored = true
 		} else if !errors.Is(err, repository.ErrNotFound) {
 			return LoginResult{}, err
 		}
 	}
-	if hash == "" {
+	if !stored {
 		hash = dummyHash()
 	}
-	// One Argon2id check on every path. The dummy hash is used only when no credential is stored.
+	// One Argon2id check on every path. The dummy hash is used only when no credential is stored,
+	// and that check cannot succeed: the dummy password is public.
 	ok := VerifyPassword(password, hash)
+	if !stored {
+		ok = false
+	}
 	lockID := unknownLoginID(email)
 	if lookupErr == nil {
 		lockID = user.ID

@@ -56,8 +56,7 @@ type Service struct {
 	mail      ResetMailer
 	hits      map[string][]time.Time
 	hitMu     sync.Mutex
-	gates     map[domain.ID]*sync.Mutex
-	gateMu    sync.Mutex
+	stripes   [32]sync.Mutex
 }
 
 // New returns a service. A short key is rejected.
@@ -79,7 +78,6 @@ func New(d Deps) (*Service, error) {
 		users: d.Users, sessions: d.Sessions, passwords: d.Passwords, totp: d.TOTP,
 		recovery: d.Recovery, tokens: d.Tokens, audit: d.Audit, settings: d.Settings,
 		key: d.Key, now: now, mail: d.Mail, hits: map[string][]time.Time{},
-		gates: map[domain.ID]*sync.Mutex{},
 	}, nil
 }
 
@@ -92,14 +90,12 @@ type userLock interface {
 }
 
 func (s *Service) mutexFor(id domain.ID) *sync.Mutex {
-	s.gateMu.Lock()
-	defer s.gateMu.Unlock()
-	mu, ok := s.gates[id]
-	if !ok {
-		mu = &sync.Mutex{}
-		s.gates[id] = mu
+	sum := sha256.Sum256([]byte(string(id)))
+	var n uint32
+	for _, b := range sum {
+		n += uint32(b)
 	}
-	return mu
+	return &s.stripes[n%uint32(len(s.stripes))]
 }
 
 // withUser serializes lockout checks and failure rows for one account.

@@ -341,6 +341,38 @@ func TestOneChallengeAdmitsOneGuess(t *testing.T) {
 	}
 }
 
+func TestSignInLockDoesNotWaitForever(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	lock, ok := NewPG(sqlDB).Users().(userLock)
+	if !ok {
+		t.Fatal("postgres users do not lock")
+	}
+	const id = "user-1"
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	var held bool
+	if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`, id).Scan(&held); err != nil || !held {
+		t.Fatal(held, err)
+	}
+	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`, id)
+	done := make(chan error, 1)
+	go func() {
+		done <- lock.WithUserLock(context.Background(), domain.ID(id), func() error { return nil })
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, errLockBusy) {
+			t.Fatal(err)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("sign-in lock waited without a deadline")
+	}
+}
+
 func race(a, b func() error) int {
 	var wg sync.WaitGroup
 	var mu sync.Mutex

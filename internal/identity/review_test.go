@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -368,6 +369,137 @@ func (f *failNthAudit) SettingChanged(context.Context, settings.Change) error {
 		return settings.ErrInvalid
 	}
 	return nil
+}
+
+func TestNoCredentialRejectsDummyPassword(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := domain.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := b.clk.Now()
+	user := domain.User{
+		Meta: domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: id},
+		Name: "Open", Email: "open@example.test", Roles: roles, Active: true,
+	}
+	if err := b.mem.Users().Insert(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	login, err := b.svc.Login(ctx, "open@example.test", strings.Repeat("x", minPassword()))
+	if codeOf(err) != domain.CodeUnauthenticated || login.SessionToken != "" || login.TOTPToken != "" || login.EnrollmentToken != "" {
+		t.Fatal(login, err)
+	}
+}
+
+func TestCreateUserRejectsRuneShortPassword(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	_, err := b.svc.CreateUser(ctx, admin, NewUser{
+		Name: "Eve", Email: "eve@example.test", Password: "éééééééé",
+		Roles: []domain.Role{domain.RoleStaff},
+	})
+	if codeOf(err) != domain.CodeValidation {
+		t.Fatal(err)
+	}
+	page, err := b.mem.Users().List(ctx, repository.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range page.Items {
+		if user.Email == "eve@example.test" {
+			t.Fatal(user)
+		}
+	}
+}
+
+func TestConfirmedAdminClosesSetup(t *testing.T) {
+	ctx := context.Background()
+	clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
+	log := audit.NewMemory()
+	aud, err := audit.New(log, clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(settings.NewMemory(), &failOnceAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := NewMemory()
+	svc, err := New(Deps{
+		Users: mem.Users(), Sessions: mem.Sessions(), Passwords: mem.Passwords(),
+		TOTP: mem.TOTP(), Recovery: mem.Recovery(), Tokens: mem.Tokens(),
+		Audit: aud, Settings: reg, Key: bytesRepeat(), Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := SetupInput{
+		FirmName: "North Firm", TimeZone: "UTC", AdminName: "Ada",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}
+	if _, err := svc.Setup(ctx, first); err == nil {
+		t.Fatal("expected the first setup to fail")
+	}
+	second := SetupInput{
+		FirmName: "North Firm", TimeZone: "UTC", AdminName: "Bea",
+		AdminEmail: "bea@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}
+	enroll, err := svc.Setup(ctx, second)
+	if err != nil || enroll.Secret == "" {
+		t.Fatal(enroll, err)
+	}
+	if _, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(decodeSecret(t, enroll.Secret), clk.Now())); err != nil {
+		t.Fatal(err)
+	}
+	page, err := mem.Users().List(ctx, repository.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range page.Items {
+		if user.Email != "bea@example.test" {
+			continue
+		}
+		user.Active = false
+		if err := mem.Users().Update(ctx, user); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = svc.Setup(ctx, first)
+	if codeOf(err) != "already_set_up" {
+		t.Fatal(err)
+	}
+	name, err := reg.Get(ctx, "firm.name")
+	if err != nil || name != "North Firm" {
+		t.Fatal(name, err)
+	}
+	page, err = mem.Users().List(ctx, repository.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, user := range page.Items {
+		if user.Email == "ada@example.test" && user.Active {
+			t.Fatal("rolled-back admin was reactivated")
+		}
+	}
+}
+
+func TestUnknownEmailsDoNotGrowLockMap(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	for i := 0; i < 40; i++ {
+		email := strings.Repeat("u", i+1) + "@example.test"
+		_, _ = b.svc.Login(ctx, email, strings.Repeat("x", minPassword()))
+	}
+	gates := reflect.ValueOf(b.svc).Elem().FieldByName("gates")
+	if gates.IsValid() {
+		t.Fatal("per-id mutex map is back")
+	}
 }
 
 func TestSetupRefusedWhenFirmNameExists(t *testing.T) {

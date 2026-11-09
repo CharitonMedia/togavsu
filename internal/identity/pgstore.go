@@ -104,22 +104,48 @@ func (s pgUsers) Insert(ctx context.Context, row domain.User) error {
 		row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState))
 }
 
+// errLockBusy is returned when another process holds the account lock until the wait ends.
+var errLockBusy = errors.New("identity: sign-in lock is busy")
+
 // WithUserLock serializes failure counting for one account across processes.
 // A row lock would deadlock: the callback inserts child rows that wait on that same user row.
-// ponytail: ceiling: two ids that share hashtextextended wait on each other. Upgrade path: a dedicated identity_locks row per user. trigger: a login waits on an advisory lock held for a different user id.
+// Waiters do not keep a pooled connection. The winner keeps one connection for the lock
+// while the callback uses other connections from the pool.
+// ponytail: ceiling: a pool of one connection can stall because the callback still needs another connection, and two ids that share hashtextextended wait on each other. Upgrade path: run the failure check, the audit write, and the session insert on the lock connection. trigger: a sign-in with SetMaxOpenConns(1) does not return.
 func (s pgUsers) WithUserLock(ctx context.Context, id domain.ID, fn func() error) error {
-	conn, err := s.db.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1::text, 0))`, string(id)); err != nil {
-		return err
-	}
-	defer func() {
+	deadline := time.Now().Add(time.Duration(lockWaitNanos()))
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		conn, err := s.db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		var got bool
+		err = conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(hashtextextended($1::text, 0))`, string(id)).Scan(&got)
+		if err != nil || !got {
+			conn.Close()
+			if err != nil {
+				return err
+			}
+			if !time.Now().Before(deadline) {
+				return errLockBusy
+			}
+			timer := time.NewTimer(time.Duration(lockPauseNanos()))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+			continue
+		}
+		err = fn()
 		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`, string(id))
-	}()
-	return fn()
+		conn.Close()
+		return err
+	}
 }
 
 func (s pgUsers) Update(ctx context.Context, row domain.User) error {
