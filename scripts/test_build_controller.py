@@ -1,15 +1,19 @@
+import base64
 import copy
 import datetime as dt
 import io
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.error
+import urllib.parse
 import zipfile
+import zlib
 
 import build_controller
 from build_controller import AgentNotFound, Controller, ObservationError, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
@@ -2254,6 +2258,214 @@ class ReviewDataTests(unittest.TestCase):
         remote.gh = lambda *a, **k: {"path": ".github/workflows/product-ci.yml", "event": "pull_request", "head_sha": HEAD}
         with self.assertRaises(ValueError):
             remote.review(check("Codex checkpoint"))
+
+
+LANE_AGENT = "bc-12345678-1234-4234-8234-123456789abc"
+
+
+class FakeLaneRemote(build_controller.ActionsRemote):
+    """ActionsRemote with GitHub replaced by memory and the push target replaced by a local bare repo."""
+
+    def __init__(self, state_dir, repo_dir, bare, dry=False):
+        super().__init__(state_dir, repo_dir, dry)
+        self.push_url = str(bare)
+        self.bare = bare
+        self.calls, self.runs, self.artifacts, self.pulls = [], [], {}, []
+
+    def gh(self, path, method="GET", payload=None, binary=False):
+        self.calls.append((method, path, payload))
+        if path.startswith("git/ref/heads/"):
+            branch = urllib.parse.unquote(path[len("git/ref/heads/"):])
+            proc = subprocess.run(["git", "-C", str(self.bare), "rev-parse", "--verify", "-q", "refs/heads/" + branch],
+                                  capture_output=True, text=True)
+            if proc.returncode:
+                raise RuntimeError("gh: Not Found (HTTP 404)")
+            return {"object": {"sha": proc.stdout.strip()}}
+        if path.endswith("/dispatches"):
+            return {}
+        if "/runs?event=workflow_dispatch" in path:
+            return {"workflow_runs": self.runs}
+        if path.startswith("actions/runs/") and path.endswith("/artifacts?per_page=100"):
+            return {"artifacts": [{"id": 5, "name": name, "expired": False, "size_in_bytes": len(blob)}
+                                  for name, blob in self.artifacts.items()]}
+        if path.startswith("actions/runs/"):
+            return next(r for r in self.runs if str(r["id"]) == path.split("/")[2])
+        if path == "actions/artifacts/5/zip":
+            return next(iter(self.artifacts.values()))
+        if path.startswith("pulls?state=all"):
+            return list(self.pulls)
+        if path == "pulls" and method == "POST":
+            pr = {"number": 31, "html_url": "https://github.com/CharitonMedia/togavsu/pull/31", "body": payload["body"], "state": "open"}
+            self.pulls.append(pr)
+            return pr
+        if path == "pulls/31":
+            if method == "PATCH":
+                self.pulls[0]["body"] = payload["body"]
+            return self.pulls[0]
+        raise AssertionError("unexpected gh call " + method + " " + path)
+
+
+class LaneBackendTests(unittest.TestCase):
+    def git(self, cwd, *args):
+        return subprocess.run(["git", "-C", str(cwd)] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.bare, self.control, self.worker = root / "origin.git", root / "control", root / "worker"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.bare)], check=True)
+        subprocess.run(["git", "init", "-q", str(self.control)], check=True)
+        for repo in (self.control,):
+            self.git(repo, "config", "user.email", "t@example.com")
+            self.git(repo, "config", "user.name", "t")
+        (self.control / "README").write_text("base\n")
+        self.git(self.control, "add", "README")
+        self.git(self.control, "commit", "-q", "-m", "base")
+        self.base = self.git(self.control, "rev-parse", "HEAD")
+        self.git(self.control, "push", "-q", str(self.bare), "HEAD:refs/heads/main")
+        self.state = self.control / ".build-state"
+        self.state.mkdir()
+        self.remote = FakeLaneRemote(self.state, self.control, self.bare)
+        self.record = {"agent_id": LANE_AGENT}
+
+    def launch(self, prompt="Implement Togavsu assignment one."):
+        return self.remote.cursor("POST", "/agents", {"agentId": LANE_AGENT, "name": "Togavsu one",
+            "prompt": {"text": prompt}, "repos": [{"url": "https://github.com/CharitonMedia/togavsu", "startingRef": self.base}]})
+
+    def lane_commit(self, base, text):
+        if not self.worker.exists():
+            subprocess.run(["git", "clone", "-q", str(self.bare), str(self.worker)], check=True)
+            self.git(self.worker, "config", "user.email", "t@example.com")
+            self.git(self.worker, "config", "user.name", "t")
+        self.git(self.worker, "fetch", "-q", "origin")
+        self.git(self.worker, "checkout", "-q", "-B", "lane", base)
+        (self.worker / "work.txt").write_text(text)
+        self.git(self.worker, "add", "work.txt")
+        self.git(self.worker, "commit", "-q", "-m", text)
+        head = self.git(self.worker, "rev-parse", "HEAD")
+        bundle = Path(self.temp.name) / "lane.bundle"
+        self.git(self.worker, "bundle", "create", str(bundle), "refs/heads/lane", "^" + base)
+        return head, bundle.read_bytes()
+
+    def finish(self, lane_run, base, head, bundle, conclusion="success", **result):
+        run_id = lane_run
+        data = {"agent_id": LANE_AGENT, "run_id": run_id, "task": "one", "branch": "claude/togavsu-one-12345678",
+                "base": base, "head": head, "pr_title": "One", "pr_body": "Evidence for " + head}
+        data.update(result)
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as archive:
+            archive.writestr("lane-result.json", json.dumps(data))
+            if bundle is not None:
+                archive.writestr("lane.bundle", bundle)
+        self.remote.artifacts = {"lane-" + run_id: out.getvalue()}
+        self.remote.runs = [{"id": 900 + len(self.remote.runs), "path": ".github/workflows/lane-agent.yml",
+            "event": "workflow_dispatch", "head_branch": "main", "display_title": "Lane " + run_id,
+            "status": "completed", "conclusion": conclusion, "updated_at": "2026-11-09T23:00:00Z"}]
+
+    def test_launch_persists_run_before_dispatch_and_conflict_is_not_resent(self):
+        result = self.launch()
+        run_id = result["run"]["id"]
+        registry = json.loads((self.state / "lane-agents.json").read_text())
+        self.assertEqual(registry[LANE_AGENT]["runs"][0]["id"], run_id)
+        self.assertEqual(registry[LANE_AGENT]["runs"][0]["state"], "dispatched")
+        dispatch = [c for c in self.remote.calls if c[1].endswith("/dispatches")]
+        self.assertEqual(len(dispatch), 1)
+        inputs = dispatch[0][2]["inputs"]
+        self.assertEqual(inputs["base"], self.base)
+        self.assertEqual(zlib.decompress(base64.b64decode(inputs["prompt_z"])).decode(), "Implement Togavsu assignment one.")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.launch()
+        self.assertEqual(error.exception.code, 409)
+        self.assertEqual(len([c for c in self.remote.calls if c[1].endswith("/dispatches")]), 1)
+
+    def test_unknown_agent_is_agent_not_found(self):
+        with self.assertRaises(AgentNotFound):
+            self.remote.agent(self.record)
+
+    def test_unseen_and_running_runs_stay_active(self):
+        run_id = self.launch()["run"]["id"]
+        snapshot = self.remote.agent(self.record)
+        self.assertEqual((snapshot["status"], snapshot["run_id"]), ("CREATING", run_id))
+        self.remote.runs = [{"id": 900, "path": ".github/workflows/lane-agent.yml", "event": "workflow_dispatch",
+            "head_branch": "main", "display_title": "Lane " + run_id, "status": "in_progress"}]
+        self.assertEqual(self.remote.agent(self.record)["status"], "RUNNING")
+        self.remote.runs[0]["path"] = ".github/workflows/other.yml"
+        with self.assertRaises(ObservationError):
+            self.remote.agent(self.record)
+
+    def test_finished_run_is_pushed_without_force_and_opens_one_pr(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle)
+        snapshot = self.remote.agent(self.record)
+        build_controller.validate_snapshot(snapshot)
+        self.assertEqual(snapshot["status"], "FINISHED")
+        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), head)
+        self.assertEqual(snapshot["git"]["branches"][0]["prUrl"], "https://github.com/CharitonMedia/togavsu/pull/31")
+        self.assertEqual(len(self.remote.pulls), 1)
+        self.remote.agent(self.record)  # Re-observation never republishes.
+        self.assertEqual(len([c for c in self.remote.calls if c[:2] == ("POST", "pulls")]), 1)
+        self.assertEqual(self.git(self.control, "for-each-ref", "refs/lane-import/"), "")
+        self.assertEqual(list(self.state.glob(".lane-*")), [])
+
+    def test_followup_starts_from_branch_head_and_carries_assignment(self):
+        run_id = self.launch("Original assignment text")["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle)
+        self.remote.agent(self.record)
+        second = self.remote.cursor("POST", "/agents/" + LANE_AGENT + "/runs", {"prompt": {"text": "Fix finding A"}})["run"]["id"]
+        inputs = [c for c in self.remote.calls if c[1].endswith("/dispatches")][-1][2]["inputs"]
+        self.assertEqual(inputs["base"], head)
+        prompt = zlib.decompress(base64.b64decode(inputs["prompt_z"])).decode()
+        self.assertIn("Original assignment text", prompt)
+        self.assertIn("Fix finding A", prompt)
+        newer, bundle = self.lane_commit(head, "second")
+        self.finish(second, head, newer, bundle, pr_body="Updated evidence")
+        self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
+        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), newer)
+        self.assertEqual(self.remote.pulls[0]["body"], "Updated evidence")
+
+    def test_moved_branch_or_mismatched_result_is_rejected_without_push(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        other, _ = self.lane_commit(self.base, "someone else")
+        self.git(self.worker, "push", "-q", "origin", other + ":refs/heads/claude/togavsu-one-12345678")
+        self.finish(run_id, self.base, head, bundle)
+        snapshot = self.remote.agent(self.record)
+        self.assertEqual(snapshot["status"], "ERROR")
+        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), other)
+        registry = json.loads((self.state / "lane-agents.json").read_text())
+        self.assertIn("fast-forward", registry[LANE_AGENT]["runs"][0]["rejected"]["reason"])
+
+    def test_result_for_another_run_is_rejected(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle, run_id="run-00000000-0000-4000-8000-000000000000")
+        self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
+        self.assertIsNone(self.remote.branch_head("claude/togavsu-one-12345678"))
+
+    def test_failed_run_still_publishes_partial_work_but_reports_error(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "partial")
+        self.finish(run_id, self.base, head, bundle, conclusion="failure")
+        self.assertEqual(self.remote.agent(self.record)["status"], "ERROR")
+        self.assertEqual(self.remote.branch_head("claude/togavsu-one-12345678"), head)
+
+    def test_dry_run_never_publishes(self):
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle)
+        dry = FakeLaneRemote(self.state, self.control, self.bare, dry=True)
+        dry.runs, dry.artifacts = self.remote.runs, self.remote.artifacts
+        self.assertEqual(dry.agent(self.record)["status"], "RUNNING")
+        self.assertIsNone(dry.branch_head("claude/togavsu-one-12345678"))
+
+    def test_oversized_prompt_is_refused_before_dispatch(self):
+        with self.assertRaises(ValueError):
+            self.launch(os.urandom(60_000).hex())
+        self.assertFalse([c for c in self.remote.calls if c[1].endswith("/dispatches")])
+        self.assertFalse((self.state / "lane-agents.json").exists())
 
 
 if __name__ == "__main__":

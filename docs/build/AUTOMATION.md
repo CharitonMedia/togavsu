@@ -61,3 +61,12 @@ Integration evidence is bound to a tested 40-character code revision; only repor
 Each PR is bound to the Cursor agent's pinned branch and a unique task label. The independent review repeats that task ID; another assignment's PR or report cannot unlock dependencies. PR-body edits and task labels trigger fresh reviews so current validation evidence is used.
 
 A cancelled Codex workflow is treated as superseded: the controller waits for the newer review event instead of replaying the cancelled event, which would cancel its replacement and reuse obsolete PR evidence. The existing 90-minute fresh-review deadline still applies. Non-cancelled malformed or unavailable review artifacts retain their single infrastructure retry.
+
+## Claude Code lane backend
+Setting `"worker_backend": "claude-actions"` in the controller plan replaces Cursor agents with Claude Code runs in GitHub Actions, billed to the Max subscription through the CLAUDE_CODE_OAUTH_TOKEN secret. Every controller gate (review, CI, merge, capacity, deadlines) is unchanged; only the worker transport differs.
+
+The controller dispatches `.github/workflows/lane-agent.yml` on main with the agent ID, run ID, task, pinned branch, base revision and a compressed prompt. Only Patrick's account may dispatch it. The job runs with a read-only token and cannot push. Claude commits on a local branch; the job secret-scans the result and uploads a git bundle plus `lane-result.json` as the `lane-<run_id>` artifact.
+
+When the run completes, the controller (Patrick's gh credentials on Render-1) downloads the artifact, checks that it belongs to that agent, run, task, branch and base, verifies the bundle, confirms the new head descends from the base and pushes without force. A moved branch or mismatched result is rejected, never overwritten. It then opens the PR once or updates its body. Follow-up instructions dispatch a new run from the current branch head with the original assignment attached. Dry runs never publish.
+
+Agent records live in `.build-state/lane-agents.json`. The entrypoint no longer reads CURSOR_API_KEY on this backend.

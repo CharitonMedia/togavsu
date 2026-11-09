@@ -1,5 +1,6 @@
 {
   "max_implementation_agents": 4,
+  "worker_backend": "claude-actions",
   "tasks": [
     {
       "id": "contracts",

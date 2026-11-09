@@ -1,0 +1,163 @@
+name: Lane agent
+run-name: Lane ${{ inputs.run_id }}
+# One Togavsu implementation run, dispatched only by the build controller. Claude Code runs
+# headless on the Max subscription in this GitHub-hosted VM. The job token is read-only: the
+# controller verifies the returned git bundle and pushes it itself, so protected CI and the
+# review gate run on every published revision.
+on:
+  workflow_dispatch:
+    inputs:
+      agent_id:
+        required: true
+        type: string
+      run_id:
+        required: true
+        type: string
+      task:
+        required: true
+        type: string
+      branch:
+        required: true
+        type: string
+      base:
+        required: true
+        type: string
+      prompt_z:
+        description: zlib-compressed, base64-encoded assignment prompt
+        required: true
+        type: string
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+  actions: read
+  checks: read
+concurrency:
+  group: lane-${{ inputs.agent_id }}
+  cancel-in-progress: false
+jobs:
+  lane:
+    name: Lane agent
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      LANE_AGENT: ${{ inputs.agent_id }}
+      LANE_RUN: ${{ inputs.run_id }}
+      LANE_TASK: ${{ inputs.task }}
+      LANE_BRANCH: ${{ inputs.branch }}
+      LANE_BASE: ${{ inputs.base }}
+    steps:
+      - name: Validate dispatch
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          rules = {"LANE_AGENT": r"bc-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                   "LANE_RUN": r"run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                   "LANE_TASK": r"[a-z0-9][a-z0-9-]{0,40}", "LANE_BRANCH": r"claude/togavsu-[a-z0-9-]{1,60}",
+                   "LANE_BASE": r"[0-9a-f]{40}"}
+          bad = [k for k, rule in rules.items() if not re.fullmatch(rule, os.environ.get(k, ""))]
+          if bad or os.environ["GITHUB_ACTOR"] != "pattalkslaw-del":
+              sys.exit("Rejected dispatch: " + ", ".join(bad or ["actor"]))
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: go.mod
+      - name: Install Claude Code
+        run: npm install --global --no-fund --no-audit @anthropic-ai/claude-code@2.1.317
+      - name: Prepare assignment
+        env:
+          PROMPT_Z: ${{ inputs.prompt_z }}
+        run: |
+          git switch --quiet -c lane
+          git config user.name "Togavsu lane agent"
+          git config user.email "lane-agent@users.noreply.github.com"
+          mkdir -p "$RUNNER_TEMP/lane-out"
+          python3 - <<'PY'
+          import base64, os, pathlib, zlib
+          out = pathlib.Path(os.environ["RUNNER_TEMP"]) / "lane-out"
+          assignment = zlib.decompress(base64.b64decode(os.environ["PROMPT_Z"])).decode()
+          preamble = f"""You are the Togavsu implementation worker for assignment {os.environ['LANE_TASK']}.
+          You run Claude Code headless in an isolated GitHub-hosted VM on local branch `lane`, checked out at
+          {os.environ['LANE_BASE']}. Go, Node, Python and Docker are available; use Docker for Postgres and
+          synthetic data only. This VM has a read-only GitHub token: you cannot push, open or edit pull
+          requests, and must not try. Commit all finished work to the current local branch with clear messages
+          and explicit paths. The build controller publishes your commits to {os.environ['LANE_BRANCH']} and opens
+          or updates its pull request. Before you finish, write the PR title (one line) to
+          {out}/pr-title.txt and the complete current PR body to {out}/pr-body.md. The body replaces the
+          previous one, so it must carry all current evidence AGENTS.md and docs/build/WORKFLOW.md require:
+          the tested code revision, test commands and results, and honest pending criteria. If a PR already
+          exists, start from its body (gh pr view {os.environ['LANE_BRANCH']} --json body). Wherever the assignment
+          asks for a pushed commit SHA, report your final local commit SHA. Never write credentials, tokens
+          or environment values into files, commits or the PR body.
+
+          """
+          (out / "prompt.md").write_text(preamble + assignment)
+          PY
+      - name: Run assignment
+        id: claude
+        continue-on-error: true
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          claude -p --model opus --dangerously-skip-permissions --max-turns 600 --output-format json \
+            < "$RUNNER_TEMP/lane-out/prompt.md" > "$RUNNER_TEMP/lane-claude.json"
+      - name: Package result
+        env:
+          CLAUDE_OUTCOME: ${{ steps.claude.outcome }}
+          SECRET_OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SECRET_GITHUB: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, pathlib, re, subprocess, sys
+          temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          out, pack = temp / "lane-out", temp / "lane-pack"
+          pack.mkdir()
+          def git(*args):
+              return subprocess.run(["git"] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+          base, head = os.environ["LANE_BASE"], git("rev-parse", "HEAD")
+          if git("merge-base", base, head) != base:
+              sys.exit("Lane head does not descend from its base")
+          read = lambda name: (out / name).read_text(errors="replace") if (out / name).exists() else ""
+          title, body = read("pr-title.txt").strip()[:200], read("pr-body.md")[:60000]
+          summary = ""
+          try:
+              summary = str(json.loads((temp / "lane-claude.json").read_text()).get("result", ""))[:4000]
+          except (OSError, ValueError):
+              pass
+          forms = set()
+          for name in ("SECRET_OAUTH", "SECRET_GITHUB"):
+              value = os.environ.get(name, "")
+              if value:
+                  forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
+                  forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
+          scanned = "\n".join([title, body, summary, git("diff", base + ".." + head) if head != base else "",
+                               git("log", "--format=%B", base + ".." + head) if head != base else ""])
+          shaped = re.search(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}", scanned)
+          if shaped or any(len(f) >= 16 and f in scanned for f in forms):
+              sys.exit("Lane output contains a credential; result withheld")
+          if head != base:
+              git("bundle", "create", str(pack / "lane.bundle"), "refs/heads/lane", "^" + base)
+          (pack / "lane-result.json").write_text(json.dumps({
+              "agent_id": os.environ["LANE_AGENT"], "run_id": os.environ["LANE_RUN"], "task": os.environ["LANE_TASK"],
+              "branch": os.environ["LANE_BRANCH"], "base": base, "head": head, "pr_title": title, "pr_body": body,
+              "claude_outcome": os.environ["CLAUDE_OUTCOME"], "uncommitted": bool(git("status", "--porcelain")),
+              "summary": summary}))
+          PY
+      - name: Retain lane result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lane-${{ inputs.run_id }}
+          path: ${{ runner.temp }}/lane-pack/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Report run outcome
+        if: steps.claude.outcome != 'success'
+        run: |
+          jq -r '"subtype=\(.subtype) is_error=\(.is_error) turns=\(.num_turns)"' "$RUNNER_TEMP/lane-claude.json" 2>/dev/null || true
+          exit 1
