@@ -1280,12 +1280,27 @@ func (p *PathDestination) List(ctx context.Context) ([]RemoteObject, error) {
 			return err
 		}
 		defer dir.Close()
-		entries, err := dir.Readdir(-1)
+		// Readdir would lstat each entry by the descriptor's relative name,
+		// which resolves against the process working directory and drops
+		// every entry. Names come from the no-follow namespace descriptor;
+		// only the modification time is read by path, without following a
+		// symlink, and a symlink or directory is not listed.
+		names, err := dir.Readdirnames(-1)
 		if err != nil {
 			return err
 		}
-		for _, ent := range entries {
-			out = append(out, RemoteObject{Name: ent.Name(), Created: ent.ModTime()})
+		for _, name := range names {
+			info, err := os.Lstat(filepath.Join(p.dir(), name))
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				continue
+			}
+			out = append(out, RemoteObject{Name: name, Created: info.ModTime()})
 		}
 		return nil
 	})
