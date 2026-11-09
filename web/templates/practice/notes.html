@@ -1,6 +1,11 @@
 {{template "head" .}}
 <form method="get" action="/practice/notes">
-  <label>Search notes <input name="q" value="{{.Query}}"></label>
+  <label>Search <input name="q" value="{{.Query}}"></label>
+  <label>Matter <input name="matter" value="{{.NoteMatter}}"></label>
+  <label>Author <input name="author" value="{{.NoteAuthor}}"></label>
+  <label>Tag <input name="tag" value="{{.NoteTag}}"></label>
+  <label>From <input name="from" value="{{.NoteFrom}}" type="date"></label>
+  <label>To <input name="to" value="{{.NoteTo}}" type="date"></label>
   <button type="submit">Filter</button>
 </form>
 <ul>
@@ -10,4 +15,5 @@
   <li>No notes.</li>
 {{end}}
 </ul>
+{{if .NoteNext}}<p><a href="/practice/notes?q={{.Query}}&matter={{.NoteMatter}}&author={{.NoteAuthor}}&tag={{.NoteTag}}&from={{.NoteFrom}}&to={{.NoteTo}}&cursor={{.NoteNext}}">Next page</a></p>{{end}}
 {{template "foot" .}}

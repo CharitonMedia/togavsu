@@ -2,7 +2,10 @@ package practice
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -458,6 +461,178 @@ func TestContactHistoryCardAndSSNRedaction(t *testing.T) {
 	attorneyRows, err := svc.History(ctx, attorney, "contact", contact.ID)
 	if err != nil || !historyHas(attorneyRows, "ssn_ein_ciphertext", "", secret) {
 		t.Fatal(err, attorneyRows)
+	}
+}
+
+func TestHiddenContactCannotBeAddedToAVisibleMatter(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	open := makeMatter(t, svc, staff, area, "Open matter", "")
+	walled := makeMatter(t, svc, staff, area, "Secret matter", "")
+	hidden, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Secret", FamilyName: "Client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, walled.ID, PartyInput{ContactID: hidden.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, walled.ID, []domain.ID{attorney.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, open.ID, PartyInput{ContactID: hidden.ID, Role: "witness"}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, admin, open.ID, PartyInput{ContactID: hidden.ID, Role: "witness"}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateNote(ctx, staff, NoteInput{MatterID: open.ID, ContactID: hidden.ID, Title: "Leak", Body: "no"}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.GetContact(ctx, staff, hidden.ID); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	for _, party := range svc.db.Parties(open.ID, domain.ID("")) {
+		if party.ContactID == hidden.ID {
+			t.Fatal("hidden contact was linked")
+		}
+	}
+}
+
+func TestPracticeAPINotesAndActivityPages(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	status, body := postJSON(t, svc, staff, "/api/v1/matters", map[string]any{
+		"Name": "API matter", "PracticeAreaID": area, "BillingType": BillingHourly,
+	}, "")
+	if status != 200 || !strings.Contains(body, "API matter") {
+		t.Fatalf("create matter %d %s", status, body)
+	}
+	var created domain.Matter
+	if err := json.Unmarshal([]byte(body), &created); err != nil || created.ID.IsZero() {
+		t.Fatal(err, body)
+	}
+	status, body = postJSON(t, svc, staff, "/api/v1/contacts", map[string]any{
+		"Kind": KindPerson, "GivenName": "Ada", "FamilyName": "API",
+	}, "")
+	if status != 200 || !strings.Contains(body, "Ada API") {
+		t.Fatalf("create contact %d %s", status, body)
+	}
+	var contact domain.Contact
+	if err := json.Unmarshal([]byte(body), &contact); err != nil {
+		t.Fatal(err)
+	}
+	status, body = postJSON(t, svc, staff, "/api/v1/matter-parties", map[string]any{
+		"matter_id": created.ID, "ContactID": contact.ID, "Role": "client", "Primary": true,
+	}, "")
+	if status != 200 {
+		t.Fatalf("party %d %s", status, body)
+	}
+	status, body = postJSON(t, svc, staff, "/api/v1/notes", map[string]any{
+		"MatterID": created.ID, "Title": "Tagged", "Body": "hello", "Tags": []string{"alpha"},
+	}, "")
+	if status != 200 {
+		t.Fatalf("note %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/notes?tag=alpha")
+	if status != 200 || !strings.Contains(body, "Tagged") {
+		t.Fatalf("notes %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters/"+string(created.ID)+"/timeline")
+	if status != 200 || !strings.Contains(body, "Opened matter") || !strings.Contains(body, "Added note Tagged") {
+		t.Fatalf("timeline %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters/"+string(created.ID)+"/close-preview")
+	if status != 200 || !strings.Contains(body, "warnings") {
+		t.Fatalf("preview %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/worklists/matters-missing-case-number")
+	if status != 200 {
+		t.Fatalf("worklist %d %s", status, body)
+	}
+	status, _ = postJSON(t, svc, staff, "/api/v1/matters/"+string(created.ID)+"/conflict-checks", map[string]any{}, "")
+	if status != 200 {
+		t.Fatalf("check %d", status)
+	}
+	page := getHTML(t, svc, staff, "/practice/notes?tag=alpha")
+	if !strings.Contains(page, "Tagged") || !strings.Contains(page, `name="matter"`) || !strings.Contains(page, `name="author"`) || !strings.Contains(page, `name="from"`) {
+		t.Fatal(page)
+	}
+	feed := getHTML(t, svc, staff, "/practice/activity?tab=agents")
+	if !strings.Contains(feed, "All (") || !strings.Contains(feed, "Clients (") || !strings.Contains(feed, "Staff (") || !strings.Contains(feed, "Agents (") {
+		t.Fatal(feed)
+	}
+	view, err := svc.Activity(ctx, staff, ActivityQuery{Tab: "agents"})
+	if err != nil || view.Agents < 0 {
+		t.Fatal(err)
+	}
+	now := svc.clock()
+	if err := svc.db.AppendAudit(ctx, nil, []domain.Event{
+		{Meta: domain.Meta{ID: tid(80), CreatedAt: now}, ActorKind: "agent", Summary: "agent did a thing", Action: "agent.did"},
+		{Meta: domain.Meta{ID: tid(81), CreatedAt: now}, ActorKind: "module", Summary: "module did a thing", Action: "module.did"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	agents, err := svc.Activity(ctx, staff, ActivityQuery{Tab: "agents"})
+	if err != nil || !feedHas(agents.Groups, "agent did a thing") || !feedHas(agents.Groups, "module did a thing") || agents.Agents < 2 {
+		t.Fatal(err, agents)
+	}
+	staffOnly, err := svc.Activity(ctx, staff, ActivityQuery{Tab: "staff"})
+	if err != nil || feedHas(staffOnly.Groups, "agent did a thing") || feedHas(staffOnly.Groups, "module did a thing") {
+		t.Fatal(staffOnly)
+	}
+	text := strings.Join(Pending, "\n")
+	for _, needle := range []string{"contacts:bulk", "merge", "archive matter", "MCP transport"} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("pending list lost %q", needle)
+		}
+	}
+}
+
+func TestSessionJSONRequiresCSRFAndHTTPSCookieIsSecure(t *testing.T) {
+	svc, _ := newSvc(t)
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "CSRF matter", "")
+	if _, _, err := svc.CloseMatter(context.Background(), staff, matter.ID, CloseInput{Reason: "done", Acknowledge: true}); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandler(t, svc)
+	token, _ := csrf(t, svc, attorney, "/practice/matters")
+	res := httptest.NewRecorder()
+	req := authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(`{"reason":"back"}`), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	h.Routes().ServeHTTP(res, req)
+	if res.Code != 403 {
+		t.Fatalf("missing csrf %d %s", res.Code, res.Body.String())
+	}
+	res = httptest.NewRecorder()
+	req = authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(`{"reason":"back"}`), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("X-CSRF-Token", token)
+	req.Header.Set("Idempotency-Key", "reopen-once")
+	h.Routes().ServeHTTP(res, req)
+	if res.Code != 200 {
+		t.Fatalf("csrf reopen %d %s", res.Code, res.Body.String())
+	}
+	secureReq := httptest.NewRequest(http.MethodGet, "/practice/matters", nil)
+	secureReq.TLS = &tls.ConnectionState{}
+	secureReq.Header.Set("X-Test-User", string(staff.UserID))
+	secureReq.Header.Set("X-Test-Roles", "staff")
+	secureRes := httptest.NewRecorder()
+	h.Routes().ServeHTTP(secureRes, secureReq)
+	cookie := secureRes.Header().Get("Set-Cookie")
+	if !strings.Contains(cookie, "Secure") {
+		t.Fatal(cookie)
 	}
 }
 

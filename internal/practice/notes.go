@@ -102,9 +102,9 @@ func (s *Service) GetNote(ctx context.Context, p domain.Principal, id domain.ID)
 }
 
 // ListNotes returns notes the caller can see. Pinned notes come first.
-func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter NoteFilter) ([]domain.Note, error) {
+func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter NoteFilter) ([]domain.Note, string, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResNote, Action: domain.ActionRead}); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	limit := filter.Limit
 	if limit <= 0 {
@@ -146,10 +146,12 @@ func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter Note
 			out = out[cut+1:]
 		}
 	}
+	next := ""
 	if len(out) > limit {
+		next = string(out[limit-1].ID)
 		out = out[:limit]
 	}
-	return out, nil
+	return out, next, nil
 }
 
 func (s *Service) gateNote(ctx context.Context, p domain.Principal, matter, contact domain.ID, action domain.Action) error {
@@ -165,8 +167,10 @@ func (s *Service) gateNote(ctx context.Context, p domain.Principal, matter, cont
 	if _, err := s.gate(ctx, p, ref); err != nil {
 		return err
 	}
-	if !contact.IsZero() && matter.IsZero() {
-		return s.readableContact(ctx, p, contact)
+	if !contact.IsZero() {
+		if err := s.readableContact(ctx, p, contact); err != nil {
+			return err
+		}
 	}
 	return nil
 }

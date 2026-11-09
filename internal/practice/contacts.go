@@ -77,6 +77,21 @@ func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id doma
 	return row, nil
 }
 
+// ArchiveContact marks a contact archived and keeps the row.
+func (s *Service) ArchiveContact(ctx context.Context, p domain.Principal, id domain.ID) (domain.Contact, error) {
+	prev, err := s.db.Contact(ctx, id)
+	if err != nil {
+		return domain.Contact{}, missing(err, "contact")
+	}
+	return s.UpdateContact(ctx, p, id, ContactInput{
+		Kind: prev.Kind, GivenName: prev.GivenName, MiddleName: prev.MiddleName, FamilyName: prev.FamilyName,
+		Prefix: prev.Prefix, Suffix: prev.Suffix, FullName: prev.FullName, PreferredName: prev.PreferredName,
+		AlsoKnownAs: prev.AlsoKnownAs, DateOfBirth: prev.DateOfBirth, DateOfDeath: prev.DateOfDeath,
+		EntityType: prev.EntityType, FormationState: prev.FormationState, FormationDate: prev.FormationDate,
+		Archived: true, Source: prev.Source,
+	})
+}
+
 // GetContact returns a contact the caller can see. SSN is redacted unless the caller is an attorney or admin.
 func (s *Service) GetContact(ctx context.Context, p domain.Principal, id domain.ID) (domain.Contact, error) {
 	if err := s.readableContact(ctx, p, id); err != nil {

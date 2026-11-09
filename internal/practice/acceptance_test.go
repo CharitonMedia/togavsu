@@ -300,7 +300,10 @@ func TestAC023ReopenAndZeroFee(t *testing.T) {
 	if _, err := svc.ReopenMatter(ctx, person(tid(8), domain.RoleAccountant), matter.ID, "books tried"); !isCode(err, domain.CodeForbidden) {
 		t.Fatal(err)
 	}
-	reopened, err := svc.ReopenMatter(ctx, staff, matter.ID, "client returned")
+	if _, err := svc.ReopenMatter(ctx, staff, matter.ID, "staff tried"); !isCode(err, domain.CodeForbidden) {
+		t.Fatal(err)
+	}
+	reopened, err := svc.ReopenMatter(ctx, attorney, matter.ID, "client returned")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,6 +316,17 @@ func TestAC023ReopenAndZeroFee(t *testing.T) {
 	}
 	if !timelineHas(timeline, "client returned") {
 		t.Fatal(timeline)
+	}
+	card := getHTML(t, svc, attorney, "/practice/matters/"+string(matter.ID))
+	if !strings.Contains(card, "data-reason=\"client returned\"") || !strings.Contains(card, ">Who<") || !strings.Contains(card, ">Note<") {
+		t.Fatal(card)
+	}
+	adminMatter := makeMatter(t, svc, staff, area, "Admin reopen", "")
+	if _, _, err := svc.CloseMatter(ctx, staff, adminMatter.ID, CloseInput{Reason: "done", Acknowledge: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReopenMatter(ctx, admin, adminMatter.ID, "admin reopen"); err != nil {
+		t.Fatal(err)
 	}
 
 	zero := makeMatter(t, svc, staff, area, "No fee", "")
@@ -893,6 +907,23 @@ func getAPI(t *testing.T, svc *Service, p domain.Principal, path string) (int, s
 	h := testHandler(t, svc)
 	res := httptest.NewRecorder()
 	h.Routes().ServeHTTP(res, authReq(http.MethodGet, path, nil, p))
+	return res.Code, res.Body.String()
+}
+
+func postJSON(t *testing.T, svc *Service, p domain.Principal, path string, body any, key string) (int, string) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := testHandler(t, svc)
+	req := authReq(http.MethodPost, path, strings.NewReader(string(raw)), p)
+	req.Header.Set("Content-Type", "application/json")
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
+	res := httptest.NewRecorder()
+	h.Routes().ServeHTTP(res, req)
 	return res.Code, res.Body.String()
 }
 

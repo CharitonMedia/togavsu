@@ -54,43 +54,117 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 		if clientView && !row.ClientVisible {
 			continue
 		}
-		out = append(out, TimelineEntry{
-			ID: row.ID, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
-			Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
-			RecordType: row.RecordType, RecordID: row.RecordID,
-		})
+		out = append(out, s.timelineRow(ctx, row))
 	}
 	return out, nil
 }
 
 // ActivityFeed returns the firm activity stream the caller can see.
 func (s *Service) ActivityFeed(ctx context.Context, p domain.Principal, actorKindFilter string) ([]ActivityGroup, error) {
-	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+	view, err := s.Activity(ctx, p, ActivityQuery{Tab: actorKindFilter})
+	if err != nil {
 		return nil, err
+	}
+	return view.Groups, nil
+}
+
+// Activity returns the feed with tab counts, staff chips, and a page.
+// The Agents tab is API tokens and modules together.
+func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQuery) (ActivityView, error) {
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+		return ActivityView{}, err
 	}
 	window := s.intSetting(ctx, "activity.window_days", 30)
 	limit := s.intSetting(ctx, "activity.page_size", 100)
 	cutoff := s.clock().AddDate(0, 0, -window)
 	events := s.db.Events()
-	var rows []TimelineEntry
-	for i := len(events) - 1; i >= 0 && len(rows) < limit; i-- {
+	var all []TimelineEntry
+	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
 		if row.CreatedAt.Before(cutoff) {
-			continue
-		}
-		if actorKindFilter != "" && actorKindFilter != "all" && row.ActorKind != actorKindFilter {
 			continue
 		}
 		if !s.feedAllows(ctx, p, row) {
 			continue
 		}
-		rows = append(rows, TimelineEntry{
-			ID: row.ID, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
-			Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
-			RecordType: row.RecordType, RecordID: row.RecordID,
-		})
+		all = append(all, s.timelineRow(ctx, row))
 	}
-	return groupActivity(rows, s.clock(), s.setting(ctx, "firm.time_zone", "UTC")), nil
+	view := ActivityView{Tab: q.Tab, UserID: string(q.UserID), People: []ActivityChip{}}
+	people := map[domain.ID]int{}
+	for _, row := range all {
+		view.All++
+		switch row.ActorKind {
+		case "client":
+			view.Clients++
+		case "staff":
+			view.Staff++
+			people[row.ActorID]++
+		case "agent", "module":
+			view.Agents++
+		}
+	}
+	for id, count := range people {
+		name := string(id)
+		if user, err := s.db.User(ctx, id); err == nil && user.Name != "" {
+			name = user.Name
+		}
+		view.People = append(view.People, ActivityChip{ID: id, Name: name, Count: count})
+	}
+	var rows []TimelineEntry
+	for _, row := range all {
+		if !activityTab(q.Tab, row.ActorKind) {
+			continue
+		}
+		if !q.UserID.IsZero() && row.ActorID != q.UserID {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if q.Cursor != "" {
+		cut := 0
+		for cut < len(rows) && string(rows[cut].ID) != q.Cursor {
+			cut++
+		}
+		if cut < len(rows) {
+			rows = rows[cut+1:]
+		}
+	}
+	if len(rows) > limit {
+		view.Next = string(rows[limit-1].ID)
+		rows = rows[:limit]
+	}
+	view.Groups = groupActivity(rows, s.clock(), s.setting(ctx, "firm.time_zone", "UTC"))
+	if view.Groups == nil {
+		view.Groups = []ActivityGroup{}
+	}
+	return view, nil
+}
+
+func activityTab(tab, kind string) bool {
+	switch tab {
+	case "", "all":
+		return true
+	case "clients":
+		return kind == "client"
+	case "staff":
+		return kind == "staff"
+	case "agents":
+		return kind == "agent" || kind == "module"
+	default:
+		return kind == tab
+	}
+}
+
+func (s *Service) timelineRow(ctx context.Context, row domain.Event) TimelineEntry {
+	name := row.ActorKind
+	if user, err := s.db.User(ctx, row.ActorID); err == nil && user.Name != "" {
+		name = user.Name
+	}
+	return TimelineEntry{
+		ID: row.ID, At: row.CreatedAt, ActorKind: row.ActorKind, ActorID: row.ActorID,
+		ActorName: name, Action: row.Action, Summary: row.Summary, ClientVisible: row.ClientVisible,
+		RecordType: row.RecordType, RecordID: row.RecordID, MatterID: row.MatterID,
+	}
 }
 
 // feedAllows hides a walled matter and a contact who exists only on walled matters.

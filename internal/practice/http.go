@@ -61,6 +61,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/reopen", h.reopenJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}/custom-fields", h.customJSON)
 	mux.HandleFunc("GET /api/v1/search", h.searchJSON)
+	h.practiceRoutes(mux)
 	mux.HandleFunc("GET /api/v1/reports/matters", h.reportMatters)
 	mux.HandleFunc("GET /api/v1/reports/ar-aging", h.reportAging)
 	mux.HandleFunc("GET /api/v1/reports/trust-balances", h.reportTrust)
@@ -87,22 +88,29 @@ func (h *Handler) staticJS(w http.ResponseWriter, r *http.Request) {
 }
 
 type page struct {
-	Title    string
-	CSRF     string
-	Query    string
-	Scope    string
-	Notice   string
-	Matters  []MatterView
-	Matter   MatterView
-	History  []HistoryRow
-	Timeline []TimelineEntry
-	Warnings []Warning
-	Search   SearchResult
-	Notes    []domain.Note
-	Contacts []domain.Contact
-	Contact  domain.Contact
-	Activity []ActivityGroup
-	Needs    []domain.Matter
+	Title      string
+	CSRF       string
+	Query      string
+	Scope      string
+	Notice     string
+	Matters    []MatterView
+	Matter     MatterView
+	History    []HistoryRow
+	Timeline   []TimelineEntry
+	Warnings   []Warning
+	Search     SearchResult
+	Notes      []domain.Note
+	NoteNext   string
+	NoteMatter string
+	NoteAuthor string
+	NoteTag    string
+	NoteFrom   string
+	NoteTo     string
+	Contacts   []domain.Contact
+	Contact    domain.Contact
+	Activity   []ActivityGroup
+	Feed       ActivityView
+	Needs      []domain.Matter
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data page) {
@@ -262,12 +270,20 @@ func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	notes, err := h.Svc.ListNotes(r.Context(), p, NoteFilter{Query: r.URL.Query().Get("q")})
+	q := r.URL.Query()
+	notes, next, err := h.Svc.ListNotes(r.Context(), p, NoteFilter{
+		Query: q.Get("q"), MatterID: domain.ID(q.Get("matter")), AuthorID: domain.ID(q.Get("author")),
+		Tag: q.Get("tag"), From: q.Get("from"), To: q.Get("to"), Cursor: q.Get("cursor"),
+	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "notes.html", page{Title: "Notes", CSRF: h.csrf(w, r), Notes: notes, Query: r.URL.Query().Get("q")})
+	h.render(w, "notes.html", page{
+		Title: "Notes", CSRF: h.csrf(w, r), Notes: notes, Query: q.Get("q"), NoteNext: next,
+		NoteMatter: q.Get("matter"), NoteAuthor: q.Get("author"), NoteTag: q.Get("tag"),
+		NoteFrom: q.Get("from"), NoteTo: q.Get("to"),
+	})
 }
 
 func (h *Handler) contactsPage(w http.ResponseWriter, r *http.Request) {
@@ -310,12 +326,15 @@ func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	rows, err := h.Svc.ActivityFeed(r.Context(), p, r.URL.Query().Get("actor"))
+	q := r.URL.Query()
+	feed, err := h.Svc.Activity(r.Context(), p, ActivityQuery{
+		Tab: q.Get("tab"), UserID: domain.ID(q.Get("user")), Cursor: q.Get("cursor"),
+	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "activity.html", page{Title: "Activities", CSRF: h.csrf(w, r), Activity: rows})
+	h.render(w, "activity.html", page{Title: "Activities", CSRF: h.csrf(w, r), Feed: feed, Activity: feed.Groups})
 }
 
 func (h *Handler) needsCasePage(w http.ResponseWriter, r *http.Request) {
@@ -409,6 +428,10 @@ func historyValue(row HistoryRow, value string) any {
 }
 
 func (h *Handler) closeJSON(w http.ResponseWriter, r *http.Request) {
+	if err := h.requireWriteCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
 	p, err := h.principal(r)
 	if err != nil {
 		writeErr(w, err)
@@ -440,6 +463,10 @@ func (h *Handler) closeJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
+	if err := h.requireWriteCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
 	p, err := h.principal(r)
 	if err != nil {
 		writeErr(w, err)
@@ -452,6 +479,17 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
+	key := r.Header.Get("Idempotency-Key")
+	var replay domain.Matter
+	hit, err := h.Svc.idemBegin(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, &replay)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if hit {
+		writeJSON(w, http.StatusOK, map[string]any{"id": replay.ID, "status": replay.Status})
+		return
+	}
 	matter, err := h.Svc.ReopenMatter(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Reason)
 	if err != nil {
 		writeErr(w, err)
@@ -462,10 +500,18 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if err := h.Svc.idemFinish(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, matter); err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, matterItem(view))
 }
 
 func (h *Handler) customJSON(w http.ResponseWriter, r *http.Request) {
+	if err := h.requireWriteCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
 	p, err := h.principal(r)
 	if err != nil {
 		writeErr(w, err)
@@ -482,9 +528,22 @@ func (h *Handler) customJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := h.Svc.SetCustomFields(r.Context(), p, RecordMatter, id, view.Matter.PracticeAreaID, values); err != nil {
+	key := r.Header.Get("Idempotency-Key")
+	var replay []CustomInput
+	hit, err := h.Svc.idemBegin(r.Context(), p, key, "custom_fields", string(id), values, &replay)
+	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	if !hit {
+		if err := h.Svc.SetCustomFields(r.Context(), p, RecordMatter, id, view.Matter.PracticeAreaID, values); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if err := h.Svc.idemFinish(r.Context(), p, key, "custom_fields", string(id), values, values); err != nil {
+			writeErr(w, err)
+			return
+		}
 	}
 	view, err = h.Svc.GetMatter(r.Context(), p, id)
 	if err != nil {
@@ -713,8 +772,29 @@ func (h *Handler) csrf(w http.ResponseWriter, r *http.Request) string {
 	token := newToken()
 	http.SetCookie(w, &http.Cookie{
 		Name: csrfCookie, Value: token, Path: "/practice", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Secure: cookieSecure(r),
 	})
 	return token
+}
+
+func cookieSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
+// requireWriteCSRF applies the OpenAPI CSRF header when the caller presents the session cookie.
+// A bearer-style call with no cookie is not a browser session.
+func (h *Handler) requireWriteCSRF(r *http.Request) error {
+	c, err := r.Cookie(csrfCookie)
+	if err != nil || c.Value == "" {
+		return nil
+	}
+	if r.Header.Get("X-CSRF-Token") != c.Value {
+		return domain.Forbidden("csrf")
+	}
+	return nil
 }
 
 func (h *Handler) checkCSRF(r *http.Request) error {

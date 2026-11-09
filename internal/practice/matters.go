@@ -187,12 +187,13 @@ type replayMatter struct {
 }
 
 // ReopenMatter restores the pre-close status. The close date and reason stay.
-// Section 4 gives staff matters, and domain.Policy allows a matter write for staff.
-// There is no separate reopen action on Policy. OpenAPI lists admin and attorney;
-// a shared ActionReopen is proposed for the contracts package. Until that exists,
-// the matter-write decision is the role check.
+// PRD 8.12 and the OpenAPI reopen roles are admin and attorney. domain.Policy has no
+// reopen action. ActionConflictDecide is the existing decision that allows those two
+// roles, denies staff, and still applies the matter wall.
 func (s *Service) ReopenMatter(ctx context.Context, p domain.Principal, id domain.ID, reason string) (domain.Matter, error) {
-	if err := s.gateMatter(ctx, p, id, domain.ActionWrite); err != nil {
+	if _, err := s.gate(ctx, p, domain.ResourceRef{
+		Resource: domain.ResMatter, Action: domain.ActionConflictDecide, MatterID: id,
+	}); err != nil {
 		return domain.Matter{}, err
 	}
 	reason = strings.TrimSpace(reason)

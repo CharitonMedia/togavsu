@@ -288,6 +288,8 @@ type TimelineEntry struct {
 	ClientVisible bool
 	RecordType    string
 	RecordID      domain.ID
+	MatterID      domain.ID
+	ActorName     string
 }
 
 // SearchHit is one search result.
@@ -373,4 +375,31 @@ type MatterView struct {
 type ActivityGroup struct {
 	Label string
 	Rows  []TimelineEntry
+}
+
+// ActivityChip is one staff person on the activity feed.
+type ActivityChip struct {
+	ID    domain.ID
+	Name  string
+	Count int
+}
+
+// ActivityQuery selects a tab, a person, and a page.
+type ActivityQuery struct {
+	Tab    string
+	UserID domain.ID
+	Cursor string
+}
+
+// ActivityView is the firm activity feed with tab counts and paging.
+type ActivityView struct {
+	Groups  []ActivityGroup
+	All     int
+	Clients int
+	Staff   int
+	Agents  int
+	People  []ActivityChip
+	Next    string
+	Tab     string
+	UserID  string
 }

@@ -4,18 +4,20 @@
 <details class="card" id="edit-history">
   <summary>Edit history</summary>
   <table>
-    <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th></tr></thead>
+    <thead><tr><th>When</th><th>Who</th><th>Role</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th><th>Note</th></tr></thead>
     <tbody>
     {{range .History}}
-      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}">
+      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}" data-reason="{{.Reason}}">
         <td>{{.At.Format "2006-01-02 15:04"}}</td>
+        <td>{{.ActorID}}</td>
         <td>{{.Role}}</td>
         <td>{{.Field}}</td>
         <td>{{.Old}}</td>
         <td>{{.New}}</td>
         <td>{{.Kind}}</td>
+        <td>{{.Reason}}</td>
       </tr>
-    {{else}}<tr><td colspan="6">No changes yet.</td></tr>{{end}}
+    {{else}}<tr><td colspan="8">No changes yet.</td></tr>{{end}}
     </tbody>
   </table>
 </details>

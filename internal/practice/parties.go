@@ -12,8 +12,8 @@ func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domai
 	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
 		return domain.MatterParty{}, err
 	}
-	if _, err := s.db.Contact(ctx, in.ContactID); err != nil {
-		return domain.MatterParty{}, domain.Invalid("contact_id", "unknown contact")
+	if err := s.readableContact(ctx, p, in.ContactID); err != nil {
+		return domain.MatterParty{}, err
 	}
 	roles := s.listSetting(ctx, "practice.party_roles", domain.DefaultPartyRoles())
 	if !containsString(roles, in.Role) {

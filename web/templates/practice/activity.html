@@ -1,10 +1,30 @@
 {{template "head" .}}
-{{range .Activity}}
+<nav class="tabs" aria-label="Activity tabs">
+  <a href="/practice/activity?tab=all">All ({{.Feed.All}})</a>
+  <a href="/practice/activity?tab=clients">Clients ({{.Feed.Clients}})</a>
+  <a href="/practice/activity?tab=staff">Staff ({{.Feed.Staff}})</a>
+  <a href="/practice/activity?tab=agents">Agents ({{.Feed.Agents}})</a>
+</nav>
+{{if .Feed.People}}
+<p>
+{{range .Feed.People}}
+  <a href="/practice/activity?tab=staff&user={{.ID}}">{{.Name}} ({{.Count}})</a>
+{{end}}
+</p>
+{{end}}
+{{range .Feed.Groups}}
   <h2>{{.Label}}</h2>
   <ul>
-  {{range .Rows}}<li {{if .ClientVisible}}class="client"{{end}}>{{.Summary}}</li>{{end}}
+  {{range .Rows}}
+    <li {{if .ClientVisible}}class="client"{{end}}>
+      <time>{{.At.Format "15:04"}}</time>
+      {{.ActorName}} {{.Action}} {{.Summary}}
+      {{if .MatterID}}<a href="/practice/matters/{{.MatterID}}">matter</a>{{end}}
+    </li>
+  {{end}}
   </ul>
 {{else}}
   <p>No activity in this window.</p>
 {{end}}
+{{if .Feed.Next}}<p><a href="/practice/activity?tab={{.Feed.Tab}}&user={{.Feed.UserID}}&cursor={{.Feed.Next}}">Next page</a></p>{{end}}
 {{template "foot" .}}
