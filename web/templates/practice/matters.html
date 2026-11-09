@@ -1,0 +1,37 @@
+{{template "head" .}}
+<form class="card" method="post" action="/practice/matters">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Create matter</h2>
+  <p><label>Name<br><input name="name" required></label></p>
+  <p><label>Practice area<br>
+    <select name="practice_area_id" required>
+      {{range .Areas}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+    </select>
+  </label></p>
+  <p><label>Billing<br>
+    <select name="billing_type">
+      <option value="hourly">hourly</option>
+      <option value="flat">flat</option>
+      <option value="mixed">mixed</option>
+      <option value="contingency">contingency</option>
+      <option value="pro_bono">pro bono</option>
+    </select>
+  </label></p>
+  <button type="submit">Create matter</button>
+</form>
+<table>
+  <thead><tr><th>Number</th><th>Name</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range .Matters}}
+    <tr>
+      <td><a href="/practice/matters/{{.Matter.ID}}">{{.Matter.Number}}</a></td>
+      <td>{{.Matter.Name}}</td>
+      <td>{{.Matter.Status}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="3">No matters.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+<p><a href="/practice/matters/needs-case-number">Matters missing a case number</a></p>
+{{template "foot" .}}

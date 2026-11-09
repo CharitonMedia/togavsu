@@ -1,0 +1,52 @@
+{{template "head" .}}
+<p>{{.Contact.Kind}}{{if .Contact.Archived}} · archived{{end}}</p>
+{{if .Contact.AlsoKnownAs}}<p>Also known as {{.Contact.AlsoKnownAs}}</p>{{end}}
+<form class="card" method="post" action="/practice/contacts/{{.Contact.ID}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Edit contact</h2>
+  <p><label>Given name<br><input name="given_name" value="{{.Contact.GivenName}}"></label></p>
+  <p><label>Family name<br><input name="family_name" value="{{.Contact.FamilyName}}"></label></p>
+  <p><label>Preferred name<br><input name="preferred_name" value="{{.Contact.PreferredName}}"></label></p>
+  <button type="submit">Save contact</button>
+</form>
+{{if not .Contact.Archived}}
+<form method="post" action="/practice/contacts/{{.Contact.ID}}/archive">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button type="submit">Archive contact</button>
+</form>
+{{end}}
+<section class="card" id="custom-fields">
+  <h2>Custom fields</h2>
+  {{if .ContactFields}}
+  <form method="post" action="/practice/contacts/{{.Contact.ID}}/custom-fields">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range .ContactFields}}
+      <p><label>{{.Label}}{{if .Required}} (required){{end}}<br>
+        <input name="cf_{{.DefinitionID}}" value="{{.Value}}">
+      </label></p>
+    {{end}}
+    <button type="submit">Save custom fields</button>
+  </form>
+  {{else}}<p>No custom fields.</p>{{end}}
+</section>
+<details class="card" id="edit-history">
+  <summary>Edit history</summary>
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Role</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th><th>Note</th></tr></thead>
+    <tbody>
+    {{range .History}}
+      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}" data-reason="{{.Reason}}">
+        <td>{{.At.Format "2006-01-02 15:04"}}</td>
+        <td>{{if .ActorName}}{{.ActorName}}{{else}}{{.ActorID}}{{end}}</td>
+        <td>{{.Role}}</td>
+        <td>{{.Field}}</td>
+        <td>{{.Old}}</td>
+        <td>{{.New}}</td>
+        <td>{{.Kind}}</td>
+        <td>{{.Reason}}</td>
+      </tr>
+    {{else}}<tr><td colspan="8">No changes yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</details>
+{{template "foot" .}}
