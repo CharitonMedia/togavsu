@@ -47,6 +47,8 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /practice/matters/{matter_id}/close", h.closePage)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/close", h.closePost)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/reopen", h.reopenPost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/markers", h.markerPost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/markers/remove", h.markerRemovePost)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/custom-fields", h.customPost)
 	mux.HandleFunc("GET /practice/search", h.searchPage)
 	mux.HandleFunc("GET /practice/notes", h.notesPage)
@@ -89,30 +91,31 @@ func (h *Handler) staticJS(w http.ResponseWriter, r *http.Request) {
 }
 
 type page struct {
-	Title      string
-	CSRF       string
-	Query      string
-	Scope      string
-	Notice     string
-	Matters    []MatterView
-	Matter     MatterView
-	History    []HistoryRow
-	Timeline   []TimelineEntry
-	Warnings   []Warning
-	Search     SearchResult
-	Notes      []domain.Note
-	NoteNext   string
-	NoteMatter string
-	NoteAuthor string
-	NoteTag    string
-	NoteFrom   string
-	NoteTo     string
-	Contacts   []domain.Contact
-	Contact    domain.Contact
-	Activity   []ActivityGroup
-	Feed       ActivityView
-	Needs      []domain.Matter
-	CanReopen  bool
+	Title         string
+	CSRF          string
+	Query         string
+	Scope         string
+	Notice        string
+	Matters       []MatterView
+	Matter        MatterView
+	History       []HistoryRow
+	Timeline      []TimelineEntry
+	Warnings      []Warning
+	Search        SearchResult
+	Notes         []domain.Note
+	NoteNext      string
+	NoteMatter    string
+	NoteAuthor    string
+	NoteTag       string
+	NoteFrom      string
+	NoteTo        string
+	Contacts      []domain.Contact
+	Contact       domain.Contact
+	Activity      []ActivityGroup
+	Feed          ActivityView
+	Needs         []domain.Matter
+	CanReopen     bool
+	MarkerChoices []string
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data page) {
@@ -168,7 +171,8 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline,
-		CanReopen: reopenErr == nil && view.Matter.Status == StatusClosed,
+		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
+		MarkerChoices: h.Svc.listSetting(r.Context(), "practice.markers", domain.DefaultMarkers()),
 	})
 }
 
@@ -208,6 +212,50 @@ func (h *Handler) reopenPost(w http.ResponseWriter, r *http.Request) {
 	}
 	id := domain.ID(r.PathValue("matter_id"))
 	if _, err := h.Svc.ReopenMatter(r.Context(), p, id, r.FormValue("reason")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	http.Redirect(w, r, "/practice/matters/"+string(id), http.StatusSeeOther)
+}
+
+func (h *Handler) markerPost(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeErr(w, domain.Invalid("form", "form is invalid"))
+		return
+	}
+	if err := h.checkCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
+	id := domain.ID(r.PathValue("matter_id"))
+	if _, err := h.Svc.PinMarker(r.Context(), p, id, r.FormValue("label"), domain.ID(r.FormValue("practice_area_id"))); err != nil {
+		writeErr(w, err)
+		return
+	}
+	http.Redirect(w, r, "/practice/matters/"+string(id), http.StatusSeeOther)
+}
+
+func (h *Handler) markerRemovePost(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeErr(w, domain.Invalid("form", "form is invalid"))
+		return
+	}
+	if err := h.checkCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
+	id := domain.ID(r.PathValue("matter_id"))
+	if err := h.Svc.RemoveMarker(r.Context(), p, id, r.FormValue("label"), domain.ID(r.FormValue("practice_area_id"))); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -509,11 +557,12 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	key := r.Header.Get("Idempotency-Key")
 	var replay domain.Matter
-	hit, err := h.Svc.idemBegin(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, &replay)
+	hit, hold, err := h.Svc.idemBegin(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, &replay)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	defer hold.abort()
 	if hit {
 		writeJSON(w, http.StatusOK, map[string]any{"id": replay.ID, "status": replay.Status})
 		return
@@ -528,7 +577,7 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := h.Svc.idemFinish(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, matter); err != nil {
+	if err := hold.finish(r.Context(), matter); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -558,17 +607,18 @@ func (h *Handler) customJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	key := r.Header.Get("Idempotency-Key")
 	var replay []CustomInput
-	hit, err := h.Svc.idemBegin(r.Context(), p, key, "custom_fields", string(id), values, &replay)
+	hit, hold, err := h.Svc.idemBegin(r.Context(), p, key, "custom_fields", string(id), values, &replay)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	defer hold.abort()
 	if !hit {
 		if err := h.Svc.SetCustomFields(r.Context(), p, RecordMatter, id, view.Matter.PracticeAreaID, values); err != nil {
 			writeErr(w, err)
 			return
 		}
-		if err := h.Svc.idemFinish(r.Context(), p, key, "custom_fields", string(id), values, values); err != nil {
+		if err := hold.finish(r.Context(), values); err != nil {
 			writeErr(w, err)
 			return
 		}

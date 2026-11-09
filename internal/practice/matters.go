@@ -16,10 +16,11 @@ func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in Matte
 		return domain.Matter{}, err
 	}
 	var replay domain.Matter
-	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_matter", "", in, &replay)
+	hit, hold, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_matter", "", in, &replay)
 	if err != nil {
 		return domain.Matter{}, err
 	}
+	defer hold.abort()
 	if hit {
 		return replay, nil
 	}
@@ -41,7 +42,7 @@ func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in Matte
 	if err := s.record(ctx, p, matterChanges(domain.Matter{}, stored, "", "matter.created", "Opened matter "+stored.Number)); err != nil {
 		return domain.Matter{}, err
 	}
-	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "create_matter", "", in, stored); err != nil {
+	if err := hold.finish(ctx, stored); err != nil {
 		return domain.Matter{}, err
 	}
 	return stored, nil
@@ -132,10 +133,11 @@ func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain
 		return domain.Matter{}, CloseRecord{}, err
 	}
 	var replay replayMatter
-	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "close_matter", string(id), in, &replay)
+	hit, hold, err := s.idemBegin(ctx, p, in.IdempotencyKey, "close_matter", string(id), in, &replay)
 	if err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
+	defer hold.abort()
 	if hit {
 		return replay.Matter, replay.Close, nil
 	}
@@ -175,7 +177,7 @@ func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain
 	if err := s.record(ctx, p, changes); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
-	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "close_matter", string(id), in, replayMatter{Matter: next, Close: record}); err != nil {
+	if err := hold.finish(ctx, replayMatter{Matter: next, Close: record}); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
 	return next, record, nil
@@ -333,6 +335,21 @@ func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter doma
 	return row, nil
 }
 
+// RemoveMarker takes a pinned marker off a matter.
+func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) error {
+	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
+		return err
+	}
+	row, err := s.db.DeleteMatterMarker(ctx, matter, label, area)
+	if err != nil {
+		return missing(err, "marker")
+	}
+	return s.record(ctx, p, []change{{
+		MatterID: matter, Entity: "matter", EntityID: matter, Field: "marker",
+		Old: row.Label, Kind: "delete", Action: "matter.marker_removed", Summary: "Removed marker " + row.Label,
+	}})
+}
+
 // ZeroFee reports whether the matter carries the zero-fee marker.
 func (s *Service) ZeroFee(matter domain.ID) bool {
 	for _, row := range s.db.MatterMarkers(matter) {
@@ -416,7 +433,7 @@ func (s *Service) prepareMatter(ctx context.Context, p domain.Principal, prev do
 			return domain.Matter{}, domain.Invalid("assigned_staff_id", "unknown user")
 		}
 	}
-	if err := s.requireCustom(ctx, RecordMatter, in.PracticeAreaID, prev.ID, in.Custom); err != nil {
+	if err := s.requireCustom(ctx, p, RecordMatter, in.PracticeAreaID, prev.ID, in.Custom); err != nil {
 		return domain.Matter{}, err
 	}
 	meta := prev.Meta

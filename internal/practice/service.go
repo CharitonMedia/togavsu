@@ -360,39 +360,60 @@ type idemRecord struct {
 	Target      string
 	Fingerprint string
 	Body        []byte
+	Pending     bool
 }
 
-// idemBegin replays a stored result only when the caller, operation, target and request match.
-// The same key used for anything else is a conflict and is not treated as success.
-func (s *Service) idemBegin(ctx context.Context, p domain.Principal, key, op, target string, request, dest any) (bool, error) {
-	if key == "" {
-		return false, nil
-	}
-	rec, ok := s.db.IdemGet(key)
-	if !ok {
-		return false, nil
-	}
-	if rec.Actor != actorID(p) || rec.Op != op || rec.Target != target || rec.Fingerprint != fingerprint(request) {
-		return false, domain.Conflict("idempotency key was already used")
-	}
-	if err := json.Unmarshal(rec.Body, dest); err != nil {
-		return false, domain.Conflict("idempotency key was already used")
-	}
-	_ = ctx
-	return true, nil
+// idemHold is a key reserved before the operation runs. abort releases it if finish did not.
+type idemHold struct {
+	s     *Service
+	key   string
+	rec   idemRecord
+	owned bool
 }
 
-func (s *Service) idemFinish(ctx context.Context, p domain.Principal, key, op, target string, request, body any) error {
-	if key == "" {
+func (h *idemHold) abort() {
+	if h == nil || !h.owned {
+		return
+	}
+	h.s.db.IdemAbort(h.key, h.rec)
+	h.owned = false
+}
+
+func (h *idemHold) finish(ctx context.Context, body any) error {
+	if h == nil || h.key == "" {
 		return nil
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	return s.db.IdemPut(ctx, key, idemRecord{
-		Actor: actorID(p), Op: op, Target: target, Fingerprint: fingerprint(request), Body: raw,
-	})
+	h.rec.Body = raw
+	h.rec.Pending = false
+	if err := h.s.db.IdemComplete(ctx, h.key, h.rec); err != nil {
+		return err
+	}
+	h.owned = false
+	return nil
+}
+
+// idemBegin replays a stored result only when the caller, operation, target and request match.
+// The key is reserved under the store lock before the operation runs.
+func (s *Service) idemBegin(ctx context.Context, p domain.Principal, key, op, target string, request, dest any) (bool, *idemHold, error) {
+	if key == "" {
+		return false, nil, nil
+	}
+	rec := idemRecord{Actor: actorID(p), Op: op, Target: target, Fingerprint: fingerprint(request)}
+	prev, replay, err := s.db.IdemClaim(ctx, key, rec)
+	if err != nil {
+		return false, nil, err
+	}
+	if replay {
+		if err := json.Unmarshal(prev.Body, dest); err != nil {
+			return false, nil, domain.Conflict("idempotency key was already used")
+		}
+		return true, nil, nil
+	}
+	return false, &idemHold{s: s, key: key, rec: rec, owned: true}, nil
 }
 
 func fingerprint(v any) string {

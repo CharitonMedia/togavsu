@@ -75,15 +75,13 @@ func (s *Service) UpdateNote(ctx context.Context, p domain.Principal, id domain.
 	if err := s.db.UpdateNote(ctx, next); err != nil {
 		return domain.Note{}, err
 	}
+	oldTags := joinTags(s.db.NoteTags(prev.ID))
 	if in.Tags != nil {
 		if err := s.replaceNoteTags(ctx, p, next.ID, in.Tags); err != nil {
 			return domain.Note{}, err
 		}
 	}
-	if err := s.record(ctx, p, []change{{
-		MatterID: next.MatterID, Entity: "note", EntityID: next.ID, Field: "body",
-		Old: prev.Body, New: next.Body, Kind: "update", Action: "note.updated", Summary: "Updated note " + next.Title,
-	}}); err != nil {
+	if err := s.record(ctx, p, noteChanges(prev, next, oldTags, joinTags(s.db.NoteTags(next.ID)), "note.updated", "Updated note "+next.Title)); err != nil {
 		return domain.Note{}, err
 	}
 	return next, nil
@@ -191,6 +189,45 @@ func (s *Service) replaceNoteTags(ctx context.Context, p domain.Principal, note 
 		rows = append(rows, domain.NoteTag{Meta: meta, NoteID: note, Tag: tag})
 	}
 	return s.db.ReplaceNoteTags(ctx, note, rows)
+}
+
+func noteChanges(prev, next domain.Note, oldTags, newTags, action, summary string) []change {
+	type pair struct{ field, old, neu string }
+	rows := []pair{
+		{"title", prev.Title, next.Title},
+		{"body", prev.Body, next.Body},
+		{"pinned", boolText(prev.Pinned), boolText(next.Pinned)},
+		{"status", prev.Status, next.Status},
+		{"tags", oldTags, newTags},
+	}
+	var out []change
+	first := true
+	for _, row := range rows {
+		if row.old == row.neu {
+			continue
+		}
+		ch := change{
+			MatterID: next.MatterID, ContactID: next.ContactID, Entity: "note", EntityID: next.ID,
+			Field: row.field, Old: row.old, New: row.neu, Kind: kindOf(row.old, row.neu),
+		}
+		if first {
+			ch.Action = action
+			ch.Summary = summary
+			first = false
+		} else {
+			ch.SkipEvent = true
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
+func joinTags(rows []domain.NoteTag) string {
+	parts := make([]string, 0, len(rows))
+	for _, row := range rows {
+		parts = append(parts, row.Tag)
+	}
+	return strings.Join(parts, ",")
 }
 
 func (s *Service) noteHasTag(note domain.ID, tag string) bool {

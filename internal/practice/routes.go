@@ -18,6 +18,8 @@ func (h *Handler) practiceRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/tags", h.createTagJSON)
 	mux.HandleFunc("POST /api/v1/matters", h.createMatterJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}", h.updateMatterJSON)
+	mux.HandleFunc("POST /api/v1/matters/{matter_id}/markers", h.createMarkerJSON)
+	mux.HandleFunc("POST /api/v1/matters/{matter_id}/markers/remove", h.removeMarkerJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/close-preview", h.closePreviewJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/timeline", h.timelineJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}/wall", h.wallJSON)
@@ -450,4 +452,45 @@ func (h *Handler) decideJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, row)
+}
+
+func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.caller(w, r, true)
+	if !ok {
+		return
+	}
+	var body struct {
+		Label          string    `json:"label"`
+		PracticeAreaID domain.ID `json:"practice_area_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	row, err := h.Svc.PinMarker(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Label, body.PracticeAreaID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, row)
+}
+
+func (h *Handler) removeMarkerJSON(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.caller(w, r, true)
+	if !ok {
+		return
+	}
+	var body struct {
+		Label          string    `json:"label"`
+		PracticeAreaID domain.ID `json:"practice_area_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	if err := h.Svc.RemoveMarker(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Label, body.PracticeAreaID); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"removed": true})
 }

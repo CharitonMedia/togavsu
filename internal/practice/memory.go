@@ -1019,6 +1019,21 @@ func (m *Memory) Checked(party domain.ID) (time.Time, bool) {
 	return at, ok
 }
 
+func (m *Memory) DeleteMatterMarker(ctx context.Context, matter domain.ID, label string, area domain.ID) (MatterMarker, error) {
+	if err := ready(ctx); err != nil {
+		return MatterMarker{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, row := range m.pinned {
+		if row.MatterID == matter && row.Label == label && row.PracticeAreaID == area {
+			delete(m.pinned, id)
+			return row, nil
+		}
+	}
+	return MatterMarker{}, repository.ErrNotFound
+}
+
 func (m *Memory) IdemGet(key string) (idemRecord, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1030,21 +1045,66 @@ func (m *Memory) IdemGet(key string) (idemRecord, bool) {
 	return rec, true
 }
 
-func (m *Memory) IdemPut(ctx context.Context, key string, rec idemRecord) error {
+// IdemClaim reserves a key before the operation runs. A second caller with the same
+// key waits out the first reservation instead of creating another row.
+func (m *Memory) IdemClaim(ctx context.Context, key string, rec idemRecord) (idemRecord, bool, error) {
 	if err := ready(ctx); err != nil {
-		return err
+		return idemRecord{}, false, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if prev, ok := m.idem[key]; ok {
 		if prev.Actor != rec.Actor || prev.Op != rec.Op || prev.Target != rec.Target || prev.Fingerprint != rec.Fingerprint {
-			return repository.ErrConflict
+			return idemRecord{}, false, domain.Conflict("idempotency key was already used")
 		}
+		if prev.Pending {
+			return idemRecord{}, false, domain.Conflict("idempotency key is in progress")
+		}
+		prev.Body = append([]byte(nil), prev.Body...)
+		return prev, true, nil
+	}
+	rec.Pending = true
+	rec.Body = nil
+	m.idem[key] = rec
+	return idemRecord{}, false, nil
+}
+
+// IdemComplete stores the result of a reservation made by IdemClaim.
+func (m *Memory) IdemComplete(ctx context.Context, key string, rec idemRecord) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	prev, ok := m.idem[key]
+	if !ok || prev.Actor != rec.Actor || prev.Op != rec.Op || prev.Target != rec.Target || prev.Fingerprint != rec.Fingerprint {
+		return domain.Conflict("idempotency key was already used")
+	}
+	if !prev.Pending {
 		return nil
 	}
+	rec.Pending = false
 	rec.Body = append([]byte(nil), rec.Body...)
 	m.idem[key] = rec
 	return nil
+}
+
+// IdemAbort drops a reservation when the operation did not finish.
+func (m *Memory) IdemAbort(key string, rec idemRecord) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	prev, ok := m.idem[key]
+	if !ok || !prev.Pending {
+		return
+	}
+	if prev.Actor != rec.Actor || prev.Op != rec.Op || prev.Target != rec.Target || prev.Fingerprint != rec.Fingerprint {
+		return
+	}
+	delete(m.idem, key)
+}
+
+func (m *Memory) IdemPut(ctx context.Context, key string, rec idemRecord) error {
+	return m.IdemComplete(ctx, key, rec)
 }
 
 func copyField(row FieldDef) FieldDef {

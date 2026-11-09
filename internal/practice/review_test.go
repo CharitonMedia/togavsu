@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -740,6 +742,300 @@ func TestConflictAuditCustomLinkAndReopenForm(t *testing.T) {
 	staffPage := getHTML(t, svc, staff, "/practice/matters/"+string(staffMatter.ID))
 	if strings.Contains(staffPage, "Reopen matter") {
 		t.Fatal("staff saw reopen")
+	}
+}
+
+func TestHiddenContactLinkDoesNotPersist(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	hiddenMatter := makeMatter(t, svc, staff, area, "Hidden matter", "")
+	hidden, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Hidden", FamilyName: "Link"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, hiddenMatter.ID, PartyInput{ContactID: hidden.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, hiddenMatter.ID, []domain.ID{attorney.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	matterField, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordMatter, Label: "Related", FieldType: FieldContact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contactField, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordContact, Label: "Related person", FieldType: FieldContact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	textField, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordMatter, Label: "Note", FieldType: FieldText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mattersBefore := len(svc.db.Matters())
+	contactsBefore := len(svc.db.Contacts())
+	auditsBefore := len(svc.db.Audits())
+	if _, err := svc.CreateMatter(ctx, staff, MatterInput{
+		Name: "Should not exist", PracticeAreaID: area, BillingType: BillingHourly,
+		Custom: []CustomInput{{DefinitionID: textField.ID, Value: "kept"}, {DefinitionID: matterField.ID, Value: string(hidden.ID)}},
+	}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateContact(ctx, staff, ContactInput{
+		Kind: KindPerson, GivenName: "Also", FamilyName: "Hidden",
+		Custom: []CustomInput{{DefinitionID: contactField.ID, Value: string(hidden.ID)}},
+	}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if len(svc.db.Matters()) != mattersBefore || len(svc.db.Contacts()) != contactsBefore || len(svc.db.Audits()) != auditsBefore {
+		t.Fatal("failed custom link persisted a row or an audit")
+	}
+	open := makeMatter(t, svc, staff, area, "Still open", "")
+	personRow, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Pat", FamilyName: "Lee"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditsBefore = len(svc.db.Audits())
+	if _, err := svc.UpdateMatter(ctx, staff, open.ID, MatterInput{
+		Name: "Renamed", PracticeAreaID: area, BillingType: BillingHourly,
+		Custom: []CustomInput{{DefinitionID: textField.ID, Value: "nope"}, {DefinitionID: matterField.ID, Value: string(hidden.ID)}},
+	}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateContact(ctx, staff, personRow.ID, ContactInput{
+		Kind: KindPerson, GivenName: "Patricia", FamilyName: "Lee",
+		Custom: []CustomInput{{DefinitionID: contactField.ID, Value: string(hidden.ID)}},
+	}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	view, err := svc.GetMatter(ctx, staff, open.ID)
+	if err != nil || view.Matter.Name != "Still open" || len(svc.db.Values(open.ID)) != 0 {
+		t.Fatal(err, view.Matter.Name, svc.db.Values(open.ID))
+	}
+	got, err := svc.GetContact(ctx, staff, personRow.ID)
+	if err != nil || got.GivenName != "Pat" || len(svc.db.Audits()) != auditsBefore {
+		t.Fatal(err, got.GivenName, len(svc.db.Audits()), auditsBefore)
+	}
+}
+
+func TestContactNotePhoneAndPartyChangesAreAudited(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "Audit matter", "")
+	row, err := svc.CreateContact(ctx, staff, ContactInput{
+		Kind: KindOrganization, FullName: "Lee Co", EntityType: "LLC", FormationState: "MO", FormationDate: "2020-01-02", Source: "intake",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := svc.UpdateContact(ctx, staff, row.ID, ContactInput{
+		Kind: KindPerson, Prefix: "Ms", GivenName: "Pat", MiddleName: "Q", FamilyName: "Lee", Suffix: "Jr",
+		PreferredName: "Patsy", AlsoKnownAs: "P Lee", DateOfBirth: "1980-01-02", DateOfDeath: "2024-02-03", Source: "desk",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.History(ctx, staff, "contact", updated.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"given_name", "middle_name", "family_name", "prefix", "suffix", "preferred_name", "date_of_death", "source"} {
+		if !historyField(history, field) {
+			t.Fatal(field, history)
+		}
+	}
+	if !historyHas(history, "entity_type", "LLC", "") || !historyHas(history, "formation_state", "MO", "") || !historyHas(history, "formation_date", "2020-01-02", "") {
+		t.Fatal(history)
+	}
+	first, err := svc.AddPhone(ctx, staff, row.ID, "mobile", "+15555550100", "2026-01-01", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddPhone(ctx, staff, row.ID, "work", "+15555550101", "2026-02-01", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ChangePhone(ctx, staff, first.ID, "+15555550102", ""); err != nil {
+		t.Fatal(err)
+	}
+	history, err = svc.History(ctx, staff, "contact", row.ID)
+	if err != nil || !historyHas(history, "primary", "true", "false") || !historyHas(history, "effective_to", "", "2026-06-15") {
+		t.Fatal(err, history)
+	}
+	firstParty, err := svc.AddParty(ctx, staff, matter.ID, PartyInput{ContactID: row.ID, Role: "client", Primary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Other", FamilyName: "Client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, matter.ID, PartyInput{ContactID: other.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	matterHistory, err := svc.History(ctx, staff, "matter", matter.ID)
+	if err != nil || !historyHas(matterHistory, "primary", "true", "false") {
+		t.Fatal(err, matterHistory)
+	}
+	_ = firstParty
+	note, err := svc.CreateNote(ctx, staff, NoteInput{MatterID: matter.ID, Title: "First", Body: "hello", Status: NoteActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, staff, note.ID, NoteInput{
+		Title: "Second", Body: "hello there", Pinned: true, Status: NoteArchived, Tags: []string{"heir"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	matterHistory, err = svc.History(ctx, staff, "matter", matter.ID)
+	if err != nil || !historyHas(matterHistory, "title", "First", "Second") || !historyHas(matterHistory, "pinned", "false", "true") || !historyHas(matterHistory, "status", NoteActive, NoteArchived) || !historyHas(matterHistory, "tags", "", "heir") || !historyHas(matterHistory, "body", "hello", "hello there") {
+		t.Fatal(err, matterHistory)
+	}
+}
+
+func TestMarkersAPIAndScreen(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	client := person(tid(4), domain.RoleClient)
+	putUser(t, db, staff, "Sam Staff")
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "Marked", "")
+	status, body := postJSON(t, svc, staff, "/api/v1/matters/"+string(matter.ID)+"/markers", map[string]string{"label": MarkerZeroFee}, "")
+	if status != 200 || !strings.Contains(body, MarkerZeroFee) {
+		t.Fatalf("set %d %s", status, body)
+	}
+	view, err := svc.GetMatter(ctx, staff, matter.ID)
+	if err != nil || !hasMarker(view, MarkerZeroFee) || !svc.ZeroFee(matter.ID) {
+		t.Fatal(err, view.Markers)
+	}
+	if !auditHas(svc.db.Audits(), "matter", "marker") {
+		t.Fatal("marker was not audited")
+	}
+	page := getHTML(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	if !strings.Contains(page, "Set marker") || !strings.Contains(page, "Sam Staff") || !strings.Contains(page, "2026-06-15 15:00") || !strings.Contains(page, "Opened matter") {
+		t.Fatal(page)
+	}
+	token, _ := csrf(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	form := url.Values{}
+	form.Set("csrf", token)
+	form.Set("label", MarkerProBono)
+	code, text := postForm(t, svc, staff, "/practice/matters/"+string(matter.ID)+"/markers", form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("form %d %s", code, text)
+	}
+	page = getHTML(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	if !strings.Contains(page, "Remove "+MarkerProBono) {
+		t.Fatal(page)
+	}
+	status, body = postJSON(t, svc, staff, "/api/v1/matters/"+string(matter.ID)+"/markers/remove", map[string]string{"label": MarkerProBono}, "")
+	if status != 200 {
+		t.Fatalf("remove %d %s", status, body)
+	}
+	view, err = svc.GetMatter(ctx, staff, matter.ID)
+	if err != nil || hasMarker(view, MarkerProBono) || !hasMarker(view, MarkerZeroFee) {
+		t.Fatal(err, view.Markers)
+	}
+	status, _ = postJSON(t, svc, client, "/api/v1/matters/"+string(matter.ID)+"/markers", map[string]string{"label": MarkerAlsoAsked}, "")
+	if status < 400 {
+		t.Fatal(status)
+	}
+}
+
+func TestPrefixedIdentifierMustOpen(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	attorney := person(tid(2), domain.RoleAttorney)
+	if _, err := svc.CreateContact(ctx, attorney, ContactInput{Kind: KindPerson, GivenName: "Bad", FamilyName: "Seal", SSNEIN: "enc:v1:123-45-6789"}); !isCode(err, domain.CodeValidation) {
+		t.Fatal(err)
+	}
+	real, err := svc.CreateContact(ctx, attorney, ContactInput{Kind: KindPerson, GivenName: "Real", FamilyName: "Seal", SSNEIN: "999-88-7777"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := svc.db.Contact(ctx, real.ID)
+	if err != nil || strings.Contains(stored.SSNEINCiphertext, "999-88-7777") {
+		t.Fatal(stored.SSNEINCiphertext, err)
+	}
+	again, err := svc.CreateContact(ctx, attorney, ContactInput{Kind: KindPerson, GivenName: "Copy", FamilyName: "Seal", SSNEIN: stored.SSNEINCiphertext})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied, err := svc.db.Contact(ctx, again.ID)
+	if err != nil || copied.SSNEINCiphertext != stored.SSNEINCiphertext {
+		t.Fatal(copied.SSNEINCiphertext, err)
+	}
+}
+
+func TestCSVNeutralizesFormulas(t *testing.T) {
+	got := csvJoin([]string{"=cmd", "+1", "-1", "@sum", "a\rb", `say "hi"`})
+	for _, needle := range []string{"'=cmd", "'+1", "'-1", "'@sum", "\"a\rb\"", "\"say \"\"hi\"\"\""} {
+		if !strings.Contains(got, needle) {
+			t.Fatal(got)
+		}
+	}
+}
+
+func TestIdempotencyReserveIsAtomic(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	in := MatterInput{Name: "Race", PracticeAreaID: area, BillingType: BillingHourly, IdempotencyKey: "race-key"}
+	rec := idemRecord{Actor: staff.UserID, Op: "create_matter", Target: "", Fingerprint: fingerprint(in)}
+	if _, replay, err := svc.db.IdemClaim(ctx, "race-key", rec); err != nil || replay {
+		t.Fatal(err, replay)
+	}
+	if _, _, err := svc.db.IdemClaim(ctx, "race-key", rec); !isCode(err, domain.CodeConflict) {
+		t.Fatal(err)
+	}
+	svc.db.IdemAbort("race-key", rec)
+	var wg sync.WaitGroup
+	ids := make(chan domain.ID, 2)
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			row, err := svc.CreateMatter(ctx, staff, in)
+			if err != nil {
+				errs <- err
+				return
+			}
+			ids <- row.ID
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	close(errs)
+	seen := map[domain.ID]bool{}
+	for id := range ids {
+		seen[id] = true
+	}
+	for err := range errs {
+		if !isCode(err, domain.CodeConflict) {
+			t.Fatal(err)
+		}
+	}
+	if len(seen) != 1 {
+		t.Fatal(seen)
+	}
+	count := 0
+	for _, row := range svc.db.Matters() {
+		if row.Name == "Race" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatal(count)
 	}
 }
 

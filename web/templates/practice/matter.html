@@ -42,11 +42,33 @@
   {{else}}<p>No custom fields for this practice area.</p>{{end}}
 </section>
 
+<section class="card" id="markers">
+  <h2>Markers</h2>
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/markers">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p><label>Marker<br>
+      <select name="label">
+        {{range .MarkerChoices}}<option>{{.}}</option>{{end}}
+      </select>
+    </label></p>
+    <p><label>Practice area for Also asked about<br><input name="practice_area_id"></label></p>
+    <button type="submit">Set marker</button>
+  </form>
+  {{range .Matter.Markers}}
+  <form method="post" action="/practice/matters/{{$.Matter.Matter.ID}}/markers/remove">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="label" value="{{.Label}}">
+    <input type="hidden" name="practice_area_id" value="{{.PracticeAreaID}}">
+    <button type="submit">Remove {{.Label}}</button>
+  </form>
+  {{end}}
+</section>
+
 <section class="card" id="timeline">
   <h2>Case timeline</h2>
   <ol>
   {{range .Timeline}}
-    <li {{if .ClientVisible}}class="client"{{end}}>{{.Summary}} <span class="muted">{{.ActorKind}}</span></li>
+    <li {{if .ClientVisible}}class="client"{{end}}>{{.At.Format "2006-01-02 15:04"}} · {{if .ActorName}}{{.ActorName}}{{else}}{{.ActorKind}}{{end}} · {{.Summary}}</li>
   {{else}}<li>No events yet.</li>{{end}}
   </ol>
 </section>

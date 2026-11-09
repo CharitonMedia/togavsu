@@ -124,9 +124,9 @@ func (s *Service) mattersCSV(views []MatterView) string {
 
 func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType string, recordID, area domain.ID, values []CustomInput) error {
 	if len(values) == 0 {
-		return s.requireCustom(ctx, recordType, area, recordID, nil)
+		return s.requireCustom(ctx, p, recordType, area, recordID, nil)
 	}
-	if err := s.requireCustom(ctx, recordType, area, recordID, values); err != nil {
+	if err := s.requireCustom(ctx, p, recordType, area, recordID, values); err != nil {
 		return err
 	}
 	for _, value := range values {
@@ -179,7 +179,7 @@ func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType
 	return nil
 }
 
-func (s *Service) requireCustom(ctx context.Context, recordType string, area, recordID domain.ID, incoming []CustomInput) error {
+func (s *Service) requireCustom(ctx context.Context, p domain.Principal, recordType string, area, recordID domain.ID, incoming []CustomInput) error {
 	provided := map[domain.ID]string{}
 	for _, value := range incoming {
 		def, err := s.lookupField(recordType, value)
@@ -195,6 +195,11 @@ func (s *Service) requireCustom(ctx context.Context, recordType string, area, re
 		canonical, err := canonicalValue(def, value.Value)
 		if err != nil {
 			return err
+		}
+		if def.FieldType == FieldContact && canonical != "" {
+			if err := s.readableContact(ctx, p, domain.ID(canonical)); err != nil {
+				return err
+			}
 		}
 		provided[def.ID] = canonical
 	}
@@ -398,11 +403,17 @@ func slug(label string) string {
 func csvJoin(cols []string) string {
 	out := make([]string, len(cols))
 	for i, col := range cols {
-		if strings.ContainsAny(col, ",\"\n") {
-			out[i] = `"` + strings.ReplaceAll(col, `"`, `""`) + `"`
-		} else {
-			out[i] = col
-		}
+		out[i] = csvCell(col)
 	}
 	return strings.Join(out, ",")
+}
+
+func csvCell(col string) string {
+	if col != "" && strings.ContainsRune("=+-@", rune(col[0])) {
+		col = "'" + col
+	}
+	if strings.ContainsAny(col, ",\"\n\r") {
+		return `"` + strings.ReplaceAll(col, `"`, `""`) + `"`
+	}
+	return col
 }

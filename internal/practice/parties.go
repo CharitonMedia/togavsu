@@ -27,6 +27,12 @@ func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domai
 				if err := s.db.UpdateParty(ctx, existing); err != nil {
 					return domain.MatterParty{}, err
 				}
+				if err := s.record(ctx, p, []change{{
+					MatterID: matter, Entity: "matter_party", EntityID: existing.ID, Field: "primary",
+					Old: "true", New: "false", Kind: "update", SkipEvent: true,
+				}}); err != nil {
+					return domain.MatterParty{}, err
+				}
 			}
 		}
 	}

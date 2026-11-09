@@ -13,14 +13,15 @@ func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in Cont
 		return domain.Contact{}, err
 	}
 	var replay domain.Contact
-	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_contact", "", in, &replay)
+	hit, hold, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_contact", "", in, &replay)
 	if err != nil {
 		return domain.Contact{}, err
 	}
+	defer hold.abort()
 	if hit {
 		return replay, nil
 	}
-	if err := s.requireCustom(ctx, RecordContact, domain.ID(""), domain.ID(""), in.Custom); err != nil {
+	if err := s.requireCustom(ctx, p, RecordContact, domain.ID(""), domain.ID(""), in.Custom); err != nil {
 		return domain.Contact{}, err
 	}
 	row, err := s.buildContact(ctx, p, domain.Contact{}, in, true)
@@ -36,7 +37,7 @@ func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in Cont
 	if err := s.record(ctx, p, contactChanges(domain.Contact{}, row, "contact.created", "Created contact "+row.FullName)); err != nil {
 		return domain.Contact{}, err
 	}
-	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "create_contact", "", in, row); err != nil {
+	if err := hold.finish(ctx, row); err != nil {
 		return domain.Contact{}, err
 	}
 	return row, nil
@@ -54,7 +55,7 @@ func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id doma
 	if err != nil {
 		return domain.Contact{}, missing(err, "contact")
 	}
-	if err := s.requireCustom(ctx, RecordContact, domain.ID(""), prev.ID, in.Custom); err != nil {
+	if err := s.requireCustom(ctx, p, RecordContact, domain.ID(""), prev.ID, in.Custom); err != nil {
 		return domain.Contact{}, err
 	}
 	row, err := s.buildContact(ctx, p, prev, in, false)
@@ -140,7 +141,7 @@ func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact doma
 		return domain.ContactPhone{}, err
 	}
 	if primary {
-		if err := s.clearPrimaryPhone(ctx, contact); err != nil {
+		if err := s.clearPrimaryPhone(ctx, p, contact); err != nil {
 			return domain.ContactPhone{}, err
 		}
 	}
@@ -182,11 +183,36 @@ func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain
 	if !validDate(from) {
 		return domain.ContactPhone{}, domain.Invalid("effective_from", "use YYYY-MM-DD")
 	}
+	oldTo := prev.EffectiveTo
+	wasPrimary := prev.Primary
 	prev.EffectiveTo = from
 	prev.Primary = false
 	prev.UpdatedAt = s.clock()
 	if err := s.db.UpdatePhone(ctx, prev); err != nil {
 		return domain.ContactPhone{}, err
+	}
+	var closed []change
+	if oldTo != from {
+		closed = append(closed, change{
+			ContactID: prev.ContactID, Entity: "contact_phone", EntityID: prev.ID, Field: "effective_to",
+			Old: oldTo, New: from, Kind: "update",
+		})
+	}
+	if wasPrimary {
+		closed = append(closed, change{
+			ContactID: prev.ContactID, Entity: "contact_phone", EntityID: prev.ID, Field: "primary",
+			Old: "true", New: "false", Kind: "update",
+		})
+	}
+	if len(closed) > 0 {
+		closed[0].Action = "contact.phone_changed"
+		closed[0].Summary = "Closed phone " + prev.PhoneE164
+		for i := 1; i < len(closed); i++ {
+			closed[i].SkipEvent = true
+		}
+		if err := s.record(ctx, p, closed); err != nil {
+			return domain.ContactPhone{}, err
+		}
 	}
 	return s.AddPhone(ctx, p, prev.ContactID, prev.Label, e164, from, true)
 }
@@ -321,17 +347,14 @@ func (s *Service) buildContact(ctx context.Context, p domain.Principal, prev dom
 }
 
 func (s *Service) sealSSN(plain string) (string, error) {
-	if strings.HasPrefix(plain, sealPrefix) {
-		return plain, nil
-	}
 	if len(s.key) != 32 {
 		return "", domain.Invalid("ssn_ein", "identifier must already be encrypted")
 	}
 	sealed, err := sealIdentifier(s.key, plain)
 	if err != nil {
-		return "", err
+		return "", domain.Invalid("ssn_ein", "identifier must already be encrypted")
 	}
-	if strings.Contains(sealed, plain) {
+	if !strings.HasPrefix(plain, sealPrefix) && strings.Contains(sealed, plain) {
 		return "", domain.Invalid("ssn_ein", "identifier must already be encrypted")
 	}
 	return sealed, nil
@@ -364,7 +387,7 @@ func (s *Service) readableContact(ctx context.Context, p domain.Principal, id do
 	return domain.NotFound("contact")
 }
 
-func (s *Service) clearPrimaryPhone(ctx context.Context, contact domain.ID) error {
+func (s *Service) clearPrimaryPhone(ctx context.Context, p domain.Principal, contact domain.ID) error {
 	for _, phone := range s.db.Phones(contact) {
 		if !phone.Primary {
 			continue
@@ -374,6 +397,12 @@ func (s *Service) clearPrimaryPhone(ctx context.Context, contact domain.ID) erro
 		if err := s.db.UpdatePhone(ctx, phone); err != nil {
 			return err
 		}
+		if err := s.record(ctx, p, []change{{
+			ContactID: contact, Entity: "contact_phone", EntityID: phone.ID, Field: "primary",
+			Old: "true", New: "false", Kind: "update", SkipEvent: true,
+		}}); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -381,9 +410,20 @@ func (s *Service) clearPrimaryPhone(ctx context.Context, contact domain.ID) erro
 func contactChanges(prev, next domain.Contact, action, summary string) []change {
 	pairs := [][2]string{
 		{"kind", prev.Kind + "\x00" + next.Kind},
+		{"given_name", prev.GivenName + "\x00" + next.GivenName},
+		{"middle_name", prev.MiddleName + "\x00" + next.MiddleName},
+		{"family_name", prev.FamilyName + "\x00" + next.FamilyName},
+		{"prefix", prev.Prefix + "\x00" + next.Prefix},
+		{"suffix", prev.Suffix + "\x00" + next.Suffix},
 		{"full_name", prev.FullName + "\x00" + next.FullName},
+		{"preferred_name", prev.PreferredName + "\x00" + next.PreferredName},
 		{"also_known_as", prev.AlsoKnownAs + "\x00" + next.AlsoKnownAs},
 		{"date_of_birth", prev.DateOfBirth + "\x00" + next.DateOfBirth},
+		{"date_of_death", prev.DateOfDeath + "\x00" + next.DateOfDeath},
+		{"entity_type", prev.EntityType + "\x00" + next.EntityType},
+		{"formation_state", prev.FormationState + "\x00" + next.FormationState},
+		{"formation_date", prev.FormationDate + "\x00" + next.FormationDate},
+		{"source", prev.Source + "\x00" + next.Source},
 		{"archived", boolText(prev.Archived) + "\x00" + boolText(next.Archived)},
 		{"ssn_ein_ciphertext", ssnAuditPair(prev.SSNEINCiphertext, next.SSNEINCiphertext)},
 	}
