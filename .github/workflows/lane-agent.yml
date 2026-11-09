@@ -95,10 +95,10 @@ jobs:
           asks for a pushed commit SHA, report your final local commit SHA. Never write credentials, tokens
           or environment values into files, commits or the PR body. The controller rejects the whole result if
           any commit touches a control-plane file (AGENTS.md, scripts/build_controller.py, docs/build/ plan and
-          task files, deploy/controller/, review gate workflows), adds a symlink or submodule, or changes a
-          .github/ file your assignment does not own. An owned workflow file must keep top-level read-only
-          permissions and never name secrets, write scopes or privileged triggers. Propose any such change in
-          the PR body instead of committing it.
+          task files, deploy/controller/), adds a symlink or submodule, or changes anything under .github/,
+          including CI workflows your assignment owns. If CI needs a new or changed job, put the exact
+          workflow change in the PR body under "Proposed CI change"; the integration lead lands it through a
+          reviewed control PR.
 
           """
           (out / "prompt.md").write_text(preamble + assignment)

@@ -2275,9 +2275,8 @@ LANE_AGENT = "bc-12345678-1234-4234-8234-123456789abc"
 class FakeLaneRemote(build_controller.ActionsRemote):
     """ActionsRemote with GitHub replaced by memory and the push target replaced by a local bare repo."""
 
-    def __init__(self, state_dir, repo_dir, bare, dry=False, plan=None):
-        super().__init__(state_dir, repo_dir, dry, plan or {"tasks": [{"id": "one", "owned_paths": [
-            "internal/one/", ".github/workflows/product-ci.yml"]}]})
+    def __init__(self, state_dir, repo_dir, bare, dry=False):
+        super().__init__(state_dir, repo_dir, dry)
         self.push_url = str(bare)
         self.bare = bare
         self.calls, self.runs, self.artifacts, self.pulls = [], [], {}, []
@@ -2538,9 +2537,9 @@ class LaneBackendTests(unittest.TestCase):
             "controller": {"scripts/build_controller.py": "pass\n"},
             "installer": {"deploy/controller/run_controller.py": "pass\n"},
             "symlink": {"internal/one/link": None},
-            "owned workflow with secrets": {".github/workflows/product-ci.yml": safe + "# ${{ secrets.X }}\n"},
-            "owned workflow without permissions": {".github/workflows/product-ci.yml": "on: [push]\njobs: {}\n"},
-            "owned workflow write scope": {".github/workflows/product-ci.yml": safe.replace("read", "write")},
+            "owned read-only workflow": {".github/workflows/product-ci.yml": safe},
+            "escaped write scope": {".github/workflows/product-ci.yml": safe.replace("read", '"wr\\x69te"')},
+            "repository setting": {".github/CODEOWNERS": "* @someone\n"},
             "non-ASCII workflow name": {".github/workflows/\u00e9.yml": safe + "# ${{ secrets.X }}\n"},
             "backslash workflow name": {".github/workflows/a\\b.yml": safe},
             "non-ASCII control file": {"deploy/controller/\u00e9.py": "pass\n"},
@@ -2555,14 +2554,6 @@ class LaneBackendTests(unittest.TestCase):
                 self.assertNotEqual(subprocess.run(["git", "-C", str(self.bare), "rev-parse", "--verify", "-q",
                     "refs/heads/claude/togavsu-one-12345678"], capture_output=True).returncode, 0)
                 self.assertFalse(self.remote.pulls)
-
-    def test_lane_may_change_its_owned_read_only_workflow(self):
-        run_id = self.launch()["run"]["id"]
-        head, bundle = self.lane_commit(self.base, "ci", {".github/workflows/product-ci.yml":
-            "name: Product CI\non: [push, pull_request]\npermissions:\n  contents: read\njobs: {}\n"})
-        self.finish(run_id, self.base, head, bundle)
-        self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
-        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), head)
 
     def test_refused_create_dispatch_leaves_no_agent_for_a_clean_retry(self):
         self.remote.dispatch_error = "gh: No ref found for: main (HTTP 422)"
@@ -2601,6 +2592,7 @@ class LaneBackendTests(unittest.TestCase):
         self.assertEqual(saved["retired_records"]["one"][0]["record"]["agent_id"], cursor_agent)
         self.assertIn("retired Cursor agent", saved["events"][-1]["message"])
         refusals = {"open PR": dict(stopped, pr=40), "still running": {"agent_id": cursor_agent, "agent_status": "RUNNING"},
+                    "halted but running": {"agent_id": cursor_agent, "agent_status": "RUNNING", "halted": "x"},
                     "already a lane": dict(stopped, agent_id=LANE_AGENT), "finished": dict(stopped, completed={"pr": 1})}
         self.launch()
         for label, record in refusals.items():

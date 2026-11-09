@@ -51,9 +51,9 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 6. `internal/audit/postgres.go` — `Rows` filters by entity, id, field, and time, and `audit_log_entity_idx` covers only entity and entity id. Ceiling: field and time are filtered across every audit row for that account. Upgrade path: the integration lead adds an index on (entity, entity_id, field, created_at). Trigger: one account's sign-in reads more than 10000 audit rows.
 7. `internal/identity/pgstore.go` — lockout serialization uses `pg_try_advisory_lock(hashtextextended(user id))` and gives up after two seconds. Waiters release the pooled connection between tries. Ceiling: the winner still holds one connection while the callback uses others, so `SetMaxOpenConns(1)` can stall, and two different ids that hash together wait on each other. Upgrade path: run the failure check, the audit write, and the session insert on that lock connection. Trigger: a sign-in with `SetMaxOpenConns(1)` does not return.
 
-## scripts/build_controller.py lane workflow gate
+## .github/workflows/lane-agent.yml shared Max token
 
-ponytail: ceiling: `ActionsRemote.workflow_safe` is a lexical check, not a workflow parser. An owned product workflow that a lane changes must set top-level permissions and never name secrets, write scopes or privileged triggers, so the owner-credential push can run it only with a read token. Upgrade path: parse the workflow and check effective permissions and triggers per job. trigger: a lane needs a secret or write scope in CI, or a lexical bypass is found; that change then goes through a control PR.
+ponytail: ceiling: lane jobs and the review gate share the CLAUDE_CODE_OAUTH_TOKEN repository secret, and the lane job exposes it to a Claude Code process that runs candidate and dependency code with network access, so a malicious dependency or prompt-injected content could exfiltrate it; only committed output is scanned. Upgrade path: a separate lane-only Max token stored as its own secret, so lane and review credentials are revoked independently, plus egress limits on the lane job. trigger: any unexpected use of the token, a lane run that reaches the network for something other than module, package or image downloads, or Cursor usage returning (switch lanes back to Cursor).
 
 ## Practice ceilings
 
