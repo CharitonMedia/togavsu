@@ -20,4 +20,6 @@ The tar contains:
 - `db/dump.sql` plain `pg_dump` output
 - `files/{sha256}` each immutable file version once
 
+An archive uploaded for a restore or fetched from a destination is written as `{id}.tgbk` under the same publication intent. Its sidecar and `.json` record (with `source`) are published only after the received bytes match the supplied `.sha256` sidecar and the archive decrypts and passes the manifest checks below; otherwise the intent removes it. An existing id is never overwritten.
+
 Restore rejects paths that escape the staging directory, rejects non-regular files, and refuses the dump when its checksum does not match the manifest. A manifest that lists file versions is rejected before writers stop and before the database is replaced. The supervisor does not yet restore those bytes, module data volumes, or objects on a remote storage backend. The monthly test-restore loads the dump into `togavsu_check_<hex>` on the admin database and compares those counts with the manifest. Only a mismatch is queued for admin mail.

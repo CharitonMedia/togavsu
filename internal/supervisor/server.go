@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -32,8 +33,10 @@ func NewMux(token string, ops *Operations, log *slog.Logger) http.Handler {
 	mux.HandleFunc("POST /v1/backup-destinations", h.postDestination)
 	mux.HandleFunc("GET /v1/backup-destinations", h.listDestinations)
 	mux.HandleFunc("POST /v1/backup-destinations/{id}/test", h.testDestination)
+	mux.HandleFunc("GET /v1/backup-destinations/{id}/backups", h.listDestinationBackups)
 	mux.HandleFunc("DELETE /v1/backup-destinations/{id}", h.deleteDestination)
 	mux.HandleFunc("POST /v1/restores", h.postRestore)
+	mux.HandleFunc("POST /v1/restores/upload", h.postRestoreUpload)
 	mux.HandleFunc("GET /v1/restores/{id}", h.getRestore)
 	mux.HandleFunc("POST /v1/test-restores", h.postTestRestore)
 	return logging(log, authenticate(token, mux))
@@ -224,9 +227,14 @@ func (h *handlers) deleteDestination(w http.ResponseWriter, r *http.Request) {
 // and test-restore finish under the gate before their response is written.
 // Admission reserves the gate and a unique operation id before the accepted
 // record is published. A busy request does not write over that record.
+//
+// With destination_id, the archive and its sidecar are first fetched from
+// that destination into the local volume under the gate, and validated
+// there before the accepted id is published.
 func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		BackupID string `json:"backup_id"`
+		BackupID      string `json:"backup_id"`
+		DestinationID string `json:"destination_id"`
 	}
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
@@ -236,7 +244,47 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, fmtBad("backup_id"))
 		return
 	}
-	rec, release, err := h.ops.admitRestore(r.Context(), body.BackupID)
+	var src *restoreSource
+	if body.DestinationID != "" {
+		destID, id := body.DestinationID, body.BackupID
+		src = &restoreSource{
+			Origin: "destination:" + destID,
+			Stage: func(ctx context.Context, pass string) (string, Manifest, error) {
+				_, man, err := h.ops.Store.ImportFromDestination(ctx, destID, id, pass)
+				return id, man, err
+			},
+		}
+	}
+	h.startRestore(w, r, body.BackupID, src)
+}
+
+// postRestoreUpload takes a multipart upload of an encrypted archive and its
+// checksum sidecar (see Store.ImportUpload). The body is bounded by the
+// import size limit plus room for the multipart framing. Nothing is read
+// from the body until the gate is held.
+func (h *handlers) postRestoreUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, h.ops.Store.maxImport()+uploadFraming)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		writeErr(w, fmtBad("multipart/form-data body"))
+		return
+	}
+	src := &restoreSource{
+		Origin: "upload",
+		Stage: func(ctx context.Context, pass string) (string, Manifest, error) {
+			id, _, man, err := h.ops.Store.ImportUpload(ctx, mr, pass)
+			return id, man, err
+		},
+	}
+	h.startRestore(w, r, "", src)
+}
+
+// uploadFraming is the body allowance above the archive bound for part
+// headers, boundaries, and the checksum part.
+const uploadFraming = 64 << 10
+
+func (h *handlers) startRestore(w http.ResponseWriter, r *http.Request, backupID string, src *restoreSource) {
+	rec, release, err := h.ops.admitRestoreFrom(r.Context(), backupID, src)
 	if err != nil {
 		if rec.ID != "" {
 			writeAPI(w, err, rec, nil)
@@ -251,6 +299,15 @@ func (h *handlers) postRestore(w http.ResponseWriter, r *http.Request) {
 		h.ops.PutJob(done)
 	}()
 	writeJSON(w, http.StatusAccepted, rec)
+}
+
+func (h *handlers) listDestinationBackups(w http.ResponseWriter, r *http.Request) {
+	list, err := h.ops.Store.DestinationBackups(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"backups": list})
 }
 
 func (h *handlers) getRestore(w http.ResponseWriter, r *http.Request) {

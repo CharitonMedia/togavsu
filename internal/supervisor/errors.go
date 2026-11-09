@@ -36,6 +36,11 @@ var (
 	ErrShuttingDown           = errors.New("supervisor is shutting down")
 	ErrRecoveryRequired       = errors.New("a restore is waiting for recovery")
 	ErrFileRestoreUnsupported = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
+	// ErrBackupExists means an imported archive names a backup id that is
+	// already on the local volume. That archive is restored by backup_id.
+	ErrBackupExists = errors.New("a backup with this id is already on the local volume; restore it by backup_id")
+	// ErrTooLarge means an uploaded or fetched archive passed the size bound.
+	ErrTooLarge = errors.New("backup archive is larger than the restore size limit")
 )
 
 // PublicCode maps an error to a stable API code. Unknown errors become
@@ -60,6 +65,10 @@ func PublicCode(err error) (code string, status int) {
 		return "recovery_required", 409
 	case errors.Is(err, ErrFileRestoreUnsupported):
 		return "file_restore_unsupported", 409
+	case errors.Is(err, ErrBackupExists):
+		return "backup_exists", 409
+	case errors.Is(err, ErrTooLarge):
+		return "too_large", 413
 	case errors.Is(err, ErrBadRequest):
 		return "bad_request", 400
 	case errors.Is(err, ErrDecrypt):

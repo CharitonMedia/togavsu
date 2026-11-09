@@ -126,10 +126,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
 	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
 	store := &supervisor.Store{
-		Dir:    cfg.BackupDir,
-		Dump:   supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
-		Book:   &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json"), Key: cfg.FieldKey},
-		Outbox: outbox,
+		Dir:            cfg.BackupDir,
+		Dump:           supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
+		Book:           &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json"), Key: cfg.FieldKey},
+		Outbox:         outbox,
+		MaxImportBytes: cfg.RestoreMaxBytes,
 	}
 	if err := store.RecoverPlaintext(); err != nil {
 		return nil, err

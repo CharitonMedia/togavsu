@@ -46,6 +46,9 @@ type Config struct {
 	LogRetentionDays   int
 	LogDir             string
 	UpdatesPaused      bool
+	// RestoreMaxBytes bounds an archive uploaded for a restore or fetched
+	// from a destination. RESTORE_MAX_BYTES, default DefaultMaxImportBytes.
+	RestoreMaxBytes int64
 }
 
 func Load() (Config, error) {
@@ -99,6 +102,14 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	cfg.AdminDatabaseURL, err = secret(getenv, "ADMIN_DATABASE_URL", "ADMIN_DATABASE_URL_FILE")
 	if err != nil {
 		return Config{}, err
+	}
+	cfg.RestoreMaxBytes = DefaultMaxImportBytes
+	if v := strings.TrimSpace(getenv("RESTORE_MAX_BYTES")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n <= 0 {
+			return Config{}, fmt.Errorf("RESTORE_MAX_BYTES: %w", ErrBadRequest)
+		}
+		cfg.RestoreMaxBytes = n
 	}
 	if _, err := ParseClock(cfg.UpdateWindowStart); err != nil {
 		return Config{}, err

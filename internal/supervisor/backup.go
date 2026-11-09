@@ -43,6 +43,9 @@ type BackupMeta struct {
 	Bytes             int64     `json:"bytes"`
 	DestinationErrors []string  `json:"destination_errors,omitempty"`
 	Deleting          bool      `json:"deleting,omitempty"`
+	// Source is empty for an archive this installation wrote. An archive
+	// brought in for a restore is "upload" or "destination:<id>".
+	Source string `json:"source,omitempty"`
 }
 
 // Store writes encrypted backups under Dir.
@@ -54,6 +57,9 @@ type Store struct {
 	Now        func() time.Time
 	Book       *DestinationBook
 	Outbox     *Outbox
+	// MaxImportBytes bounds an uploaded or destination-fetched archive. Zero
+	// uses DefaultMaxImportBytes.
+	MaxImportBytes int64
 	// Scratch is the non-persistent directory for plaintext dumps and extracted
 	// archives. Empty uses a private directory under the system temp dir.
 	// It must not be the backup volume or a directory inside it.
@@ -1892,14 +1898,27 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 	if err != nil {
 		return fail(err)
 	}
-	locked := true
-	defer func() {
-		if locked {
-			unlock()
-		}
-	}()
 	if err := s.recoverPlaintext(); err != nil {
+		unlock()
 		return fail(err)
+	}
+	payload, cleanup, err := s.decryptLocked(rc, id, passphrase)
+	if err != nil {
+		unlock()
+		return fail(err)
+	}
+	return payload, func() {
+		cleanup()
+		unlock()
+	}, nil
+}
+
+// decryptLocked decrypts an encrypted archive into a plaintext workspace and
+// checks its manifest, id, dump checksum, and file checksums. The caller
+// holds the scratch lock until the returned cleanup has run.
+func (s *Store) decryptLocked(rc io.Reader, id, passphrase string) (RestorePayload, func(), error) {
+	fail := func(err error) (RestorePayload, func(), error) {
+		return RestorePayload{}, func() {}, err
 	}
 	work, cleanupWork, err := s.plaintextWorkspace("restore-")
 	if err != nil {
@@ -1969,11 +1988,9 @@ func (s *Store) openPlain(id, passphrase string) (RestorePayload, func(), error)
 		return fail(err)
 	}
 	payload := RestorePayload{Dump: f, Manifest: man, Files: files}
-	locked = false
 	return payload, func() {
 		f.Close()
 		cleanupWork()
-		unlock()
 	}, nil
 }
 

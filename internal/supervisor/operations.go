@@ -28,8 +28,11 @@ func (g *Gate) Try() (func(), bool) {
 // RestoreRecord is the stable restore status. Polling returns this shape from
 // memory, the journal, and the ledger.
 type RestoreRecord struct {
-	ID       string    `json:"id"`
-	BackupID string    `json:"backup_id"`
+	ID       string `json:"id"`
+	BackupID string `json:"backup_id"`
+	// Source is empty for an archive already on the local volume, or
+	// "upload" or "destination:<id>" for one imported by this restore.
+	Source   string    `json:"source,omitempty"`
 	Status   string    `json:"status"`
 	Error    string    `json:"error,omitempty"`
 	Recovery string    `json:"recovery,omitempty"`
@@ -342,6 +345,7 @@ func recordFromEvent(ev Event) RestoreRecord {
 		Error:    ev.Fields["error"],
 		Recovery: ev.Fields["recovery"],
 		Cleanup:  ev.Fields["cleanup"],
+		Source:   ev.Fields["source"],
 	}
 	if rec.BackupID == "" {
 		rec.BackupID = ev.Fields["backup"]
@@ -372,6 +376,28 @@ func (o *Operations) Restore(caller context.Context, id string) (RestoreRecord, 
 // does not write Store.Passphrase. The caller must release when the restore
 // finishes; release also marks the tracked operation done.
 func (o *Operations) admitRestore(ctx context.Context, backupID string) (RestoreRecord, func(), error) {
+	return o.admitRestoreFrom(ctx, backupID, nil)
+}
+
+// restoreSource is an archive that is not on the local volume yet. Stage
+// brings it there and validates it with the passphrase admission already
+// read. It returns the backup id as soon as that is known, also on failure,
+// so the failed record names it. Origin is "upload" or "destination:<id>".
+type restoreSource struct {
+	Origin string
+	Stage  func(ctx context.Context, passphrase string) (string, Manifest, error)
+}
+
+// admitRestoreFrom is admitRestore for an archive from src. Stage runs under
+// the gate, after recovery and the passphrase read and before the accepted
+// id is published. It replaces Store.Validate: Store.Import runs that same
+// decrypt and checksum work before it publishes the archive. A nil src
+// validates an archive already on the local volume.
+func (o *Operations) admitRestoreFrom(ctx context.Context, backupID string, src *restoreSource) (RestoreRecord, func(), error) {
+	source := ""
+	if src != nil {
+		source = src.Origin
+	}
 	if o.shutting.Load() {
 		return RestoreRecord{}, nil, ErrShuttingDown
 	}
@@ -390,28 +416,37 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 	pass, err := o.snapshotPass()
 	if err != nil {
 		release()
-		rec, ferr := o.failedRestore(backupID, err)
+		rec, ferr := o.failedRestore(backupID, source, err)
 		return rec, nil, ferr
 	}
 	if o.ApplyDump == nil && o.ApplyRestore == nil {
 		release()
-		rec, ferr := o.failedRestore(backupID, errors.New("database restore is not configured"))
+		rec, ferr := o.failedRestore(backupID, source, errors.New("database restore is not configured"))
 		return rec, nil, ferr
 	}
-	man, err := o.Store.Validate(backupID, pass)
+	var man Manifest
+	if src != nil {
+		var id string
+		id, man, err = src.Stage(ctx, pass)
+		if id != "" {
+			backupID = id
+		}
+	} else {
+		man, err = o.Store.Validate(backupID, pass)
+	}
 	if err != nil {
 		release()
-		rec, ferr := o.failedRestore(backupID, err)
+		rec, ferr := o.failedRestore(backupID, source, err)
 		return rec, nil, ferr
 	}
 	if len(man.Files) > 0 {
 		release()
-		rec, ferr := o.failedRestore(backupID, ErrFileRestoreUnsupported)
+		rec, ferr := o.failedRestore(backupID, source, ErrFileRestoreUnsupported)
 		return rec, nil, ferr
 	}
 	if err := ctx.Err(); err != nil {
 		release()
-		rec, ferr := o.failedRestore(backupID, err)
+		rec, ferr := o.failedRestore(backupID, source, err)
 		return rec, nil, ferr
 	}
 	if o.shutting.Load() {
@@ -423,7 +458,7 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 		release()
 		return RestoreRecord{}, nil, err
 	}
-	rec := RestoreRecord{ID: opID, BackupID: backupID, Status: "accepted", Started: o.now().UTC()}
+	rec := RestoreRecord{ID: opID, BackupID: backupID, Source: source, Status: "accepted", Started: o.now().UTC()}
 	if _, err := o.persist(rec, phaseAccepted, nil); err != nil {
 		release()
 		return RestoreRecord{}, nil, err
@@ -435,12 +470,12 @@ func (o *Operations) admitRestore(ctx context.Context, backupID string) (Restore
 	}, nil
 }
 
-func (o *Operations) failedRestore(backupID string, cause error) (RestoreRecord, error) {
+func (o *Operations) failedRestore(backupID, source string, cause error) (RestoreRecord, error) {
 	opID, err := newRestoreOpID(o.now())
 	if err != nil {
 		return RestoreRecord{}, err
 	}
-	rec := RestoreRecord{ID: opID, BackupID: backupID, Started: o.now().UTC()}
+	rec := RestoreRecord{ID: opID, BackupID: backupID, Source: source, Started: o.now().UTC()}
 	return o.finish(rec, cause), cause
 }
 
@@ -1867,6 +1902,9 @@ func (o *Operations) recordRestore(rec RestoreRecord) {
 	}
 	if rec.Cleanup != "" {
 		fields["cleanup"] = rec.Cleanup
+	}
+	if rec.Source != "" {
+		fields["source"] = rec.Source
 	}
 	if !rec.Started.IsZero() {
 		fields["started"] = rec.Started.UTC().Format(time.RFC3339Nano)

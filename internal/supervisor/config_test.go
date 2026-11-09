@@ -37,6 +37,27 @@ func TestLoadRequiresTokenAndReadsFiles(t *testing.T) {
 	if cfg.FirmTimezone != "America/Chicago" {
 		t.Fatal(cfg.FirmTimezone)
 	}
+	if cfg.RestoreMaxBytes != DefaultMaxImportBytes {
+		t.Fatalf("restore bound %d", cfg.RestoreMaxBytes)
+	}
+	for value, ok := range map[string]bool{"1048576": true, "0": false, "-5": false, "lots": false} {
+		got, err := LoadFrom(func(k string) string {
+			switch k {
+			case "SUPERVISOR_TOKEN_FILE":
+				return token
+			case "RESTORE_MAX_BYTES":
+				return value
+			default:
+				return ""
+			}
+		})
+		if ok && (err != nil || got.RestoreMaxBytes != 1048576) {
+			t.Fatalf("RESTORE_MAX_BYTES=%s: %d %v", value, got.RestoreMaxBytes, err)
+		}
+		if !ok && err == nil {
+			t.Fatalf("RESTORE_MAX_BYTES=%s was accepted", value)
+		}
+	}
 	if _, err := LoadFrom(func(string) string { return "" }); err == nil {
 		t.Fatal("missing token was accepted")
 	}
