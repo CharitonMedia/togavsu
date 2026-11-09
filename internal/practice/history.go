@@ -32,6 +32,9 @@ func (s *Service) History(ctx context.Context, p domain.Principal, entity string
 		if entity == "contact" && row.ContactID != id && row.Entry.EntityID != id {
 			continue
 		}
+		if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
+			continue
+		}
 		out = append(out, s.historyRow(ctx, p, row))
 	}
 	return out, nil

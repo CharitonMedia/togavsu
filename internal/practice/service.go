@@ -18,7 +18,7 @@ import (
 
 // Service is the practice application service.
 type Service struct {
-	db       *Memory
+	db       Store
 	settings *settings.Registry
 	Policy   domain.Policy
 	now      func() time.Time
@@ -38,14 +38,14 @@ type quietAudit struct{}
 func (quietAudit) SettingChanged(context.Context, settings.Change) error { return nil }
 
 // New builds a practice service. settings may be nil in tests; registry defaults are then used as fallbacks.
-func New(db *Memory, reg *settings.Registry) *Service {
+func New(db Store, reg *settings.Registry) *Service {
 	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID, key: identifierKey()}
 	s.Policy = domain.Policy{Walls: wallSource{s}}
 	return s
 }
 
 // NewWithSettings builds a service on an empty settings memory store.
-func NewWithSettings(db *Memory) (*Service, error) {
+func NewWithSettings(db Store) (*Service, error) {
 	reg, err := settings.New(settings.NewMemory(), quietAudit{})
 	if err != nil {
 		return nil, err

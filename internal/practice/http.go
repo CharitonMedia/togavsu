@@ -448,6 +448,15 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if custom := customQuery(r); len(custom) > 0 {
+		kept := rows[:0]
+		for _, row := range rows {
+			if h.Svc.matchesCustom(row.Matter.ID, custom) {
+				kept = append(kept, row)
+			}
+		}
+		rows = kept
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": matterItems(rows)})
 }
 

@@ -20,7 +20,7 @@ func sealIdentifier(key []byte, plain string) (string, error) {
 		return "", nil
 	}
 	if strings.HasPrefix(plain, sealPrefix) {
-		if err := openIdentifier(key, plain); err != nil {
+		if _, err := openIdentifier(key, plain); err != nil {
 			return "", err
 		}
 		return plain, nil
@@ -41,29 +41,30 @@ func sealIdentifier(key []byte, plain string) (string, error) {
 	return sealPrefix + base64.StdEncoding.EncodeToString(out), nil
 }
 
-// openIdentifier accepts a prefixed value only when it is nonce plus AES-GCM data this key can open.
-func openIdentifier(key []byte, stored string) error {
+// openIdentifier returns the plaintext when stored is nonce plus AES-GCM data this key can open.
+func openIdentifier(key []byte, stored string) (string, error) {
 	if len(key) != 32 || !strings.HasPrefix(stored, sealPrefix) {
-		return errBadSeal
+		return "", errBadSeal
 	}
 	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(stored, sealPrefix))
 	if err != nil {
-		return errBadSeal
+		return "", errBadSeal
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return errBadSeal
+		return "", errBadSeal
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		return errBadSeal
+		return "", errBadSeal
 	}
 	if len(raw) < aead.NonceSize()+aead.Overhead() {
-		return errBadSeal
+		return "", errBadSeal
 	}
 	nonce, ciphertext := raw[:aead.NonceSize()], raw[aead.NonceSize():]
-	if _, err := aead.Open(nil, nonce, ciphertext, nil); err != nil {
-		return errBadSeal
+	plain, err := aead.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", errBadSeal
 	}
-	return nil
+	return string(plain), nil
 }

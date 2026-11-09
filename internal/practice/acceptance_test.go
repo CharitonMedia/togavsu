@@ -19,7 +19,7 @@ import (
 
 func TestPendingStaysHonest(t *testing.T) {
 	text := strings.Join(Pending, "\n")
-	for _, needle := range []string{"identity", "application-role SQL", "migration 200", "module include"} {
+	for _, needle := range []string{"identity", "application-role SQL", "migration 0001", "module include"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("pending list lost %q", needle)
 		}
@@ -924,6 +924,18 @@ func postJSON(t *testing.T, svc *Service, p domain.Principal, path string, body 
 	}
 	res := httptest.NewRecorder()
 	h.Routes().ServeHTTP(res, req)
+	return res.Code, res.Body.String()
+}
+
+func patchJSON(t *testing.T, svc *Service, p domain.Principal, path string, body any) (int, string) {
+	t.Helper()
+	raw, err := json.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := testHandler(t, svc)
+	res := httptest.NewRecorder()
+	h.Routes().ServeHTTP(res, authReq(http.MethodPatch, path, strings.NewReader(string(raw)), p))
 	return res.Code, res.Body.String()
 }
 

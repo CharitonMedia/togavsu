@@ -43,7 +43,7 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 
 ## Practice ceilings
 
-1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: no Postgres and no migration in the practice range. Upgrade path: a repository adapter and migration 200. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
+1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: `Service` depends on the `Store` interface, and `Memory` is the only implementation. Upgrade path: a Postgres `Store` over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001, using the repository interfaces. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
 2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `audit_log` and `events` in Postgres. Upgrade path: reject those statements for the application role without a business-logic trigger. Trigger: AC-024-F4 is run against Postgres as the application role.
 
 Debt count: 24.

@@ -464,6 +464,14 @@ func TestContactHistoryCardAndSSNRedaction(t *testing.T) {
 	if err != nil || !historyHas(attorneyRows, "ssn_ein_ciphertext", "", "changed") {
 		t.Fatal(err, attorneyRows)
 	}
+	opened, err := svc.GetContact(ctx, attorney, contact.ID)
+	if err != nil || opened.SSNEINCiphertext != secret {
+		t.Fatal(err, opened.SSNEINCiphertext)
+	}
+	hiddenID, err := svc.GetContact(ctx, staff, contact.ID)
+	if err != nil || hiddenID.SSNEINCiphertext != "" {
+		t.Fatal(err, hiddenID.SSNEINCiphertext)
+	}
 	stored, err := svc.db.Contact(ctx, contact.ID)
 	if err != nil || strings.Contains(stored.SSNEINCiphertext, secret) || !strings.HasPrefix(stored.SSNEINCiphertext, sealPrefix) {
 		t.Fatal(stored.SSNEINCiphertext, err)
@@ -908,7 +916,14 @@ func TestMarkersAPIAndScreen(t *testing.T) {
 	putUser(t, db, staff, "Sam Staff")
 	area := makeArea(t, svc, admin, "Probate")
 	matter := makeMatter(t, svc, staff, area, "Marked", "")
-	status, body := postJSON(t, svc, staff, "/api/v1/matters/"+string(matter.ID)+"/markers", map[string]string{"label": MarkerZeroFee}, "")
+	if err := svc.ensureMarkers(ctx); err != nil {
+		t.Fatal(err)
+	}
+	zero, ok := svc.db.MarkerByLabel(MarkerZeroFee)
+	if !ok {
+		t.Fatal("zero fee marker missing")
+	}
+	status, body := postJSON(t, svc, staff, "/api/v1/matter-markers", map[string]string{"matter_id": string(matter.ID), "marker_id": string(zero.ID)}, "")
 	if status != 200 || !strings.Contains(body, MarkerZeroFee) {
 		t.Fatalf("set %d %s", status, body)
 	}
@@ -935,15 +950,23 @@ func TestMarkersAPIAndScreen(t *testing.T) {
 	if !strings.Contains(page, "Remove "+MarkerProBono) {
 		t.Fatal(page)
 	}
-	status, body = postJSON(t, svc, staff, "/api/v1/matters/"+string(matter.ID)+"/markers/remove", map[string]string{"label": MarkerProBono}, "")
-	if status != 200 {
-		t.Fatalf("remove %d %s", status, body)
+	var proID domain.ID
+	for _, marker := range svc.db.MatterMarkers(matter.ID) {
+		if marker.Label == MarkerProBono {
+			proID = marker.ID
+		}
+	}
+	req := authReq(http.MethodDelete, "/api/v1/matter-markers/"+string(proID), nil, staff)
+	res := httptest.NewRecorder()
+	testHandler(t, svc).Routes().ServeHTTP(res, req)
+	if res.Code != 200 {
+		t.Fatalf("remove %d %s", res.Code, res.Body.String())
 	}
 	view, err = svc.GetMatter(ctx, staff, matter.ID)
 	if err != nil || hasMarker(view, MarkerProBono) || !hasMarker(view, MarkerZeroFee) {
 		t.Fatal(err, view.Markers)
 	}
-	status, _ = postJSON(t, svc, client, "/api/v1/matters/"+string(matter.ID)+"/markers", map[string]string{"label": MarkerAlsoAsked}, "")
+	status, _ = postJSON(t, svc, client, "/api/v1/matter-markers", map[string]string{"matter_id": string(matter.ID), "marker_id": string(zero.ID)}, "")
 	if status < 400 {
 		t.Fatal(status)
 	}
@@ -1036,6 +1059,130 @@ func TestIdempotencyReserveIsAtomic(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatal(count)
+	}
+}
+
+func TestWalledNoteStaysOutOfContactHistory(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	visible := makeMatter(t, svc, staff, area, "Visible matter", "")
+	walled := makeMatter(t, svc, staff, area, "Walled matter", "")
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Shared", FamilyName: "Person"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, visible.ID, PartyInput{ContactID: contact.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, attorney, walled.ID, PartyInput{ContactID: contact.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, walled.ID, []domain.ID{attorney.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	note, err := svc.CreateNote(ctx, attorney, NoteInput{MatterID: walled.ID, ContactID: contact.ID, Title: "Secret title", Body: "secret body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateNote(ctx, attorney, note.ID, NoteInput{Title: "Secret title", Body: "updated secret"}); err != nil {
+		t.Fatal(err)
+	}
+	staffRows, err := svc.History(ctx, staff, "contact", contact.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := getHTML(t, svc, staff, "/practice/contacts/"+string(contact.ID))
+	apiStatus, apiBody := getAPI(t, svc, staff, "/api/v1/contacts/"+string(contact.ID)+"/history")
+	if apiStatus != 200 || strings.Contains(apiBody, "updated secret") || strings.Contains(apiBody, "Secret title") || strings.Contains(page, "updated secret") || historyHas(staffRows, "body", "secret body", "updated secret") {
+		t.Fatal(apiBody, page, staffRows)
+	}
+	attorneyRows, err := svc.History(ctx, attorney, "contact", contact.ID)
+	if err != nil || !historyHas(attorneyRows, "body", "secret body", "updated secret") {
+		t.Fatal(err, attorneyRows)
+	}
+}
+
+func TestContractRoutesAndCustomFilter(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	status, body := postJSON(t, svc, admin, "/api/v1/practice-areas", map[string]any{"name": "Estate", "stages": []string{"Open"}}, "")
+	if status != 200 || !strings.Contains(body, "Estate") {
+		t.Fatalf("area %d %s", status, body)
+	}
+	var area domain.PracticeArea
+	if err := json.Unmarshal([]byte(body), &area); err != nil {
+		t.Fatal(err)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/practice-areas/"+string(area.ID))
+	if status != 200 || !strings.Contains(body, "Estate") {
+		t.Fatalf("get area %d %s", status, body)
+	}
+	status, body = postJSON(t, svc, admin, "/api/v1/custom-field-definitions", map[string]any{
+		"record_type": "matter", "label": "Heir", "field_type": "text", "practice_area_ids": []string{string(area.ID)},
+	}, "")
+	if status != 200 || !strings.Contains(body, "Heir") {
+		t.Fatalf("field %d %s", status, body)
+	}
+	var field FieldDef
+	if err := json.Unmarshal([]byte(body), &field); err != nil {
+		t.Fatal(err)
+	}
+	matter := makeMatter(t, svc, staff, area.ID, "Filtered", "")
+	_ = makeMatter(t, svc, staff, area.ID, "Plain", "")
+	if err := svc.SetCustomFields(ctx, staff, RecordMatter, matter.ID, area.ID, []CustomInput{{DefinitionID: field.ID, Value: "niece"}}); err != nil {
+		t.Fatal(err)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters?custom[heir]="+url.QueryEscape("niece"))
+	if status != 200 || !strings.Contains(body, "Filtered") || strings.Contains(body, "Plain") {
+		t.Fatalf("filter %d %s", status, body)
+	}
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Rita", FamilyName: "Stone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/contacts/"+string(contact.ID))
+	if status != 200 || !strings.Contains(body, "Rita") {
+		t.Fatalf("contact %d %s", status, body)
+	}
+	status, body = postJSON(t, svc, staff, "/api/v1/contact-phones", map[string]any{"contact_id": contact.ID, "e164": "+15555550100", "primary": true, "effective_from": "2026-01-01"}, "")
+	if status != 200 {
+		t.Fatalf("phone %d %s", status, body)
+	}
+	var phone domain.ContactPhone
+	if err := json.Unmarshal([]byte(body), &phone); err != nil {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, staff, "/api/v1/contact-phones/"+string(phone.ID), map[string]any{"e164": "+15555550109"})
+	if status != 200 || !strings.Contains(body, "15555550109") {
+		t.Fatalf("change phone %d %s", status, body)
+	}
+	note, err := svc.CreateNote(ctx, staff, NoteInput{MatterID: matter.ID, Title: "Old", Body: "body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, staff, "/api/v1/notes/"+string(note.ID), map[string]any{"title": "New", "body": "body", "pinned": true, "status": "active"})
+	if status != 200 || !strings.Contains(body, "New") {
+		t.Fatalf("note %d %s", status, body)
+	}
+	record, err := svc.CreateConflict(ctx, attorney, ConflictInput{Name: "Opposing", Relationship: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = getAPI(t, svc, attorney, "/api/v1/conflict-records/"+string(record.ID))
+	if status != 200 || !strings.Contains(body, "Opposing") {
+		t.Fatalf("conflict %d %s", status, body)
+	}
+	status, body = postJSON(t, svc, admin, "/api/v1/custom-field-definitions/"+string(field.ID)+"/retire", map[string]any{}, "")
+	if status != 200 || !strings.Contains(body, "true") {
+		t.Fatalf("retire %d %s", status, body)
 	}
 }
 

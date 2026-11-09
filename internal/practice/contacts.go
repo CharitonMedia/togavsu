@@ -364,7 +364,17 @@ func (s *Service) redactContact(ctx context.Context, p domain.Principal, row dom
 	d, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSensitiveContact, Action: domain.ActionRead})
 	if err != nil || d.Redact || !d.Allow {
 		row.SSNEINCiphertext = ""
+		return row
 	}
+	if row.SSNEINCiphertext == "" {
+		return row
+	}
+	plain, err := openIdentifier(s.key, row.SSNEINCiphertext)
+	if err != nil {
+		row.SSNEINCiphertext = ""
+		return row
+	}
+	row.SSNEINCiphertext = plain
 	return row
 }
 

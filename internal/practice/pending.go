@@ -10,7 +10,7 @@ var Pending = []string{
 	"AC-020 file-text search (files)",
 	"AC-024-F4 application-role SQL UPDATE and DELETE of audit_log and events; no trigger is added; the database immutability debt stays open",
 	"AC-025 live browser save on the integrated matter screen (identity, ui)",
-	"Postgres persistence and migration 200–299 (integration lead)",
+	"Postgres Store over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001 (integration lead)",
 	"bulk writes POST /api/v1/contacts:bulk, /api/v1/matters:bulk, /api/v1/notes:bulk, /api/v1/conflict-records:bulk, and /api/v1/matter-parties:bulk stay one-transaction batches for the integration lead",
 	"merge POST /api/v1/contacts/{id}/merge and POST /api/v1/matters/{id}/merge",
 	"archive matter POST /api/v1/matters/{id}/archive: domain.Matter has no archived flag, so the column waits for the contracts package",

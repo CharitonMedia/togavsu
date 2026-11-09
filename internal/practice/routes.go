@@ -8,31 +8,77 @@ import (
 )
 
 func (h *Handler) practiceRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/contacts", h.contactsJSON)
 	mux.HandleFunc("POST /api/v1/contacts", h.createContactJSON)
+	mux.HandleFunc("GET /api/v1/contacts/{contact_id}", h.contactJSON)
+	mux.HandleFunc("PATCH /api/v1/contacts/{contact_id}", h.updateContactJSON)
 	mux.HandleFunc("PUT /api/v1/contacts/{contact_id}", h.updateContactJSON)
 	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/archive", h.archiveContactJSON)
 	mux.HandleFunc("PUT /api/v1/contacts/{contact_id}/custom-fields", h.contactCustomJSON)
-	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/phones", h.createPhoneJSON)
-	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/emails", h.createEmailJSON)
-	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/addresses", h.createAddressJSON)
-	mux.HandleFunc("POST /api/v1/contacts/{contact_id}/tags", h.createTagJSON)
+	mux.HandleFunc("GET /api/v1/contact-phones", h.phonesJSON)
+	mux.HandleFunc("POST /api/v1/contact-phones", h.createPhoneJSON)
+	mux.HandleFunc("GET /api/v1/contact-phones/{phone_id}", h.phoneJSON)
+	mux.HandleFunc("PATCH /api/v1/contact-phones/{phone_id}", h.updatePhoneJSON)
+	mux.HandleFunc("GET /api/v1/contact-emails", h.emailsJSON)
+	mux.HandleFunc("POST /api/v1/contact-emails", h.createEmailJSON)
+	mux.HandleFunc("GET /api/v1/contact-emails/{email_id}", h.emailJSON)
+	mux.HandleFunc("PATCH /api/v1/contact-emails/{email_id}", h.updateEmailJSON)
+	mux.HandleFunc("GET /api/v1/contact-addresses", h.addressesJSON)
+	mux.HandleFunc("POST /api/v1/contact-addresses", h.createAddressJSON)
+	mux.HandleFunc("GET /api/v1/contact-addresses/{address_id}", h.addressJSON)
+	mux.HandleFunc("PATCH /api/v1/contact-addresses/{address_id}", h.updateAddressJSON)
+	mux.HandleFunc("GET /api/v1/contact-tags", h.tagsJSON)
+	mux.HandleFunc("POST /api/v1/contact-tags", h.createTagJSON)
+	mux.HandleFunc("GET /api/v1/contact-tags/{tag_id}", h.tagJSON)
+	mux.HandleFunc("PATCH /api/v1/contact-tags/{tag_id}", h.updateTagJSON)
 	mux.HandleFunc("POST /api/v1/matters", h.createMatterJSON)
+	mux.HandleFunc("PATCH /api/v1/matters/{matter_id}", h.updateMatterJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}", h.updateMatterJSON)
-	mux.HandleFunc("POST /api/v1/matters/{matter_id}/markers", h.createMarkerJSON)
-	mux.HandleFunc("POST /api/v1/matters/{matter_id}/markers/remove", h.removeMarkerJSON)
+	mux.HandleFunc("GET /api/v1/matter-markers", h.markersJSON)
+	mux.HandleFunc("POST /api/v1/matter-markers", h.createMarkerJSON)
+	mux.HandleFunc("GET /api/v1/matter-markers/{matter_marker_id}", h.markerJSON)
+	mux.HandleFunc("DELETE /api/v1/matter-markers/{matter_marker_id}", h.removeMarkerJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/close-preview", h.closePreviewJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/timeline", h.timelineJSON)
+	mux.HandleFunc("GET /api/v1/matters/{matter_id}/wall", h.wallGetJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}/wall", h.wallJSON)
 	mux.HandleFunc("GET /api/v1/worklists/matters-missing-case-number", h.needsCaseJSON)
+	mux.HandleFunc("GET /api/v1/matter-parties", h.partiesJSON)
 	mux.HandleFunc("POST /api/v1/matter-parties", h.createPartyJSON)
+	mux.HandleFunc("GET /api/v1/matter-parties/{party_id}", h.partyJSON)
+	mux.HandleFunc("PATCH /api/v1/matter-parties/{party_id}", h.updatePartyJSON)
 	mux.HandleFunc("PUT /api/v1/matter-parties/{party_id}", h.updatePartyJSON)
 	mux.HandleFunc("GET /api/v1/notes", h.notesJSON)
 	mux.HandleFunc("POST /api/v1/notes", h.createNoteJSON)
 	mux.HandleFunc("GET /api/v1/notes/{note_id}", h.noteJSON)
+	mux.HandleFunc("PATCH /api/v1/notes/{note_id}", h.updateNoteJSON)
+	mux.HandleFunc("POST /api/v1/notes/{note_id}/archive", h.archiveNoteJSON)
+	mux.HandleFunc("GET /api/v1/conflict-records", h.conflictsJSON)
 	mux.HandleFunc("POST /api/v1/conflict-records", h.createConflictJSON)
+	mux.HandleFunc("GET /api/v1/conflict-records/{conflict_record_id}", h.conflictJSON)
+	mux.HandleFunc("PATCH /api/v1/conflict-records/{conflict_record_id}", h.updateConflictJSON)
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/conflict-checks", h.runCheckJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/conflict-checks", h.listChecksJSON)
+	mux.HandleFunc("GET /api/v1/conflict-checks", h.allChecksJSON)
+	mux.HandleFunc("GET /api/v1/conflict-checks/{conflict_check_id}", h.checkJSON)
 	mux.HandleFunc("POST /api/v1/conflict-checks/{conflict_check_id}/decisions", h.decideJSON)
+	mux.HandleFunc("GET /api/v1/practice-areas", h.areasJSON)
+	mux.HandleFunc("POST /api/v1/practice-areas", h.createAreaJSON)
+	mux.HandleFunc("GET /api/v1/practice-areas/{practice_area_id}", h.areaJSON)
+	mux.HandleFunc("PATCH /api/v1/practice-areas/{practice_area_id}", h.updateAreaJSON)
+	mux.HandleFunc("GET /api/v1/counties", h.countiesJSON)
+	mux.HandleFunc("POST /api/v1/counties", h.createCountyJSON)
+	mux.HandleFunc("GET /api/v1/counties/{county_id}", h.countyJSON)
+	mux.HandleFunc("PATCH /api/v1/counties/{county_id}", h.updateCountyJSON)
+	mux.HandleFunc("GET /api/v1/referral-sources", h.referralsJSON)
+	mux.HandleFunc("POST /api/v1/referral-sources", h.createReferralJSON)
+	mux.HandleFunc("GET /api/v1/referral-sources/{referral_source_id}", h.referralJSON)
+	mux.HandleFunc("PATCH /api/v1/referral-sources/{referral_source_id}", h.updateReferralJSON)
+	mux.HandleFunc("GET /api/v1/custom-field-definitions", h.fieldsJSON)
+	mux.HandleFunc("POST /api/v1/custom-field-definitions", h.createFieldJSON)
+	mux.HandleFunc("GET /api/v1/custom-field-definitions/{definition_id}", h.fieldJSON)
+	mux.HandleFunc("PATCH /api/v1/custom-field-definitions/{definition_id}", h.updateFieldJSON)
+	mux.HandleFunc("POST /api/v1/custom-field-definitions/{definition_id}/retire", h.retireFieldJSON)
 }
 
 func (h *Handler) caller(w http.ResponseWriter, r *http.Request, write bool) (domain.Principal, bool) {
@@ -129,15 +175,22 @@ func (h *Handler) createPhoneJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Label string `json:"label"`
-		Phone string `json:"phone"`
-		From  string `json:"effective_from"`
+		ContactID domain.ID `json:"contact_id"`
+		Label     string    `json:"label"`
+		Phone     string    `json:"phone"`
+		E164      string    `json:"e164"`
+		From      string    `json:"effective_from"`
+		Primary   bool      `json:"primary"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.AddPhone(r.Context(), p, domain.ID(r.PathValue("contact_id")), body.Label, body.Phone, body.From, true)
+	phone := body.E164
+	if phone == "" {
+		phone = body.Phone
+	}
+	row, err := h.Svc.AddPhone(r.Context(), p, body.ContactID, body.Label, phone, body.From, body.Primary)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -151,15 +204,17 @@ func (h *Handler) createEmailJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Label string `json:"label"`
-		Email string `json:"email"`
-		From  string `json:"effective_from"`
+		ContactID domain.ID `json:"contact_id"`
+		Label     string    `json:"label"`
+		Email     string    `json:"email"`
+		From      string    `json:"effective_from"`
+		Primary   bool      `json:"primary"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.AddEmail(r.Context(), p, domain.ID(r.PathValue("contact_id")), body.Label, body.Email, body.From, true)
+	row, err := h.Svc.AddEmail(r.Context(), p, body.ContactID, body.Label, body.Email, body.From, body.Primary)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -177,7 +232,6 @@ func (h *Handler) createAddressJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	body.ContactID = domain.ID(r.PathValue("contact_id"))
 	row, err := h.Svc.AddAddress(r.Context(), p, body)
 	if err != nil {
 		writeErr(w, err)
@@ -192,13 +246,14 @@ func (h *Handler) createTagJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Tag string `json:"tag"`
+		ContactID domain.ID `json:"contact_id"`
+		Tag       string    `json:"tag"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.AddContactTag(r.Context(), p, domain.ID(r.PathValue("contact_id")), body.Tag)
+	row, err := h.Svc.AddContactTag(r.Context(), p, body.ContactID, body.Tag)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -460,6 +515,8 @@ func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
+		MatterID       domain.ID `json:"matter_id"`
+		MarkerID       domain.ID `json:"marker_id"`
 		Label          string    `json:"label"`
 		PracticeAreaID domain.ID `json:"practice_area_id"`
 	}
@@ -467,7 +524,13 @@ func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.PinMarker(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Label, body.PracticeAreaID)
+	var row MatterMarker
+	var err error
+	if body.MarkerID != "" {
+		row, err = h.Svc.PinMarkerID(r.Context(), p, body.MatterID, body.MarkerID, body.PracticeAreaID)
+	} else {
+		row, err = h.Svc.PinMarker(r.Context(), p, body.MatterID, body.Label, body.PracticeAreaID)
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -480,15 +543,7 @@ func (h *Handler) removeMarkerJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
-		Label          string    `json:"label"`
-		PracticeAreaID domain.ID `json:"practice_area_id"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, domain.Invalid("body", "body is invalid"))
-		return
-	}
-	if err := h.Svc.RemoveMarker(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Label, body.PracticeAreaID); err != nil {
+	if err := h.Svc.RemoveMarkerID(r.Context(), p, domain.ID(r.PathValue("matter_marker_id"))); err != nil {
 		writeErr(w, err)
 		return
 	}

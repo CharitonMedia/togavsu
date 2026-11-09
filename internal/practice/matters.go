@@ -335,6 +335,18 @@ func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter doma
 	return row, nil
 }
 
+// PinMarkerID pins a marker by its definition id.
+func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, markerID, area domain.ID) (MatterMarker, error) {
+	if err := s.ensureMarkers(ctx); err != nil {
+		return MatterMarker{}, err
+	}
+	def, ok := s.db.Marker(markerID)
+	if !ok {
+		return MatterMarker{}, domain.Invalid("marker_id", "unknown marker")
+	}
+	return s.PinMarker(ctx, p, matter, def.Label, area)
+}
+
 // RemoveMarker takes a pinned marker off a matter.
 func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) error {
 	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
@@ -348,6 +360,66 @@ func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter d
 		MatterID: matter, Entity: "matter", EntityID: matter, Field: "marker",
 		Old: row.Label, Kind: "delete", Action: "matter.marker_removed", Summary: "Removed marker " + row.Label,
 	}})
+}
+
+// RemoveMarkerID takes one pinned marker off by its row id.
+func (s *Service) RemoveMarkerID(ctx context.Context, p domain.Principal, id domain.ID) error {
+	row, ok := s.findMarker(id)
+	if !ok {
+		return domain.NotFound("marker")
+	}
+	if err := s.gateMatter(ctx, p, row.MatterID, domain.ActionWrite); err != nil {
+		return err
+	}
+	removed, err := s.db.TakeMatterMarker(ctx, id)
+	if err != nil {
+		return missing(err, "marker")
+	}
+	return s.record(ctx, p, []change{{
+		MatterID: removed.MatterID, Entity: "matter", EntityID: removed.MatterID, Field: "marker",
+		Old: removed.Label, Kind: "delete", Action: "matter.marker_removed", Summary: "Removed marker " + removed.Label,
+	}})
+}
+
+// GetMarker returns one pinned marker the caller can see.
+func (s *Service) GetMarker(ctx context.Context, p domain.Principal, id domain.ID) (MatterMarker, error) {
+	row, ok := s.findMarker(id)
+	if !ok {
+		return MatterMarker{}, domain.NotFound("marker")
+	}
+	if err := s.gateMatter(ctx, p, row.MatterID, domain.ActionRead); err != nil {
+		return MatterMarker{}, err
+	}
+	return row, nil
+}
+
+// ListMarkers returns pinned markers on matters the caller can see.
+func (s *Service) ListMarkers(ctx context.Context, p domain.Principal, matter domain.ID) ([]MatterMarker, error) {
+	if !matter.IsZero() {
+		if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
+			return nil, err
+		}
+		return s.db.MatterMarkers(matter), nil
+	}
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+		return nil, err
+	}
+	var out []MatterMarker
+	for _, row := range s.db.MatterMarkers(domain.ID("")) {
+		if s.visibleMatter(ctx, p, row.MatterID) {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) findMarker(id domain.ID) (MatterMarker, bool) {
+	for _, row := range s.db.MatterMarkers(domain.ID("")) {
+		if row.ID == id {
+			return row, true
+		}
+	}
+	return MatterMarker{}, false
 }
 
 // ZeroFee reports whether the matter carries the zero-fee marker.

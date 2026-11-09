@@ -21,7 +21,7 @@ type storedAudit struct {
 }
 
 // Memory is the process-local practice store.
-// ponytail: ceiling: one mutex and a linear scan. Upgrade path: repository methods backed by migration 200. trigger: practice.New receives a Postgres pool.
+// ponytail: ceiling: one mutex and a linear scan. Upgrade path: a Postgres Store over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001. trigger: identity passes a Postgres pool into practice.New.
 type Memory struct {
 	mu sync.Mutex
 
@@ -504,6 +504,29 @@ func (m *Memory) InsertCounty(ctx context.Context, row domain.County) error {
 	return nil
 }
 
+func (m *Memory) UpdateCounty(ctx context.Context, row domain.County) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.counties[row.ID]; !ok {
+		return repository.ErrNotFound
+	}
+	m.counties[row.ID] = row
+	return nil
+}
+
+func (m *Memory) Counties() []domain.County {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]domain.County, 0, len(m.counties))
+	for _, row := range m.counties {
+		out = append(out, row)
+	}
+	return out
+}
+
 func (m *Memory) County(_ context.Context, id domain.ID) (domain.County, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -522,6 +545,29 @@ func (m *Memory) InsertReferral(ctx context.Context, row domain.ReferralSource) 
 	defer m.mu.Unlock()
 	m.referrals[row.ID] = row
 	return nil
+}
+
+func (m *Memory) UpdateReferral(ctx context.Context, row domain.ReferralSource) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.referrals[row.ID]; !ok {
+		return repository.ErrNotFound
+	}
+	m.referrals[row.ID] = row
+	return nil
+}
+
+func (m *Memory) Referrals() []domain.ReferralSource {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]domain.ReferralSource, 0, len(m.referrals))
+	for _, row := range m.referrals {
+		out = append(out, row)
+	}
+	return out
 }
 
 func (m *Memory) Referral(_ context.Context, id domain.ID) (domain.ReferralSource, error) {
@@ -650,6 +696,16 @@ func (m *Memory) UpdateConflict(ctx context.Context, row domain.ConflictRecord) 
 	}
 	m.conflicts[row.ID] = row
 	return nil
+}
+
+func (m *Memory) Conflict(_ context.Context, id domain.ID) (domain.ConflictRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.conflicts[id]
+	if !ok {
+		return domain.ConflictRecord{}, repository.ErrNotFound
+	}
+	return row, nil
 }
 
 func (m *Memory) ConflictRecords() []domain.ConflictRecord {
@@ -882,6 +938,13 @@ func (m *Memory) EnsureMarkers(ctx context.Context, labels []string, at time.Tim
 	return nil
 }
 
+func (m *Memory) Marker(id domain.ID) (MarkerDef, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.markers[id]
+	return row, ok
+}
+
 func (m *Memory) MarkerByLabel(label string) (MarkerDef, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1017,6 +1080,20 @@ func (m *Memory) Checked(party domain.ID) (time.Time, bool) {
 	defer m.mu.Unlock()
 	at, ok := m.checked[party]
 	return at, ok
+}
+
+func (m *Memory) TakeMatterMarker(ctx context.Context, id domain.ID) (MatterMarker, error) {
+	if err := ready(ctx); err != nil {
+		return MatterMarker{}, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.pinned[id]
+	if !ok {
+		return MatterMarker{}, repository.ErrNotFound
+	}
+	delete(m.pinned, id)
+	return row, nil
 }
 
 func (m *Memory) DeleteMatterMarker(ctx context.Context, matter domain.ID, label string, area domain.ID) (MatterMarker, error) {
