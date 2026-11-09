@@ -194,6 +194,21 @@ func (s totpStore) Update(_ context.Context, row domain.TOTPSecret) error {
 	return nil
 }
 
+// CompareAndSwap stores row only when the current ciphertext is still previous.
+func (s totpStore) CompareAndSwap(_ context.Context, row domain.TOTPSecret, previous string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cur, ok := s.totp[row.UserID]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	if cur.Ciphertext != previous {
+		return repository.ErrConflict
+	}
+	s.totp[row.UserID] = row
+	return nil
+}
+
 func (s totpStore) GetByUser(_ context.Context, userID domain.ID) (domain.TOTPSecret, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -214,8 +229,12 @@ func (s recoveryStore) Insert(_ context.Context, row domain.RecoveryCode) error 
 func (s recoveryStore) Update(_ context.Context, row domain.RecoveryCode) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.recovery[row.ID]; !ok {
+	cur, ok := s.recovery[row.ID]
+	if !ok {
 		return repository.ErrNotFound
+	}
+	if row.UsedAt != nil && cur.UsedAt != nil {
+		return repository.ErrConflict
 	}
 	s.recovery[row.ID] = row
 	return nil

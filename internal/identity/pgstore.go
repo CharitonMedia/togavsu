@@ -6,6 +6,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
@@ -83,12 +85,23 @@ type rowScanner interface{ Scan(dest ...any) error }
 
 type pgUsers struct{ *PG }
 
+func mapConflict(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return repository.ErrConflict
+	}
+	return err
+}
+
 func (s pgUsers) Insert(ctx context.Context, row domain.User) error {
-	return s.exec(ctx, `INSERT INTO users (
+	return mapConflict(s.exec(ctx, `INSERT INTO users (
 		id, created_at, updated_at, created_by, name, email, roles, active, default_hourly_rate_cents, contact_id, bar_number, bar_state
 	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
 		string(row.ID), domain.UnixMicroUTC(row.CreatedAt), domain.UnixMicroUTC(row.UpdatedAt), string(row.CreatedBy),
-		row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState)
+		row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState))
 }
 
 func (s pgUsers) Update(ctx context.Context, row domain.User) error {
@@ -269,6 +282,16 @@ func (s pgTOTP) Update(ctx context.Context, row domain.TOTPSecret) error {
 		domain.UnixMicroUTC(row.UpdatedAt), row.Ciphertext, flag(row.Confirmed), string(row.UserID))
 }
 
+// CompareAndSwap writes the new secret only while the stored ciphertext is still previous.
+func (s pgTOTP) CompareAndSwap(ctx context.Context, row domain.TOTPSecret, previous string) error {
+	err := s.execOne(ctx, `UPDATE totp_secrets SET updated_at=?, ciphertext=?, confirmed=? WHERE user_id=? AND ciphertext=?`,
+		domain.UnixMicroUTC(row.UpdatedAt), row.Ciphertext, flag(row.Confirmed), string(row.UserID), previous)
+	if errors.Is(err, repository.ErrNotFound) {
+		return repository.ErrConflict
+	}
+	return err
+}
+
 func (s pgTOTP) GetByUser(ctx context.Context, userID domain.ID) (domain.TOTPSecret, error) {
 	var row domain.TOTPSecret
 	var id, createdBy, owner string
@@ -298,8 +321,15 @@ func (s pgRecovery) Insert(ctx context.Context, row domain.RecoveryCode) error {
 }
 
 func (s pgRecovery) Update(ctx context.Context, row domain.RecoveryCode) error {
-	return s.execOne(ctx, `UPDATE recovery_codes SET updated_at=?, code_hash=?, used_at=? WHERE id=?`,
-		domain.UnixMicroUTC(row.UpdatedAt), row.CodeHash, nullTime(row.UsedAt), string(row.ID))
+	q := `UPDATE recovery_codes SET updated_at=?, code_hash=?, used_at=? WHERE id=?`
+	if row.UsedAt != nil {
+		q += ` AND used_at IS NULL`
+	}
+	err := s.execOne(ctx, q, domain.UnixMicroUTC(row.UpdatedAt), row.CodeHash, nullTime(row.UsedAt), string(row.ID))
+	if row.UsedAt != nil && errors.Is(err, repository.ErrNotFound) {
+		return repository.ErrConflict
+	}
+	return err
 }
 
 func (s pgRecovery) List(ctx context.Context, filter repository.Filter) (repository.Page[domain.RecoveryCode], error) {

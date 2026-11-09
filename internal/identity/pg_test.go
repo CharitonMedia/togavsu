@@ -6,12 +6,16 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
+	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
@@ -70,6 +74,138 @@ func TestSetupReachesReadSetup(t *testing.T) {
 	if leaked != 0 {
 		t.Fatal(leaked)
 	}
+}
+
+func TestDuplicateEmailIsConflict(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	store := NewPG(sqlDB)
+	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleStaff})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	first, err := domain.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := domain.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := domain.User{
+		Meta: domain.Meta{ID: first, CreatedAt: now, UpdatedAt: now, CreatedBy: first},
+		Name: "Ada", Email: "ada@example.test", Roles: roles, Active: true,
+	}
+	if err := store.Users().Insert(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	row.ID = second
+	row.CreatedBy = second
+	if err := store.Users().Insert(ctx, row); !errors.Is(err, repository.ErrConflict) {
+		t.Fatal(err)
+	}
+}
+
+func TestConcurrentRecoveryAndTOTPAreSingleUse(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	if err := audit.InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApplyReference(ctx, sqlDB, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
+	store := NewPG(sqlDB)
+	aud, err := audit.New(audit.NewPostgres(sqlDB), clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(db.SettingsStore{DB: sqlDB, Dialect: "postgres"}, aud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Deps{
+		Users: store.Users(), Sessions: store.Sessions(), Passwords: store.Passwords(),
+		TOTP: store.TOTP(), Recovery: store.Recovery(), Tokens: store.Tokens(),
+		Audit: aud, Settings: reg, Key: bytes.Repeat([]byte{9}, 32), Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enroll, err := svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "America/Chicago", AdminName: "Ada Admin",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base32Decode(enroll.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(raw, clk.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wins := race(func() error {
+		_, err := svc.VerifyRecovery(ctx, first.TOTPToken, started.RecoveryCodes[0])
+		return err
+	}, func() error {
+		_, err := svc.VerifyRecovery(ctx, second.TOTPToken, started.RecoveryCodes[0])
+		return err
+	})
+	if wins != 1 {
+		t.Fatalf("recovery wins %d", wins)
+	}
+	clk.t = clk.t.Add(31 * time.Second)
+	code := TOTPCode(raw, clk.Now())
+	left, err := svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wins = race(func() error {
+		_, err := svc.VerifyTOTP(ctx, left.TOTPToken, code)
+		return err
+	}, func() error {
+		_, err := svc.VerifyTOTP(ctx, right.TOTPToken, code)
+		return err
+	})
+	if wins != 1 {
+		t.Fatalf("totp wins %d", wins)
+	}
+}
+
+func race(a, b func() error) int {
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	wins := 0
+	run := func(fn func() error) {
+		defer wg.Done()
+		if err := fn(); err == nil {
+			mu.Lock()
+			wins++
+			mu.Unlock()
+		}
+	}
+	wg.Add(2)
+	go run(a)
+	go run(b)
+	wg.Wait()
+	return wins
 }
 
 func openCoreDB(t *testing.T) *sql.DB {

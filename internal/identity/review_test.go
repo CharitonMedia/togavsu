@@ -252,6 +252,54 @@ func TestSettingHistoryUsesStableID(t *testing.T) {
 	}
 }
 
+func TestSetupRetryReusesRolledBackAdmin(t *testing.T) {
+	ctx := context.Background()
+	clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
+	log := audit.NewMemory()
+	aud, err := audit.New(log, clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(settings.NewMemory(), &failOnceAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := NewMemory()
+	svc, err := New(Deps{
+		Users: mem.Users(), Sessions: mem.Sessions(), Passwords: mem.Passwords(),
+		TOTP: mem.TOTP(), Recovery: mem.Recovery(), Tokens: mem.Tokens(),
+		Audit: aud, Settings: reg, Key: bytesRepeat(), Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := SetupInput{
+		FirmName: "North Firm", TimeZone: "UTC", AdminName: "Ada",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}
+	if _, err := svc.Setup(ctx, in); err == nil {
+		t.Fatal("expected the first setup to fail")
+	}
+	enroll, err := svc.Setup(ctx, in)
+	if err != nil || enroll.Secret == "" || enroll.EnrollmentToken == "" {
+		t.Fatal(enroll, err)
+	}
+	ready, err := svc.Ready(ctx)
+	if err != nil || ready {
+		t.Fatal(ready, err)
+	}
+}
+
+type failOnceAudit struct{ n int }
+
+func (f *failOnceAudit) SettingChanged(context.Context, settings.Change) error {
+	f.n++
+	if f.n == 1 {
+		return settings.ErrInvalid
+	}
+	return nil
+}
+
 func TestHeldChallengeCannotFinishLockedSignIn(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)

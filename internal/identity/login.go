@@ -19,23 +19,30 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	if email == "" || password == "" {
 		return LoginResult{}, domain.Invalid("email", "email and password are required")
 	}
-	user, err := s.userByEmail(ctx, email)
-	if errors.Is(err, repository.ErrNotFound) {
-		_ = VerifyPassword(password, dummyHash())
-		return s.failUnknown(ctx, email)
+	user, lookupErr := s.userByEmail(ctx, email)
+	if lookupErr != nil && !errors.Is(lookupErr, repository.ErrNotFound) {
+		return LoginResult{}, lookupErr
 	}
-	if err != nil {
-		return LoginResult{}, err
+	hash := ""
+	if lookupErr == nil {
+		cred, err := s.passwords.GetByUser(ctx, user.ID)
+		if err == nil {
+			hash = cred.Argon2Hash
+		} else if !errors.Is(err, repository.ErrNotFound) {
+			return LoginResult{}, err
+		}
 	}
-	cred, err := s.passwords.GetByUser(ctx, user.ID)
-	if err != nil {
-		_ = VerifyPassword(password, dummyHash())
-		return LoginResult{}, domain.Unauthenticated("wrong email or password")
+	if hash == "" {
+		hash = dummyHash()
 	}
-	if !user.Active || !VerifyPassword(password, cred.Argon2Hash) {
-		_ = VerifyPassword(password, dummyHash())
-		if user.Active {
+	// One Argon2id check on every path. The dummy hash is used only when no credential is stored.
+	ok := VerifyPassword(password, hash)
+	if lookupErr != nil || !ok || !user.Active {
+		if lookupErr == nil && user.Active {
 			return s.failPassword(ctx, user)
+		}
+		if lookupErr != nil {
+			return s.failUnknown(ctx, email)
 		}
 		return LoginResult{}, domain.Unauthenticated("wrong email or password")
 	}
@@ -268,9 +275,13 @@ func (s *Service) matchStoredTOTP(ctx context.Context, user domain.User, code st
 	if err != nil {
 		return err
 	}
+	previous := row.Ciphertext
 	row.Ciphertext = sealed
 	row.UpdatedAt = s.now().UTC()
-	if err := s.totp.Update(ctx, row); err != nil {
+	if err := s.swapTOTP(ctx, row, previous); err != nil {
+		if errors.Is(err, repository.ErrConflict) || errors.Is(err, repository.ErrNotFound) {
+			return domain.Unauthenticated("wrong code")
+		}
 		return err
 	}
 	roles, err := rolesOf(user)
@@ -346,7 +357,7 @@ func (s *Service) replaceRecovery(ctx context.Context, user domain.User, roles [
 		}
 		row.UsedAt = &now
 		row.UpdatedAt = now
-		if err := s.recovery.Update(ctx, row); err != nil {
+		if err := s.recovery.Update(ctx, row); err != nil && !errors.Is(err, repository.ErrConflict) {
 			return nil, err
 		}
 	}
@@ -397,6 +408,9 @@ func (s *Service) spendRecovery(ctx context.Context, user domain.User, roles []d
 	found.UsedAt = &now
 	found.UpdatedAt = now
 	if err := s.recovery.Update(ctx, *found); err != nil {
+		if errors.Is(err, repository.ErrConflict) {
+			return domain.Unauthenticated("wrong recovery code")
+		}
 		return err
 	}
 	return s.record(ctx, principalOf(user, roles), audit.Change{

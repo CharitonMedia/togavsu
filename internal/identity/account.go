@@ -46,7 +46,8 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 		Roles: roles, Active: true,
 	}
 	user.CreatedBy = user.ID
-	if err := s.users.Insert(ctx, user); err != nil {
+	user, err = s.claimSetupAdmin(ctx, user)
+	if err != nil {
 		return Enrollment{}, err
 	}
 	if err := s.setPassword(ctx, user, []domain.Role{domain.RoleAdmin}, in.Password, ""); err != nil {
@@ -72,6 +73,29 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 		}
 	}
 	return s.beginEnrollment(ctx, user)
+}
+
+// claimSetupAdmin inserts the first admin, or reactivates the inactive row left by a rolled-back setup.
+func (s *Service) claimSetupAdmin(ctx context.Context, user domain.User) (domain.User, error) {
+	err := s.users.Insert(ctx, user)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, repository.ErrConflict) {
+		return domain.User{}, err
+	}
+	existing, gerr := s.userByEmail(ctx, user.Email)
+	if gerr != nil || existing.Active {
+		return domain.User{}, domain.Conflict("email is already in use")
+	}
+	existing.Name = user.Name
+	existing.Roles = user.Roles
+	existing.Active = true
+	existing.UpdatedAt = s.now().UTC()
+	if uerr := s.users.Update(ctx, existing); uerr != nil {
+		return domain.User{}, uerr
+	}
+	return existing, nil
 }
 
 // Ready reports whether firm name, an active admin, and confirmed admin TOTP are stored.

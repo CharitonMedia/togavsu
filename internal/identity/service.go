@@ -259,6 +259,17 @@ func apiCode(code, message string) error {
 	return &domain.APIError{Code: code, Message: message}
 }
 
+type totpSwap interface {
+	CompareAndSwap(ctx context.Context, row domain.TOTPSecret, previous string) error
+}
+
+func (s *Service) swapTOTP(ctx context.Context, row domain.TOTPSecret, previous string) error {
+	if swap, ok := s.totp.(totpSwap); ok {
+		return swap.CompareAndSwap(ctx, row, previous)
+	}
+	return s.totp.Update(ctx, row)
+}
+
 func (s *Service) issueChallenge(ctx context.Context, user domain.User, purpose, sealed, action string) (string, time.Time, error) {
 	ttl, err := s.challengeTTL(ctx)
 	if err != nil {
