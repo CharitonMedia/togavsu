@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -294,8 +295,14 @@ func (h *handlers) startRestore(w http.ResponseWriter, r *http.Request, backupID
 		return
 	}
 	go func() {
-		defer release()
+		// Free the gate before publishing the terminal record, so a client
+		// that sees "completed" or "failed" can start the next operation.
+		// The deferred call still frees it if the restore panics.
+		var once sync.Once
+		free := func() { once.Do(release) }
+		defer free()
 		done, _ := h.ops.executeRestore(rec)
+		free()
 		h.ops.PutJob(done)
 	}()
 	writeJSON(w, http.StatusAccepted, rec)
