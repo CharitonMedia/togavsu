@@ -108,7 +108,7 @@ func (g Gate) FilterMatters(ctx context.Context, who domain.Principal, matters [
 // A denial leaves the stored row and the audit log unchanged.
 // mutate and the audit row run in one log.Atomic unit: when the audit append fails the
 // write rolls back with it, so a change is never kept without its history row.
-// mutate must write through ctx (db.Conn) to join that transaction.
+// mutate must write through ctx (audit.Conn) to join that transaction.
 func (g Gate) Apply(ctx context.Context, who domain.Principal, ref domain.ResourceRef, change audit.Change, log *audit.Service, mutate func(ctx context.Context) error) error {
 	d, err := g.Decide(ctx, who, ref)
 	if err != nil {

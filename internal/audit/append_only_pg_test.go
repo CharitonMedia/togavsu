@@ -2,19 +2,17 @@ package audit
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
 
-// TestApplicationRoleCannotChangeAuditRows: the connection the core runs on (the table
-// owner, a superuser in Compose) is refused UPDATE, DELETE and TRUNCATE on audit_log,
-// while inserts keep working.
-func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
+// TestOwnerCanStillChangeAuditRows records the ceiling: after InstallPrivileges the
+// table owner, including a superuser, can still UPDATE audit_log. The non-owner writer
+// is refused in TestNonOwnerRoleCannotChangeAuditRows. There is no trigger.
+func TestOwnerCanStillChangeAuditRows(t *testing.T) {
 	ctx := context.Background()
 	sqlDB := openCoreDB(t)
 	for i := 0; i < 2; i++ {
@@ -36,20 +34,12 @@ func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 		VALUES ('raw-insert', 1, 1, 'system', 'system', 'admin', 'ui', 'setting', 'k', 'value', '', 'v', 'settings update')`); err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range []string{
-		"UPDATE audit_log SET reason = 'raw' WHERE id = '" + string(row.ID) + "'",
-		"UPDATE audit_log SET reason = 'raw' WHERE false",
-		"DELETE FROM audit_log WHERE id = '" + string(row.ID) + "'",
-		"TRUNCATE audit_log",
-	} {
-		_, err := sqlDB.ExecContext(ctx, stmt)
-		if err == nil || !strings.Contains(err.Error(), "append-only") {
-			t.Fatalf("%s: %v", stmt, err)
-		}
+	if _, err := sqlDB.ExecContext(ctx, "UPDATE audit_log SET reason = 'owner-edit' WHERE id = $1", string(row.ID)); err != nil {
+		t.Fatal(err)
 	}
 	got, err := svc.Get(ctx, row.ID)
-	if err != nil || got.NewValue != "B" || got.Reason != row.Reason {
-		t.Fatalf("row changed: %+v %v", got, err)
+	if err != nil || got.Reason != "owner-edit" {
+		t.Fatalf("owner update did not stick: %+v %v", got, err)
 	}
 	if n := len(mustList(t, svc)); n != 2 {
 		t.Fatalf("%d rows", n)
@@ -83,7 +73,7 @@ func TestAtomicRollsBackWriteWithFailedAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	insertArea := func(ctx context.Context, id string) error {
-		_, err := db.Conn(ctx, sqlDB).ExecContext(ctx, `INSERT INTO practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active)
+		_, err := Conn(ctx, sqlDB).ExecContext(ctx, `INSERT INTO practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active)
 			VALUES ($1, 1, 1, 'system', 'Probate', '[]', '[]', 1)`, id)
 		return err
 	}

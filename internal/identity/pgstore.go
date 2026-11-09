@@ -8,13 +8,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
 
 // PG is the Postgres store for the identity tables in the core schema.
-// Each statement joins the transaction db.WithTx opened on the same pool, if any.
+// Each statement joins the transaction audit.WithTx opened on the same pool, if any.
 type PG struct{ db *sql.DB }
 
 // NewPG returns a store. The pool's search_path must include core.
@@ -28,12 +29,12 @@ func (p *PG) Recovery() repository.RecoveryCodes        { return pgRecovery{p} }
 func (p *PG) Tokens() repository.APITokens              { return pgTokens{p} }
 
 func (p *PG) exec(ctx context.Context, query string, args ...any) error {
-	_, err := db.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
+	_, err := audit.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
 	return err
 }
 
 func (p *PG) execOne(ctx context.Context, query string, args ...any) error {
-	res, err := db.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
+	res, err := audit.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
 	if err != nil {
 		return err
 	}
@@ -49,11 +50,11 @@ func (p *PG) execOne(ctx context.Context, query string, args ...any) error {
 }
 
 func (p *PG) row(ctx context.Context, query string, args ...any) *sql.Row {
-	return db.Conn(ctx, p.db).QueryRowContext(ctx, db.Rebind(query, "postgres"), args...)
+	return audit.Conn(ctx, p.db).QueryRowContext(ctx, db.Rebind(query, "postgres"), args...)
 }
 
 func (p *PG) query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return db.Conn(ctx, p.db).QueryContext(ctx, db.Rebind(query, "postgres"), args...)
+	return audit.Conn(ctx, p.db).QueryContext(ctx, db.Rebind(query, "postgres"), args...)
 }
 
 func flag(v bool) int {
@@ -149,13 +150,13 @@ func (s pgUsers) WithUserLock(ctx context.Context, id domain.ID, fn func() error
 	}
 }
 
-// errSetupLockNeedsTx is returned when LockSetup runs outside db.WithTx.
+// errSetupLockNeedsTx is returned when LockSetup runs outside audit.WithTx.
 var errSetupLockNeedsTx = errors.New("identity: setup lock needs a transaction")
 
 // LockSetup holds the first-run setup lock until the open transaction ends.
 // Two processes that run Setup at once take turns, so only one creates the first admin.
 func (s pgUsers) LockSetup(ctx context.Context) error {
-	tx := db.Tx(ctx, s.db)
+	tx := audit.Tx(ctx, s.db)
 	if tx == nil {
 		return errSetupLockNeedsTx
 	}
