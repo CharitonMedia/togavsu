@@ -9188,6 +9188,22 @@ class ContractTest(unittest.TestCase):
             )
             self.assertEqual(opened["result"], "allowed", tool)
             self.assertTrue(opened["effects"], tool)
+            # The stored row and the trusted map disagree about the row's matter. Fail closed either way.
+            map_unwalls = quiet(call(tool, "staff", scopes, arguments, stored_file=walled, matter_walls={matter: False}))
+            self.assertEqual(map_unwalls["result"], "not_found", tool)
+            map_walls = quiet(
+                call(tool, "staff", scopes, arguments, stored_file=file_row(matter), matter_walls={matter: True}, matter_membership={matter: True})
+            )
+            self.assertEqual(map_walls["result"], "not_found", tool)
+            malformed = quiet(call(tool, "staff", scopes, arguments, stored_file=file_row(matter), matter_walls={matter: None}))
+            self.assertEqual(malformed["result"], "not_found", tool)
+            # The row is authoritative. A map that omits the row's matter does not replace it.
+            row_walled = quiet(call(tool, "staff", scopes, arguments, stored_file=walled, matter_walls={other: False}))
+            self.assertEqual(row_walled["result"], "not_found", tool)
+            on_wall = call(tool, "staff", scopes, arguments, stored_file=walled, matter_walls={matter: True}, matter_membership={matter: True})
+            self.assertEqual(on_wall["result"], "allowed", tool)
+            row_open = call(tool, "staff", scopes, arguments, stored_file=file_row(matter), matter_walls={other: True})
+            self.assertEqual(row_open["result"], "allowed", tool)
         client_walled = quiet(
             call(
                 "getFile",
@@ -9653,7 +9669,11 @@ def _scope_decision(entry_type_scopes: dict, token_scopes: list[str], entry_type
 
 
 def _with_canonical_file(raw: dict, file_id: str) -> dict:
-    """Turn a trusted matter id into the stored file row these metadata scenarios already describe."""
+    """Turn a trusted matter id into the stored file row these metadata scenarios already describe.
+
+    The row takes the trusted map's wall for its matter when the map has one, so the row and the map
+    agree. A scenario where they disagree passes its own stored_file.
+    """
     if "stored_file" in raw or "stored_files" in raw or "matter_id" not in raw:
         return raw
     matter = raw.get("matter_id")
@@ -9661,10 +9681,10 @@ def _with_canonical_file(raw: dict, file_id: str) -> dict:
     walls = raw.get("matter_walls")
     if matter is None:
         resolved = False
-    elif isinstance(matter, str) and type(wall) is bool:
-        resolved = wall
     elif isinstance(matter, str) and isinstance(walls, dict) and type(walls.get(matter)) is bool:
         resolved = walls[matter]
+    elif isinstance(matter, str) and type(wall) is bool:
+        resolved = wall
     else:
         return raw
     row = {

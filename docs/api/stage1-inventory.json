@@ -21,19 +21,19 @@
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 9519,
+        "line": 9535,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 9542,
+        "line": 9558,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 9695,
+        "line": 9715,
         "structural": true
       }
     ],
@@ -41,7 +41,7 @@
     "markdown_html": [
       {
         "name": "_MarkdownHTML",
-        "line": 3500,
+        "line": 3512,
         "methods": [
           "__init__",
           "handle_starttag",
@@ -75,7 +75,7 @@
     "nested_helpers": 63,
     "blocking_gaps": 61,
     "explicit_cases_in_behavioral_methods": 303,
-    "assertion_calls_in_behavioral_methods": 2124,
+    "assertion_calls_in_behavioral_methods": 2130,
     "runtime_fixtures": 52
   },
   "artifacts": {
@@ -3129,7 +3129,7 @@
       "id": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "source": "api/tests/test_contract.py",
       "line": 9109,
-      "end_line": 9383,
+      "end_line": 9399,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3146,7 +3146,7 @@
       ],
       "source_line_basis": "current_worktree",
       "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
-      "assertion_count": 35,
+      "assertion_count": 41,
       "loop_count": 2,
       "explicit_case_count": 8,
       "runtime_status": "runtime_pending",
@@ -3164,132 +3164,132 @@
     },
     {
       "name": "_operation",
-      "line": 9386,
+      "line": 9402,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 9393,
+      "line": 9409,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 9399,
+      "line": 9415,
       "kind": "contract_helper"
     },
     {
       "name": "_as_trusted_grant_fixture",
-      "line": 9403,
+      "line": 9419,
       "kind": "contract_helper"
     },
     {
       "name": "_session_csrf",
-      "line": 9413,
+      "line": 9429,
       "kind": "contract_helper"
     },
     {
       "name": "_issue_malware_grant",
-      "line": 9422,
+      "line": 9438,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 9443,
+      "line": 9459,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 9447,
+      "line": 9463,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 9456,
+      "line": 9472,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 9464,
+      "line": 9480,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 9483,
+      "line": 9499,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 9489,
+      "line": 9505,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 9511,
+      "line": 9527,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 9535,
+      "line": 9551,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 9557,
+      "line": 9573,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 9578,
+      "line": 9594,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 9595,
+      "line": 9611,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 9603,
+      "line": 9619,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 9612,
+      "line": 9628,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 9626,
+      "line": 9642,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 9639,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "_scope_decision",
-      "line": 9648,
-      "kind": "simulator_helper"
-    },
-    {
-      "name": "_with_canonical_file",
       "line": 9655,
       "kind": "contract_helper"
     },
     {
+      "name": "_scope_decision",
+      "line": 9664,
+      "kind": "simulator_helper"
+    },
+    {
+      "name": "_with_canonical_file",
+      "line": 9671,
+      "kind": "contract_helper"
+    },
+    {
       "name": "_schema_accepts_included",
-      "line": 9681,
+      "line": 9701,
       "kind": "contract_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 9692,
+      "line": 9712,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 9711,
+      "line": 9731,
       "kind": "contract_helper"
     }
   ],
@@ -3607,7 +3607,7 @@
     {
       "test": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "name": "flag",
-      "line": 9241
+      "line": 9257
     }
   ],
   "behavioral_helpers": [

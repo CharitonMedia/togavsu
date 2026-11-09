@@ -1343,9 +1343,21 @@ def _file_record_request(operation: dict, subject: dict) -> bool:
     return isinstance(file_id, str) and bool(file_id)
 
 
-def _apply_file_parent(subject: dict, row: dict) -> None:
-    """The stored row's matter and restrictions replace caller flags."""
+def _apply_file_parent(subject: dict, row: dict) -> str | None:
+    """The stored row's matter and restrictions replace caller flags.
+
+    The row's wall is authoritative for a file-record request. A trusted matter_walls map that
+    disagrees with the row for the row's matter, or is malformed, fails closed as not_found.
+    Otherwise the map carries the row's value, so the wall step cannot resolve a different answer.
+    """
     matter = row.get("matter_id")
+    if matter is not None and "matter_walls" in subject:
+        walls = subject.get("matter_walls")
+        if not isinstance(walls, dict):
+            return "not_found"
+        if matter in walls and walls[matter] is not row["matter_walled"]:
+            return "not_found"
+        subject["matter_walls"] = {**walls, matter: row["matter_walled"]}
     subject["attorney_only"] = row["attorney_only"]
     subject["matter_walled"] = row["matter_walled"]
     if type(row.get("shared_with_client")) is bool:
@@ -1354,10 +1366,11 @@ def _apply_file_parent(subject: dict, row: dict) -> None:
         subject["stored_matter_state"] = "unassigned"
         subject["matter_id"] = None
         subject.pop("stored_matter_id", None)
-        return
+        return None
     subject["stored_matter_state"] = "matter"
     subject["stored_matter_id"] = matter
     subject["matter_id"] = matter
+    return None
 
 
 def _canonical_file_row(subject: dict, file_id: str) -> tuple[dict | None, str | None]:
@@ -1383,8 +1396,7 @@ def _bind_file_row_restrictions(operation: dict, subject: dict) -> str | None:
     row, denial = _canonical_file_row(subject, subject["file_id"])
     if denial:
         return denial
-    _apply_file_parent(subject, row or {})
-    return None
+    return _apply_file_parent(subject, row or {})
 
 
 def _trusted_client_matters(subject: dict) -> list[str] | None:

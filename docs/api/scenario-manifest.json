@@ -7560,10 +7560,10 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:9109-9383",
+      "source": "api/tests/test_contract.py:9109-9399",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 35,
+      "assertion_call_sites": 41,
       "loop_count": 2,
       "literal_rows": [
         {
@@ -7653,12 +7653,12 @@
               }
             ]
           ],
-          "text": "for tool, scopes, arguments in ( (\"getFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"updateFileMetadata\", [\"files:write\"], {\"path\": {\"file_id\": file_id}, \"body\": {\"matter_id\": None}}), (\"historyFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"listFileVersions\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"downloadFileVersion\", [\"files:read\"], {\"path\": {\"file_id\": file_id, \"version_id\": version_id}, \"query\": {\"confirm_quarantine\": True}}), ): bypass = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=None, matter_walled=False)) self.assertEqual(bypass[\"result\"], \"not_found\", tool) moved = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=other, matter_walls={other: False})) self.assertEqual(moved[\"result\"], \"not_found\", tool) missing = quiet(call(tool, \"staff\", scopes, arguments, matter_id=matter, matter_walled=False)) self.assertEqual(missing[\"result\"], \"not_found\", tool) conflicted = quiet( call( tool, \"staff\", scopes, arguments, stored_files=[file_row(matter), file_row(other, id=file_id)], matter_walls={matter: False}, ) ) self.assertEqual(conflicted[\"result\"], \"not_found\", tool) opened = call( tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_id=matter, matter_walls={matter: False}, ) self.assertEqual(opened[\"result\"], \"allowed\", tool) self.assertTrue(opened[\"effects\"], tool)",
+          "text": "for tool, scopes, arguments in ( (\"getFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"updateFileMetadata\", [\"files:write\"], {\"path\": {\"file_id\": file_id}, \"body\": {\"matter_id\": None}}), (\"historyFile\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"listFileVersions\", [\"files:read\"], {\"path\": {\"file_id\": file_id}}), (\"downloadFileVersion\", [\"files:read\"], {\"path\": {\"file_id\": file_id, \"version_id\": version_id}, \"query\": {\"confirm_quarantine\": True}}), ): bypass = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=None, matter_walled=False)) self.assertEqual(bypass[\"result\"], \"not_found\", tool) moved = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_id=other, matter_walls={other: False})) self.assertEqual(moved[\"result\"], \"not_found\", tool) missing = quiet(call(tool, \"staff\", scopes, arguments, matter_id=matter, matter_walled=False)) self.assertEqual(missing[\"result\"], \"not_found\", tool) conflicted = quiet( call( tool, \"staff\", scopes, arguments, stored_files=[file_row(matter), file_row(other, id=file_id)], matter_walls={matter: False}, ) ) self.assertEqual(conflicted[\"result\"], \"not_found\", tool) opened = call( tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_id=matter, matter_walls={matter: False}, ) self.assertEqual(opened[\"result\"], \"allowed\", tool) self.assertTrue(opened[\"effects\"], tool) # The stored row and the trusted map disagree about the row's matter. Fail closed either way. map_unwalls = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_walls={matter: False})) self.assertEqual(map_unwalls[\"result\"], \"not_found\", tool) map_walls = quiet( call(tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_walls={matter: True}, matter_membership={matter: True}) ) self.assertEqual(map_walls[\"result\"], \"not_found\", tool) malformed = quiet(call(tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_walls={matter: None})) self.assertEqual(malformed[\"result\"], \"not_found\", tool) # The row is authoritative. A map that omits the row's matter does not replace it. row_walled = quiet(call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_walls={other: False})) self.assertEqual(row_walled[\"result\"], \"not_found\", tool) on_wall = call(tool, \"staff\", scopes, arguments, stored_file=walled, matter_walls={matter: True}, matter_membership={matter: True}) self.assertEqual(on_wall[\"result\"], \"allowed\", tool) row_open = call(tool, \"staff\", scopes, arguments, stored_file=file_row(matter), matter_walls={other: True}) self.assertEqual(row_open[\"result\"], \"allowed\", tool)",
           "complete": false,
           "is_scenario": false
         },
         {
-          "line": 9257,
+          "line": 9273,
           "literal_rows": 3,
           "rows": [
             [
@@ -7735,6 +7735,12 @@
         "self.assertEqual(conflicted[\"result\"], \"not_found\", tool)",
         "self.assertEqual(opened[\"result\"], \"allowed\", tool)",
         "self.assertTrue(opened[\"effects\"], tool)",
+        "self.assertEqual(map_unwalls[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(map_walls[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(malformed[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(row_walled[\"result\"], \"not_found\", tool)",
+        "self.assertEqual(on_wall[\"result\"], \"allowed\", tool)",
+        "self.assertEqual(row_open[\"result\"], \"allowed\", tool)",
         "self.assertEqual(read[\"result\"], \"allowed\", scope)",
         "self.assertTrue(read[\"effects\"], scope)",
         "self.assertEqual(resolved[\"result\"], \"allowed\", scope)",
@@ -9428,7 +9434,7 @@
     "multiple": {
       "go_owner": "multiple",
       "methods": 16,
-      "assertion_call_sites": 563,
+      "assertion_call_sites": 569,
       "literal_rows": 118,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
