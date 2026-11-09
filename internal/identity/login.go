@@ -97,17 +97,7 @@ func (s *Service) failPassword(ctx context.Context, user domain.User) (LoginResu
 	if locked {
 		return LoginResult{}, apiCode("locked_out", "account is locked")
 	}
-	if err := s.noteSignIn(ctx, user, roles, "failed"); err != nil {
-		return LoginResult{}, err
-	}
-	locked, err = s.locked(ctx, user)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if locked {
-		return LoginResult{}, apiCode("locked_out", "account is locked")
-	}
-	return LoginResult{}, domain.Unauthenticated("wrong email or password")
+	return LoginResult{}, s.recordFailure(ctx, user, roles)
 }
 
 func (s *Service) afterPassword(ctx context.Context, user domain.User, roles []domain.Role) (LoginResult, error) {
@@ -147,6 +137,9 @@ func (s *Service) StartEnrollment(ctx context.Context, enrollmentToken string) (
 	if err != nil {
 		return Enrollment{}, err
 	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
+		return Enrollment{}, err
+	}
 	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
 		return Enrollment{}, err
 	}
@@ -161,6 +154,9 @@ func (s *Service) ConfirmEnrollment(ctx context.Context, enrollmentToken, code s
 	}
 	roles, err := rolesOf(user)
 	if err != nil {
+		return LoginResult{}, err
+	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
 		return LoginResult{}, err
 	}
 	if err := s.matchStoredTOTP(ctx, user, code, false); err != nil {
@@ -205,6 +201,9 @@ func (s *Service) VerifyTOTP(ctx context.Context, totpToken, code string) (Login
 	if err != nil {
 		return LoginResult{}, err
 	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
+		return LoginResult{}, err
+	}
 	if err := s.matchStoredTOTP(ctx, user, code, true); err != nil {
 		return s.failSecond(ctx, sess, user, roles, err)
 	}
@@ -224,6 +223,9 @@ func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (L
 	if err != nil {
 		return LoginResult{}, err
 	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
+		return LoginResult{}, err
+	}
 	if err := s.spendRecovery(ctx, user, roles, code); err != nil {
 		return s.failSecond(ctx, sess, user, roles, err)
 	}
@@ -240,15 +242,8 @@ func (s *Service) failSecond(ctx context.Context, sess domain.Session, user doma
 			return LoginResult{}, err
 		}
 	}
-	if err := s.noteSignIn(ctx, user, roles, "failed"); err != nil {
+	if err := s.recordFailure(ctx, user, roles); err != nil {
 		return LoginResult{}, err
-	}
-	locked, err := s.locked(ctx, user)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if locked {
-		return LoginResult{}, apiCode("locked_out", "account is locked")
 	}
 	return LoginResult{}, cause
 }

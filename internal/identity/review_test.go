@@ -252,6 +252,120 @@ func TestSettingHistoryUsesStableID(t *testing.T) {
 	}
 }
 
+func TestHeldChallengeCannotFinishLockedSignIn(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	started, admin := b.enrollAdmin(t)
+	b.clk.t = b.clk.t.Add(31 * time.Second)
+	reset, err := b.svc.ResetTOTP(ctx, admin, Factor{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := decodeSecret(t, reset.Secret)
+	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(secret, b.clk.Now())); err != nil {
+		t.Fatal(err)
+	}
+	b.clk.t = b.clk.t.Add(31 * time.Second)
+	code := TOTPCode(secret, b.clk.Now())
+	var tokens []string
+	for i := 0; i < 6; i++ {
+		login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+		if err != nil || login.TOTPToken == "" {
+			t.Fatalf("issue %d: %+v %v", i, login, err)
+		}
+		tokens = append(tokens, login.TOTPToken)
+	}
+	for i := 0; i < 5; i++ {
+		_, err := b.svc.VerifyTOTP(ctx, tokens[i], "000000")
+		if i < 4 && codeOf(err) != domain.CodeUnauthenticated {
+			t.Fatalf("guess %d: %v", i, err)
+		}
+		if i == 4 && codeOf(err) != "locked_out" {
+			t.Fatalf("guess %d: %v", i, err)
+		}
+	}
+	got, err := b.svc.VerifyTOTP(ctx, tokens[5], code)
+	if codeOf(err) != "locked_out" || got.SessionToken != "" {
+		t.Fatalf("held token: %+v %v", got, err)
+	}
+	b.clk.t = b.clk.t.Add(16 * time.Minute)
+	login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil || login.TOTPToken == "" {
+		t.Fatal(login, err)
+	}
+	recovered, err := b.svc.VerifyRecovery(ctx, login.TOTPToken, started.RecoveryCodes[0])
+	if err != nil || recovered.SessionToken == "" {
+		t.Fatal(recovered, err)
+	}
+}
+
+func TestStepUpFailuresShareLockout(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	for i := 0; i < 5; i++ {
+		_, err := b.svc.ResetTOTP(ctx, admin, Factor{TOTPCode: "000000"})
+		if i < 4 && codeOf(err) != domain.CodeUnauthenticated {
+			t.Fatalf("factor %d: %v", i, err)
+		}
+		if i == 4 && codeOf(err) != "locked_out" {
+			t.Fatalf("factor %d: %v", i, err)
+		}
+	}
+	if err := b.svc.ChangePassword(ctx, admin, "correct-horse-battery", "correct-horse-updated"); codeOf(err) != "locked_out" {
+		t.Fatal(err)
+	}
+	b.clk.t = b.clk.t.Add(16 * time.Minute)
+	login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil || login.Status != statusTOTP {
+		t.Fatal(login, err)
+	}
+	if _, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-updated"); codeOf(err) != domain.CodeUnauthenticated {
+		t.Fatal(err)
+	}
+}
+
+func TestCreateUserAuditsRoleGrant(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	user, err := b.svc.CreateUser(ctx, admin, NewUser{
+		Name: "Sam Staff", Email: "sam@example.test", Password: "correct-horse-battery",
+		Roles: []domain.Role{domain.RoleStaff}, ContactID: "contact-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]string{}
+	page, err := b.log.List(ctx, repository.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range page.Items {
+		if row.EntityID != user.ID || !strings.Contains(row.Reason, "user.created") {
+			continue
+		}
+		seen[row.Field] = row.NewValue
+	}
+	for field, want := range map[string]string{
+		"email": "sam@example.test", "name": "Sam Staff", "roles": user.Roles,
+		"active": "true", "contact_id": "contact-1",
+	} {
+		if seen[field] != want {
+			t.Fatalf("%s: got %q want %q", field, seen[field], want)
+		}
+	}
+	adminRoles := ""
+	for _, row := range page.Items {
+		if row.EntityID == admin.Principal.UserID && row.Field == "roles" {
+			adminRoles = row.NewValue
+		}
+	}
+	if !strings.Contains(adminRoles, "admin") {
+		t.Fatal(adminRoles)
+	}
+}
+
 func auditHas(t *testing.T, log *audit.Memory, field, reason string) bool {
 	t.Helper()
 	page, err := log.List(ctxBackground(), repository.Filter{})

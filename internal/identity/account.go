@@ -56,9 +56,7 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 		return Enrollment{}, err
 	}
 	who := principalOf(user, []domain.Role{domain.RoleAdmin})
-	if err := s.record(ctx, who, audit.Change{
-		Entity: "user", EntityID: user.ID, Field: "email", New: user.Email, Reason: "user.created",
-	}); err != nil {
+	if err := s.auditCreatedUser(ctx, who, user); err != nil {
 		return Enrollment{}, err
 	}
 	for _, pair := range []struct{ key, value string }{
@@ -166,12 +164,32 @@ func (s *Service) CreateUser(ctx context.Context, caller Caller, in NewUser) (do
 	if err := s.setPassword(ctx, user, in.Roles, in.Password, ""); err != nil {
 		return domain.User{}, err
 	}
-	if err := s.record(ctx, caller.Principal, audit.Change{
-		Entity: "user", EntityID: user.ID, Field: "email", New: user.Email, Reason: "user.created",
-	}); err != nil {
+	if err := s.auditCreatedUser(ctx, caller.Principal, user); err != nil {
 		return domain.User{}, err
 	}
 	return user, nil
+}
+
+func (s *Service) auditCreatedUser(ctx context.Context, who domain.Principal, user domain.User) error {
+	active := "false"
+	if user.Active {
+		active = "true"
+	}
+	fields := []struct{ field, value string }{
+		{"email", user.Email},
+		{"name", user.Name},
+		{"roles", user.Roles},
+		{"active", active},
+		{"contact_id", string(user.ContactID)},
+	}
+	for _, field := range fields {
+		if err := s.record(ctx, who, audit.Change{
+			Entity: "user", EntityID: user.ID, Field: field.field, New: field.value, Reason: "user.created",
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ChangePassword replaces the caller's password and revokes other sessions.
@@ -183,9 +201,16 @@ func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, ne
 	if err != nil {
 		return domain.Unauthenticated("sign in is required")
 	}
+	roles, err := rolesOf(user)
+	if err != nil {
+		return err
+	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
+		return err
+	}
 	cred, err := s.passwords.GetByUser(ctx, user.ID)
 	if err != nil || !VerifyPassword(current, cred.Argon2Hash) {
-		return domain.Unauthenticated("wrong email or password")
+		return s.recordFailure(ctx, user, roles)
 	}
 	if err := s.setPassword(ctx, user, caller.Principal.Roles, next, cred.Argon2Hash); err != nil {
 		return err
@@ -416,6 +441,14 @@ func (s *Service) Reauthenticate(ctx context.Context, caller Caller, factor Fact
 	return token, err
 }
 
+func (s *Service) factorFailure(ctx context.Context, user domain.User, roles []domain.Role, cause error) error {
+	var api *domain.APIError
+	if errors.As(cause, &api) && api.Code == domain.CodeUnauthenticated {
+		return s.recordFailure(ctx, user, roles)
+	}
+	return cause
+}
+
 func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor, action string) error {
 	if caller.Principal.UserID.IsZero() {
 		return domain.Unauthenticated("sign in is required")
@@ -440,21 +473,30 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 	if err != nil {
 		return domain.Unauthenticated("sign in is required")
 	}
+	roles, err := rolesOf(user)
+	if err != nil {
+		return err
+	}
+	if err := s.rejectIfLocked(ctx, user); err != nil {
+		return err
+	}
 	switch {
 	case factor.Password != "":
 		cred, err := s.passwords.GetByUser(ctx, user.ID)
 		if err != nil || !VerifyPassword(factor.Password, cred.Argon2Hash) {
-			return domain.Unauthenticated("wrong email or password")
+			return s.recordFailure(ctx, user, roles)
 		}
 		return nil
 	case factor.TOTPCode != "":
-		return s.matchStoredTOTP(ctx, user, factor.TOTPCode, true)
-	case factor.Recovery != "":
-		roles, err := rolesOf(user)
-		if err != nil {
-			return err
+		if err := s.matchStoredTOTP(ctx, user, factor.TOTPCode, true); err != nil {
+			return s.factorFailure(ctx, user, roles, err)
 		}
-		return s.spendRecovery(ctx, user, roles, factor.Recovery)
+		return nil
+	case factor.Recovery != "":
+		if err := s.spendRecovery(ctx, user, roles, factor.Recovery); err != nil {
+			return s.factorFailure(ctx, user, roles, err)
+		}
+		return nil
 	default:
 		body, sess, owner, err := s.loadChallenge(ctx, factor.ReauthToken, purposeReauth)
 		if err != nil {

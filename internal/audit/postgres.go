@@ -131,7 +131,7 @@ func (p *Postgres) Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntr
 			FROM audit_log
 			WHERE entity = $1 AND entity_id = $2
 			AND ($3 = '' OR field = $3)
-			AND ($4 = 0 OR created_at >= $4)
+			AND (CAST($4 AS bigint) = 0 OR created_at >= CAST($4 AS bigint))
 			ORDER BY created_at, id`,
 			query.Entity, string(query.EntityID), query.Field, since)
 		if err != nil {

@@ -300,14 +300,69 @@ func (s *Service) loadChallenge(ctx context.Context, token, purpose string) (cha
 		return zero, domain.Session{}, domain.User{}, domain.Unauthenticated("sign in is required")
 	}
 	sess, err := s.sessionByHash(ctx, challengeHash(token))
-	if err != nil || sess.RevokedAt != nil || !sess.ExpiresAt.After(s.now().UTC()) || string(sess.UserID) != body.UserID {
+	if err != nil || string(sess.UserID) != body.UserID {
 		return zero, domain.Session{}, domain.User{}, domain.Unauthenticated("sign in is required")
 	}
 	user, err := s.users.Get(ctx, sess.UserID)
 	if err != nil || !user.Active {
 		return zero, domain.Session{}, domain.User{}, domain.Unauthenticated("sign in is required")
 	}
+	if sess.RevokedAt != nil || !sess.ExpiresAt.After(s.now().UTC()) {
+		locked, err := s.locked(ctx, user)
+		if err != nil {
+			return zero, domain.Session{}, domain.User{}, err
+		}
+		if locked {
+			return zero, sess, user, apiCode("locked_out", "account is locked")
+		}
+		return zero, domain.Session{}, domain.User{}, domain.Unauthenticated("sign in is required")
+	}
 	return body, sess, user, nil
+}
+
+func (s *Service) rejectIfLocked(ctx context.Context, user domain.User) error {
+	locked, err := s.locked(ctx, user)
+	if err != nil {
+		return err
+	}
+	if locked {
+		return apiCode("locked_out", "account is locked")
+	}
+	return nil
+}
+
+func (s *Service) recordFailure(ctx context.Context, user domain.User, roles []domain.Role) error {
+	if err := s.noteSignIn(ctx, user, roles, "failed"); err != nil {
+		return err
+	}
+	locked, err := s.locked(ctx, user)
+	if err != nil {
+		return err
+	}
+	if locked {
+		if err := s.revokeOpenChallenges(ctx, user, roles); err != nil {
+			return err
+		}
+		return apiCode("locked_out", "account is locked")
+	}
+	return domain.Unauthenticated("wrong email or password")
+}
+
+func (s *Service) revokeOpenChallenges(ctx context.Context, user domain.User, roles []domain.Role) error {
+	page, err := s.sessions.List(ctx, repository.Filter{UserID: user.ID})
+	if err != nil {
+		return err
+	}
+	who := principalOf(user, roles)
+	for _, row := range page.Items {
+		if row.RevokedAt != nil || browserSession(row) {
+			continue
+		}
+		if err := s.revoke(ctx, row, who, "challenge.locked"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) revoke(ctx context.Context, row domain.Session, who domain.Principal, reason string) error {
