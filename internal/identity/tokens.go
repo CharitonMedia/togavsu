@@ -76,11 +76,13 @@ func (s *Service) IssueToken(ctx context.Context, caller Caller, in Issue) (Issu
 		Meta: meta, UserID: in.UserID, ModuleID: in.ModuleID, Name: in.Name,
 		TokenHash: digest(raw), Scopes: encoded,
 	}
-	if err := s.tokens.Insert(ctx, row); err != nil {
-		return IssuedToken{}, err
-	}
-	if err := s.record(ctx, caller.Principal, audit.Change{
-		Entity: "api_token", EntityID: row.ID, Field: "token_hash", New: raw, Secret: true,
+	if err := s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.tokens.Insert(ctx, row); err != nil {
+			return err
+		}
+		return s.record(ctx, caller.Principal, audit.Change{
+			Entity: "api_token", EntityID: row.ID, Field: "token_hash", New: raw, Secret: true,
+		})
 	}); err != nil {
 		return IssuedToken{}, err
 	}
@@ -167,11 +169,13 @@ func (s *Service) RevokeToken(ctx context.Context, caller Caller, id domain.ID) 
 	now := s.now().UTC()
 	row.RevokedAt = &now
 	row.UpdatedAt = now
-	if err := s.tokens.Update(ctx, row); err != nil {
-		return err
-	}
-	return s.record(ctx, caller.Principal, audit.Change{
-		Entity: "api_token", EntityID: row.ID, Field: "revoked_at", New: "revoked",
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.tokens.Update(ctx, row); err != nil {
+			return err
+		}
+		return s.record(ctx, caller.Principal, audit.Change{
+			Entity: "api_token", EntityID: row.ID, Field: "revoked_at", New: "revoked",
+		})
 	})
 }
 

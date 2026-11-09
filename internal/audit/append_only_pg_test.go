@@ -106,6 +106,17 @@ func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 	if _, err := sqlDB.ExecContext(ctx, `UPDATE audit_log SET reason = reason WHERE false`); err != nil {
 		t.Fatalf("superuser ceiling changed: %v", err)
 	}
+	// Ceiling: the owner still has grant options, so it can give itself UPDATE and then rewrite a row.
+	if _, err := appDB.ExecContext(ctx, `GRANT UPDATE ON TABLE core.audit_log TO CURRENT_USER`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := appDB.ExecContext(ctx, `UPDATE audit_log SET reason = 'regranted' WHERE id = $1`, string(row.ID)); err != nil {
+		t.Fatal(err)
+	}
+	got, err = svc.Get(ctx, row.ID)
+	if err != nil || got.Reason != "regranted" {
+		t.Fatalf("owner re-grant did not stick: %+v %v", got, err)
+	}
 }
 
 func mustList(t *testing.T, svc *Service) []domain.AuditEntry {

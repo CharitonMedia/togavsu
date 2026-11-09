@@ -533,19 +533,24 @@ func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (
 	if err != nil {
 		return Enrollment{}, err
 	}
-	token, exp, err := s.issueChallenge(ctx, user, purposeReset, sealed, "")
-	if err != nil {
-		return Enrollment{}, err
-	}
-	if err := s.record(ctx, caller.Principal, audit.Change{
-		Entity: "totp", EntityID: user.ID, Field: "reset", New: "pending", Reason: "user.totp_reset_started",
-	}); err != nil {
-		return Enrollment{}, err
-	}
-	return Enrollment{
-		Status: statusReset, EnrollmentToken: token, ExpiresAt: exp,
-		OTPAuthURI: otpauth(user.Email, secret), Secret: encodeSecret(secret),
-	}, nil
+	var enroll Enrollment
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		token, exp, err := s.issueChallenge(ctx, user, purposeReset, sealed, "")
+		if err != nil {
+			return err
+		}
+		if err := s.record(ctx, caller.Principal, audit.Change{
+			Entity: "totp", EntityID: user.ID, Field: "reset", New: "pending", Reason: "user.totp_reset_started",
+		}); err != nil {
+			return err
+		}
+		enroll = Enrollment{
+			Status: statusReset, EnrollmentToken: token, ExpiresAt: exp,
+			OTPAuthURI: otpauth(user.Email, secret), Secret: encodeSecret(secret),
+		}
+		return nil
+	})
+	return enroll, err
 }
 
 // ConfirmReset activates the pending secret for the signed-in user.
@@ -573,34 +578,36 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 	if err != nil {
 		return err
 	}
-	row, err := s.totp.GetByUser(ctx, user.ID)
-	old := ""
-	if errors.Is(err, repository.ErrNotFound) {
-		meta, err := s.meta(user.ID)
-		if err != nil {
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		row, err := s.totp.GetByUser(ctx, user.ID)
+		old := ""
+		if errors.Is(err, repository.ErrNotFound) {
+			meta, merr := s.meta(user.ID)
+			if merr != nil {
+				return merr
+			}
+			row = domain.TOTPSecret{Meta: meta, UserID: user.ID, Ciphertext: sealed, Confirmed: true}
+			if err := s.totp.Insert(ctx, row); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else {
+			old = row.Ciphertext
+			row.Ciphertext = sealed
+			row.Confirmed = true
+			row.UpdatedAt = s.now().UTC()
+			if err := s.totp.Update(ctx, row); err != nil {
+				return err
+			}
+		}
+		if err := s.record(ctx, caller.Principal, audit.Change{
+			Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
+		}); err != nil {
 			return err
 		}
-		row = domain.TOTPSecret{Meta: meta, UserID: user.ID, Ciphertext: sealed, Confirmed: true}
-		if err := s.totp.Insert(ctx, row); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	} else {
-		old = row.Ciphertext
-		row.Ciphertext = sealed
-		row.Confirmed = true
-		row.UpdatedAt = s.now().UTC()
-		if err := s.totp.Update(ctx, row); err != nil {
-			return err
-		}
-	}
-	if err := s.record(ctx, caller.Principal, audit.Change{
-		Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
-	}); err != nil {
-		return err
-	}
-	return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
+		return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
+	})
 }
 
 // RegenerateRecovery replaces unused codes after a fresh factor check.

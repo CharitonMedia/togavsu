@@ -176,24 +176,26 @@ func (s *Service) StartEnrollment(ctx context.Context, enrollmentToken string) (
 func (s *Service) ConfirmEnrollment(ctx context.Context, enrollmentToken, code string) (LoginResult, error) {
 	var codes []string
 	out, err := s.useChallenge(ctx, enrollmentToken, purposeEnroll, func(user domain.User, roles []domain.Role) error {
-		if err := s.matchStoredTOTP(ctx, user, code, false); err != nil {
-			return err
-		}
-		row, err := s.totp.GetByUser(ctx, user.ID)
-		if err != nil {
-			return err
-		}
-		row.Confirmed = true
-		row.UpdatedAt = s.now().UTC()
-		if err := s.totp.Update(ctx, row); err != nil {
-			return err
-		}
-		codes, err = s.replaceRecovery(ctx, user, roles)
-		if err != nil {
-			return err
-		}
-		return s.record(ctx, principalOf(user, roles), audit.Change{
-			Entity: "totp", EntityID: row.ID, Field: "confirmed", Old: "false", New: "true",
+		return s.audit.Atomic(ctx, func(ctx context.Context) error {
+			if err := s.matchStoredTOTP(ctx, user, code, false); err != nil {
+				return err
+			}
+			row, err := s.totp.GetByUser(ctx, user.ID)
+			if err != nil {
+				return err
+			}
+			row.Confirmed = true
+			row.UpdatedAt = s.now().UTC()
+			if err := s.totp.Update(ctx, row); err != nil {
+				return err
+			}
+			codes, err = s.replaceRecovery(ctx, user, roles)
+			if err != nil {
+				return err
+			}
+			return s.record(ctx, principalOf(user, roles), audit.Change{
+				Entity: "totp", EntityID: row.ID, Field: "confirmed", Old: "false", New: "true",
+			})
 		})
 	})
 	if err != nil {
@@ -288,19 +290,22 @@ func (s *Service) matchStoredTOTP(ctx context.Context, user domain.User, code st
 	previous := row.Ciphertext
 	row.Ciphertext = sealed
 	row.UpdatedAt = s.now().UTC()
-	if err := s.swapTOTP(ctx, row, previous); err != nil {
-		if errors.Is(err, repository.ErrConflict) || errors.Is(err, repository.ErrNotFound) {
-			return domain.Unauthenticated("wrong code")
-		}
-		return err
-	}
 	roles, err := rolesOf(user)
 	if err != nil {
 		return err
 	}
-	return s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "totp", EntityID: row.ID, Field: "ciphertext", New: sealed, Secret: true, Reason: "totp.accepted",
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.swapTOTP(ctx, row, previous); err != nil {
+			return err
+		}
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "totp", EntityID: row.ID, Field: "ciphertext", New: sealed, Secret: true, Reason: "totp.accepted",
+		})
 	})
+	if errors.Is(err, repository.ErrConflict) || errors.Is(err, repository.ErrNotFound) {
+		return domain.Unauthenticated("wrong code")
+	}
+	return err
 }
 
 func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enrollment, error) {
@@ -321,38 +326,43 @@ func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enroll
 	if err == nil && existing.Confirmed {
 		return Enrollment{}, domain.Conflict("two-factor is already enrolled")
 	}
-	if errors.Is(err, repository.ErrNotFound) {
-		meta, err := s.meta(user.ID)
+	var enroll Enrollment
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if errors.Is(err, repository.ErrNotFound) {
+			meta, err := s.meta(user.ID)
+			if err != nil {
+				return err
+			}
+			existing = domain.TOTPSecret{Meta: meta, UserID: user.ID, Ciphertext: sealed, Confirmed: false}
+			if err := s.totp.Insert(ctx, existing); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else {
+			existing.Ciphertext = sealed
+			existing.Confirmed = false
+			existing.UpdatedAt = s.now().UTC()
+			if err := s.totp.Update(ctx, existing); err != nil {
+				return err
+			}
+		}
+		if err := s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "totp", EntityID: existing.ID, Field: "ciphertext", New: sealed, Secret: true,
+		}); err != nil {
+			return err
+		}
+		token, exp, err := s.issueChallenge(ctx, user, purposeEnroll, "", "")
 		if err != nil {
-			return Enrollment{}, err
+			return err
 		}
-		existing = domain.TOTPSecret{Meta: meta, UserID: user.ID, Ciphertext: sealed, Confirmed: false}
-		if err := s.totp.Insert(ctx, existing); err != nil {
-			return Enrollment{}, err
+		enroll = Enrollment{
+			Status: statusEnrollChallenge, EnrollmentToken: token, ExpiresAt: exp,
+			OTPAuthURI: otpauth(user.Email, secret), Secret: encodeSecret(secret),
 		}
-	} else if err != nil {
-		return Enrollment{}, err
-	} else {
-		existing.Ciphertext = sealed
-		existing.Confirmed = false
-		existing.UpdatedAt = s.now().UTC()
-		if err := s.totp.Update(ctx, existing); err != nil {
-			return Enrollment{}, err
-		}
-	}
-	if err := s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "totp", EntityID: existing.ID, Field: "ciphertext", New: sealed, Secret: true,
-	}); err != nil {
-		return Enrollment{}, err
-	}
-	token, exp, err := s.issueChallenge(ctx, user, purposeEnroll, "", "")
-	if err != nil {
-		return Enrollment{}, err
-	}
-	return Enrollment{
-		Status: statusEnrollChallenge, EnrollmentToken: token, ExpiresAt: exp,
-		OTPAuthURI: otpauth(user.Email, secret), Secret: encodeSecret(secret),
-	}, nil
+		return nil
+	})
+	return enroll, err
 }
 
 func (s *Service) replaceRecovery(ctx context.Context, user domain.User, roles []domain.Role) ([]string, error) {
@@ -360,37 +370,41 @@ func (s *Service) replaceRecovery(ctx context.Context, user domain.User, roles [
 	if err != nil {
 		return nil, err
 	}
-	now := s.now().UTC()
-	for _, row := range page.Items {
-		if row.UsedAt != nil {
-			continue
-		}
-		row.UsedAt = &now
-		row.UpdatedAt = now
-		if err := s.recovery.Update(ctx, row); err != nil && !errors.Is(err, repository.ErrConflict) {
-			return nil, err
-		}
-	}
 	var codes []string
-	for i := 0; i < recoveryCount(); i++ {
-		plain, hash, err := recoveryCode()
-		if err != nil {
-			return nil, err
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		now := s.now().UTC()
+		for _, row := range page.Items {
+			if row.UsedAt != nil {
+				continue
+			}
+			row.UsedAt = &now
+			row.UpdatedAt = now
+			if err := s.recovery.Update(ctx, row); err != nil && !errors.Is(err, repository.ErrConflict) {
+				return err
+			}
 		}
-		meta, err := s.meta(user.ID)
-		if err != nil {
-			return nil, err
+		codes = nil
+		for i := 0; i < recoveryCount(); i++ {
+			plain, hash, err := recoveryCode()
+			if err != nil {
+				return err
+			}
+			meta, err := s.meta(user.ID)
+			if err != nil {
+				return err
+			}
+			if err := s.recovery.Insert(ctx, domain.RecoveryCode{
+				Meta: meta, UserID: user.ID, CodeHash: hash,
+			}); err != nil {
+				return err
+			}
+			codes = append(codes, plain)
 		}
-		if err := s.recovery.Insert(ctx, domain.RecoveryCode{
-			Meta: meta, UserID: user.ID, CodeHash: hash,
-		}); err != nil {
-			return nil, err
-		}
-		codes = append(codes, plain)
-	}
-	if err := s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "user", EntityID: user.ID, Field: "recovery_codes", New: "issued", Secret: true,
-	}); err != nil {
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "user", EntityID: user.ID, Field: "recovery_codes", New: "issued", Secret: true,
+		})
+	})
+	if err != nil {
 		return nil, err
 	}
 	return codes, nil
@@ -417,13 +431,16 @@ func (s *Service) spendRecovery(ctx context.Context, user domain.User, roles []d
 	now := s.now().UTC()
 	found.UsedAt = &now
 	found.UpdatedAt = now
-	if err := s.recovery.Update(ctx, *found); err != nil {
-		if errors.Is(err, repository.ErrConflict) {
-			return domain.Unauthenticated("wrong recovery code")
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.recovery.Update(ctx, *found); err != nil {
+			return err
 		}
-		return err
-	}
-	return s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "recovery_code", EntityID: found.ID, Field: "recovery_code", New: plain, Secret: true, Reason: "recovery.spent",
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "recovery_code", EntityID: found.ID, Field: "recovery_code", New: plain, Secret: true, Reason: "recovery.spent",
+		})
 	})
+	if errors.Is(err, repository.ErrConflict) {
+		return domain.Unauthenticated("wrong recovery code")
+	}
+	return err
 }

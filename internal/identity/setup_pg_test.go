@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -157,5 +158,69 @@ func TestSetupAuditFailureLeavesNoAdmin(t *testing.T) {
 	enroll, err := svc.Setup(ctx, setupInput("second@example.test"))
 	if err != nil || enroll.EnrollmentToken == "" {
 		t.Fatal(enroll, err)
+	}
+}
+
+func TestFailedAuditKeepsResetSecretAndToken(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	if err := audit.InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	in := setupInput("ada@example.test")
+	svc := pgSetupService(t, sqlDB, audit.NewPostgres(sqlDB))
+	enroll, err := svc.Setup(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base32Decode(enroll.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(raw, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := svc.Authenticate(ctx, Presented{SessionToken: started.SessionToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := NewPG(sqlDB).TOTP().GetByUser(ctx, started.User.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset, err := svc.ResetTOTP(ctx, caller, Factor{Password: in.Password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := pgSetupService(t, sqlDB, failingAppend{
+		Postgres: audit.NewPostgres(sqlDB),
+		fail: func(row domain.AuditEntry) bool {
+			return strings.Contains(row.Reason, "user.totp_reset_confirmed")
+		},
+	})
+	if err := broken.ConfirmReset(ctx, caller, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), time.Now())); err == nil {
+		t.Fatal("confirm reset kept a secret without its audit row")
+	}
+	after, err := NewPG(sqlDB).TOTP().GetByUser(ctx, started.User.ID)
+	if err != nil || after.Ciphertext != before.Ciphertext {
+		t.Fatal(after, err)
+	}
+	issued, err := svc.IssueToken(ctx, caller, Issue{Name: "keep", UserID: started.User.ID, Scopes: []string{"matters:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken = pgSetupService(t, sqlDB, failingAppend{
+		Postgres: audit.NewPostgres(sqlDB),
+		fail: func(row domain.AuditEntry) bool {
+			return row.Entity == "api_token" && row.Field == "revoked_at"
+		},
+	})
+	if err := broken.RevokeToken(ctx, caller, issued.Token.ID); err == nil {
+		t.Fatal("revoke kept a spent token without its audit row")
+	}
+	token, err := NewPG(sqlDB).Tokens().Get(ctx, issued.Token.ID)
+	if err != nil || token.RevokedAt != nil {
+		t.Fatal(token, err)
 	}
 }

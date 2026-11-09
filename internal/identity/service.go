@@ -116,21 +116,23 @@ func (s *Service) withUser(ctx context.Context, id domain.ID, fn func() error) e
 
 func (s *Service) claimChallenge(ctx context.Context, sess domain.Session, who domain.Principal) error {
 	now := s.now().UTC()
-	if claim, ok := s.sessions.(sessionClaim); ok {
-		if err := claim.Claim(ctx, sess.ID, now); err != nil {
-			return err
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if claim, ok := s.sessions.(sessionClaim); ok {
+			if err := claim.Claim(ctx, sess.ID, now); err != nil {
+				return err
+			}
+		} else if sess.RevokedAt != nil {
+			return repository.ErrConflict
+		} else {
+			sess.RevokedAt = &now
+			sess.UpdatedAt = now
+			if err := s.sessions.Update(ctx, sess); err != nil {
+				return err
+			}
 		}
-	} else if sess.RevokedAt != nil {
-		return repository.ErrConflict
-	} else {
-		sess.RevokedAt = &now
-		sess.UpdatedAt = now
-		if err := s.sessions.Update(ctx, sess); err != nil {
-			return err
-		}
-	}
-	return s.record(ctx, who, audit.Change{
-		Entity: "session", EntityID: sess.ID, Field: "revoked_at", New: "revoked", Reason: "challenge.attempt",
+		return s.record(ctx, who, audit.Change{
+			Entity: "session", EntityID: sess.ID, Field: "revoked_at", New: "revoked", Reason: "challenge.attempt",
+		})
 	})
 }
 
@@ -443,11 +445,13 @@ func (s *Service) revoke(ctx context.Context, row domain.Session, who domain.Pri
 	now := s.now().UTC()
 	row.RevokedAt = &now
 	row.UpdatedAt = now
-	if err := s.sessions.Update(ctx, row); err != nil {
-		return err
-	}
-	return s.record(ctx, who, audit.Change{
-		Entity: "session", EntityID: row.ID, Field: "revoked_at", New: "revoked", Reason: reason,
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.sessions.Update(ctx, row); err != nil {
+			return err
+		}
+		return s.record(ctx, who, audit.Change{
+			Entity: "session", EntityID: row.ID, Field: "revoked_at", New: "revoked", Reason: reason,
+		})
 	})
 }
 
@@ -469,19 +473,24 @@ func (s *Service) openSession(ctx context.Context, user domain.User, roles []dom
 		Meta: meta, UserID: user.ID, TokenHash: sessionHash(raw),
 		ExpiresAt: exp, IdleExpiresAt: exp,
 	}
-	if err := s.sessions.Insert(ctx, row); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "session", EntityID: row.ID, Field: "token_hash", New: raw, Secret: true, Reason: "session.created",
-	}); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.noteSignIn(ctx, user, roles, "succeeded"); err != nil {
-		return LoginResult{}, err
-	}
-	return LoginResult{
-		Status: statusAuthenticated, User: user, CSRFToken: csrfToken(s.key, row.ID),
-		SessionToken: raw, SessionID: row.ID,
-	}, nil
+	var result LoginResult
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.sessions.Insert(ctx, row); err != nil {
+			return err
+		}
+		if err := s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "session", EntityID: row.ID, Field: "token_hash", New: raw, Secret: true, Reason: "session.created",
+		}); err != nil {
+			return err
+		}
+		if err := s.noteSignIn(ctx, user, roles, "succeeded"); err != nil {
+			return err
+		}
+		result = LoginResult{
+			Status: statusAuthenticated, User: user, CSRFToken: csrfToken(s.key, row.ID),
+			SessionToken: raw, SessionID: row.ID,
+		}
+		return nil
+	})
+	return result, err
 }
