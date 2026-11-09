@@ -106,7 +106,7 @@ func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter Note
 	}
 	limit := filter.Limit
 	if limit <= 0 {
-		limit = s.intSetting(ctx, "notes.page_size", 25)
+		limit = s.intSetting(ctx, "notes.page_size", domain.NotesPageSize)
 	}
 	query := strings.ToLower(strings.TrimSpace(filter.Query))
 	var out []domain.Note

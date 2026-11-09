@@ -13,7 +13,7 @@ import (
 // Attorney-only values are not searched for a caller who cannot read them.
 func (s *Service) Search(ctx context.Context, p domain.Principal, query, scope string) (SearchResult, error) {
 	query = strings.TrimSpace(query)
-	minChars := s.intSetting(ctx, "search.min_chars", 2)
+	minChars := s.intSetting(ctx, "search.min_chars", domain.SearchMinChars)
 	if len([]rune(query)) < minChars {
 		return SearchResult{}, domain.Invalid("q", "search needs more characters")
 	}
@@ -25,9 +25,9 @@ func (s *Service) Search(ctx context.Context, p domain.Principal, query, scope s
 	default:
 		return SearchResult{}, domain.Invalid("scope", "unknown scope")
 	}
-	limit := s.intSetting(ctx, "search.hits_scope", 8)
+	limit := s.intSetting(ctx, "search.hits_scope", domain.SearchHitsScope)
 	if scope == ScopeAll {
-		limit = s.intSetting(ctx, "search.hits_all", 5)
+		limit = s.intSetting(ctx, "search.hits_all", domain.SearchHitsAll)
 	}
 	// Each scope is allowed by domain.Policy. PRD 8.10 gives clients no search: a client-only
 	// principal fails every scope. An accountant can read invoices, so that scope stays.

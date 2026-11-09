@@ -637,7 +637,7 @@ func (s *Service) glance(row domain.Matter) Glance {
 			g.TrustCents = sum
 		}
 	}
-	minutes := s.intSetting(context.Background(), "billing.time_increment_minutes", 6)
+	minutes := s.intSetting(context.Background(), "billing.time_increment_minutes", domain.BillingTimeIncrementMinutes)
 	increments := 0
 	for _, entry := range s.db.TimeEntries() {
 		if entry.MatterID != row.ID {

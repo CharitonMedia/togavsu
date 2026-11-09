@@ -511,6 +511,66 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/settings/seal.go"):
 		// AES-256-GCM keys are 32 bytes. That width is not a firm setting.
 		return fn == "NewSealingStore"
+	case strings.HasSuffix(slash, "internal/practice/catalog.go"):
+		// Field-diff indexes into a fixed old/new pair. Not a firm limit.
+		return fn == "changedFields"
+	case strings.HasSuffix(slash, "internal/practice/conflicts.go"):
+		// Name-score bands, trigrams, soundex, and insertion-sort indexes.
+		// The firm floor is practice.conflict_score_minimum, read from the registry.
+		switch fn {
+		case "RunConflictCheck", "ScoreName", "containsName", "dice", "grams", "itoa", "normName", "sortHits", "strconvHits", "soundex":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/contacts.go"):
+		// Phone order, change-pair split, the 32-byte AES key, and contact sort indexes.
+		switch fn {
+		case "ChangePhone", "contactChanges", "sealSSN", "sortContacts":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/custom.go"):
+		// Money base 10, CSV column skip, field sort, and slug separators.
+		switch fn {
+		case "canonicalValue", "mattersCSV", "shownFields", "slug":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/history.go"):
+		// Page cursor index. Window and page size come from the activity registry keys.
+		return fn == "Activity"
+	case strings.HasSuffix(slash, "internal/practice/http.go"):
+		// One custom value, and a CSRF token of 32 bytes.
+		return fn == "csrf" || fn == "oneCustomValue"
+	case strings.HasSuffix(slash, "internal/practice/matters.go"):
+		// Close-warning sentinels, glance zeros, YYYY-NNNN width, and matter sort indexes.
+		// The billing increment is billing.time_increment_minutes.
+		switch fn {
+		case "closeWarnings", "glance", "nextNumber", "openRank", "sortMatters":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/notes.go"):
+		// Empty-page sentinel and note sort indexes. Page size is notes.page_size.
+		return fn == "ListNotes" || fn == "sortNotes"
+	case strings.HasSuffix(slash, "internal/practice/reports.go"):
+		// Aging buckets and cent formatting. Not firm limits.
+		return fn == "ARAging" || fn == "TrustBalancesReport"
+	case strings.HasSuffix(slash, "internal/practice/screens.go"):
+		// The cf_ prefix is three characters. The rest of the key is the field id.
+		return fn == "contactCustomPost"
+	case strings.HasSuffix(slash, "internal/practice/seal.go"):
+		// AES-256-GCM keys are 32 bytes.
+		return fn == "openIdentifier"
+	case strings.HasSuffix(slash, "internal/practice/search.go"):
+		// Scope counter, weekday calendar, and result sort indexes.
+		// Character and hit limits are the search registry keys.
+		switch fn {
+		case "Search", "groupActivity", "searchInvoices", "sortMatterRows":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/practice/service.go"):
+		// AES-256-GCM key width and the position of @ in an email address.
+		switch fn {
+		case "NewWithKey", "identifierKey", "validEmail":
+			return true
+		}
 	default:
 		return false
 	}

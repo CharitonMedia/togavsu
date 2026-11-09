@@ -88,7 +88,7 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 		}
 		probes = append(probes, namesOf(contact.FullName, contact.AlsoKnownAs, contact.PreferredName, contact.DateOfBirth)...)
 	}
-	floor := s.intSetting(ctx, "practice.conflict_score_minimum", 60)
+	floor := s.intSetting(ctx, "practice.conflict_score_minimum", domain.ConflictScoreMinimum)
 	best := map[string]Hit{}
 	consider := func(kind string, id domain.ID, name, dob, reason string) {
 		top := 0

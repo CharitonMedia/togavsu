@@ -77,8 +77,8 @@ func (s *Service) Activity(ctx context.Context, p domain.Principal, q ActivityQu
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return ActivityView{}, err
 	}
-	window := s.intSetting(ctx, "activity.window_days", 30)
-	limit := s.intSetting(ctx, "activity.page_size", 100)
+	window := s.intSetting(ctx, "activity.window_days", domain.ActivityWindowDays)
+	limit := s.intSetting(ctx, "activity.page_size", domain.ActivityPageSize)
 	cutoff := s.clock().AddDate(0, 0, -window)
 	events := s.db.Events()
 	var all []TimelineEntry
