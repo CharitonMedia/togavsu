@@ -104,6 +104,24 @@ func (s pgUsers) Insert(ctx context.Context, row domain.User) error {
 		row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState))
 }
 
+// WithUserLock serializes failure counting for one account across processes.
+// A row lock would deadlock: the callback inserts child rows that wait on that same user row.
+// ponytail: ceiling: two ids that share hashtextextended wait on each other. Upgrade path: a dedicated identity_locks row per user. trigger: a login waits on an advisory lock held for a different user id.
+func (s pgUsers) WithUserLock(ctx context.Context, id domain.ID, fn func() error) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtextextended($1::text, 0))`, string(id)); err != nil {
+		return err
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtextextended($1::text, 0))`, string(id))
+	}()
+	return fn()
+}
+
 func (s pgUsers) Update(ctx context.Context, row domain.User) error {
 	return s.execOne(ctx, `UPDATE users SET updated_at=?, name=?, email=?, roles=?, active=?, default_hourly_rate_cents=?, contact_id=?, bar_number=?, bar_state=? WHERE id=?`,
 		domain.UnixMicroUTC(row.UpdatedAt), row.Name, row.Email, row.Roles, flag(row.Active), int64(row.DefaultHourlyRateCents), nullID(row.ContactID), row.BarNumber, row.BarState, string(row.ID))
@@ -173,6 +191,16 @@ func (s pgSessions) Insert(ctx context.Context, row domain.Session) error {
 func (s pgSessions) Update(ctx context.Context, row domain.Session) error {
 	return s.execOne(ctx, `UPDATE sessions SET updated_at=?, token_hash=?, expires_at=?, idle_expires_at=?, revoked_at=? WHERE id=?`,
 		domain.UnixMicroUTC(row.UpdatedAt), row.TokenHash, domain.UnixMicroUTC(row.ExpiresAt), domain.UnixMicroUTC(row.IdleExpiresAt), nullTime(row.RevokedAt), string(row.ID))
+}
+
+// Claim revokes a challenge only while revoked_at is still null.
+func (s pgSessions) Claim(ctx context.Context, id domain.ID, at time.Time) error {
+	err := s.execOne(ctx, `UPDATE sessions SET revoked_at=?, updated_at=? WHERE id=? AND revoked_at IS NULL`,
+		domain.UnixMicroUTC(at), domain.UnixMicroUTC(at), string(id))
+	if errors.Is(err, repository.ErrNotFound) {
+		return repository.ErrConflict
+	}
+	return err
 }
 
 func (s pgSessions) Get(ctx context.Context, id domain.ID) (domain.Session, error) {

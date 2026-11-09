@@ -56,6 +56,8 @@ type Service struct {
 	mail      ResetMailer
 	hits      map[string][]time.Time
 	hitMu     sync.Mutex
+	gates     map[domain.ID]*sync.Mutex
+	gateMu    sync.Mutex
 }
 
 // New returns a service. A short key is rejected.
@@ -77,7 +79,62 @@ func New(d Deps) (*Service, error) {
 		users: d.Users, sessions: d.Sessions, passwords: d.Passwords, totp: d.TOTP,
 		recovery: d.Recovery, tokens: d.Tokens, audit: d.Audit, settings: d.Settings,
 		key: d.Key, now: now, mail: d.Mail, hits: map[string][]time.Time{},
+		gates: map[domain.ID]*sync.Mutex{},
 	}, nil
+}
+
+type sessionClaim interface {
+	Claim(ctx context.Context, id domain.ID, at time.Time) error
+}
+
+type userLock interface {
+	WithUserLock(ctx context.Context, id domain.ID, fn func() error) error
+}
+
+func (s *Service) mutexFor(id domain.ID) *sync.Mutex {
+	s.gateMu.Lock()
+	defer s.gateMu.Unlock()
+	mu, ok := s.gates[id]
+	if !ok {
+		mu = &sync.Mutex{}
+		s.gates[id] = mu
+	}
+	return mu
+}
+
+// withUser serializes lockout checks and failure rows for one account.
+func (s *Service) withUser(ctx context.Context, id domain.ID, fn func() error) error {
+	mu := s.mutexFor(id)
+	mu.Lock()
+	defer mu.Unlock()
+	if lock, ok := s.users.(userLock); ok {
+		err := lock.WithUserLock(ctx, id, fn)
+		if errors.Is(err, repository.ErrNotFound) {
+			return fn()
+		}
+		return err
+	}
+	return fn()
+}
+
+func (s *Service) claimChallenge(ctx context.Context, sess domain.Session, who domain.Principal) error {
+	now := s.now().UTC()
+	if claim, ok := s.sessions.(sessionClaim); ok {
+		if err := claim.Claim(ctx, sess.ID, now); err != nil {
+			return err
+		}
+	} else if sess.RevokedAt != nil {
+		return repository.ErrConflict
+	} else {
+		sess.RevokedAt = &now
+		sess.UpdatedAt = now
+		if err := s.sessions.Update(ctx, sess); err != nil {
+			return err
+		}
+	}
+	return s.record(ctx, who, audit.Change{
+		Entity: "session", EntityID: sess.ID, Field: "revoked_at", New: "revoked", Reason: "challenge.attempt",
+	})
 }
 
 func (s *Service) meta(actor domain.ID) (domain.Meta, error) {

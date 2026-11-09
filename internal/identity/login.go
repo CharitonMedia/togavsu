@@ -37,27 +37,39 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	}
 	// One Argon2id check on every path. The dummy hash is used only when no credential is stored.
 	ok := VerifyPassword(password, hash)
-	if lookupErr != nil || !ok || !user.Active {
-		if lookupErr == nil && user.Active {
-			return s.failPassword(ctx, user)
-		}
-		if lookupErr != nil {
-			return s.failUnknown(ctx, email)
-		}
-		return LoginResult{}, domain.Unauthenticated("wrong email or password")
+	lockID := unknownLoginID(email)
+	if lookupErr == nil {
+		lockID = user.ID
 	}
-	roles, err := rolesOf(user)
+	var result LoginResult
+	err := s.withUser(ctx, lockID, func() error {
+		if lookupErr != nil || !ok || !user.Active {
+			if lookupErr == nil && user.Active {
+				var ferr error
+				result, ferr = s.failPassword(ctx, user)
+				return ferr
+			}
+			if lookupErr != nil {
+				var ferr error
+				result, ferr = s.failUnknown(ctx, email)
+				return ferr
+			}
+			return domain.Unauthenticated("wrong email or password")
+		}
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		roles, err := rolesOf(user)
+		if err != nil {
+			return err
+		}
+		result, err = s.afterPassword(ctx, user, roles)
+		return err
+	})
 	if err != nil {
 		return LoginResult{}, err
 	}
-	locked, err := s.locked(ctx, user)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if locked {
-		return LoginResult{}, apiCode("locked_out", "account is locked")
-	}
-	return s.afterPassword(ctx, user, roles)
+	return result, nil
 }
 
 func (s *Service) failUnknown(ctx context.Context, email string) (LoginResult, error) {
@@ -144,10 +156,13 @@ func (s *Service) StartEnrollment(ctx context.Context, enrollmentToken string) (
 	if err != nil {
 		return Enrollment{}, err
 	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
-		return Enrollment{}, err
-	}
-	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
+	err = s.withUser(ctx, user.ID, func() error {
+		if err := s.claimChallenge(ctx, sess, principalOf(user, roles)); err != nil {
+			return s.claimResult(ctx, user, err)
+		}
+		return s.rejectIfLocked(ctx, user)
+	})
+	if err != nil {
 		return Enrollment{}, err
 	}
 	return s.beginEnrollment(ctx, user)
@@ -155,42 +170,28 @@ func (s *Service) StartEnrollment(ctx context.Context, enrollmentToken string) (
 
 // ConfirmEnrollment checks the first code, stores recovery codes, and opens a session.
 func (s *Service) ConfirmEnrollment(ctx context.Context, enrollmentToken, code string) (LoginResult, error) {
-	_, sess, user, err := s.loadChallenge(ctx, enrollmentToken, purposeEnroll)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	roles, err := rolesOf(user)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.matchStoredTOTP(ctx, user, code, false); err != nil {
-		return LoginResult{}, err
-	}
-	row, err := s.totp.GetByUser(ctx, user.ID)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	row.Confirmed = true
-	row.UpdatedAt = s.now().UTC()
-	if err := s.totp.Update(ctx, row); err != nil {
-		return LoginResult{}, err
-	}
-	codes, err := s.replaceRecovery(ctx, user, roles)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "totp", EntityID: row.ID, Field: "confirmed", Old: "false", New: "true",
-	}); err != nil {
-		return LoginResult{}, err
-	}
-	out, err := s.openSession(ctx, user, roles)
+	var codes []string
+	out, err := s.useChallenge(ctx, enrollmentToken, purposeEnroll, func(user domain.User, roles []domain.Role) error {
+		if err := s.matchStoredTOTP(ctx, user, code, false); err != nil {
+			return err
+		}
+		row, err := s.totp.GetByUser(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		row.Confirmed = true
+		row.UpdatedAt = s.now().UTC()
+		if err := s.totp.Update(ctx, row); err != nil {
+			return err
+		}
+		codes, err = s.replaceRecovery(ctx, user, roles)
+		if err != nil {
+			return err
+		}
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "totp", EntityID: row.ID, Field: "confirmed", Old: "false", New: "true",
+		})
+	})
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -200,29 +201,22 @@ func (s *Service) ConfirmEnrollment(ctx context.Context, enrollmentToken, code s
 
 // VerifyTOTP finishes sign-in for a user who already enrolled.
 func (s *Service) VerifyTOTP(ctx context.Context, totpToken, code string) (LoginResult, error) {
-	_, sess, user, err := s.loadChallenge(ctx, totpToken, purposeTOTP)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	roles, err := rolesOf(user)
-	if err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.matchStoredTOTP(ctx, user, code, true); err != nil {
-		return s.failSecond(ctx, sess, user, roles, err)
-	}
-	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
-		return LoginResult{}, err
-	}
-	return s.openSession(ctx, user, roles)
+	return s.useChallenge(ctx, totpToken, purposeTOTP, func(user domain.User, _ []domain.Role) error {
+		return s.matchStoredTOTP(ctx, user, code, true)
+	})
 }
 
 // VerifyRecovery spends one recovery code and opens a session.
 func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (LoginResult, error) {
-	_, sess, user, err := s.loadChallenge(ctx, totpToken, purposeTOTP)
+	return s.useChallenge(ctx, totpToken, purposeTOTP, func(user domain.User, roles []domain.Role) error {
+		return s.spendRecovery(ctx, user, roles, code)
+	})
+}
+
+// useChallenge spends the challenge once, then evaluates the code.
+// A second caller on the same token does not get a guess. The lock is checked again before a session opens.
+func (s *Service) useChallenge(ctx context.Context, token, purpose string, eval func(domain.User, []domain.Role) error) (LoginResult, error) {
+	_, sess, user, err := s.loadChallenge(ctx, token, purpose)
 	if err != nil {
 		return LoginResult{}, err
 	}
@@ -230,29 +224,41 @@ func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (L
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
+	var result LoginResult
+	err = s.withUser(ctx, user.ID, func() error {
+		if err := s.claimChallenge(ctx, sess, principalOf(user, roles)); err != nil {
+			return s.claimResult(ctx, user, err)
+		}
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		if err := eval(user, roles); err != nil {
+			var api *domain.APIError
+			if errors.As(err, &api) && api.Code == domain.CodeUnauthenticated {
+				return s.recordFailure(ctx, user, roles)
+			}
+			return err
+		}
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		result, err = s.openSession(ctx, user, roles)
+		return err
+	})
+	if err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.spendRecovery(ctx, user, roles, code); err != nil {
-		return s.failSecond(ctx, sess, user, roles, err)
-	}
-	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
-		return LoginResult{}, err
-	}
-	return s.openSession(ctx, user, roles)
+	return result, nil
 }
 
-func (s *Service) failSecond(ctx context.Context, sess domain.Session, user domain.User, roles []domain.Role, cause error) (LoginResult, error) {
-	var api *domain.APIError
-	if errors.As(cause, &api) && api.Code == domain.CodeUnauthenticated {
-		if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.failed"); err != nil {
-			return LoginResult{}, err
-		}
+func (s *Service) claimResult(ctx context.Context, user domain.User, err error) error {
+	if !errors.Is(err, repository.ErrConflict) {
+		return err
 	}
-	if err := s.recordFailure(ctx, user, roles); err != nil {
-		return LoginResult{}, err
+	if lerr := s.rejectIfLocked(ctx, user); lerr != nil {
+		return lerr
 	}
-	return LoginResult{}, cause
+	return domain.Unauthenticated("sign in is required")
 }
 
 func (s *Service) matchStoredTOTP(ctx context.Context, user domain.User, code string, mustConfirmed bool) error {

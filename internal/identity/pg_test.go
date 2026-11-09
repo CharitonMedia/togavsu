@@ -189,6 +189,92 @@ func TestConcurrentRecoveryAndTOTPAreSingleUse(t *testing.T) {
 	}
 }
 
+func TestOneChallengeAdmitsOneGuess(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	if err := audit.InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApplyReference(ctx, sqlDB, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	clk := &clock{t: time.Date(2026, 11, 9, 16, 0, 0, 0, time.UTC)}
+	store := NewPG(sqlDB)
+	aud, err := audit.New(audit.NewPostgres(sqlDB), clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(db.SettingsStore{DB: sqlDB, Dialect: "postgres"}, aud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Deps{
+		Users: store.Users(), Sessions: store.Sessions(), Passwords: store.Passwords(),
+		TOTP: store.TOTP(), Recovery: store.Recovery(), Tokens: store.Tokens(),
+		Audit: aud, Settings: reg, Key: bytes.Repeat([]byte{9}, 32), Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enroll, err := svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "America/Chicago", AdminName: "Ada Admin",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base32Decode(enroll.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(raw, clk.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	login, err := svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil || login.TOTPToken == "" {
+		t.Fatal(login, err)
+	}
+	const guesses = 32
+	var wg sync.WaitGroup
+	wg.Add(guesses)
+	for i := 0; i < guesses; i++ {
+		go func() {
+			defer wg.Done()
+			_, _ = svc.VerifyTOTP(ctx, login.TOTPToken, "000000")
+		}()
+	}
+	wg.Wait()
+	var failed, succeeded int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT
+		COUNT(*) FILTER (WHERE new_value = 'failed'),
+		COUNT(*) FILTER (WHERE new_value = 'succeeded')
+		FROM audit_log WHERE entity = 'user' AND entity_id = $1 AND field = 'sign_in'`, string(started.User.ID)).Scan(&failed, &succeeded); err != nil {
+		t.Fatal(err)
+	}
+	if failed != 1 {
+		t.Fatalf("failures %d, want 1", failed)
+	}
+	if succeeded != 1 {
+		t.Fatalf("successes %d, want the enrollment session only", succeeded)
+	}
+	caller := Caller{Principal: domain.Principal{UserID: started.User.ID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}}
+	wg.Add(guesses)
+	for i := 0; i < guesses; i++ {
+		go func() {
+			defer wg.Done()
+			_, _ = svc.Reauthenticate(ctx, caller, Factor{TOTPCode: "000000"}, "reset-totp")
+		}()
+	}
+	wg.Wait()
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity = 'user' AND entity_id = $1 AND field = 'sign_in' AND new_value = 'failed'`, string(started.User.ID)).Scan(&failed); err != nil {
+		t.Fatal(err)
+	}
+	if failed != 5 {
+		t.Fatalf("failures %d, want the lockout limit", failed)
+	}
+}
+
 func race(a, b func() error) int {
 	var wg sync.WaitGroup
 	var mu sync.Mutex

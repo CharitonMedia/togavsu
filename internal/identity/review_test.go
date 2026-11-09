@@ -300,6 +300,80 @@ func (f *failOnceAudit) SettingChanged(context.Context, settings.Change) error {
 	return nil
 }
 
+func TestSetupRefusedWhenFirmNameExists(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	user, err := b.mem.Users().Get(ctx, admin.Principal.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user.Active = false
+	if err := b.mem.Users().Update(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	_, err = b.svc.Setup(ctx, SetupInput{
+		FirmName: "Other Firm", TimeZone: "UTC", AdminName: "Eve",
+		AdminEmail: "eve@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	})
+	if codeOf(err) != "already_set_up" {
+		t.Fatal(err)
+	}
+	still, err := b.mem.Users().Get(ctx, user.ID)
+	if err != nil || still.Active {
+		t.Fatal(still, err)
+	}
+}
+
+func TestInactiveStaffIsNotPromotedBySetup(t *testing.T) {
+	ctx := context.Background()
+	clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
+	log := audit.NewMemory()
+	aud, err := audit.New(log, clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(settings.NewMemory(), aud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := NewMemory()
+	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleStaff})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staffID, err := domain.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	staff := domain.User{
+		Meta: domain.Meta{ID: staffID, CreatedAt: clk.Now(), UpdatedAt: clk.Now(), CreatedBy: staffID},
+		Name: "Sam", Email: "sam@example.test", Roles: roles, Active: false,
+	}
+	if err := mem.Users().Insert(ctx, staff); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := New(Deps{
+		Users: mem.Users(), Sessions: mem.Sessions(), Passwords: mem.Passwords(),
+		TOTP: mem.TOTP(), Recovery: mem.Recovery(), Tokens: mem.Tokens(),
+		Audit: aud, Settings: reg, Key: bytesRepeat(), Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "UTC", AdminName: "Sam",
+		AdminEmail: "sam@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	})
+	if codeOf(err) != domain.CodeConflict {
+		t.Fatal(err)
+	}
+	got, err := mem.Users().Get(ctx, staffID)
+	if err != nil || got.Active || !strings.Contains(got.Roles, "staff") || strings.Contains(got.Roles, "admin") {
+		t.Fatal(got, err)
+	}
+}
+
 func TestHeldChallengeCannotFinishLockedSignIn(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)

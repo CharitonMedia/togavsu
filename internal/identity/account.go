@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -25,6 +26,13 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 	}
 	if _, err := domain.LoadZone(in.TimeZone); err != nil {
 		return Enrollment{}, domain.Invalid("time_zone", "time zone is not recognized")
+	}
+	firm, err := s.settings.Get(ctx, "firm.name")
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if firm != "" {
+		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
 	}
 	admins, err := s.activeAdmins(ctx)
 	if err != nil {
@@ -85,7 +93,7 @@ func (s *Service) claimSetupAdmin(ctx context.Context, user domain.User) (domain
 		return domain.User{}, err
 	}
 	existing, gerr := s.userByEmail(ctx, user.Email)
-	if gerr != nil || existing.Active {
+	if gerr != nil || existing.Active || !s.rollbackAdmin(ctx, existing) {
 		return domain.User{}, domain.Conflict("email is already in use")
 	}
 	existing.Name = user.Name
@@ -96,6 +104,31 @@ func (s *Service) claimSetupAdmin(ctx context.Context, user domain.User) (domain
 		return domain.User{}, uerr
 	}
 	return existing, nil
+}
+
+// rollbackAdmin is an inactive admin from a failed setup: no confirmed TOTP, and the audit log records the rollback.
+func (s *Service) rollbackAdmin(ctx context.Context, user domain.User) bool {
+	roles, err := rolesOf(user)
+	if err != nil || !principalOf(user, roles).HasRole(domain.RoleAdmin) {
+		return false
+	}
+	secret, err := s.totp.GetByUser(ctx, user.ID)
+	if err == nil && secret.Confirmed {
+		return false
+	}
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return false
+	}
+	rows, err := s.audit.Rows(ctx, audit.RowQuery{Entity: "user", EntityID: user.ID, Field: "active"})
+	if err != nil {
+		return false
+	}
+	for _, row := range rows {
+		if row.NewValue == "false" && strings.Contains(row.Reason, "setup rolled back") {
+			return true
+		}
+	}
+	return false
 }
 
 // Ready reports whether firm name, an active admin, and confirmed admin TOTP are stored.
@@ -229,17 +262,27 @@ func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, ne
 	if err != nil {
 		return err
 	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
-		return err
-	}
+	ok := false
+	var previous string
 	cred, err := s.passwords.GetByUser(ctx, user.ID)
-	if err != nil || !VerifyPassword(current, cred.Argon2Hash) {
-		return s.recordFailure(ctx, user, roles)
-	}
-	if err := s.setPassword(ctx, user, caller.Principal.Roles, next, cred.Argon2Hash); err != nil {
+	if err == nil {
+		previous = cred.Argon2Hash
+		ok = VerifyPassword(current, cred.Argon2Hash)
+	} else if !errors.Is(err, repository.ErrNotFound) {
 		return err
 	}
-	return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID, caller.Principal)
+	return s.withUser(ctx, user.ID, func() error {
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		if !ok {
+			return s.recordFailure(ctx, user, roles)
+		}
+		if err := s.setPassword(ctx, user, caller.Principal.Roles, next, previous); err != nil {
+			return err
+		}
+		return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID, caller.Principal)
+	})
 }
 
 func (s *Service) setPassword(ctx context.Context, user domain.User, roles []domain.Role, next, previous string) error {
@@ -501,37 +544,55 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 	if err != nil {
 		return err
 	}
-	if err := s.rejectIfLocked(ctx, user); err != nil {
-		return err
+	passwordOK := false
+	if factor.Password != "" {
+		cred, cerr := s.passwords.GetByUser(ctx, user.ID)
+		if cerr == nil {
+			passwordOK = VerifyPassword(factor.Password, cred.Argon2Hash)
+		} else if !errors.Is(cerr, repository.ErrNotFound) {
+			return cerr
+		}
 	}
-	switch {
-	case factor.Password != "":
-		cred, err := s.passwords.GetByUser(ctx, user.ID)
-		if err != nil || !VerifyPassword(factor.Password, cred.Argon2Hash) {
-			return s.recordFailure(ctx, user, roles)
+	var reauthSess domain.Session
+	var reauthOwner domain.User
+	var reauthAction string
+	if factor.ReauthToken != "" {
+		body, sess, owner, lerr := s.loadChallenge(ctx, factor.ReauthToken, purposeReauth)
+		if lerr != nil {
+			return lerr
 		}
-		return nil
-	case factor.TOTPCode != "":
-		if err := s.matchStoredTOTP(ctx, user, factor.TOTPCode, true); err != nil {
-			return s.factorFailure(ctx, user, roles, err)
-		}
-		return nil
-	case factor.Recovery != "":
-		if err := s.spendRecovery(ctx, user, roles, factor.Recovery); err != nil {
-			return s.factorFailure(ctx, user, roles, err)
-		}
-		return nil
-	default:
-		body, sess, owner, err := s.loadChallenge(ctx, factor.ReauthToken, purposeReauth)
-		if err != nil {
-			return domain.Unauthenticated("sign in is required")
-		}
-		if owner.ID != caller.Principal.UserID {
-			return domain.Forbidden("enrollment token is not valid")
-		}
-		if body.Action != action {
-			return domain.Forbidden("enrollment token is not valid")
-		}
-		return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
+		reauthSess = sess
+		reauthOwner = owner
+		reauthAction = body.Action
 	}
+	return s.withUser(ctx, user.ID, func() error {
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		switch {
+		case factor.Password != "":
+			if !passwordOK {
+				return s.recordFailure(ctx, user, roles)
+			}
+		case factor.TOTPCode != "":
+			if err := s.matchStoredTOTP(ctx, user, factor.TOTPCode, true); err != nil {
+				return s.factorFailure(ctx, user, roles, err)
+			}
+		case factor.Recovery != "":
+			if err := s.spendRecovery(ctx, user, roles, factor.Recovery); err != nil {
+				return s.factorFailure(ctx, user, roles, err)
+			}
+		default:
+			if reauthOwner.ID != caller.Principal.UserID {
+				return domain.Forbidden("enrollment token is not valid")
+			}
+			if reauthAction != action {
+				return domain.Forbidden("enrollment token is not valid")
+			}
+			if err := s.claimChallenge(ctx, reauthSess, caller.Principal); err != nil {
+				return s.claimResult(ctx, user, err)
+			}
+		}
+		return s.rejectIfLocked(ctx, user)
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
@@ -113,6 +114,23 @@ func (s sessionStore) Update(_ context.Context, row domain.Session) error {
 		return repository.ErrNotFound
 	}
 	s.sessions[row.ID] = row
+	return nil
+}
+
+// Claim revokes a challenge only while it is still open.
+func (s sessionStore) Claim(_ context.Context, id domain.ID, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.sessions[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	if row.RevokedAt != nil {
+		return repository.ErrConflict
+	}
+	row.RevokedAt = &at
+	row.UpdatedAt = at
+	s.sessions[id] = row
 	return nil
 }
 
