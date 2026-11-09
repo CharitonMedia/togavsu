@@ -113,16 +113,7 @@ func (h *Handler) updatePhoneJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	if body.E164 != "" {
-		row, err := h.Svc.ChangePhone(r.Context(), p, domain.ID(r.PathValue("phone_id")), body.E164, body.From)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, row)
-		return
-	}
-	row, err := h.Svc.GetPhone(r.Context(), p, domain.ID(r.PathValue("phone_id")))
+	row, err := h.Svc.RevisePhone(r.Context(), p, domain.ID(r.PathValue("phone_id")), body.E164, body.From, body.Label)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -161,7 +152,15 @@ func (h *Handler) updateEmailJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row, err := h.Svc.GetEmail(r.Context(), p, domain.ID(r.PathValue("email_id")))
+	var body struct {
+		Email string `json:"email"`
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	row, err := h.Svc.ReviseEmail(r.Context(), p, domain.ID(r.PathValue("email_id")), body.Email, body.Label)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -200,7 +199,15 @@ func (h *Handler) updateAddressJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row, err := h.Svc.GetAddress(r.Context(), p, domain.ID(r.PathValue("address_id")))
+	var body struct {
+		Line1 string `json:"line1"`
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	row, err := h.Svc.ReviseAddress(r.Context(), p, domain.ID(r.PathValue("address_id")), body.Line1, body.Label)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -239,7 +246,14 @@ func (h *Handler) updateTagJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	row, err := h.Svc.GetTag(r.Context(), p, domain.ID(r.PathValue("tag_id")))
+	var body struct {
+		Tag string `json:"tag"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeErr(w, domain.Invalid("body", "body is invalid"))
+		return
+	}
+	row, err := h.Svc.ReviseTag(r.Context(), p, domain.ID(r.PathValue("tag_id")), body.Tag)
 	if err != nil {
 		writeErr(w, err)
 		return

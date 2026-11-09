@@ -281,6 +281,19 @@ func (m *Memory) InsertTag(ctx context.Context, row domain.ContactTag) error {
 	return nil
 }
 
+func (m *Memory) UpdateTag(ctx context.Context, row domain.ContactTag) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.tags[row.ID]; !ok {
+		return repository.ErrNotFound
+	}
+	m.tags[row.ID] = row
+	return nil
+}
+
 func (m *Memory) DeleteTag(ctx context.Context, id domain.ID) error {
 	if err := ready(ctx); err != nil {
 		return err

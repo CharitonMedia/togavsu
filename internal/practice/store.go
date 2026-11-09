@@ -27,6 +27,7 @@ type Store interface {
 	Phone(_ context.Context, id domain.ID) (domain.ContactPhone, error)
 	Phones(contact domain.ID) []domain.ContactPhone
 	InsertTag(ctx context.Context, row domain.ContactTag) error
+	UpdateTag(ctx context.Context, row domain.ContactTag) error
 	DeleteTag(ctx context.Context, id domain.ID) error
 	Tags(contact domain.ID) []domain.ContactTag
 	InsertMatter(ctx context.Context, row domain.Matter, assign func([]string) (string, error)) (domain.Matter, error)

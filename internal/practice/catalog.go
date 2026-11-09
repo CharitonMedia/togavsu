@@ -391,6 +391,125 @@ func (s *Service) ArchiveNote(ctx context.Context, p domain.Principal, id domain
 	})
 }
 
+func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain.ID, e164, from, label string) (domain.ContactPhone, error) {
+	current, err := s.db.Phone(ctx, id)
+	if err != nil {
+		return domain.ContactPhone{}, missing(err, "phone")
+	}
+	if e164 != "" && e164 != current.PhoneE164 {
+		return s.ChangePhone(ctx, p, id, e164, from)
+	}
+	if err := s.readableContact(ctx, p, current.ContactID); err != nil {
+		return domain.ContactPhone{}, err
+	}
+	if label == "" || label == current.Label {
+		return current, nil
+	}
+	old := current.Label
+	current.Label = label
+	current.UpdatedAt = s.clock()
+	if err := s.db.UpdatePhone(ctx, current); err != nil {
+		return domain.ContactPhone{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		ContactID: current.ContactID, Entity: "contact_phone", EntityID: current.ID, Field: "label",
+		Old: old, New: label, Kind: "update", SkipEvent: true,
+	}}); err != nil {
+		return domain.ContactPhone{}, err
+	}
+	return current, nil
+}
+
+func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain.ID, email, label string) (domain.ContactEmail, error) {
+	row, err := s.GetEmail(ctx, p, id)
+	if err != nil {
+		return domain.ContactEmail{}, err
+	}
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
+		return domain.ContactEmail{}, err
+	}
+	old := row.Email
+	if strings.TrimSpace(email) != "" {
+		if !validEmail(email) {
+			return domain.ContactEmail{}, domain.Invalid("email", "enter an email address")
+		}
+		row.Email = strings.TrimSpace(email)
+	}
+	if label != "" {
+		row.Label = label
+	}
+	row.UpdatedAt = s.clock()
+	if err := s.db.UpdateEmail(ctx, row); err != nil {
+		return domain.ContactEmail{}, err
+	}
+	if old != row.Email {
+		if err := s.record(ctx, p, []change{{
+			ContactID: row.ContactID, Entity: "contact_email", EntityID: row.ID, Field: "email",
+			Old: old, New: row.Email, Kind: "update", Action: "contact.email_updated", Summary: "Updated an email",
+		}}); err != nil {
+			return domain.ContactEmail{}, err
+		}
+	}
+	return row, nil
+}
+
+func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id domain.ID, line1, label string) (domain.ContactAddress, error) {
+	row, err := s.GetAddress(ctx, p, id)
+	if err != nil {
+		return domain.ContactAddress{}, err
+	}
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
+		return domain.ContactAddress{}, err
+	}
+	old := row.Line1
+	if strings.TrimSpace(line1) != "" {
+		row.Line1 = strings.TrimSpace(line1)
+	}
+	if label != "" {
+		row.Label = label
+	}
+	row.UpdatedAt = s.clock()
+	if err := s.db.UpdateAddress(ctx, row); err != nil {
+		return domain.ContactAddress{}, err
+	}
+	if old != row.Line1 {
+		if err := s.record(ctx, p, []change{{
+			ContactID: row.ContactID, Entity: "contact_address", EntityID: row.ID, Field: "line1",
+			Old: old, New: row.Line1, Kind: "update", Action: "contact.address_updated", Summary: "Updated an address",
+		}}); err != nil {
+			return domain.ContactAddress{}, err
+		}
+	}
+	return row, nil
+}
+
+func (s *Service) ReviseTag(ctx context.Context, p domain.Principal, id domain.ID, tag string) (domain.ContactTag, error) {
+	row, err := s.GetTag(ctx, p, id)
+	if err != nil {
+		return domain.ContactTag{}, err
+	}
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
+		return domain.ContactTag{}, err
+	}
+	tag = strings.TrimSpace(tag)
+	if tag == "" || tag == row.Tag {
+		return row, nil
+	}
+	old := row.Tag
+	row.Tag = tag
+	row.UpdatedAt = s.clock()
+	if err := s.db.UpdateTag(ctx, row); err != nil {
+		return domain.ContactTag{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		ContactID: row.ContactID, Entity: "contact_tag", EntityID: row.ID, Field: "tag",
+		Old: old, New: tag, Kind: "update", SkipEvent: true,
+	}}); err != nil {
+		return domain.ContactTag{}, err
+	}
+	return row, nil
+}
+
 func (s *Service) GetPhone(ctx context.Context, p domain.Principal, id domain.ID) (domain.ContactPhone, error) {
 	row, err := s.db.Phone(ctx, id)
 	if err != nil {
