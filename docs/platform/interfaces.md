@@ -46,6 +46,8 @@ The core image must serve the product on port 8080 and define a Docker health ch
 
 A missing passphrase returns `409 passphrase_required`. Copy failures keep the local archive and append an admin notice to `/var/lib/togavsu/mail-outbox.jsonl`. Core system mail drains that file.
 
+Schedule: the nightly backup is due once per firm-local day at `BACKUP_TIME`. Only a ledger `backup` event with reason `nightly` marks that day done; a manual, pre-update, or safety backup does not. The update check is due once per day inside the window; an applied or refused update, or a check that finds nothing newer, marks it done. A failed nightly backup or update check appends a `scheduled` ledger event (`task`, `status` `failed`, `attempt`, `retry_after`, scrubbed `error`) and is retried after 15 minutes, then 30, 60, 120, and every 4 hours, counted per firm-local day. The first failure of a day appends an admin notice (`Nightly backup failed` or `Scheduled update check failed`) to the outbox; later retries that day are in the ledger only. A busy gate or shutdown is not counted as an attempt.
+
 Destination kinds:
 
 - `path`: absolute directory, including a mounted SMB or NFS path. Copies go in a generated `namespace` directory under that path. Checksum is verified after the copy. The archive and the `.sha256` sidecar share one staged lifecycle: temp, no-xattr publication copy, anchor, quarantine rename, final object, and receipt. Each identity is journaled before its payload bytes. Shares that reject user xattrs or hardlinks stay supported, and the token prefix is not part of the published bytes. [Path upload lifecycle](path-upload-lifecycle.md) is the state table.

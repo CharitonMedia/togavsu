@@ -194,8 +194,10 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operations) {
 	sched, err := cfg.Schedule()
 	if err != nil {
+		slog.Error("scheduled tasks are off because the schedule settings are invalid", "err", err)
 		return
 	}
+	runner := &supervisor.Scheduler{Ops: ops, Schedule: sched, Paused: cfg.UpdatesPaused}
 	tick := time.NewTicker(30 * time.Second)
 	defer tick.Stop()
 	for {
@@ -203,29 +205,9 @@ func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operat
 		case <-ctx.Done():
 			return
 		case now := <-tick.C:
-			events, err := ops.Ledger.List("")
-			if err != nil {
+			if err := runner.Tick(ctx, now); err != nil {
 				slog.Error("scheduled tasks were not run because the ledger could not be read", "err", err)
 				continue
-			}
-			due := sched.Due(now, supervisor.StateFromLedger(events), cfg.UpdatesPaused)
-			if due.Backup {
-				_, _ = ops.CreateBackup(ctx, "nightly")
-			}
-			if due.Update {
-				_, _ = ops.Update(ctx, false)
-			}
-			if due.TestRestore {
-				all, err := ops.Store.List()
-				if err == nil && len(all) > 0 {
-					newest := all[0]
-					for _, meta := range all[1:] {
-						if meta.CreatedAt.After(newest.CreatedAt) {
-							newest = meta
-						}
-					}
-					_ = ops.TestRestore(ctx, newest.ID)
-				}
 			}
 			_, _ = supervisor.PruneLogFiles(cfg.LogDir, now, time.Duration(cfg.LogRetentionDays)*24*time.Hour)
 			_ = ops.Prune(ctx, time.Duration(cfg.LocalRetentionDays)*24*time.Hour)
