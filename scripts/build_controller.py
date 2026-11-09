@@ -115,13 +115,41 @@ def problem_fingerprints(problem):
     return sorted({hashlib.sha256(json.dumps(part, sort_keys=True).encode()).hexdigest() for part in parts})
 
 
+def observe_dispatch(record, snapshot):
+    # Persist what a validated snapshot proves about the acknowledged run: that
+    # it was seen, or (until then) which other run IDs were still being reported.
+    expected = record.get("last_dispatched_run")
+    run_id = snapshot.get("run_id")
+    if not isinstance(expected, str) or not expected or record.get("last_dispatched_run_observed"):
+        return
+    if run_id == expected:
+        record["last_dispatched_run_observed"] = True
+    elif isinstance(run_id, str) and run_id:
+        stale = record.setdefault("last_dispatch_stale_runs", [])
+        if run_id not in stale:
+            stale.append(run_id)
+
+
 def unobserved_run(record, snapshot):
     # A successful POST reserves a slot until its run becomes visible. A stale
     # run, even one other than the immediate predecessor, proves nothing about it.
+    # Once the exact run was seen, only a different identified run that was not
+    # the predecessor or reported before it is a newer run of the same agent.
     if "last_dispatched_run" not in record:
         return False
     expected = record.get("last_dispatched_run")
-    return not isinstance(expected, str) or not expected or snapshot.get("run_id") != expected
+    run_id = snapshot.get("run_id")
+    if not isinstance(expected, str) or not expected:
+        return True
+    if run_id == expected:
+        return False
+    if not record.get("last_dispatched_run_observed") or not isinstance(run_id, str) or not run_id:
+        return True
+    return run_id == record.get("last_dispatch_source_run") or run_id in record.get("last_dispatch_stale_runs", [])
+
+
+def dispatched_run_seen(record, snapshot):
+    return "last_dispatched_run" in record and not unobserved_run(record, snapshot)
 
 
 def atomic(path, obj):
@@ -394,7 +422,7 @@ class Controller:
                     window = {"fingerprint": fingerprint, "attempts": 0}
                     # Preserve old delivered keys without replaying an uncertain run.
                     if key in record.get("delivered", []):
-                        if snapshot.get("run_id") != record.get("last_dispatched_run"):
+                        if not dispatched_run_seen(record, snapshot):
                             record["waiting"] = "Await observation of previously delivered correction"
                             return
                         window.update(attempts=1, last_dispatch_at=now())
@@ -421,7 +449,7 @@ class Controller:
                 prompt = ("The same problem remains after a completed correction. Diagnose why the prior approach "
                     "made no progress, use a different approach within this assignment, and report concrete blockers.\n\n" + prompt)
         elif key in record.get("delivered", []):
-            if snapshot.get("run_id") == record.get("last_dispatched_run"):
+            if dispatched_run_seen(record, snapshot):
                 self.halt(task, record, "Integration correction finished without advancing its revision")
             return
         if not repair and record.get("sync_count", 0) >= 3:
@@ -472,6 +500,8 @@ class Controller:
         else:
             record["sync_count"] = record.get("sync_count", 0) + 1
         record["last_dispatched_run"] = run_id
+        record.pop("last_dispatched_run_observed", None)
+        record.pop("last_dispatch_stale_runs", None)
         record["last_dispatch_source_run"] = intent["previous_run"]
         record["last_dispatch_at"] = intent["time"]
         if record.get("halted") in {"Delivery outcome uncertain; no automatic replay",
@@ -501,6 +531,7 @@ class Controller:
 
     def process(self, spec, record, snapshot, main):
         validate_snapshot(snapshot)  # Direct callers cannot bypass the observation boundary.
+        observe_dispatch(record, snapshot)
         task = spec["id"]
         if record.get("halted") == LEGACY_REPAIR_HALT:
             record.setdefault("recovered_halts", []).append({"reason": record.pop("halted"), "time": now()})
@@ -947,6 +978,7 @@ class Controller:
             try:
                 snapshot = self.remote.agent(record)
                 validate_snapshot(snapshot)
+                observe_dispatch(record, snapshot)
                 snapshots[task] = snapshot
                 if not record.get("submitted"):
                     record["submitted"] = True  # Reconcile an uncertain idempotent create.

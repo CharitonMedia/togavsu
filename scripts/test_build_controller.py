@@ -741,6 +741,101 @@ class ControllerTests(unittest.TestCase):
                 self.assertIn("completed", self.record)
                 self.assertFalse(self.posts())
 
+    def observe_at(self, minute, run_id, status):
+        self.remote.calls.clear()
+        self.remote.run_id, self.remote.run_status = run_id, status
+        self.restart()
+        with self.advance(minute):
+            self.controller.tick()
+
+    def pr_reads(self):
+        return [c for c in self.remote.calls if c[1].startswith("pulls/")]
+
+    def hold_review(self, held=True):
+        original = FakeRemote.review.__get__(self.remote)
+        def pending(check):
+            raise ReviewPending("Workflow attempt is still queued or running")
+        self.remote.review = pending if held else original
+
+    def test_newer_run_after_observed_acknowledgement_merges_green_pr_and_releases_slot(self):
+        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+            last_dispatch_at="2026-11-08T00:00:00+00:00")
+        self.hold_review()
+        self.observe_at(1, "R3", "RUNNING")
+        self.assertTrue(self.record["last_dispatched_run_observed"])
+        self.assertEqual(self.controller.occupied, 1)
+        self.observe_at(2, "R3", "FINISHED")
+        self.assertEqual(self.controller.occupied, 0)
+        self.assertEqual(self.record["waiting"], "Codex workflow attempt queued or running")
+        self.hold_review(False)
+        self.observe_at(20, "Z", "FINISHED")
+        self.assertIn("completed", self.record)
+        self.assertEqual(self.controller.occupied, 0)
+        self.assertNotIn("stalled", self.record)
+        self.assertFalse(self.posts())
+
+    def test_continuation_after_observed_run_is_an_active_worker_not_an_unobserved_dispatch(self):
+        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+            last_dispatch_at="2026-11-08T00:00:00+00:00")
+        self.observe_at(1, "R3", "RUNNING")
+        self.hold_review()
+        self.observe_at(2, "R3", "FINISHED")
+        self.assertEqual(self.controller.occupied, 0)
+        self.hold_review(False)
+        for minute in (16, 20):
+            self.observe_at(minute, "Z", "RUNNING")
+            self.assertEqual(self.controller.occupied, 1)
+            self.assertEqual(self.record["waiting"], "Cursor run active; awaiting completion")
+            self.assertEqual(self.record["active_watch"]["run_id"], "Z")
+            self.assertNotIn("stalled", self.record)
+            self.assertNotIn("dispatch_visibility_since", self.record)
+            self.assertFalse(self.pr_reads())
+        self.assertFalse(self.posts())
+
+    def test_stale_or_unidentified_runs_stay_reserved_around_acknowledged_run_observation(self):
+        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+            last_dispatch_at="2026-11-08T00:00:00+00:00")
+        for minute, run_id in ((1, "R2"), (2, "R9")):
+            self.observe_at(minute, run_id, "FINISHED")
+            self.assertEqual(self.controller.occupied, 1)
+            self.assertNotIn("last_dispatched_run_observed", self.record)
+            self.assertFalse(self.pr_reads())
+        self.assertEqual(self.record["last_dispatch_stale_runs"], ["R2", "R9"])
+        self.observe_at(3, "R3", "RUNNING")
+        # Seeing R3 does not turn its predecessor or a run reported before it into a newer run.
+        for minute, run_id, status in ((4, "R2", "FINISHED"), (5, "R9", "FINISHED"), (6, None, "RUNNING"), (7, "", "RUNNING")):
+            self.observe_at(minute, run_id, status)
+            self.assertEqual(self.controller.occupied, 1)
+            self.assertNotIn("completed", self.record)
+            self.assertFalse(self.pr_reads())
+            self.assertEqual(self.record["waiting"], "Await observation of acknowledged Cursor run; no duplicate prompt")
+        self.observe_at(8, "Z", "FINISHED")
+        self.assertIn("completed", self.record)
+        self.assertFalse(self.posts())
+
+    def test_new_acknowledgement_after_observed_run_reserves_until_its_own_run_is_seen(self):
+        self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+            last_dispatch_at="2026-11-08T00:00:00+00:00")
+        self.hold_review()
+        self.observe_at(1, "R3", "FINISHED")
+        self.assertTrue(self.record["last_dispatched_run_observed"])
+        self.assertNotIn("completed", self.record)
+        self.hold_review(False)
+        self.record["intent"] = {"key": "conflict:" + HEAD + ":" + BASE, "repair": False,
+            "previous_run": "R3", "time": "2026-11-08T00:02:00+00:00"}
+        self.controller.acknowledge(self.record, "R5")
+        self.assertNotIn("last_dispatched_run_observed", self.record)
+        self.assertNotIn("last_dispatch_stale_runs", self.record)
+        for minute, run_id in ((3, "R3"), (4, "Z")):
+            self.observe_at(minute, run_id, "FINISHED")
+            self.assertEqual(self.controller.occupied, 1)
+            self.assertNotIn("completed", self.record)
+            self.assertFalse(self.pr_reads())
+        self.observe_at(5, "R5", "FINISHED")
+        self.assertTrue(self.record["last_dispatched_run_observed"])
+        self.assertIn("completed", self.record)
+        self.assertFalse(self.posts())
+
     def test_uncertain_intent_never_binds_an_arbitrary_third_run(self):
         self.failed_review()
         self.remote.run_id = "R2"
