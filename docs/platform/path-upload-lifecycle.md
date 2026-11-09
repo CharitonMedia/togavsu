@@ -49,7 +49,7 @@ The receipt cannot name an inode that does not exist yet. Two gaps stay outside 
 1. Source temp, after `O_EXCL` create and before the receipt write. At most one inode and two directory entries (`.tmp` and, when `linkat` succeeded, `.own` to that same inode). Content is 0 bytes when the token is an xattr, or exactly 41 bytes of `TGVTMP1\n` + token + newline. No archive payload. The anchor adds a name, not a second copy of those bytes.
 2. No-xattr clean file, after its create and before its own receipt write. The source temp is already journaled and may already hold the archive. The untracked extra is one directory entry of 0 bytes, with no token prefix and no payload.
 
-`// ponytail:` on the source journal records that ceiling. Upgrade path: a reservation that returns an inode before a directory entry exists. Trigger: the platform can journal an inode that is not yet linked. `PONYTAIL-DEBT.md` is outside this assignment, so the ledger count is unchanged.
+`// ponytail:` on the source journal records that ceiling. Upgrade path: a reservation that returns an inode before a directory entry exists. Trigger: the platform can journal an inode that is not yet linked. `PONYTAIL-DEBT.md` records it as platform ceiling 14, and the ledger's debt count includes it.
 
 ## Syscall
 
