@@ -19,6 +19,9 @@ type txValue struct {
 	tx   *sql.Tx
 }
 
+// WithTx runs fn in one transaction on pool. Audit appends and the store writes they
+// record join it, so a change and its history row commit together.
+//
 // WithTx runs fn in one transaction on pool. A store that reads its connection with
 // Conn(ctx, pool) joins it, so every write fn makes commits or rolls back together.
 // A call inside another WithTx on the same pool joins the outer transaction.

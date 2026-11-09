@@ -24,10 +24,14 @@ func NewPostgres(sqlDB *sql.DB) *Postgres {
 	return &Postgres{db: sqlDB, dialect: "postgres"}
 }
 
-// InstallPrivileges creates the non-owner writer role with only SELECT and INSERT.
-// The table owner and a superuser can still UPDATE and DELETE. PRD section 6 forbids
-// a trigger for that remaining ceiling. CREATE ROLE cannot run inside a goose
-// transaction, so this is not a migration file. It is safe to run again.
+// InstallPrivileges takes UPDATE, DELETE and TRUNCATE on core.audit_log away from every
+// role but a superuser. It creates the non-owner writer role with only SELECT and INSERT,
+// and revokes those three privileges from PUBLIC and from the application role that
+// runs it, which is the table owner. No trigger is added: PRD section 6 forbids
+// triggers that carry business logic. A superuser is not stopped by privileges, so the
+// application role must not be one.
+// CREATE ROLE cannot run inside a goose transaction, so this is not a migration file.
+// It is safe to run again.
 func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 	stmts := []string{
 		`DO $body$ BEGIN
@@ -39,6 +43,7 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 		`GRANT USAGE ON SCHEMA core TO ` + writerRole,
 		`GRANT SELECT, INSERT ON TABLE core.audit_log TO ` + writerRole,
 		`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE core.audit_log FROM ` + writerRole,
+		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.audit_log FROM PUBLIC, CURRENT_USER`,
 	}
 	for _, stmt := range stmts {
 		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
@@ -129,7 +134,7 @@ func (p *Postgres) List(ctx context.Context, _ repository.Filter) (repository.Pa
 }
 
 // Rows reads only the requested audit rows.
-// ponytail: ceiling: audit_log_entity_idx is (entity, entity_id) only, so a filter on field and created_at can still scan those rows. Upgrade path: an identity migration adds field and created_at to that index. trigger: a sign-in query plan is a sequential scan once the log passes 100000 rows.
+// ponytail: ceiling: audit_log_entity_idx covers entity and entity_id only, so field and time are filtered across every row for that account. Upgrade path: the integration lead adds an index on (entity, entity_id, field, created_at). trigger: one account's sign-in reads more than 10000 audit rows.
 func (p *Postgres) Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntry, error) {
 	var since int64
 	if !query.Since.IsZero() {
