@@ -85,6 +85,7 @@
   "test_include_views_cover_extensible_core_records": {"go_owner": "modules", "tasks": ["modules"], "acceptance": ["AC-036"], "prd": ["9"]},
   "test_extension_catalog_classifies_every_record_read": {"go_owner": "modules", "tasks": ["modules"], "acceptance": ["AC-036"], "prd": ["5", "9"]},
   "test_new_extension_targets_include_through_the_full_path": {"go_owner": "modules", "tasks": ["modules"], "acceptance": ["AC-036"], "prd": ["5", "9"]},
+  "test_doc_tender_job_and_exception_take_the_file_row": {"go_owner": "multiple", "tasks": ["api", "files", "doc-tender"], "acceptance": ["AC-002", "AC-039"], "prd": ["8.19", "8.21"]},
   "test_notifications_are_limited_to_the_recipient": {"go_owner": "ui", "tasks": ["ui"], "acceptance": ["AC-021"], "prd": ["8"]},
   "test_dispatch_checks_notification_scopes_include_strings_and_marker_updates": {"go_owner": "modules", "tasks": ["modules"], "acceptance": ["AC-012", "AC-036"], "prd": ["9"]},
   "test_mcp_dispatcher_covers_special_authorization_families": {"go_owner": "multiple", "tasks": ["practice", "billing", "modules", "files"], "acceptance": ["AC-003", "AC-008", "AC-012", "AC-039"], "prd": ["7", "9"]},

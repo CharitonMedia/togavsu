@@ -4766,6 +4766,7 @@ class ContractTest(unittest.TestCase):
                 "matter_membership": {matter: False},
                 "stored_record": {
                     "id": record_id,
+                    "file_id": file_id,
                     "created_at": stamp,
                     "created_by": entry,
                     "updated_at": stamp,
@@ -4864,6 +4865,85 @@ class ContractTest(unittest.TestCase):
             denied(call("getTrustFlag", "admin", granted, granted, "clock.trust_flag", **context), "not_found", label)
         current = call("getTrustFlag", "admin", granted, granted, "clock.trust_flag", stored_record=account_flag, matter_walled=False, trust_accounts=[live], firm_id="firm-1")
         self.assertEqual(current["result"], "allowed")
+
+    def test_doc_tender_job_and_exception_take_the_file_row(self):
+        """A job or exception's matter, wall, and attorney-only flag come from the trusted row of the file it names."""
+        matter = "018f1a00-7b3c-7d4e-8a11-333333333333"
+        other = "018f1a00-7b3c-7d4e-8a11-333333333339"
+        file_id = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa1"
+        other_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaaa2"
+        record_id = "018f1a00-7b3c-7d4e-8a11-bbbbbbbbbbb1"
+
+        def row(**flags):
+            value = {"id": file_id, "matter_id": matter, "matter_walled": False, "attorney_only": False, "shared_with_client": False, "quarantined": False}
+            value.update(flags)
+            return value
+
+        def call(tool, role, scopes, arguments, **trusted):
+            return mcp_tool_dispatch(
+                self.spec,
+                {
+                    "authorization": "Bearer secret",
+                    "authorization_scheme": "Bearer",
+                    "credential_valid": True,
+                    "role": role,
+                    "token_scopes": scopes,
+                    "tool": tool,
+                    "arguments": arguments,
+                    **trusted,
+                },
+            )
+
+        def quiet(decision, label):
+            self.assertEqual(decision["result"], "not_found", label)
+            self.assertFalse(decision["effects"], label)
+            self.assertEqual(decision.get("events") or [], [], label)
+
+        cases = (
+            ("getDocTenderJob", "staff", ["doc_tender:read"], {"path": {"job_id": record_id}}),
+            ("retryDocTenderJob", "attorney", ["doc_tender:write"], {"path": {"job_id": record_id}}),
+            ("getDocTenderException", "attorney", ["doc_tender:read"], {"path": {"exception_id": record_id}}),
+            ("resolveDocTenderException", "attorney", ["doc_tender:write"], {"path": {"exception_id": record_id}, "body": {"action": "keep"}}),
+        )
+        stored = {"id": record_id, "file_id": file_id}
+        for tool, role, scopes, arguments in cases:
+            opened = call(tool, role, scopes, arguments, stored_record=stored, stored_file=row())
+            self.assertEqual(opened["result"], "allowed", tool)
+            self.assertTrue(opened["effects"], tool)
+            # Missing or unbound rows fail closed. Caller flags do not stand in for them.
+            quiet(call(tool, role, scopes, arguments, stored_file=row(), matter_id=matter, matter_walled=False), f"{tool} no job row")
+            quiet(call(tool, role, scopes, arguments, stored_record={"id": record_id}, stored_file=row(), matter_walled=False), f"{tool} no file id")
+            quiet(call(tool, role, scopes, arguments, stored_record={"id": record_id, "file_id": None}, stored_file=row()), f"{tool} null file id")
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, matter_id=matter, matter_walled=False, attorney_only=False), f"{tool} no file row")
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(id=other_file)), f"{tool} other file")
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_files=[row(), row(matter_id=other)]), f"{tool} two rows")
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(matter_walled=None)), f"{tool} unresolved wall")
+            # The file row's wall decides. A caller scalar or a disagreeing map does not.
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(matter_walled=True), matter_walled=False), f"{tool} walled row")
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(matter_walled=True), matter_walls={matter: False}), f"{tool} map unwalls")
+            quiet(
+                call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(), matter_walls={matter: True}, matter_membership={matter: True}),
+                f"{tool} map walls",
+            )
+            on_wall = call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(matter_walled=True), matter_membership={matter: True})
+            self.assertEqual(on_wall["result"], "allowed", tool)
+            # A caller matter that is not the file's matter is not_found.
+            quiet(call(tool, role, scopes, arguments, stored_record=stored, stored_file=row(), matter_id=other, matter_walls={other: False}), f"{tool} other matter")
+            # The file row's attorney-only flag decides.
+            hidden = row(attorney_only=True)
+            self.assertEqual(call(tool, "attorney", scopes, arguments, stored_record=stored, stored_file=hidden)["result"], "allowed", tool)
+            if role == "staff":
+                quiet(call(tool, "staff", scopes, arguments, stored_record=stored, stored_file=hidden, attorney_only=False), f"{tool} attorney-only row")
+        # An unmatched-matter exception names an unassigned file. That file is still the parent.
+        unassigned = row(matter_id=None)
+        self.assertEqual(
+            call("getDocTenderException", "attorney", ["doc_tender:read"], {"path": {"exception_id": record_id}}, stored_record=stored, stored_file=unassigned)["result"],
+            "allowed",
+        )
+        quiet(
+            call("getDocTenderException", "attorney", ["doc_tender:read"], {"path": {"exception_id": record_id}}, stored_record=stored, stored_file=unassigned, matter_id=matter, matter_walled=False),
+            "unassigned with caller matter",
+        )
 
     def test_notifications_are_limited_to_the_recipient(self):
         for operation_id in ("listNotification", "getNotification", "markNotificationRead", "markAllNotificationsRead", "deleteNotification"):
@@ -7770,6 +7850,7 @@ class ContractTest(unittest.TestCase):
         self.assertEqual(unresolved_source["events"], [])
         self.assertFalse(unresolved_source.get("reparented"))
 
+        source_file = "018f1a00-7b3c-7d4e-8a11-aaaaaaaaaab7"
         rows = (
             ("resolveDocTenderException", "doc_tender:write", "attorney", "exception_id", ["doc_tender.exception_resolved"]),
             ("updateTimeEntry", "time:write", "staff", "time_entry_id", ["time_entry.updated"]),
@@ -7792,6 +7873,17 @@ class ContractTest(unittest.TestCase):
                     "arguments": {"path": {_path: file_id}, "body": body},
                     **extra,
                 }
+                if _operation["operationId"] == "resolveDocTenderException" and isinstance(stored, str):
+                    # The exception's trusted row names its file, and that file row is the parent.
+                    raw["stored_record"] = {"id": file_id, "file_id": source_file}
+                    raw["stored_file"] = {
+                        "id": source_file,
+                        "matter_id": stored,
+                        "matter_walled": walls.get(stored) is True,
+                        "attorney_only": False,
+                        "shared_with_client": False,
+                        "quarantined": False,
+                    }
                 mcp = mcp_tool_dispatch(self.spec, raw)
                 http = operation_authorization(self.spec, _operation, _mcp_operation_call(raw, raw["arguments"], _operation))
                 self.assertEqual(http["result"], mcp["result"], _operation["operationId"])

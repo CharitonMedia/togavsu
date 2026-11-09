@@ -1389,11 +1389,37 @@ def _canonical_file_row(subject: dict, file_id: str) -> tuple[dict | None, str |
     return row, None
 
 
+# Existing records whose parent is one file but whose path names the record, not the file.
+_FILE_CHILD_RECORD_OPERATIONS = frozenset(
+    {"getDocTenderJob", "retryDocTenderJob", "getDocTenderException", "resolveDocTenderException"}
+)
+
+
+def _file_child_file_id(operation: dict, subject: dict) -> tuple[str | None, str | None]:
+    """The trusted job or exception row names its file. A missing row or file id is not_found."""
+    if subject.get("noninteractive_accepted") or operation.get("operationId") not in _FILE_CHILD_RECORD_OPERATIONS:
+        return None, None
+    record = subject.get("stored_record")
+    file_id = record.get("file_id") if isinstance(record, dict) else None
+    if type(file_id) is not str or not file_id:
+        return None, "not_found"
+    return file_id, None
+
+
 def _bind_file_row_restrictions(operation: dict, subject: dict) -> str | None:
-    """The path file's trusted row is the parent. Caller matter and flags cannot replace it."""
-    if not _file_record_request(operation, subject):
-        return None
-    row, denial = _canonical_file_row(subject, subject["file_id"])
+    """The path file's trusted row is the parent. Caller matter and flags cannot replace it.
+
+    A Doc Tender job or exception is bound the same way through the file its trusted stored row names,
+    so its matter, wall, and attorney-only flag come from that file row and never from caller flags.
+    """
+    file_id, denial = _file_child_file_id(operation, subject)
+    if denial:
+        return denial
+    if file_id is None:
+        if not _file_record_request(operation, subject):
+            return None
+        file_id = subject["file_id"]
+    row, denial = _canonical_file_row(subject, file_id)
     if denial:
         return denial
     return _apply_file_parent(subject, row or {})
