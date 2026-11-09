@@ -172,6 +172,22 @@ func TestNarrowBearerCannotManageSessionsOrAccount(t *testing.T) {
 	if _, err := b.svc.Reauthenticate(ctx, adminBearer, Factor{Password: "correct-horse-battery"}, "resetTotp"); codeOf(err) != "scope_denied" {
 		t.Fatal(err)
 	}
+	before, err := b.mem.TOTP().GetByUser(ctx, admin.Principal.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset, err := b.svc.ResetTOTP(ctx, admin, Factor{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())
+	if err := b.svc.ConfirmReset(ctx, adminBearer, reset.EnrollmentToken, code); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	after, err := b.mem.TOTP().GetByUser(ctx, admin.Principal.UserID)
+	if err != nil || after.Ciphertext != before.Ciphertext {
+		t.Fatal(after, err)
+	}
 }
 
 func codeOf(err error) string {

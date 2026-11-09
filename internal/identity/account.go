@@ -490,6 +490,9 @@ func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (
 // ConfirmReset activates the pending secret for the signed-in user.
 // A wrong code, a replay, or another user's token leaves the current secret in place.
 func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentToken, code string) error {
+	if err := caller.RequireScopes("profile:write"); err != nil {
+		return err
+	}
 	body, sess, user, err := s.loadChallenge(ctx, enrollmentToken, purposeReset)
 	if err != nil {
 		return domain.Forbidden("enrollment token is not valid")

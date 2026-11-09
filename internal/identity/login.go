@@ -44,7 +44,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 		ok = false
 	}
 	lockID := unknownLoginID(email)
-	if lookupErr == nil {
+	if lookupErr == nil && user.Active {
 		lockID = user.ID
 	}
 	var result LoginResult
@@ -55,12 +55,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 				result, ferr = s.failPassword(ctx, user)
 				return ferr
 			}
-			if lookupErr != nil {
-				var ferr error
-				result, ferr = s.failUnknown(ctx, email)
-				return ferr
-			}
-			return domain.Unauthenticated("wrong email or password")
+			// Unknown and inactive emails share one counter and the same responses.
+			var ferr error
+			result, ferr = s.failUnknown(ctx, email)
+			return ferr
 		}
 		if err := s.rejectIfLocked(ctx, user); err != nil {
 			return err

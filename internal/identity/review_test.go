@@ -83,6 +83,41 @@ func TestUnknownEmailLockoutMatchesKnownAccount(t *testing.T) {
 	}
 }
 
+func TestInactiveEmailLocksLikeUnknown(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	user, err := b.mem.Users().Get(ctx, admin.Principal.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	user.Active = false
+	if err := b.mem.Users().Update(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		_, err := b.svc.Login(ctx, "ada@example.test", "wrong-horse-battery")
+		if i < 4 && codeOf(err) != domain.CodeUnauthenticated {
+			t.Fatalf("inactive %d: %v", i, err)
+		}
+		if i == 4 && codeOf(err) != "locked_out" {
+			t.Fatalf("inactive %d: %v", i, err)
+		}
+	}
+	if _, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery"); codeOf(err) != "locked_out" {
+		t.Fatal(err)
+	}
+	page, err := b.log.List(ctx, repository.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range page.Items {
+		if row.Entity == "login" && strings.Contains(row.NewValue+row.Reason, "ada@example.test") {
+			t.Fatal("email leaked into the lockout row")
+		}
+	}
+}
+
 func TestTOTPCodeCannotBeReused(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)
