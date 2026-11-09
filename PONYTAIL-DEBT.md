@@ -53,8 +53,12 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 
 ## Practice ceilings
 
+## scripts/build_controller.py lane workflow gate
+
+ponytail: ceiling: `ActionsRemote.workflow_safe` is a lexical check, not a workflow parser. An owned product workflow that a lane changes must set top-level permissions and never name secrets, write scopes or privileged triggers, so the owner-credential push can run it only with a read token. Upgrade path: parse the workflow and check effective permissions and triggers per job. trigger: a lane needs a secret or write scope in CI, or a lexical bypass is found; that change then goes through a control PR.
+
 1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: `Service` depends on the `Store` interface, and `Memory` is the only implementation. Upgrade path: a Postgres `Store` over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001, using the repository interfaces. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
 2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `events` in Postgres. On `audit_log`, the owning application role can grant UPDATE, DELETE and TRUNCATE back to itself after `InstallPrivileges`. Upgrade path: reject those statements for the application role without a business-logic trigger, and move `audit_log` ownership to a migration role. Trigger: AC-024-F4 is run against Postgres as the application role.
 3. `internal/practice/service.go` — `New` seals SSN and EIN with a process-local AES-256-GCM key. Ceiling: a restart, or a second process, cannot open those values, and the read then returns empty. Upgrade path: identity calls `NewWithKey` with the installer Docker secret before a persistent Store is used. Trigger: practice rows move to Postgres.
 
-Debt count: 32.
+Debt count: 33.
