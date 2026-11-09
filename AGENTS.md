@@ -3,7 +3,7 @@
 Read togavsu-core-prd.md first. It is the approved product scope. Read docs/build/WORKFLOW.md and your assignment in docs/build/tasks.json before editing.
 
 ## Implementation
-Cursor Cloud Agents implement in isolated Cursor-hosted VMs, one branch and workspace per assignment. Start with at most four implementation agents plus one integration lead. Codex is the independent checkpoint reviewer. Never use client data, production services, or Patrick's machines for builds or test installs.
+Implementation agents work in isolated hosted workspaces, one branch and workspace per assignment: Cursor Cloud Agents in Cursor-hosted VMs, or, when docs/build/controller-plan.json sets worker_backend to claude-actions, Claude Code lane jobs on GitHub-hosted runners with a read-only token. Patrick approved the Claude Code lanes on 2026-11-09 while Cursor usage was exhausted. Start with at most four implementation agents plus one integration lead. Codex is the independent checkpoint reviewer. Never use client data, production services, or Patrick's machines for builds or test installs.
 
 The integration lead owns shared contracts, dependency pins, migration numbering, integration and merges. Domain agents own only their assigned paths. Propose shared changes in the PR rather than silently changing another agent's interface. No direct pushes to main, force pushes, self-merges, or skipped checks. Commit and push explicit changed paths.
 

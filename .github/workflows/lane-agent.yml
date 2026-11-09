@@ -101,6 +101,7 @@ jobs:
       - name: Run assignment
         id: claude
         continue-on-error: true
+        timeout-minutes: 270  # Below the job limit, so packaging always keeps committed work.
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           GH_TOKEN: ${{ github.token }}
@@ -120,7 +121,7 @@ jobs:
           pack.mkdir()
           def git(*args):
               return subprocess.run(["git"] + list(args), check=True, capture_output=True, text=True).stdout.strip()
-          base, head = os.environ["LANE_BASE"], git("rev-parse", "HEAD")
+          base, head = os.environ["LANE_BASE"], git("rev-parse", "refs/heads/lane")
           if git("merge-base", base, head) != base:
               sys.exit("Lane head does not descend from its base")
           read = lambda name: (out / name).read_text(errors="replace") if (out / name).exists() else ""
@@ -136,8 +137,10 @@ jobs:
               if value:
                   forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
                   forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
-          scanned = "\n".join([title, body, summary, git("diff", base + ".." + head) if head != base else "",
-                               git("log", "--format=%B", base + ".." + head) if head != base else ""])
+          # Every commit the bundle publishes, not only the net diff: a token added then removed still counts.
+          history = git("log", "-p", "-m", "--text", "--no-textconv", "--no-ext-diff", "--format=%H%n%B",
+                        base + ".." + head) if head != base else ""
+          scanned = "\n".join([title, body, summary, history])
           shaped = re.search(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}", scanned)
           if shaped or any(len(f) >= 16 and f in scanned for f in forms):
               sys.exit("Lane output contains a credential; result withheld")

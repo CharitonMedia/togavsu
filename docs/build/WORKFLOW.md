@@ -1,6 +1,6 @@
 # Parallel build workflow
 
-Cursor Cloud Agents implement in isolated Cursor-hosted VMs. GitHub holds the canonical source, small PRs, tests and recovery tags. Codex independently reviews the exact base and head revision before merging. Render-1 holds only the control checkout; do not build or test-install the product on Patrick's machines. Use synthetic data only.
+Implementation agents work in isolated hosted workspaces: Cursor Cloud Agents in Cursor-hosted VMs, or Claude Code lane jobs on GitHub-hosted runners when the controller plan selects the claude-actions backend (see AUTOMATION.md). GitHub holds the canonical source, small PRs, tests and recovery tags. Codex independently reviews the exact base and head revision before merging. Render-1 holds only the control checkout; do not build or test-install the product on Patrick's machines. Use synthetic data only.
 
 ## Launch and ownership
 Start with four workers: data/contracts, platform scaffolding, API contracts and QA acceptance mapping. Their assignments and owned paths are in tasks.json. Each starts from the same pushed revision in its own VM and branch. The integration lead owns merges, shared interfaces, dependency pins, migration allocation and router composition. Initially delegate the shared contract files to the data/contracts task; other workers submit proposed shared changes in their PR.

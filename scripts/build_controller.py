@@ -431,10 +431,16 @@ class ActionsRemote(Remote):
     def missing(path, reason):
         return urllib.error.HTTPError("lane:" + path, 404, reason, {}, None)
 
+    def legacy(self, agent_id):
+        # Agents launched on Cursor before the switch stay on Cursor until they finish; new ones are lanes.
+        return agent_id not in self.load() and bool(os.environ.get("CURSOR_API_KEY"))
+
     def cursor(self, method, path, body=None):
         parts = path.strip("/").split("/")
         if method == "POST" and parts == ["agents"]:
             return self.create(body)
+        if len(parts) >= 2 and parts[0] == "agents" and self.legacy(parts[1]):
+            return Remote.cursor(self, method, path, body)
         if method == "GET" and len(parts) == 2 and parts[0] == "agents":
             agent = self.load().get(parts[1])
             if not agent:
@@ -511,6 +517,8 @@ class ActionsRemote(Remote):
         return runs[0] if runs else None
 
     def run(self, record, run_id):
+        if self.legacy(record["agent_id"]):
+            return Remote.run(self, record, run_id)
         registry = self.load()
         agent = registry.get(record["agent_id"])
         entry = next((r for r in (agent or {}).get("runs", []) if r["id"] == run_id), None)
@@ -584,6 +592,8 @@ class ActionsRemote(Remote):
             ref = "refs/lane-import/" + entry["id"]
             try:
                 path.write_bytes(bundle)
+                # The base is often a squash merge made through the API, absent from this checkout.
+                self.git("fetch", "--no-tags", "--quiet", self.push_url, entry["base"], timeout=300)
                 self.git("bundle", "verify", str(path))
                 self.git("fetch", "--no-tags", "--quiet", str(path), "refs/heads/lane:" + ref)
                 if self.git("rev-parse", ref) != head:
@@ -1254,7 +1264,7 @@ class Controller:
         self.save()
         prompt = ("Implement Togavsu assignment " + task + ". Read AGENTS.md, the full togavsu-core-prd.md, "
             "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. Your exact approved assignment follows. "
-            "Work in this isolated Cursor-hosted VM on your own branch using synthetic data only. "
+            "Work in your isolated hosted workspace (a Cursor-hosted VM or a GitHub-hosted lane runner) on your own branch using synthetic data only. "
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
             "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "
             "Commit/push explicit paths and open a ready PR when your bounded assignment is complete. "

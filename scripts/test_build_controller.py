@@ -6,6 +6,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -2336,6 +2337,10 @@ class LaneBackendTests(unittest.TestCase):
         self.state.mkdir()
         self.remote = FakeLaneRemote(self.state, self.control, self.bare)
         self.record = {"agent_id": LANE_AGENT}
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("CURSOR_API_KEY", None)
 
     def launch(self, prompt="Implement Togavsu assignment one."):
         return self.remote.cursor("POST", "/agents", {"agentId": LANE_AGENT, "name": "Togavsu one",
@@ -2474,6 +2479,108 @@ class LaneBackendTests(unittest.TestCase):
             self.launch(os.urandom(60_000).hex())
         self.assertFalse([c for c in self.remote.calls if c[1].endswith("/dispatches")])
         self.assertFalse((self.state / "lane-agents.json").exists())
+
+    def test_base_missing_from_control_checkout_is_fetched_before_verify(self):
+        # Main advanced by an API squash merge that the control checkout never fetched.
+        subprocess.run(["git", "clone", "-q", str(self.bare), str(self.worker)], check=True)
+        self.git(self.worker, "config", "user.email", "t@example.com")
+        self.git(self.worker, "config", "user.name", "t")
+        self.git(self.worker, "checkout", "-q", "-B", "main", "origin/main")
+        (self.worker / "merged.txt").write_text("merged\n")
+        self.git(self.worker, "add", "merged.txt")
+        self.git(self.worker, "commit", "-q", "-m", "squash merge")
+        self.git(self.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+        self.base = self.git(self.worker, "rev-parse", "HEAD")
+        self.assertNotEqual(subprocess.run(["git", "-C", str(self.control), "cat-file", "-e", self.base]).returncode, 0)
+        run_id = self.launch()["run"]["id"]
+        head, bundle = self.lane_commit(self.base, "first")
+        self.finish(run_id, self.base, head, bundle)
+        self.assertEqual(self.remote.agent(self.record)["status"], "FINISHED")
+        self.assertEqual(self.git(self.bare, "rev-parse", "refs/heads/claude/togavsu-one-12345678"), head)
+
+    def test_agents_launched_on_cursor_keep_using_cursor(self):
+        legacy = {"agent_id": "bc-c1cb681b-2606-42d3-b619-5750b5561c4a"}
+        seen = []
+        def cursor(remote, method, path, body=None):
+            seen.append((method, path))
+            if path == "/agents/" + legacy["agent_id"]:
+                return {"id": legacy["agent_id"], "status": "ACTIVE", "latestRunId": "run-cursor"}
+            return {"id": "run-cursor", "agentId": legacy["agent_id"], "status": "RUNNING", "git": {}}
+        os.environ["CURSOR_API_KEY"] = "test-only"
+        with patch.object(Remote, "cursor", cursor):
+            snapshot = self.remote.agent(legacy)
+            self.remote.cursor("POST", "/agents/" + legacy["agent_id"] + "/runs", {"prompt": {"text": "fix"}})
+        self.assertEqual(snapshot["status"], "RUNNING")
+        self.assertEqual([m for m, _ in seen], ["GET", "GET", "POST"])
+        self.assertFalse([c for c in self.remote.calls if c[1].endswith("/dispatches")])
+        os.environ.pop("CURSOR_API_KEY")
+        with self.assertRaises(AgentNotFound):
+            self.remote.agent(legacy)
+
+
+class LanePackageScanTests(unittest.TestCase):
+    """Runs the Package result step of the protected lane workflow against a local repository."""
+
+    TOKEN = "sk-ant-oat01-" + "Q" * 48
+
+    def setUp(self):
+        text = (Path(__file__).resolve().parents[1] / ".github/workflows/lane-agent.yml").read_text()
+        step = text[text.index("- name: Package result"):]
+        start = step.index("python3 - <<'PY'\n") + len("python3 - <<'PY'\n")
+        lines = []
+        for line in step[start:].splitlines():
+            if line.strip() == "PY":
+                break
+            lines.append(line)
+        indent = min(len(l) - len(l.lstrip()) for l in lines if l.strip())
+        self.script = "\n".join(l[indent:] for l in lines)
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.repo = Path(self.temp.name) / "repo"
+        self.runner = Path(self.temp.name) / "runner"
+        self.runner.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        for key, value in (("user.email", "t@example.com"), ("user.name", "t")):
+            self.git("config", key, value)
+        self.commit("README", "base\n")
+        self.base = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "-b", "lane")
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.repo)] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, name, text):
+        path = self.repo / name
+        if text is None:
+            path.unlink()
+            self.git("rm", "-q", name)
+        else:
+            path.write_text(text)
+            self.git("add", name)
+        self.git("commit", "-q", "-m", "change " + name)
+
+    def package(self):
+        env = dict(os.environ, RUNNER_TEMP=str(self.runner), LANE_BASE=self.base, LANE_AGENT=LANE_AGENT,
+                   LANE_RUN="run-1", LANE_TASK="one", LANE_BRANCH="claude/togavsu-one-12345678",
+                   CLAUDE_OUTCOME="success", SECRET_OAUTH=self.TOKEN, SECRET_GITHUB="")
+        return subprocess.run([sys.executable, "-I", "-c", self.script], cwd=self.repo, env=env, capture_output=True, text=True)
+
+    def test_token_added_then_removed_is_withheld(self):
+        self.commit("debug.txt", "env dump " + self.TOKEN + "\n")
+        self.commit("debug.txt", None)
+        self.assertEqual(self.git("diff", self.base + "..HEAD"), "")
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("credential", result.stderr)
+        self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    def test_clean_history_is_bundled(self):
+        self.commit("work.txt", "done\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.runner / "lane-pack" / "lane.bundle").exists())
+        data = json.loads((self.runner / "lane-pack" / "lane-result.json").read_text())
+        self.assertEqual(data["head"], self.git("rev-parse", "lane"))
 
 
 if __name__ == "__main__":
