@@ -14,13 +14,15 @@ Read [interfaces](interfaces.md), [backup format](backup-format.md), [CI](ci.md)
 
 Reviewed the diff from main `1b00ff0ce02d42bc03692509d9a8c24c085d91f9` to this branch. The change stays on the Go standard library and the existing supervisor, destination, and HTTP client paths. No PRD behavior was removed. HTTP 408 and 5xx stay inside `ambiguousRemote`, so `definiteRejection`, `recordMutation`, and the S3 client share one rule. The parent-directory retry, the post-rename uncertain receipt, and the delete directory sync are the durability behavior; cutting them would let a receipt be confirmed or dropped too early. Plaintext backup workspaces stay off the backup volume and are removed on recovery. Destination secrets are sealed with the existing installer field key. A raw local errno before publication is a completed failure. A rename is not called a rollback until recovery commits that operation row cancelled, and a late command rejects a cancelled or missing operation. Restore SQL is streamed instead of copied into the system temp directory. No further deletion was safe.
 
-`git diff --numstat 1b00ff0ce02d42bc03692509d9a8c24c085d91f9`: 74 files, 28084 added, 1 removed, net 28083.
+`git diff --numstat 018bc3f2213b5e4b665db4f9e781304a9c8a9d45` (current main): 83 files, 30074 added, 1 removed, net 30073.
 
 This pass against `1ec2902f167bcd9e7bf279b0aca804518e6d1f19`: 6 files, 634 added, 57 removed, net 577.
 
-Path-upload repair against `b0a086ea417abbbf71b500f81997eb5f543f2c07`: 16 files, 1844 added, 281 removed, net 1563. The new pre-journal ceiling is a `ponytail` comment in `putFile` and in the path-upload lifecycle. `PONYTAIL-DEBT.md` is outside this assignment, so its debt count stays 19.
+Path-upload repair against `b0a086ea417abbbf71b500f81997eb5f543f2c07`: 16 files, 1844 added, 281 removed, net 1563. The pre-journal ceiling is a `ponytail` comment in `putFile` and in the path-upload lifecycle, recorded as platform ceiling 14 in `PONYTAIL-DEBT.md`.
 
-`PONYTAIL-DEBT.md` debt count: 19.
+Backup publication cleanup against `163d21cbbea8ac39c6b5f7e8fdd90502690fd162`: 2 files, 429 added, 5 removed, net 424. An interrupted publication now removes its partial archive, checksum and metadata, and a restart reconciles any intent a killed process left behind.
+
+`PONYTAIL-DEBT.md` debt count: 20.
 
 Mounted SMB and NFS shares are supported. User xattrs are used when the filesystem accepts them. A share that returns ENOTSUP or EOPNOTSUPP stores the same ownership token in a fixed prefix of the temporary file and publishes a copy of the payload without that prefix. A private hardlink is created when the filesystem allows it. Recovery never deletes by a name prefix or by an inode number alone. The staged objects, their receipt states, and the crash windows are in [path upload lifecycle](path-upload-lifecycle.md).
 
