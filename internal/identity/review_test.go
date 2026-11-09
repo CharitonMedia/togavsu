@@ -35,6 +35,32 @@ func TestTOTPFailuresLockAcrossLogins(t *testing.T) {
 	}
 }
 
+func TestLockoutLastsFromTheFailureThatReachedTheLimit(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, _ = b.enrollAdmin(t)
+	gaps := []time.Duration{0, time.Minute, time.Minute, time.Minute, 11 * time.Minute}
+	for i, gap := range gaps {
+		b.clk.t = b.clk.t.Add(gap)
+		_, err := b.svc.Login(ctx, "ada@example.test", "wrong-horse-battery")
+		if i < 4 && codeOf(err) != domain.CodeUnauthenticated {
+			t.Fatalf("guess %d: %v", i, err)
+		}
+		if i == 4 && codeOf(err) != "locked_out" {
+			t.Fatalf("guess %d: %v", i, err)
+		}
+	}
+	b.clk.t = b.clk.t.Add(2 * time.Minute)
+	if _, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery"); codeOf(err) != "locked_out" {
+		t.Fatal(err)
+	}
+	b.clk.t = b.clk.t.Add(14 * time.Minute)
+	login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil || login.TOTPToken == "" {
+		t.Fatal(login, err)
+	}
+}
+
 func TestUnknownEmailLockoutMatchesKnownAccount(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)

@@ -99,6 +99,81 @@ func mustAudit(t *testing.T, b box) *audit.Service {
 	return svc
 }
 
+func TestNarrowBearerCannotManageSessionsOrAccount(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	started, admin := b.enrollAdmin(t)
+	staff, err := b.svc.CreateUser(ctx, admin, NewUser{
+		Name: "Sam Staff", Email: "sam@example.test", Password: "correct-horse-battery",
+		Roles: []domain.Role{domain.RoleStaff},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminTok, err := b.svc.IssueToken(ctx, admin, Issue{Name: "read", UserID: admin.Principal.UserID, Scopes: []string{"matters:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminBearer, err := b.svc.Authenticate(ctx, Presented{Bearer: adminTok.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staffTok, err := b.svc.IssueToken(ctx, admin, Issue{Name: "staff", UserID: staff.ID, Scopes: []string{"matters:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staffBearer, err := b.svc.Authenticate(ctx, Presented{Bearer: staffTok.Secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keep, err := b.svc.IssueToken(ctx, admin, Issue{Name: "keep", UserID: admin.Principal.UserID, Scopes: []string{"matters:read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.ListSessions(ctx, adminBearer); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.ListSessions(ctx, staffBearer); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if err := b.svc.DeleteSession(ctx, adminBearer, started.SessionID); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if err := b.svc.DeleteSession(ctx, staffBearer, started.SessionID); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.Authenticate(ctx, Presented{SessionToken: started.SessionToken}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.ListTokens(ctx, adminBearer); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.GetToken(ctx, adminBearer, keep.Token.ID); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if err := b.svc.RevokeToken(ctx, adminBearer, keep.Token.ID); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.Authenticate(ctx, Presented{Bearer: keep.Secret}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.svc.ChangePassword(ctx, adminBearer, "correct-horse-battery", "correct-horse-updated"); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.ResetTOTP(ctx, adminBearer, Factor{Password: "correct-horse-battery"}); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.RegenerateRecovery(ctx, adminBearer, Factor{Password: "correct-horse-battery"}); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.Reauthenticate(ctx, adminBearer, Factor{Password: "correct-horse-battery"}, "resetTotp"); codeOf(err) != "scope_denied" {
+		t.Fatal(err)
+	}
+}
+
 func codeOf(err error) string {
 	var api *domain.APIError
 	if errors.As(err, &api) {

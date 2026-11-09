@@ -54,11 +54,13 @@ func (s *Service) authSession(ctx context.Context, in Presented) (Caller, error)
 		return Caller{}, err
 	}
 	now := s.now().UTC()
-	row.IdleExpiresAt = now.Add(idle)
-	row.ExpiresAt = row.IdleExpiresAt
-	row.UpdatedAt = now
-	if err := s.sessions.Update(ctx, row); err != nil {
-		return Caller{}, err
+	exp := now.Add(idle)
+	touch, ok := s.sessions.(sessionTouch)
+	if !ok {
+		return Caller{}, errors.New("identity: session store cannot slide idle time")
+	}
+	if err := touch.Touch(ctx, row.ID, exp, exp, now); err != nil {
+		return Caller{}, domain.Unauthenticated("sign in is required")
 	}
 	return Caller{Principal: domain.Principal{
 		UserID: user.ID, Roles: roles, Source: domain.SourceUI, SessionID: row.ID,
@@ -169,6 +171,9 @@ func (s *Service) Logout(ctx context.Context, caller Caller) error {
 
 // ListSessions returns the caller's sessions. An admin sees every session.
 func (s *Service) ListSessions(ctx context.Context, caller Caller) ([]SessionView, error) {
+	if err := caller.RequireScopes("sessions:read"); err != nil {
+		return nil, err
+	}
 	if caller.Principal.UserID.IsZero() && !caller.Principal.HasRole(domain.RoleAdmin) {
 		return nil, domain.Unauthenticated("sign in is required")
 	}
@@ -195,6 +200,9 @@ func (s *Service) ListSessions(ctx context.Context, caller Caller) ([]SessionVie
 
 // DeleteSession revokes one session. Another user's session is not found.
 func (s *Service) DeleteSession(ctx context.Context, caller Caller, id domain.ID) error {
+	if err := caller.RequireScopes("sessions:write"); err != nil {
+		return err
+	}
 	row, err := s.sessions.Get(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return domain.NotFound("session")

@@ -219,6 +219,16 @@ func (s pgSessions) Update(ctx context.Context, row domain.Session) error {
 		domain.UnixMicroUTC(row.UpdatedAt), row.TokenHash, domain.UnixMicroUTC(row.ExpiresAt), domain.UnixMicroUTC(row.IdleExpiresAt), nullTime(row.RevokedAt), string(row.ID))
 }
 
+// Touch slides idle time only while revoked_at is still null.
+func (s pgSessions) Touch(ctx context.Context, id domain.ID, idle, expires, updated time.Time) error {
+	err := s.execOne(ctx, `UPDATE sessions SET idle_expires_at=?, expires_at=?, updated_at=? WHERE id=? AND revoked_at IS NULL`,
+		domain.UnixMicroUTC(idle), domain.UnixMicroUTC(expires), domain.UnixMicroUTC(updated), string(id))
+	if errors.Is(err, repository.ErrNotFound) {
+		return repository.ErrConflict
+	}
+	return err
+}
+
 // Claim revokes a challenge only while revoked_at is still null.
 func (s pgSessions) Claim(ctx context.Context, id domain.ID, at time.Time) error {
 	err := s.execOne(ctx, `UPDATE sessions SET revoked_at=?, updated_at=? WHERE id=? AND revoked_at IS NULL`,

@@ -117,6 +117,24 @@ func (s sessionStore) Update(_ context.Context, row domain.Session) error {
 	return nil
 }
 
+// Touch slides the idle deadline only while the session is not revoked.
+func (s sessionStore) Touch(_ context.Context, id domain.ID, idle, expires, updated time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, ok := s.sessions[id]
+	if !ok {
+		return repository.ErrNotFound
+	}
+	if row.RevokedAt != nil {
+		return repository.ErrConflict
+	}
+	row.IdleExpiresAt = idle
+	row.ExpiresAt = expires
+	row.UpdatedAt = updated
+	s.sessions[id] = row
+	return nil
+}
+
 // Claim revokes a challenge only while it is still open.
 func (s sessionStore) Claim(_ context.Context, id domain.ID, at time.Time) error {
 	s.mu.Lock()

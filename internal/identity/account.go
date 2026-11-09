@@ -292,6 +292,9 @@ func (s *Service) auditCreatedUser(ctx context.Context, who domain.Principal, us
 
 // ChangePassword replaces the caller's password and revokes other sessions.
 func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, next string) error {
+	if err := caller.RequireScopes("profile:write"); err != nil {
+		return err
+	}
 	if caller.Principal.UserID.IsZero() {
 		return domain.Unauthenticated("sign in is required")
 	}
@@ -450,6 +453,9 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 
 // ResetTOTP starts a replacement secret. The current secret stays active.
 func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (Enrollment, error) {
+	if err := caller.RequireScopes("profile:write"); err != nil {
+		return Enrollment{}, err
+	}
 	if err := s.checkFactor(ctx, caller, factor, "resetTotp"); err != nil {
 		return Enrollment{}, err
 	}
@@ -535,6 +541,9 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 
 // RegenerateRecovery replaces unused codes after a fresh factor check.
 func (s *Service) RegenerateRecovery(ctx context.Context, caller Caller, factor Factor) ([]string, error) {
+	if err := caller.RequireScopes("profile:write"); err != nil {
+		return nil, err
+	}
 	if err := s.checkFactor(ctx, caller, factor, "regenerateRecoveryCodes"); err != nil {
 		return nil, err
 	}
@@ -547,6 +556,9 @@ func (s *Service) RegenerateRecovery(ctx context.Context, caller Caller, factor 
 
 // Reauthenticate issues a single-use token bound to the user and the action.
 func (s *Service) Reauthenticate(ctx context.Context, caller Caller, factor Factor, action string) (string, error) {
+	if err := caller.RequireScopes("profile:write"); err != nil {
+		return "", err
+	}
 	if action == "" {
 		return "", domain.Invalid("action", "action is required")
 	}

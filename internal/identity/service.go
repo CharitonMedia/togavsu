@@ -85,6 +85,10 @@ type sessionClaim interface {
 	Claim(ctx context.Context, id domain.ID, at time.Time) error
 }
 
+type sessionTouch interface {
+	Touch(ctx context.Context, id domain.ID, idle, expires, updated time.Time) error
+}
+
 type userLock interface {
 	WithUserLock(ctx context.Context, id domain.ID, fn func() error) error
 }
@@ -236,8 +240,9 @@ func (s *Service) locked(ctx context.Context, user domain.User) (bool, error) {
 
 func (s *Service) failureLocked(ctx context.Context, entity string, id domain.ID, limit int, window time.Duration) (bool, error) {
 	now := s.now().UTC()
+	// Look back two windows so a lock that started inside the last window still sees the failures that caused it.
 	rows, err := s.audit.Rows(ctx, audit.RowQuery{
-		Entity: entity, EntityID: id, Field: signInField, Since: now.Add(-window),
+		Entity: entity, EntityID: id, Field: signInField, Since: now.Add(-2 * window),
 	})
 	if err != nil {
 		return false, err
@@ -250,7 +255,7 @@ func (s *Service) failureLocked(ctx context.Context, entity string, id domain.ID
 			sawSuccess = true
 		}
 	}
-	var failures int
+	var failures []time.Time
 	for i, row := range rows {
 		if sawSuccess && i <= lastSuccess {
 			continue
@@ -258,9 +263,17 @@ func (s *Service) failureLocked(ctx context.Context, entity string, id domain.ID
 		if row.NewValue != "failed" {
 			continue
 		}
-		failures++
+		failures = append(failures, row.CreatedAt)
 	}
-	return failures >= limit, nil
+	for i := limit - 1; i < len(failures); i++ {
+		if failures[i].Sub(failures[i-limit+1]) > window {
+			continue
+		}
+		if now.Before(failures[i].Add(window)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) noteSignIn(ctx context.Context, user domain.User, roles []domain.Role, outcome string) error {

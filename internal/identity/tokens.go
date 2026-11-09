@@ -116,6 +116,9 @@ func (s *Service) allowedScopes(ctx context.Context, in Issue) (map[string]struc
 
 // ListTokens returns the caller's tokens. An admin sees every token.
 func (s *Service) ListTokens(ctx context.Context, caller Caller) ([]TokenView, error) {
+	if err := caller.RequireScopes("tokens:read"); err != nil {
+		return nil, err
+	}
 	filter := repository.Filter{}
 	if !caller.Principal.HasRole(domain.RoleAdmin) {
 		if caller.Principal.UserID.IsZero() {
@@ -139,6 +142,9 @@ func (s *Service) ListTokens(ctx context.Context, caller Caller) ([]TokenView, e
 
 // GetToken returns one token. Another user's token is not found.
 func (s *Service) GetToken(ctx context.Context, caller Caller, id domain.ID) (TokenView, error) {
+	if err := caller.RequireScopes("tokens:read"); err != nil {
+		return TokenView{}, err
+	}
 	row, err := s.visibleToken(ctx, caller, id)
 	if err != nil {
 		return TokenView{}, err
@@ -148,6 +154,9 @@ func (s *Service) GetToken(ctx context.Context, caller Caller, id domain.ID) (To
 
 // RevokeToken spends a token. Another user's token is not found.
 func (s *Service) RevokeToken(ctx context.Context, caller Caller, id domain.ID) error {
+	if err := caller.RequireScopes("tokens:write"); err != nil {
+		return err
+	}
 	row, err := s.visibleToken(ctx, caller, id)
 	if err != nil {
 		return err
