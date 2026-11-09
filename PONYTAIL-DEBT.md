@@ -12,6 +12,10 @@ ponytail: ceiling: OLE magic, a v3 header, and the WordDocument stream name. Wor
 
 ponytail: ceiling: The trailer points at a Standard encrypt dictionary. The streams are still plaintext, so a reader that ignores /Encrypt will open the page. Upgrade path: write a real Standard-security encrypted PDF once the product PDF library reports encryption, then set product_ready true. trigger: The doc-tender package opens this file as an ordinary one-page PDF instead of an encrypted file.
 
+## scripts/build_controller.py problem fingerprints
+
+ponytail: ceiling: problem identity is the exact normalized finding text, so a reviewer that rewords one unresolved defect on each head gets a fresh per-problem budget every time; only the per-assignment correction volume bounds it (attention at 10, corrections held at 30 by default). Upgrade path: match findings by file plus a stable defect key the review schema requires, or a similarity check against prior findings for the same assignment. trigger: an assignment reaches `stalled.kind=correction_ceiling` and its recent findings name the same file and defect in different words.
+
 ## Platform ceilings
 
 1. `internal/supervisor/config.go` — firm settings come from environment values. Ceiling: no settings table. The core AC-030 walk skips `cmd/supervisor` and `internal/supervisor` because this is a separate process; a direct `ScanSource` call still reports a literal there. Upgrade: a SettingsReader backed by the core registry. Trigger: the settings registry is present in the database this process can read.
@@ -37,4 +41,4 @@ ponytail: ceiling: The trailer points at a Standard encrypt dictionary. The stre
 3. `internal/settings/check.go` — `fixedSite` skips integer literals inside enumerated functions (cents, UUID layout, synthetic seed builders, version bands, migration indexes, the ledger baseline, bootstrap key length and process status, sealing key width, and setting upsert). Ceiling: a new configurable literal inside one of those functions is not reported. A different function in the same file is reported. The check is not AC-030 acceptance. Upgrade path: delete that function from `fixedSite`. Trigger: a configurable literal is added inside a listed function.
 4. `internal/db/migrations/0001_core_schema.sql` — append-only tables are not immutable at the database. Interfaces omit update and delete, and there is no trigger because PRD section 6 forbids business-logic triggers. Ceiling: `TestAppendOnlyNotEnforcedAtDatabase` shows the application role can UPDATE and DELETE those rows. Upgrade path: the owning task rejects hostile UPDATE and DELETE, including raw SQL from a non-owner role, and replaces that gap test. Owners: identity `audit_log` (AC-024), practice `events` (AC-024), trust `trust_ledger` (AC-006), files `file_versions` and `file_renditions` (AC-039), modules `ai_call_log` (AC-031). Trigger: that task's acceptance claims the ledger cannot be edited or deleted.
 
-Debt count: 21.
+Debt count: 22.
