@@ -260,29 +260,83 @@ func TestFailedNightlyBackupIsRecordedBackedOffAndNotified(t *testing.T) {
 	}
 }
 
-func TestScheduledUpdateFailureIsRecordedAndBackedOff(t *testing.T) {
+type failingRegistry struct{ err error }
+
+func (f failingRegistry) Latest(context.Context) (Release, error) { return Release{}, f.err }
+
+func TestScheduledUpdateFailureIsRecordedBackedOffAndNotifiedOnlyWhenConfigured(t *testing.T) {
+	cases := map[string]struct {
+		updater func(ops *Operations, clock *time.Time) *Updater
+		notices int
+	}{
+		// No updater wired: Operations.Update returns ErrReleaseIndexUnconfigured.
+		"no updater": {func(*Operations, *time.Time) *Updater { return nil }, 0},
+		// The shipped IndexRegistry with no TOGAVSU_RELEASE_INDEX.
+		"no release index": {func(ops *Operations, clock *time.Time) *Updater {
+			var order []string
+			rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Image: "togavsu-core:1.0.0", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
+			up := testUpdater(t, rt, &order)
+			up.Now = func() time.Time { return *clock }
+			up.Ledger = ops.Ledger
+			up.Registry = IndexRegistry{}
+			return up
+		}, 0},
+		// A configured index that cannot be read is a real failure.
+		"release index unreachable": {func(ops *Operations, clock *time.Time) *Updater {
+			var order []string
+			rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Image: "togavsu-core:1.0.0", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
+			up := testUpdater(t, rt, &order)
+			up.Now = func() time.Time { return *clock }
+			up.Ledger = ops.Ledger
+			up.Registry = failingRegistry{errors.New("release index: connection refused")}
+			return up
+		}, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			clock := time.Date(2026, 3, 4, 2, 5, 0, 0, time.UTC)
+			ops := scheduleOps(t, &clock, nil)
+			ops.Updater = tc.updater(ops, &clock)
+			sched := &Scheduler{Ops: ops, Schedule: testSchedule()}
+			failed := map[string]string{"task": scheduledUpdate, "status": scheduledFailed}
+			for _, at := range []time.Time{clock, clock.Add(30 * time.Second), clock.Add(14 * time.Minute)} {
+				clock = at
+				if err := sched.Tick(context.Background(), at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if n := countEvents(t, ops.Ledger, eventScheduled, failed); n != 1 {
+				t.Fatalf("update attempts inside backoff: %d", n)
+			}
+			clock = clock.Add(time.Minute)
+			if err := sched.Tick(context.Background(), clock); err != nil {
+				t.Fatal(err)
+			}
+			if n := countEvents(t, ops.Ledger, eventScheduled, failed); n != 2 {
+				t.Fatalf("update retry after backoff: %d", n)
+			}
+			if n := subjects(t, ops.Outbox, "Scheduled update check failed"); n != tc.notices {
+				t.Fatalf("update failure notices %d, want %d", n, tc.notices)
+			}
+		})
+	}
+}
+
+func TestNightlyBackupFailureNotifiesEvenWhenUpdatesAreUnconfigured(t *testing.T) {
 	clock := time.Date(2026, 3, 4, 2, 5, 0, 0, time.UTC)
-	ops := scheduleOps(t, &clock, nil)
+	ops := scheduleOps(t, &clock, func(context.Context, io.Writer) error { return errors.New("pg_dump: disk full") })
 	sched := &Scheduler{Ops: ops, Schedule: testSchedule()}
-	failed := map[string]string{"task": scheduledUpdate, "status": scheduledFailed}
-	for _, at := range []time.Time{clock, clock.Add(30 * time.Second), clock.Add(14 * time.Minute)} {
-		clock = at
-		if err := sched.Tick(context.Background(), at); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if n := countEvents(t, ops.Ledger, eventScheduled, failed); n != 1 {
-		t.Fatalf("update attempts inside backoff: %d", n)
-	}
-	if updateNotes := subjects(t, ops.Outbox, "Scheduled update check failed"); updateNotes != 1 {
-		t.Fatalf("update failure notices %d", updateNotes)
-	}
-	clock = clock.Add(time.Minute)
 	if err := sched.Tick(context.Background(), clock); err != nil {
 		t.Fatal(err)
 	}
-	if n := countEvents(t, ops.Ledger, eventScheduled, failed); n != 2 {
-		t.Fatalf("update retry after backoff: %d", n)
+	if n := subjects(t, ops.Outbox, "Nightly backup failed"); n != 1 {
+		t.Fatalf("backup notices %d", n)
+	}
+	if n := subjects(t, ops.Outbox, "Scheduled update check failed"); n != 0 {
+		t.Fatalf("unconfigured update mailed: %d", n)
+	}
+	if n := countEvents(t, ops.Ledger, eventScheduled, map[string]string{"task": scheduledUpdate, "status": scheduledFailed}); n != 1 {
+		t.Fatalf("unconfigured update not recorded: %d", n)
 	}
 }
 

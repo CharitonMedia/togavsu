@@ -176,7 +176,9 @@ func StateFromLedger(events []Event) ScheduleState {
 // Scheduler runs the scheduled supervisor work on each tick. A failed nightly
 // backup or update check is written to the ledger and retried with backoff
 // instead of on every tick. The first failure of a firm-local day goes to the
-// admin outbox; later retries that day are in the ledger only.
+// admin outbox; later retries that day are in the ledger only. A nightly
+// backup failure is always notified. An update check that failed only
+// because updates are not configured is not.
 type Scheduler struct {
 	Ops      *Operations
 	Schedule Schedule
@@ -189,6 +191,13 @@ type Scheduler struct {
 func notAttempted(err error) bool {
 	return errors.Is(err, ErrBusy) || errors.Is(err, ErrShuttingDown) ||
 		errors.Is(err, ErrOutsideWindow) || errors.Is(err, ErrUpdatesPaused)
+}
+
+// updatesUnconfigured errors mean this stack has no release index or no
+// release key yet. Signed releases are pending (AC-016), so the failure is
+// recorded and backed off like any other, but no admin notice is sent.
+func updatesUnconfigured(err error) bool {
+	return errors.Is(err, ErrReleaseIndexUnconfigured) || errors.Is(err, ErrReleaseKeyUnconfigured)
 }
 
 // Tick runs whatever is due at now. It returns the ledger read error, if any;
@@ -206,7 +215,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 	due := s.Schedule.Due(now, state, s.Paused)
 	if due.Backup {
 		if _, err := o.CreateBackup(ctx, reasonNightly); err != nil && !notAttempted(err) {
-			s.failed(ctx, now, scheduledBackup, state.BackupFailures, err,
+			s.failed(ctx, now, scheduledBackup, state.BackupFailures, err, true,
 				"Nightly backup failed",
 				"The nightly backup did not complete.")
 		}
@@ -215,7 +224,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 		result, err := o.Update(ctx, false)
 		switch {
 		case err != nil && !notAttempted(err):
-			s.failed(ctx, now, scheduledUpdate, state.UpdateFailures, err,
+			s.failed(ctx, now, scheduledUpdate, state.UpdateFailures, err, !updatesUnconfigured(err),
 				"Scheduled update check failed",
 				"The scheduled update check did not complete. The running version was left in place.")
 		case err == nil && result.Status == "up_to_date":
@@ -241,7 +250,7 @@ func (s *Scheduler) Tick(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func (s *Scheduler) failed(ctx context.Context, now time.Time, task string, prior []time.Time, cause error, subject, lead string) {
+func (s *Scheduler) failed(ctx context.Context, now time.Time, task string, prior []time.Time, cause error, notify bool, subject, lead string) {
 	o := s.Ops
 	local := now.In(s.Schedule.location())
 	attempt := len(failuresToday(prior, local)) + 1
@@ -254,7 +263,7 @@ func (s *Scheduler) failed(ctx context.Context, now time.Time, task string, prio
 		"retry_after": retry.UTC().Format(time.RFC3339),
 		"error":       msg,
 	})
-	if attempt != 1 || o.Outbox == nil {
+	if !notify || attempt != 1 || o.Outbox == nil {
 		return
 	}
 	body := lead + " The supervisor will try again after " + retry.Format("2006-01-02 15:04 MST") +

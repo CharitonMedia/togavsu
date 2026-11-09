@@ -163,6 +163,12 @@ func (u *Updater) Apply(ctx context.Context, force bool) (UpdateResult, error) {
 	}
 	if err := u.Verifier.Verify(ctx, release.Image); err != nil {
 		u.record("update", map[string]string{"status": "refused", "reason": "signature", "image": release.Image})
+		// A missing release key is the known pending state of an install
+		// without signed releases (AC-016). It is refused and recorded, and
+		// it does not mail the admin every night.
+		if errors.Is(err, ErrReleaseKeyUnconfigured) {
+			return UpdateResult{Status: "refused", Reason: "not_configured", From: current.Image, To: release.Image}, err
+		}
 		u.notify(ctx, "Update refused", "The new core image failed signature verification. The running version was left in place.")
 		return UpdateResult{Status: "refused", Reason: "signature", From: current.Image, To: release.Image}, ErrSignature
 	}
@@ -1045,7 +1051,7 @@ type CLIVerifier struct {
 
 func (v CLIVerifier) Verify(ctx context.Context, image string) error {
 	if v.KeyPath == "" {
-		return fmt.Errorf("%w: release key is not configured", ErrSignature)
+		return ErrReleaseKeyUnconfigured
 	}
 	if image == "" {
 		return ErrSignature

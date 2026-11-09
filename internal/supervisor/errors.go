@@ -6,13 +6,16 @@ import (
 )
 
 var (
-	ErrPassphraseRequired       = errors.New("backup passphrase is not set")
-	ErrDecrypt                  = errors.New("backup could not be decrypted")
-	ErrChecksum                 = errors.New("backup checksum mismatch")
-	ErrNotFound                 = errors.New("not found")
-	ErrOutsideWindow            = errors.New("outside update window")
-	ErrUpdatesPaused            = errors.New("updates are paused")
-	ErrSignature                = errors.New("image signature rejected")
+	ErrPassphraseRequired = errors.New("backup passphrase is not set")
+	ErrDecrypt            = errors.New("backup could not be decrypted")
+	ErrChecksum           = errors.New("backup checksum mismatch")
+	ErrNotFound           = errors.New("not found")
+	ErrOutsideWindow      = errors.New("outside update window")
+	ErrUpdatesPaused      = errors.New("updates are paused")
+	ErrSignature          = errors.New("image signature rejected")
+	// ErrReleaseKeyUnconfigured is a signature refusal because no release
+	// key is installed. It is still ErrSignature for callers and the API.
+	ErrReleaseKeyUnconfigured   = fmt.Errorf("%w: release key is not configured", ErrSignature)
 	ErrBusy                     = errors.New("another supervisor operation is running")
 	ErrReleaseIndexUnconfigured = errors.New("release index is not configured")
 	ErrMigratorUnconfigured     = errors.New("migrator is not configured")

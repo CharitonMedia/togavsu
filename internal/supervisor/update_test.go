@@ -264,9 +264,11 @@ func TestUpdateRejectsBadSignatureAndKeepsCore(t *testing.T) {
 	var order []string
 	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Image: "togavsu-core:1.0.0", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
 	up := testUpdater(t, rt, &order)
-	up.Verifier = CLIVerifier{}
+	up.Verifier = CLIVerifier{KeyPath: "/appsecrets/release.pub", Run: func(context.Context, string, ...string) ([]byte, error) {
+		return []byte("no matching signatures"), errors.New("exit status 1")
+	}}
 	_, err := up.Apply(context.Background(), false)
-	if !errors.Is(err, ErrSignature) {
+	if !errors.Is(err, ErrSignature) || errors.Is(err, ErrReleaseKeyUnconfigured) {
 		t.Fatalf("got %v", err)
 	}
 	for _, step := range order {
@@ -277,6 +279,28 @@ func TestUpdateRejectsBadSignatureAndKeepsCore(t *testing.T) {
 	notes, err := upOutbox(t, up).List()
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("notes %+v %v", notes, err)
+	}
+}
+
+func TestUpdateWithoutReleaseKeyIsRefusedWithoutNotice(t *testing.T) {
+	var order []string
+	rt := &scriptRuntime{order: &order, cores: []ContainerInfo{{ID: "old", Image: "togavsu-core:1.0.0", Labels: map[string]string{"togavsu.version": "1.0.0"}}}}
+	up := testUpdater(t, rt, &order)
+	up.Verifier = CLIVerifier{}
+	res, err := up.Apply(context.Background(), false)
+	if !errors.Is(err, ErrReleaseKeyUnconfigured) || !errors.Is(err, ErrSignature) || res.Reason != "not_configured" {
+		t.Fatalf("got %+v %v", res, err)
+	}
+	for _, step := range order {
+		if step == "stop:old" || step == "backup" || strings.HasPrefix(step, "migrate") || strings.HasPrefix(step, "pull:") {
+			t.Fatalf("unsigned update continued: %v", order)
+		}
+	}
+	if notes, err := upOutbox(t, up).List(); err != nil || len(notes) != 0 {
+		t.Fatalf("missing key mailed the admin: %+v %v", notes, err)
+	}
+	if evs, err := up.Ledger.List("update"); err != nil || len(evs) != 1 || evs[0].Fields["status"] != "refused" {
+		t.Fatalf("refusal not recorded: %+v %v", evs, err)
 	}
 }
 
