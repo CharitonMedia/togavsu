@@ -23,7 +23,8 @@ type Service struct {
 	Policy   domain.Policy
 	now      func() time.Time
 	newID    func() (domain.ID, error)
-	// key seals SSN and EIN. Identity replaces it with the installer key.
+	// key seals SSN and EIN.
+	// ponytail: ceiling: when New is called without a key, each process generates its own AES-256-GCM key. A restart cannot open identifiers sealed by the previous key, and redactContact then returns an empty value. Upgrade path: identity calls NewWithKey with the installer Docker secret. Trigger: a persistent Store is constructed.
 	key []byte
 }
 
@@ -39,7 +40,16 @@ func (quietAudit) SettingChanged(context.Context, settings.Change) error { retur
 
 // New builds a practice service. settings may be nil in tests; registry defaults are then used as fallbacks.
 func New(db Store, reg *settings.Registry) *Service {
-	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID, key: identifierKey()}
+	return NewWithKey(db, reg, nil)
+}
+
+// NewWithKey builds a practice service that seals identifiers with key.
+// key must be 32 bytes. A nil or wrong-length key falls back to a process-local key.
+func NewWithKey(db Store, reg *settings.Registry, key []byte) *Service {
+	if len(key) != 32 {
+		key = identifierKey()
+	}
+	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID, key: append([]byte(nil), key...)}
 	s.Policy = domain.Policy{Walls: wallSource{s}}
 	return s
 }

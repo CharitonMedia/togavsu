@@ -55,7 +55,12 @@ func (h *Handler) contactsJSON(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		out = append(out, contactDoc(row))
+		doc, err := h.contactDocument(r.Context(), p, row)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out = append(out, doc)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
@@ -70,7 +75,12 @@ func (h *Handler) contactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactDoc(row))
+	doc, err := h.contactDocument(r.Context(), p, row)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) phonesJSON(w http.ResponseWriter, r *http.Request) {

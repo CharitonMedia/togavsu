@@ -42,7 +42,7 @@ func (s *Service) CreateNote(ctx context.Context, p domain.Principal, in NoteInp
 		return domain.Note{}, err
 	}
 	if err := s.record(ctx, p, []change{{
-		MatterID: in.MatterID, Entity: "note", EntityID: row.ID, Field: "body", New: title, Kind: "create",
+		MatterID: in.MatterID, ContactID: in.ContactID, Entity: "note", EntityID: row.ID, Field: "body", New: title, Kind: "create",
 		Action: "note.created", Summary: "Added note " + title,
 	}}); err != nil {
 		return domain.Note{}, err

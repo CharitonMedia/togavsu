@@ -118,7 +118,12 @@ func (h *Handler) createContactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactDoc(shown))
+	doc, err := h.contactDocument(r.Context(), p, shown)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) updateContactJSON(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +153,12 @@ func (h *Handler) updateContactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactDoc(shown))
+	doc, err := h.contactDocument(r.Context(), p, shown)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) archiveContactJSON(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +176,12 @@ func (h *Handler) archiveContactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactDoc(shown))
+	doc, err := h.contactDocument(r.Context(), p, shown)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) contactCustomJSON(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +204,12 @@ func (h *Handler) contactCustomJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, contactDoc(row))
+	doc, err := h.contactDocument(r.Context(), p, row)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) createPhoneJSON(w http.ResponseWriter, r *http.Request) {

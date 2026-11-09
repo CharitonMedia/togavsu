@@ -1,6 +1,7 @@
 package practice
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -12,8 +13,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
 func TestWalledContactHiddenFromConflictCheck(t *testing.T) {
@@ -1284,6 +1287,233 @@ func TestPartialPatchKeepsOmittedFields(t *testing.T) {
 	demoted, err := svc.GetParty(ctx, staff, first.ID)
 	if err != nil || demoted.Primary || demoted.Notes != "original" {
 		t.Fatal(err, demoted)
+	}
+}
+
+func TestContactNoteCreateIsInContactHistory(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	staff := person(tid(3), domain.RoleStaff)
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Note", FamilyName: "Only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateNote(ctx, staff, NoteInput{ContactID: contact.ID, Title: "Only contact", Body: "private"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := svc.History(ctx, staff, "contact", contact.ID)
+	if err != nil || !historyHas(rows, "body", "", "Only contact") {
+		t.Fatal(err, rows)
+	}
+}
+
+func TestContactCustomFieldRoundTrip(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	field, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordContact, Label: "Nickname", FieldType: FieldText})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Rita", FamilyName: "Stone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetCustomFields(ctx, staff, RecordContact, contact.ID, domain.ID(""), []CustomInput{{DefinitionID: field.ID, Value: "R"}}); err != nil {
+		t.Fatal(err)
+	}
+	status, body := getAPI(t, svc, staff, "/api/v1/contacts/"+string(contact.ID))
+	if status != 200 || !strings.Contains(body, `"custom_fields"`) || !strings.Contains(body, "nickname") || !strings.Contains(body, `"value":"R"`) {
+		t.Fatalf("read %d %s", status, body)
+	}
+	page := getHTML(t, svc, staff, "/practice/contacts/"+string(contact.ID))
+	if !strings.Contains(page, "Nickname") || !strings.Contains(page, `value="R"`) || !strings.Contains(page, "Save custom fields") {
+		t.Fatal(page)
+	}
+}
+
+func TestSealingKeyCanBeSupplied(t *testing.T) {
+	db := NewMemory()
+	reg, err := settings.New(settings.NewMemory(), quietAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := bytes.Repeat([]byte{7}, 32)
+	svc := NewWithKey(db, reg, key)
+	svc.now = func() time.Time { return time.Date(2026, 6, 15, 15, 0, 0, 0, time.UTC) }
+	var n uint64
+	svc.newID = func() (domain.ID, error) {
+		n++
+		return domain.ComposeV7(1_700_000_000_000+n, uint16(n%4000), n+1)
+	}
+	attorney := person(tid(2), domain.RoleAttorney)
+	row, err := svc.CreateContact(context.Background(), attorney, ContactInput{Kind: KindPerson, GivenName: "Sealed", FamilyName: "Key", SSNEIN: "111-22-3333"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	same := NewWithKey(db, reg, key)
+	same.now = svc.now
+	opened, err := same.GetContact(context.Background(), attorney, row.ID)
+	if err != nil || opened.SSNEINCiphertext != "111-22-3333" {
+		t.Fatal(err, opened.SSNEINCiphertext)
+	}
+	other := NewWithKey(db, reg, bytes.Repeat([]byte{9}, 32))
+	other.now = svc.now
+	blank, err := other.GetContact(context.Background(), attorney, row.ID)
+	if err != nil || blank.SSNEINCiphertext != "" {
+		t.Fatal(err, blank.SSNEINCiphertext)
+	}
+}
+
+func TestReopenReplayReturnsTheSameDocument(t *testing.T) {
+	svc, _ := newSvc(t)
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "Replay", "")
+	if _, _, err := svc.CloseMatter(context.Background(), staff, matter.ID, CloseInput{Reason: "done", Acknowledge: true}); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandler(t, svc)
+	token, _ := csrf(t, svc, attorney, "/practice/matters")
+	body := `{"reason":"back"}`
+	first := httptest.NewRecorder()
+	req := authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(body), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("X-CSRF-Token", token)
+	req.Header.Set("Idempotency-Key", "reopen-doc")
+	h.Routes().ServeHTTP(first, req)
+	second := httptest.NewRecorder()
+	req = authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(body), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("X-CSRF-Token", token)
+	req.Header.Set("Idempotency-Key", "reopen-doc")
+	h.Routes().ServeHTTP(second, req)
+	if first.Code != 200 || second.Body.String() != first.Body.String() || !strings.Contains(first.Body.String(), `"practice_area_id"`) || !strings.Contains(first.Body.String(), `"billing_type"`) {
+		t.Fatalf("first %d %s\nsecond %d %s", first.Code, first.Body.String(), second.Code, second.Body.String())
+	}
+}
+
+func TestPracticeScreensCreateEditAndDecide(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	token, _ := csrf(t, svc, staff, "/practice/matters")
+	form := url.Values{}
+	form.Set("csrf", token)
+	form.Set("name", "Screen matter")
+	form.Set("practice_area_id", string(area))
+	form.Set("billing_type", BillingHourly)
+	code, text := postForm(t, svc, staff, "/practice/matters", form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("create matter %d %s", code, text)
+	}
+	var matter domain.Matter
+	for _, row := range svc.db.Matters() {
+		if row.Name == "Screen matter" {
+			matter = row
+		}
+	}
+	if matter.ID.IsZero() {
+		t.Fatal("matter was not created")
+	}
+	token, _ = csrf(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	form = url.Values{}
+	form.Set("csrf", token)
+	form.Set("name", "Screen matter")
+	form.Set("court", "Circuit")
+	form.Set("responsible_attorney_user_id", string(attorney.UserID))
+	code, text = postForm(t, svc, staff, "/practice/matters/"+string(matter.ID), form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("edit %d %s", code, text)
+	}
+	page := getHTML(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	if !strings.Contains(page, "Screen matter") || !strings.Contains(page, "Responsible attorney Ada Attorney") || !strings.Contains(page, "Add party") || !strings.Contains(page, "Add note") || !strings.Contains(page, "Run conflict check") {
+		t.Fatal(page)
+	}
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Party", FamilyName: "One"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	form = url.Values{}
+	form.Set("csrf", token)
+	form.Set("contact_id", string(contact.ID))
+	form.Set("role", "client")
+	form.Set("primary", "1")
+	code, text = postForm(t, svc, staff, "/practice/matters/"+string(matter.ID)+"/parties", form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("party %d %s", code, text)
+	}
+	form = url.Values{}
+	form.Set("csrf", token)
+	form.Set("title", "Hearing")
+	form.Set("body", "Bring the file")
+	code, text = postForm(t, svc, staff, "/practice/matters/"+string(matter.ID)+"/notes", form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("note %d %s", code, text)
+	}
+	page = getHTML(t, svc, staff, "/practice/matters/"+string(matter.ID))
+	if !strings.Contains(page, "Party One") || !strings.Contains(page, "Hearing") {
+		t.Fatal(page)
+	}
+	if _, err := svc.CreateConflict(ctx, attorney, ConflictInput{Name: "Party One", Relationship: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	form = url.Values{}
+	form.Set("csrf", token)
+	code, text = postForm(t, svc, attorney, "/practice/matters/"+string(matter.ID)+"/conflict-checks", form, token)
+	if code != http.StatusSeeOther {
+		t.Fatalf("check %d %s", code, text)
+	}
+	checks, err := svc.ConflictChecks(ctx, attorney, matter.ID)
+	if err != nil || len(checks) == 0 || len(checks[0].Hits) == 0 {
+		t.Fatal(err, checks)
+	}
+	atoken, _ := csrf(t, svc, attorney, "/practice/matters/"+string(matter.ID))
+	form = url.Values{}
+	form.Set("csrf", atoken)
+	form.Set("hit_id", string(checks[0].Hits[0].ID))
+	form.Set("decision", DecisionClear)
+	form.Set("reason", "known client")
+	code, text = postForm(t, svc, attorney, "/practice/conflict-checks/"+string(checks[0].ID)+"/decisions", form, atoken)
+	if code != http.StatusSeeOther {
+		t.Fatalf("decision %d %s", code, text)
+	}
+	ctoken, _ := csrf(t, svc, staff, "/practice/contacts")
+	form = url.Values{}
+	form.Set("csrf", ctoken)
+	form.Set("kind", KindPerson)
+	form.Set("given_name", "New")
+	form.Set("family_name", "Person")
+	code, text = postForm(t, svc, staff, "/practice/contacts", form, ctoken)
+	if code != http.StatusSeeOther {
+		t.Fatalf("contact %d %s", code, text)
+	}
+	var created domain.ID
+	for _, row := range svc.db.Contacts() {
+		if row.FullName == "New Person" {
+			created = row.ID
+		}
+	}
+	page = getHTML(t, svc, staff, "/practice/contacts/"+string(created))
+	if !strings.Contains(page, "Save contact") || !strings.Contains(page, "Archive contact") {
+		t.Fatal(page)
+	}
+	form = url.Values{}
+	form.Set("csrf", ctoken)
+	code, text = postForm(t, svc, staff, "/practice/contacts/"+string(created)+"/archive", form, ctoken)
+	if code != http.StatusSeeOther {
+		t.Fatalf("archive %d %s", code, text)
+	}
+	got, err := svc.GetContact(ctx, staff, created)
+	if err != nil || !got.Archived {
+		t.Fatal(err, got.Archived)
 	}
 }
 

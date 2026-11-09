@@ -42,6 +42,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /practice/static/practice.css", h.staticCSS)
 	mux.HandleFunc("GET /practice/static/practice.js", h.staticJS)
 	mux.HandleFunc("GET /practice/matters", h.mattersPage)
+	mux.HandleFunc("POST /practice/matters", h.createMatterPost)
 	mux.HandleFunc("GET /practice/matters/needs-case-number", h.needsCasePage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}", h.matterPage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}/close", h.closePage)
@@ -50,6 +51,15 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("POST /practice/matters/{matter_id}/markers", h.markerPost)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/markers/remove", h.markerRemovePost)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/custom-fields", h.customPost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}", h.editMatterPost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/parties", h.partyPost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/notes", h.matterNotePost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/conflict-checks", h.checkPost)
+	mux.HandleFunc("POST /practice/conflict-checks/{conflict_check_id}/decisions", h.decisionPost)
+	mux.HandleFunc("POST /practice/contacts", h.createContactPost)
+	mux.HandleFunc("POST /practice/contacts/{contact_id}", h.editContactPost)
+	mux.HandleFunc("POST /practice/contacts/{contact_id}/archive", h.archiveContactPost)
+	mux.HandleFunc("POST /practice/contacts/{contact_id}/custom-fields", h.contactCustomPost)
 	mux.HandleFunc("GET /practice/search", h.searchPage)
 	mux.HandleFunc("GET /practice/notes", h.notesPage)
 	mux.HandleFunc("GET /practice/contacts", h.contactsPage)
@@ -116,6 +126,12 @@ type page struct {
 	Needs         []domain.Matter
 	CanReopen     bool
 	MarkerChoices []string
+	Areas         []domain.PracticeArea
+	MatterNotes   []domain.Note
+	Checks        []ConflictRun
+	ContactFields []ShownField
+	AttorneyName  string
+	PartyRoles    []string
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data page) {
@@ -140,7 +156,12 @@ func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows})
+	areas, err := h.Svc.ListAreas(r.Context(), p)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	h.render(w, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows, Areas: areas})
 }
 
 func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
@@ -168,11 +189,27 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 	_, reopenErr := h.Svc.gate(r.Context(), p, domain.ResourceRef{
 		Resource: domain.ResMatter, Action: domain.ActionConflictDecide, MatterID: id,
 	})
+	notes, _, err := h.Svc.ListNotes(r.Context(), p, NoteFilter{MatterID: id})
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	checks, err := h.Svc.ConflictChecks(r.Context(), p, id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	attorney := ""
+	if user, err := h.Svc.db.User(r.Context(), view.Matter.ResponsibleAttorneyID); err == nil {
+		attorney = user.Name
+	}
 	h.render(w, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
-		Matter: view, History: history, Timeline: timeline,
+		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
 		MarkerChoices: h.Svc.listSetting(r.Context(), "practice.markers", domain.DefaultMarkers()),
+		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
+		AttorneyName:  attorney,
 	})
 }
 
@@ -393,7 +430,12 @@ func (h *Handler) contactPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history})
+	fields, err := h.Svc.CustomFields(r.Context(), p, RecordContact, id, domain.ID(""))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	h.render(w, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history, ContactFields: fields})
 }
 
 func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {
@@ -565,7 +607,7 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.Header.Get("Idempotency-Key")
-	var replay domain.Matter
+	var replay map[string]any
 	hit, hold, err := h.Svc.idemBegin(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, &replay)
 	if err != nil {
 		writeErr(w, err)
@@ -573,7 +615,7 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	defer hold.abort()
 	if hit {
-		writeJSON(w, http.StatusOK, map[string]any{"id": replay.ID, "status": replay.Status})
+		writeJSON(w, http.StatusOK, replay)
 		return
 	}
 	matter, err := h.Svc.ReopenMatter(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Reason)
@@ -586,11 +628,12 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := hold.finish(r.Context(), matter); err != nil {
+	doc := matterItem(view)
+	if err := hold.finish(r.Context(), doc); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, matterItem(view))
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (h *Handler) customJSON(w http.ResponseWriter, r *http.Request) {

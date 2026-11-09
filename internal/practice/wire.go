@@ -1,6 +1,7 @@
 package practice
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"time"
@@ -336,7 +337,7 @@ func splitAKA(raw string) []string {
 	return out
 }
 
-func contactDoc(row domain.Contact) map[string]any {
+func contactDoc(row domain.Contact, fields []ShownField) map[string]any {
 	var identifier any
 	if row.SSNEINCiphertext != "" {
 		identifier = row.SSNEINCiphertext
@@ -352,7 +353,26 @@ func contactDoc(row domain.Contact) map[string]any {
 		"also_known_as": splitAKA(row.AlsoKnownAs), "date_of_birth": row.DateOfBirth, "date_of_death": row.DateOfDeath,
 		"identifier": identifier, "entity_type": row.EntityType, "formation_state": row.FormationState,
 		"formation_date": row.FormationDate, "archived": row.Archived, "source": row.Source,
+		"custom_fields": shownDocs(fields),
 	}
+}
+
+func shownDocs(fields []ShownField) []map[string]string {
+	out := make([]map[string]string, 0, len(fields))
+	for _, field := range fields {
+		out = append(out, map[string]string{
+			"definition_id": string(field.DefinitionID), "key": field.Key, "label": field.Label, "value": field.Value,
+		})
+	}
+	return out
+}
+
+func (h *Handler) contactDocument(ctx context.Context, p domain.Principal, row domain.Contact) (map[string]any, error) {
+	fields, err := h.Svc.CustomFields(ctx, p, RecordContact, row.ID, domain.ID(""))
+	if err != nil {
+		return nil, err
+	}
+	return contactDoc(row, fields), nil
 }
 
 func partyDoc(row domain.MatterParty) map[string]any {
