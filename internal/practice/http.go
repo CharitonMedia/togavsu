@@ -737,14 +737,32 @@ func matterItem(view MatterView) map[string]any {
 		})
 	}
 	markers := make([]string, 0, len(view.Markers))
+	zeroFee := false
+	proBono := false
 	for _, marker := range view.Markers {
 		markers = append(markers, marker.Label)
+		if marker.Label == MarkerZeroFee {
+			zeroFee = true
+		}
+		if marker.Label == MarkerProBono {
+			proBono = true
+		}
 	}
+	staff := []domain.ID{}
+	if !view.Matter.AssignedStaffID.IsZero() {
+		staff = []domain.ID{view.Matter.AssignedStaffID}
+	}
+	row := view.Matter
 	return map[string]any{
-		"id": view.Matter.ID, "number": view.Matter.Number, "name": view.Matter.Name,
-		"status": view.Matter.Status, "practice_area_id": view.Matter.PracticeAreaID,
-		"closed_on": view.Matter.ClosedOn, "close_reason": view.Matter.CloseReason,
-		"custom_fields": fields, "markers": markers, "conflicts_unchecked": view.Unchecked,
+		"id": row.ID, "created_at": when(row.CreatedAt), "created_by": row.CreatedBy, "updated_at": when(row.UpdatedAt),
+		"number": row.Number, "name": row.Name, "practice_area_id": row.PracticeAreaID, "status": row.Status,
+		"stage": row.Stage, "case_number": row.CaseNumber, "court": row.Court, "county_id": idOrNil(row.CountyID),
+		"client_position": row.ClientPosition, "opened_on": row.OpenedOn, "closed_on": row.ClosedOn,
+		"close_reason": row.CloseReason, "statute_of_limitations_on": row.StatuteOfLimitations,
+		"billing_type": row.BillingType, "flat_fee_cents": row.FlatFeeCents, "matter_rate_cents": row.MatterRateCents,
+		"responsible_attorney_user_id": idOrNil(row.ResponsibleAttorneyID), "assigned_staff_user_ids": staff,
+		"referral_source_id": idOrNil(row.ReferralSourceID), "pro_bono": proBono, "zero_fee": zeroFee,
+		"unchecked_conflicts": view.Unchecked, "custom_fields": fields, "markers": markers,
 	}
 }
 

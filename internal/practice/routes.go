@@ -101,18 +101,24 @@ func (h *Handler) createContactJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body ContactInput
+	var body contactWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	body.IdempotencyKey = r.Header.Get("Idempotency-Key")
-	row, err := h.Svc.CreateContact(r.Context(), p, body)
+	in := body.input()
+	in.IdempotencyKey = r.Header.Get("Idempotency-Key")
+	row, err := h.Svc.CreateContact(r.Context(), p, in)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	shown, err := h.Svc.GetContact(r.Context(), p, row.ID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, contactDoc(shown))
 }
 
 func (h *Handler) updateContactJSON(w http.ResponseWriter, r *http.Request) {
@@ -120,17 +126,29 @@ func (h *Handler) updateContactJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body ContactInput
+	var body contactWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.UpdateContact(r.Context(), p, domain.ID(r.PathValue("contact_id")), body)
+	id := domain.ID(r.PathValue("contact_id"))
+	var row domain.Contact
+	var err error
+	if r.Method == http.MethodPatch {
+		row, err = h.Svc.PatchContact(r.Context(), p, id, body.patch())
+	} else {
+		row, err = h.Svc.UpdateContact(r.Context(), p, id, body.input())
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	shown, err := h.Svc.GetContact(r.Context(), p, row.ID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, contactDoc(shown))
 }
 
 func (h *Handler) archiveContactJSON(w http.ResponseWriter, r *http.Request) {
@@ -143,7 +161,12 @@ func (h *Handler) archiveContactJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	shown, err := h.Svc.GetContact(r.Context(), p, row.ID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, contactDoc(shown))
 }
 
 func (h *Handler) contactCustomJSON(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +189,7 @@ func (h *Handler) contactCustomJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, contactDoc(row))
 }
 
 func (h *Handler) createPhoneJSON(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +218,7 @@ func (h *Handler) createPhoneJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, phoneDoc(row))
 }
 
 func (h *Handler) createEmailJSON(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +242,7 @@ func (h *Handler) createEmailJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, emailDoc(row))
 }
 
 func (h *Handler) createAddressJSON(w http.ResponseWriter, r *http.Request) {
@@ -227,17 +250,33 @@ func (h *Handler) createAddressJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body domain.ContactAddress
+	var body struct {
+		ContactID domain.ID `json:"contact_id"`
+		Label     string    `json:"label"`
+		Primary   bool      `json:"primary"`
+		Line1     string    `json:"line1"`
+		Line2     string    `json:"line2"`
+		City      string    `json:"city"`
+		Region    string    `json:"region"`
+		Postal    string    `json:"postal_code"`
+		Country   string    `json:"country"`
+		From      string    `json:"effective_from"`
+		To        string    `json:"effective_to"`
+	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.AddAddress(r.Context(), p, body)
+	row, err := h.Svc.AddAddress(r.Context(), p, domain.ContactAddress{
+		ContactID: body.ContactID, Label: body.Label, Primary: body.Primary, Line1: body.Line1, Line2: body.Line2,
+		City: body.City, Region: body.Region, PostalCode: body.Postal, Country: body.Country,
+		EffectiveFrom: body.From, EffectiveTo: body.To,
+	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, addressDoc(row))
 }
 
 func (h *Handler) createTagJSON(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +297,7 @@ func (h *Handler) createTagJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, tagDoc(row))
 }
 
 func (h *Handler) createMatterJSON(w http.ResponseWriter, r *http.Request) {
@@ -266,18 +305,24 @@ func (h *Handler) createMatterJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body MatterInput
+	var body matterWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	body.IdempotencyKey = r.Header.Get("Idempotency-Key")
-	row, err := h.Svc.CreateMatter(r.Context(), p, body)
+	in := body.input()
+	in.IdempotencyKey = r.Header.Get("Idempotency-Key")
+	row, err := h.Svc.CreateMatter(r.Context(), p, in)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	view, err := h.Svc.GetMatter(r.Context(), p, row.ID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, matterItem(view))
 }
 
 func (h *Handler) updateMatterJSON(w http.ResponseWriter, r *http.Request) {
@@ -285,17 +330,29 @@ func (h *Handler) updateMatterJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body MatterInput
+	var body matterWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.UpdateMatter(r.Context(), p, domain.ID(r.PathValue("matter_id")), body)
+	id := domain.ID(r.PathValue("matter_id"))
+	var row domain.Matter
+	var err error
+	if r.Method == http.MethodPatch {
+		row, err = h.Svc.PatchMatter(r.Context(), p, id, body.patch())
+	} else {
+		row, err = h.Svc.UpdateMatter(r.Context(), p, id, body.input())
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	view, err := h.Svc.GetMatter(r.Context(), p, row.ID)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, matterItem(view))
 }
 
 func (h *Handler) closePreviewJSON(w http.ResponseWriter, r *http.Request) {
@@ -361,20 +418,17 @@ func (h *Handler) createPartyJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body struct {
-		MatterID domain.ID `json:"matter_id"`
-		PartyInput
-	}
+	var body partyWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.AddParty(r.Context(), p, body.MatterID, body.PartyInput)
+	row, err := h.Svc.AddParty(r.Context(), p, body.MatterID, body.input())
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, partyDoc(row))
 }
 
 func (h *Handler) updatePartyJSON(w http.ResponseWriter, r *http.Request) {
@@ -382,17 +436,24 @@ func (h *Handler) updatePartyJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body PartyInput
+	var body partyWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.UpdateParty(r.Context(), p, domain.ID(r.PathValue("party_id")), body)
+	id := domain.ID(r.PathValue("party_id"))
+	var row domain.MatterParty
+	var err error
+	if r.Method == http.MethodPatch {
+		row, err = h.Svc.PatchParty(r.Context(), p, id, body.patch())
+	} else {
+		row, err = h.Svc.UpdateParty(r.Context(), p, id, body.input())
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, partyDoc(row))
 }
 
 func (h *Handler) notesJSON(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +470,11 @@ func (h *Handler) notesJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": notes, "next_cursor": next})
+	items := make([]map[string]any, 0, len(notes))
+	for _, note := range notes {
+		items = append(items, h.noteDoc(note))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "next_cursor": next})
 }
 
 func (h *Handler) createNoteJSON(w http.ResponseWriter, r *http.Request) {
@@ -417,17 +482,17 @@ func (h *Handler) createNoteJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body NoteInput
+	var body noteWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.CreateNote(r.Context(), p, body)
+	row, err := h.Svc.CreateNote(r.Context(), p, body.input())
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, h.noteDoc(row))
 }
 
 func (h *Handler) noteJSON(w http.ResponseWriter, r *http.Request) {
@@ -440,7 +505,7 @@ func (h *Handler) noteJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, h.noteDoc(row))
 }
 
 func (h *Handler) createConflictJSON(w http.ResponseWriter, r *http.Request) {
@@ -448,17 +513,17 @@ func (h *Handler) createConflictJSON(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body ConflictInput
+	var body conflictWrite
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.CreateConflict(r.Context(), p, body)
+	row, err := h.Svc.CreateConflict(r.Context(), p, body.input())
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, conflictDoc(row))
 }
 
 func (h *Handler) runCheckJSON(w http.ResponseWriter, r *http.Request) {
@@ -535,7 +600,7 @@ func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, markerDoc(row))
 }
 
 func (h *Handler) removeMarkerJSON(w http.ResponseWriter, r *http.Request) {

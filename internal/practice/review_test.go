@@ -529,33 +529,37 @@ func TestPracticeAPINotesAndActivityPages(t *testing.T) {
 	staff := person(tid(3), domain.RoleStaff)
 	area := makeArea(t, svc, admin, "Probate")
 	status, body := postJSON(t, svc, staff, "/api/v1/matters", map[string]any{
-		"Name": "API matter", "PracticeAreaID": area, "BillingType": BillingHourly,
+		"name": "API matter", "practice_area_id": area, "billing_type": BillingHourly,
 	}, "")
-	if status != 200 || !strings.Contains(body, "API matter") {
+	if status != 200 || !strings.Contains(body, "API matter") || strings.Contains(body, "PracticeAreaID") {
 		t.Fatalf("create matter %d %s", status, body)
 	}
-	var created domain.Matter
+	var created struct {
+		ID domain.ID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(body), &created); err != nil || created.ID.IsZero() {
 		t.Fatal(err, body)
 	}
 	status, body = postJSON(t, svc, staff, "/api/v1/contacts", map[string]any{
-		"Kind": KindPerson, "GivenName": "Ada", "FamilyName": "API",
+		"kind": KindPerson, "given_name": "Ada", "family_name": "API",
 	}, "")
-	if status != 200 || !strings.Contains(body, "Ada API") {
+	if status != 200 || !strings.Contains(body, "Ada API") || strings.Contains(body, "GivenName") {
 		t.Fatalf("create contact %d %s", status, body)
 	}
-	var contact domain.Contact
+	var contact struct {
+		ID domain.ID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(body), &contact); err != nil {
 		t.Fatal(err)
 	}
 	status, body = postJSON(t, svc, staff, "/api/v1/matter-parties", map[string]any{
-		"matter_id": created.ID, "ContactID": contact.ID, "Role": "client", "Primary": true,
+		"matter_id": created.ID, "contact_id": contact.ID, "role": "client", "primary": true,
 	}, "")
 	if status != 200 {
 		t.Fatalf("party %d %s", status, body)
 	}
 	status, body = postJSON(t, svc, staff, "/api/v1/notes", map[string]any{
-		"MatterID": created.ID, "Title": "Tagged", "Body": "hello", "Tags": []string{"alpha"},
+		"matter_id": created.ID, "title": "Tagged", "body": "hello", "tags": []string{"alpha"},
 	}, "")
 	if status != 200 {
 		t.Fatalf("note %d %s", status, body)
@@ -924,7 +928,7 @@ func TestMarkersAPIAndScreen(t *testing.T) {
 		t.Fatal("zero fee marker missing")
 	}
 	status, body := postJSON(t, svc, staff, "/api/v1/matter-markers", map[string]string{"matter_id": string(matter.ID), "marker_id": string(zero.ID)}, "")
-	if status != 200 || !strings.Contains(body, MarkerZeroFee) {
+	if status != 200 || !strings.Contains(body, `"marker_id"`) || strings.Contains(body, "MarkerID") {
 		t.Fatalf("set %d %s", status, body)
 	}
 	view, err := svc.GetMatter(ctx, staff, matter.ID)
@@ -1117,7 +1121,9 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	if status != 200 || !strings.Contains(body, "Estate") {
 		t.Fatalf("area %d %s", status, body)
 	}
-	var area domain.PracticeArea
+	var area struct {
+		ID domain.ID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(body), &area); err != nil {
 		t.Fatal(err)
 	}
@@ -1131,7 +1137,9 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	if status != 200 || !strings.Contains(body, "Heir") {
 		t.Fatalf("field %d %s", status, body)
 	}
-	var field FieldDef
+	var field struct {
+		ID domain.ID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(body), &field); err != nil {
 		t.Fatal(err)
 	}
@@ -1156,7 +1164,9 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("phone %d %s", status, body)
 	}
-	var phone domain.ContactPhone
+	var phone struct {
+		ID domain.ID `json:"id"`
+	}
 	if err := json.Unmarshal([]byte(body), &phone); err != nil {
 		t.Fatal(err)
 	}
@@ -1183,6 +1193,97 @@ func TestContractRoutesAndCustomFilter(t *testing.T) {
 	status, body = postJSON(t, svc, admin, "/api/v1/custom-field-definitions/"+string(field.ID)+"/retire", map[string]any{}, "")
 	if status != 200 || !strings.Contains(body, "true") {
 		t.Fatalf("retire %d %s", status, body)
+	}
+}
+
+func TestPartialPatchKeepsOmittedFields(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	status, body := postJSON(t, svc, staff, "/api/v1/matters", map[string]any{
+		"name": "Patch me", "practice_area_id": area, "billing_type": BillingHourly,
+		"court": "Circuit", "stage": "Intake", "responsible_attorney_user_id": attorney.UserID,
+	}, "")
+	if status != 200 || !strings.Contains(body, `"practice_area_id"`) {
+		t.Fatalf("create %d %s", status, body)
+	}
+	var created struct {
+		ID domain.ID `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(body), &created); err != nil {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, staff, "/api/v1/matters/"+string(created.ID), map[string]any{"case_number": "2026-CV-1"})
+	if status != 200 || !strings.Contains(body, "2026-CV-1") || !strings.Contains(body, "Circuit") || !strings.Contains(body, "Intake") {
+		t.Fatalf("patch %d %s", status, body)
+	}
+	view, err := svc.GetMatter(ctx, staff, created.ID)
+	if err != nil || view.Matter.Court != "Circuit" || view.Matter.Stage != "Intake" || view.Matter.ResponsibleAttorneyID != attorney.UserID || view.Matter.CaseNumber != "2026-CV-1" {
+		t.Fatal(err, view.Matter)
+	}
+	history, err := svc.History(ctx, staff, "matter", created.ID)
+	if err != nil || !historyHas(history, "case_number", "", "2026-CV-1") || historyHas(history, "court", "Circuit", "") || historyHas(history, "stage", "Intake", "") {
+		t.Fatal(err, history)
+	}
+	contactStatus, contactBody := postJSON(t, svc, staff, "/api/v1/contacts", map[string]any{
+		"kind": "person", "given_name": "Pat", "family_name": "Lee", "preferred_name": "Patsy",
+	}, "")
+	if contactStatus != 200 {
+		t.Fatal(contactBody)
+	}
+	var contact struct {
+		ID domain.ID `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(contactBody), &contact); err != nil {
+		t.Fatal(err)
+	}
+	contactStatus, contactBody = patchJSON(t, svc, staff, "/api/v1/contacts/"+string(contact.ID), map[string]any{"preferred_name": "Patricia"})
+	if contactStatus != 200 || !strings.Contains(contactBody, "Patricia") || !strings.Contains(contactBody, "Lee") {
+		t.Fatal(contactBody)
+	}
+	got, err := svc.GetContact(ctx, staff, contact.ID)
+	if err != nil || got.FamilyName != "Lee" || got.GivenName != "Pat" || got.PreferredName != "Patricia" {
+		t.Fatal(err, got)
+	}
+	note, err := svc.CreateNote(ctx, staff, NoteInput{MatterID: created.ID, Title: "Keep", Body: "still here", Pinned: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, staff, "/api/v1/notes/"+string(note.ID), map[string]any{"title": "Renamed"})
+	if status != 200 {
+		t.Fatal(body)
+	}
+	saved, err := svc.GetNote(ctx, staff, note.ID)
+	if err != nil || saved.Title != "Renamed" || saved.Body != "still here" || !saved.Pinned {
+		t.Fatal(err, saved)
+	}
+	first, err := svc.AddParty(ctx, staff, created.ID, PartyInput{ContactID: contact.ID, Role: "client", Primary: true, Notes: "original"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Other", FamilyName: "Client"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.AddParty(ctx, staff, created.ID, PartyInput{ContactID: other.ID, Role: "client", Notes: "second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, staff, "/api/v1/matter-parties/"+string(second.ID), map[string]any{"primary": true})
+	if status != 200 || !strings.Contains(body, "second") || !strings.Contains(body, `"primary":true`) {
+		t.Fatalf("party patch %d %s", status, body)
+	}
+	again, err := svc.GetParty(ctx, staff, second.ID)
+	if err != nil || !again.Primary || again.Notes != "second" || again.Role != "client" {
+		t.Fatal(err, again)
+	}
+	demoted, err := svc.GetParty(ctx, staff, first.ID)
+	if err != nil || demoted.Primary || demoted.Notes != "original" {
+		t.Fatal(err, demoted)
 	}
 }
 

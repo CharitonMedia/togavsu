@@ -20,20 +20,8 @@ func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domai
 		return domain.MatterParty{}, domain.Invalid("role", "unknown party role")
 	}
 	if in.Primary {
-		for _, existing := range s.db.Parties(matter, domain.ID("")) {
-			if existing.Role == in.Role && existing.Primary {
-				existing.Primary = false
-				existing.UpdatedAt = s.clock()
-				if err := s.db.UpdateParty(ctx, existing); err != nil {
-					return domain.MatterParty{}, err
-				}
-				if err := s.record(ctx, p, []change{{
-					MatterID: matter, Entity: "matter_party", EntityID: existing.ID, Field: "primary",
-					Old: "true", New: "false", Kind: "update", SkipEvent: true,
-				}}); err != nil {
-					return domain.MatterParty{}, err
-				}
-			}
+		if err := s.demotePrimary(ctx, p, matter, in.Role, domain.ID("")); err != nil {
+			return domain.MatterParty{}, err
 		}
 	}
 	meta, err := s.meta(p)
@@ -77,6 +65,11 @@ func (s *Service) UpdateParty(ctx context.Context, p domain.Principal, id domain
 	next.ServiceAddress = in.ServiceAddress
 	next.Notes = in.Notes
 	next.UpdatedAt = s.clock()
+	if next.Primary {
+		if err := s.demotePrimary(ctx, p, next.MatterID, next.Role, next.ID); err != nil {
+			return domain.MatterParty{}, err
+		}
+	}
 	if err := s.db.UpdateParty(ctx, next); err != nil {
 		return domain.MatterParty{}, err
 	}
@@ -84,6 +77,26 @@ func (s *Service) UpdateParty(ctx context.Context, p domain.Principal, id domain
 		return domain.MatterParty{}, err
 	}
 	return next, nil
+}
+
+func (s *Service) demotePrimary(ctx context.Context, p domain.Principal, matter domain.ID, role string, keep domain.ID) error {
+	for _, existing := range s.db.Parties(matter, domain.ID("")) {
+		if existing.ID == keep || existing.Role != role || !existing.Primary {
+			continue
+		}
+		existing.Primary = false
+		existing.UpdatedAt = s.clock()
+		if err := s.db.UpdateParty(ctx, existing); err != nil {
+			return err
+		}
+		if err := s.record(ctx, p, []change{{
+			MatterID: matter, Entity: "matter_party", EntityID: existing.ID, Field: "primary",
+			Old: "true", New: "false", Kind: "update", SkipEvent: true,
+		}}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func partyChanges(prev, next domain.MatterParty) []change {
