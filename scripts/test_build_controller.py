@@ -557,19 +557,106 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.record["repair_count"], 46)
         self.assertNotIn("halted", self.record)
 
-    def test_interrupted_and_missing_pr_loops_are_bounded_despite_new_run_ids(self):
-        for status in ("ERROR", "FINISHED"):
-            with self.subTest(status=status):
+    def test_consecutive_fixed_key_repeats_stay_bounded_despite_new_run_ids(self):
+        for case in ("interrupted", "missing-pr", "draft"):
+            with self.subTest(case=case):
                 self.setUp()
-                self.record.pop("pr")
-                self.remote.run_status = status
+                if case == "interrupted":
+                    self.remote.run_status = "ERROR"
+                elif case == "missing-pr":
+                    self.record.pop("pr")
+                else:
+                    self.remote.pr["draft"] = True
                 self.remote.cursor = self.unique_run_post
-                for i in range(4):
+                for i in range(5):
                     with self.advance(i * 30):
                         self.process()
                         self.remote.run_id = self.record["last_dispatched_run"]
                 self.assertEqual(len(self.posts()), 3)
-                self.assertIn("stalled", self.record)
+                self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+
+    def test_fixed_key_budget_resets_after_progress(self):
+        for case in ("interrupted", "draft"):
+            with self.subTest(case=case):
+                self.setUp()
+                self.remote.cursor = self.unique_run_post
+                if case == "interrupted":
+                    self.remote.run_status = "ERROR"
+                else:
+                    self.remote.pr["draft"] = True
+                for i in range(2):
+                    with self.advance(i * 30):
+                        self.process()
+                    self.remote.run_id = self.record["last_dispatched_run"]
+                self.assertEqual(self.record["repair_window"]["attempts"], 2)
+                if case == "interrupted":
+                    # A finished run with its PR is a different state; the next interruption starts a new streak.
+                    self.hold_review()
+                    self.remote.run_status = "FINISHED"
+                    with self.advance(60):
+                        self.process()
+                    self.hold_review(False)
+                    self.remote.run_id, self.remote.run_status = "later-run", "ERROR"
+                else:
+                    self.remote.pr["head"]["sha"] = NEW  # New head, still draft.
+                for i in range(3):
+                    self.restart()  # Fresh tick capacity; direct process() calls never release slots.
+                    with self.advance(90 + i * 30):
+                        self.process()
+                    self.remote.run_id = self.record["last_dispatched_run"]
+                    if i == 0:
+                        self.assertEqual(self.record["repair_window"]["attempts"], 1)
+                    self.assertNotIn("stalled", self.record)
+                self.assertEqual(len(self.posts()), 5)
+                self.restart()
+                with self.advance(200):
+                    self.process()
+                self.assertEqual(len(self.posts()), 5)
+                self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+
+    def test_reworded_findings_surface_attention_then_hold_at_correction_ceiling(self):
+        for soft, hard in ((3, 5), (None, None)):
+            with self.subTest(soft=soft, hard=hard):
+                self.setUp()
+                if soft:
+                    self.controller.plan.update(correction_attention_threshold=soft, max_corrections_per_assignment=hard)
+                soft, hard = soft or 10, hard or 30
+                self.failed_review()
+                self.remote.cursor = self.unique_run_post
+                for i in range(hard + 2):
+                    # The same unresolved defect, reworded on each new head.
+                    self.remote.report["findings"] = [{"file": "internal/trust/ledger.go",
+                        "detail": "Ledger reversal still drops the memo (wording " + str(i) + ")"}]
+                    if i:
+                        self.finish_correction(format(i, "040x"))
+                    with self.advance(i):
+                        self.controller.tick()
+                    self.restart()
+                    volume = self.record.get("correction_volume", 0)
+                    self.assertEqual(volume, min(i + 1, hard))
+                    self.assertEqual(len(self.posts()), min(i + 1, hard))
+                    status = json.loads((Path(self.temp.name) / "status.json").read_text())
+                    self.assertEqual(status["tasks"]["one"]["correction_volume"], volume)
+                    if volume < soft:
+                        self.assertEqual(status["health"], "observing")
+                        self.assertNotIn("stalled", self.record)
+                    elif i < hard:
+                        self.assertEqual(status["health"], "needs_attention")
+                        self.assertEqual(self.record["stalled"]["kind"], "high_correction_volume")
+                        self.assertNotIn("halted", self.record)
+                    else:
+                        self.assertEqual(status["health"], "needs_attention")
+                        self.assertEqual(self.record["stalled"]["kind"], "correction_ceiling")
+                        self.assertNotIn("halted", self.record)
+                self.assertNotEqual(self.record.get("halted"), LEGACY_REPAIR_HALT)
+                # The hold stops corrections only; a passing exact-revision review still merges.
+                self.remote.report.update(verdict="pass", findings=[])
+                self.remote.check_rows["Codex checkpoint"]["conclusion"] = "success"
+                self.finish_correction(NEW)
+                with self.advance(hard + 5):
+                    self.controller.tick()
+                self.assertIn("completed", self.record)
+                self.assertEqual(len(self.posts()), hard)
 
     def test_repeated_ci_failure_is_bounded_across_heads(self):
         self.remote.check_rows["Core tests"] = check("Core tests", "failure")

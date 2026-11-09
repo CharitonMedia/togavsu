@@ -103,9 +103,17 @@ def review_problem(findings):
     return {"review_findings": sorted(normalized, key=lambda f: json.dumps(f, sort_keys=True))}
 
 
+# Fixed problem classes keep one fingerprint across runs and heads, so they count
+# only consecutive repeats and reset on evidence of progress.
+FIXED_PROBLEMS = ("interrupted", "missing-pr", "draft")
+DEFAULT_CORRECTION_ATTENTION = 10
+DEFAULT_MAX_CORRECTIONS = 30
+
+
 def problem_fingerprints(problem):
     # Keep singleton fingerprints stable, but never give A a fresh budget just
     # because the next report changes from [A, B] to [A, C].
+    # ponytail: exact normalized text, so a reworded finding is a new problem; ceiling: per-assignment correction volume (correction_attention_threshold, max_corrections_per_assignment); trigger: an assignment reaches correction_ceiling while its findings name the same file and defect.
     parts = [problem]
     if isinstance(problem, dict):
         for kind in ("review_findings", "failed_checks", "missing_checks"):
@@ -431,6 +439,14 @@ class Controller:
             window = record["repair_window"] = max(current, key=lambda w: w["attempts"])
             if record.get("stalled", {}).get("kind") == "no_progress":
                 record.pop("stalled")
+            ceiling = self.plan.get("max_corrections_per_assignment", DEFAULT_MAX_CORRECTIONS)
+            if record.get("correction_volume", 0) >= ceiling:
+                record["stalled"] = {"kind": "correction_ceiling", "reason":
+                    "Assignment reached " + str(ceiling) + " corrections; further corrections are held. Integration lead must "
+                    "inspect the existing agent, PR and review findings for a reworded repeat; observation and merge gates continue"}
+                record.pop("waiting", None)
+                self.save()
+                return
             if window["attempts"] >= self.plan["max_repairs"]:
                 record["stalled"] = {"kind": "no_progress", "reason":
                     "Repeated problem exhausted recovery budget; integration lead must inspect the existing agent and PR",
@@ -485,6 +501,8 @@ class Controller:
         record.setdefault("delivered", []).append(intent["key"])
         if intent["repair"]:
             record["repair_count"] = record.get("repair_count", 0) + 1
+            record["correction_volume"] = record.get("correction_volume", 0) + 1
+            self.flag_volume(record)
             if intent.get("problems"):
                 current = [record["repair_problems"][fingerprint] for fingerprint in intent["problems"]]
                 for window in current:
@@ -509,6 +527,31 @@ class Controller:
             record.pop("halted")
         record.pop("waiting", None)
         self.save()
+
+    def flag_volume(self, record):
+        # Soft supervision signal only: corrections and observation continue.
+        threshold = self.plan.get("correction_attention_threshold", DEFAULT_CORRECTION_ATTENTION)
+        if record.get("correction_volume", 0) >= threshold and not record.get("stalled"):
+            record["stalled"] = {"kind": "high_correction_volume", "reason": "Assignment has had "
+                + str(record["correction_volume"]) + " corrections; integration lead should check for a reworded repeated "
+                "finding. Corrections continue until the per-assignment ceiling"}
+
+    def reset_fixed_problems(self, task, record, kinds, evidence):
+        # Fixed-key budgets count consecutive repeats; progress starts a new streak.
+        windows = record.get("repair_problems", {})
+        reset = []
+        for kind in kinds:
+            fingerprint = problem_fingerprints(kind)[0]
+            found = windows.pop(fingerprint, None) is not None
+            if record.get("repair_window", {}).get("fingerprint") == fingerprint:
+                record.pop("repair_window")
+                found = True
+            if record.get("stalled", {}).get("kind") == "no_progress" and record["stalled"].get("fingerprint") == fingerprint:
+                record.pop("stalled")
+            if found:
+                reset.append(kind)
+        if reset:
+            self.event(task, "Progress (" + evidence + ") reset consecutive budget for " + ", ".join(reset))
 
     def pr_for(self, record, snapshot):
         if record.get("pr"):
@@ -559,6 +602,7 @@ class Controller:
             record.pop("waiting", None)
         if record.get("halted") or record.get("completed"):
             return False
+        self.flag_volume(record)
         record["agent_status"] = snapshot["status"]
         if not record.get("expected_branch"):
             branches = snapshot.get("git", {}).get("branches", [])
@@ -580,7 +624,7 @@ class Controller:
                 watch["run_id"] = run_id  # Binding an unknown run does not prove a new run started.
             watch["observed_run_id"] = run_id
             if (age(watch["since"]) >= self.plan.get("active_run_timeout_seconds", 1800)
-                    and record.get("stalled", {}).get("kind") in {None, "active_run"}):
+                    and record.get("stalled", {}).get("kind") in {None, "active_run", "high_correction_volume"}):
                 record["stalled"] = {"kind": "active_run", "reason":
                     "Cursor run exceeded observation deadline; integration lead must inspect this run before any replacement",
                     "run_id": watch["run_id"], "since": watch["since"]}
@@ -588,6 +632,8 @@ class Controller:
         record.pop("active_watch", None)
         if record.get("stalled", {}).get("kind") == "active_run":
             record.pop("stalled")
+        if snapshot["status"] == "FINISHED":
+            self.reset_fixed_problems(task, record, ["interrupted"], "run finished")
         if snapshot["status"] != "FINISHED":
             self.followup(task, record, snapshot, "interrupted:" + str(snapshot.get("run_id")),
                 "Your previous run ended with status " + str(snapshot["status"]) + ". Resume the same assignment and branch, "
@@ -599,6 +645,7 @@ class Controller:
                 "Your run finished without a discoverable pull request. Complete your assigned work, tests and push, "
                 "then open the PR on the same branch. Report genuine blockers. Do not merge or bypass checks.")
             return False
+        self.reset_fixed_problems(task, record, ["missing-pr"], "PR found")
         if not record.get("expected_branch") or pr["head"].get("ref") != record["expected_branch"]:
             self.halt(task, record, "PR branch does not match the branch pinned to this Cursor assignment")
             return False
@@ -610,6 +657,8 @@ class Controller:
             return False
         head, number = pr["head"]["sha"], pr["number"]
         if record.get("last_submission", {}).get("head") != head:
+            if record.get("last_submission"):
+                self.reset_fixed_problems(task, record, FIXED_PROBLEMS, "new PR head")
             record["last_submission"] = {"head": head, "observed_at": now()}
         if record.get("merge_intent", {}).get("result_sha"):
             return self.verify_merge(task, record, pr)  # Reconcile, never resubmit an accepted merge.
@@ -654,6 +703,7 @@ class Controller:
                 "Your assignment is still a draft PR. Resolve its remaining bounded blockers, run tests and mark it ready "
                 "when complete. Do not claim product acceptance or merge. Report an actual external blocker explicitly.")
             return False
+        self.reset_fixed_problems(task, record, ["draft"], "PR ready")
         comparison = self.remote.gh("compare/" + main + "..." + head)
         if comparison["behind_by"]:
             if record.get("updated_for") == [head, main]:
@@ -834,6 +884,7 @@ class Controller:
             return False
         record["completed"] = {"pr": pr["number"], "merge_sha": merged, "head": intent["head"], "report": pr["html_url"]}
         record.pop("stalled", None)
+        self.reset_fixed_problems(task, record, FIXED_PROBLEMS, "verified merge")
         self.state["last_productive_progress"] = {"time": now(), "task": task, "merge_sha": merged}
         self.event(task, "Verified protected merge on main: " + merged)
         self.save()
@@ -944,8 +995,10 @@ class Controller:
             self.state["tick_error"] = type(error).__name__ + ": " + str(error)[:1800]
             raise
         finally:
+            threshold = self.plan.get("correction_attention_threshold", DEFAULT_CORRECTION_ATTENTION)
             attention = [task for task, rec in self.tasks.items() if not rec.get("completed")
-                and any(rec.get(field) for field in ("halted", "stalled", "last_error", "launch_uncertain", "intent"))]
+                and (any(rec.get(field) for field in ("halted", "stalled", "last_error", "launch_uncertain", "intent"))
+                    or rec.get("correction_volume", 0) >= threshold)]
             self.state["health"] = "needs_attention" if attention or self.state.get("tick_error") else "observing"
             if attention or self.state.get("tick_error"):
                 self.state["last_result"] = "Needs supervision: " + (", ".join(attention) or "controller request failed")
@@ -1046,7 +1099,7 @@ class Controller:
         summary = {"updated": now(), "tick": self.state["tick"], "health": self.state.get("health", "unknown"),
             "last_productive_progress": self.state.get("last_productive_progress"),
             "tick_error": self.state.get("tick_error"), "publication_error": self.state.get("publication_error"), "tasks": {
-            k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "repair_window", "last_submission", "active_watch",
+            k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "correction_volume", "repair_window", "last_submission", "active_watch",
                 "completed", "halted", "stalled", "last_error", "waiting", "launch_uncertain", "intent") if field in v}
             for k, v in self.tasks.items()}}
         atomic(self.dir / "status.json", summary)
