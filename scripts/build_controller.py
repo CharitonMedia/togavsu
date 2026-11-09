@@ -79,6 +79,20 @@ def validate_snapshot(snapshot):
         raise ObservationError("Terminal Cursor observation lacks a run identity")
 
 
+def observation_error(error):
+    return ("Cursor observation invalid: " + str(error) if isinstance(error, ObservationError)
+        else "Cursor observation HTTP " + str(error.code) if isinstance(error, urllib.error.HTTPError)
+        else type(error).__name__ + ": agent observation unavailable")
+
+
+def parse_time(value):
+    try:
+        stamp = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=dt.timezone.utc)
+
+
 def now():
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -262,17 +276,21 @@ class Remote:
         else:
             if not isinstance(run_id, str) or not run_id.strip():
                 raise ObservationError("Cursor latest run identity is malformed")
-            run = self.cursor("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id)
-            if (not isinstance(run, dict) or run.get("id") != run_id
-                    or run.get("agentId") != record["agent_id"]):
-                raise ObservationError("Cursor run response does not match the requested agent and run")
-            status = run.get("status")
-            if not isinstance(status, str) or status not in RUN_ACTIVE | TERMINAL:
-                raise ObservationError("Cursor run status is missing or unrecognized")
-            snapshot = {"status": status, "run_id": run_id,
-                "git": run.get("git", {}), "updated_at": run.get("updatedAt")}
+            snapshot = self.run(record, run_id)
         validate_snapshot(snapshot)
         return snapshot
+
+    def run(self, record, run_id):
+        # One run by ID: its identity, agent and status must all match exactly.
+        run = self.cursor("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id)
+        if (not isinstance(run, dict) or run.get("id") != run_id
+                or run.get("agentId") != record["agent_id"]):
+            raise ObservationError("Cursor run response does not match the requested agent and run")
+        status = run.get("status")
+        if not isinstance(status, str) or status not in RUN_ACTIVE | TERMINAL:
+            raise ObservationError("Cursor run status is missing or unrecognized")
+        return {"status": status, "run_id": run_id, "git": run.get("git", {}),
+            "updated_at": run.get("updatedAt"), "created_at": run.get("createdAt")}
 
     def review(self, check):
         if not self.authentic_checkpoint(check):
@@ -526,6 +544,60 @@ class Controller:
                 "Unreconciled delivery intent; refusing duplicate agent prompt"}:
             record.pop("halted")
         record.pop("waiting", None)
+        self.save()
+
+    def verify_dispatched_run(self, task, record, snapshot):
+        # A newer latest run can hide the acknowledged run between ticks. Fetch
+        # that exact run; any failure leaves the reservation in place.
+        expected = record.get("last_dispatched_run")
+        latest = snapshot.get("run_id")
+        if (not isinstance(expected, str) or not expected or record.get("last_dispatched_run_observed")
+                or not isinstance(latest, str) or not latest or latest == expected):
+            return
+        run = self.remote.run(record, expected)
+        stale = record.get("last_dispatch_stale_runs", [])
+        if latest in stale:
+            # Reported earlier while the acknowledged run was unseen; newer only if creation times prove it.
+            latest_at, expected_at = parse_time(snapshot.get("created_at")), parse_time(run.get("created_at"))
+            if latest_at and expected_at and latest_at > expected_at:
+                stale.remove(latest)
+        record["last_dispatched_run_observed"] = True
+        self.event(task, "Acknowledged run " + expected + " verified directly; later latest run " + latest + " is newer")
+        self.save()
+
+    def reconcile_intent(self, task, run_id, operator):
+        # Operator path for an uncertain delivery: bind the persisted intent to a
+        # run verified by ID. Never posts a prompt.
+        record = self.tasks.get(task)
+        if not record or not record.get("intent"):
+            raise ValueError("Task " + str(task) + " has no outstanding delivery intent")
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited reconciliation")
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("Run ID is required")
+        intent = record["intent"]
+        if run_id in {intent.get("previous_run"), record.get("last_dispatched_run")}:
+            raise ValueError("Run " + run_id + " predates this intent and cannot be its delivery")
+        run = self.remote.run(record, run_id)
+        created, after = run.get("created_at"), intent.get("time")
+        if created and after:
+            stamp = parse_time(created)
+            if not stamp:
+                raise ValueError("Run " + run_id + " has an unreadable creation time")
+            if stamp < parse_time(after):
+                raise ValueError("Run " + run_id + " was created before the intent was persisted")
+            timing = "created " + created + " after intent " + after
+        else:
+            timing = "creation time unavailable; ID and agent verified only"
+        if self.dry:
+            print("WOULD reconcile " + task + " intent " + intent["key"] + " to run " + run_id, flush=True)
+            return
+        self.acknowledge(record, run_id)
+        record["last_dispatched_run_observed"] = True  # Verified by ID just now.
+        record.setdefault("reconciled", []).append({"time": now(), "operator": operator, "key": intent["key"],
+            "run_id": run_id, "evidence": timing})
+        self.event(task, "Operator " + operator + " reconciled delivery intent " + intent["key"] + " to run "
+            + run_id + " (" + timing + "); no prompt sent")
         self.save()
 
     def flag_volume(self, record):
@@ -1023,7 +1095,7 @@ class Controller:
         self.adopt()
         main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
         specs = {t["id"]: t for t in self.plan["tasks"]}
-        snapshots = {}
+        snapshots, unverified = {}, {}
         # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
         for task, record in list(self.tasks.items()):
             if task not in specs or record.get("completed"):
@@ -1031,7 +1103,6 @@ class Controller:
             try:
                 snapshot = self.remote.agent(record)
                 validate_snapshot(snapshot)
-                observe_dispatch(record, snapshot)
                 snapshots[task] = snapshot
                 if not record.get("submitted"):
                     record["submitted"] = True  # Reconcile an uncertain idempotent create.
@@ -1054,11 +1125,15 @@ class Controller:
                 self.occupied += 1  # Includes run-endpoint 404 and every unknown observation outcome.
                 if not record.get("submitted"):
                     record["launch_uncertain"] = True
-                record["last_error"] = ("Cursor observation invalid: " + str(error) if isinstance(error, ObservationError)
-                    else "Cursor observation HTTP " + str(error.code) if isinstance(error, urllib.error.HTTPError)
-                    else type(error).__name__ + ": agent observation unavailable")
+                record["last_error"] = observation_error(error)
                 continue
             snapshot = snapshots[task]
+            try:
+                self.verify_dispatched_run(task, record, snapshot)
+            except Exception as error:
+                # The record stays unobserved: it keeps its slot and its PR stays blocked.
+                unverified[task] = observation_error(error)
+            observe_dispatch(record, snapshot)
             if snapshot["status"] in ACTIVE or record.get("intent") or unobserved_run(record, snapshot):
                 self.occupied += 1
         for task, snapshot in snapshots.items():
@@ -1071,6 +1146,8 @@ class Controller:
                     self.save()
                     return
                 record.pop("last_error", None)
+                if task in unverified:
+                    record["last_error"] = unverified[task]
             except Exception as error:
                 record["last_error"] = type(error).__name__ + ": " + str(error)[:1800]
                 self.event(task, "Control error; no bypass: " + record["last_error"])
@@ -1145,7 +1222,12 @@ def main():
     parser.add_argument("--plan", required=True)
     parser.add_argument("--state", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--reconcile-intent", nargs=2, metavar=("TASK", "RUN_ID"),
+        help="bind TASK's outstanding delivery intent to RUN_ID after verifying it; runs no tick")
+    parser.add_argument("--operator", help="name recorded with --reconcile-intent")
     args = parser.parse_args()
+    if args.reconcile_intent and not args.operator:
+        parser.error("--reconcile-intent requires --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1155,7 +1237,11 @@ def main():
         except BlockingIOError:
             print("Another controller tick owns the lock")
             return
-        Controller(Remote(), plan, state, args.dry_run).tick()
+        controller = Controller(Remote(), plan, state, args.dry_run)
+        if args.reconcile_intent:
+            controller.reconcile_intent(*args.reconcile_intent, args.operator)
+        else:
+            controller.tick()
 
 
 if __name__ == "__main__":

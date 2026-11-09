@@ -11,6 +11,7 @@ from unittest.mock import patch
 import urllib.error
 import zipfile
 
+import build_controller
 from build_controller import AgentNotFound, Controller, ObservationError, Remote, ReviewPending, ReviewSuperseded, APP_ID, LEGACY_REPAIR_HALT, atomic, extract_review, latest_checks, problem_fingerprints, review_problem, validate_review
 
 BASE, HEAD, NEW = "a" * 40, "b" * 40, "c" * 40
@@ -35,6 +36,7 @@ class FakeRemote:
         self.calls = []
         self.run_id = "run-old"
         self.run_status = "FINISHED"
+        self.runs = {}
         self.fail_post = False
         self.fail_merge = False
         self.check_rows = {name: check(name) for name in ["Setup checks", "Codex checkpoint"]}
@@ -67,6 +69,16 @@ class FakeRemote:
 
     def agent(self, record):
         return {"status": self.run_status, "run_id": self.run_id, "git": {}}
+
+    def run(self, record, run_id):
+        # Serves the latest run and any run added to self.runs by ID; others are absent.
+        self.calls.append(("GET", "/agents/" + record["agent_id"] + "/runs/" + run_id, None))
+        if run_id == self.run_id:
+            return {"status": self.run_status, "run_id": run_id, "git": {}, "updated_at": None, "created_at": None}
+        if run_id in self.runs:
+            return dict(self.runs[run_id], run_id=run_id)
+        raise urllib.error.HTTPError("https://api.cursor.com/v1/agents/" + record["agent_id"] + "/runs/" + run_id,
+            404, "missing run", {}, None)
 
     def cursor(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -922,6 +934,149 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.record["last_dispatched_run_observed"])
         self.assertIn("completed", self.record)
         self.assertFalse(self.posts())
+
+    def test_acknowledged_run_superseded_between_ticks_is_verified_directly_and_merges(self):
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                self.setUp()
+                if legacy:
+                    # Base-format record already stuck: no predecessor, dispatch time or observed flag.
+                    self.record.update(last_dispatched_run="R3", dispatch_visibility_since="2026-11-07T00:00:00+00:00",
+                        stalled={"kind": "run_observation", "reason": "Acknowledged Cursor run not observed within 15 minutes"})
+                else:
+                    self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+                        last_dispatch_at="2026-11-08T00:00:00+00:00")
+                self.remote.runs["R3"] = {"status": "FINISHED", "git": {}}
+                self.observe_at(30, "Z", "FINISHED")
+                self.assertIn(("GET", "/agents/bc-one/runs/R3", None), self.remote.calls)
+                self.assertTrue(self.record["last_dispatched_run_observed"])
+                self.assertIn("completed", self.record)
+                self.assertNotIn("stalled", self.record)
+                self.assertNotIn("dispatch_visibility_since", self.record)
+                self.assertEqual(self.controller.occupied, 0)
+                self.assertFalse(self.posts())
+
+    def test_latest_run_reported_while_acknowledged_run_was_unverifiable_needs_creation_order(self):
+        for z_created, merges in (("2026-11-08T00:03:00+00:00", True), ("2026-11-07T23:00:00+00:00", False), (None, False)):
+            with self.subTest(z_created=z_created):
+                self.setUp()
+                self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+                    last_dispatch_at="2026-11-08T00:00:00+00:00")
+                self.observe_at(1, "Z", "FINISHED")  # R3 not yet served by ID.
+                self.assertEqual(self.record["last_dispatch_stale_runs"], ["Z"])
+                self.remote.runs["R3"] = {"status": "FINISHED", "git": {}, "created_at": "2026-11-08T00:01:00+00:00"}
+                original = self.remote.agent
+                self.remote.agent = lambda r: dict(original(r), created_at=z_created)
+                self.observe_at(2, "Z", "FINISHED")
+                self.assertTrue(self.record["last_dispatched_run_observed"])
+                self.assertEqual("completed" in self.record, merges)
+                self.assertEqual(self.controller.occupied, 0 if merges else 1)
+
+    def test_unverifiable_acknowledged_run_stays_fail_closed_without_failing_other_tasks(self):
+        failures = {"404": None, "mismatch": ObservationError("Cursor run response does not match the requested agent and run"),
+                    "timeout": TimeoutError("unreachable")}
+        for name, error in failures.items():
+            with self.subTest(failure=name):
+                self.setUp()
+                self.record.update(last_dispatched_run="R3", last_dispatch_source_run="R2",
+                    last_dispatch_at="2026-11-08T00:00:00+00:00")
+                if error is not None:
+                    def failing(record, run_id, error=error):
+                        raise error
+                    self.remote.run = failing
+                self.controller.plan["tasks"].append({"id": "two", "depends_on": []})
+                self.controller.tasks["two"] = {"agent_id": "two", "submitted": True}
+                original = self.remote.agent
+                self.remote.agent = lambda r: original(r) if r["agent_id"] == "bc-one" else {
+                    "status": "RUNNING", "run_id": "two-run", "git": {}}
+                for minute in (1, 16):
+                    self.observe_at(minute, "Z", "FINISHED")
+                    self.assertEqual(self.controller.occupied, 2)
+                    self.assertNotIn("completed", self.record)
+                    self.assertNotIn("last_dispatched_run_observed", self.record)
+                    self.assertFalse(self.pr_reads())
+                    self.assertIn("last_error", self.record)
+                    self.assertEqual(self.controller.state["health"], "needs_attention")
+                    self.assertEqual(self.controller.tasks["two"]["waiting"], "Cursor run active; awaiting completion")
+                self.assertEqual(self.record["stalled"]["kind"], "run_observation")
+                if name == "404":
+                    self.assertIn("HTTP 404", self.record["last_error"])
+                self.assertFalse(self.posts())
+
+    def reconcile_controller(self, run):
+        remote, reads = Remote(), []
+        def cursor(method, path, body=None):
+            reads.append((method, path))
+            if isinstance(run, Exception):
+                raise run
+            return run
+        remote.cursor = cursor
+        controller = Controller(remote, self.controller.plan, self.temp.name)
+        return controller, reads
+
+    def test_operator_reconciliation_acknowledges_only_a_verified_later_run(self):
+        intent = {"key": "review:" + HEAD, "repair": True, "previous_run": "R2", "time": "2026-11-08T00:00:00+00:00"}
+        self.record.update(intent=intent, halted="Delivery outcome uncertain; no automatic replay")
+        self.controller.save()
+        good = {"id": "R3", "agentId": "bc-one", "status": "RUNNING", "createdAt": "2026-11-08T00:01:00Z"}
+        missing = urllib.error.HTTPError("https://api.cursor.com/v1/agents/bc-one/runs/R3", 404, "missing run", {}, None)
+        refusals = [("R3", dict(good, agentId="bc-other"), ObservationError), ("R3", dict(good, id="R9"), ObservationError),
+                    ("R3", dict(good, status="UNKNOWN"), ObservationError), ("R3", missing, urllib.error.HTTPError),
+                    ("R3", dict(good, createdAt="2026-11-07T23:59:00Z"), ValueError), ("R2", good, ValueError)]
+        for run_id, run, expected in refusals:
+            with self.subTest(run_id=run_id, run=run):
+                controller, reads = self.reconcile_controller(run)
+                before = copy.deepcopy(controller.tasks["one"])
+                with self.assertRaises(expected):
+                    controller.reconcile_intent("one", run_id, "integration-lead")
+                self.assertEqual(controller.tasks["one"], before)
+                self.assertTrue(all(method == "GET" for method, _ in reads))
+                self.assertEqual(reads, [] if run_id == "R2" else [("GET", "/agents/bc-one/runs/" + run_id)])
+        for created in ("2026-11-08T00:01:00Z", None):
+            with self.subTest(created=created):
+                self.setUp()
+                self.record.update(intent=intent, halted="Delivery outcome uncertain; no automatic replay")
+                self.controller.save()
+                controller, reads = self.reconcile_controller(dict(good, createdAt=created))
+                with self.advance(5):
+                    controller.reconcile_intent("one", "R3", "integration-lead")
+                record = controller.tasks["one"]
+                self.assertNotIn("intent", record)
+                self.assertNotIn("halted", record)
+                self.assertEqual(record["last_dispatched_run"], "R3")
+                self.assertTrue(record["last_dispatched_run_observed"])
+                self.assertEqual(record["delivered"], ["review:" + HEAD])
+                self.assertEqual(record["reconciled"][-1]["operator"], "integration-lead")
+                self.assertIn("creation time unavailable" if created is None else "after intent", record["reconciled"][-1]["evidence"])
+                self.assertIn("Operator integration-lead reconciled", controller.state["events"][-1]["message"])
+                self.assertEqual(reads, [("GET", "/agents/bc-one/runs/R3")])
+                with self.assertRaises(ValueError):  # Nothing left to reconcile.
+                    controller.reconcile_intent("one", "R3", "integration-lead")
+                # The reconciled run then releases normally and a green PR merges without a new prompt.
+                self.controller, controller.remote = controller, self.remote
+                self.restart()
+                self.observe_at(10, "R3", "FINISHED")
+                self.assertIn("completed", self.record)
+                self.assertFalse(self.posts())
+
+    def test_reconcile_cli_requires_operator_and_never_ticks(self):
+        intent = {"key": "review:" + HEAD, "repair": True, "previous_run": "R2", "time": "2026-11-08T00:00:00+00:00"}
+        self.record["intent"] = intent
+        self.controller.save()
+        plan = Path(self.temp.name) / "plan.json"
+        plan.write_text(json.dumps(self.controller.plan))
+        base = ["build_controller.py", "--plan", str(plan), "--state", self.temp.name, "--reconcile-intent", "one", "R3"]
+        with patch("sys.argv", base), patch("sys.stderr", io.StringIO()), self.assertRaises(SystemExit):
+            build_controller.main()
+        self.remote.runs["R3"] = {"status": "RUNNING", "git": {}, "created_at": "2026-11-08T00:02:00+00:00"}
+        with patch("sys.argv", base + ["--operator", "integration-lead"]), patch("build_controller.Remote", return_value=self.remote):
+            build_controller.main()
+        state = json.loads((Path(self.temp.name) / "controller.json").read_text())
+        self.assertEqual(state["tasks"]["one"]["last_dispatched_run"], "R3")
+        self.assertNotIn("intent", state["tasks"]["one"])
+        self.assertEqual(state["tick"], 0)
+        self.assertFalse(self.posts())
+        self.assertFalse(self.pr_reads())
 
     def test_uncertain_intent_never_binds_an_arbitrary_third_run(self):
         self.failed_review()
