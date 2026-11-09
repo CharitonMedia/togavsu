@@ -57,6 +57,7 @@ type Service struct {
 	hits      map[string][]time.Time
 	hitMu     sync.Mutex
 	stripes   [32]sync.Mutex
+	setupMu   sync.Mutex
 }
 
 // New returns a service. A short key is rejected.

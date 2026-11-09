@@ -13,6 +13,7 @@ import (
 const writerRole = "togavsu_audit_writer"
 
 // Postgres stores audit rows and runs each statement as the non-owner writer role.
+// InstallPrivileges must have run on the pool.
 type Postgres struct {
 	db      *sql.DB
 	dialect string
@@ -23,8 +24,14 @@ func NewPostgres(sqlDB *sql.DB) *Postgres {
 	return &Postgres{db: sqlDB, dialect: "postgres"}
 }
 
-// InstallPrivileges creates the non-owner writer role and grants only SELECT and INSERT.
+// InstallPrivileges makes core.audit_log append-only for every connection.
+// It creates the non-owner writer role with only SELECT and INSERT, takes UPDATE,
+// DELETE and TRUNCATE away from the application role that runs it, and adds a guard
+// that refuses UPDATE, DELETE and TRUNCATE on the table from any role, the owner and
+// a superuser included. The guard holds no business logic: it only refuses the
+// statement, which is the PRD's fixed rule that the audit log is kept forever.
 // CREATE ROLE cannot run inside a goose transaction, so this is not a migration file.
+// It is safe to run again.
 func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 	stmts := []string{
 		`DO $body$ BEGIN
@@ -36,6 +43,18 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 		`GRANT USAGE ON SCHEMA core TO ` + writerRole,
 		`GRANT SELECT, INSERT ON TABLE core.audit_log TO ` + writerRole,
 		`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE core.audit_log FROM ` + writerRole,
+		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.audit_log FROM PUBLIC, CURRENT_USER`,
+		`CREATE OR REPLACE FUNCTION core.audit_log_refuse_change() RETURNS trigger
+		  LANGUAGE plpgsql AS $body$
+		BEGIN
+		  RAISE EXCEPTION 'audit_log is append-only' USING ERRCODE = '` + appendOnlyCode + `';
+		END $body$`,
+		`CREATE OR REPLACE TRIGGER audit_log_append_only
+		  BEFORE UPDATE OR DELETE ON core.audit_log
+		  FOR EACH STATEMENT EXECUTE FUNCTION core.audit_log_refuse_change()`,
+		`CREATE OR REPLACE TRIGGER audit_log_no_truncate
+		  BEFORE TRUNCATE ON core.audit_log
+		  FOR EACH STATEMENT EXECUTE FUNCTION core.audit_log_refuse_change()`,
 	}
 	for _, stmt := range stmts {
 		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
@@ -43,6 +62,16 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+// appendOnlyCode is the SQLSTATE the guard raises: insufficient_privilege.
+const appendOnlyCode = "42501"
+
+// Atomic runs fn in one transaction on this store's pool. Every Append made inside
+// fn, and every store write that joins db.WithTx on the same pool, commits or rolls
+// back together.
+func (p *Postgres) Atomic(ctx context.Context, fn func(ctx context.Context) error) error {
+	return db.WithTx(ctx, p.db, fn)
 }
 
 // Append inserts one row as the writer role.
@@ -170,7 +199,20 @@ func scanAudit(sc interface{ Scan(...any) error }) (domain.AuditEntry, error) {
 	return row, nil
 }
 
+// asWriter runs fn as the writer role. Inside db.WithTx on the same pool it uses that
+// transaction and switches back to the session role afterwards, so a failed append
+// aborts the whole transaction.
 func (p *Postgres) asWriter(ctx context.Context, fn func(*sql.Tx) error) error {
+	if tx := db.Tx(ctx, p.db); tx != nil {
+		if _, err := tx.ExecContext(ctx, "SET LOCAL ROLE "+writerRole); err != nil {
+			return err
+		}
+		if err := fn(tx); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, "SET LOCAL ROLE NONE")
+		return err
+	}
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

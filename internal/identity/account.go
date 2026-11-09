@@ -27,72 +27,120 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 	if _, err := domain.LoadZone(in.TimeZone); err != nil {
 		return Enrollment{}, domain.Invalid("time_zone", "time zone is not recognized")
 	}
-	firm, err := s.settings.Get(ctx, "firm.name")
-	if err != nil {
-		return Enrollment{}, err
-	}
-	confirmed, err := s.adminConfirmed(ctx)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	if confirmed {
-		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
-	}
-	admins, err := s.activeAdmins(ctx)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	if len(admins) != 0 {
-		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
-	}
-	// firm.name is written before the other setup settings. A later failure leaves that name
-	// and deactivates the admin. The same email can resume. Any other caller stays closed.
-	if firm != "" {
-		existing, gerr := s.userByEmail(ctx, normalizeEmail(in.AdminEmail))
-		if gerr != nil || !s.rollbackAdmin(ctx, existing) {
-			return Enrollment{}, apiCode("already_set_up", "firm is already set up")
+	// One setup at a time in this process, and one across processes on Postgres.
+	// The first-admin check and insert, the password, their audit rows and the TOTP
+	// enrollment commit together. A failure anywhere in that unit leaves no admin behind.
+	s.setupMu.Lock()
+	defer s.setupMu.Unlock()
+	var user domain.User
+	var enroll Enrollment
+	err := s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if lock, ok := s.users.(setupLock); ok {
+			if err := lock.LockSetup(ctx); err != nil {
+				return err
+			}
 		}
-	}
-	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleAdmin})
-	if err != nil {
-		return Enrollment{}, err
-	}
-	meta, err := s.meta(domain.SystemUserID)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	user := domain.User{
-		Meta: meta, Name: in.AdminName, Email: normalizeEmail(in.AdminEmail),
-		Roles: roles, Active: true,
-	}
-	user.CreatedBy = user.ID
-	user, err = s.claimSetupAdmin(ctx, user)
-	if err != nil {
-		return Enrollment{}, err
-	}
-	if err := s.setPassword(ctx, user, []domain.Role{domain.RoleAdmin}, in.Password, ""); err != nil {
-		if derr := s.deactivate(ctx, user, []domain.Role{domain.RoleAdmin}); derr != nil {
-			return Enrollment{}, derr
+		var err error
+		user, err = s.claimFirstAdmin(ctx, in)
+		if err != nil {
+			return err
 		}
+		enroll, err = s.beginEnrollment(ctx, user)
+		if err != nil {
+			return s.undoSetup(ctx, user, err)
+		}
+		return nil
+	})
+	if err != nil {
 		return Enrollment{}, err
 	}
 	who := principalOf(user, []domain.Role{domain.RoleAdmin})
-	if err := s.auditCreatedUser(ctx, who, user); err != nil {
-		return Enrollment{}, err
-	}
+	// Settings commit on their own, after the admin. A failure here deactivates the
+	// admin; the same email can resume and any other caller stays closed.
 	for _, pair := range []struct{ key, value string }{
 		{"firm.name", in.FirmName},
 		{"firm.time_zone", in.TimeZone},
 		{"backups.passphrase", in.BackupPassphrase},
 	} {
 		if _, err := s.settings.Set(ctx, pair.key, pair.value, who); err != nil {
-			if derr := s.deactivate(ctx, user, []domain.Role{domain.RoleAdmin}); derr != nil {
-				return Enrollment{}, derr
-			}
-			return Enrollment{}, err
+			return Enrollment{}, s.undoSetup(ctx, user, err)
 		}
 	}
-	return s.beginEnrollment(ctx, user)
+	return enroll, nil
+}
+
+// setupLock serializes first-run setup across processes inside the open transaction.
+type setupLock interface {
+	LockSetup(ctx context.Context) error
+}
+
+// claimFirstAdmin checks that setup is still open and creates the first admin with a password.
+func (s *Service) claimFirstAdmin(ctx context.Context, in SetupInput) (domain.User, error) {
+	firm, err := s.settings.Get(ctx, "firm.name")
+	if err != nil {
+		return domain.User{}, err
+	}
+	confirmed, err := s.adminConfirmed(ctx)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if confirmed {
+		return domain.User{}, apiCode("already_set_up", "firm is already set up")
+	}
+	admins, err := s.activeAdmins(ctx)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if len(admins) != 0 {
+		return domain.User{}, apiCode("already_set_up", "firm is already set up")
+	}
+	// firm.name is written before the other setup settings. A later failure leaves that name
+	// and deactivates the admin. The same email can resume. Any other caller stays closed.
+	if firm != "" {
+		existing, gerr := s.userByEmail(ctx, normalizeEmail(in.AdminEmail))
+		if gerr != nil || !s.rollbackAdmin(ctx, existing) {
+			return domain.User{}, apiCode("already_set_up", "firm is already set up")
+		}
+	}
+	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleAdmin})
+	if err != nil {
+		return domain.User{}, err
+	}
+	meta, err := s.meta(domain.SystemUserID)
+	if err != nil {
+		return domain.User{}, err
+	}
+	user := domain.User{
+		Meta: meta, Name: in.AdminName, Email: normalizeEmail(in.AdminEmail),
+		Roles: roles, Active: true,
+	}
+	user.CreatedBy = user.ID
+	beforeFirstAdminInsert()
+	user, err = s.claimSetupAdmin(ctx, user)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if err := s.setPassword(ctx, user, []domain.Role{domain.RoleAdmin}, in.Password, ""); err != nil {
+		return domain.User{}, s.undoSetup(ctx, user, err)
+	}
+	if err := s.auditCreatedUser(ctx, principalOf(user, []domain.Role{domain.RoleAdmin}), user); err != nil {
+		return domain.User{}, s.undoSetup(ctx, user, err)
+	}
+	return user, nil
+}
+
+// beforeFirstAdminInsert runs between the open-setup checks and the insert.
+// Tests widen that window to prove the two stay serialized.
+var beforeFirstAdminInsert = func() {}
+
+// undoSetup deactivates a half-made first admin and returns cause.
+// Inside the setup transaction the rollback discards both; a store without
+// transactions keeps the inactive row, which the same email can resume.
+func (s *Service) undoSetup(ctx context.Context, user domain.User, cause error) error {
+	if derr := s.deactivate(ctx, user, []domain.Role{domain.RoleAdmin}); derr != nil {
+		return errors.Join(cause, derr)
+	}
+	return cause
 }
 
 // claimSetupAdmin inserts the first admin, or reactivates the inactive row left by a rolled-back setup.
@@ -250,19 +298,23 @@ func (s *Service) CreateUser(ctx context.Context, caller Caller, in NewUser) (do
 	user := domain.User{
 		Meta: meta, Name: in.Name, Email: email, Roles: encoded, Active: true, ContactID: in.ContactID,
 	}
-	if err := s.users.Insert(ctx, user); err != nil {
-		if errors.Is(err, repository.ErrConflict) {
-			return domain.User{}, domain.Conflict("email is already in use")
+	// The user, the password and their audit rows commit together.
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.users.Insert(ctx, user); err != nil {
+			if errors.Is(err, repository.ErrConflict) {
+				return domain.Conflict("email is already in use")
+			}
+			return err
 		}
-		return domain.User{}, err
-	}
-	if err := s.setPassword(ctx, user, in.Roles, in.Password, ""); err != nil {
-		if derr := s.markInactive(ctx, user, in.Roles, "user create rolled back"); derr != nil {
-			return domain.User{}, derr
+		if err := s.setPassword(ctx, user, in.Roles, in.Password, ""); err != nil {
+			if derr := s.markInactive(ctx, user, in.Roles, "user create rolled back"); derr != nil {
+				return errors.Join(err, derr)
+			}
+			return err
 		}
-		return domain.User{}, err
-	}
-	if err := s.auditCreatedUser(ctx, caller.Principal, user); err != nil {
+		return s.auditCreatedUser(ctx, caller.Principal, user)
+	})
+	if err != nil {
 		return domain.User{}, err
 	}
 	return user, nil
@@ -334,6 +386,13 @@ func (s *Service) setPassword(ctx context.Context, user domain.User, roles []dom
 	if err != nil {
 		return err
 	}
+	// The credential and its audit row commit together.
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		return s.storePassword(ctx, user, roles, hash, previous)
+	})
+}
+
+func (s *Service) storePassword(ctx context.Context, user domain.User, roles []domain.Role, hash, previous string) error {
 	existing, err := s.passwords.GetByUser(ctx, user.ID)
 	if errors.Is(err, repository.ErrNotFound) {
 		meta, err := s.meta(user.ID)
@@ -366,11 +425,13 @@ func (s *Service) deactivate(ctx context.Context, user domain.User, roles []doma
 func (s *Service) markInactive(ctx context.Context, user domain.User, roles []domain.Role, reason string) error {
 	user.Active = false
 	user.UpdatedAt = s.now().UTC()
-	if err := s.users.Update(ctx, user); err != nil {
-		return err
-	}
-	return s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "user", EntityID: user.ID, Field: "active", Old: "true", New: "false", Reason: reason,
+	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.users.Update(ctx, user); err != nil {
+			return err
+		}
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "user", EntityID: user.ID, Field: "active", Old: "true", New: "false", Reason: reason,
+		})
 	})
 }
 

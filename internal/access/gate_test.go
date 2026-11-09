@@ -224,7 +224,7 @@ func TestAccountantReadsBillingAndCannotWrite(t *testing.T) {
 		called := false
 		err := g.Apply(ctx, accountant(), ref, audit.Change{
 			Entity: "invoice", EntityID: openMatter, Field: "status", New: "sent",
-		}, log, func() error {
+		}, log, func(context.Context) error {
 			called = true
 			return nil
 		})
@@ -320,7 +320,7 @@ func TestDeniedWriteDoesNotMutate(t *testing.T) {
 	status := "draft"
 	err = g.Apply(ctx, staff(), domain.ResourceRef{
 		Resource: domain.ResInvoice, Action: domain.ActionApproveInvoice, MatterID: openMatter,
-	}, audit.Change{Entity: "invoice", EntityID: openMatter, Field: "status", Old: "draft", New: "approved"}, log, func() error {
+	}, audit.Change{Entity: "invoice", EntityID: openMatter, Field: "status", Old: "draft", New: "approved"}, log, func(context.Context) error {
 		status = "approved"
 		return nil
 	})
@@ -329,7 +329,7 @@ func TestDeniedWriteDoesNotMutate(t *testing.T) {
 	}
 	err = g.Apply(ctx, domain.Principal{UserID: "atty", Roles: []domain.Role{domain.RoleAttorney}, Source: domain.SourceUI}, domain.ResourceRef{
 		Resource: domain.ResInvoice, Action: domain.ActionApproveInvoice, MatterID: openMatter,
-	}, audit.Change{Entity: "invoice", EntityID: openMatter, Field: "status", Old: "draft", New: "approved"}, log, func() error {
+	}, audit.Change{Entity: "invoice", EntityID: openMatter, Field: "status", Old: "draft", New: "approved"}, log, func(context.Context) error {
 		status = "approved"
 		return nil
 	})

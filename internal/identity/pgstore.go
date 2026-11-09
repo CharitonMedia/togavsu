@@ -14,6 +14,7 @@ import (
 )
 
 // PG is the Postgres store for the identity tables in the core schema.
+// Each statement joins the transaction db.WithTx opened on the same pool, if any.
 type PG struct{ db *sql.DB }
 
 // NewPG returns a store. The pool's search_path must include core.
@@ -27,12 +28,12 @@ func (p *PG) Recovery() repository.RecoveryCodes        { return pgRecovery{p} }
 func (p *PG) Tokens() repository.APITokens              { return pgTokens{p} }
 
 func (p *PG) exec(ctx context.Context, query string, args ...any) error {
-	_, err := p.db.ExecContext(ctx, db.Rebind(query, "postgres"), args...)
+	_, err := db.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
 	return err
 }
 
 func (p *PG) execOne(ctx context.Context, query string, args ...any) error {
-	res, err := p.db.ExecContext(ctx, db.Rebind(query, "postgres"), args...)
+	res, err := db.Conn(ctx, p.db).ExecContext(ctx, db.Rebind(query, "postgres"), args...)
 	if err != nil {
 		return err
 	}
@@ -48,11 +49,11 @@ func (p *PG) execOne(ctx context.Context, query string, args ...any) error {
 }
 
 func (p *PG) row(ctx context.Context, query string, args ...any) *sql.Row {
-	return p.db.QueryRowContext(ctx, db.Rebind(query, "postgres"), args...)
+	return db.Conn(ctx, p.db).QueryRowContext(ctx, db.Rebind(query, "postgres"), args...)
 }
 
 func (p *PG) query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
-	return p.db.QueryContext(ctx, db.Rebind(query, "postgres"), args...)
+	return db.Conn(ctx, p.db).QueryContext(ctx, db.Rebind(query, "postgres"), args...)
 }
 
 func flag(v bool) int {
@@ -146,6 +147,20 @@ func (s pgUsers) WithUserLock(ctx context.Context, id domain.ID, fn func() error
 		conn.Close()
 		return err
 	}
+}
+
+// errSetupLockNeedsTx is returned when LockSetup runs outside db.WithTx.
+var errSetupLockNeedsTx = errors.New("identity: setup lock needs a transaction")
+
+// LockSetup holds the first-run setup lock until the open transaction ends.
+// Two processes that run Setup at once take turns, so only one creates the first admin.
+func (s pgUsers) LockSetup(ctx context.Context) error {
+	tx := db.Tx(ctx, s.db)
+	if tx == nil {
+		return errSetupLockNeedsTx
+	}
+	_, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('togavsu.first_admin_setup', 0))`)
+	return err
 }
 
 func (s pgUsers) Update(ctx context.Context, row domain.User) error {

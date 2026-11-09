@@ -118,3 +118,28 @@ func TestRecordRejectsAnonymousUser(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestModulePrincipalIsAudited(t *testing.T) {
+	ctx := context.Background()
+	svc, err := New(NewMemory(), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := domain.Principal{Source: domain.SourceModule, ModuleID: "matter-clock", TokenID: "tok-1"}
+	row, err := svc.Record(ctx, module, Change{Entity: "matter", EntityID: "m-1", Field: "name", Old: "A", New: "B"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ActorID != domain.SystemUserID || row.Source != string(domain.SourceModule) || !strings.Contains(row.Reason, "module=matter-clock") {
+		t.Fatalf("module row %+v", row)
+	}
+	for _, who := range []domain.Principal{
+		{Source: domain.SourceModule},
+		{Source: domain.SourceAPIToken, ModuleID: "matter-clock"},
+		{Source: domain.SourceUI},
+	} {
+		if _, err := svc.Record(ctx, who, Change{Entity: "matter", EntityID: "m-1", Field: "name", New: "C"}); err == nil {
+			t.Fatalf("%+v recorded without an actor", who)
+		}
+	}
+}

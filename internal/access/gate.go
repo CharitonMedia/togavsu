@@ -106,7 +106,10 @@ func (g Gate) FilterMatters(ctx context.Context, who domain.Principal, matters [
 
 // Apply runs mutate and records the write only after the policy allows it.
 // A denial leaves the stored row and the audit log unchanged.
-func (g Gate) Apply(ctx context.Context, who domain.Principal, ref domain.ResourceRef, change audit.Change, log *audit.Service, mutate func() error) error {
+// mutate and the audit row run in one log.Atomic unit: when the audit append fails the
+// write rolls back with it, so a change is never kept without its history row.
+// mutate must write through ctx (db.Conn) to join that transaction.
+func (g Gate) Apply(ctx context.Context, who domain.Principal, ref domain.ResourceRef, change audit.Change, log *audit.Service, mutate func(ctx context.Context) error) error {
 	d, err := g.Decide(ctx, who, ref)
 	if err != nil {
 		return err
@@ -114,16 +117,18 @@ func (g Gate) Apply(ctx context.Context, who domain.Principal, ref domain.Resour
 	if !d.Allow {
 		return Denial(ref, d)
 	}
-	if mutate != nil {
-		if err := mutate(); err != nil {
-			return err
-		}
-	}
 	if log == nil {
-		return nil
+		return errors.New("access: an audit log is required for a write")
 	}
-	_, err = log.Record(ctx, who, change)
-	return err
+	return log.Atomic(ctx, func(ctx context.Context) error {
+		if mutate != nil {
+			if err := mutate(ctx); err != nil {
+				return err
+			}
+		}
+		_, err := log.Record(ctx, who, change)
+		return err
+	})
 }
 
 // History returns audit rows for a matter the caller can see.

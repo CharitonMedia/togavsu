@@ -74,7 +74,10 @@ func (s *Service) Record(ctx context.Context, who domain.Principal, change Chang
 	}
 	actor := who.UserID
 	if actor.IsZero() {
-		if who.Source != domain.SourceSystem {
+		// A module-bound token has no user. The row is the System actor with source
+		// module, and provenance keeps the module id in the reason.
+		moduleCall := who.Source == domain.SourceModule && who.ModuleID != ""
+		if who.Source != domain.SourceSystem && !moduleCall {
 			return domain.AuditEntry{}, domain.Unauthenticated("actor is required")
 		}
 		actor = domain.SystemUserID
@@ -109,6 +112,21 @@ func (s *Service) Record(ctx context.Context, who domain.Principal, change Chang
 		return domain.AuditEntry{}, err
 	}
 	return row, nil
+}
+
+// atomicStore is a store that can hold a write and its audit rows in one transaction.
+type atomicStore interface {
+	Atomic(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// Atomic runs fn so its writes and the rows it records commit or roll back together.
+// On Postgres that is one transaction: store writes that join db.WithTx on the same
+// pool are inside it. A store without transactions runs fn as it is.
+func (s *Service) Atomic(ctx context.Context, fn func(ctx context.Context) error) error {
+	if store, ok := s.store.(atomicStore); ok {
+		return store.Atomic(ctx, fn)
+	}
+	return fn(ctx)
 }
 
 // SettingChanged records a settings registry change.
