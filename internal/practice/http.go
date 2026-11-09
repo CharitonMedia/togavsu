@@ -606,6 +606,13 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
+	id := domain.ID(r.PathValue("matter_id"))
+	if _, err := h.Svc.gate(r.Context(), p, domain.ResourceRef{
+		Resource: domain.ResMatter, Action: domain.ActionConflictDecide, MatterID: id,
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
 	key := r.Header.Get("Idempotency-Key")
 	var replay map[string]any
 	hit, hold, err := h.Svc.idemBegin(r.Context(), p, key, "reopen_matter", r.PathValue("matter_id"), body, &replay)
@@ -618,7 +625,7 @@ func (h *Handler) reopenJSON(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, replay)
 		return
 	}
-	matter, err := h.Svc.ReopenMatter(r.Context(), p, domain.ID(r.PathValue("matter_id")), body.Reason)
+	matter, err := h.Svc.ReopenMatter(r.Context(), p, id, body.Reason)
 	if err != nil {
 		writeErr(w, err)
 		return

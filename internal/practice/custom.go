@@ -409,8 +409,11 @@ func csvJoin(cols []string) string {
 }
 
 func csvCell(col string) string {
-	if col != "" && strings.ContainsRune("=+-@", rune(col[0])) {
-		col = "'" + col
+	if col != "" {
+		switch col[0] {
+		case '=', '+', '-', '@', '\t', '\r':
+			col = "'" + col
+		}
 	}
 	if strings.ContainsAny(col, ",\"\n\r") {
 		return `"` + strings.ReplaceAll(col, `"`, `""`) + `"`

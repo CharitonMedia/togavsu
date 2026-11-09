@@ -33,7 +33,7 @@ func (s *Service) GetArea(ctx context.Context, p domain.Principal, id domain.ID)
 	return row, nil
 }
 
-func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.ID, name string, stages []string, active bool) (domain.PracticeArea, error) {
+func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.ID, name string, stages []string, active *bool) (domain.PracticeArea, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.PracticeArea{}, err
 	}
@@ -41,7 +41,7 @@ func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.
 	if err != nil {
 		return domain.PracticeArea{}, missing(err, "practice area")
 	}
-	prev := row.Name
+	oldName, oldStages, oldActive := row.Name, row.Stages, row.Active
 	if strings.TrimSpace(name) != "" {
 		row.Name = strings.TrimSpace(name)
 	}
@@ -52,18 +52,19 @@ func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.
 		}
 		row.Stages = raw
 	}
-	row.Active = active
+	if active != nil {
+		row.Active = *active
+	}
 	row.UpdatedAt = s.clock()
 	if err := s.db.UpdateArea(ctx, row); err != nil {
 		return domain.PracticeArea{}, err
 	}
-	if prev != row.Name {
-		if err := s.record(ctx, p, []change{{
-			Entity: "practice_area", EntityID: row.ID, Field: "name", Old: prev, New: row.Name, Kind: "update",
-			Action: "practice_area.updated", Summary: "Updated practice area " + row.Name,
-		}}); err != nil {
-			return domain.PracticeArea{}, err
-		}
+	if err := s.record(ctx, p, changedFields("practice_area", row.ID, domain.ID(""), "practice_area.updated", "Updated practice area "+row.Name, [][3]string{
+		{"name", oldName, row.Name},
+		{"stages", oldStages, row.Stages},
+		{"active", boolText(oldActive), boolText(row.Active)},
+	})); err != nil {
+		return domain.PracticeArea{}, err
 	}
 	return row, nil
 }
@@ -94,7 +95,7 @@ func (s *Service) UpdateCounty(ctx context.Context, p domain.Principal, id domai
 	if err != nil {
 		return domain.County{}, missing(err, "county")
 	}
-	old := row.Name
+	oldName, oldState := row.Name, row.State
 	if strings.TrimSpace(name) != "" {
 		row.Name = strings.TrimSpace(name)
 	}
@@ -105,13 +106,11 @@ func (s *Service) UpdateCounty(ctx context.Context, p domain.Principal, id domai
 	if err := s.db.UpdateCounty(ctx, row); err != nil {
 		return domain.County{}, err
 	}
-	if old != row.Name {
-		if err := s.record(ctx, p, []change{{
-			Entity: "county", EntityID: row.ID, Field: "name", Old: old, New: row.Name, Kind: "update",
-			Action: "county.updated", Summary: "Updated county " + row.Name,
-		}}); err != nil {
-			return domain.County{}, err
-		}
+	if err := s.record(ctx, p, changedFields("county", row.ID, domain.ID(""), "county.updated", "Updated county "+row.Name, [][3]string{
+		{"name", oldName, row.Name},
+		{"state", oldState, row.State},
+	})); err != nil {
+		return domain.County{}, err
 	}
 	return row, nil
 }
@@ -134,7 +133,7 @@ func (s *Service) GetReferral(ctx context.Context, p domain.Principal, id domain
 	return row, nil
 }
 
-func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id domain.ID, name, kind string, active bool) (domain.ReferralSource, error) {
+func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id domain.ID, name, kind string, active *bool) (domain.ReferralSource, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.ReferralSource{}, err
 	}
@@ -142,25 +141,26 @@ func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id dom
 	if err != nil {
 		return domain.ReferralSource{}, missing(err, "referral source")
 	}
-	old := row.Name
+	oldName, oldKind, oldActive := row.Name, row.Kind, row.Active
 	if strings.TrimSpace(name) != "" {
 		row.Name = strings.TrimSpace(name)
 	}
 	if strings.TrimSpace(kind) != "" {
 		row.Kind = strings.TrimSpace(kind)
 	}
-	row.Active = active
+	if active != nil {
+		row.Active = *active
+	}
 	row.UpdatedAt = s.clock()
 	if err := s.db.UpdateReferral(ctx, row); err != nil {
 		return domain.ReferralSource{}, err
 	}
-	if old != row.Name {
-		if err := s.record(ctx, p, []change{{
-			Entity: "referral_source", EntityID: row.ID, Field: "name", Old: old, New: row.Name, Kind: "update",
-			Action: "referral_source.updated", Summary: "Updated referral source " + row.Name,
-		}}); err != nil {
-			return domain.ReferralSource{}, err
-		}
+	if err := s.record(ctx, p, changedFields("referral_source", row.ID, domain.ID(""), "referral_source.updated", "Updated referral source "+row.Name, [][3]string{
+		{"name", oldName, row.Name},
+		{"kind", oldKind, row.Kind},
+		{"active", boolText(oldActive), boolText(row.Active)},
+	})); err != nil {
+		return domain.ReferralSource{}, err
 	}
 	return row, nil
 }
@@ -346,7 +346,7 @@ func (s *Service) GetField(ctx context.Context, p domain.Principal, id domain.ID
 	return row, nil
 }
 
-func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain.ID, label string, required bool, areas []domain.ID) (FieldDef, error) {
+func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain.ID, label string, required *bool, areas []domain.ID) (FieldDef, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return FieldDef{}, err
 	}
@@ -354,11 +354,13 @@ func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain
 	if err != nil {
 		return FieldDef{}, missing(err, "custom field")
 	}
-	old := row.Label
+	oldLabel, oldRequired, oldAreas := row.Label, row.Required, idList(row.PracticeAreaIDs)
 	if strings.TrimSpace(label) != "" {
 		row.Label = strings.TrimSpace(label)
 	}
-	row.Required = required
+	if required != nil {
+		row.Required = *required
+	}
 	if areas != nil {
 		row.PracticeAreaIDs = areas
 	}
@@ -366,13 +368,12 @@ func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain
 	if err := s.db.PutField(ctx, row); err != nil {
 		return FieldDef{}, err
 	}
-	if old != row.Label {
-		if err := s.record(ctx, p, []change{{
-			Entity: "custom_field_definition", EntityID: row.ID, Field: "label", Old: old, New: row.Label, Kind: "update",
-			Action: "custom_field.updated", Summary: "Updated custom field " + row.Label,
-		}}); err != nil {
-			return FieldDef{}, err
-		}
+	if err := s.record(ctx, p, changedFields("custom_field_definition", row.ID, domain.ID(""), "custom_field.updated", "Updated custom field "+row.Label, [][3]string{
+		{"label", oldLabel, row.Label},
+		{"required", boolText(oldRequired), boolText(row.Required)},
+		{"practice_area_ids", oldAreas, idList(row.PracticeAreaIDs)},
+	})); err != nil {
+		return FieldDef{}, err
 	}
 	return row, nil
 }
@@ -402,6 +403,9 @@ func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain
 	if err := s.readableContact(ctx, p, current.ContactID); err != nil {
 		return domain.ContactPhone{}, err
 	}
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
+		return domain.ContactPhone{}, err
+	}
 	if label == "" || label == current.Label {
 		return current, nil
 	}
@@ -413,7 +417,7 @@ func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain
 	}
 	if err := s.record(ctx, p, []change{{
 		ContactID: current.ContactID, Entity: "contact_phone", EntityID: current.ID, Field: "label",
-		Old: old, New: label, Kind: "update", SkipEvent: true,
+		Old: old, New: label, Kind: "update", Action: "contact.phone_updated", Summary: "Updated a phone label",
 	}}); err != nil {
 		return domain.ContactPhone{}, err
 	}
@@ -428,7 +432,7 @@ func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
 		return domain.ContactEmail{}, err
 	}
-	old := row.Email
+	oldEmail, oldLabel := row.Email, row.Label
 	if strings.TrimSpace(email) != "" {
 		if !validEmail(email) {
 			return domain.ContactEmail{}, domain.Invalid("email", "enter an email address")
@@ -442,13 +446,11 @@ func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain
 	if err := s.db.UpdateEmail(ctx, row); err != nil {
 		return domain.ContactEmail{}, err
 	}
-	if old != row.Email {
-		if err := s.record(ctx, p, []change{{
-			ContactID: row.ContactID, Entity: "contact_email", EntityID: row.ID, Field: "email",
-			Old: old, New: row.Email, Kind: "update", Action: "contact.email_updated", Summary: "Updated an email",
-		}}); err != nil {
-			return domain.ContactEmail{}, err
-		}
+	if err := s.record(ctx, p, changedFields("contact_email", row.ID, row.ContactID, "contact.email_updated", "Updated an email", [][3]string{
+		{"email", oldEmail, row.Email},
+		{"label", oldLabel, row.Label},
+	})); err != nil {
+		return domain.ContactEmail{}, err
 	}
 	return row, nil
 }
@@ -461,7 +463,7 @@ func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id doma
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
 		return domain.ContactAddress{}, err
 	}
-	old := row.Line1
+	oldLine, oldLabel := row.Line1, row.Label
 	if strings.TrimSpace(line1) != "" {
 		row.Line1 = strings.TrimSpace(line1)
 	}
@@ -472,13 +474,11 @@ func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id doma
 	if err := s.db.UpdateAddress(ctx, row); err != nil {
 		return domain.ContactAddress{}, err
 	}
-	if old != row.Line1 {
-		if err := s.record(ctx, p, []change{{
-			ContactID: row.ContactID, Entity: "contact_address", EntityID: row.ID, Field: "line1",
-			Old: old, New: row.Line1, Kind: "update", Action: "contact.address_updated", Summary: "Updated an address",
-		}}); err != nil {
-			return domain.ContactAddress{}, err
-		}
+	if err := s.record(ctx, p, changedFields("contact_address", row.ID, row.ContactID, "contact.address_updated", "Updated an address", [][3]string{
+		{"line1", oldLine, row.Line1},
+		{"label", oldLabel, row.Label},
+	})); err != nil {
+		return domain.ContactAddress{}, err
 	}
 	return row, nil
 }
@@ -503,7 +503,7 @@ func (s *Service) ReviseTag(ctx context.Context, p domain.Principal, id domain.I
 	}
 	if err := s.record(ctx, p, []change{{
 		ContactID: row.ContactID, Entity: "contact_tag", EntityID: row.ID, Field: "tag",
-		Old: old, New: tag, Kind: "update", SkipEvent: true,
+		Old: old, New: tag, Kind: "update", Action: "contact.tag_updated", Summary: "Updated a tag",
 	}}); err != nil {
 		return domain.ContactTag{}, err
 	}
@@ -590,6 +590,34 @@ func listChild[T any](s *Service, ctx context.Context, p domain.Principal, conta
 		}
 	}
 	return out, nil
+}
+
+func changedFields(entity string, id, contact domain.ID, action, summary string, pairs [][3]string) []change {
+	var out []change
+	for _, pair := range pairs {
+		if pair[1] == pair[2] {
+			continue
+		}
+		ch := change{
+			Entity: entity, EntityID: id, ContactID: contact, Field: pair[0], Old: pair[1], New: pair[2], Kind: "update",
+		}
+		if len(out) == 0 {
+			ch.Action = action
+			ch.Summary = summary
+		} else {
+			ch.SkipEvent = true
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
+func idList(ids []domain.ID) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		parts[i] = string(id)
+	}
+	return strings.Join(parts, ",")
 }
 
 func (s *Service) matchesCustom(record domain.ID, custom map[string]string) bool {

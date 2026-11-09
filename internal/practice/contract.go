@@ -519,11 +519,7 @@ func (h *Handler) updateAreaJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	active := true
-	if body.Active != nil {
-		active = *body.Active
-	}
-	row, err := h.Svc.UpdateArea(r.Context(), p, domain.ID(r.PathValue("practice_area_id")), body.Name, body.Stages, active)
+	row, err := h.Svc.UpdateArea(r.Context(), p, domain.ID(r.PathValue("practice_area_id")), body.Name, body.Stages, body.Active)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -661,11 +657,7 @@ func (h *Handler) updateReferralJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	active := true
-	if body.Active != nil {
-		active = *body.Active
-	}
-	row, err := h.Svc.UpdateReferral(r.Context(), p, domain.ID(r.PathValue("referral_source_id")), body.Name, body.Kind, active)
+	row, err := h.Svc.UpdateReferral(r.Context(), p, domain.ID(r.PathValue("referral_source_id")), body.Name, body.Kind, body.Active)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -740,7 +732,7 @@ func (h *Handler) updateFieldJSON(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Label           string      `json:"label"`
-		Required        bool        `json:"required"`
+		Required        *bool       `json:"required"`
 		PracticeAreaIDs []domain.ID `json:"practice_area_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {

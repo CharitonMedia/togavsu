@@ -1005,8 +1005,8 @@ func TestPrefixedIdentifierMustOpen(t *testing.T) {
 }
 
 func TestCSVNeutralizesFormulas(t *testing.T) {
-	got := csvJoin([]string{"=cmd", "+1", "-1", "@sum", "a\rb", `say "hi"`})
-	for _, needle := range []string{"'=cmd", "'+1", "'-1", "'@sum", "\"a\rb\"", "\"say \"\"hi\"\"\""} {
+	got := csvJoin([]string{"=cmd", "+1", "-1", "@sum", "\t=cmd", "\r=cmd", "a\rb", `say "hi"`})
+	for _, needle := range []string{"'=cmd", "'+1", "'-1", "'@sum", "'\t=cmd", "\"'\r=cmd\"", "\"a\rb\"", "\"say \"\"hi\"\"\""} {
 		if !strings.Contains(got, needle) {
 			t.Fatal(got)
 		}
@@ -1287,6 +1287,141 @@ func TestPartialPatchKeepsOmittedFields(t *testing.T) {
 	demoted, err := svc.GetParty(ctx, staff, first.ID)
 	if err != nil || demoted.Primary || demoted.Notes != "original" {
 		t.Fatal(err, demoted)
+	}
+}
+
+func TestCatalogEditsAreAuditedAndPartialPatchKeepsFlags(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area, err := svc.CreateArea(ctx, admin, "Probate", "", []string{"Intake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inactive := false
+	if _, err := svc.UpdateArea(ctx, admin, area.ID, "", []string{"Intake", "Open"}, &inactive); err != nil {
+		t.Fatal(err)
+	}
+	if !auditHas(svc.db.Audits(), "practice_area", "stages") || !auditHas(svc.db.Audits(), "practice_area", "active") || !eventHas(svc, "practice_area.updated") {
+		t.Fatal(svc.db.Audits())
+	}
+	status, body := patchJSON(t, svc, admin, "/api/v1/practice-areas/"+string(area.ID), map[string]any{"name": "Estate"})
+	if status != 200 || !strings.Contains(body, `"active":false`) {
+		t.Fatalf("area patch %d %s", status, body)
+	}
+	county, err := svc.CreateCounty(ctx, admin, "Boone", "MO")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateCounty(ctx, admin, county.ID, "", "IA"); err != nil || !auditHas(svc.db.Audits(), "county", "state") {
+		t.Fatal(err)
+	}
+	referral, err := svc.CreateReferral(ctx, admin, "Neighbor", "person", domain.ID(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateReferral(ctx, admin, referral.ID, "", "firm", &inactive); err != nil {
+		t.Fatal(err)
+	}
+	if !auditHas(svc.db.Audits(), "referral_source", "kind") || !auditHas(svc.db.Audits(), "referral_source", "active") {
+		t.Fatal(svc.db.Audits())
+	}
+	status, body = patchJSON(t, svc, admin, "/api/v1/referral-sources/"+string(referral.ID), map[string]any{"name": "Friend"})
+	if status != 200 || !strings.Contains(body, `"active":false`) {
+		t.Fatalf("referral patch %d %s", status, body)
+	}
+	required := true
+	field, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordMatter, Label: "Heir", FieldType: FieldText, Required: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateField(ctx, admin, field.ID, "", nil, []domain.ID{area.ID}); err != nil || !auditHas(svc.db.Audits(), "custom_field_definition", "practice_area_ids") {
+		t.Fatal(err)
+	}
+	status, body = patchJSON(t, svc, admin, "/api/v1/custom-field-definitions/"+string(field.ID), map[string]any{"label": "Heir note"})
+	if status != 200 || !strings.Contains(body, `"required":true`) {
+		t.Fatalf("field patch %d %s", status, body)
+	}
+	_ = required
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Pat", FamilyName: "Lee"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, err := svc.AddPhone(ctx, staff, contact.ID, "mobile", "+15555550100", "2026-01-01", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RevisePhone(ctx, staff, phone.ID, "", "", "cell"); err != nil || !auditHas(svc.db.Audits(), "contact_phone", "label") || !eventHas(svc, "contact.phone_updated") {
+		t.Fatal(err)
+	}
+	email, err := svc.AddEmail(ctx, staff, contact.ID, "work", "pat@example.com", "2026-01-01", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReviseEmail(ctx, staff, email.ID, "", "home"); err != nil || !auditHas(svc.db.Audits(), "contact_email", "label") || !eventHas(svc, "contact.email_updated") {
+		t.Fatal(err)
+	}
+	address, err := svc.AddAddress(ctx, staff, domain.ContactAddress{ContactID: contact.ID, Label: "home", Line1: "1 Main", City: "Columbia", Region: "MO", PostalCode: "65201", Country: "US"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReviseAddress(ctx, staff, address.ID, "", "mailing"); err != nil || !auditHas(svc.db.Audits(), "contact_address", "label") || !eventHas(svc, "contact.address_updated") {
+		t.Fatal(err)
+	}
+	tag, err := svc.AddContactTag(ctx, staff, contact.ID, "vip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReviseTag(ctx, staff, tag.ID, "lead"); err != nil || !auditHas(svc.db.Audits(), "contact_tag", "tag") || !eventHas(svc, "contact.tag_updated") {
+		t.Fatal(err)
+	}
+}
+
+func eventHas(svc *Service, action string) bool {
+	for _, row := range svc.db.Events() {
+		if row.Action == action {
+			return true
+		}
+	}
+	return false
+}
+
+func TestReopenReplayChecksTheWall(t *testing.T) {
+	svc, db := newSvc(t)
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, admin, "Admin")
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "Walled replay", "")
+	if _, _, err := svc.CloseMatter(context.Background(), staff, matter.ID, CloseInput{Reason: "done", Acknowledge: true}); err != nil {
+		t.Fatal(err)
+	}
+	h := testHandler(t, svc)
+	token, _ := csrf(t, svc, attorney, "/practice/matters")
+	body := `{"reason":"back"}`
+	first := httptest.NewRecorder()
+	req := authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(body), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("X-CSRF-Token", token)
+	req.Header.Set("Idempotency-Key", "reopen-wall")
+	h.Routes().ServeHTTP(first, req)
+	if first.Code != 200 {
+		t.Fatal(first.Body.String())
+	}
+	if err := svc.SetWall(context.Background(), admin, matter.ID, []domain.ID{admin.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	second := httptest.NewRecorder()
+	req = authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(body), attorney)
+	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("X-CSRF-Token", token)
+	req.Header.Set("Idempotency-Key", "reopen-wall")
+	h.Routes().ServeHTTP(second, req)
+	if second.Code == 200 || strings.Contains(second.Body.String(), "Walled replay") {
+		t.Fatalf("replay leaked %d %s", second.Code, second.Body.String())
 	}
 }
 
