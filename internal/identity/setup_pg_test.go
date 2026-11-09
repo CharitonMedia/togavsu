@@ -224,3 +224,50 @@ func TestFailedAuditKeepsResetSecretAndToken(t *testing.T) {
 		t.Fatal(token, err)
 	}
 }
+
+// TestConcurrentConfirmResetIsSingleUse: two confirms of one reset token with the same
+// code replace the secret once and append one confirmation row.
+func TestConcurrentConfirmResetIsSingleUse(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	if err := audit.InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	in := setupInput("ada@example.test")
+	svc := pgSetupService(t, sqlDB, audit.NewPostgres(sqlDB))
+	enroll, err := svc.Setup(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base32Decode(enroll.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(raw, time.Now()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	caller, err := svc.Authenticate(ctx, Presented{SessionToken: started.SessionToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset, err := svc.ResetTOTP(ctx, caller, Factor{Password: in.Password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := TOTPCode(decodeSecret(t, reset.Secret), time.Now())
+	wins := race(func() error {
+		return svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code)
+	}, func() error {
+		return svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code)
+	})
+	if wins != 1 {
+		t.Fatalf("confirm reset wins %d", wins)
+	}
+	if n := countRows(t, sqlDB, `SELECT count(*) FROM audit_log WHERE reason LIKE '%user.totp_reset_confirmed%'`); n != 1 {
+		t.Fatalf("%d confirmation rows", n)
+	}
+	if err := svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code); codeOf(err) != "forbidden" {
+		t.Fatalf("spent reset token: %v", err)
+	}
+}

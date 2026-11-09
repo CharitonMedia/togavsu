@@ -566,13 +566,36 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 	if caller.Principal.UserID != user.ID {
 		return domain.Forbidden("enrollment token is not valid")
 	}
+	roles, err := rolesOf(user)
+	if err != nil {
+		return err
+	}
+	// One reset challenge is one guess, under the same per-account lock as sign-in.
+	return s.withUser(ctx, user.ID, func() error {
+		if err := s.claimChallenge(ctx, sess, caller.Principal); err != nil {
+			if !errors.Is(err, repository.ErrConflict) {
+				return err
+			}
+			if lerr := s.rejectIfLocked(ctx, user); lerr != nil {
+				return lerr
+			}
+			return domain.Forbidden("enrollment token is not valid")
+		}
+		if err := s.rejectIfLocked(ctx, user); err != nil {
+			return err
+		}
+		return s.confirmReset(ctx, caller, user, roles, body, code)
+	})
+}
+
+func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.User, roles []domain.Role, body challengeBody, code string) error {
 	state, raw, err := openTOTP(s.key, body.Secret)
 	if err != nil {
 		return err
 	}
 	step, ok := acceptedStep(raw, code, s.now().UTC())
 	if !ok || (state.Used && step <= state.Step) {
-		return domain.Unauthenticated("wrong code")
+		return s.recordFailure(ctx, user, roles)
 	}
 	sealed, err := sealTOTP(s.key, raw, step, true)
 	if err != nil {
@@ -601,12 +624,9 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 				return err
 			}
 		}
-		if err := s.record(ctx, caller.Principal, audit.Change{
+		return s.record(ctx, caller.Principal, audit.Change{
 			Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
-		}); err != nil {
-			return err
-		}
-		return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
+		})
 	})
 }
 

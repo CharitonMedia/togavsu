@@ -773,3 +773,28 @@ func bytesRepeat() []byte {
 		1, 2, 3, 4, 5, 6, 7, 8,
 	}
 }
+
+// TestChallengeCreationIsAudited: a sign-in TOTP challenge, a password-reset request and
+// a reauthentication token each append a redacted session row.
+func TestChallengeCreationIsAudited(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	_, admin := b.enrollAdmin(t)
+	if _, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.svc.RequestPasswordReset(ctx, "ada@example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.svc.Reauthenticate(ctx, admin, Factor{Password: "correct-horse-battery"}, "resetTotp"); err != nil {
+		t.Fatal(err)
+	}
+	for _, purpose := range []string{purposeTOTP, purposePassword, purposeReauth} {
+		if !auditHas(t, b.log, "token_hash", "challenge.created purpose="+purpose) {
+			t.Fatalf("%s challenge was not audited", purpose)
+		}
+	}
+	if dump := auditText(t, b.log); strings.Contains(dump, b.mail.token) {
+		t.Fatal("reset token leaked into the audit log")
+	}
+}

@@ -370,6 +370,14 @@ func TestResetKeepsOldSecretUntilConfirm(t *testing.T) {
 	if err != nil || row.Ciphertext != before {
 		t.Fatal("wrong code changed the secret", err)
 	}
+	// A wrong code spends the reset challenge, so the user starts a new reset.
+	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
+		t.Fatal("spent reset token", err)
+	}
+	reset, err = b.svc.ResetTOTP(ctx, admin, Factor{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	other := admin
 	other.Principal.UserID = "01936b8e-7c00-7000-8000-000000000099"
 	if err := b.svc.ConfirmReset(ctx, other, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {

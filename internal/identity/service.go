@@ -360,7 +360,20 @@ func (s *Service) issueChallenge(ctx context.Context, user domain.User, purpose,
 		Meta: meta, UserID: user.ID, TokenHash: challengeHash(token),
 		ExpiresAt: exp, IdleExpiresAt: epoch(),
 	}
-	if err := s.sessions.Insert(ctx, row); err != nil {
+	roles, err := rolesOf(user)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := s.sessions.Insert(ctx, row); err != nil {
+			return err
+		}
+		return s.record(ctx, principalOf(user, roles), audit.Change{
+			Entity: "session", EntityID: row.ID, Field: "token_hash", New: token, Secret: true,
+			Reason: "challenge.created purpose=" + purpose,
+		})
+	})
+	if err != nil {
 		return "", time.Time{}, err
 	}
 	return token, exp, nil
