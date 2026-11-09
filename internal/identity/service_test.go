@@ -63,6 +63,42 @@ func newBox(t *testing.T) box {
 	return box{svc: svc, mem: mem, log: log, clk: clk, reg: reg, mail: mail}
 }
 
+type countingLock struct{ repository.Users }
+
+func (countingLock) WithUserLock(_ context.Context, _ domain.ID, fn func() error) error {
+	return fn()
+}
+
+func TestWithUserDoesNotRepeatNotFound(t *testing.T) {
+	ctx := context.Background()
+	b := newBox(t)
+	svc, err := New(Deps{
+		Users: countingLock{Users: b.mem.Users()}, Sessions: b.mem.Sessions(), Passwords: b.mem.Passwords(),
+		TOTP: b.mem.TOTP(), Recovery: b.mem.Recovery(), Tokens: b.mem.Tokens(),
+		Audit: mustAudit(t, b), Settings: b.reg, Key: bytes.Repeat([]byte{7}, 32), Now: b.clk.Now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	err = svc.withUser(ctx, domain.SystemUserID, func() error {
+		n++
+		return repository.ErrNotFound
+	})
+	if n != 1 || !errors.Is(err, repository.ErrNotFound) {
+		t.Fatalf("calls %d err %v", n, err)
+	}
+}
+
+func mustAudit(t *testing.T, b box) *audit.Service {
+	t.Helper()
+	svc, err := audit.New(b.log, b.clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
+}
+
 func codeOf(err error) string {
 	var api *domain.APIError
 	if errors.As(err, &api) {

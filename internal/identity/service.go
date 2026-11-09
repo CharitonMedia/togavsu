@@ -104,11 +104,7 @@ func (s *Service) withUser(ctx context.Context, id domain.ID, fn func() error) e
 	mu.Lock()
 	defer mu.Unlock()
 	if lock, ok := s.users.(userLock); ok {
-		err := lock.WithUserLock(ctx, id, fn)
-		if errors.Is(err, repository.ErrNotFound) {
-			return fn()
-		}
-		return err
+		return lock.WithUserLock(ctx, id, fn)
 	}
 	return fn()
 }

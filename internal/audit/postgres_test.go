@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"fmt"
+	"errors"
+	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,8 +16,6 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
-
-const testAdminDSN = "postgres://togavsu:togavsu@127.0.0.1:5432/togavsu?sslmode=disable"
 
 func TestNonOwnerRoleCannotChangeAuditRows(t *testing.T) {
 	ctx := context.Background()
@@ -62,7 +62,11 @@ func TestNonOwnerRoleCannotChangeAuditRows(t *testing.T) {
 
 func openCoreDB(t *testing.T) *sql.DB {
 	t.Helper()
-	admin, err := db.OpenPostgres(testAdminDSN, "")
+	dsn, err := adminDSN()
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := db.OpenPostgres(dsn, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +83,7 @@ func openCoreDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		admin, err := db.OpenPostgres(testAdminDSN, "")
+		admin, err := db.OpenPostgres(dsn, "")
 		if err != nil {
 			return
 		}
@@ -87,7 +91,11 @@ func openCoreDB(t *testing.T) *sql.DB {
 		_, _ = admin.ExecContext(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
 		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name)
 	})
-	plain, err := db.OpenPostgres(fmt.Sprintf("postgres://togavsu:togavsu@127.0.0.1:5432/%s?sslmode=disable", name), "")
+	testDSN, err := withDatabase(dsn, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := db.OpenPostgres(testDSN, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,10 +107,46 @@ func openCoreDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 	_ = plain.Close()
-	out, err := db.OpenPostgres(fmt.Sprintf("postgres://togavsu:togavsu@127.0.0.1:5432/%s?sslmode=disable", name), "core")
+	out, err := db.OpenPostgres(testDSN, "core")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = out.Close() })
 	return out
+}
+
+func adminDSN() (string, error) {
+	raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
+	if raw == "" {
+		return "", errors.New("TOGAVSU_TEST_DATABASE_URL is required")
+	}
+	return raw, nil
+}
+
+func withDatabase(raw, name string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	u.Path = "/" + name
+	return u.String(), nil
+}
+
+func TestPostgresURLIsRequired(t *testing.T) {
+	t.Setenv("TOGAVSU_TEST_DATABASE_URL", "")
+	if _, err := adminDSN(); err == nil {
+		t.Fatal("expected a missing database URL to fail")
+	}
+}
+
+func TestPerTestDatabaseKeepsAdminURL(t *testing.T) {
+	raw := "postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable"
+	got, err := withDatabase(raw, "t0123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/t0123?sslmode=disable"
+	if got != want {
+		t.Fatalf("got %s", got)
+	}
 }
