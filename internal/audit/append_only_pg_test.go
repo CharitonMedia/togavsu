@@ -2,6 +2,9 @@ package audit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -11,18 +14,63 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
 
-// TestApplicationRoleCannotChangeAuditRows: the connection the core runs on (the table
-// owner, a superuser in Compose) is refused UPDATE, DELETE and TRUNCATE on audit_log,
-// while inserts keep working.
+// TestApplicationRoleCannotChangeAuditRows: a non-superuser application role that owns
+// audit_log and runs InstallPrivileges keeps INSERT and loses UPDATE, DELETE and
+// TRUNCATE. No trigger is involved, so a superuser connection is still not stopped:
+// that is the recorded ceiling.
 func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 	ctx := context.Background()
 	sqlDB := openCoreDB(t)
-	for i := 0; i < 2; i++ {
-		if err := InstallPrivileges(ctx, sqlDB); err != nil {
-			t.Fatalf("install %d: %v", i, err)
+	if err := InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(t.Name()))
+	app := "togavsu_app_" + hex.EncodeToString(sum[:4])
+	const appPassword = "synthetic-app-password"
+	var dbName string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT current_database()`).Scan(&dbName); err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`DROP ROLE IF EXISTS ` + app,
+		`CREATE ROLE ` + app + ` LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB PASSWORD '` + appPassword + `'`,
+		`GRANT USAGE ON SCHEMA core TO ` + app + ` WITH GRANT OPTION`,
+		`ALTER TABLE core.audit_log OWNER TO ` + app,
+		`GRANT ` + writerRole + ` TO ` + app + ` WITH ADMIN OPTION`,
+	} {
+		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
 		}
 	}
-	svc, err := New(NewPostgres(sqlDB), func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
+	dsn, err := adminDSN()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := withDatabase(dsn, dbName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword(app, appPassword)
+	appDB, err := db.OpenPostgres(u.String(), "core")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = appDB.Close()
+		_, _ = sqlDB.ExecContext(context.Background(), `REASSIGN OWNED BY `+app+` TO CURRENT_USER`)
+		_, _ = sqlDB.ExecContext(context.Background(), `DROP OWNED BY `+app)
+		_, _ = sqlDB.ExecContext(context.Background(), `DROP ROLE IF EXISTS `+app)
+	})
+	for i := 0; i < 2; i++ {
+		if err := InstallPrivileges(ctx, appDB); err != nil {
+			t.Fatalf("install as application role %d: %v", i, err)
+		}
+	}
+	svc, err := New(NewPostgres(appDB), func() time.Time { return time.Unix(1_700_000_000, 0).UTC() })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +80,7 @@ func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The settings store inserts as the application role; that stays allowed.
-	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO audit_log (id, created_at, updated_at, created_by, actor_id, role, source, entity, entity_id, field, old_value, new_value, reason)
+	if _, err := appDB.ExecContext(ctx, `INSERT INTO audit_log (id, created_at, updated_at, created_by, actor_id, role, source, entity, entity_id, field, old_value, new_value, reason)
 		VALUES ('raw-insert', 1, 1, 'system', 'system', 'admin', 'ui', 'setting', 'k', 'value', '', 'v', 'settings update')`); err != nil {
 		t.Fatal(err)
 	}
@@ -42,8 +90,8 @@ func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 		"DELETE FROM audit_log WHERE id = '" + string(row.ID) + "'",
 		"TRUNCATE audit_log",
 	} {
-		_, err := sqlDB.ExecContext(ctx, stmt)
-		if err == nil || !strings.Contains(err.Error(), "append-only") {
+		_, err := appDB.ExecContext(ctx, stmt)
+		if err == nil || !strings.Contains(err.Error(), "permission denied") {
 			t.Fatalf("%s: %v", stmt, err)
 		}
 	}
@@ -53,6 +101,10 @@ func TestApplicationRoleCannotChangeAuditRows(t *testing.T) {
 	}
 	if n := len(mustList(t, svc)); n != 2 {
 		t.Fatalf("%d rows", n)
+	}
+	// Ceiling: a superuser bypasses privileges.
+	if _, err := sqlDB.ExecContext(ctx, `UPDATE audit_log SET reason = reason WHERE false`); err != nil {
+		t.Fatalf("superuser ceiling changed: %v", err)
 	}
 }
 
@@ -83,7 +135,7 @@ func TestAtomicRollsBackWriteWithFailedAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	insertArea := func(ctx context.Context, id string) error {
-		_, err := db.Conn(ctx, sqlDB).ExecContext(ctx, `INSERT INTO practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active)
+		_, err := Conn(ctx, sqlDB).ExecContext(ctx, `INSERT INTO practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active)
 			VALUES ($1, 1, 1, 'system', 'Probate', '[]', '[]', 1)`, id)
 		return err
 	}

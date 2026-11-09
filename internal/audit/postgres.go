@@ -24,12 +24,12 @@ func NewPostgres(sqlDB *sql.DB) *Postgres {
 	return &Postgres{db: sqlDB, dialect: "postgres"}
 }
 
-// InstallPrivileges makes core.audit_log append-only for every connection.
-// It creates the non-owner writer role with only SELECT and INSERT, takes UPDATE,
-// DELETE and TRUNCATE away from the application role that runs it, and adds a guard
-// that refuses UPDATE, DELETE and TRUNCATE on the table from any role, the owner and
-// a superuser included. The guard holds no business logic: it only refuses the
-// statement, which is the PRD's fixed rule that the audit log is kept forever.
+// InstallPrivileges takes UPDATE, DELETE and TRUNCATE on core.audit_log away from every
+// role but a superuser. It creates the non-owner writer role with only SELECT and INSERT,
+// and revokes those three privileges from PUBLIC and from the application role that
+// runs it, which is the table owner. No trigger is added: PRD section 6 forbids
+// triggers that carry business logic. A superuser is not stopped by privileges, so the
+// application role must not be one.
 // CREATE ROLE cannot run inside a goose transaction, so this is not a migration file.
 // It is safe to run again.
 func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
@@ -44,17 +44,6 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 		`GRANT SELECT, INSERT ON TABLE core.audit_log TO ` + writerRole,
 		`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE core.audit_log FROM ` + writerRole,
 		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.audit_log FROM PUBLIC, CURRENT_USER`,
-		`CREATE OR REPLACE FUNCTION core.audit_log_refuse_change() RETURNS trigger
-		  LANGUAGE plpgsql AS $body$
-		BEGIN
-		  RAISE EXCEPTION 'audit_log is append-only' USING ERRCODE = '` + appendOnlyCode + `';
-		END $body$`,
-		`CREATE OR REPLACE TRIGGER audit_log_append_only
-		  BEFORE UPDATE OR DELETE ON core.audit_log
-		  FOR EACH STATEMENT EXECUTE FUNCTION core.audit_log_refuse_change()`,
-		`CREATE OR REPLACE TRIGGER audit_log_no_truncate
-		  BEFORE TRUNCATE ON core.audit_log
-		  FOR EACH STATEMENT EXECUTE FUNCTION core.audit_log_refuse_change()`,
 	}
 	for _, stmt := range stmts {
 		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {
@@ -64,14 +53,11 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 	return nil
 }
 
-// appendOnlyCode is the SQLSTATE the guard raises: insufficient_privilege.
-const appendOnlyCode = "42501"
-
 // Atomic runs fn in one transaction on this store's pool. Every Append made inside
-// fn, and every store write that joins db.WithTx on the same pool, commits or rolls
+// fn, and every store write that joins WithTx on the same pool, commits or rolls
 // back together.
 func (p *Postgres) Atomic(ctx context.Context, fn func(ctx context.Context) error) error {
-	return db.WithTx(ctx, p.db, fn)
+	return WithTx(ctx, p.db, fn)
 }
 
 // Append inserts one row as the writer role.
@@ -148,7 +134,7 @@ func (p *Postgres) List(ctx context.Context, _ repository.Filter) (repository.Pa
 }
 
 // Rows reads only the requested audit rows.
-// ponytail: ceiling: audit_log has no index on entity and entity_id, so Postgres may still scan the table. Upgrade path: an identity migration adds that index. trigger: a sign-in query plan is a sequential scan once the log passes 100000 rows.
+// ponytail: ceiling: audit_log_entity_idx covers entity and entity_id only, so field and time are filtered across every row for that account. Upgrade path: the integration lead adds an index on (entity, entity_id, field, created_at). trigger: one account's sign-in reads more than 10000 audit rows.
 func (p *Postgres) Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntry, error) {
 	var since int64
 	if !query.Since.IsZero() {
@@ -199,11 +185,11 @@ func scanAudit(sc interface{ Scan(...any) error }) (domain.AuditEntry, error) {
 	return row, nil
 }
 
-// asWriter runs fn as the writer role. Inside db.WithTx on the same pool it uses that
+// asWriter runs fn as the writer role. Inside WithTx on the same pool it uses that
 // transaction and switches back to the session role afterwards, so a failed append
 // aborts the whole transaction.
 func (p *Postgres) asWriter(ctx context.Context, fn func(*sql.Tx) error) error {
-	if tx := db.Tx(ctx, p.db); tx != nil {
+	if tx := Tx(ctx, p.db); tx != nil {
 		if _, err := tx.ExecContext(ctx, "SET LOCAL ROLE "+writerRole); err != nil {
 			return err
 		}

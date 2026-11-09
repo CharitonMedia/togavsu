@@ -120,7 +120,7 @@ type atomicStore interface {
 }
 
 // Atomic runs fn so its writes and the rows it records commit or roll back together.
-// On Postgres that is one transaction: store writes that join db.WithTx on the same
+// On Postgres that is one transaction: store writes that join WithTx on the same
 // pool are inside it. A store without transactions runs fn as it is.
 func (s *Service) Atomic(ctx context.Context, fn func(ctx context.Context) error) error {
 	if store, ok := s.store.(atomicStore); ok {
