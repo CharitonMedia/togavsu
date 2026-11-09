@@ -1,0 +1,7 @@
+.git
+.build-state
+*.pem
+*.key
+credentials
+.env
+.env.*

@@ -1,0 +1,23 @@
+{
+	admin unix//run/caddy-admin/admin.sock
+	local_certs
+}
+
+http:// {
+	handle /ready {
+		respond "ok" 200
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+https://{$TOGAVSU_DOMAIN:localhost} {
+	tls internal
+	handle /ready {
+		respond "ok" 200
+	}
+	handle {
+		reverse_proxy {$CORE_UPSTREAM:core:8080}
+	}
+}
