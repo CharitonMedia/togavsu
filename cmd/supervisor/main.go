@@ -151,7 +151,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Registry: supervisor.IndexRegistry{URL: cfg.ReleaseIndexURL, HTTP: &http.Client{Timeout: 30 * time.Second}},
 		Verifier: supervisor.CLIVerifier{Cosign: cfg.CosignBin, KeyPath: cfg.CosignKey},
 		Runtime:  docker,
-		Migrator: supervisor.DockerMigrator{Docker: docker, DatabaseURL: cfg.DatabaseURL},
+		Migrator: supervisor.DockerMigrator{Docker: docker},
 		Backup: func(ctx context.Context, reason string) (supervisor.BackupMeta, error) {
 			pass, err := cfg.ReloadPassphrase()
 			if err != nil {

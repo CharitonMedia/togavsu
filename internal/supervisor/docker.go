@@ -524,10 +524,13 @@ func (d *DockerRuntime) call(ctx context.Context, method, path string, body any,
 }
 
 // DockerMigrator runs `migrate` in a short-lived container of the new image.
-// The image must print migrated=true when it applied a migration.
+// The image must print migrated=true when it applied a migration. The
+// container gets the database URL the same way the running core does: the
+// image entrypoint reads /appsecrets/database_url and exports
+// TOGAVSU_DATABASE_URL. The supervisor does not put the URL in the container
+// environment.
 type DockerMigrator struct {
-	Docker      *DockerRuntime
-	DatabaseURL string
+	Docker *DockerRuntime
 }
 
 func (m DockerMigrator) Apply(ctx context.Context, image string) (bool, error) {

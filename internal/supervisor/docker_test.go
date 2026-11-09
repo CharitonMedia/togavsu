@@ -296,6 +296,23 @@ func TestMigratorPullsBeforeCreate(t *testing.T) {
 		if len(order) == 0 || order[0] != "pull" {
 			t.Fatal("create ran before pull")
 		}
+		var body struct {
+			Cmd []string `json:"Cmd"`
+			Env []string `json:"Env"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Cmd) != 1 || body.Cmd[0] != "migrate" {
+			t.Fatalf("migrate command %v", body.Cmd)
+		}
+		// The entrypoint exports TOGAVSU_DATABASE_URL from the secret volume.
+		// Neither URL name may be passed in the container environment.
+		for _, kv := range body.Env {
+			if strings.HasPrefix(kv, "DATABASE_URL=") || strings.HasPrefix(kv, "TOGAVSU_DATABASE_URL=") {
+				t.Fatalf("database URL in migrate env: %q", kv)
+			}
+		}
 		_ = json.NewEncoder(w).Encode(map[string]string{"Id": "mig"})
 	})
 	mux.HandleFunc("/v1.43/containers/mig/start", func(w http.ResponseWriter, r *http.Request) {
