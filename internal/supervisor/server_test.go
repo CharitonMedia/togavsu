@@ -830,3 +830,85 @@ func TestBusyRejectsSecondBackup(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// A restore must not report a terminal status while it still holds the gate,
+// or a client that sees "completed" gets operation_in_progress on its next
+// operation. The release hook holds the window open, so the check is
+// deterministic.
+func TestTerminalRestoreIsPublishedAfterGateRelease(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		apply func(context.Context, io.Reader) error
+		want  string
+	}{
+		{"completed", func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		}, "completed"},
+		{"failed", func(context.Context, io.Reader) error {
+			return errors.New("apply failed")
+		}, "failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			ops := &Operations{
+				Store: store,
+				Gate:  &Gate{},
+				Now:   store.Now,
+				Passphrase: func() (string, error) {
+					return store.Passphrase, nil
+				},
+				ApplyDump: tc.apply,
+				Runtime:   &scriptRuntime{order: &[]string{}, cores: []ContainerInfo{{ID: "core-1"}}},
+			}
+			meta, err := store.Create(context.Background(), reasonManual)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec, release, err := ops.admitRestore(context.Background(), meta.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			releasing := make(chan struct{})
+			proceed := make(chan struct{})
+			finished := make(chan RestoreRecord, 1)
+			go func() {
+				done, _ := ops.runRestore(rec, func() {
+					close(releasing)
+					<-proceed
+					release()
+				})
+				finished <- done
+			}()
+			select {
+			case <-releasing:
+			case <-time.After(5 * time.Second):
+				t.Fatal("restore did not reach release")
+			}
+			if _, ok := ops.Gate.Try(); ok {
+				t.Fatal("gate free before release")
+			}
+			polled, ok, err := ops.LookupRestore(rec.ID)
+			if err != nil || !ok {
+				t.Fatalf("lookup %v %v", ok, err)
+			}
+			if terminalRestore(polled.Status) {
+				t.Fatalf("terminal status %q visible while the gate is held", polled.Status)
+			}
+			close(proceed)
+			done := <-finished
+			if done.Status != tc.want {
+				t.Fatalf("returned %+v", done)
+			}
+			polled, ok, err = ops.LookupRestore(rec.ID)
+			if err != nil || !ok || polled.Status != tc.want {
+				t.Fatalf("after release %+v %v %v", polled, ok, err)
+			}
+			free, ok := ops.Gate.Try()
+			if !ok {
+				t.Fatal("gate still held after a terminal status was published")
+			}
+			free()
+		})
+	}
+}
