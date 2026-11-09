@@ -658,7 +658,7 @@ func TestConflictsNotesAndCaseNumber(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ChangePhone(ctx, staff, old.ID, "+15555550124", "2026-06-01"); err != nil {
+	if _, err := svc.ChangePhone(ctx, staff, old.ID, "+15555550124", "2026-06-01", ""); err != nil {
 		t.Fatal(err)
 	}
 	prev, err := svc.db.Phone(ctx, old.ID)

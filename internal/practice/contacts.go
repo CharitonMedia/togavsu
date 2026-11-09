@@ -159,7 +159,7 @@ func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact doma
 }
 
 // ChangePhone closes the current row and inserts the new number so history is kept.
-func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain.ID, phone, from string) (domain.ContactPhone, error) {
+func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain.ID, phone, from, label string) (domain.ContactPhone, error) {
 	prev, err := s.db.Phone(ctx, id)
 	if err != nil {
 		return domain.ContactPhone{}, missing(err, "phone")
@@ -214,7 +214,23 @@ func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain
 			return domain.ContactPhone{}, err
 		}
 	}
-	return s.AddPhone(ctx, p, prev.ContactID, prev.Label, e164, from, true)
+	nextLabel := prev.Label
+	if strings.TrimSpace(label) != "" {
+		nextLabel = strings.TrimSpace(label)
+	}
+	row, err := s.AddPhone(ctx, p, prev.ContactID, nextLabel, e164, from, true)
+	if err != nil {
+		return domain.ContactPhone{}, err
+	}
+	if nextLabel != prev.Label {
+		if err := s.record(ctx, p, []change{{
+			ContactID: row.ContactID, Entity: "contact_phone", EntityID: row.ID, Field: "label",
+			Old: prev.Label, New: nextLabel, Kind: "create", SkipEvent: true,
+		}}); err != nil {
+			return domain.ContactPhone{}, err
+		}
+	}
+	return row, nil
 }
 
 // AddEmail stores an email without overwriting an earlier one.

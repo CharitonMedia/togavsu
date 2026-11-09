@@ -876,7 +876,7 @@ func TestContactNotePhoneAndPartyChangesAreAudited(t *testing.T) {
 	if _, err := svc.AddPhone(ctx, staff, row.ID, "work", "+15555550101", "2026-02-01", true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.ChangePhone(ctx, staff, first.ID, "+15555550102", ""); err != nil {
+	if _, err := svc.ChangePhone(ctx, staff, first.ID, "+15555550102", "", ""); err != nil {
 		t.Fatal(err)
 	}
 	history, err = svc.History(ctx, staff, "contact", row.ID)
@@ -1422,6 +1422,97 @@ func TestReopenReplayChecksTheWall(t *testing.T) {
 	h.Routes().ServeHTTP(second, req)
 	if second.Code == 200 || strings.Contains(second.Body.String(), "Walled replay") {
 		t.Fatalf("replay leaked %d %s", second.Code, second.Body.String())
+	}
+}
+
+func TestWalledConflictHitIsHiddenOnRead(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, admin, "Admin")
+	area := makeArea(t, svc, admin, "Probate")
+	open := makeMatter(t, svc, staff, area, "Open matter", "")
+	walled := makeMatter(t, svc, staff, area, "Walled matter", "")
+	visible, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Jane", FamilyName: "Doe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret, err := svc.CreateContact(ctx, admin, ContactInput{Kind: KindPerson, GivenName: "Jane", FamilyName: "Doe"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, open.ID, PartyInput{ContactID: visible.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	secretParty, err := svc.AddParty(ctx, admin, walled.ID, PartyInput{ContactID: secret.ID, Role: "client", Primary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, walled.ID, []domain.ID{admin.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RunConflictCheck(ctx, admin, open.ID); err != nil {
+		t.Fatal(err)
+	}
+	adminRows, err := svc.ConflictChecks(ctx, admin, open.ID)
+	if err != nil || !hitMatches(adminRows, secretParty.ID) {
+		t.Fatal(err, adminRows)
+	}
+	staffRows, err := svc.ConflictChecks(ctx, staff, open.ID)
+	if err != nil || hitMatches(staffRows, secretParty.ID) {
+		t.Fatal(err, staffRows)
+	}
+	status, body := getAPI(t, svc, staff, "/api/v1/matters/"+string(open.ID)+"/conflict-checks")
+	if status != 200 || strings.Contains(body, string(secretParty.ID)) || strings.Contains(body, "MatterID") || !strings.Contains(body, `"matter_id"`) || !strings.Contains(body, `"hits"`) {
+		t.Fatalf("staff checks %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters/"+string(open.ID)+"/timeline")
+	if status != 200 || strings.Contains(body, "ActorKind") || !strings.Contains(body, `"actor_kind"`) || !strings.Contains(body, `"summary"`) {
+		t.Fatalf("timeline %d %s", status, body)
+	}
+	if _, err := svc.CreateCounty(ctx, admin, "Boone", "MO"); err != nil {
+		t.Fatal(err)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/counties")
+	if status != 200 || strings.Contains(body, "CreatedAt") || !strings.Contains(body, `"created_at"`) || !strings.Contains(body, `"state"`) {
+		t.Fatalf("counties %d %s", status, body)
+	}
+	status, body = getAPI(t, svc, staff, "/api/v1/matters/"+string(open.ID)+"/wall")
+	if status != 200 || strings.Contains(body, "UserID") || !strings.Contains(body, `"user_ids"`) {
+		t.Fatalf("wall %d %s", status, body)
+	}
+}
+
+func hitMatches(runs []ConflictRun, id domain.ID) bool {
+	for _, run := range runs {
+		for _, hit := range run.Hits {
+			if hit.MatchedID == id {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestPhoneNumberChangeKeepsTheRequestedLabel(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	staff := person(tid(3), domain.RoleStaff)
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Pat", FamilyName: "Lee"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone, err := svc.AddPhone(ctx, staff, contact.ID, "mobile", "+15555550100", "2026-01-01", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := svc.RevisePhone(ctx, staff, phone.ID, "+15555550109", "", "desk")
+	if err != nil || next.Label != "desk" || next.PhoneE164 != "+15555550109" {
+		t.Fatal(err, next)
+	}
+	if !auditHas(svc.db.Audits(), "contact_phone", "label") {
+		t.Fatal(svc.db.Audits())
 	}
 }
 

@@ -398,7 +398,11 @@ func (h *Handler) timelineJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	data := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		data = append(data, eventDoc(row))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "page": pageDoc(len(data))})
 }
 
 func (h *Handler) wallJSON(w http.ResponseWriter, r *http.Request) {
@@ -430,7 +434,15 @@ func (h *Handler) needsCaseJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	data := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		view, err := h.Svc.GetMatter(r.Context(), p, row.ID)
+		if err != nil {
+			continue
+		}
+		data = append(data, matterItem(view))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": data, "page": pageDoc(len(data))})
 }
 
 func (h *Handler) createPartyJSON(w http.ResponseWriter, r *http.Request) {
@@ -556,7 +568,7 @@ func (h *Handler) runCheckJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, checkDoc(row))
 }
 
 func (h *Handler) listChecksJSON(w http.ResponseWriter, r *http.Request) {
@@ -569,7 +581,11 @@ func (h *Handler) listChecksJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	items := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, checkDoc(row))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (h *Handler) decideJSON(w http.ResponseWriter, r *http.Request) {
@@ -586,12 +602,16 @@ func (h *Handler) decideJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.DecideConflictOnCheck(r.Context(), p, domain.ID(r.PathValue("conflict_check_id")), body.HitID, body.Decision, body.Reason)
+	if _, err := h.Svc.DecideConflictOnCheck(r.Context(), p, domain.ID(r.PathValue("conflict_check_id")), body.HitID, body.Decision, body.Reason); err != nil {
+		writeErr(w, err)
+		return
+	}
+	run, err := h.Svc.GetConflictCheck(r.Context(), p, domain.ID(r.PathValue("conflict_check_id")))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, row)
+	writeJSON(w, http.StatusOK, checkDoc(run))
 }
 
 func (h *Handler) createMarkerJSON(w http.ResponseWriter, r *http.Request) {

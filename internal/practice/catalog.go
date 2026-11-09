@@ -398,7 +398,7 @@ func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain
 		return domain.ContactPhone{}, missing(err, "phone")
 	}
 	if e164 != "" && e164 != current.PhoneE164 {
-		return s.ChangePhone(ctx, p, id, e164, from)
+		return s.ChangePhone(ctx, p, id, e164, from, label)
 	}
 	if err := s.readableContact(ctx, p, current.ContactID); err != nil {
 		return domain.ContactPhone{}, err

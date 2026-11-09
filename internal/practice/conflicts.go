@@ -239,10 +239,39 @@ func (s *Service) ConflictChecks(ctx context.Context, p domain.Principal, matter
 }
 
 func (s *Service) redactRun(ctx context.Context, p domain.Principal, run ConflictRun) ConflictRun {
-	for i := range run.Hits {
-		run.Hits[i] = s.redactHit(ctx, p, run.Hits[i])
+	kept := make([]Hit, 0, len(run.Hits))
+	for _, hit := range run.Hits {
+		if !s.visibleHit(ctx, p, hit) {
+			continue
+		}
+		kept = append(kept, s.redactHit(ctx, p, hit))
 	}
+	run.Hits = kept
 	return run
+}
+
+func (s *Service) visibleHit(ctx context.Context, p domain.Principal, hit Hit) bool {
+	switch hit.MatchedRecordType {
+	case "contact":
+		return s.readableContact(ctx, p, hit.MatchedID) == nil
+	case "party":
+		party, err := s.db.Party(ctx, hit.MatchedID)
+		if err != nil {
+			return false
+		}
+		return s.visibleMatter(ctx, p, party.MatterID)
+	case "conflict_record":
+		row, err := s.db.Conflict(ctx, hit.MatchedID)
+		if err != nil {
+			return false
+		}
+		if row.MatterID.IsZero() {
+			return true
+		}
+		return s.visibleMatter(ctx, p, row.MatterID)
+	default:
+		return false
+	}
 }
 
 func (s *Service) redactHit(ctx context.Context, p domain.Principal, hit Hit) Hit {

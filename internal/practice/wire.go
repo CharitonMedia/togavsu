@@ -500,6 +500,48 @@ func countyDoc(row domain.County) map[string]any {
 	}
 }
 
+func checkDoc(run ConflictRun) map[string]any {
+	hits := make([]map[string]any, 0, len(run.Hits))
+	for _, hit := range run.Hits {
+		var decision, reason any
+		if hit.Decision != "" {
+			decision = hit.Decision
+		}
+		if hit.Reason != "" {
+			reason = hit.Reason
+		}
+		hits = append(hits, map[string]any{
+			"id": hit.ID, "matched_record_type": hit.MatchedRecordType, "matched_id": hit.MatchedID,
+			"score": hit.Score, "name": hit.Name, "decision": decision, "reason": reason,
+		})
+	}
+	return map[string]any{
+		"id": run.ID, "created_at": when(run.CreatedAt), "created_by": run.CreatedBy,
+		"updated_at": when(run.CreatedAt), "matter_id": run.MatterID, "hits": hits,
+	}
+}
+
+func eventDoc(row TimelineEntry) map[string]any {
+	return map[string]any{
+		"id": row.ID, "created_at": when(row.At), "created_by": row.ActorID, "actor_kind": row.ActorKind,
+		"actor_id": idOrNil(row.ActorID), "action": row.Action, "record_type": row.RecordType,
+		"record_id": row.RecordID, "matter_id": idOrNil(row.MatterID), "summary": row.Summary,
+		"client_visible": row.ClientVisible,
+	}
+}
+
+func wallDoc(matter domain.ID, rows []domain.MatterWall) map[string]any {
+	ids := make([]domain.ID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+	return map[string]any{"matter_id": matter, "user_ids": ids}
+}
+
+func pageDoc(n int) map[string]any {
+	return map[string]any{"limit": n, "next_cursor": ""}
+}
+
 func referralDoc(row domain.ReferralSource) map[string]any {
 	return map[string]any{
 		"id": row.ID, "created_at": when(row.CreatedAt), "created_by": row.CreatedBy, "updated_at": when(row.UpdatedAt),
