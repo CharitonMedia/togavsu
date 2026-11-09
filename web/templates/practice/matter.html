@@ -12,11 +12,18 @@
   <div><span class="muted">Invoices</span><br>{{.Matter.Glance.Invoices}}</div>
 </section>
 <p><a href="/practice/matters/{{.Matter.Matter.ID}}/close">Close matter</a></p>
+{{if .CanReopen}}
+<form class="card" method="post" action="/practice/matters/{{.Matter.Matter.ID}}/reopen">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <p><label>Reopen reason<br><input name="reason" required></label></p>
+  <button type="submit">Reopen matter</button>
+</form>
+{{end}}
 
 <section class="card" id="parties">
   <h2>Parties</h2>
   <ul>
-  {{range .Matter.Parties}}<li>{{.Role}}{{if .Primary}} (primary){{end}}</li>{{else}}<li>No parties yet.</li>{{end}}
+  {{range .Matter.PartyLines}}<li>{{.Name}} · {{.Role}}{{if .Primary}} (primary){{end}}</li>{{else}}<li>No parties yet.</li>{{end}}
   </ul>
 </section>
 
@@ -52,7 +59,7 @@
     {{range .History}}
       <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}" data-reason="{{.Reason}}">
         <td>{{.At.Format "2006-01-02 15:04"}}</td>
-        <td>{{.ActorID}}</td>
+        <td>{{if .ActorName}}{{.ActorName}}{{else}}{{.ActorID}}{{end}}</td>
         <td>{{.Role}}</td>
         <td>{{.Field}}</td>
         <td>{{.Old}}</td>

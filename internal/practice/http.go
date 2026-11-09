@@ -46,6 +46,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /practice/matters/{matter_id}", h.matterPage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}/close", h.closePage)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/close", h.closePost)
+	mux.HandleFunc("POST /practice/matters/{matter_id}/reopen", h.reopenPost)
 	mux.HandleFunc("POST /practice/matters/{matter_id}/custom-fields", h.customPost)
 	mux.HandleFunc("GET /practice/search", h.searchPage)
 	mux.HandleFunc("GET /practice/notes", h.notesPage)
@@ -111,6 +112,7 @@ type page struct {
 	Activity   []ActivityGroup
 	Feed       ActivityView
 	Needs      []domain.Matter
+	CanReopen  bool
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data page) {
@@ -160,9 +162,13 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	_, reopenErr := h.Svc.gate(r.Context(), p, domain.ResourceRef{
+		Resource: domain.ResMatter, Action: domain.ActionConflictDecide, MatterID: id,
+	})
 	h.render(w, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline,
+		CanReopen: reopenErr == nil && view.Matter.Status == StatusClosed,
 	})
 }
 
@@ -184,6 +190,28 @@ func (h *Handler) closePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.render(w, "close.html", page{Title: "Close " + row.Number, CSRF: h.csrf(w, r), Matter: view, Warnings: warnings})
+}
+
+func (h *Handler) reopenPost(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeErr(w, domain.Invalid("form", "form is invalid"))
+		return
+	}
+	if err := h.checkCSRF(r); err != nil {
+		writeErr(w, err)
+		return
+	}
+	id := domain.ID(r.PathValue("matter_id"))
+	if _, err := h.Svc.ReopenMatter(r.Context(), p, id, r.FormValue("reason")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	http.Redirect(w, r, "/practice/matters/"+string(id), http.StatusSeeOther)
 }
 
 func (h *Handler) closePost(w http.ResponseWriter, r *http.Request) {
@@ -771,7 +799,7 @@ func (h *Handler) csrf(w http.ResponseWriter, r *http.Request) string {
 	}
 	token := newToken()
 	http.SetCookie(w, &http.Cookie{
-		Name: csrfCookie, Value: token, Path: "/practice", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Name: csrfCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
 		Secure: cookieSecure(r),
 	})
 	return token
@@ -784,14 +812,16 @@ func cookieSecure(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-// requireWriteCSRF applies the OpenAPI CSRF header when the caller presents the session cookie.
-// A bearer-style call with no cookie is not a browser session.
+// requireWriteCSRF applies when the request carries any cookie, which is how a browser
+// session reaches /api/v1. The CSRF cookie is scoped to Path=/ so the browser sends it
+// with those API calls. A bearer call with no Cookie header is not a browser session.
 func (h *Handler) requireWriteCSRF(r *http.Request) error {
-	c, err := r.Cookie(csrfCookie)
-	if err != nil || c.Value == "" {
+	if r.Header.Get("Cookie") == "" {
 		return nil
 	}
-	if r.Header.Get("X-CSRF-Token") != c.Value {
+	c, err := r.Cookie(csrfCookie)
+	token := r.Header.Get("X-CSRF-Token")
+	if err != nil || c.Value == "" || token == "" || token != c.Value {
 		return domain.Forbidden("csrf")
 	}
 	return nil

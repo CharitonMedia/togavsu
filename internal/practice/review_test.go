@@ -459,8 +459,17 @@ func TestContactHistoryCardAndSSNRedaction(t *testing.T) {
 		t.Fatal(page)
 	}
 	attorneyRows, err := svc.History(ctx, attorney, "contact", contact.ID)
-	if err != nil || !historyHas(attorneyRows, "ssn_ein_ciphertext", "", secret) {
+	if err != nil || !historyHas(attorneyRows, "ssn_ein_ciphertext", "", "changed") {
 		t.Fatal(err, attorneyRows)
+	}
+	stored, err := svc.db.Contact(ctx, contact.ID)
+	if err != nil || strings.Contains(stored.SSNEINCiphertext, secret) || !strings.HasPrefix(stored.SSNEINCiphertext, sealPrefix) {
+		t.Fatal(stored.SSNEINCiphertext, err)
+	}
+	for _, row := range svc.db.Audits() {
+		if strings.Contains(row.Entry.OldValue, secret) || strings.Contains(row.Entry.NewValue, secret) {
+			t.Fatal(row.Entry)
+		}
 	}
 }
 
@@ -610,7 +619,7 @@ func TestSessionJSONRequiresCSRFAndHTTPSCookieIsSecure(t *testing.T) {
 	token, _ := csrf(t, svc, attorney, "/practice/matters")
 	res := httptest.NewRecorder()
 	req := authReq(http.MethodPost, "/api/v1/matters/"+string(matter.ID)+"/reopen", strings.NewReader(`{"reason":"back"}`), attorney)
-	req.AddCookie(&http.Cookie{Name: csrfCookie, Value: token})
+	req.Header.Set("Cookie", "session=browser")
 	h.Routes().ServeHTTP(res, req)
 	if res.Code != 403 {
 		t.Fatalf("missing csrf %d %s", res.Code, res.Body.String())
@@ -631,8 +640,106 @@ func TestSessionJSONRequiresCSRFAndHTTPSCookieIsSecure(t *testing.T) {
 	secureRes := httptest.NewRecorder()
 	h.Routes().ServeHTTP(secureRes, secureReq)
 	cookie := secureRes.Header().Get("Set-Cookie")
-	if !strings.Contains(cookie, "Secure") {
+	if !strings.Contains(cookie, "Secure") || !strings.Contains(cookie, "Path=/") || strings.Contains(cookie, "Path=/practice") {
 		t.Fatal(cookie)
+	}
+}
+
+func TestConflictAuditCustomLinkAndReopenForm(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	if !auditHas(svc.db.Audits(), "practice_area", "name") {
+		t.Fatal("practice area was not audited")
+	}
+	record, err := svc.CreateConflict(ctx, attorney, ConflictInput{Name: "Opposing Co", Relationship: "opposing party", Reason: "secret-reason"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !auditHas(svc.db.Audits(), "conflict_record", "reason") {
+		t.Fatal("conflict reason was not audited")
+	}
+	for _, row := range svc.db.Audits() {
+		if row.Entry.Entity == "conflict_record" && row.Entry.Field == "reason" && !row.AttorneyOnly {
+			t.Fatal("conflict reason is not attorney-only")
+		}
+	}
+	_ = record
+	staffMatter := makeMatter(t, svc, staff, area, "Visible", "")
+	hiddenMatter := makeMatter(t, svc, staff, area, "Hidden matter", "")
+	hidden, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Hidden", FamilyName: "Link"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Visible", FamilyName: "Link"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, hiddenMatter.ID, PartyInput{ContactID: hidden.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, hiddenMatter.ID, []domain.ID{attorney.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	field, err := svc.CreateField(ctx, admin, FieldDef{RecordType: RecordMatter, Label: "Related", FieldType: FieldContact})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetCustomFields(ctx, staff, RecordMatter, staffMatter.ID, area, []CustomInput{{DefinitionID: field.ID, Value: string(hidden.ID)}}); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, staffMatter.ID, PartyInput{ContactID: visible.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetCustomFields(ctx, staff, RecordMatter, staffMatter.ID, area, []CustomInput{{DefinitionID: field.ID, Value: string(visible.ID)}}); err != nil {
+		t.Fatal(err)
+	}
+	open := makeMatter(t, svc, staff, area, "Check A", "")
+	other := makeMatter(t, svc, staff, area, "Check B", "")
+	if _, err := svc.AddParty(ctx, staff, open.ID, PartyInput{ContactID: visible.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddParty(ctx, staff, other.ID, PartyInput{ContactID: visible.ID, Role: "witness"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateConflict(ctx, attorney, ConflictInput{Name: visible.FullName, Relationship: "prior client"}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := svc.RunConflictCheck(ctx, attorney, open.ID)
+	if err != nil || len(first.Hits) == 0 {
+		t.Fatal(err, first.Hits)
+	}
+	second, err := svc.RunConflictCheck(ctx, attorney, other.ID)
+	if err != nil || len(second.Hits) == 0 {
+		t.Fatal(err, second.Hits)
+	}
+	if _, err := svc.DecideConflictOnCheck(ctx, attorney, second.ID, first.Hits[0].ID, DecisionClear, "no"); !isCode(err, domain.CodeNotFound) {
+		t.Fatal(err)
+	}
+	if _, err := svc.DecideConflictOnCheck(ctx, attorney, first.ID, first.Hits[0].ID, DecisionClear, "ok"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.CloseMatter(ctx, staff, staffMatter.ID, CloseInput{Reason: "done", Acknowledge: true}); err != nil {
+		t.Fatal(err)
+	}
+	putUser(t, db, staff, "Sam Staff")
+	if _, err := svc.CreateCounty(ctx, admin, "Boone", "MO"); err != nil || !auditHas(svc.db.Audits(), "county", "name") {
+		t.Fatal(err)
+	}
+	if _, err := svc.CreateReferral(ctx, admin, "Neighbor", "person", domain.ID("")); err != nil || !auditHas(svc.db.Audits(), "referral_source", "name") {
+		t.Fatal(err)
+	}
+	attorneyPage := getHTML(t, svc, attorney, "/practice/matters/"+string(staffMatter.ID))
+	if !strings.Contains(attorneyPage, "Reopen matter") || !strings.Contains(attorneyPage, "Visible Link") || !strings.Contains(attorneyPage, "Sam Staff") {
+		t.Fatal(attorneyPage)
+	}
+	staffPage := getHTML(t, svc, staff, "/practice/matters/"+string(staffMatter.ID))
+	if strings.Contains(staffPage, "Reopen matter") {
+		t.Fatal("staff saw reopen")
 	}
 }
 

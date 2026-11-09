@@ -9,7 +9,7 @@
     {{range .History}}
       <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}" data-reason="{{.Reason}}">
         <td>{{.At.Format "2006-01-02 15:04"}}</td>
-        <td>{{.ActorID}}</td>
+        <td>{{if .ActorName}}{{.ActorName}}{{else}}{{.ActorID}}{{end}}</td>
         <td>{{.Role}}</td>
         <td>{{.Field}}</td>
         <td>{{.Old}}</td>

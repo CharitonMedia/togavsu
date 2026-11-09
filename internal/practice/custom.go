@@ -144,6 +144,11 @@ func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType
 		if err != nil {
 			return err
 		}
+		if def.FieldType == FieldContact && canonical != "" {
+			if err := s.readableContact(ctx, p, domain.ID(canonical)); err != nil {
+				return err
+			}
+		}
 		prev := ""
 		for _, existing := range s.db.Values(recordID) {
 			if existing.DefinitionID == def.ID {

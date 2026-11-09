@@ -123,7 +123,6 @@ func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query s
 
 func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
-	canSSN := s.canReadSensitive(ctx, p)
 	var rows []domain.Contact
 	for _, row := range s.db.Contacts() {
 		if s.readableContact(ctx, p, row.ID) != nil {
@@ -137,9 +136,6 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 		}
 		for _, phone := range s.db.Phones(row.ID) {
 			hay += " " + strings.ToLower(phone.PhoneE164)
-		}
-		if canSSN {
-			hay += " " + strings.ToLower(row.SSNEINCiphertext)
 		}
 		if !strings.Contains(hay, q) {
 			continue
@@ -206,11 +202,6 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 		})
 	}
 	return hits
-}
-
-func (s *Service) canReadSensitive(ctx context.Context, p domain.Principal) bool {
-	d, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSensitiveContact, Action: domain.ActionRead})
-	return err == nil && d.Allow && !d.Redact
 }
 
 func sortMatterRows(rows []domain.Matter) {

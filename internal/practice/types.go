@@ -263,18 +263,19 @@ type ConflictRun struct {
 
 // HistoryRow is one edit-history line.
 type HistoryRow struct {
-	ID       domain.ID
-	At       time.Time
-	ActorID  domain.ID
-	Role     string
-	Source   string
-	Entity   string
-	Field    string
-	Old      string
-	New      string
-	Kind     string
-	Reason   string
-	Redacted bool
+	ID        domain.ID
+	At        time.Time
+	ActorID   domain.ID
+	ActorName string
+	Role      string
+	Source    string
+	Entity    string
+	Field     string
+	Old       string
+	New       string
+	Kind      string
+	Reason    string
+	Redacted  bool
 }
 
 // TimelineEntry is one case-timeline row.
@@ -347,6 +348,13 @@ type AgingRow struct {
 	AgeDays   int
 }
 
+// PartyLine is a party shown with the contact's name.
+type PartyLine struct {
+	Role    string
+	Name    string
+	Primary bool
+}
+
 // Glance is the matter At a Glance card.
 type Glance struct {
 	Stage          string
@@ -363,6 +371,7 @@ type Glance struct {
 type MatterView struct {
 	Matter       domain.Matter
 	Parties      []domain.MatterParty
+	PartyLines   []PartyLine
 	CustomFields []ShownField
 	Markers      []MatterMarker
 	Unchecked    bool

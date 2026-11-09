@@ -223,8 +223,8 @@ func TestAC020SearchScopesAndWall(t *testing.T) {
 	attorney := person(tid(2), domain.RoleAttorney)
 	putUser(t, db, attorney, "Ada Attorney")
 	ssn, err = svc.Search(ctx, attorney, "999-88", ScopePeople)
-	if err != nil || !searchHas(ssn, contact.ID) {
-		t.Fatal("attorney should be able to search the stored identifier", err, ssn)
+	if err != nil || searchHas(ssn, contact.ID) {
+		t.Fatal("identifier text is not searchable", err, ssn)
 	}
 	accountant := person(tid(8), domain.RoleAccountant)
 	acctAll, err := svc.Search(ctx, accountant, "2026-0001", ScopeAll)

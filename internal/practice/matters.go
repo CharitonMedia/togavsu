@@ -520,10 +520,13 @@ func (s *Service) matterView(ctx context.Context, p domain.Principal, row domain
 	}
 	view.Glance = s.glance(row)
 	for _, party := range view.Parties {
+		name := string(party.ContactID)
+		if contact, err := s.db.Contact(ctx, party.ContactID); err == nil && contact.FullName != "" {
+			name = contact.FullName
+		}
+		view.PartyLines = append(view.PartyLines, PartyLine{Role: party.Role, Name: name, Primary: party.Primary})
 		if party.Role == "client" && party.Primary {
-			if contact, err := s.db.Contact(ctx, party.ContactID); err == nil {
-				view.ClientName = contact.FullName
-			}
+			view.ClientName = name
 		}
 	}
 	return view, nil

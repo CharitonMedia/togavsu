@@ -142,6 +142,12 @@ func (s *Service) CreateArea(ctx context.Context, p domain.Principal, name, matt
 	if err := s.db.InsertArea(ctx, row); err != nil {
 		return domain.PracticeArea{}, err
 	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "practice_area", EntityID: row.ID, Field: "name", New: row.Name, Kind: "create",
+		Action: "practice_area.created", Summary: "Added practice area " + row.Name,
+	}}); err != nil {
+		return domain.PracticeArea{}, err
+	}
 	return row, nil
 }
 
@@ -159,6 +165,12 @@ func (s *Service) CreateCounty(ctx context.Context, p domain.Principal, name, st
 		return domain.County{}, domain.Invalid("name", "name and state are required")
 	}
 	if err := s.db.InsertCounty(ctx, row); err != nil {
+		return domain.County{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "county", EntityID: row.ID, Field: "name", New: row.Name, Kind: "create",
+		Action: "county.created", Summary: "Added county " + row.Name,
+	}}); err != nil {
 		return domain.County{}, err
 	}
 	return row, nil
@@ -183,6 +195,12 @@ func (s *Service) CreateReferral(ctx context.Context, p domain.Principal, name, 
 		return domain.ReferralSource{}, domain.Invalid("name", "name is required")
 	}
 	if err := s.db.InsertReferral(ctx, row); err != nil {
+		return domain.ReferralSource{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "referral_source", EntityID: row.ID, Field: "name", New: row.Name, Kind: "create",
+		Action: "referral_source.created", Summary: "Added referral source " + row.Name,
+	}}); err != nil {
 		return domain.ReferralSource{}, err
 	}
 	return row, nil

@@ -298,7 +298,11 @@ func (s *Service) buildContact(ctx context.Context, p domain.Principal, prev dom
 		if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSensitiveContact, Action: domain.ActionWrite}); err != nil {
 			return domain.Contact{}, err
 		}
-		ssn = in.SSNEIN
+		sealed, err := s.sealSSN(in.SSNEIN)
+		if err != nil {
+			return domain.Contact{}, err
+		}
+		ssn = sealed
 	}
 	meta := prev.Meta
 	if create {
@@ -314,6 +318,23 @@ func (s *Service) buildContact(ctx context.Context, p domain.Principal, prev dom
 		DateOfBirth: in.DateOfBirth, DateOfDeath: in.DateOfDeath, SSNEINCiphertext: ssn, EntityType: in.EntityType,
 		FormationState: in.FormationState, FormationDate: in.FormationDate, Archived: in.Archived, Source: in.Source,
 	}, nil
+}
+
+func (s *Service) sealSSN(plain string) (string, error) {
+	if strings.HasPrefix(plain, sealPrefix) {
+		return plain, nil
+	}
+	if len(s.key) != 32 {
+		return "", domain.Invalid("ssn_ein", "identifier must already be encrypted")
+	}
+	sealed, err := sealIdentifier(s.key, plain)
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(sealed, plain) {
+		return "", domain.Invalid("ssn_ein", "identifier must already be encrypted")
+	}
+	return sealed, nil
 }
 
 func (s *Service) redactContact(ctx context.Context, p domain.Principal, row domain.Contact) domain.Contact {
@@ -364,7 +385,7 @@ func contactChanges(prev, next domain.Contact, action, summary string) []change 
 		{"also_known_as", prev.AlsoKnownAs + "\x00" + next.AlsoKnownAs},
 		{"date_of_birth", prev.DateOfBirth + "\x00" + next.DateOfBirth},
 		{"archived", boolText(prev.Archived) + "\x00" + boolText(next.Archived)},
-		{"ssn_ein_ciphertext", prev.SSNEINCiphertext + "\x00" + next.SSNEINCiphertext},
+		{"ssn_ein_ciphertext", ssnAuditPair(prev.SSNEINCiphertext, next.SSNEINCiphertext)},
 	}
 	var out []change
 	first := true
@@ -387,6 +408,21 @@ func contactChanges(prev, next domain.Contact, action, summary string) []change 
 		out = append(out, ch)
 	}
 	return out
+}
+
+// ssnAuditPair records that an identifier changed. The value itself stays out of the audit log.
+func ssnAuditPair(prev, next string) string {
+	if prev == next {
+		return "\x00"
+	}
+	old, neu := "", ""
+	if prev != "" {
+		old = "previous"
+	}
+	if next != "" {
+		neu = "changed"
+	}
+	return old + "\x00" + neu
 }
 
 func boolText(v bool) string {

@@ -58,6 +58,19 @@ func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in Con
 	if err := s.db.InsertConflict(ctx, row); err != nil {
 		return domain.ConflictRecord{}, err
 	}
+	changes := []change{{
+		MatterID: row.MatterID, Entity: "conflict_record", EntityID: row.ID, Field: "name", New: row.Name, Kind: "create",
+		Action: "conflict_record.created", Summary: "Added conflict record " + row.Name,
+	}}
+	if row.Reason != "" {
+		changes = append(changes, change{
+			MatterID: row.MatterID, Entity: "conflict_record", EntityID: row.ID, Field: "reason",
+			New: row.Reason, Kind: "create", AttorneyOnly: true, SkipEvent: true,
+		})
+	}
+	if err := s.record(ctx, p, changes); err != nil {
+		return domain.ConflictRecord{}, err
+	}
 	return s.redactConflict(ctx, p, row), nil
 }
 
@@ -155,6 +168,15 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 		return ConflictRun{}, err
 	}
 	return s.redactRun(ctx, p, run), nil
+}
+
+// DecideConflictOnCheck records a decision only when the hit belongs to that check.
+func (s *Service) DecideConflictOnCheck(ctx context.Context, p domain.Principal, checkID, hitID domain.ID, decision, reason string) (Hit, error) {
+	run, _, ok := s.db.FindHit(hitID)
+	if !ok || run.ID != checkID {
+		return Hit{}, domain.NotFound("conflict hit")
+	}
+	return s.DecideConflict(ctx, p, hitID, decision, reason)
 }
 
 // DecideConflict records an attorney decision. The reason is attorney-only.

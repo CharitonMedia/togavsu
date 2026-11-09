@@ -444,7 +444,7 @@ func (h *Handler) decideJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.Invalid("body", "body is invalid"))
 		return
 	}
-	row, err := h.Svc.DecideConflict(r.Context(), p, body.HitID, body.Decision, body.Reason)
+	row, err := h.Svc.DecideConflictOnCheck(r.Context(), p, domain.ID(r.PathValue("conflict_check_id")), body.HitID, body.Decision, body.Reason)
 	if err != nil {
 		writeErr(w, err)
 		return

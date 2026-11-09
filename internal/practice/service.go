@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +23,8 @@ type Service struct {
 	Policy   domain.Policy
 	now      func() time.Time
 	newID    func() (domain.ID, error)
+	// key seals SSN and EIN. Identity replaces it with the installer key.
+	key []byte
 }
 
 type wallSource struct{ s *Service }
@@ -36,7 +39,7 @@ func (quietAudit) SettingChanged(context.Context, settings.Change) error { retur
 
 // New builds a practice service. settings may be nil in tests; registry defaults are then used as fallbacks.
 func New(db *Memory, reg *settings.Registry) *Service {
-	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID}
+	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID, key: identifierKey()}
 	s.Policy = domain.Policy{Walls: wallSource{s}}
 	return s
 }
@@ -48,6 +51,14 @@ func NewWithSettings(db *Memory) (*Service, error) {
 		return nil, err
 	}
 	return New(db, reg), nil
+}
+
+func identifierKey() []byte {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil
+	}
+	return key
 }
 
 func (s *Service) clock() time.Time {

@@ -225,8 +225,12 @@ func (s *Service) eventContact(ctx context.Context, row domain.Event) (domain.ID
 }
 
 func (s *Service) historyRow(ctx context.Context, p domain.Principal, row storedAudit) HistoryRow {
+	name := string(row.Entry.ActorID)
+	if user, err := s.db.User(ctx, row.Entry.ActorID); err == nil && user.Name != "" {
+		name = user.Name
+	}
 	out := HistoryRow{
-		ID: row.Entry.ID, At: row.Entry.CreatedAt, ActorID: row.Entry.ActorID, Role: row.Entry.Role,
+		ID: row.Entry.ID, At: row.Entry.CreatedAt, ActorID: row.Entry.ActorID, ActorName: name, Role: row.Entry.Role,
 		Source: row.Entry.Source, Entity: row.Entry.Entity, Field: row.Entry.Field,
 		Old: row.Entry.OldValue, New: row.Entry.NewValue, Kind: kindOf(row.Entry.OldValue, row.Entry.NewValue),
 		Reason: row.Entry.Reason,
