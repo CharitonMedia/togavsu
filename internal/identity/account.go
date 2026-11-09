@@ -31,15 +31,20 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 	if err != nil {
 		return Enrollment{}, err
 	}
-	if firm != "" {
-		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
-	}
 	admins, err := s.activeAdmins(ctx)
 	if err != nil {
 		return Enrollment{}, err
 	}
 	if len(admins) != 0 {
 		return Enrollment{}, apiCode("already_set_up", "firm is already set up")
+	}
+	// firm.name is written before the other setup settings. A later failure leaves that name
+	// and deactivates the admin. The same email can resume. Any other caller stays closed.
+	if firm != "" {
+		existing, gerr := s.userByEmail(ctx, normalizeEmail(in.AdminEmail))
+		if gerr != nil || !s.rollbackAdmin(ctx, existing) {
+			return Enrollment{}, apiCode("already_set_up", "firm is already set up")
+		}
 	}
 	roles, err := domain.MarshalRoles([]domain.Role{domain.RoleAdmin})
 	if err != nil {
@@ -371,7 +376,11 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 }
 
 // ConfirmPasswordReset sets a new password and revokes sessions.
+// The reset token is claimed before the password changes, so one token changes it once.
 func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) error {
+	if len([]rune(next)) < minPassword() {
+		return domain.Invalid("password", "password is too short")
+	}
 	_, sess, user, err := s.loadChallenge(ctx, token, purposePassword)
 	if err != nil {
 		return err
@@ -384,15 +393,19 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 	previous := ""
 	if err == nil {
 		previous = cred.Argon2Hash
-	}
-	if err := s.setPassword(ctx, user, roles, next, previous); err != nil {
+	} else if !errors.Is(err, repository.ErrNotFound) {
 		return err
 	}
-	who := principalOf(user, roles)
-	if err := s.revoke(ctx, sess, who, "challenge.spent"); err != nil {
-		return err
-	}
-	return s.revokeOtherSessions(ctx, user.ID, "", who)
+	return s.withUser(ctx, user.ID, func() error {
+		who := principalOf(user, roles)
+		if err := s.claimChallenge(ctx, sess, who); err != nil {
+			return s.claimResult(ctx, user, err)
+		}
+		if err := s.setPassword(ctx, user, roles, next, previous); err != nil {
+			return err
+		}
+		return s.revokeOtherSessions(ctx, user.ID, "", who)
+	})
 }
 
 // ResetTOTP starts a replacement secret. The current secret stays active.

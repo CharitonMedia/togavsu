@@ -300,6 +300,76 @@ func (f *failOnceAudit) SettingChanged(context.Context, settings.Change) error {
 	return nil
 }
 
+func TestSetupRetryAfterLaterSettingsWriteFails(t *testing.T) {
+	ctx := context.Background()
+	in := SetupInput{
+		FirmName: "North Firm", TimeZone: "UTC", AdminName: "Ada",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}
+	for _, failAt := range []int{2, 3} {
+		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
+			clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
+			log := audit.NewMemory()
+			aud, err := audit.New(log, clk.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reg, err := settings.New(settings.NewMemory(), &failNthAudit{failAt: failAt})
+			if err != nil {
+				t.Fatal(err)
+			}
+			mem := NewMemory()
+			svc, err := New(Deps{
+				Users: mem.Users(), Sessions: mem.Sessions(), Passwords: mem.Passwords(),
+				TOTP: mem.TOTP(), Recovery: mem.Recovery(), Tokens: mem.Tokens(),
+				Audit: aud, Settings: reg, Key: bytesRepeat(), Now: clk.Now,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := svc.Setup(ctx, in); err == nil {
+				t.Fatal("expected setup to fail")
+			}
+			name, err := reg.Get(ctx, "firm.name")
+			if err != nil || name != in.FirmName {
+				t.Fatal(name, err)
+			}
+			ready, err := svc.Ready(ctx)
+			if err != nil || ready {
+				t.Fatal(ready, err)
+			}
+			_, err = svc.Setup(ctx, SetupInput{
+				FirmName: "Other Firm", TimeZone: "UTC", AdminName: "Eve",
+				AdminEmail: "eve@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+			})
+			if codeOf(err) != "already_set_up" {
+				t.Fatal(err)
+			}
+			enroll, err := svc.Setup(ctx, in)
+			if err != nil || enroll.Secret == "" || enroll.EnrollmentToken == "" {
+				t.Fatal(enroll, err)
+			}
+			page, err := mem.Users().List(ctx, repository.Filter{})
+			if err != nil || len(page.Items) != 1 || !page.Items[0].Active {
+				t.Fatal(page, err)
+			}
+		})
+	}
+}
+
+type failNthAudit struct {
+	n      int
+	failAt int
+}
+
+func (f *failNthAudit) SettingChanged(context.Context, settings.Change) error {
+	f.n++
+	if f.n == f.failAt {
+		return settings.ErrInvalid
+	}
+	return nil
+}
+
 func TestSetupRefusedWhenFirmNameExists(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)

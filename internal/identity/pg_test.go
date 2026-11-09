@@ -189,6 +189,72 @@ func TestConcurrentRecoveryAndTOTPAreSingleUse(t *testing.T) {
 	}
 }
 
+func TestConcurrentPasswordResetIsSingleUse(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := openCoreDB(t)
+	if err := audit.InstallPrivileges(ctx, sqlDB); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ApplyReference(ctx, sqlDB, "postgres"); err != nil {
+		t.Fatal(err)
+	}
+	clk := &clock{t: time.Date(2026, 11, 9, 17, 0, 0, 0, time.UTC)}
+	store := NewPG(sqlDB)
+	aud, err := audit.New(audit.NewPostgres(sqlDB), clk.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := settings.New(db.SettingsStore{DB: sqlDB, Dialect: "postgres"}, aud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mail := &mailer{}
+	svc, err := New(Deps{
+		Users: store.Users(), Sessions: store.Sessions(), Passwords: store.Passwords(),
+		TOTP: store.TOTP(), Recovery: store.Recovery(), Tokens: store.Tokens(),
+		Audit: aud, Settings: reg, Key: bytes.Repeat([]byte{9}, 32), Now: clk.Now, Mail: mail,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enroll, err := svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "America/Chicago", AdminName: "Ada Admin",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := base32Decode(enroll.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, TOTPCode(raw, clk.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RequestPasswordReset(ctx, "ada@example.test"); err != nil || mail.token == "" {
+		t.Fatal(err)
+	}
+	var before int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity = 'password' AND reason = 'user.password_changed'`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	wins := race(func() error {
+		return svc.ConfirmPasswordReset(ctx, mail.token, "correct-horse-updated")
+	}, func() error {
+		return svc.ConfirmPasswordReset(ctx, mail.token, "correct-horse-another")
+	})
+	if wins != 1 {
+		t.Fatalf("reset wins %d", wins)
+	}
+	var after int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log WHERE entity = 'password' AND reason = 'user.password_changed'`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after-before != 1 {
+		t.Fatalf("password writes %d, want 1", after-before)
+	}
+}
+
 func TestOneChallengeAdmitsOneGuess(t *testing.T) {
 	ctx := context.Background()
 	sqlDB := openCoreDB(t)
