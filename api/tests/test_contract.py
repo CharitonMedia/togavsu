@@ -9007,8 +9007,9 @@ class ContractTest(unittest.TestCase):
         client_flag = {**client_flag, "source": ledger}
         account_flag = {**account_flag, "source": ledger}
         matter_flag = {**matter_flag, "source": ledger}
+        current_accounts = [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}]
         for stored, label in ((client_flag, "client"), (account_flag, "account")):
-            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored)
+            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored, trust_accounts=current_accounts, firm_id="firm-1")
             self.assertEqual(read["result"], "allowed", label)
             self.assertTrue(read["effects"], label)
             resolved = call(
@@ -9017,6 +9018,8 @@ class ContractTest(unittest.TestCase):
                 ["trust:write"],
                 {"path": {"trust_flag_id": flag_id}, "body": {"note": "Corrected offline"}},
                 stored_record=stored,
+                trust_accounts=current_accounts,
+                firm_id="firm-1",
             )
             self.assertEqual(resolved["result"], "allowed", label)
             self.assertTrue(resolved["effects"], label)
@@ -9270,13 +9273,14 @@ class ContractTest(unittest.TestCase):
             return row
 
         handler = {"trust": {"replaced": True, "available": True, "module_id": "trust-mod"}}
+        current_accounts = [{"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}]
         for scope, extra in (
             ("matter", {"client_id": contact, "matter_id": matter}),
             ("client", {"client_id": contact}),
             ("account", {"trust_account_id": account}),
         ):
             stored = flag(scope, **extra)
-            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored, matter_walled=False)
+            read = call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=stored, matter_walled=False, trust_accounts=current_accounts, firm_id="firm-1")
             self.assertEqual(read["result"], "allowed", scope)
             self.assertTrue(read["effects"], scope)
             resolved = call(
@@ -9286,6 +9290,8 @@ class ContractTest(unittest.TestCase):
                 {"path": {"trust_flag_id": flag_id}, "body": {"note": "Reviewed", "source": {"matter_id": other, "matter_walled": False}}},
                 stored_record=stored,
                 matter_walled=False,
+                trust_accounts=current_accounts,
+                firm_id="firm-1",
             )
             self.assertEqual(resolved["result"], "allowed", scope)
             routed = call(
@@ -9296,6 +9302,8 @@ class ContractTest(unittest.TestCase):
                 stored_record=stored,
                 matter_walled=False,
                 domain_handlers=handler,
+                trust_accounts=current_accounts,
+                firm_id="firm-1",
             )
             self.assertEqual(routed["result"], "allowed", scope)
             self.assertFalse(routed["effects"], scope)
@@ -9320,6 +9328,42 @@ class ContractTest(unittest.TestCase):
         mismatched = flag("client", client_id=contact)
         mismatched["source"] = {"trust_entry_id": other_file, "matter_id": matter, "matter_walled": False}
         self.assertEqual(quiet(call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, stored_record=mismatched))["result"], "not_found")
+        # An account-scope flag the list omits is not readable or resolvable directly.
+        account_flag = flag("account", trust_account_id=account)
+        live = {"id": account, "active": True, "authorized": True, "firm_id": "firm-1"}
+        account_cases = (
+            ("inactive", [{**live, "active": False}], "firm-1"),
+            ("unauthorized", [{**live, "authorized": False}], "firm-1"),
+            ("other firm", [{**live, "firm_id": "firm-2"}], "firm-1"),
+            ("missing account", [{**live, "id": other}], "firm-1"),
+            ("duplicate account", [live, live], "firm-1"),
+            ("no accounts", None, "firm-1"),
+            ("no caller firm", [live], None),
+            ("account firm unset", [{**live, "firm_id": None}], None),
+        )
+        for label, accounts, firm in account_cases:
+            trusted = {"stored_record": account_flag, "matter_walled": False}
+            if accounts is not None:
+                trusted["trust_accounts"] = accounts
+            if firm is not None:
+                trusted["firm_id"] = firm
+            read = quiet(call("getTrustFlag", "staff", ["trust:read"], {"path": {"trust_flag_id": flag_id}}, **trusted))
+            self.assertEqual(read["result"], "not_found", label)
+            resolved = quiet(call("resolveTrustFlag", "attorney", ["trust:write"], {"path": {"trust_flag_id": flag_id}, "body": {"note": "Reviewed"}}, **trusted))
+            self.assertEqual(resolved["result"], "not_found", label)
+            listed = trust_flag_rows({"role": "staff", "token_scopes": ["trust:read"], "firm_id": firm}, [account_flag], accounts or [])
+            self.assertEqual(listed["rows"], [], label)
+        for role, tool, scopes, arguments in (
+            ("staff", "getTrustFlag", ["trust:read"], {"path": {"trust_flag_id": flag_id}}),
+            ("attorney", "resolveTrustFlag", ["trust:write"], {"path": {"trust_flag_id": flag_id}, "body": {"note": "Reviewed"}}),
+        ):
+            current = call(tool, role, scopes, arguments, stored_record=account_flag, matter_walled=False, trust_accounts=[live], firm_id="firm-1")
+            self.assertEqual(current["result"], "allowed", tool)
+            self.assertTrue(current["effects"], tool)
+        self.assertEqual(
+            [row["id"] for row in trust_flag_rows({"role": "staff", "token_scopes": ["trust:read"], "firm_id": "firm-1"}, [account_flag], [live])["rows"]],
+            [flag_id],
+        )
         listed = trust_flag_rows(
             {"role": "staff", "token_scopes": ["trust:read"], "matter_membership": {matter: False}},
             [flag("client", client_id=contact), flag("account", trust_account_id=account, source={"trust_entry_id": entry_id, "matter_id": matter, "matter_walled": True, "client_id": contact})],

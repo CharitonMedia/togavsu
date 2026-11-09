@@ -1549,6 +1549,9 @@ def operation_authorization(spec: dict, operation: dict, call: dict) -> dict:
         record = subject.get("stored_record")
         if not isinstance(record, dict) or _trust_flag_source_denial(subject, record):
             return {"result": "not_found", **denied, "events": []}
+        # Same account rule as listTrustFlag, so a flag the list omits is not readable or resolvable here.
+        if _trust_flag_account_denial(subject, record, subject.get("trust_accounts")):
+            return {"result": "not_found", **denied, "events": []}
     if operation.get("operationId") == "updateMatter":
         patch = _matter_patch_decision(subject)
         if patch["result"] != "allowed":
@@ -4311,6 +4314,28 @@ def _trust_flag_source_denial(caller: dict, flag: dict) -> str | None:
     return None
 
 
+def _trust_flag_account_denial(caller: dict, flag: dict, accounts) -> str | None:
+    """An account-scope flag needs one trusted trust account row that is active, authorized, and in the caller's firm.
+
+    The list, the direct read, and the resolve use this same rule. A missing, duplicate, inactive,
+    unauthorized, or other-firm account is not_found. A missing firm on either side is not a match.
+    Matter and client flags are not narrowed here; their source ledger entry decides them.
+    """
+    if flag.get("scope") != "account":
+        return None
+    account_id = flag.get("trust_account_id")
+    firm = caller.get("firm_id")
+    if type(account_id) is not str or not account_id or type(firm) is not str or not firm:
+        return "not_found"
+    matches = [row for row in accounts or [] if isinstance(row, dict) and row.get("id") == account_id]
+    if len(matches) != 1:
+        return "not_found"
+    row = matches[0]
+    if row.get("active") is not True or row.get("authorized") is not True or row.get("firm_id") != firm:
+        return "not_found"
+    return None
+
+
 def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query: dict | None = None) -> dict:
     """Every scope is authorized from the source ledger entry before a row, count, or cursor is returned."""
     if caller.get("role") not in {"admin", "attorney", "staff", "accountant"}:
@@ -4318,11 +4343,6 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
     if bearer_lacks_scopes(caller, ["trust:read"]):
         return {"result": "scope_denied", "rows": [], "total": 0, "next_cursor": None}
     query = query or {}
-    current = {
-        row.get("id"): row
-        for row in accounts
-        if row.get("active") is True and row.get("authorized") is True and row.get("firm_id") == caller.get("firm_id")
-    }
     visible = []
     hidden: set[str] = set()
 
@@ -4339,7 +4359,7 @@ def trust_flag_rows(caller: dict, flags: list[dict], accounts: list[dict], query
         entry_id = source.get("trust_entry_id") if isinstance(source, dict) else None
         scope = flag.get("scope")
         if scope == "account":
-            if current.get(flag.get("trust_account_id")) is None:
+            if _trust_flag_account_denial(caller, flag, accounts):
                 conceal(flag, source)
                 continue
         elif scope not in {"matter", "client"}:

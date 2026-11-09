@@ -7186,7 +7186,7 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:8808-9107",
+      "source": "api/tests/test_contract.py:8808-9110",
       "source_line_basis": "current_worktree",
       "kind": "both",
       "assertion_call_sites": 61,
@@ -7359,7 +7359,7 @@
           "is_scenario": false
         },
         {
-          "line": 9010,
+          "line": 9011,
           "literal_rows": 2,
           "rows": [
             [
@@ -7383,12 +7383,12 @@
               }
             ]
           ],
-          "text": "for stored, label in ((client_flag, \"client\"), (account_flag, \"account\")): read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored) self.assertEqual(read[\"result\"], \"allowed\", label) self.assertTrue(read[\"effects\"], label) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Corrected offline\"}}, stored_record=stored, ) self.assertEqual(resolved[\"result\"], \"allowed\", label) self.assertTrue(resolved[\"effects\"], label)",
+          "text": "for stored, label in ((client_flag, \"client\"), (account_flag, \"account\")): read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, trust_accounts=current_accounts, firm_id=\"firm-1\") self.assertEqual(read[\"result\"], \"allowed\", label) self.assertTrue(read[\"effects\"], label) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Corrected offline\"}}, stored_record=stored, trust_accounts=current_accounts, firm_id=\"firm-1\", ) self.assertEqual(resolved[\"result\"], \"allowed\", label) self.assertTrue(resolved[\"effects\"], label)",
           "complete": false,
           "is_scenario": false
         },
         {
-          "line": 9090,
+          "line": 9093,
           "literal_rows": 5,
           "rows": [
             [
@@ -7560,14 +7560,14 @@
         "8.19",
         "9"
       ],
-      "source": "api/tests/test_contract.py:9109-9399",
+      "source": "api/tests/test_contract.py:9112-9443",
       "source_line_basis": "current_worktree",
       "kind": "both",
-      "assertion_call_sites": 41,
-      "loop_count": 2,
+      "assertion_call_sites": 47,
+      "loop_count": 4,
       "literal_rows": [
         {
-          "line": 9156,
+          "line": 9159,
           "literal_rows": 5,
           "rows": [
             [
@@ -7658,7 +7658,7 @@
           "is_scenario": false
         },
         {
-          "line": 9273,
+          "line": 9277,
           "literal_rows": 3,
           "rows": [
             [
@@ -7702,7 +7702,171 @@
               }
             ]
           ],
-          "text": "for scope, extra in ( (\"matter\", {\"client_id\": contact, \"matter_id\": matter}), (\"client\", {\"client_id\": contact}), (\"account\", {\"trust_account_id\": account}), ): stored = flag(scope, **extra) read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False) self.assertEqual(read[\"result\"], \"allowed\", scope) self.assertTrue(read[\"effects\"], scope) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\", \"source\": {\"matter_id\": other, \"matter_walled\": False}}}, stored_record=stored, matter_walled=False, ) self.assertEqual(resolved[\"result\"], \"allowed\", scope) routed = call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False, domain_handlers=handler, ) self.assertEqual(routed[\"result\"], \"allowed\", scope) self.assertFalse(routed[\"effects\"], scope) self.assertEqual(routed[\"routed\"], \"trust-mod\", scope) hidden_source = flag(scope, **extra) hidden_source[\"source\"] = {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": True, \"client_id\": contact} denied = quiet( call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"source\": {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": False}}}, stored_record=hidden_source, matter_walls={matter: False}, matter_membership={matter: False}, domain_handlers=handler, ) ) self.assertEqual(denied[\"result\"], \"not_found\", scope) unknown = quiet(call(\"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\"}}, stored_record={key: value for key, value in stored.items() if key != \"source\"})) self.assertEqual(unknown[\"result\"], \"not_found\", scope)",
+          "text": "for scope, extra in ( (\"matter\", {\"client_id\": contact, \"matter_id\": matter}), (\"client\", {\"client_id\": contact}), (\"account\", {\"trust_account_id\": account}), ): stored = flag(scope, **extra) read = call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False, trust_accounts=current_accounts, firm_id=\"firm-1\") self.assertEqual(read[\"result\"], \"allowed\", scope) self.assertTrue(read[\"effects\"], scope) resolved = call( \"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\", \"source\": {\"matter_id\": other, \"matter_walled\": False}}}, stored_record=stored, matter_walled=False, trust_accounts=current_accounts, firm_id=\"firm-1\", ) self.assertEqual(resolved[\"result\"], \"allowed\", scope) routed = call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=stored, matter_walled=False, domain_handlers=handler, trust_accounts=current_accounts, firm_id=\"firm-1\", ) self.assertEqual(routed[\"result\"], \"allowed\", scope) self.assertFalse(routed[\"effects\"], scope) self.assertEqual(routed[\"routed\"], \"trust-mod\", scope) hidden_source = flag(scope, **extra) hidden_source[\"source\"] = {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": True, \"client_id\": contact} denied = quiet( call( \"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"source\": {\"trust_entry_id\": entry_id, \"matter_id\": matter, \"matter_walled\": False}}}, stored_record=hidden_source, matter_walls={matter: False}, matter_membership={matter: False}, domain_handlers=handler, ) ) self.assertEqual(denied[\"result\"], \"not_found\", scope) unknown = quiet(call(\"resolveTrustFlag\", \"attorney\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\"}}, stored_record={key: value for key, value in stored.items() if key != \"source\"})) self.assertEqual(unknown[\"result\"], \"not_found\", scope)",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 9334,
+          "literal_rows": 8,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "inactive"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "unauthorized"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "other firm"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "missing account"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "duplicate account"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "no accounts"
+              },
+              {
+                "kind": "constant",
+                "value": null
+              },
+              {
+                "kind": "constant",
+                "value": "firm-1"
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "no caller firm"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": null
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "account firm unset"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "constant",
+                "value": null
+              }
+            ]
+          ],
+          "text": "account_cases = ( (\"inactive\", [{**live, \"active\": False}], \"firm-1\"), (\"unauthorized\", [{**live, \"authorized\": False}], \"firm-1\"), (\"other firm\", [{**live, \"firm_id\": \"firm-2\"}], \"firm-1\"), (\"missing account\", [{**live, \"id\": other}], \"firm-1\"), (\"duplicate account\", [live, live], \"firm-1\"), (\"no accounts\", None, \"firm-1\"), (\"no caller firm\", [live], None), (\"account firm unset\", [{**live, \"firm_id\": None}], None), )",
+          "complete": false,
+          "is_scenario": false
+        },
+        {
+          "line": 9356,
+          "literal_rows": 2,
+          "rows": [
+            [
+              {
+                "kind": "constant",
+                "value": "staff"
+              },
+              {
+                "kind": "constant",
+                "value": "getTrustFlag"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path"
+                ],
+                "values_omitted": true
+              }
+            ],
+            [
+              {
+                "kind": "constant",
+                "value": "attorney"
+              },
+              {
+                "kind": "constant",
+                "value": "resolveTrustFlag"
+              },
+              {
+                "kind": "List"
+              },
+              {
+                "kind": "dict",
+                "keys": [
+                  "path",
+                  "body"
+                ],
+                "values_omitted": true
+              }
+            ]
+          ],
+          "text": "for role, tool, scopes, arguments in ( (\"staff\", \"getTrustFlag\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}), (\"attorney\", \"resolveTrustFlag\", [\"trust:write\"], {\"path\": {\"trust_flag_id\": flag_id}, \"body\": {\"note\": \"Reviewed\"}}), ): current = call(tool, role, scopes, arguments, stored_record=account_flag, matter_walled=False, trust_accounts=[live], firm_id=\"firm-1\") self.assertEqual(current[\"result\"], \"allowed\", tool) self.assertTrue(current[\"effects\"], tool)",
           "complete": false,
           "is_scenario": false
         }
@@ -7714,6 +7878,7 @@
         "self.assertEqual(archive[\"result\"], \"not_found\")",
         "self.assertEqual(link[\"result\"], \"not_found\")",
         "self.assertEqual(quiet(call(\"getTrustFlag\", \"staff\", [\"trust:read\"], {\"path\": {\"trust_flag_id\": flag_id}}, stored_record=mismatched))[\"result\"], \"not_found\")",
+        "self.assertEqual( [row[\"id\"] for row in trust_flag_rows({\"role\": \"staff\", \"token_scopes\": [\"trust:read\"], \"firm_id\": \"firm-1\"}, [account_flag], [live])[\"rows\"]], [flag_id], )",
         "self.assertEqual(listed[\"result\"], \"allowed\")",
         "self.assertEqual([row[\"scope\"] for row in listed[\"rows\"]], [\"client\"])",
         "self.assertEqual(foreign[\"result\"], \"not_found\")",
@@ -7748,7 +7913,12 @@
         "self.assertFalse(routed[\"effects\"], scope)",
         "self.assertEqual(routed[\"routed\"], \"trust-mod\", scope)",
         "self.assertEqual(denied[\"result\"], \"not_found\", scope)",
-        "self.assertEqual(unknown[\"result\"], \"not_found\", scope)"
+        "self.assertEqual(unknown[\"result\"], \"not_found\", scope)",
+        "self.assertEqual(read[\"result\"], \"not_found\", label)",
+        "self.assertEqual(resolved[\"result\"], \"not_found\", label)",
+        "self.assertEqual(listed[\"rows\"], [], label)",
+        "self.assertEqual(current[\"result\"], \"allowed\", tool)",
+        "self.assertTrue(current[\"effects\"], tool)"
       ],
       "runtime_status": "runtime_pending",
       "complete": false,
@@ -9434,8 +9604,8 @@
     "multiple": {
       "go_owner": "multiple",
       "methods": 16,
-      "assertion_call_sites": 569,
-      "literal_rows": 118,
+      "assertion_call_sites": 575,
+      "literal_rows": 128,
       "method_names": [
         "test_mcp_dispatch_reuses_the_operation_policy",
         "test_client_context_token_is_own_matter_only",
