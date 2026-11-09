@@ -2320,6 +2320,13 @@ class LaneBackendTests(unittest.TestCase):
         return subprocess.run(["git", "-C", str(cwd)] + list(args), check=True, capture_output=True, text=True).stdout.strip()
 
     def setUp(self):
+        env = patch.dict(os.environ)
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop("CURSOR_API_KEY", None)
+        # No background gc or maintenance, which can still be writing .git when the directory is removed.
+        os.environ.update({"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "gc.auto", "GIT_CONFIG_VALUE_0": "0",
+                           "GIT_CONFIG_KEY_1": "maintenance.auto", "GIT_CONFIG_VALUE_1": "false"})
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         root = Path(self.temp.name)
@@ -2338,10 +2345,6 @@ class LaneBackendTests(unittest.TestCase):
         self.state.mkdir()
         self.remote = FakeLaneRemote(self.state, self.control, self.bare)
         self.record = {"agent_id": LANE_AGENT}
-        env = patch.dict(os.environ)
-        env.start()
-        self.addCleanup(env.stop)
-        os.environ.pop("CURSOR_API_KEY", None)
 
     def launch(self, prompt="Implement Togavsu assignment one."):
         return self.remote.cursor("POST", "/agents", {"agentId": LANE_AGENT, "name": "Togavsu one",
