@@ -2,6 +2,8 @@ package identity
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"strings"
@@ -180,28 +182,31 @@ func (s *Service) locked(ctx context.Context, user domain.User) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	rows, err := s.audit.ForEntity(ctx, "user", user.ID)
+	return s.failureLocked(ctx, "user", user.ID, limit, window)
+}
+
+func (s *Service) failureLocked(ctx context.Context, entity string, id domain.ID, limit int, window time.Duration) (bool, error) {
+	now := s.now().UTC()
+	rows, err := s.audit.Rows(ctx, audit.RowQuery{
+		Entity: entity, EntityID: id, Field: signInField, Since: now.Add(-window),
+	})
 	if err != nil {
 		return false, err
 	}
 	lastSuccess := len(rows)
 	sawSuccess := false
 	for i, row := range rows {
-		if row.Field == signInField && row.NewValue == "succeeded" {
+		if row.NewValue == "succeeded" {
 			lastSuccess = i
 			sawSuccess = true
 		}
 	}
-	failures := len([]byte{})
-	now := s.now().UTC()
+	var failures int
 	for i, row := range rows {
 		if sawSuccess && i <= lastSuccess {
 			continue
 		}
-		if row.Field != signInField || row.NewValue != "failed" {
-			continue
-		}
-		if now.Sub(row.CreatedAt) > window {
+		if row.NewValue != "failed" {
 			continue
 		}
 		failures++
@@ -216,13 +221,16 @@ func (s *Service) noteSignIn(ctx context.Context, user domain.User, roles []doma
 }
 
 func (s *Service) totpRequired(ctx context.Context, roles []domain.Role) (bool, error) {
+	// PRD section 5 requires TOTP for these roles. The writable settings do not turn that off.
 	for _, role := range roles {
-		on, err := s.flag(ctx, "security.totp_required."+string(role))
-		if err != nil {
-			return false, err
-		}
-		if on {
+		switch role {
+		case domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant:
 			return true, nil
+		}
+	}
+	for _, role := range roles {
+		if role == domain.RoleClient {
+			return s.flag(ctx, "security.totp_required.client")
 		}
 	}
 	return false, nil
@@ -241,6 +249,11 @@ func normalizeEmail(email string) string {
 }
 
 func epoch() time.Time { return time.Unix(0, 0).UTC() }
+
+func unknownLoginID(email string) domain.ID {
+	sum := sha256.Sum256([]byte("login:" + email))
+	return domain.ID(hex.EncodeToString(sum[:]))
+}
 
 func apiCode(code, message string) error {
 	return &domain.APIError{Code: code, Message: message}
@@ -297,11 +310,16 @@ func (s *Service) loadChallenge(ctx context.Context, token, purpose string) (cha
 	return body, sess, user, nil
 }
 
-func (s *Service) revoke(ctx context.Context, row domain.Session) error {
+func (s *Service) revoke(ctx context.Context, row domain.Session, who domain.Principal, reason string) error {
 	now := s.now().UTC()
 	row.RevokedAt = &now
 	row.UpdatedAt = now
-	return s.sessions.Update(ctx, row)
+	if err := s.sessions.Update(ctx, row); err != nil {
+		return err
+	}
+	return s.record(ctx, who, audit.Change{
+		Entity: "session", EntityID: row.ID, Field: "revoked_at", New: "revoked", Reason: reason,
+	})
 }
 
 func (s *Service) openSession(ctx context.Context, user domain.User, roles []domain.Role) (LoginResult, error) {
@@ -328,6 +346,9 @@ func (s *Service) openSession(ctx context.Context, user domain.User, roles []dom
 	if err := s.record(ctx, principalOf(user, roles), audit.Change{
 		Entity: "session", EntityID: row.ID, Field: "token_hash", New: raw, Secret: true, Reason: "session.created",
 	}); err != nil {
+		return LoginResult{}, err
+	}
+	if err := s.noteSignIn(ctx, user, roles, "succeeded"); err != nil {
 		return LoginResult{}, err
 	}
 	return LoginResult{

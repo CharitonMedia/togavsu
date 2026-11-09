@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -119,28 +118,56 @@ func (p *Postgres) List(ctx context.Context, _ repository.Filter) (repository.Pa
 	return repository.Page[domain.AuditEntry]{Items: items}, err
 }
 
-// Update runs the hostile statement as the writer role. The role has no UPDATE grant.
-func (p *Postgres) Update(ctx context.Context, id domain.ID, reason string) error {
-	err := p.asWriter(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE audit_log SET reason = $1 WHERE id = $2`, reason, string(id))
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrAppendOnly, err)
+// Rows reads only the requested audit rows.
+// ponytail: ceiling: audit_log has no index on entity and entity_id, so Postgres may still scan the table. Upgrade path: an identity migration adds that index. trigger: a sign-in query plan is a sequential scan once the log passes 100000 rows.
+func (p *Postgres) Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntry, error) {
+	var since int64
+	if !query.Since.IsZero() {
+		since = domain.UnixMicroUTC(query.Since)
 	}
-	return ErrAppendOnly
+	var items []domain.AuditEntry
+	err := p.asWriter(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, actor_id, role, source, entity, entity_id, field, old_value, new_value, reason
+			FROM audit_log
+			WHERE entity = $1 AND entity_id = $2
+			AND ($3 = '' OR field = $3)
+			AND ($4 = 0 OR created_at >= $4)
+			ORDER BY created_at, id`,
+			query.Entity, string(query.EntityID), query.Field, since)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			row, err := scanAudit(rows)
+			if err != nil {
+				return err
+			}
+			items = append(items, row)
+		}
+		return rows.Err()
+	})
+	return items, err
 }
 
-// Delete runs the hostile statement as the writer role. The role has no DELETE grant.
-func (p *Postgres) Delete(ctx context.Context, id domain.ID) error {
-	err := p.asWriter(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `DELETE FROM audit_log WHERE id = $1`, string(id))
-		return err
-	})
+func scanAudit(sc interface{ Scan(...any) error }) (domain.AuditEntry, error) {
+	var row domain.AuditEntry
+	var created, updated int64
+	var idText, createdBy, actorID, entityID string
+	err := sc.Scan(
+		&idText, &created, &updated, &createdBy,
+		&actorID, &row.Role, &row.Source, &row.Entity, &entityID,
+		&row.Field, &row.OldValue, &row.NewValue, &row.Reason)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrAppendOnly, err)
+		return domain.AuditEntry{}, err
 	}
-	return ErrAppendOnly
+	row.ID = domain.ID(idText)
+	row.CreatedBy = domain.ID(createdBy)
+	row.ActorID = domain.ID(actorID)
+	row.EntityID = domain.ID(entityID)
+	row.CreatedAt = domain.FromUnixMicro(created)
+	row.UpdatedAt = domain.FromUnixMicro(updated)
+	return row, nil
 }
 
 func (p *Postgres) asWriter(ctx context.Context, fn func(*sql.Tx) error) error {

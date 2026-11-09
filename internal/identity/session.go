@@ -2,13 +2,11 @@ package identity
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"strings"
 	"time"
 
-	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
@@ -47,7 +45,7 @@ func (s *Service) authSession(ctx context.Context, in Presented) (Caller, error)
 	}
 	if in.Write {
 		want := csrfToken(s.key, row.ID)
-		if subtle.ConstantTimeCompare([]byte(in.CSRF), []byte(want)) != match() {
+		if !constantTimeEqual([]byte(in.CSRF), []byte(want)) {
 			return Caller{}, apiCode("csrf_required", "csrf token is required")
 		}
 	}
@@ -166,12 +164,7 @@ func (s *Service) Logout(ctx context.Context, caller Caller) error {
 	if err != nil {
 		return domain.Unauthenticated("sign in is required")
 	}
-	if err := s.revoke(ctx, row); err != nil {
-		return err
-	}
-	return s.record(ctx, caller.Principal, audit.Change{
-		Entity: "session", EntityID: row.ID, Field: "revoked_at", New: "revoked", Reason: "session.ended",
-	})
+	return s.revoke(ctx, row, caller.Principal, "session.ended")
 }
 
 // ListSessions returns the caller's sessions. An admin sees every session.
@@ -215,12 +208,7 @@ func (s *Service) DeleteSession(ctx context.Context, caller Caller, id domain.ID
 	if !browserSession(row) {
 		return domain.NotFound("session")
 	}
-	if err := s.revoke(ctx, row); err != nil {
-		return err
-	}
-	return s.record(ctx, caller.Principal, audit.Change{
-		Entity: "session", EntityID: row.ID, Field: "revoked_at", New: "revoked",
-	})
+	return s.revoke(ctx, row, caller.Principal, "session.ended")
 }
 
 func decodeScopes(raw string) ([]string, error) {

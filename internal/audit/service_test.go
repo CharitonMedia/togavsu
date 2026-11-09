@@ -76,12 +76,6 @@ func TestMutateLeavesRows(t *testing.T) {
 	if err := svc.Mutate(ctx, row.ID); !errors.Is(err, ErrAppendOnly) {
 		t.Fatal(err)
 	}
-	if err := mem.Update(ctx, row); !errors.Is(err, ErrAppendOnly) {
-		t.Fatal(err)
-	}
-	if err := mem.Delete(ctx, row.ID); !errors.Is(err, ErrAppendOnly) {
-		t.Fatal(err)
-	}
 	got, err := svc.Get(ctx, row.ID)
 	if err != nil || got.NewValue != "Kept" || mem.Len() != 1 {
 		t.Fatal(got, err, mem.Len())

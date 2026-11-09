@@ -53,14 +53,27 @@ func (m *Memory) List(_ context.Context, _ repository.Filter) (repository.Page[d
 	return repository.Page[domain.AuditEntry]{Items: out}, nil
 }
 
-// Update refuses the change and leaves the row in place.
-func (m *Memory) Update(context.Context, domain.AuditEntry) error {
-	return ErrAppendOnly
-}
-
-// Delete refuses the change and leaves the row in place.
-func (m *Memory) Delete(context.Context, domain.ID) error {
-	return ErrAppendOnly
+// Rows returns rows that match the query, oldest first.
+func (m *Memory) Rows(_ context.Context, query RowQuery) ([]domain.AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.AuditEntry
+	for _, row := range m.rows {
+		if query.Entity != "" && row.Entity != query.Entity {
+			continue
+		}
+		if !query.EntityID.IsZero() && row.EntityID != query.EntityID {
+			continue
+		}
+		if query.Field != "" && row.Field != query.Field {
+			continue
+		}
+		if !query.Since.IsZero() && row.CreatedAt.Before(query.Since) {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out, nil
 }
 
 // Len is the row count.

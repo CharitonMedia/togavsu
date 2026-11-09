@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -37,12 +38,6 @@ func TestNonOwnerRoleCannotChangeAuditRows(t *testing.T) {
 	if row.Source != string(domain.SourceAPIToken) || !strings.Contains(row.Reason, "module=mod-test") {
 		t.Fatalf("provenance %+v", row)
 	}
-	if err := store.Update(ctx, row.ID, "hacked"); err == nil || !strings.Contains(err.Error(), "permission denied") {
-		t.Fatal(err)
-	}
-	if err := store.Delete(ctx, row.ID); err == nil || !strings.Contains(err.Error(), "permission denied") {
-		t.Fatal(err)
-	}
 	if err := RawAsWriter(ctx, sqlDB, "UPDATE audit_log SET reason = 'raw' WHERE id = $1", string(row.ID)); err == nil || !strings.Contains(err.Error(), "permission denied") {
 		t.Fatal(err)
 	}
@@ -55,6 +50,13 @@ func TestNonOwnerRoleCannotChangeAuditRows(t *testing.T) {
 	}
 	if err := svc.Mutate(ctx, row.ID); err == nil {
 		t.Fatal("service mutate")
+	}
+	typ := reflect.TypeOf(store)
+	for i := 0; i < typ.NumMethod(); i++ {
+		name := typ.Method(i).Name
+		if strings.Contains(name, "Update") || strings.Contains(name, "Delete") {
+			t.Fatalf("production store has %s", name)
+		}
 	}
 }
 

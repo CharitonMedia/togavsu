@@ -38,7 +38,8 @@ func (p *PG) execOne(ctx context.Context, query string, args ...any) error {
 	if err != nil {
 		return err
 	}
-	if n == int64(len([]byte{})) {
+	var none int64
+	if n == none {
 		return repository.ErrNotFound
 	}
 	return nil
@@ -54,12 +55,15 @@ func (p *PG) query(ctx context.Context, query string, args ...any) (*sql.Rows, e
 
 func flag(v bool) int {
 	if v {
-		return match()
+		return 1
 	}
-	return len([]byte{})
+	return 0
 }
 
-func isOn(n int64) bool { return n == int64(match()) }
+func isOn(n int64) bool {
+	var off int64
+	return n != off
+}
 
 func nullID(id domain.ID) any {
 	if id.IsZero() {

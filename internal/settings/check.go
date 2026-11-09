@@ -110,14 +110,14 @@ func violations(path string, fset *token.FileSet, n ast.Node, ancestors []ast.No
 			pos := fset.Position(sel.Pos())
 			out = append(out, fmt.Sprintf("%s:%d: environment read %s.%s", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
 		}
-		if ok && durationNames[sel.Sel.Name] && isTimePackage(ident.Name, aliases) && !defaultFile(path) {
+		if ok && durationNames[sel.Sel.Name] && isTimePackage(ident.Name, aliases) && !defaultFile(path) && !fixedSite(path, enclosingFunc(ancestors)) {
 			pos := fset.Position(sel.Pos())
 			out = append(out, fmt.Sprintf("%s:%d: tunable duration %s.%s is not in the settings registry", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
 		}
 	}
 	if call, ok := n.(*ast.CallExpr); ok {
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if ok && sel.Sel.Name == "ParseDuration" && !defaultFile(path) && oneBasicArg(call.Args) {
+		if ok && sel.Sel.Name == "ParseDuration" && !defaultFile(path) && !fixedSite(path, enclosingFunc(ancestors)) && oneBasicArg(call.Args) {
 			if ident, ok := sel.X.(*ast.Ident); ok && isTimePackage(ident.Name, aliases) {
 				pos := fset.Position(call.Pos())
 				out = append(out, fmt.Sprintf("%s:%d: tunable duration literal is not in the settings registry", pos.Filename, pos.Line))
@@ -511,6 +511,37 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "internal/settings/seal.go"):
 		// AES-256-GCM keys are 32 bytes. That width is not a firm setting.
 		return fn == "NewSealingStore"
+	case strings.HasSuffix(slash, "internal/identity/params.go"):
+		// Argon2id, RFC 6238 TOTP, the API password minimum, the AES-256 width,
+		// the one-proof rule, and the minute named by security.api_rate_per_minute.
+		switch fn {
+		case "argonTime", "argonMemory", "argonThreads", "argonKeyLen", "saltLen",
+			"totpBytes", "totpPeriod", "totpDigits", "totpSkew", "hotpDigits",
+			"recoveryCount", "recoveryCodeBytes", "tokenBytes", "minPassword", "aesKey",
+			"perMinuteWindow", "singleFactor":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/identity/totp.go"):
+		// RFC 4226 dynamic truncation and the step counter.
+		switch fn {
+		case "hotp", "acceptedStep":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/identity/password.go"):
+		// PHC field positions and the constant-time success value.
+		switch fn {
+		case "parsePHC", "constantTimeEqual":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/identity/token.go"):
+		// Challenge token parts and recovery-code groups.
+		switch fn {
+		case "openChallenge", "grouped":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/identity/pgstore.go"):
+		// Boolean columns are stored as 0 and 1.
+		return fn == "flag"
 	default:
 		return false
 	}

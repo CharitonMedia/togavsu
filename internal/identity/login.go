@@ -2,7 +2,6 @@ package identity
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -23,7 +22,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	user, err := s.userByEmail(ctx, email)
 	if errors.Is(err, repository.ErrNotFound) {
 		_ = VerifyPassword(password, dummyHash())
-		return LoginResult{}, domain.Unauthenticated("wrong email or password")
+		return s.failUnknown(ctx, email)
 	}
 	if err != nil {
 		return LoginResult{}, err
@@ -51,10 +50,39 @@ func (s *Service) Login(ctx context.Context, email, password string) (LoginResul
 	if locked {
 		return LoginResult{}, apiCode("locked_out", "account is locked")
 	}
-	if err := s.noteSignIn(ctx, user, roles, "succeeded"); err != nil {
+	return s.afterPassword(ctx, user, roles)
+}
+
+func (s *Service) failUnknown(ctx context.Context, email string) (LoginResult, error) {
+	limit, err := s.intSetting(ctx, "security.lockout_attempts")
+	if err != nil {
 		return LoginResult{}, err
 	}
-	return s.afterPassword(ctx, user, roles)
+	window, err := s.duration(ctx, "security.lockout_length")
+	if err != nil {
+		return LoginResult{}, err
+	}
+	id := unknownLoginID(email)
+	locked, err := s.failureLocked(ctx, "login", id, limit, window)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if locked {
+		return LoginResult{}, apiCode("locked_out", "account is locked")
+	}
+	if err := s.record(ctx, domain.SystemPrincipal(), audit.Change{
+		Entity: "login", EntityID: id, Field: signInField, New: "failed", Reason: "unknown account",
+	}); err != nil {
+		return LoginResult{}, err
+	}
+	locked, err = s.failureLocked(ctx, "login", id, limit, window)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	if locked {
+		return LoginResult{}, apiCode("locked_out", "account is locked")
+	}
+	return LoginResult{}, domain.Unauthenticated("wrong email or password")
 }
 
 func (s *Service) failPassword(ctx context.Context, user domain.User) (LoginResult, error) {
@@ -115,7 +143,11 @@ func (s *Service) StartEnrollment(ctx context.Context, enrollmentToken string) (
 	if err != nil {
 		return Enrollment{}, err
 	}
-	if err := s.revoke(ctx, sess); err != nil {
+	roles, err := rolesOf(user)
+	if err != nil {
+		return Enrollment{}, err
+	}
+	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
 		return Enrollment{}, err
 	}
 	return s.beginEnrollment(ctx, user)
@@ -147,7 +179,7 @@ func (s *Service) ConfirmEnrollment(ctx context.Context, enrollmentToken, code s
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.revoke(ctx, sess); err != nil {
+	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
 		return LoginResult{}, err
 	}
 	if err := s.record(ctx, principalOf(user, roles), audit.Change{
@@ -174,9 +206,9 @@ func (s *Service) VerifyTOTP(ctx context.Context, totpToken, code string) (Login
 		return LoginResult{}, err
 	}
 	if err := s.matchStoredTOTP(ctx, user, code, true); err != nil {
-		return s.failSecond(ctx, user, roles, err)
+		return s.failSecond(ctx, sess, user, roles, err)
 	}
-	if err := s.revoke(ctx, sess); err != nil {
+	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
 		return LoginResult{}, err
 	}
 	return s.openSession(ctx, user, roles)
@@ -192,21 +224,22 @@ func (s *Service) VerifyRecovery(ctx context.Context, totpToken, code string) (L
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if err := s.spendRecovery(ctx, user.ID, code); err != nil {
-		return s.failSecond(ctx, user, roles, err)
+	if err := s.spendRecovery(ctx, user, roles, code); err != nil {
+		return s.failSecond(ctx, sess, user, roles, err)
 	}
-	if err := s.record(ctx, principalOf(user, roles), audit.Change{
-		Entity: "recovery_code", EntityID: user.ID, Field: "recovery_code", New: code, Secret: true,
-	}); err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.revoke(ctx, sess); err != nil {
+	if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.spent"); err != nil {
 		return LoginResult{}, err
 	}
 	return s.openSession(ctx, user, roles)
 }
 
-func (s *Service) failSecond(ctx context.Context, user domain.User, roles []domain.Role, cause error) (LoginResult, error) {
+func (s *Service) failSecond(ctx context.Context, sess domain.Session, user domain.User, roles []domain.Role, cause error) (LoginResult, error) {
+	var api *domain.APIError
+	if errors.As(cause, &api) && api.Code == domain.CodeUnauthenticated {
+		if err := s.revoke(ctx, sess, principalOf(user, roles), "challenge.failed"); err != nil {
+			return LoginResult{}, err
+		}
+	}
 	if err := s.noteSignIn(ctx, user, roles, "failed"); err != nil {
 		return LoginResult{}, err
 	}
@@ -228,18 +261,30 @@ func (s *Service) matchStoredTOTP(ctx context.Context, user domain.User, code st
 	if mustConfirmed && !row.Confirmed {
 		return domain.Unauthenticated("wrong code")
 	}
-	plain, err := openSeal(s.key, row.Ciphertext)
+	state, raw, err := openTOTP(s.key, row.Ciphertext)
 	if err != nil {
 		return err
 	}
-	raw, err := base64.RawStdEncoding.DecodeString(plain)
-	if err != nil {
-		return err
-	}
-	if !totpMatch(raw, code, s.now().UTC()) {
+	step, ok := acceptedStep(raw, code, s.now().UTC())
+	if !ok || (state.Used && step <= state.Step) {
 		return domain.Unauthenticated("wrong code")
 	}
-	return nil
+	sealed, err := sealTOTP(s.key, raw, step, true)
+	if err != nil {
+		return err
+	}
+	row.Ciphertext = sealed
+	row.UpdatedAt = s.now().UTC()
+	if err := s.totp.Update(ctx, row); err != nil {
+		return err
+	}
+	roles, err := rolesOf(user)
+	if err != nil {
+		return err
+	}
+	return s.record(ctx, principalOf(user, roles), audit.Change{
+		Entity: "totp", EntityID: row.ID, Field: "ciphertext", New: sealed, Secret: true, Reason: "totp.accepted",
+	})
 }
 
 func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enrollment, error) {
@@ -247,7 +292,8 @@ func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enroll
 	if err != nil {
 		return Enrollment{}, err
 	}
-	sealed, err := seal(s.key, base64.RawStdEncoding.EncodeToString(secret))
+	var unused int64
+	sealed, err := sealTOTP(s.key, secret, unused, false)
 	if err != nil {
 		return Enrollment{}, err
 	}
@@ -334,8 +380,8 @@ func (s *Service) replaceRecovery(ctx context.Context, user domain.User, roles [
 	return codes, nil
 }
 
-func (s *Service) spendRecovery(ctx context.Context, userID domain.ID, plain string) error {
-	page, err := s.recovery.List(ctx, repository.Filter{UserID: userID})
+func (s *Service) spendRecovery(ctx context.Context, user domain.User, roles []domain.Role, plain string) error {
+	page, err := s.recovery.List(ctx, repository.Filter{UserID: user.ID})
 	if err != nil {
 		return err
 	}
@@ -355,5 +401,10 @@ func (s *Service) spendRecovery(ctx context.Context, userID domain.ID, plain str
 	now := s.now().UTC()
 	found.UsedAt = &now
 	found.UpdatedAt = now
-	return s.recovery.Update(ctx, *found)
+	if err := s.recovery.Update(ctx, *found); err != nil {
+		return err
+	}
+	return s.record(ctx, principalOf(user, roles), audit.Change{
+		Entity: "recovery_code", EntityID: found.ID, Field: "recovery_code", New: plain, Secret: true, Reason: "recovery.spent",
+	})
 }

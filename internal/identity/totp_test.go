@@ -22,18 +22,18 @@ func TestTOTPWindow(t *testing.T) {
 	secret := []byte("12345678901234567890")
 	now := time.Unix(59, 0).UTC()
 	code := TOTPCode(secret, now)
-	if !totpMatch(secret, code, now) {
+	if _, ok := acceptedStep(secret, code, now); !ok {
 		t.Fatal("current")
 	}
-	if totpMatch(secret, "000000", now) {
+	if _, ok := acceptedStep(secret, "000000", now); ok {
 		t.Fatal("accepted a zero code")
 	}
 	earlier := now.Add(-time.Duration(totpPeriod()) * time.Second)
-	if !totpMatch(secret, TOTPCode(secret, earlier), now) {
+	if _, ok := acceptedStep(secret, TOTPCode(secret, earlier), now); !ok {
 		t.Fatal("previous step")
 	}
 	tooOld := now.Add(-time.Duration(totpPeriod()*(totpSkew()+totpSkew()+totpSkew())) * time.Second)
-	if totpMatch(secret, TOTPCode(secret, tooOld), now) {
+	if _, ok := acceptedStep(secret, TOTPCode(secret, tooOld), now); ok {
 		t.Fatal("old step")
 	}
 	enc := encodeSecret(secret)

@@ -2,6 +2,8 @@ package audit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -28,11 +30,20 @@ type Change struct {
 	Secret   bool
 }
 
+// RowQuery selects audit rows. Empty Field and a zero Since omit those predicates.
+type RowQuery struct {
+	Entity   string
+	EntityID domain.ID
+	Field    string
+	Since    time.Time
+}
+
 // Store is the append-only persistence surface.
 type Store interface {
 	Append(ctx context.Context, row domain.AuditEntry) error
 	Get(ctx context.Context, id domain.ID) (domain.AuditEntry, error)
 	List(ctx context.Context, filter repository.Filter) (repository.Page[domain.AuditEntry], error)
+	Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntry, error)
 }
 
 // Service writes and reads the audit log. It has no update or delete.
@@ -117,14 +128,9 @@ func (s *Service) SettingChanged(ctx context.Context, change settings.Change) er
 			who.Roles = append(who.Roles, role)
 		}
 	}
-	entityID, err := s.ids()
-	if err != nil {
-		return err
-	}
-	// The settings key is not a UUIDv7. EntityID is a new row id; the key is the field.
-	_, err = s.Record(ctx, who, Change{
+	_, err := s.Record(ctx, who, Change{
 		Entity:   "setting",
-		EntityID: entityID,
+		EntityID: SettingEntityID(change.Key),
 		Field:    change.Key,
 		Old:      change.Old,
 		New:      change.New,
@@ -134,19 +140,20 @@ func (s *Service) SettingChanged(ctx context.Context, change settings.Change) er
 	return err
 }
 
+// SettingEntityID is stable for one settings key, so later reads can find that key's history.
+func SettingEntityID(key string) domain.ID {
+	sum := sha256.Sum256([]byte("setting:" + key))
+	return domain.ID(hex.EncodeToString(sum[:]))
+}
+
 // ForEntity returns every row for one record, oldest first.
 func (s *Service) ForEntity(ctx context.Context, entity string, id domain.ID) ([]domain.AuditEntry, error) {
-	page, err := s.store.List(ctx, repository.Filter{})
-	if err != nil {
-		return nil, err
-	}
-	var out []domain.AuditEntry
-	for _, row := range page.Items {
-		if row.Entity == entity && row.EntityID == id {
-			out = append(out, row)
-		}
-	}
-	return out, nil
+	return s.store.Rows(ctx, RowQuery{Entity: entity, EntityID: id})
+}
+
+// Rows returns the store query. Lockout uses it so a sign-in does not load the whole log.
+func (s *Service) Rows(ctx context.Context, query RowQuery) ([]domain.AuditEntry, error) {
+	return s.store.Rows(ctx, query)
 }
 
 // Mutate is the denied path. It does not read or write a row.
@@ -187,14 +194,12 @@ func provenance(who domain.Principal, reason string) string {
 }
 
 func sensitive(field string) bool {
-	name := strings.ToLower(field)
-	for _, part := range []string{
-		"password", "argon", "totp", "secret", "recovery", "token",
-		"passphrase", "ciphertext", "csrf", "authorization", "ssn", "ein",
-	} {
-		if strings.Contains(name, part) {
-			return true
-		}
+	switch strings.ToLower(field) {
+	case "password", "argon2_hash", "totp", "secret", "recovery_code", "recovery_codes",
+		"token", "token_hash", "passphrase", "ciphertext", "csrf", "authorization",
+		"ssn", "ein", "ssn_ein", "ssn_ein_ciphertext":
+		return true
+	default:
+		return false
 	}
-	return false
 }

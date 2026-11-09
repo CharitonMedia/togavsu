@@ -44,26 +44,30 @@ func VerifyPassword(password, phc string) bool {
 		return false
 	}
 	got := argon2.IDKey([]byte(password), salt, iterations, mem, threads, uint32(len(want)))
-	return subtle.ConstantTimeCompare(got, want) == match()
+	return constantTimeEqual(got, want)
+}
+
+func constantTimeEqual(a, b []byte) bool {
+	return subtle.ConstantTimeCompare(a, b) == 1
 }
 
 func parsePHC(phc string) (uint32, uint32, uint8, []byte, []byte, error) {
 	parts := strings.Split(phc, "$")
-	if len(parts) != (3+3) || nth(parts, match()) != "argon2id" || !strings.HasPrefix(nth(parts, 1+1), "v=") {
+	if len(parts) != 6 || parts[1] != "argon2id" || !strings.HasPrefix(parts[2], "v=") {
 		return 0, 0, 0, nil, nil, domain.Invalid("password", "bad hash")
 	}
 	var mem, iterations int
 	var threads int
-	for _, item := range strings.Split(nth(parts, 1+1+1), ",") {
-		kv := strings.SplitN(item, "=", 1+1)
-		if len(kv) != (1 + 1) {
+	for _, item := range strings.Split(parts[3], ",") {
+		kv := strings.SplitN(item, "=", 2)
+		if len(kv) != 2 {
 			return 0, 0, 0, nil, nil, domain.Invalid("password", "bad hash")
 		}
-		n, err := strconv.Atoi(nth(kv, match()))
+		n, err := strconv.Atoi(kv[1])
 		if err != nil {
 			return 0, 0, 0, nil, nil, err
 		}
-		switch nth(kv, len([]byte{})) {
+		switch kv[0] {
 		case "m":
 			mem = n
 		case "t":
@@ -74,11 +78,11 @@ func parsePHC(phc string) (uint32, uint32, uint8, []byte, []byte, error) {
 			return 0, 0, 0, nil, nil, domain.Invalid("password", "bad hash")
 		}
 	}
-	salt, err := base64.RawStdEncoding.DecodeString(nth(parts, 2+2))
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
 		return 0, 0, 0, nil, nil, err
 	}
-	sum, err := base64.RawStdEncoding.DecodeString(nth(parts, 2+2+1))
+	sum, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return 0, 0, 0, nil, nil, err
 	}

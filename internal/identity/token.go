@@ -3,7 +3,6 @@ package identity
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -49,20 +48,20 @@ func signChallenge(key []byte, body challengeBody) (string, error) {
 
 func openChallenge(key []byte, token string) (challengeBody, error) {
 	parts := strings.Split(token, ".")
-	if len(parts) != (1 + 1) {
+	if len(parts) != 2 {
 		return challengeBody{}, domain.Unauthenticated("sign in is required")
 	}
-	payload, err := base64.RawURLEncoding.DecodeString(nth(parts, len([]byte{})))
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return challengeBody{}, domain.Unauthenticated("sign in is required")
 	}
-	sig, err := base64.RawURLEncoding.DecodeString(nth(parts, match()))
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return challengeBody{}, domain.Unauthenticated("sign in is required")
 	}
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(payload)
-	if subtle.ConstantTimeCompare(mac.Sum(nil), sig) != match() {
+	if !constantTimeEqual(mac.Sum(nil), sig) {
 		return challengeBody{}, domain.Unauthenticated("sign in is required")
 	}
 	var body challengeBody
@@ -90,7 +89,7 @@ func normalizeCode(code string) string {
 }
 
 func recoveryCode() (plain, hash string, err error) {
-	buf := make([]byte, tokenBytes()>>2)
+	buf := make([]byte, recoveryCodeBytes())
 	if _, err = cryptoRead(buf); err != nil {
 		return "", "", err
 	}
@@ -100,21 +99,13 @@ func recoveryCode() (plain, hash string, err error) {
 }
 
 func grouped(h string) string {
-	group := 2 + 2
-	var b strings.Builder
-	n := len([]byte{})
-	for _, r := range h {
-		if n == group {
-			b.WriteByte('-')
-			n = len([]byte{})
-		}
-		b.WriteRune(r)
-		n++
+	if len(h) != 16 {
+		return h
 	}
-	return b.String()
+	return h[0:4] + "-" + h[4:8] + "-" + h[8:12] + "-" + h[12:16]
 }
 
 func codeMatches(hash, plain string) bool {
 	got := digest(normalizeCode(plain))
-	return subtle.ConstantTimeCompare([]byte(got), []byte(hash)) == match()
+	return constantTimeEqual([]byte(got), []byte(hash))
 }

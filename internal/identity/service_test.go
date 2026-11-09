@@ -140,7 +140,14 @@ func TestSetupLoginLockoutAndRecovery(t *testing.T) {
 	if _, err := b.svc.VerifyTOTP(ctx, again.TOTPToken, "000000"); codeOf(err) != domain.CodeUnauthenticated {
 		t.Fatal(err)
 	}
-	good := TOTPCode(decodeSecret(t, mustSecret(t, b, admin)), b.clk.Now())
+	b.clk.t = b.clk.t.Add(31 * time.Second)
+	secret := decodeSecret(t, mustSecret(t, b, admin))
+	b.clk.t = b.clk.t.Add(31 * time.Second)
+	again, err = b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := TOTPCode(secret, b.clk.Now())
 	signed, err := b.svc.VerifyTOTP(ctx, again.TOTPToken, good)
 	if err != nil || signed.SessionToken == "" {
 		t.Fatal(signed, err)
@@ -247,6 +254,7 @@ func TestResetKeepsOldSecretUntilConfirm(t *testing.T) {
 	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
 		t.Fatal("replay", err)
 	}
+	b.clk.t = b.clk.t.Add(31 * time.Second)
 	signed, err := b.svc.VerifyTOTP(ctx, login.TOTPToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now()))
 	if err != nil || signed.SessionToken == "" {
 		t.Fatal(signed, err)

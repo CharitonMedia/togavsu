@@ -2,7 +2,6 @@ package identity
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -51,8 +50,9 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 		return Enrollment{}, err
 	}
 	if err := s.setPassword(ctx, user, []domain.Role{domain.RoleAdmin}, in.Password, ""); err != nil {
-		user.Active = false
-		_ = s.users.Update(ctx, user)
+		if derr := s.deactivate(ctx, user, []domain.Role{domain.RoleAdmin}); derr != nil {
+			return Enrollment{}, derr
+		}
 		return Enrollment{}, err
 	}
 	who := principalOf(user, []domain.Role{domain.RoleAdmin})
@@ -67,8 +67,9 @@ func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) 
 		{"backups.passphrase", in.BackupPassphrase},
 	} {
 		if _, err := s.settings.Set(ctx, pair.key, pair.value, who); err != nil {
-			user.Active = false
-			_ = s.users.Update(ctx, user)
+			if derr := s.deactivate(ctx, user, []domain.Role{domain.RoleAdmin}); derr != nil {
+				return Enrollment{}, derr
+			}
 			return Enrollment{}, err
 		}
 	}
@@ -189,7 +190,7 @@ func (s *Service) ChangePassword(ctx context.Context, caller Caller, current, ne
 	if err := s.setPassword(ctx, user, caller.Principal.Roles, next, cred.Argon2Hash); err != nil {
 		return err
 	}
-	return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID)
+	return s.revokeOtherSessions(ctx, user.ID, caller.Principal.SessionID, caller.Principal)
 }
 
 func (s *Service) setPassword(ctx context.Context, user domain.User, roles []domain.Role, next, previous string) error {
@@ -222,16 +223,31 @@ func (s *Service) setPassword(ctx context.Context, user domain.User, roles []dom
 	})
 }
 
-func (s *Service) revokeOtherSessions(ctx context.Context, userID, keep domain.ID) error {
+func (s *Service) deactivate(ctx context.Context, user domain.User, roles []domain.Role) error {
+	user.Active = false
+	user.UpdatedAt = s.now().UTC()
+	if err := s.users.Update(ctx, user); err != nil {
+		return err
+	}
+	return s.record(ctx, principalOf(user, roles), audit.Change{
+		Entity: "user", EntityID: user.ID, Field: "active", Old: "true", New: "false", Reason: "setup rolled back",
+	})
+}
+
+func (s *Service) revokeOtherSessions(ctx context.Context, userID, keep domain.ID, who domain.Principal) error {
 	page, err := s.sessions.List(ctx, repository.Filter{UserID: userID})
 	if err != nil {
 		return err
 	}
 	for _, row := range page.Items {
-		if row.ID == keep || row.RevokedAt != nil || row.IdleExpiresAt.IsZero() {
+		if row.ID == keep || row.RevokedAt != nil {
 			continue
 		}
-		if err := s.revoke(ctx, row); err != nil {
+		reason := "session.ended"
+		if !browserSession(row) {
+			reason = "challenge.spent"
+		}
+		if err := s.revoke(ctx, row, who, reason); err != nil {
 			return err
 		}
 	}
@@ -280,10 +296,11 @@ func (s *Service) ConfirmPasswordReset(ctx context.Context, token, next string) 
 	if err := s.setPassword(ctx, user, roles, next, previous); err != nil {
 		return err
 	}
-	if err := s.revoke(ctx, sess); err != nil {
+	who := principalOf(user, roles)
+	if err := s.revoke(ctx, sess, who, "challenge.spent"); err != nil {
 		return err
 	}
-	return s.revokeOtherSessions(ctx, user.ID, "")
+	return s.revokeOtherSessions(ctx, user.ID, "", who)
 }
 
 // ResetTOTP starts a replacement secret. The current secret stays active.
@@ -299,7 +316,8 @@ func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (
 	if err != nil {
 		return Enrollment{}, err
 	}
-	sealed, err := seal(s.key, base64.RawStdEncoding.EncodeToString(secret))
+	var unused int64
+	sealed, err := sealTOTP(s.key, secret, unused, false)
 	if err != nil {
 		return Enrollment{}, err
 	}
@@ -328,40 +346,46 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 	if caller.Principal.UserID != user.ID {
 		return domain.Forbidden("enrollment token is not valid")
 	}
-	plain, err := openSeal(s.key, body.Secret)
+	state, raw, err := openTOTP(s.key, body.Secret)
 	if err != nil {
 		return err
 	}
-	raw, err := base64.RawStdEncoding.DecodeString(plain)
-	if err != nil {
-		return err
-	}
-	if !totpMatch(raw, code, s.now().UTC()) {
+	step, ok := acceptedStep(raw, code, s.now().UTC())
+	if !ok || (state.Used && step <= state.Step) {
 		return domain.Unauthenticated("wrong code")
 	}
+	sealed, err := sealTOTP(s.key, raw, step, true)
+	if err != nil {
+		return err
+	}
 	row, err := s.totp.GetByUser(ctx, user.ID)
+	old := ""
 	if errors.Is(err, repository.ErrNotFound) {
 		meta, err := s.meta(user.ID)
 		if err != nil {
 			return err
 		}
-		row = domain.TOTPSecret{Meta: meta, UserID: user.ID}
-		row.Ciphertext = body.Secret
-		row.Confirmed = true
+		row = domain.TOTPSecret{Meta: meta, UserID: user.ID, Ciphertext: sealed, Confirmed: true}
 		if err := s.totp.Insert(ctx, row); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
 	} else {
-		row.Ciphertext = body.Secret
+		old = row.Ciphertext
+		row.Ciphertext = sealed
 		row.Confirmed = true
 		row.UpdatedAt = s.now().UTC()
 		if err := s.totp.Update(ctx, row); err != nil {
 			return err
 		}
 	}
-	return s.revoke(ctx, sess)
+	if err := s.record(ctx, caller.Principal, audit.Change{
+		Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
+	}); err != nil {
+		return err
+	}
+	return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
 }
 
 // RegenerateRecovery replaces unused codes after a fresh factor check.
@@ -396,7 +420,7 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 	if caller.Principal.UserID.IsZero() {
 		return domain.Unauthenticated("sign in is required")
 	}
-	n := len([]byte{})
+	var n int
 	if factor.Password != "" {
 		n++
 	}
@@ -409,7 +433,7 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 	if factor.ReauthToken != "" {
 		n++
 	}
-	if n != match() {
+	if !singleFactor(n) {
 		return domain.Unauthenticated("a current factor is required")
 	}
 	user, err := s.users.Get(ctx, caller.Principal.UserID)
@@ -426,7 +450,11 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 	case factor.TOTPCode != "":
 		return s.matchStoredTOTP(ctx, user, factor.TOTPCode, true)
 	case factor.Recovery != "":
-		return s.spendRecovery(ctx, user.ID, factor.Recovery)
+		roles, err := rolesOf(user)
+		if err != nil {
+			return err
+		}
+		return s.spendRecovery(ctx, user, roles, factor.Recovery)
 	default:
 		body, sess, owner, err := s.loadChallenge(ctx, factor.ReauthToken, purposeReauth)
 		if err != nil {
@@ -438,6 +466,6 @@ func (s *Service) checkFactor(ctx context.Context, caller Caller, factor Factor,
 		if body.Action != action {
 			return domain.Forbidden("enrollment token is not valid")
 		}
-		return s.revoke(ctx, sess)
+		return s.revoke(ctx, sess, caller.Principal, "challenge.spent")
 	}
 }
