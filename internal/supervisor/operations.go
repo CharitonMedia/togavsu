@@ -68,8 +68,11 @@ type Operations struct {
 	RecoveryTimeout time.Duration
 	jobs            map[string]RestoreRecord
 	jobsMu          sync.Mutex
-	active          sync.WaitGroup
-	shutting        atomic.Bool
+	// held lists restores whose terminal record is not published yet; the
+	// value is that record once it exists.
+	held     map[string]*RestoreRecord
+	active   sync.WaitGroup
+	shutting atomic.Bool
 }
 
 func (o *Operations) now() time.Time {
@@ -293,10 +296,71 @@ func Serve(ctx context.Context, srv *http.Server, ops *Operations) error {
 func (o *Operations) PutJob(rec RestoreRecord) {
 	o.jobsMu.Lock()
 	defer o.jobsMu.Unlock()
+	if _, ok := o.held[rec.ID]; ok && rec.ID != "" && terminalRestore(rec.Status) {
+		copied := rec
+		o.held[rec.ID] = &copied
+		return
+	}
 	if o.jobs == nil {
 		o.jobs = map[string]RestoreRecord{}
 	}
 	o.jobs[rec.ID] = rec
+}
+
+func terminalRestore(status string) bool {
+	return status == "completed" || status == "failed"
+}
+
+// holdRestore keeps id's terminal record unpublished until unholdRestore.
+// Each restore has its own entry, so a restore admitted the moment the
+// gate frees cannot drop an earlier restore's record.
+func (o *Operations) holdRestore(id string) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	if o.held == nil {
+		o.held = map[string]*RestoreRecord{}
+	}
+	o.held[id] = nil
+}
+
+// unholdRestore publishes the terminal record that holdRestore kept back.
+// Call it only after the gate is free.
+func (o *Operations) unholdRestore(id string) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	rec, ok := o.held[id]
+	if !ok {
+		return
+	}
+	delete(o.held, id)
+	if rec != nil {
+		if o.jobs == nil {
+			o.jobs = map[string]RestoreRecord{}
+		}
+		o.jobs[id] = *rec
+	}
+}
+
+// runRestore executes an admitted restore and frees its gate. A client that
+// polls "completed" or "failed" can start the next operation at once: the
+// terminal record is published only after release. Wait still waits for
+// that publication. A panic still releases the gate and publishes any
+// terminal record.
+func (o *Operations) runRestore(rec RestoreRecord, release func()) (RestoreRecord, error) {
+	o.holdRestore(rec.ID)
+	o.active.Add(1)
+	var once sync.Once
+	finish := func() {
+		once.Do(func() {
+			release()
+			o.unholdRestore(rec.ID)
+			o.active.Done()
+		})
+	}
+	defer finish()
+	done, err := o.executeRestore(rec)
+	finish()
+	return done, err
 }
 
 func (o *Operations) Job(id string) (RestoreRecord, bool) {
@@ -367,8 +431,7 @@ func (o *Operations) Restore(caller context.Context, id string) (RestoreRecord, 
 		}
 		return RestoreRecord{}, err
 	}
-	defer release()
-	return o.executeRestore(rec)
+	return o.runRestore(rec, release)
 }
 
 // admitRestore reserves the gate before it reads the passphrase or validates

@@ -294,9 +294,7 @@ func (h *handlers) startRestore(w http.ResponseWriter, r *http.Request, backupID
 		return
 	}
 	go func() {
-		defer release()
-		done, _ := h.ops.executeRestore(rec)
-		h.ops.PutJob(done)
+		_, _ = h.ops.runRestore(rec, release)
 	}()
 	writeJSON(w, http.StatusAccepted, rec)
 }
