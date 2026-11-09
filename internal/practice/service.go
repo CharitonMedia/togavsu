@@ -2,6 +2,8 @@ package practice
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -132,12 +134,19 @@ func (s *Service) gate(ctx context.Context, p domain.Principal, ref domain.Resou
 	}
 }
 
+// gateMatter authorizes a matter. A read of the matter record is shared with the client party.
+// Notes, history, conflict checks and close preview pass shared=false so a client does not receive them.
 func (s *Service) gateMatter(ctx context.Context, p domain.Principal, id domain.ID, action domain.Action) error {
+	shared := action == domain.ActionRead && s.clientMatter(p, id)
+	return s.gateMatterShared(ctx, p, id, action, shared)
+}
+
+func (s *Service) gateMatterShared(ctx context.Context, p domain.Principal, id domain.ID, action domain.Action, shared bool) error {
 	_, err := s.gate(ctx, p, domain.ResourceRef{
 		Resource:         domain.ResMatter,
 		Action:           action,
 		MatterID:         id,
-		SharedWithClient: true,
+		SharedWithClient: shared,
 	})
 	return err
 }
@@ -331,24 +340,53 @@ func containsID(ids []domain.ID, id domain.ID) bool {
 	return false
 }
 
-func (s *Service) idemLoad(key string, dest any) bool {
-	if key == "" {
-		return false
-	}
-	raw, ok := s.db.IdemGet(key)
-	if !ok {
-		return false
-	}
-	return json.Unmarshal(raw, dest) == nil
+// idemRecord binds an Idempotency-Key to one actor, operation, target and request.
+type idemRecord struct {
+	Actor       domain.ID
+	Op          string
+	Target      string
+	Fingerprint string
+	Body        []byte
 }
 
-func (s *Service) idemSave(ctx context.Context, key string, v any) error {
+// idemBegin replays a stored result only when the caller, operation, target and request match.
+// The same key used for anything else is a conflict and is not treated as success.
+func (s *Service) idemBegin(ctx context.Context, p domain.Principal, key, op, target string, request, dest any) (bool, error) {
+	if key == "" {
+		return false, nil
+	}
+	rec, ok := s.db.IdemGet(key)
+	if !ok {
+		return false, nil
+	}
+	if rec.Actor != actorID(p) || rec.Op != op || rec.Target != target || rec.Fingerprint != fingerprint(request) {
+		return false, domain.Conflict("idempotency key was already used")
+	}
+	if err := json.Unmarshal(rec.Body, dest); err != nil {
+		return false, domain.Conflict("idempotency key was already used")
+	}
+	_ = ctx
+	return true, nil
+}
+
+func (s *Service) idemFinish(ctx context.Context, p domain.Principal, key, op, target string, request, body any) error {
 	if key == "" {
 		return nil
 	}
-	raw, err := json.Marshal(v)
+	raw, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	return s.db.IdemPut(ctx, key, raw)
+	return s.db.IdemPut(ctx, key, idemRecord{
+		Actor: actorID(p), Op: op, Target: target, Fingerprint: fingerprint(request), Body: raw,
+	})
+}
+
+func fingerprint(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		raw = []byte{}
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }

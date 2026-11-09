@@ -40,6 +40,7 @@ func (h *Handler) Routes() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /practice/static/practice.css", h.staticCSS)
+	mux.HandleFunc("GET /practice/static/practice.js", h.staticJS)
 	mux.HandleFunc("GET /practice/matters", h.mattersPage)
 	mux.HandleFunc("GET /practice/matters/needs-case-number", h.needsCasePage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}", h.matterPage)
@@ -77,6 +78,11 @@ func (h *Handler) principal(r *http.Request) (domain.Principal, error) {
 func (h *Handler) staticCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	http.ServeFile(w, r, filepath.Join(h.Root, "practice.css"))
+}
+
+func (h *Handler) staticJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	http.ServeFile(w, r, filepath.Join(h.Root, "practice.js"))
 }
 
 type page struct {

@@ -16,7 +16,11 @@ func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in Matte
 		return domain.Matter{}, err
 	}
 	var replay domain.Matter
-	if s.idemLoad(in.IdempotencyKey, &replay) {
+	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_matter", "", in, &replay)
+	if err != nil {
+		return domain.Matter{}, err
+	}
+	if hit {
 		return replay, nil
 	}
 	row, err := s.prepareMatter(ctx, p, domain.Matter{}, in, true)
@@ -37,7 +41,7 @@ func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in Matte
 	if err := s.record(ctx, p, matterChanges(domain.Matter{}, stored, "", "matter.created", "Opened matter "+stored.Number)); err != nil {
 		return domain.Matter{}, err
 	}
-	if err := s.idemSave(ctx, in.IdempotencyKey, stored); err != nil {
+	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "create_matter", "", in, stored); err != nil {
 		return domain.Matter{}, err
 	}
 	return stored, nil
@@ -106,9 +110,9 @@ func (s *Service) ListMatters(ctx context.Context, p domain.Principal, status st
 	return out, nil
 }
 
-// PreviewClose returns warnings and writes nothing.
+// PreviewClose returns warnings and writes nothing. It is a staff close screen, not a shared client item.
 func (s *Service) PreviewClose(ctx context.Context, p domain.Principal, id domain.ID) (domain.Matter, []Warning, error) {
-	if err := s.gateMatter(ctx, p, id, domain.ActionRead); err != nil {
+	if err := s.gateMatterShared(ctx, p, id, domain.ActionRead, false); err != nil {
 		return domain.Matter{}, nil, err
 	}
 	row, err := s.db.Matter(ctx, id)
@@ -127,11 +131,12 @@ func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain
 	if err := s.gateMatter(ctx, p, id, domain.ActionWrite); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
-	var replay struct {
-		Matter domain.Matter
-		Close  CloseRecord
+	var replay replayMatter
+	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "close_matter", string(id), in, &replay)
+	if err != nil {
+		return domain.Matter{}, CloseRecord{}, err
 	}
-	if s.idemLoad(in.IdempotencyKey, &replay) {
+	if hit {
 		return replay.Matter, replay.Close, nil
 	}
 	prev, err := s.db.Matter(ctx, id)
@@ -170,7 +175,7 @@ func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain
 	if err := s.record(ctx, p, changes); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
-	if err := s.idemSave(ctx, in.IdempotencyKey, replayMatter{next, record}); err != nil {
+	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "close_matter", string(id), in, replayMatter{Matter: next, Close: record}); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
 	return next, record, nil
@@ -182,10 +187,11 @@ type replayMatter struct {
 }
 
 // ReopenMatter restores the pre-close status. The close date and reason stay.
+// Section 4 gives staff matters, and domain.Policy allows a matter write for staff.
+// There is no separate reopen action on Policy. OpenAPI lists admin and attorney;
+// a shared ActionReopen is proposed for the contracts package. Until that exists,
+// the matter-write decision is the role check.
 func (s *Service) ReopenMatter(ctx context.Context, p domain.Principal, id domain.ID, reason string) (domain.Matter, error) {
-	if !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) {
-		return domain.Matter{}, domain.Forbidden("attorney or admin required")
-	}
 	if err := s.gateMatter(ctx, p, id, domain.ActionWrite); err != nil {
 		return domain.Matter{}, err
 	}
@@ -607,14 +613,23 @@ func matterChanges(prev, next domain.Matter, reason, action, summary string) []c
 	rows := []pair{
 		{"number", prev.Number, next.Number},
 		{"name", prev.Name, next.Name},
+		{"practice_area_id", string(prev.PracticeAreaID), string(next.PracticeAreaID)},
 		{"status", prev.Status, next.Status},
 		{"stage", prev.Stage, next.Stage},
 		{"case_number", prev.CaseNumber, next.CaseNumber},
 		{"court", prev.Court, next.Court},
+		{"county_id", string(prev.CountyID), string(next.CountyID)},
+		{"client_position", prev.ClientPosition, next.ClientPosition},
+		{"opened_on", prev.OpenedOn, next.OpenedOn},
+		{"statute_of_limitations", prev.StatuteOfLimitations, next.StatuteOfLimitations},
 		{"billing_type", prev.BillingType, next.BillingType},
+		{"flat_fee_cents", prev.FlatFeeCents.String(), next.FlatFeeCents.String()},
+		{"matter_rate_cents", prev.MatterRateCents.String(), next.MatterRateCents.String()},
+		{"responsible_attorney_id", string(prev.ResponsibleAttorneyID), string(next.ResponsibleAttorneyID)},
+		{"assigned_staff_id", string(prev.AssignedStaffID), string(next.AssignedStaffID)},
+		{"referral_source_id", string(prev.ReferralSourceID), string(next.ReferralSourceID)},
 		{"closed_on", prev.ClosedOn, next.ClosedOn},
 		{"close_reason", prev.CloseReason, next.CloseReason},
-		{"flat_fee_cents", prev.FlatFeeCents.String(), next.FlatFeeCents.String()},
 	}
 	var out []change
 	first := true

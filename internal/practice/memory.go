@@ -54,7 +54,7 @@ type Memory struct {
 	closes  []CloseRecord
 	runs    []ConflictRun
 	checked map[domain.ID]time.Time
-	idem    map[string][]byte
+	idem    map[string]idemRecord
 }
 
 // NewMemory returns an empty store.
@@ -84,7 +84,7 @@ func NewMemory() *Memory {
 		markers:   map[domain.ID]MarkerDef{},
 		pinned:    map[domain.ID]MatterMarker{},
 		checked:   map[domain.ID]time.Time{},
-		idem:      map[string][]byte{},
+		idem:      map[string]idemRecord{},
 	}
 }
 
@@ -1018,25 +1018,31 @@ func (m *Memory) Checked(party domain.ID) (time.Time, bool) {
 	return at, ok
 }
 
-func (m *Memory) IdemGet(key string) ([]byte, bool) {
+func (m *Memory) IdemGet(key string) (idemRecord, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b, ok := m.idem[key]
+	rec, ok := m.idem[key]
 	if !ok {
-		return nil, false
+		return idemRecord{}, false
 	}
-	out := make([]byte, len(b))
-	copy(out, b)
-	return out, true
+	rec.Body = append([]byte(nil), rec.Body...)
+	return rec, true
 }
 
-func (m *Memory) IdemPut(ctx context.Context, key string, body []byte) error {
+func (m *Memory) IdemPut(ctx context.Context, key string, rec idemRecord) error {
 	if err := ready(ctx); err != nil {
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.idem[key] = append([]byte(nil), body...)
+	if prev, ok := m.idem[key]; ok {
+		if prev.Actor != rec.Actor || prev.Op != rec.Op || prev.Target != rec.Target || prev.Fingerprint != rec.Fingerprint {
+			return repository.ErrConflict
+		}
+		return nil
+	}
+	rec.Body = append([]byte(nil), rec.Body...)
+	m.idem[key] = rec
 	return nil
 }
 

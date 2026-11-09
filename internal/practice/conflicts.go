@@ -63,7 +63,7 @@ func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in Con
 
 // RunConflictCheck scores contacts, parties, and conflict records in the application.
 func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matter domain.ID) (ConflictRun, error) {
-	if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
+	if err := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false); err != nil {
 		return ConflictRun{}, err
 	}
 	parties := s.db.Parties(matter, domain.ID(""))
@@ -95,6 +95,9 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 	}
 	for _, contact := range s.db.Contacts() {
 		if s.onMatter(matter, contact.ID) {
+			continue
+		}
+		if s.readableContact(ctx, p, contact.ID) != nil {
 			continue
 		}
 		consider("contact", contact.ID, contact.FullName, contact.DateOfBirth, "")
@@ -166,7 +169,7 @@ func (s *Service) DecideConflict(ctx context.Context, p domain.Principal, hitID 
 		return Hit{}, domain.NotFound("conflict hit")
 	}
 	if _, err := s.gate(ctx, p, domain.ResourceRef{
-		Resource: domain.ResConflictReason, Action: domain.ActionConflictDecide, MatterID: run.MatterID, SharedWithClient: true,
+		Resource: domain.ResConflictReason, Action: domain.ActionConflictDecide, MatterID: run.MatterID,
 	}); err != nil {
 		return Hit{}, err
 	}
@@ -203,7 +206,7 @@ func (s *Service) DecideConflict(ctx context.Context, p domain.Principal, hitID 
 
 // ConflictChecks lists checks the caller can see, with attorney-only reasons redacted.
 func (s *Service) ConflictChecks(ctx context.Context, p domain.Principal, matter domain.ID) ([]ConflictRun, error) {
-	if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
+	if err := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false); err != nil {
 		return nil, err
 	}
 	runs := s.db.Runs(matter)

@@ -13,8 +13,15 @@ func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in Cont
 		return domain.Contact{}, err
 	}
 	var replay domain.Contact
-	if s.idemLoad(in.IdempotencyKey, &replay) {
+	hit, err := s.idemBegin(ctx, p, in.IdempotencyKey, "create_contact", "", in, &replay)
+	if err != nil {
+		return domain.Contact{}, err
+	}
+	if hit {
 		return replay, nil
+	}
+	if err := s.requireCustom(ctx, RecordContact, domain.ID(""), domain.ID(""), in.Custom); err != nil {
+		return domain.Contact{}, err
 	}
 	row, err := s.buildContact(ctx, p, domain.Contact{}, in, true)
 	if err != nil {
@@ -29,7 +36,7 @@ func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in Cont
 	if err := s.record(ctx, p, contactChanges(domain.Contact{}, row, "contact.created", "Created contact "+row.FullName)); err != nil {
 		return domain.Contact{}, err
 	}
-	if err := s.idemSave(ctx, in.IdempotencyKey, row); err != nil {
+	if err := s.idemFinish(ctx, p, in.IdempotencyKey, "create_contact", "", in, row); err != nil {
 		return domain.Contact{}, err
 	}
 	return row, nil
@@ -46,6 +53,9 @@ func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id doma
 	prev, err := s.db.Contact(ctx, id)
 	if err != nil {
 		return domain.Contact{}, missing(err, "contact")
+	}
+	if err := s.requireCustom(ctx, RecordContact, domain.ID(""), prev.ID, in.Custom); err != nil {
+		return domain.Contact{}, err
 	}
 	row, err := s.buildContact(ctx, p, prev, in, false)
 	if err != nil {
@@ -186,6 +196,12 @@ func (s *Service) AddEmail(ctx context.Context, p domain.Principal, contact doma
 	if err := s.db.InsertEmail(ctx, row); err != nil {
 		return domain.ContactEmail{}, err
 	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "contact_email", EntityID: row.ID, Field: "email", New: email, Kind: "create",
+		Action: "contact.email_added", Summary: "Added email " + email,
+	}}); err != nil {
+		return domain.ContactEmail{}, err
+	}
 	return row, nil
 }
 
@@ -203,6 +219,12 @@ func (s *Service) AddAddress(ctx context.Context, p domain.Principal, row domain
 	}
 	row.Meta = meta
 	if err := s.db.InsertAddress(ctx, row); err != nil {
+		return domain.ContactAddress{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "contact_address", EntityID: row.ID, Field: "line1", New: row.Line1, Kind: "create",
+		Action: "contact.address_added", Summary: "Added an address",
+	}}); err != nil {
 		return domain.ContactAddress{}, err
 	}
 	return row, nil
@@ -226,6 +248,12 @@ func (s *Service) AddContactTag(ctx context.Context, p domain.Principal, contact
 	}
 	row := domain.ContactTag{Meta: meta, ContactID: contact, Tag: tag}
 	if err := s.db.InsertTag(ctx, row); err != nil {
+		return domain.ContactTag{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "contact_tag", EntityID: row.ID, Field: "tag", New: tag, Kind: "create",
+		Action: "contact.tag_added", Summary: "Tagged the contact " + tag,
+	}}); err != nil {
 		return domain.ContactTag{}, err
 	}
 	return row, nil

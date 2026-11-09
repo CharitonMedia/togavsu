@@ -157,11 +157,11 @@ func (s *Service) gateNote(ctx context.Context, p domain.Principal, matter, cont
 		return domain.Invalid("note", "a note needs a matter or a contact")
 	}
 	if !matter.IsZero() {
-		if err := s.gateMatter(ctx, p, matter, action); err != nil {
+		if err := s.gateMatterShared(ctx, p, matter, action, false); err != nil {
 			return err
 		}
 	}
-	ref := domain.ResourceRef{Resource: domain.ResNote, Action: action, MatterID: matter, SharedWithClient: true}
+	ref := domain.ResourceRef{Resource: domain.ResNote, Action: action, MatterID: matter, SharedWithClient: false}
 	if _, err := s.gate(ctx, p, ref); err != nil {
 		return err
 	}

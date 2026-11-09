@@ -12,12 +12,6 @@ import (
 // A walled matter, its invoice, and a person who appears only on walled matters are omitted.
 // Attorney-only values are not searched for a caller who cannot read them.
 func (s *Service) Search(ctx context.Context, p domain.Principal, query, scope string) (SearchResult, error) {
-	if p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff) {
-		return SearchResult{}, domain.Forbidden(domain.ReasonRole)
-	}
-	if !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff) {
-		return SearchResult{}, domain.Forbidden(domain.ReasonRole)
-	}
 	query = strings.TrimSpace(query)
 	minChars := s.intSetting(ctx, "search.min_chars", 2)
 	if len([]rune(query)) < minChars {
@@ -35,21 +29,69 @@ func (s *Service) Search(ctx context.Context, p domain.Principal, query, scope s
 	if scope == ScopeAll {
 		limit = s.intSetting(ctx, "search.hits_all", 5)
 	}
+	// Each scope is allowed by domain.Policy. PRD 8.10 gives clients no search: a client-only
+	// principal fails every scope. An accountant can read invoices, so that scope stays.
 	result := SearchResult{Query: query, Scope: scope}
 	want := func(name string) bool { return scope == ScopeAll || scope == name }
+	var denied error
+	allowed := 0
 	if want(ScopeMatters) {
-		result.Groups = append(result.Groups, SearchGroup{Scope: ScopeMatters, Hits: s.searchMatters(ctx, p, query, limit)})
+		if err := s.allowScope(ctx, p, ScopeMatters); err != nil {
+			denied = err
+		} else {
+			allowed++
+			result.Groups = append(result.Groups, SearchGroup{Scope: ScopeMatters, Hits: s.searchMatters(ctx, p, query, limit)})
+		}
 	}
 	if want(ScopePeople) {
-		result.Groups = append(result.Groups, SearchGroup{Scope: ScopePeople, Hits: s.searchPeople(ctx, p, query, limit)})
+		if err := s.allowScope(ctx, p, ScopePeople); err != nil {
+			denied = err
+		} else {
+			allowed++
+			result.Groups = append(result.Groups, SearchGroup{Scope: ScopePeople, Hits: s.searchPeople(ctx, p, query, limit)})
+		}
 	}
 	if want(ScopeInvoices) {
-		result.Groups = append(result.Groups, SearchGroup{Scope: ScopeInvoices, Hits: s.searchInvoices(ctx, p, query, limit)})
+		if err := s.allowScope(ctx, p, ScopeInvoices); err != nil {
+			denied = err
+		} else {
+			allowed++
+			result.Groups = append(result.Groups, SearchGroup{Scope: ScopeInvoices, Hits: s.searchInvoices(ctx, p, query, limit)})
+		}
 	}
 	if want(ScopeFiles) {
-		result.Groups = append(result.Groups, SearchGroup{Scope: ScopeFiles, Hits: []SearchHit{}})
+		if err := s.allowScope(ctx, p, ScopeFiles); err != nil {
+			denied = err
+		} else {
+			allowed++
+			result.Groups = append(result.Groups, SearchGroup{Scope: ScopeFiles, Hits: []SearchHit{}})
+		}
+	}
+	if allowed == 0 {
+		if denied == nil {
+			return SearchResult{}, domain.Forbidden(domain.ReasonRole)
+		}
+		return SearchResult{}, denied
 	}
 	return result, nil
+}
+
+func (s *Service) allowScope(ctx context.Context, p domain.Principal, scope string) error {
+	ref := domain.ResourceRef{Action: domain.ActionRead}
+	switch scope {
+	case ScopeMatters:
+		ref.Resource = domain.ResMatter
+	case ScopePeople:
+		ref.Resource = domain.ResContact
+	case ScopeInvoices:
+		ref.Resource = domain.ResInvoice
+	case ScopeFiles:
+		ref.Resource = domain.ResFile
+	default:
+		return domain.Invalid("scope", "unknown scope")
+	}
+	_, err := s.gate(ctx, p, ref)
+	return err
 }
 
 func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
@@ -135,7 +177,7 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 		if !strings.Contains(strings.ToLower(row.Number), q) {
 			continue
 		}
-		if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
+		if s.hiddenByWall(ctx, p, row.MatterID) {
 			continue
 		}
 		rows = append(rows, row)

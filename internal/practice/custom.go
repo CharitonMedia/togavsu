@@ -33,6 +33,12 @@ func (s *Service) CreateField(ctx context.Context, p domain.Principal, def Field
 	if err := s.db.PutField(ctx, norm); err != nil {
 		return FieldDef{}, err
 	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "custom_field_definition", EntityID: norm.ID, Field: "label", New: norm.Label, Kind: "create",
+		Action: "custom_field.created", Summary: "Defined custom field " + norm.Label,
+	}}); err != nil {
+		return FieldDef{}, err
+	}
 	return norm, nil
 }
 
@@ -48,6 +54,12 @@ func (s *Service) RetireField(ctx context.Context, p domain.Principal, id domain
 	row.Retired = true
 	row.UpdatedAt = s.clock()
 	if err := s.db.PutField(ctx, row); err != nil {
+		return FieldDef{}, err
+	}
+	if err := s.record(ctx, p, []change{{
+		Entity: "custom_field_definition", EntityID: row.ID, Field: "retired", Old: "false", New: "true", Kind: "update",
+		Action: "custom_field.retired", Summary: "Retired custom field " + row.Label,
+	}}); err != nil {
 		return FieldDef{}, err
 	}
 	return row, nil
@@ -80,14 +92,16 @@ func (s *Service) ExportMattersCSV(ctx context.Context, p domain.Principal) (str
 
 func (s *Service) mattersCSV(views []MatterView) string {
 	columns := []string{"number", "name", "status", "practice_area_id"}
-	seen := map[string]bool{}
+	ids := []domain.ID{"", "", "", ""}
+	seen := map[domain.ID]bool{}
 	for _, view := range views {
 		for _, field := range view.CustomFields {
-			if seen[field.Key] {
+			if seen[field.DefinitionID] {
 				continue
 			}
-			seen[field.Key] = true
-			columns = append(columns, field.Label)
+			seen[field.DefinitionID] = true
+			columns = append(columns, field.Label+" ["+string(field.DefinitionID)+"]")
+			ids = append(ids, field.DefinitionID)
 		}
 	}
 	var b strings.Builder
@@ -95,12 +109,12 @@ func (s *Service) mattersCSV(views []MatterView) string {
 	b.WriteByte('\n')
 	for _, view := range views {
 		row := []string{view.Matter.Number, view.Matter.Name, view.Matter.Status, string(view.Matter.PracticeAreaID)}
-		byLabel := map[string]string{}
+		byID := map[domain.ID]string{}
 		for _, field := range view.CustomFields {
-			byLabel[field.Label] = field.Value
+			byID[field.DefinitionID] = field.Value
 		}
-		for _, column := range columns[4:] {
-			row = append(row, byLabel[column])
+		for _, id := range ids[4:] {
+			row = append(row, byID[id])
 		}
 		b.WriteString(csvJoin(row))
 		b.WriteByte('\n')
@@ -163,7 +177,17 @@ func (s *Service) requireCustom(ctx context.Context, recordType string, area, re
 		if err != nil {
 			return err
 		}
-		provided[def.ID] = value.Value
+		if def.Retired {
+			return domain.Invalid("custom_fields", "field is retired")
+		}
+		if !fieldApplies(def, area) {
+			return domain.Invalid("custom_fields", "field does not apply to this practice area")
+		}
+		canonical, err := canonicalValue(def, value.Value)
+		if err != nil {
+			return err
+		}
+		provided[def.ID] = canonical
 	}
 	stored := map[domain.ID]string{}
 	if !recordID.IsZero() {
@@ -218,16 +242,28 @@ func (s *Service) shownFields(ctx context.Context, p domain.Principal, recordTyp
 }
 
 func (s *Service) lookupField(recordType string, in CustomInput) (FieldDef, error) {
+	if !in.DefinitionID.IsZero() {
+		for _, def := range s.db.Fields() {
+			if def.RecordType == recordType && def.ID == in.DefinitionID {
+				return def, nil
+			}
+		}
+		return FieldDef{}, domain.Invalid("custom_fields", "unknown custom field")
+	}
+	var retired FieldDef
+	foundRetired := false
 	for _, def := range s.db.Fields() {
-		if def.RecordType != recordType {
+		if def.RecordType != recordType || in.Key == "" || def.Key != in.Key {
 			continue
 		}
-		if !in.DefinitionID.IsZero() && def.ID == in.DefinitionID {
+		if !def.Retired {
 			return def, nil
 		}
-		if in.DefinitionID.IsZero() && in.Key != "" && def.Key == in.Key {
-			return def, nil
-		}
+		retired = def
+		foundRetired = true
+	}
+	if foundRetired {
+		return retired, nil
 	}
 	return FieldDef{}, domain.Invalid("custom_fields", "unknown custom field")
 }

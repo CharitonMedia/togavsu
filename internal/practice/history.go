@@ -11,7 +11,8 @@ import (
 func (s *Service) History(ctx context.Context, p domain.Principal, entity string, id domain.ID) ([]HistoryRow, error) {
 	switch entity {
 	case "matter":
-		if err := s.gateMatter(ctx, p, id, domain.ActionRead); err != nil {
+		// History is not a shared client item. A client read of the matter does not include it.
+		if err := s.gateMatterShared(ctx, p, id, domain.ActionRead, false); err != nil {
 			return nil, err
 		}
 	case "contact":
@@ -41,11 +42,16 @@ func (s *Service) Timeline(ctx context.Context, p domain.Principal, matter domai
 	if err := s.gateMatter(ctx, p, matter, domain.ActionRead); err != nil {
 		return nil, err
 	}
+	// A client who can read the shared matter still only sees client-visible events.
+	clientView := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false) != nil
 	events := s.db.Events()
 	var out []TimelineEntry
 	for i := len(events) - 1; i >= 0; i-- {
 		row := events[i]
 		if row.MatterID != matter {
+			continue
+		}
+		if clientView && !row.ClientVisible {
 			continue
 		}
 		out = append(out, TimelineEntry{

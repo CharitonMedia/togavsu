@@ -226,8 +226,14 @@ func TestAC020SearchScopesAndWall(t *testing.T) {
 	if err != nil || !searchHas(ssn, contact.ID) {
 		t.Fatal("attorney should be able to search the stored identifier", err, ssn)
 	}
-	if _, err := svc.Search(ctx, person(tid(8), domain.RoleAccountant), "2026-0001", ScopeAll); !isCode(err, domain.CodeForbidden) {
-		t.Fatal(err)
+	accountant := person(tid(8), domain.RoleAccountant)
+	acctAll, err := svc.Search(ctx, accountant, "2026-0001", ScopeAll)
+	if err != nil || searchHas(acctAll, matter.ID) || searchHas(acctAll, contact.ID) {
+		t.Fatal("accountant search leaked a matter or person", err, acctAll)
+	}
+	acctInv, err := svc.Search(ctx, accountant, "INV-2044", ScopeInvoices)
+	if err != nil || !searchHas(acctInv, tid(40)) {
+		t.Fatal("accountant invoice search", err, acctInv)
 	}
 	if _, err := svc.Search(ctx, person(tid(9), domain.RoleClient), "2026-0001", ScopeAll); !isCode(err, domain.CodeForbidden) {
 		t.Fatal(err)
@@ -288,10 +294,13 @@ func TestAC023ReopenAndZeroFee(t *testing.T) {
 	if still.Status != StatusClosed {
 		t.Fatal(still.Status)
 	}
-	if _, err := svc.ReopenMatter(ctx, staff, matter.ID, "staff tried"); !isCode(err, domain.CodeForbidden) {
+	if _, err := svc.ReopenMatter(ctx, person(tid(9), domain.RoleClient), matter.ID, "client tried"); !isCode(err, domain.CodeForbidden) {
 		t.Fatal(err)
 	}
-	reopened, err := svc.ReopenMatter(ctx, attorney, matter.ID, "client returned")
+	if _, err := svc.ReopenMatter(ctx, person(tid(8), domain.RoleAccountant), matter.ID, "books tried"); !isCode(err, domain.CodeForbidden) {
+		t.Fatal(err)
+	}
+	reopened, err := svc.ReopenMatter(ctx, staff, matter.ID, "client returned")
 	if err != nil {
 		t.Fatal(err)
 	}
