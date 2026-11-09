@@ -21,19 +21,19 @@
       {
         "helper": "_schema_validator",
         "name": "rewrite",
-        "line": 9806,
+        "line": 9820,
         "structural": true
       },
       {
         "helper": "_component_validator",
         "name": "rewrite",
-        "line": 9829,
+        "line": 9843,
         "structural": true
       },
       {
         "helper": "_response_record_schemas",
         "name": "walk",
-        "line": 9986,
+        "line": 10000,
         "structural": true
       }
     ],
@@ -74,12 +74,12 @@
     "simulator_helpers": 9,
     "nested_helpers": 68,
     "blocking_gaps": 62,
-    "explicit_cases_in_behavioral_methods": 336,
+    "explicit_cases_in_behavioral_methods": 338,
     "assertion_calls_in_behavioral_methods": 2147,
     "runtime_fixtures": 52
   },
   "artifacts": {
-    "api/openapi/v1/openapi.json": "9546c02f6014b2afc10b15777b27f32c3a0058ef4d3beede0e1014be0af1bad5",
+    "api/openapi/v1/openapi.json": "c6f7d7a5800fff61f2280ad761bc59d31c953c57bb77d7422b4b5fd3e1a74fff",
     "api/openapi/marketplace/openapi.json": "d5a6b6855048a88944827473bf431ec22c5ff98275d446a6af715f72e581eefb",
     "api/openapi/v1/mcp-tools.json": "894ae821d09506cd33c31d555f2e2605f53a250cf3643db73e6edf502e66d12b",
     "docs/api/coverage.md": "a7a9f8a630722b302c13338135e0e36ffab008b1acfced995de4ac3aaad94bfa"
@@ -170,7 +170,7 @@
       "files": [
         "api/openapi/v1/openapi.json"
       ],
-      "change": "ManifestExtension and ManifestView add every section 5 record with a published read: contact addresses, emails, phones and tags, practice areas, counties, referral sources, timers, file renditions and links, court profiles, Doc Tender categories, jobs, results and exceptions, conflict checks and their reviews, trust flags, replenishment requests and reconciliations. Their list and get reads take include, their read schemas carry optional included, and DocTenderResult gains its row id. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same."
+      "change": "ManifestExtension and ManifestView add every section 5 record with a published read: contact addresses, emails, phones and tags, practice areas, counties, referral sources, timers, file renditions and links, court profiles, Doc Tender categories, jobs, results and exceptions, conflict checks and their reviews, trust flags, replenishment requests and reconciliations, plus folders and matter markers, which are matter records outside section 5. Their list and get reads take include, their read schemas carry optional included, and DocTenderResult gains its row id. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same."
     }
   ],
   "intentional_corrections": [
@@ -2299,7 +2299,7 @@
       "id": "ContractTest.test_include_views_cover_extensible_core_records",
       "source": "api/tests/test_contract.py",
       "line": 4443,
-      "end_line": 4649,
+      "end_line": 4651,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
@@ -2313,7 +2313,7 @@
       "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
       "assertion_count": 49,
       "loop_count": 2,
-      "explicit_case_count": 37,
+      "explicit_case_count": 39,
       "runtime_status": "runtime_pending",
       "blocking_removal": true,
       "gap": "Pending. This method is not converted. The source index does not make it complete.",
@@ -2323,8 +2323,8 @@
     {
       "id": "ContractTest.test_extension_catalog_classifies_every_record_read",
       "source": "api/tests/test_contract.py",
-      "line": 4651,
-      "end_line": 4722,
+      "line": 4653,
+      "end_line": 4736,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
@@ -2337,8 +2337,8 @@
       ],
       "source_line_basis": "current_worktree",
       "source_line_note": "line and end_line are the current file. They are not positions in baseline b4350f8.",
-      "assertion_count": 14,
-      "loop_count": 7,
+      "assertion_count": 16,
+      "loop_count": 10,
       "explicit_case_count": 0,
       "runtime_status": "contract_check",
       "blocking_removal": false,
@@ -2349,8 +2349,8 @@
     {
       "id": "ContractTest.test_new_extension_targets_include_through_the_full_path",
       "source": "api/tests/test_contract.py",
-      "line": 4724,
-      "end_line": 4852,
+      "line": 4738,
+      "end_line": 4866,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
@@ -2375,8 +2375,8 @@
     {
       "id": "ContractTest.test_notifications_are_limited_to_the_recipient",
       "source": "api/tests/test_contract.py",
-      "line": 4854,
-      "end_line": 4924,
+      "line": 4868,
+      "end_line": 4938,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "ui",
@@ -2400,8 +2400,8 @@
     {
       "id": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
       "source": "api/tests/test_contract.py",
-      "line": 4926,
-      "end_line": 5128,
+      "line": 4940,
+      "end_line": 5142,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
@@ -2426,8 +2426,8 @@
     {
       "id": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
       "source": "api/tests/test_contract.py",
-      "line": 5130,
-      "end_line": 5367,
+      "line": 5144,
+      "end_line": 5381,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -2455,8 +2455,8 @@
     {
       "id": "ContractTest.test_owner_bound_events_follow_the_read_policy",
       "source": "api/tests/test_contract.py",
-      "line": 5369,
-      "end_line": 5483,
+      "line": 5383,
+      "end_line": 5497,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "identity",
@@ -2480,8 +2480,8 @@
     {
       "id": "ContractTest.test_invoice_drafts_accept_a_date_range",
       "source": "api/tests/test_contract.py",
-      "line": 5485,
-      "end_line": 5562,
+      "line": 5499,
+      "end_line": 5576,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
@@ -2505,8 +2505,8 @@
     {
       "id": "ContractTest.test_attorney_only_files_are_omitted_from_aggregates",
       "source": "api/tests/test_contract.py",
-      "line": 5564,
-      "end_line": 5613,
+      "line": 5578,
+      "end_line": 5627,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "files",
@@ -2530,8 +2530,8 @@
     {
       "id": "ContractTest.test_bulk_custom_fields_follow_the_time_domain",
       "source": "api/tests/test_contract.py",
-      "line": 5615,
-      "end_line": 5660,
+      "line": 5629,
+      "end_line": 5674,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2555,8 +2555,8 @@
     {
       "id": "ContractTest.test_module_owned_upload_events_use_the_tagged_owner",
       "source": "api/tests/test_contract.py",
-      "line": 5662,
-      "end_line": 5729,
+      "line": 5676,
+      "end_line": 5743,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -2582,8 +2582,8 @@
     {
       "id": "ContractTest.test_account_trust_flags_match_the_emitted_scope",
       "source": "api/tests/test_contract.py",
-      "line": 5731,
-      "end_line": 5838,
+      "line": 5745,
+      "end_line": 5852,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
@@ -2607,8 +2607,8 @@
     {
       "id": "ContractTest.test_history_inherits_the_underlying_record",
       "source": "api/tests/test_contract.py",
-      "line": 5840,
-      "end_line": 5991,
+      "line": 5854,
+      "end_line": 6005,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2632,8 +2632,8 @@
     {
       "id": "ContractTest.test_background_file_publication_grant",
       "source": "api/tests/test_contract.py",
-      "line": 5993,
-      "end_line": 6158,
+      "line": 6007,
+      "end_line": 6172,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "files",
@@ -2657,8 +2657,8 @@
     {
       "id": "ContractTest.test_trust_application_selects_the_account_and_client",
       "source": "api/tests/test_contract.py",
-      "line": 6160,
-      "end_line": 6206,
+      "line": 6174,
+      "end_line": 6220,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
@@ -2683,8 +2683,8 @@
     {
       "id": "ContractTest.test_module_marker_registration_owns_its_namespace",
       "source": "api/tests/test_contract.py",
-      "line": 6208,
-      "end_line": 6369,
+      "line": 6222,
+      "end_line": 6383,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "modules",
@@ -2708,8 +2708,8 @@
     {
       "id": "ContractTest.test_trust_flag_follows_the_committed_balance",
       "source": "api/tests/test_contract.py",
-      "line": 6371,
-      "end_line": 6879,
+      "line": 6385,
+      "end_line": 6893,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "trust",
@@ -2733,8 +2733,8 @@
     {
       "id": "ContractTest.test_record_mutations_emit_events_only_after_commit",
       "source": "api/tests/test_contract.py",
-      "line": 6881,
-      "end_line": 6973,
+      "line": 6895,
+      "end_line": 6987,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2758,8 +2758,8 @@
     {
       "id": "ContractTest.test_marketplace_flag_and_pull",
       "source": "api/tests/test_contract.py",
-      "line": 6975,
-      "end_line": 7034,
+      "line": 6989,
+      "end_line": 7048,
       "kind": "simulator_behavior",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "marketplace",
@@ -2783,8 +2783,8 @@
     {
       "id": "ContractTest.test_custom_acceptance_cannot_skip_operation_scopes",
       "source": "api/tests/test_contract.py",
-      "line": 7036,
-      "end_line": 7080,
+      "line": 7050,
+      "end_line": 7094,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "api",
@@ -2809,8 +2809,8 @@
     {
       "id": "ContractTest.test_dispatcher_parity_matrix",
       "source": "api/tests/test_contract.py",
-      "line": 7082,
-      "end_line": 7418,
+      "line": 7096,
+      "end_line": 7432,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -2839,8 +2839,8 @@
     {
       "id": "ContractTest.test_merge_matter_authorizes_both_records",
       "source": "api/tests/test_contract.py",
-      "line": 7420,
-      "end_line": 7483,
+      "line": 7434,
+      "end_line": 7497,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2864,8 +2864,8 @@
     {
       "id": "ContractTest.test_matter_patch_cannot_reopen",
       "source": "api/tests/test_contract.py",
-      "line": 7485,
-      "end_line": 7563,
+      "line": 7499,
+      "end_line": 7577,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2889,8 +2889,8 @@
     {
       "id": "ContractTest.test_stopped_timer_response_is_terminal",
       "source": "api/tests/test_contract.py",
-      "line": 7565,
-      "end_line": 7625,
+      "line": 7579,
+      "end_line": 7639,
       "kind": "contract_validation",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "billing",
@@ -2912,8 +2912,8 @@
     {
       "id": "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
       "source": "api/tests/test_contract.py",
-      "line": 7627,
-      "end_line": 7672,
+      "line": 7641,
+      "end_line": 7686,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "practice",
@@ -2937,8 +2937,8 @@
     {
       "id": "ContractTest.test_file_reparent_authorizes_source_and_destination",
       "source": "api/tests/test_contract.py",
-      "line": 7674,
-      "end_line": 7822,
+      "line": 7688,
+      "end_line": 7836,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "files",
@@ -2962,8 +2962,8 @@
     {
       "id": "ContractTest.test_association_walls_fail_closed",
       "source": "api/tests/test_contract.py",
-      "line": 7824,
-      "end_line": 8013,
+      "line": 7838,
+      "end_line": 8027,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -2990,8 +2990,8 @@
     {
       "id": "ContractTest.test_trusted_wall_grant_and_csrf",
       "source": "api/tests/test_contract.py",
-      "line": 8015,
-      "end_line": 8253,
+      "line": 8029,
+      "end_line": 8267,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3018,8 +3018,8 @@
     {
       "id": "ContractTest.test_factor_reset_requires_reauthentication",
       "source": "api/tests/test_contract.py",
-      "line": 8255,
-      "end_line": 8347,
+      "line": 8269,
+      "end_line": 8361,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "identity",
@@ -3041,8 +3041,8 @@
     {
       "id": "ContractTest.test_transport_link_and_matter_grant",
       "source": "api/tests/test_contract.py",
-      "line": 8349,
-      "end_line": 8561,
+      "line": 8363,
+      "end_line": 8575,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3070,8 +3070,8 @@
     {
       "id": "ContractTest.test_concrete_matter_and_selected_files",
       "source": "api/tests/test_contract.py",
-      "line": 8563,
-      "end_line": 8726,
+      "line": 8577,
+      "end_line": 8740,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3097,8 +3097,8 @@
     {
       "id": "ContractTest.test_record_owner_and_client_file_access",
       "source": "api/tests/test_contract.py",
-      "line": 8728,
-      "end_line": 8907,
+      "line": 8742,
+      "end_line": 8921,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3125,8 +3125,8 @@
     {
       "id": "ContractTest.test_parent_schema_and_client_file_reads",
       "source": "api/tests/test_contract.py",
-      "line": 8909,
-      "end_line": 9033,
+      "line": 8923,
+      "end_line": 9047,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3153,8 +3153,8 @@
     {
       "id": "ContractTest.test_trusted_resource_facts_match_the_route",
       "source": "api/tests/test_contract.py",
-      "line": 9035,
-      "end_line": 9337,
+      "line": 9049,
+      "end_line": 9351,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3187,8 +3187,8 @@
     {
       "id": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "source": "api/tests/test_contract.py",
-      "line": 9339,
-      "end_line": 9670,
+      "line": 9353,
+      "end_line": 9684,
       "kind": "both",
       "baseline_sha": "b4350f8af3803b8dc8439b2b2e7a431f198583d9",
       "go_owner": "multiple",
@@ -3223,132 +3223,132 @@
     },
     {
       "name": "_operation",
-      "line": 9673,
+      "line": 9687,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name",
-      "line": 9680,
+      "line": 9694,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_name_from_page",
-      "line": 9686,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "_as_trusted_grant_fixture",
-      "line": 9690,
-      "kind": "contract_helper"
-    },
-    {
-      "name": "_session_csrf",
       "line": 9700,
       "kind": "contract_helper"
     },
     {
+      "name": "_as_trusted_grant_fixture",
+      "line": 9704,
+      "kind": "contract_helper"
+    },
+    {
+      "name": "_session_csrf",
+      "line": 9714,
+      "kind": "contract_helper"
+    },
+    {
       "name": "_issue_malware_grant",
-      "line": 9709,
+      "line": 9723,
       "kind": "contract_helper"
     },
     {
       "name": "_malware_call",
-      "line": 9730,
+      "line": 9744,
       "kind": "simulator_helper"
     },
     {
       "name": "_case_matches",
-      "line": 9734,
+      "line": 9748,
       "kind": "contract_helper"
     },
     {
       "name": "operation_denies_other_client",
-      "line": 9743,
+      "line": 9757,
       "kind": "contract_helper"
     },
     {
       "name": "_upload_step_result",
-      "line": 9751,
+      "line": 9765,
       "kind": "simulator_helper"
     },
     {
       "name": "_file_byte_downloads",
-      "line": 9770,
+      "line": 9784,
       "kind": "contract_helper"
     },
     {
       "name": "_client_portal_result",
-      "line": 9776,
+      "line": 9790,
       "kind": "simulator_helper"
     },
     {
       "name": "_schema_validator",
-      "line": 9798,
+      "line": 9812,
       "kind": "contract_helper"
     },
     {
       "name": "_component_validator",
-      "line": 9822,
+      "line": 9836,
       "kind": "contract_helper"
     },
     {
       "name": "_download_outcome",
-      "line": 9844,
+      "line": 9858,
       "kind": "simulator_helper"
     },
     {
       "name": "_background_result",
-      "line": 9865,
+      "line": 9879,
       "kind": "simulator_helper"
     },
     {
       "name": "_client_context_result",
-      "line": 9882,
+      "line": 9896,
       "kind": "simulator_helper"
     },
     {
       "name": "_trust_poster",
-      "line": 9890,
+      "line": 9904,
       "kind": "simulator_helper"
     },
     {
       "name": "_delegation_result",
-      "line": 9899,
+      "line": 9913,
       "kind": "simulator_helper"
     },
     {
       "name": "_adjustment_body",
-      "line": 9913,
+      "line": 9927,
       "kind": "contract_helper"
     },
     {
       "name": "_adjustment_row",
-      "line": 9926,
+      "line": 9940,
       "kind": "contract_helper"
     },
     {
       "name": "_scope_decision",
-      "line": 9935,
+      "line": 9949,
       "kind": "simulator_helper"
     },
     {
       "name": "_with_canonical_file",
-      "line": 9942,
+      "line": 9956,
       "kind": "contract_helper"
     },
     {
       "name": "_schema_accepts_included",
-      "line": 9972,
+      "line": 9986,
       "kind": "contract_helper"
     },
     {
       "name": "_response_record_schemas",
-      "line": 9983,
+      "line": 9997,
       "kind": "contract_helper"
     },
     {
       "name": "_param_name",
-      "line": 10002,
+      "line": 10016,
       "kind": "contract_helper"
     }
   ],
@@ -3406,292 +3406,292 @@
     {
       "test": "ContractTest.test_extension_catalog_classifies_every_record_read",
       "name": "record_names",
-      "line": 4661
+      "line": 4675
     },
     {
       "test": "ContractTest.test_extension_catalog_classifies_every_record_read",
       "name": "has_id",
-      "line": 4678
+      "line": 4692
     },
     {
       "test": "ContractTest.test_new_extension_targets_include_through_the_full_path",
       "name": "trusted",
-      "line": 4740
+      "line": 4754
     },
     {
       "test": "ContractTest.test_new_extension_targets_include_through_the_full_path",
       "name": "call",
-      "line": 4768
+      "line": 4782
     },
     {
       "test": "ContractTest.test_new_extension_targets_include_through_the_full_path",
       "name": "denied",
-      "line": 4791
+      "line": 4805
     },
     {
       "test": "ContractTest.test_dispatch_checks_notification_scopes_include_strings_and_marker_updates",
       "name": "bearer",
-      "line": 4927
+      "line": 4941
     },
     {
       "test": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
       "name": "bearer",
-      "line": 5161
+      "line": 5175
     },
     {
       "test": "ContractTest.test_mcp_dispatcher_covers_special_authorization_families",
       "name": "item",
-      "line": 5171
+      "line": 5185
     },
     {
       "test": "ContractTest.test_owner_bound_events_follow_the_read_policy",
       "name": "subscriber",
-      "line": 5397
+      "line": 5411
     },
     {
       "test": "ContractTest.test_owner_bound_events_follow_the_read_policy",
       "name": "event_for",
-      "line": 5410
+      "line": 5424
     },
     {
       "test": "ContractTest.test_trust_flag_follows_the_committed_balance",
       "name": "row",
-      "line": 6409
+      "line": 6423
     },
     {
       "test": "ContractTest.test_trust_flag_follows_the_committed_balance",
       "name": "write_body",
-      "line": 6428
+      "line": 6442
     },
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "cookie",
-      "line": 7105
+      "line": 7119
     },
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "bearer",
-      "line": 7108
+      "line": 7122
     },
     {
       "test": "ContractTest.test_dispatcher_parity_matrix",
       "name": "validate",
-      "line": 7111
+      "line": 7125
     },
     {
       "test": "ContractTest.test_merge_matter_authorizes_both_records",
       "name": "decide",
-      "line": 7426
+      "line": 7440
     },
     {
       "test": "ContractTest.test_matter_patch_cannot_reopen",
       "name": "call",
-      "line": 7495
+      "line": 7509
     },
     {
       "test": "ContractTest.test_merge_wall_values_must_be_resolved_booleans",
       "name": "decide",
-      "line": 7632
+      "line": 7646
     },
     {
       "test": "ContractTest.test_file_reparent_authorizes_source_and_destination",
       "name": "decide",
-      "line": 7680
+      "line": 7694
     },
     {
       "test": "ContractTest.test_file_reparent_authorizes_source_and_destination",
       "name": "one",
-      "line": 7767
+      "line": 7781
     },
     {
       "test": "ContractTest.test_association_walls_fail_closed",
       "name": "both",
-      "line": 7839
+      "line": 7853
     },
     {
       "test": "ContractTest.test_association_walls_fail_closed",
       "name": "file_call",
-      "line": 7849
+      "line": 7863
     },
     {
       "test": "ContractTest.test_association_walls_fail_closed",
       "name": "replaced",
-      "line": 7913
+      "line": 7927
     },
     {
       "test": "ContractTest.test_association_walls_fail_closed",
       "name": "batch",
-      "line": 7975
+      "line": 7989
     },
     {
       "test": "ContractTest.test_trusted_wall_grant_and_csrf",
       "name": "quiet",
-      "line": 8058
+      "line": 8072
     },
     {
       "test": "ContractTest.test_trusted_wall_grant_and_csrf",
       "name": "file_call",
-      "line": 8065
+      "line": 8079
     },
     {
       "test": "ContractTest.test_trusted_wall_grant_and_csrf",
       "name": "scan",
-      "line": 8120
+      "line": 8134
     },
     {
       "test": "ContractTest.test_trusted_wall_grant_and_csrf",
       "name": "cookie_call",
-      "line": 8167
+      "line": 8181
     },
     {
       "test": "ContractTest.test_factor_reset_requires_reauthentication",
       "name": "decide",
-      "line": 8266
+      "line": 8280
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "quiet",
-      "line": 8365
+      "line": 8379
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "cookie_write",
-      "line": 8371
+      "line": 8385
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "calendar",
-      "line": 8397
+      "line": 8411
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "file_row",
-      "line": 8434
+      "line": 8448
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "link",
-      "line": 8437
+      "line": 8451
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "issued",
-      "line": 8478
+      "line": 8492
     },
     {
       "test": "ContractTest.test_transport_link_and_matter_grant",
       "name": "grant_call",
-      "line": 8500
+      "line": 8514
     },
     {
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "quiet",
-      "line": 8577
+      "line": 8591
     },
     {
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "matter_call",
-      "line": 8583
+      "line": 8597
     },
     {
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "link",
-      "line": 8629
+      "line": 8643
     },
     {
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "row",
-      "line": 8645
+      "line": 8659
     },
     {
       "test": "ContractTest.test_concrete_matter_and_selected_files",
       "name": "archive",
-      "line": 8663
+      "line": 8677
     },
     {
       "test": "ContractTest.test_record_owner_and_client_file_access",
       "name": "quiet",
-      "line": 8742
+      "line": 8756
     },
     {
       "test": "ContractTest.test_record_owner_and_client_file_access",
       "name": "call",
-      "line": 8748
+      "line": 8762
     },
     {
       "test": "ContractTest.test_record_owner_and_client_file_access",
       "name": "file_row",
-      "line": 8846
+      "line": 8860
     },
     {
       "test": "ContractTest.test_record_owner_and_client_file_access",
       "name": "client_archive",
-      "line": 8858
+      "line": 8872
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "quiet",
-      "line": 8916
+      "line": 8930
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "staff",
-      "line": 8922
+      "line": 8936
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "file_row",
-      "line": 8973
+      "line": 8987
     },
     {
       "test": "ContractTest.test_parent_schema_and_client_file_reads",
       "name": "client_read",
-      "line": 8986
+      "line": 9000
     },
     {
       "test": "ContractTest.test_trusted_resource_facts_match_the_route",
       "name": "quiet",
-      "line": 9057
+      "line": 9071
     },
     {
       "test": "ContractTest.test_trusted_resource_facts_match_the_route",
       "name": "call",
-      "line": 9063
+      "line": 9077
     },
     {
       "test": "ContractTest.test_trusted_resource_facts_match_the_route",
       "name": "file_row",
-      "line": 9078
+      "line": 9092
     },
     {
       "test": "ContractTest.test_trusted_resource_facts_match_the_route",
       "name": "invoice",
-      "line": 9175
+      "line": 9189
     },
     {
       "test": "ContractTest.test_trusted_resource_facts_match_the_route",
       "name": "flag",
-      "line": 9213
+      "line": 9227
     },
     {
       "test": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "name": "quiet",
-      "line": 9352
+      "line": 9366
     },
     {
       "test": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "name": "call",
-      "line": 9358
+      "line": 9372
     },
     {
       "test": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "name": "file_row",
-      "line": 9373
+      "line": 9387
     },
     {
       "test": "ContractTest.test_canonical_file_flag_source_and_context_matter",
       "name": "flag",
-      "line": 9487
+      "line": 9501
     }
   ],
   "behavioral_helpers": [

@@ -4450,6 +4450,7 @@ class ContractTest(unittest.TestCase):
             ("contact_tag", "ContactTag", "contacts:read", ("listContactTag", "getContactTag")),
             ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
             ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+            ("matter_marker", "MatterMarker", "matters:read", ("listMatterMarker", "getMatterMarker")),
             ("practice_area", "PracticeArea", "settings:read", ("listPracticeArea", "getPracticeArea")),
             ("county", "County", "settings:read", ("listCounty", "getCounty")),
             ("referral_source", "ReferralSource", "settings:read", ("listReferralSource", "getReferralSource")),
@@ -4463,6 +4464,7 @@ class ContractTest(unittest.TestCase):
             ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
             ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
             ("file", "File", "files:read", ("listFile", "getFile")),
+            ("folder", "Folder", "files:read", ("listFolder", "getFolder")),
             ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
             ("file_rendition", "FileRendition", "files:read", ("listFileRenditions",)),
             ("file_link", "FileLink", "files:read", ("listFileLinks",)),
@@ -4656,6 +4658,18 @@ class ContractTest(unittest.TestCase):
             self.assertIn(schema_name, self.spec["components"]["schemas"], schema_name)
             self.assertTrue(record and len(reason) > 20, schema_name)
         self.assertEqual(CORE_RECORDS_WITHOUT_READS, ("edit_locks", "doc_tender_units"))
+        # Each exclusion reason quotes the PRD. Every quoted phrase must appear in it word for word.
+        from pathlib import Path
+
+        prd = (Path(__file__).resolve().parents[2] / "togavsu-core-prd.md").read_text(encoding="utf-8")
+        prd = prd.replace("\\_", "_").replace("**", "")
+        for schema_name, (_record, reason) in CORE_EXTENSION_EXCLUSIONS.items():
+            quotes = re.findall(r'"([^"]+)"', reason)
+            self.assertTrue(quotes or "PRD" in reason, schema_name)
+            for quote in quotes:
+                for part in (piece.strip(" ,.") for piece in quote.split("...")):
+                    if len(part) > 6:
+                        self.assertIn(part, prd, schema_name)
         schemas = self.spec["components"]["schemas"]
 
         def record_names(schema):
@@ -4708,7 +4722,7 @@ class ContractTest(unittest.TestCase):
             "listContactTag", "getContactTag", "listTimer", "getTimer", "listTrustReplenishment", "getTrustReplenishment",
             "listTrustReconciliation", "getTrustReconciliation", "listTrustFlag", "getTrustFlag", "listConflictChecks",
             "getConflictCheck", "getDocTenderResult", "listPracticeArea", "getPracticeArea", "listCounty", "getCounty",
-            "listReferralSource", "getReferralSource",
+            "listReferralSource", "getReferralSource", "listFolder", "getFolder", "listMatterMarker", "getMatterMarker",
         ):
             names = [_param_name(parameter) for parameter in _operation(self.spec, operation_id).get("parameters") or []]
             self.assertIn("include", names, operation_id)
@@ -4733,7 +4747,7 @@ class ContractTest(unittest.TestCase):
             "contact_address", "contact_email", "contact_phone", "contact_tag", "practice_area", "county", "referral_source",
             "timer", "file_rendition", "file_link", "court_profile", "doc_category", "doc_tender_job", "doc_tender_result",
             "doc_tender_exception", "conflict_check", "conflict_review", "trust_flag", "trust_replenishment_request",
-            "trust_reconciliation",
+            "trust_reconciliation", "folder", "matter_marker",
         }
         self.assertEqual(added - {row[0] for row in CORE_EXTENSION_TARGETS}, set())
 
@@ -4834,7 +4848,7 @@ class ContractTest(unittest.TestCase):
                     denied(call(operation_id, "staff", granted, granted, view, **context), "not_found", label)
                     self.assertEqual(call(operation_id, "attorney", granted, granted, view, **context)["result"], "allowed", label)
                 checked += 1
-        self.assertEqual(checked, 37)
+        self.assertEqual(checked, 41)
         # An account-scope trust flag the list omits is also hidden from include=.
         account_flag = {**trusted()["stored_record"], "scope": "account", "trust_account_id": account}
         account_flag.pop("client_id")

@@ -1082,6 +1082,7 @@ def _practice(api: Contract) -> None:
         events={"created": "matter.updated", "updated": "matter.updated", "deleted": "matter.updated"},
         delete=True,
         bulk=True,
+        include=True,
         extra_access=WALL,
     )
     api.resource(
@@ -2959,6 +2960,7 @@ def _files(api: Contract) -> None:
         filters=["matter_id"],
         events={"created": "folder.created", "updated": "folder.updated", "deleted": "folder.deleted"},
         delete=True,
+        include=True,
         extra_access=WALL,
     )
     api.add(

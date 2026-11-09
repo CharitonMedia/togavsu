@@ -182,7 +182,8 @@ MODULE_GUIDE = {
 # file_version, file_rendition, and file_link are listed under their file; they
 # have no separate get. conflict_check is the published read of conflict_reviews;
 # each ConflictHit in it is one conflict_review row, keyed by the hit id.
-# doc_tender_result is read by its file.
+# doc_tender_result is read by its file. folder (PRD 8.19) and matter_marker (PRD 8.12) are matter
+# records outside section 5; PRD 9.9's "contacts, matters, users, invoices, time entries, files and the rest" covers them.
 CORE_EXTENSION_TARGETS = (
     ("user", "User", "users:read", ("listUser", "getUser")),
     ("contact", "Contact", "contacts:read", ("listContact", "getContact")),
@@ -192,6 +193,7 @@ CORE_EXTENSION_TARGETS = (
     ("contact_tag", "ContactTag", "contacts:read", ("listContactTag", "getContactTag")),
     ("matter", "Matter", "matters:read", ("listMatter", "getMatter")),
     ("matter_party", "MatterParty", "matters:read", ("listMatterParty", "getMatterParty")),
+    ("matter_marker", "MatterMarker", "matters:read", ("listMatterMarker", "getMatterMarker")),
     ("practice_area", "PracticeArea", "settings:read", ("listPracticeArea", "getPracticeArea")),
     ("county", "County", "settings:read", ("listCounty", "getCounty")),
     ("referral_source", "ReferralSource", "settings:read", ("listReferralSource", "getReferralSource")),
@@ -205,6 +207,7 @@ CORE_EXTENSION_TARGETS = (
     ("calendar_event", "CalendarEvent", "calendar:read", ("listCalendarEvent", "getCalendarEvent")),
     ("deadline", "Deadline", "deadlines:read", ("listDeadline", "getDeadline")),
     ("file", "File", "files:read", ("listFile", "getFile")),
+    ("folder", "Folder", "files:read", ("listFolder", "getFolder")),
     ("file_version", "FileVersion", "files:read", ("listFileVersions",)),
     ("file_rendition", "FileRendition", "files:read", ("listFileRenditions",)),
     ("file_link", "FileLink", "files:read", ("listFileLinks",)),
@@ -223,58 +226,128 @@ CORE_EXTENSION_TARGETS = (
     ("trust_reconciliation", "TrustReconciliation", "trust:read", ("listTrustReconciliation", "getTrustReconciliation")),
 )
 
-# Records with a published read that are not extension targets, each with its reason.
-# Keyed by the read schema. The contract test fails when a GET returns a record with an
-# id that is in neither this map nor CORE_EXTENSION_TARGETS.
-_CREDENTIAL = "credential (section 5 Staff, auth and permissions). A module never keys rows to sign-in material."
-_ADMIN_CATALOG = "admin catalog: a value list kept in the settings table (section 5 Firm settings), not a section 5 record table."
-_STORAGE = "storage infrastructure (section 8.19), not firm data. Files and their versions are the extension targets."
-_STREAM = "append-only stream (section 5 audit_log and events, section 8.7 AI call log). Rows are never updated, so there is nothing for an extension row to describe."
-_OUTSIDE = "not a section 5 record. Section 9.9 extends the section 5 base; this is a product, help, layout, or system record defined elsewhere."
+# Records with a published read that are not extension targets. Each reason quotes or cites the PRD text
+# it rests on. Keyed by the read schema. The contract test fails when a GET returns a record with an id
+# that is in neither this map nor CORE_EXTENSION_TARGETS. Section 9.9 names what modules link to as
+# "contacts, matters, users, invoices, time entries, files and the rest": the firm's client and matter
+# records. Folder and MatterMarker are matter records outside section 5 and are targets for that reason.
+_CREDENTIAL = (
+    'credential. PRD 5 "Staff, auth and permissions": "sessions, password credentials (Argon2id), TOTP secrets, '
+    'recovery codes, API tokens." Sign-in material is not a record a module links its own rows to.'
+)
+_SETTINGS = (
+    'settings value list. PRD 5 "Firm settings": "Settings live in a settings table, one row per setting ... '
+    'They include ... activity types, expense types". It is configuration, not a section 5 record table.'
+)
+_STREAM = (
+    'append-only stream. PRD 5: "audit_log: append-only" and "events: the append-only stream behind the case '
+    'timeline and the activity feed"; "Model calls and their cost go to the AI call log (section 8.7)". '
+    "No row changes, so an extension row has nothing to describe."
+)
+_OPERATIONS = (
+    'system operations, not firm data. PRD 6 "Backup system": backups, destinations, and restores are run by the '
+    'supervisor; PRD 6 "Updates without restarts" covers update records.'
+)
 CORE_EXTENSION_EXCLUSIONS = {
     "Session": ("sessions", _CREDENTIAL),
     "ApiToken": ("api_tokens", _CREDENTIAL),
-    "Setting": ("settings", _ADMIN_CATALOG + " Rows are keyed by setting key and have no record id."),
-    "ActivityType": ("activity_types", _ADMIN_CATALOG),
-    "ExpenseType": ("expense_types", _ADMIN_CATALOG),
-    "PartyRole": ("party_roles", _ADMIN_CATALOG + " Section 5 names the roles as a fixed list on matter_parties."),
-    "CustomFieldDefinition": ("custom_field_definitions", _ADMIN_CATALOG + " Custom fields are the other 9.9 extension point, not a target of it."),
-    "StorageBackend": ("storage_backends", _STORAGE),
-    "StorageMove": ("storage_moves", _STORAGE),
-    "FileUpload": ("file_uploads", _STORAGE + " An upload session becomes a file and version when it completes."),
+    "Setting": ("settings", _SETTINGS + " Rows are keyed by setting key and have no record id."),
+    "ActivityType": ("activity_types", _SETTINGS),
+    "ExpenseType": ("expense_types", _SETTINGS),
+    "PartyRole": (
+        "party_roles",
+        'role catalog. PRD 5 matter_parties: "Roles: client, opposing party, opposing counsel, ..." is a fixed list '
+        'on the party record, and PRD 8.7 places "party roles" on the Practice settings tab. The party is the target.',
+    ),
+    "CustomFieldDefinition": (
+        "custom_field_definitions",
+        'the other extension point, not a target of it. PRD 9.9: "custom fields (section 8.14) declared in its manifest, '
+        'shown in the record\'s Custom Fields card under the module\'s name".',
+    ),
+    "StorageBackend": (
+        "storage_backends",
+        'storage infrastructure. PRD 5: "storage_backends: kind (local disk, network path, S3-compatible, Dropbox), name, '
+        'settings (encrypted)". PRD 9.9: "Files are never stored in a module schema (section 8.19)." Files and versions are the targets.',
+    ),
+    "StorageMove": ("storage_moves", 'storage infrastructure. PRD 5: "storage_moves: from, to, scope (all files or one matter), status, progress, confirmed by."'),
+    "FileUpload": (
+        "file_uploads",
+        'storage infrastructure. An upload session is the transport into PRD 8.19 storage and becomes a file and its '
+        "version when it completes; those are the targets.",
+    ),
     "AuditEntry": ("audit_log", _STREAM),
     "Event": ("events", _STREAM),
     "AiCall": ("ai_calls", _STREAM),
+    "WebhookEvent": (
+        "webhook deliveries",
+        'append-only delivery log. PRD 7: "the core delivers events by signed webhook with retries."',
+    ),
     "MatterWall": (
         "matter_walls",
-        "access control on the matter. getMatterWall publishes the matter's member list with no row id, and the same "
-        "schema is the putMatterWall body. A module keys its rows to the matter, which walls already protect.",
+        'access control on the matter. PRD 5: "matter_walls: matter and the users allowed in." getMatterWall publishes the '
+        "matter's member list with no row id, and the same schema is the putMatterWall body. A module keys its rows to "
+        "the matter, which walls already protect.",
     ),
-    "TrustBalanceRow": ("trust balances", "computed from trust_ledger for display (section 5 Trust). It has no row id; the ledger entries are targets."),
-    "FeeItem": ("fee_items", _OUTSIDE + " Section 8.15 billing catalog."),
-    "MarkerDefinition": ("marker definitions", _OUTSIDE + " Section 8.12 admin marker list."),
-    "MatterMarker": ("matter_markers", _OUTSIDE + " Section 8.12."),
-    "Folder": ("folders", _OUTSIDE + " Section 8.19; a folder is a file's location, not a record modules link to."),
-    "Notification": ("notifications", _OUTSIDE + " Section 8.9, per-user inbox."),
-    "HomeLayout": ("home_layouts", _OUTSIDE + " Section 8.6 per-user layout."),
-    "HelpItem": ("help_items", _OUTSIDE + " Section 8.11."),
-    "HelpSection": ("help_sections", _OUTSIDE + " Section 8.11."),
-    "HelpTopic": ("help topics", _OUTSIDE + " Section 8.11."),
-    "HelpPage": ("module help pages", _OUTSIDE + " Section 8.11; owned by its module."),
-    "IcalFeed": ("ical feeds", _OUTSIDE + " Section 8.5 revocable feed link."),
-    "ProblemReport": ("problem reports", _OUTSIDE + " Section 8.7 System tab."),
-    "ModuleAlert": ("module alerts", _OUTSIDE + " Section 8.7 admin dashboard."),
-    "Module": ("modules", _OUTSIDE + " Section 9 module registry."),
-    "MarketplaceListing": ("marketplace listings", _OUTSIDE + " Section 10."),
-    "TrustedKey": ("trusted signing keys", _OUTSIDE + " Section 8.7 Modules tab."),
-    "Backup": ("backups", _OUTSIDE + " Section 6 operations."),
-    "BackupDestination": ("backup destinations", _OUTSIDE + " Section 6 operations."),
-    "Restore": ("restores", _OUTSIDE + " Section 6 operations."),
-    "UpdateRecord": ("updates", _OUTSIDE + " Section 6 operations."),
-    "WebhookEvent": ("webhook deliveries", _STREAM.split(" (")[0] + ": the section 7 event delivery log."),
-    "Widget": ("home widgets", "wrapper: a computed home-screen view over core records, not a stored row."),
-    "WidgetCatalogItem": ("widget catalog", "wrapper: the list of widgets a role may place, not a stored row."),
-    "EditorCommand": ("editor commands", "wrapper: the pinned LawCraft command list, not a stored row."),
+    "TrustBalanceRow": (
+        "trust balances",
+        'computed, not stored. PRD 5: "Balances: per client per matter, per client, and per trust account, computed from '
+        'the ledger and cached for display." It has no row id; the ledger entries are targets.',
+    ),
+    "FeeItem": (
+        "fee_items",
+        'billing catalog. PRD 8.15: "the admin keeps the firm\'s standard flat-fee items ... Picking one on an invoice line '
+        '... fills in the text and amount". Invoices, which hold the copied lines, are the target.',
+    ),
+    "MarkerDefinition": (
+        "marker definitions",
+        'admin catalog. PRD 8.12: "The admin adds firm markers with a label and a color". The marker placed on a matter, '
+        "MatterMarker, is the target.",
+    ),
+    "Notification": (
+        "notifications",
+        'per-user inbox. PRD 8.9: "Each user sees only their own. ... Modules send notifications through the API. '
+        'Records: notifications (user, kind, title, link, read at)." A module writes its own notification, not an extension of one.',
+    ),
+    "HomeLayout": (
+        "home_layouts",
+        'per-user screen layout. PRD 8.6: "Saved layouts belong to the user and survive core updates and role changes ... '
+        'Records: home_layouts."',
+    ),
+    "HelpItem": ("help_items", 'help content. PRD 8.11: "The admin adds, edits, orders and removes sections and items ... Records: help_sections and help_items."'),
+    "HelpSection": ("help_sections", 'help content. PRD 8.11: "Records: help_sections and help_items."'),
+    "HelpTopic": ("help topics", 'help content. PRD 8.11: the guide "has one source: Markdown files in the repo\'s /docs/guide."'),
+    "HelpPage": (
+        "module help pages",
+        'module-owned help. PRD 8.11: "A module can write pages only under its own heading."',
+    ),
+    "IcalFeed": (
+        "ical feeds",
+        'a revocable feed link. PRD 8.5: "A read-only iCal feed per user and per firm, with a revocable secret URL". '
+        "Its secret is sign-in material for the feed.",
+    ),
+    "ProblemReport": ("problem reports", 'system support record. PRD 8.7 System tab: "seat count, audit log viewer, problem reports."'),
+    "ModuleAlert": ("module alerts", 'module runtime notice. PRD 8.6: "module alerts (admin; module alerts on the admin dashboard)."'),
+    "Module": (
+        "modules",
+        'the module registry. PRD 8.7: "installed modules with install, configure ..., permissions, enable, disable and remove". '
+        "A module does not extend another module's registration.",
+    ),
+    "MarketplaceListing": ("marketplace listings", 'marketplace data. PRD 10.2: "Each listing shows the author, the author\'s verified signing key ..."'),
+    "TrustedKey": ("trusted signing keys", 'package trust. PRD 8.7: "trusted local signing keys". Changing what a key means is not a module\'s job.'),
+    "Backup": ("backups", _OPERATIONS),
+    "BackupDestination": ("backup destinations", _OPERATIONS),
+    "Restore": ("restores", _OPERATIONS),
+    "UpdateRecord": ("updates", _OPERATIONS),
+    "Widget": (
+        "home widgets",
+        'computed view. PRD 8.6 lists each core widget with "the page each opens", for example "my time today and this week '
+        '(time entries for that user and period)". The underlying records are targets.',
+    ),
+    "WidgetCatalogItem": ("widget catalog", 'computed list. PRD 8.6: "The admin sets the default layout for each role." It lists placeable widgets, not stored rows.'),
+    "EditorCommand": (
+        "editor commands",
+        'the pinned LawCraft command list. PRD 8.20: "GET /api/v1/editor/commands lists the allowed commands." Not stored rows.',
+    ),
 }
 # Section 5 records that have no read or list operation of their own, so there is no read to take include=.
 # edit_locks is returned only by acquire and renew. doc_tender_units is internal to a job.

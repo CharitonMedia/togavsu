@@ -12126,6 +12126,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Matter filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -12192,7 +12201,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -12305,7 +12320,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -12387,6 +12408,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter matter_marker_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -12437,7 +12467,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -12557,7 +12593,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -12692,7 +12734,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -12822,7 +12870,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -42292,6 +42346,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Matter filter."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -42358,7 +42421,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "page_size_setting": "api.page_size",
           "page_size_cap_setting": "api.max_page_size"
         },
@@ -42471,7 +42540,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -42553,6 +42628,15 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Path parameter folder_id."
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated module-id.view names to join. Example: matter-clock.targets."
           }
         ],
         "responses": {
@@ -42603,7 +42687,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
-          "module_delegation": "delegated_viewer"
+          "include_scope_pattern": "views:{module_id}.{view}:read",
+          "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          }
         },
         "x-togavsu-events": [],
         "x-togavsu-writes": false,
@@ -42723,7 +42813,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none",
           "admin_bypasses_wall": false,
@@ -42858,7 +42954,13 @@
           "matter_wall": true,
           "client": "deny",
           "access_inherits": "matter",
+          "include_scope_pattern": "views:{module_id}.{view}:read",
           "module_delegation": "delegated_viewer",
+          "extension_include": {
+            "declared_table": "owner_module_or_viewer",
+            "published_view": "views:{module}.{view}:read",
+            "other_module_unpublished_table": "forbidden"
+          },
           "events_on": "commit",
           "events_on_failure": "none"
         },
@@ -64631,6 +64733,9 @@
                 "type": "null"
               }
             ]
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -69968,6 +70073,9 @@
           },
           "sort_order": {
             "type": "integer"
+          },
+          "included": {
+            "$ref": "#/components/schemas/Included"
           }
         },
         "required": [
@@ -74103,6 +74211,7 @@
               "contact_tag",
               "matter",
               "matter_party",
+              "matter_marker",
               "practice_area",
               "county",
               "referral_source",
@@ -74116,6 +74225,7 @@
               "calendar_event",
               "deadline",
               "file",
+              "folder",
               "file_version",
               "file_rendition",
               "file_link",
@@ -74172,6 +74282,7 @@
               "contact_tag",
               "matter",
               "matter_party",
+              "matter_marker",
               "practice_area",
               "county",
               "referral_source",
@@ -74185,6 +74296,7 @@
               "calendar_event",
               "deadline",
               "file",
+              "folder",
               "file_version",
               "file_rendition",
               "file_link",
