@@ -16,6 +16,7 @@ var ErrAppendOnly = errors.New("practice: append only")
 type storedAudit struct {
 	Entry        domain.AuditEntry
 	MatterID     domain.ID
+	ContactID    domain.ID
 	AttorneyOnly bool
 }
 

@@ -29,7 +29,7 @@ func (s *Service) History(ctx context.Context, p domain.Principal, entity string
 		if entity == "matter" && row.MatterID != id && row.Entry.EntityID != id {
 			continue
 		}
-		if entity == "contact" && row.Entry.EntityID != id {
+		if entity == "contact" && row.ContactID != id && row.Entry.EntityID != id {
 			continue
 		}
 		out = append(out, s.historyRow(ctx, p, row))
@@ -81,7 +81,7 @@ func (s *Service) ActivityFeed(ctx context.Context, p domain.Principal, actorKin
 		if actorKindFilter != "" && actorKindFilter != "all" && row.ActorKind != actorKindFilter {
 			continue
 		}
-		if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
+		if !s.feedAllows(ctx, p, row) {
 			continue
 		}
 		rows = append(rows, TimelineEntry{
@@ -91,6 +91,63 @@ func (s *Service) ActivityFeed(ctx context.Context, p domain.Principal, actorKin
 		})
 	}
 	return groupActivity(rows, s.clock(), s.setting(ctx, "firm.time_zone", "UTC")), nil
+}
+
+// feedAllows hides a walled matter and a contact who exists only on walled matters.
+func (s *Service) feedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	if !row.MatterID.IsZero() && !s.visibleMatter(ctx, p, row.MatterID) {
+		return false
+	}
+	contactID, aboutContact := s.eventContact(ctx, row)
+	if !aboutContact {
+		return true
+	}
+	if contactID.IsZero() || s.readableContact(ctx, p, contactID) != nil {
+		return false
+	}
+	return true
+}
+
+func (s *Service) eventContact(ctx context.Context, row domain.Event) (domain.ID, bool) {
+	switch row.RecordType {
+	case "contact":
+		return row.RecordID, true
+	case "contact_phone":
+		phone, err := s.db.Phone(ctx, row.RecordID)
+		if err != nil {
+			return "", true
+		}
+		return phone.ContactID, true
+	case "contact_email":
+		for _, email := range s.db.Emails(domain.ID("")) {
+			if email.ID == row.RecordID {
+				return email.ContactID, true
+			}
+		}
+		return "", true
+	case "contact_address":
+		for _, address := range s.db.Addresses(domain.ID("")) {
+			if address.ID == row.RecordID {
+				return address.ContactID, true
+			}
+		}
+		return "", true
+	case "contact_tag":
+		for _, tag := range s.db.Tags(domain.ID("")) {
+			if tag.ID == row.RecordID {
+				return tag.ContactID, true
+			}
+		}
+		return "", true
+	case "note":
+		note, err := s.db.Note(ctx, row.RecordID)
+		if err != nil || note.ContactID.IsZero() {
+			return "", false
+		}
+		return note.ContactID, true
+	default:
+		return "", false
+	}
 }
 
 func (s *Service) historyRow(ctx context.Context, p domain.Principal, row storedAudit) HistoryRow {

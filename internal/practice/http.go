@@ -56,6 +56,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /api/v1/matters", h.mattersJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}", h.matterJSON)
 	mux.HandleFunc("GET /api/v1/matters/{matter_id}/history", h.historyJSON)
+	mux.HandleFunc("GET /api/v1/contacts/{contact_id}/history", h.contactHistoryJSON)
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/close", h.closeJSON)
 	mux.HandleFunc("POST /api/v1/matters/{matter_id}/reopen", h.reopenJSON)
 	mux.HandleFunc("PUT /api/v1/matters/{matter_id}/custom-fields", h.customJSON)
@@ -289,12 +290,18 @@ func (h *Handler) contactPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	row, err := h.Svc.GetContact(r.Context(), p, domain.ID(r.PathValue("contact_id")))
+	id := domain.ID(r.PathValue("contact_id"))
+	row, err := h.Svc.GetContact(r.Context(), p, id)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row})
+	history, err := h.Svc.History(r.Context(), p, "contact", id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	h.render(w, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history})
 }
 
 func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {
@@ -364,12 +371,20 @@ func (h *Handler) matterJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) historyJSON(w http.ResponseWriter, r *http.Request) {
+	h.writeHistory(w, r, "matter", r.PathValue("matter_id"))
+}
+
+func (h *Handler) contactHistoryJSON(w http.ResponseWriter, r *http.Request) {
+	h.writeHistory(w, r, "contact", r.PathValue("contact_id"))
+}
+
+func (h *Handler) writeHistory(w http.ResponseWriter, r *http.Request, entity, id string) {
 	p, err := h.principal(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	rows, err := h.Svc.History(r.Context(), p, "matter", domain.ID(r.PathValue("matter_id")))
+	rows, err := h.Svc.History(r.Context(), p, entity, domain.ID(id))
 	if err != nil {
 		writeErr(w, err)
 		return

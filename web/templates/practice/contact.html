@@ -1,4 +1,22 @@
 {{template "head" .}}
 <p>{{.Contact.Kind}}{{if .Contact.Archived}} · archived{{end}}</p>
 {{if .Contact.AlsoKnownAs}}<p>Also known as {{.Contact.AlsoKnownAs}}</p>{{end}}
+<details class="card" id="edit-history">
+  <summary>Edit history</summary>
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th></tr></thead>
+    <tbody>
+    {{range .History}}
+      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}">
+        <td>{{.At.Format "2006-01-02 15:04"}}</td>
+        <td>{{.Role}}</td>
+        <td>{{.Field}}</td>
+        <td>{{.Old}}</td>
+        <td>{{.New}}</td>
+        <td>{{.Kind}}</td>
+      </tr>
+    {{else}}<tr><td colspan="6">No changes yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</details>
 {{template "foot" .}}

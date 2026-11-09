@@ -74,16 +74,41 @@ func (s *Service) UpdateParty(ctx context.Context, p domain.Principal, id domain
 	if err := s.db.UpdateParty(ctx, next); err != nil {
 		return domain.MatterParty{}, err
 	}
-	if prev.Role != next.Role || prev.Notes != next.Notes {
-		if err := s.record(ctx, p, []change{{
-			MatterID: next.MatterID, Entity: "matter_party", EntityID: next.ID, Field: "role",
-			Old: prev.Role, New: next.Role, Kind: "update", Action: "matter.party_updated",
-			Summary: "Updated a party role",
-		}}); err != nil {
-			return domain.MatterParty{}, err
-		}
+	if err := s.record(ctx, p, partyChanges(prev, next)); err != nil {
+		return domain.MatterParty{}, err
 	}
 	return next, nil
+}
+
+func partyChanges(prev, next domain.MatterParty) []change {
+	type pair struct{ field, old, neu string }
+	rows := []pair{
+		{"role", prev.Role, next.Role},
+		{"primary", boolText(prev.Primary), boolText(next.Primary)},
+		{"role_attributes", prev.RoleAttributes, next.RoleAttributes},
+		{"service_address", prev.ServiceAddress, next.ServiceAddress},
+		{"notes", prev.Notes, next.Notes},
+	}
+	var out []change
+	first := true
+	for _, row := range rows {
+		if row.old == row.neu {
+			continue
+		}
+		ch := change{
+			MatterID: next.MatterID, Entity: "matter_party", EntityID: next.ID,
+			Field: row.field, Old: row.old, New: row.neu, Kind: "update",
+		}
+		if first {
+			ch.Action = "matter.party_updated"
+			ch.Summary = "Updated a party"
+			first = false
+		} else {
+			ch.SkipEvent = true
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 func (s *Service) unchecked(matter domain.ID) bool {

@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -324,6 +325,151 @@ func TestSearchShortcutIsAStaticFile(t *testing.T) {
 	if status != 200 || !strings.Contains(body, "keydown") || strings.Contains(body, "<script>") {
 		t.Fatalf("script %d %s", status, body)
 	}
+}
+
+func TestActivityFeedHidesWalledContact(t *testing.T) {
+	svc, db := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	putUser(t, db, attorney, "Ada Attorney")
+	area := makeArea(t, svc, admin, "Probate")
+	public, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Public", FamilyName: "Person"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = public
+	hidden, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Hidden", FamilyName: "Party"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddPhone(ctx, staff, hidden.ID, "mobile", "+15555550199", "2026-01-01", true); err != nil {
+		t.Fatal(err)
+	}
+	matter := makeMatter(t, svc, staff, area, "Walled matter", "")
+	if _, err := svc.AddParty(ctx, staff, matter.ID, PartyInput{ContactID: hidden.ID, Role: "client", Primary: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetWall(ctx, admin, matter.ID, []domain.ID{attorney.UserID}); err != nil {
+		t.Fatal(err)
+	}
+	for _, caller := range []domain.Principal{staff, admin} {
+		feed, err := svc.ActivityFeed(ctx, caller, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if feedHas(feed, "Hidden Party") || feedHas(feed, "+15555550199") {
+			t.Fatalf("%v still sees the walled contact: %+v", caller.Roles, feed)
+		}
+		if !feedHas(feed, "Public Person") {
+			t.Fatal("public contact disappeared from the feed")
+		}
+		page := getHTML(t, svc, caller, "/practice/activity")
+		if strings.Contains(page, "Hidden Party") || strings.Contains(page, "15555550199") {
+			t.Fatal(page)
+		}
+	}
+	attorneyFeed, err := svc.ActivityFeed(ctx, attorney, "")
+	if err != nil || !feedHas(attorneyFeed, "Hidden Party") || !feedHas(attorneyFeed, "+15555550199") {
+		t.Fatal(err, attorneyFeed)
+	}
+}
+
+func TestPartyFieldEditsReachMatterHistory(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	admin := person(tid(1), domain.RoleAdmin)
+	staff := person(tid(3), domain.RoleStaff)
+	area := makeArea(t, svc, admin, "Probate")
+	matter := makeMatter(t, svc, staff, area, "Party edits", "")
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Pat", FamilyName: "Lee"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	party, err := svc.AddParty(ctx, staff, matter.ID, PartyInput{ContactID: contact.ID, Role: "client", Primary: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.UpdateParty(ctx, staff, party.ID, PartyInput{
+		ContactID: contact.ID, Role: "client", Primary: false, RoleAttributes: "pro se",
+		ServiceAddress: "1 Main", Notes: "call first",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	history, err := svc.History(ctx, staff, "matter", matter.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !historyHas(history, "primary", "true", "false") || !historyHas(history, "notes", "", "call first") || !historyHas(history, "service_address", "", "1 Main") || !historyHas(history, "role_attributes", "", "pro se") {
+		t.Fatal(history)
+	}
+}
+
+func TestContactHistoryCardAndSSNRedaction(t *testing.T) {
+	svc, _ := newSvc(t)
+	ctx := context.Background()
+	attorney := person(tid(2), domain.RoleAttorney)
+	staff := person(tid(3), domain.RoleStaff)
+	contact, err := svc.CreateContact(ctx, staff, ContactInput{Kind: KindPerson, GivenName: "Ida", FamilyName: "Stone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddPhone(ctx, staff, contact.ID, "mobile", "+15555550100", "2026-01-01", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddEmail(ctx, staff, contact.ID, "work", "ida@example.com", "2026-01-01", true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddAddress(ctx, staff, domain.ContactAddress{ContactID: contact.ID, Line1: "9 Oak", City: "Columbia"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.AddContactTag(ctx, staff, contact.ID, "client"); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "999-88-7777"
+	if _, err := svc.UpdateContact(ctx, attorney, contact.ID, ContactInput{
+		Kind: KindPerson, GivenName: "Ida", FamilyName: "Stone", SSNEIN: secret,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	staffRows, err := svc.History(ctx, staff, "contact", contact.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !historyField(staffRows, "phone_e164") || !historyField(staffRows, "email") || !historyField(staffRows, "line1") || !historyField(staffRows, "tag") {
+		t.Fatal(staffRows)
+	}
+	if !historyRedacted(staffRows, "ssn_ein_ciphertext") {
+		t.Fatal(staffRows)
+	}
+	raw, err := json.Marshal(staffRows)
+	if err != nil || strings.Contains(string(raw), secret) {
+		t.Fatal(err, string(raw))
+	}
+	status, body := getAPI(t, svc, staff, "/api/v1/contacts/"+string(contact.ID)+"/history")
+	if status != 200 || strings.Contains(body, secret) || !strings.Contains(body, `"redacted":true`) || !strings.Contains(body, "+15555550100") {
+		t.Fatalf("contact history api %d %s", status, body)
+	}
+	page := getHTML(t, svc, staff, "/practice/contacts/"+string(contact.ID))
+	if !strings.Contains(page, "Edit history") || !strings.Contains(page, "15555550100") || !strings.Contains(page, "ida@example.com") || !strings.Contains(page, "9 Oak") || strings.Contains(page, secret) {
+		t.Fatal(page)
+	}
+	attorneyRows, err := svc.History(ctx, attorney, "contact", contact.ID)
+	if err != nil || !historyHas(attorneyRows, "ssn_ein_ciphertext", "", secret) {
+		t.Fatal(err, attorneyRows)
+	}
+}
+
+func feedHas(groups []ActivityGroup, needle string) bool {
+	for _, group := range groups {
+		for _, row := range group.Rows {
+			if strings.Contains(row.Summary, needle) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func historyField(rows []HistoryRow, field string) bool {

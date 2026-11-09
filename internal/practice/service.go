@@ -222,6 +222,7 @@ func (s *Service) listSetting(ctx context.Context, key string, fallback []string
 
 type change struct {
 	MatterID      domain.ID
+	ContactID     domain.ID
 	Entity        string
 	EntityID      domain.ID
 	Field         string
@@ -264,6 +265,7 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 				Reason:   row.Reason,
 			},
 			MatterID:     row.MatterID,
+			ContactID:    row.ContactID,
 			AttorneyOnly: row.AttorneyOnly,
 		})
 		if row.SkipEvent {

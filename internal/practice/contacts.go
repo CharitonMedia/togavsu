@@ -134,7 +134,7 @@ func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact doma
 		return domain.ContactPhone{}, err
 	}
 	if err := s.record(ctx, p, []change{{
-		Entity: "contact_phone", EntityID: row.ID, Field: "phone_e164", New: e164, Kind: "create",
+		ContactID: contact, Entity: "contact_phone", EntityID: row.ID, Field: "phone_e164", New: e164, Kind: "create",
 		Action: "contact.phone_added", Summary: "Added phone " + e164,
 	}}); err != nil {
 		return domain.ContactPhone{}, err
@@ -197,7 +197,7 @@ func (s *Service) AddEmail(ctx context.Context, p domain.Principal, contact doma
 		return domain.ContactEmail{}, err
 	}
 	if err := s.record(ctx, p, []change{{
-		Entity: "contact_email", EntityID: row.ID, Field: "email", New: email, Kind: "create",
+		ContactID: contact, Entity: "contact_email", EntityID: row.ID, Field: "email", New: email, Kind: "create",
 		Action: "contact.email_added", Summary: "Added email " + email,
 	}}); err != nil {
 		return domain.ContactEmail{}, err
@@ -222,7 +222,7 @@ func (s *Service) AddAddress(ctx context.Context, p domain.Principal, row domain
 		return domain.ContactAddress{}, err
 	}
 	if err := s.record(ctx, p, []change{{
-		Entity: "contact_address", EntityID: row.ID, Field: "line1", New: row.Line1, Kind: "create",
+		ContactID: row.ContactID, Entity: "contact_address", EntityID: row.ID, Field: "line1", New: row.Line1, Kind: "create",
 		Action: "contact.address_added", Summary: "Added an address",
 	}}); err != nil {
 		return domain.ContactAddress{}, err
@@ -251,7 +251,7 @@ func (s *Service) AddContactTag(ctx context.Context, p domain.Principal, contact
 		return domain.ContactTag{}, err
 	}
 	if err := s.record(ctx, p, []change{{
-		Entity: "contact_tag", EntityID: row.ID, Field: "tag", New: tag, Kind: "create",
+		ContactID: contact, Entity: "contact_tag", EntityID: row.ID, Field: "tag", New: tag, Kind: "create",
 		Action: "contact.tag_added", Summary: "Tagged the contact " + tag,
 	}}); err != nil {
 		return domain.ContactTag{}, err
@@ -359,7 +359,7 @@ func contactChanges(prev, next domain.Contact, action, summary string) []change 
 			continue
 		}
 		ch := change{
-			Entity: "contact", EntityID: next.ID, Field: pair[0], Old: old, New: neu,
+			ContactID: next.ID, Entity: "contact", EntityID: next.ID, Field: pair[0], Old: old, New: neu,
 			Kind: kindOf(old, neu), AttorneyOnly: pair[0] == "ssn_ein_ciphertext",
 		}
 		if first {

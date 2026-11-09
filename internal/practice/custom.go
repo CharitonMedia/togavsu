@@ -156,11 +156,15 @@ func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType
 			return err
 		}
 		matterID := domain.ID("")
+		contactID := domain.ID("")
 		if recordType == RecordMatter {
 			matterID = recordID
 		}
+		if recordType == RecordContact {
+			contactID = recordID
+		}
 		if err := s.record(ctx, p, []change{{
-			MatterID: matterID, Entity: recordType, EntityID: recordID, Field: "custom:" + def.Key,
+			MatterID: matterID, ContactID: contactID, Entity: recordType, EntityID: recordID, Field: "custom:" + def.Key,
 			Old: prev, New: canonical, Kind: kindOf(prev, canonical), Action: "custom_field.updated",
 			Summary: "Saved " + def.Label, SkipEvent: prev == canonical,
 		}}); err != nil {
