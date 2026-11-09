@@ -41,4 +41,9 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 3. `internal/settings/check.go` — `fixedSite` skips integer literals inside enumerated functions (cents, UUID layout, synthetic seed builders, version bands, migration indexes, the ledger baseline, bootstrap key length and process status, sealing key width, and setting upsert). Ceiling: a new configurable literal inside one of those functions is not reported. A different function in the same file is reported. The check is not AC-030 acceptance. Upgrade path: delete that function from `fixedSite`. Trigger: a configurable literal is added inside a listed function.
 4. `internal/db/migrations/0001_core_schema.sql` — append-only tables are not immutable at the database. Interfaces omit update and delete, and there is no trigger because PRD section 6 forbids business-logic triggers. Ceiling: `TestAppendOnlyNotEnforcedAtDatabase` shows the application role can UPDATE and DELETE those rows. Upgrade path: the owning task rejects hostile UPDATE and DELETE, including raw SQL from a non-owner role, and replaces that gap test. Owners: identity `audit_log` (AC-024), practice `events` (AC-024), trust `trust_ledger` (AC-006), files `file_versions` and `file_renditions` (AC-039), modules `ai_call_log` (AC-031). Trigger: that task's acceptance claims the ledger cannot be edited or deleted.
 
-Debt count: 22.
+## Practice ceilings
+
+1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: no Postgres and no migration in the practice range. Upgrade path: a repository adapter and migration 200. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
+2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `audit_log` and `events` in Postgres. Upgrade path: reject those statements for the application role without a business-logic trigger. Trigger: AC-024-F4 is run against Postgres as the application role.
+
+Debt count: 24.

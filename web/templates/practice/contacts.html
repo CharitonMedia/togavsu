@@ -1,0 +1,12 @@
+{{template "head" .}}
+<table>
+  <thead><tr><th>Name</th><th>Kind</th></tr></thead>
+  <tbody>
+  {{range .Contacts}}
+    <tr><td><a href="/practice/contacts/{{.ID}}">{{.FullName}}</a></td><td>{{.Kind}}</td></tr>
+  {{else}}
+    <tr><td colspan="2">No contacts.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{template "foot" .}}

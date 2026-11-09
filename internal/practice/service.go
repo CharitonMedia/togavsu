@@ -1,0 +1,354 @@
+package practice
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/repository"
+	"github.com/CharitonMedia/togavsu/internal/settings"
+)
+
+// Service is the practice application service.
+type Service struct {
+	db       *Memory
+	settings *settings.Registry
+	Policy   domain.Policy
+	now      func() time.Time
+	newID    func() (domain.ID, error)
+}
+
+type wallSource struct{ s *Service }
+
+func (w wallSource) View(ctx context.Context, p domain.Principal, matterID domain.ID) (domain.WallView, error) {
+	return w.s.viewWall(ctx, p, matterID)
+}
+
+type quietAudit struct{}
+
+func (quietAudit) SettingChanged(context.Context, settings.Change) error { return nil }
+
+// New builds a practice service. settings may be nil in tests; registry defaults are then used as fallbacks.
+func New(db *Memory, reg *settings.Registry) *Service {
+	s := &Service{db: db, settings: reg, now: time.Now, newID: domain.NewID}
+	s.Policy = domain.Policy{Walls: wallSource{s}}
+	return s
+}
+
+// NewWithSettings builds a service on an empty settings memory store.
+func NewWithSettings(db *Memory) (*Service, error) {
+	reg, err := settings.New(settings.NewMemory(), quietAudit{})
+	if err != nil {
+		return nil, err
+	}
+	return New(db, reg), nil
+}
+
+func (s *Service) clock() time.Time {
+	now := time.Now
+	if s.now != nil {
+		now = s.now
+	}
+	return now().UTC()
+}
+
+func (s *Service) id() (domain.ID, error) {
+	if s.newID == nil {
+		return domain.NewID()
+	}
+	return s.newID()
+}
+
+func (s *Service) meta(p domain.Principal) (domain.Meta, error) {
+	id, err := s.id()
+	if err != nil {
+		return domain.Meta{}, err
+	}
+	now := s.clock()
+	return domain.Meta{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actorID(p)}, nil
+}
+
+func actorID(p domain.Principal) domain.ID {
+	if p.UserID.IsZero() {
+		return domain.SystemUserID
+	}
+	return p.UserID
+}
+
+func actorKind(p domain.Principal) string {
+	switch p.Source {
+	case domain.SourceSystem:
+		return "system"
+	case domain.SourceModule:
+		return "module"
+	case domain.SourceAPIToken:
+		return "agent"
+	}
+	if p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) && !p.HasRole(domain.RoleStaff) && !p.HasRole(domain.RoleAccountant) {
+		return "client"
+	}
+	return "staff"
+}
+
+func sourceLabel(p domain.Principal) string {
+	if p.Source == domain.SourceModule && p.ModuleID != "" {
+		return p.ModuleID
+	}
+	if p.Source == domain.SourceAPIToken && !p.TokenID.IsZero() {
+		return string(p.TokenID)
+	}
+	if p.Source == "" {
+		return string(domain.SourceUI)
+	}
+	return string(p.Source)
+}
+
+func roleLabel(p domain.Principal) string {
+	if len(p.Roles) == 0 {
+		return ""
+	}
+	return string(p.Roles[0])
+}
+
+func (s *Service) gate(ctx context.Context, p domain.Principal, ref domain.ResourceRef) (domain.Decision, error) {
+	d, err := s.Policy.Authorize(ctx, p, ref)
+	if err != nil {
+		return d, err
+	}
+	if d.Allow {
+		return d, nil
+	}
+	switch d.Reason {
+	case domain.ReasonUnauthenticated:
+		return d, domain.Unauthenticated("sign in required")
+	case domain.ReasonMatterWall:
+		return d, domain.NotFound("matter")
+	default:
+		return d, domain.Forbidden(d.Reason)
+	}
+}
+
+func (s *Service) gateMatter(ctx context.Context, p domain.Principal, id domain.ID, action domain.Action) error {
+	_, err := s.gate(ctx, p, domain.ResourceRef{
+		Resource:         domain.ResMatter,
+		Action:           action,
+		MatterID:         id,
+		SharedWithClient: true,
+	})
+	return err
+}
+
+func (s *Service) viewWall(ctx context.Context, p domain.Principal, matterID domain.ID) (domain.WallView, error) {
+	walls := s.db.Walls(matterID)
+	view := domain.WallView{ClientMatter: s.clientMatter(p, matterID)}
+	if len(walls) == 0 {
+		return view, nil
+	}
+	view.Walled = true
+	for _, wall := range walls {
+		if wall.UserID == p.UserID {
+			view.Allows = true
+			break
+		}
+	}
+	_ = ctx
+	return view, nil
+}
+
+func (s *Service) clientMatter(p domain.Principal, matterID domain.ID) bool {
+	user, err := s.db.User(context.Background(), p.UserID)
+	if err != nil || user.ContactID.IsZero() {
+		return false
+	}
+	for _, party := range s.db.Parties(matterID, user.ContactID) {
+		if party.Role == "client" || party.Role == "authorized user" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) visibleMatter(ctx context.Context, p domain.Principal, id domain.ID) bool {
+	return s.gateMatter(ctx, p, id, domain.ActionRead) == nil
+}
+
+func (s *Service) setting(ctx context.Context, key, fallback string) string {
+	if s.settings == nil {
+		return fallback
+	}
+	v, err := s.settings.Get(ctx, key)
+	if err != nil || v == "" {
+		return fallback
+	}
+	return v
+}
+
+func (s *Service) intSetting(ctx context.Context, key string, fallback int) int {
+	v := s.setting(ctx, key, "")
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+func (s *Service) listSetting(ctx context.Context, key string, fallback []string) []string {
+	v := s.setting(ctx, key, "")
+	if v == "" {
+		return fallback
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(v), &out); err != nil || len(out) == 0 {
+		return fallback
+	}
+	return out
+}
+
+type change struct {
+	MatterID      domain.ID
+	Entity        string
+	EntityID      domain.ID
+	Field         string
+	Old           string
+	New           string
+	Reason        string
+	Kind          string
+	AttorneyOnly  bool
+	Action        string
+	Summary       string
+	ClientVisible bool
+	SkipEvent     bool
+}
+
+func (s *Service) record(ctx context.Context, p domain.Principal, rows []change) error {
+	var audits []storedAudit
+	var events []domain.Event
+	now := s.clock()
+	for _, row := range rows {
+		if row.Old == row.New && row.Kind != "create" {
+			continue
+		}
+		meta, err := s.meta(p)
+		if err != nil {
+			return err
+		}
+		meta.CreatedAt = now
+		meta.UpdatedAt = now
+		audits = append(audits, storedAudit{
+			Entry: domain.AuditEntry{
+				Meta:     meta,
+				ActorID:  actorID(p),
+				Role:     roleLabel(p),
+				Source:   sourceLabel(p),
+				Entity:   row.Entity,
+				EntityID: row.EntityID,
+				Field:    row.Field,
+				OldValue: row.Old,
+				NewValue: row.New,
+				Reason:   row.Reason,
+			},
+			MatterID:     row.MatterID,
+			AttorneyOnly: row.AttorneyOnly,
+		})
+		if row.SkipEvent {
+			continue
+		}
+		em, err := s.meta(p)
+		if err != nil {
+			return err
+		}
+		em.CreatedAt = now
+		em.UpdatedAt = now
+		action := row.Action
+		if action == "" {
+			action = row.Entity + ".updated"
+		}
+		summary := row.Summary
+		if summary == "" {
+			summary = row.Field + " changed"
+		}
+		events = append(events, domain.Event{
+			Meta:          em,
+			ActorKind:     actorKind(p),
+			ActorID:       actorID(p),
+			Action:        action,
+			RecordType:    row.Entity,
+			RecordID:      row.EntityID,
+			MatterID:      row.MatterID,
+			Summary:       summary,
+			ClientVisible: row.ClientVisible || actorKind(p) == "client",
+		})
+	}
+	if len(audits) == 0 && len(events) == 0 {
+		return nil
+	}
+	return s.db.AppendAudit(ctx, audits, events)
+}
+
+func missing(err error, entity string) error {
+	if errors.Is(err, repository.ErrNotFound) {
+		return domain.NotFound(entity)
+	}
+	return err
+}
+
+func conflict(err error) error {
+	if errors.Is(err, repository.ErrConflict) {
+		return domain.Conflict("duplicate")
+	}
+	return err
+}
+
+func validDate(s string) bool {
+	if s == "" {
+		return true
+	}
+	_, err := time.Parse("2006-01-02", s)
+	return err == nil
+}
+
+func validEmail(s string) bool {
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at >= len(s)-1 {
+		return false
+	}
+	return !strings.ContainsAny(s[at+1:], "@ ")
+}
+
+func containsID(ids []domain.ID, id domain.ID) bool {
+	for _, item := range ids {
+		if item == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) idemLoad(key string, dest any) bool {
+	if key == "" {
+		return false
+	}
+	raw, ok := s.db.IdemGet(key)
+	if !ok {
+		return false
+	}
+	return json.Unmarshal(raw, dest) == nil
+}
+
+func (s *Service) idemSave(ctx context.Context, key string, v any) error {
+	if key == "" {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return s.db.IdemPut(ctx, key, raw)
+}

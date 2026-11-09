@@ -1,0 +1,65 @@
+{{template "head" .}}
+<p>{{.Matter.Matter.Status}}
+  {{if .Matter.ClientName}} · {{.Matter.ClientName}}{{end}}
+  {{if .Matter.Unchecked}} <span class="badge">Unchecked conflicts</span>{{end}}
+  {{range .Matter.Markers}} <span class="badge">{{.Label}}</span>{{end}}
+</p>
+<section class="glance" aria-label="At a glance">
+  <div><span class="muted">Stage</span><br>{{if .Matter.Glance.Stage}}{{.Matter.Glance.Stage}}{{else}}—{{end}}</div>
+  <div><span class="muted">Trust balance</span><br>{{.Matter.Glance.TrustCents}}</div>
+  <div><span class="muted">Time logged</span><br>{{.Matter.Glance.TimeHours}} h · {{.Matter.Glance.TimeEntries}}</div>
+  <div><span class="muted">Days open</span><br>{{.Matter.Glance.DaysOpen}}</div>
+  <div><span class="muted">Invoices</span><br>{{.Matter.Glance.Invoices}}</div>
+</section>
+<p><a href="/practice/matters/{{.Matter.Matter.ID}}/close">Close matter</a></p>
+
+<section class="card" id="parties">
+  <h2>Parties</h2>
+  <ul>
+  {{range .Matter.Parties}}<li>{{.Role}}{{if .Primary}} (primary){{end}}</li>{{else}}<li>No parties yet.</li>{{end}}
+  </ul>
+</section>
+
+<section class="card" id="custom-fields">
+  <h2>Custom fields</h2>
+  {{if .Matter.CustomFields}}
+  <form method="post" action="/practice/matters/{{.Matter.Matter.ID}}/custom-fields">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{range .Matter.CustomFields}}
+      <p><label>{{.Label}}{{if .Required}} (required){{end}}<br>
+        <input name="cf_{{.DefinitionID}}" value="{{.Value}}">
+      </label></p>
+    {{end}}
+    <button type="submit">Save custom fields</button>
+  </form>
+  {{else}}<p>No custom fields for this practice area.</p>{{end}}
+</section>
+
+<section class="card" id="timeline">
+  <h2>Case timeline</h2>
+  <ol>
+  {{range .Timeline}}
+    <li {{if .ClientVisible}}class="client"{{end}}>{{.Summary}} <span class="muted">{{.ActorKind}}</span></li>
+  {{else}}<li>No events yet.</li>{{end}}
+  </ol>
+</section>
+
+<details class="card" id="edit-history">
+  <summary>Edit history</summary>
+  <table>
+    <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th></tr></thead>
+    <tbody>
+    {{range .History}}
+      <tr data-field="{{.Field}}" data-old="{{.Old}}" data-new="{{.New}}">
+        <td>{{.At.Format "2006-01-02 15:04"}}</td>
+        <td>{{.Role}}</td>
+        <td>{{.Field}}</td>
+        <td>{{.Old}}</td>
+        <td>{{.New}}</td>
+        <td>{{.Kind}}</td>
+      </tr>
+    {{else}}<tr><td colspan="6">No changes yet.</td></tr>{{end}}
+    </tbody>
+  </table>
+</details>
+{{template "foot" .}}

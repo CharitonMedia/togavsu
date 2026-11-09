@@ -1,0 +1,13 @@
+{{template "head" .}}
+<form method="get" action="/practice/notes">
+  <label>Search notes <input name="q" value="{{.Query}}"></label>
+  <button type="submit">Filter</button>
+</form>
+<ul>
+{{range .Notes}}
+  <li>{{if .Pinned}}Pinned: {{end}}{{.Title}}<br><span style="white-space:pre-wrap">{{.Body}}</span></li>
+{{else}}
+  <li>No notes.</li>
+{{end}}
+</ul>
+{{template "foot" .}}

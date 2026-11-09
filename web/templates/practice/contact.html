@@ -1,0 +1,4 @@
+{{template "head" .}}
+<p>{{.Contact.Kind}}{{if .Contact.Archived}} · archived{{end}}</p>
+{{if .Contact.AlsoKnownAs}}<p>Also known as {{.Contact.AlsoKnownAs}}</p>{{end}}
+{{template "foot" .}}

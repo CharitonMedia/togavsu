@@ -1,0 +1,10 @@
+{{template "head" .}}
+{{range .Activity}}
+  <h2>{{.Label}}</h2>
+  <ul>
+  {{range .Rows}}<li {{if .ClientVisible}}class="client"{{end}}>{{.Summary}}</li>{{end}}
+  </ul>
+{{else}}
+  <p>No activity in this window.</p>
+{{end}}
+{{template "foot" .}}

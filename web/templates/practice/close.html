@@ -1,0 +1,19 @@
+{{template "head" .}}
+{{if .Warnings}}
+<section class="warn">
+  <h2>This close has a warning</h2>
+  <ul>
+  {{range .Warnings}}<li data-warning="{{.Code}}">{{.Detail}}</li>{{end}}
+  </ul>
+  <p>The warning does not block the close.</p>
+</section>
+{{else}}
+<p>No unpaid invoice or leftover trust balance.</p>
+{{end}}
+<form class="card" method="post" action="/practice/matters/{{.Matter.Matter.ID}}/close">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="acknowledge" value="1">
+  <p><label>Close reason<br><input name="reason"></label></p>
+  <button type="submit">Close matter</button>
+</form>
+{{template "foot" .}}

@@ -1,0 +1,17 @@
+{{template "head" .}}
+<table>
+  <thead><tr><th>Number</th><th>Name</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range .Matters}}
+    <tr>
+      <td><a href="/practice/matters/{{.Matter.ID}}">{{.Matter.Number}}</a></td>
+      <td>{{.Matter.Name}}</td>
+      <td>{{.Matter.Status}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="3">No matters.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+<p><a href="/practice/matters/needs-case-number">Matters missing a case number</a></p>
+{{template "foot" .}}
