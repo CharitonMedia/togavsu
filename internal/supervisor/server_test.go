@@ -912,3 +912,63 @@ func TestTerminalRestoreIsPublishedAfterGateRelease(t *testing.T) {
 		})
 	}
 }
+
+// A restore admitted the moment an earlier restore frees the gate must not
+// drop the earlier restore's terminal record, and Wait must not return
+// before that record is published.
+func TestRestoreAdmittedAtReleaseKeepsEarlierRecord(t *testing.T) {
+	store := testStore(t)
+	ops := &Operations{
+		Store: store,
+		Gate:  &Gate{},
+		Now:   store.Now,
+		Passphrase: func() (string, error) {
+			return store.Passphrase, nil
+		},
+		ApplyDump: func(_ context.Context, r io.Reader) error {
+			_, err := io.Copy(io.Discard, r)
+			return err
+		},
+		Runtime: &scriptRuntime{order: &[]string{}, cores: []ContainerInfo{{ID: "core-1"}}},
+	}
+	first, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.Create(context.Background(), reasonManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recA, release, err := ops.admitRestore(context.Background(), first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recB RestoreRecord
+	doneA, _ := ops.runRestore(recA, func() {
+		release()
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		if err := ops.Wait(ctx); err == nil {
+			t.Error("Wait returned before the first restore was published")
+		}
+		var err error
+		recB, err = ops.Restore(context.Background(), second.ID)
+		if err != nil {
+			t.Errorf("second restore: %v", err)
+		}
+	})
+	if doneA.Status != "completed" || recB.Status != "completed" {
+		t.Fatalf("returned %+v and %+v", doneA, recB)
+	}
+	for _, id := range []string{recA.ID, recB.ID} {
+		polled, ok, err := ops.LookupRestore(id)
+		if err != nil || !ok || polled.Status != "completed" {
+			t.Fatalf("restore %s reports %+v %v %v", id, polled, ok, err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := ops.Wait(ctx); err != nil {
+		t.Fatalf("Wait after both restores: %v", err)
+	}
+}
