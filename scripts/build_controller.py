@@ -6,6 +6,7 @@ Run once from a persistent systemd timer. STOP pauses all mutations, including m
 import argparse
 import base64
 import datetime as dt
+import email.message
 import fcntl
 import hashlib
 import io
@@ -13,6 +14,8 @@ import json
 import os
 from pathlib import Path
 import re
+import smtplib
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -123,6 +126,33 @@ def review_problem(findings):
 FIXED_PROBLEMS = ("interrupted", "missing-pr", "draft")
 DEFAULT_CORRECTION_ATTENTION = 10
 DEFAULT_MAX_CORRECTIONS = 30
+# Stall alerts: a stopped, held or repeating step emails the plan's alert_email instead of
+# retrying silently. Each condition is emailed once; it can alert again only after it clears.
+MERGE_REFUSED = re.compile(r"HTTP (405|409|422)")  # GitHub refused the merge; nothing was merged.
+MERGE_REFUSAL_LIMIT = 2  # More than one controller cycle refused: hold merge retries.
+MERGE_HOLD_STATES = {"blocked", "unknown", None}  # Retry a held merge only once GitHub reports another state.
+ERROR_ALERT_TICKS = 3  # The same control error on this many consecutive ticks is a repeating failure.
+DEFAULT_IDLE_ALERT_SECONDS = 3600  # No state change for an hour while no agent run is active.
+ALERT_RETRY_SECONDS = 900  # After a failed alert email, wait this long before trying again.
+PROGRESS_FIELDS = ("agent_status", "pr", "last_submission", "last_dispatched_run", "waiting", "repair_count",
+                   "correction_volume", "merge_intent", "completed")
+
+
+class Mailer:
+    """Sends alerts the way Render-1's Doc Tender report does: SMTP over SSL, SMTP_* from the environment."""
+    def send(self, to, subject, body):
+        host, user, password = (os.environ.get(k, "") for k in ("SMTP_HOST", "SMTP_USER", "SMTP_PASS"))
+        if not (host and user and password):
+            raise RuntimeError("SMTP_HOST, SMTP_USER and SMTP_PASS must be set to send controller alerts")
+        message = email.message.EmailMessage()
+        message["Subject"], message["From"], message["To"] = subject, user, to
+        message.set_content(body)
+        with smtplib.SMTP_SSL(host, int(os.environ.get("SMTP_PORT", "465")), context=ssl.create_default_context(),
+                              timeout=45) as server:
+            server.login(user, password)
+            refused = server.send_message(message)
+        if refused:
+            raise RuntimeError("Mail server refused " + ", ".join(refused))
 
 
 def problem_fingerprints(problem):
@@ -669,8 +699,8 @@ class ActionsRemote(Remote):
 
 
 class Controller:
-    def __init__(self, remote, plan, state_dir, dry=False):
-        self.remote, self.plan, self.dir, self.dry = remote, plan, Path(state_dir), dry
+    def __init__(self, remote, plan, state_dir, dry=False, mailer=None):
+        self.remote, self.plan, self.dir, self.dry, self.mailer = remote, plan, Path(state_dir), dry, mailer
         self.dir.mkdir(parents=True, exist_ok=True)
         path = self.dir / "controller.json"
         self.state = json.loads(path.read_text()) if path.exists() else {"tasks": {}, "events": [], "tick": 0}
@@ -1040,6 +1070,9 @@ class Controller:
         if record.get("last_submission", {}).get("head") != head:
             if record.get("last_submission"):
                 self.reset_fixed_problems(task, record, FIXED_PROBLEMS, "new PR head")
+            record.pop("merge_blocked", None)  # A held merge belongs to one head only.
+            if record.get("stalled", {}).get("kind") == "merge_blocked":
+                record.pop("stalled")
             record["last_submission"] = {"head": head, "observed_at": now()}
         if record.get("merge_intent", {}).get("result_sha"):
             return self.verify_merge(task, record, pr)  # Reconcile, never resubmit an accepted merge.
@@ -1230,18 +1263,56 @@ class Controller:
         except ReviewSuperseded as error:
             self.wait_for_review(task, record, fresh, str(error))
             return False
+        blocked = record.get("merge_blocked")
+        if blocked and blocked["head"] != head:
+            record.pop("merge_blocked")  # A new head is a new merge candidate.
+            if record.get("stalled", {}).get("kind") == "merge_blocked":
+                record.pop("stalled")
+            blocked = None
+        if blocked and blocked.get("held"):
+            seen = [fresh.get("mergeable_state"), fresh.get("updated_at")]
+            if seen[0] in MERGE_HOLD_STATES or seen == blocked.get("held_on"):
+                record["waiting"] = "Merge held after repeated GitHub refusals; await a change to the pull request"
+                return False
+            # The pull request changed since the hold (threads resolved, review given): one more attempt.
+            blocked.pop("held")
+            blocked["attempts"] = MERGE_REFUSAL_LIMIT - 1
+            if record.get("stalled", {}).get("kind") == "merge_blocked":
+                record.pop("stalled")
+            self.event(task, "Pull request state changed to " + str(fresh.get("mergeable_state")) + "; retrying held merge once")
         if self.dry:
             self.effect("protected merge PR " + str(number), lambda: None)
             return True
         record["merge_intent"] = {"head": head, "base": main, "time": now()}
         self.save()
-        result = self.remote.gh("pulls/" + str(number) + "/merge", "PUT", {"sha": head, "merge_method": "squash"})
+        try:
+            result = self.remote.gh("pulls/" + str(number) + "/merge", "PUT", {"sha": head, "merge_method": "squash"})
+        except RuntimeError as error:
+            if not MERGE_REFUSED.search(str(error)):
+                raise
+            result = {"merged": False, "message": " ".join(str(error).split())[-300:]}
         if not result.get("merged"):
-            self.event(task, "GitHub did not permit merge; protections retained")
+            self.merge_refused(task, record, head, number, result.get("message") or "GitHub did not permit merge", fresh)
             return False
         record["merge_intent"]["result_sha"] = result["sha"]
         self.save()
         return self.verify_merge(task, record, self.remote.gh("pulls/" + str(number)))
+
+    def merge_refused(self, task, record, head, number, reason, fresh):
+        # Protections stay in force; a refusal on a second cycle holds retries and alerts.
+        blocked = record.get("merge_blocked")
+        if not blocked or blocked["head"] != head:
+            blocked = record["merge_blocked"] = {"head": head, "since": now(), "attempts": 0}
+        blocked.update(attempts=blocked["attempts"] + 1, reason=reason, last=now())
+        self.event(task, "GitHub refused merge of PR #" + str(number) + " (attempt " + str(blocked["attempts"]) + "): " + reason)
+        if blocked["attempts"] >= MERGE_REFUSAL_LIMIT:
+            # Remember what GitHub showed at the hold, so the same state never releases it twice.
+            blocked.update(held=True, held_on=[fresh.get("mergeable_state"), fresh.get("updated_at")],
+                           holds=blocked.get("holds", 0) + 1)
+            record["stalled"] = {"kind": "merge_blocked", "head": head, "hold": blocked["holds"], "reason": "GitHub refused to merge PR #"
+                + str(number) + " on " + str(blocked["attempts"]) + " controller cycles: " + reason
+                + ". Merge retries are held until the pull request changes"}
+        self.save()
 
     def verify_merge(self, task, record, pr):
         if pr.get("base", {}).get("ref") != "main":
@@ -1265,6 +1336,7 @@ class Controller:
             return False
         record["completed"] = {"pr": pr["number"], "merge_sha": merged, "head": intent["head"], "report": pr["html_url"]}
         record.pop("stalled", None)
+        record.pop("merge_blocked", None)
         self.reset_fixed_problems(task, record, FIXED_PROBLEMS, "verified merge")
         self.state["last_productive_progress"] = {"time": now(), "task": task, "merge_sha": merged}
         self.event(task, "Verified protected merge on main: " + merged)
@@ -1384,6 +1456,7 @@ class Controller:
             if attention or self.state.get("tick_error"):
                 self.state["last_result"] = "Needs supervision: " + (", ".join(attention) or "controller request failed")
             self.save()
+            self.alert()
             try:
                 self.publish()
             except Exception as error:
@@ -1481,12 +1554,153 @@ class Controller:
         self.state["last_result"] = "Waiting for agents/checks or ready work"
         self.save()
 
+    def watch_progress(self):
+        # Track repeating control errors and unchanged task state between ticks.
+        for task, rec in self.tasks.items():
+            if rec.get("completed"):
+                rec.pop("error_watch", None)
+                rec.pop("idle_watch", None)
+                continue
+            error = rec.get("last_error")
+            watch = rec.get("error_watch")
+            if not error:
+                rec.pop("error_watch", None)
+            elif watch and watch["text"] == error:
+                watch["ticks"] += 1
+            else:
+                rec["error_watch"] = {"text": error, "since": now(), "ticks": 1}
+            digest = hashlib.sha256(json.dumps({f: rec.get(f) for f in PROGRESS_FIELDS}, sort_keys=True).encode()).hexdigest()
+            if rec.get("idle_watch", {}).get("digest") != digest:
+                rec["idle_watch"] = {"digest": digest, "since": now()}
+        error = self.state.get("tick_error")
+        watch = self.state.get("tick_error_watch")
+        if not error:
+            self.state.pop("tick_error_watch", None)
+        elif watch and watch["text"] == error:
+            watch["ticks"] += 1
+        else:
+            self.state["tick_error_watch"] = {"text": error, "since": now(), "ticks": 1}
+
+    def alert_conditions(self):
+        # Returns {condition key: (task, headline, detail, what the controller does now)}.
+        idle_limit = self.plan.get("idle_alert_seconds", DEFAULT_IDLE_ALERT_SECONDS)
+        found = {}
+        for task, rec in self.tasks.items():
+            if rec.get("completed"):
+                continue
+            if rec.get("halted"):
+                found["halted:" + task + ":" + rec["halted"]] = (task, "Stopped", rec["halted"],
+                    "It stays stopped until the integration lead clears it.")
+            stalled = rec.get("stalled")
+            if stalled:
+                marker = stalled.get("fingerprint") or stalled.get("head") or stalled.get("run_id") or ""
+                if stalled.get("hold"):
+                    marker += ":" + str(stalled["hold"])  # A merge held again after its one retry alerts again.
+                action = {"merge_blocked": "Merge retries are held until the pull request changes, for example when its "
+                              "review threads are resolved or a new commit lands.",
+                          "no_progress": "No more agent runs for this problem until the integration lead resumes it.",
+                          "correction_ceiling": "No more corrections until the integration lead inspects it."}.get(
+                              stalled["kind"], "Flagged for inspection; the controller keeps watching.")
+                found["stalled:" + task + ":" + stalled["kind"] + ":" + marker] = (
+                    task, "Stalled (" + stalled["kind"] + ")", stalled["reason"], action)
+            watch = rec.get("error_watch")
+            if watch and watch["ticks"] >= ERROR_ALERT_TICKS:
+                found["error:" + task + ":" + hashlib.sha256(watch["text"].encode()).hexdigest()] = (
+                    task, "Same control error on " + str(watch["ticks"]) + " ticks", watch["text"],
+                    "The controller keeps checking; nothing is pushed or merged while this error repeats.")
+            idle = rec.get("idle_watch")
+            if (idle and not rec.get("halted") and not stalled and rec.get("agent_status") not in ACTIVE
+                    and age(idle["since"]) >= idle_limit):
+                found["idle:" + task + ":" + idle["digest"]] = (
+                    task, "No progress for " + str(int(age(idle["since"]) // 60)) + " minutes",
+                    rec.get("waiting") or "No change in this assignment's state while no agent run was active.",
+                    "The controller keeps watching; nothing has changed since " + idle["since"] + ".")
+        watch = self.state.get("tick_error_watch")
+        if watch and watch["ticks"] >= ERROR_ALERT_TICKS:
+            found["tick-error:" + hashlib.sha256(watch["text"].encode()).hexdigest()] = (
+                "controller", "Controller tick failed " + str(watch["ticks"]) + " times in a row", watch["text"],
+                "Each tick stops at this error before doing any work.")
+        return found
+
+    def alert(self):
+        # Never raises: a failed alert is recorded and shown as needs_attention, then retried later.
+        to = self.plan.get("alert_email")
+        if not to or self.dry:
+            return
+        try:
+            self.watch_progress()
+            found = {hashlib.sha256(key.encode()).hexdigest()[:20]: item for key, item in self.alert_conditions().items()}
+            sent = self.state.setdefault("alerts_sent", {})
+            for key in [k for k in sent if k not in found]:
+                sent.pop(key)  # Cleared; a recurrence alerts again.
+            new = [(key, item) for key, item in found.items() if key not in sent]
+            if not new:
+                self.state.pop("alert_failure", None)
+                return
+            failure = self.state.get("alert_failure")
+            if failure and age(failure["time"]) < ALERT_RETRY_SECONDS:
+                self.state["health"] = "needs_attention"
+                return
+            if self.mailer is None:
+                raise RuntimeError("No mailer configured for alert_email")
+            tasks = sorted({item[0] for _, item in new})
+            subject = "Togavsu build needs you: " + (tasks[0] if len(tasks) == 1 else str(len(tasks)) + " assignments")
+            body = "The Togavsu build controller stopped or flagged the work below and won't keep retrying it silently.\n\n"
+            for _, (task, headline, detail, action) in new:
+                rec = self.tasks.get(task, {})
+                body += task + (" (PR #" + str(rec["pr"]) + ")" if rec.get("pr") else "") + ": " + headline + "\n"
+                body += detail.strip() + "\n" + action + "\n"
+                if rec.get("pr"):
+                    body += "https://github.com/" + REPO + "/pull/" + str(rec["pr"]) + "\n"
+                body += "\n"
+            body += "Controller status: https://github.com/" + REPO + "/issues/1\n"
+            self.mailer.send(to, subject, body)
+            for key, _ in new:
+                sent[key] = now()
+            self.state.pop("alert_failure", None)
+            self.event("controller", "Alert emailed: " + ", ".join(tasks))
+        except Exception as error:
+            self.state["alert_failure"] = {"time": now(), "error": type(error).__name__ + ": " + str(error)[:300]}
+            self.state["health"] = "needs_attention"
+            self.event("controller", "Alert email failed: " + self.state["alert_failure"]["error"])
+        finally:
+            self.save()
+
+    def resume(self, task, operator):
+        # Operator path: after a fix lands, give a stalled assignment one fresh attempt. Halts are not touched.
+        record = self.tasks.get(task)
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited resume")
+        if not record or record.get("completed"):
+            raise ValueError("Task " + str(task) + " has no unfinished record")
+        stalled = record.get("stalled") or {}
+        if stalled.get("kind") not in {"no_progress", "merge_blocked"}:
+            raise ValueError("Task " + task + " is not stalled on a repeated problem or a held merge")
+        if self.dry:
+            print("WOULD resume " + task + " from " + stalled["kind"], flush=True)
+            return
+        if stalled["kind"] == "no_progress":
+            # Every exhausted problem gets the fresh attempt: a correction for [A, B] spends both budgets.
+            for window in record.get("repair_problems", {}).values():
+                if window.get("attempts", 0) >= self.plan["max_repairs"]:
+                    window["attempts"] = 0
+            if record.get("repair_window", {}).get("attempts", 0) >= self.plan["max_repairs"]:
+                record["repair_window"]["attempts"] = 0
+        else:
+            record.pop("merge_blocked", None)
+        record.pop("stalled")
+        self.state.setdefault("operator_resumes", []).append({"time": now(), "task": task, "operator": operator,
+            "stalled": stalled})
+        self.event(task, "Operator " + operator + " resumed " + stalled["kind"] + " stall")
+        self.save()
+
     def write_status(self):
         if self.dry:
             return
         summary = {"updated": now(), "tick": self.state["tick"], "health": self.state.get("health", "unknown"),
             "last_productive_progress": self.state.get("last_productive_progress"),
-            "tick_error": self.state.get("tick_error"), "publication_error": self.state.get("publication_error"), "tasks": {
+            "tick_error": self.state.get("tick_error"), "publication_error": self.state.get("publication_error"),
+            "alert_failure": self.state.get("alert_failure"), "tasks": {
             k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "correction_volume", "repair_window", "last_submission", "active_watch",
                 "completed", "halted", "stalled", "last_error", "waiting", "launch_uncertain", "intent") if field in v}
             for k, v in self.tasks.items()}}
@@ -1510,6 +1724,8 @@ class Controller:
                 body += "Last verified protected merge: " + progress["task"] + " at " + progress["time"] + " (" + progress["merge_sha"] + ").\n\n"
             if summary["tick_error"]:
                 body += "Control error: " + summary["tick_error"] + "\n\n"
+            if summary["alert_failure"]:
+                body += "Alert email failed: " + summary["alert_failure"]["error"] + "\n\n"
             body += "| Assignment | PR | State | Corrections |\n|---|---|---|---|\n"
             for task, rec in self.tasks.items():
                 status = ("merged" if rec.get("completed") else "STOPPED: " + rec["halted"] if rec.get("halted")
@@ -1537,10 +1753,13 @@ def main():
         help="bind TASK's outstanding delivery intent to RUN_ID after verifying it; runs no tick")
     parser.add_argument("--rehome", metavar="TASK",
         help="retire TASK's stopped Cursor record so the next tick launches it as a lane; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent or --rehome")
+    parser.add_argument("--resume", metavar="TASK",
+        help="give TASK's repeated-problem or held-merge stall one fresh attempt after a fix; runs no tick")
+    parser.add_argument("--test-alert", action="store_true", help="email a test alert to the plan's alert_email; runs no tick")
+    parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome or --resume")
     args = parser.parse_args()
-    if (args.reconcile_intent or args.rehome) and not args.operator:
-        parser.error("--reconcile-intent and --rehome require --operator")
+    if (args.reconcile_intent or args.rehome or args.resume) and not args.operator:
+        parser.error("--reconcile-intent, --rehome and --resume require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1553,11 +1772,21 @@ def main():
         # worker_backend selects who runs assignments; every gate after the PR is unchanged.
         remote = (ActionsRemote(state, state.resolve().parent, args.dry_run)
                   if plan.get("worker_backend") == "claude-actions" else Remote())
-        controller = Controller(remote, plan, state, args.dry_run)
-        if args.reconcile_intent:
+        controller = Controller(remote, plan, state, args.dry_run, Mailer())
+        if args.test_alert:
+            if not plan.get("alert_email"):
+                raise SystemExit("Plan has no alert_email")
+            if args.dry_run:
+                print("WOULD email a test alert to " + plan["alert_email"], flush=True)
+                return
+            controller.mailer.send(plan["alert_email"], "Togavsu build controller: test alert",
+                "This is a test of the Togavsu build controller's stall alerts. No action is needed.\n")
+        elif args.reconcile_intent:
             controller.reconcile_intent(*args.reconcile_intent, args.operator)
         elif args.rehome:
             controller.rehome(args.rehome, args.operator)
+        elif args.resume:
+            controller.resume(args.resume, args.operator)
         else:
             controller.tick()
 

@@ -15,6 +15,15 @@ if "CURSOR_API_KEY" not in os.environ and env_file.exists():
         if line.startswith("CURSOR_API_KEY="):
             os.environ["CURSOR_API_KEY"] = line.split("=", 1)[1].strip().strip("\"'")
             break
+# Alert mail uses the SMTP settings Render-1's Doc Tender report already sends with, in its file order.
+# Only SMTP_* keys are read; the process environment wins.
+for smtp_file in (Path("/mnt/claude-workspace/.env"), Path("/mnt/claude-workspace/nolan-pms/nolan-pms-unified-prod/.env.local")):
+    if smtp_file.exists():
+        for line in smtp_file.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            key = key.strip().removeprefix("export ").strip()
+            if sep and key in {"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"} and key not in os.environ:
+                os.environ[key] = value.strip().strip("\"'")
 if backend == "cursor" and not os.environ.get("CURSOR_API_KEY"):
     raise SystemExit("Cursor control credential unavailable")
 script = Path(__file__).resolve().with_name("build_controller.py")
