@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"io/fs"
 	"net/http"
-	"path/filepath"
+	"os"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -17,20 +18,30 @@ type Handler struct {
 	Svc       *Service
 	Templates *template.Template
 	Root      string
+	FS        fs.FS
 	Principal func(*http.Request) (domain.Principal, error)
 }
 
 // NewHandler parses templates in root and returns a handler. root may be empty for JSON-only tests.
 func NewHandler(svc *Service, root string, principal func(*http.Request) (domain.Principal, error)) (*Handler, error) {
-	h := &Handler{Svc: svc, Root: root, Principal: principal}
-	if root != "" {
-		set, err := template.ParseGlob(filepath.Join(root, "*.html"))
-		if err != nil {
-			return nil, err
-		}
-		h.Templates = set
+	if root == "" {
+		return &Handler{Svc: svc, Principal: principal}, nil
 	}
+	h, err := NewHandlerFS(svc, os.DirFS(root), principal)
+	if err != nil {
+		return nil, err
+	}
+	h.Root = root
 	return h, nil
+}
+
+// NewHandlerFS parses templates and static files from fsys, such as the embedded web tree.
+func NewHandlerFS(svc *Service, fsys fs.FS, principal func(*http.Request) (domain.Principal, error)) (*Handler, error) {
+	set, err := template.ParseFS(fsys, "*.html")
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{Svc: svc, FS: fsys, Templates: set, Principal: principal}, nil
 }
 
 // Routes returns the practice mux.
@@ -92,12 +103,12 @@ func (h *Handler) principal(r *http.Request) (domain.Principal, error) {
 
 func (h *Handler) staticCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	http.ServeFile(w, r, filepath.Join(h.Root, "practice.css"))
+	http.ServeFileFS(w, r, h.FS, "practice.css")
 }
 
 func (h *Handler) staticJS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	http.ServeFile(w, r, filepath.Join(h.Root, "practice.js"))
+	http.ServeFileFS(w, r, h.FS, "practice.js")
 }
 
 type page struct {

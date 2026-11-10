@@ -508,6 +508,13 @@ func fixedSite(path, fn string) bool {
 		// Process status 0 and 2, the 32-byte encryption key, and the 16-character supervisor secret.
 		// Those exist before the registry can be read. A different function in this file is still reported.
 		return fn == "RunFrom" || fn == "LoadFrom"
+	case strings.HasSuffix(slash, "cmd/core/main.go"):
+		// Process status 0, 1 and 2, the argument index of "check", the HTTP read-header
+		// guard against slow clients and the shutdown drain. None is a firm setting.
+		return fn == "main" || fn == "serve"
+	case strings.HasSuffix(slash, "internal/core/app.go"):
+		// AES-256 keys are 32 bytes, checked before any service is built.
+		return fn == "Open"
 	case strings.HasSuffix(slash, "internal/settings/seal.go"):
 		// AES-256-GCM keys are 32 bytes. That width is not a firm setting.
 		return fn == "NewSealingStore"
