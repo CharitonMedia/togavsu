@@ -105,11 +105,15 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 	if err != nil {
 		return FlatRow{}, err
 	}
+	collected := false
 	if billed {
 		row.InvoiceID = inv.ID
+		if collected, err = s.feeCollected(ctx, inv); err != nil {
+			return FlatRow{}, err
+		}
 	}
 	switch {
-	case billed && inv.Status == StatusPaid:
+	case collected:
 		row.Status = FlatCollected
 	case !positive(int64(m.FlatFeeCents)):
 		row.Status = FlatNeedsFee
@@ -119,6 +123,28 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 		row.Status = FlatReady
 	}
 	return row, nil
+}
+
+// feeCollected reports whether the matter fee billed on inv is collected: the invoice is paid,
+// or completed Apply flat fee transfers on it cover the fee line. The fee may share an invoice
+// with expenses or time, so a balance left by those lines does not keep the fee uncollected.
+func (s *Service) feeCollected(ctx context.Context, inv Invoice) (bool, error) {
+	if inv.Status == StatusPaid {
+		return true, nil
+	}
+	pays, err := listOf[Payment](ctx, s.d.Store, kindPayment)
+	if err != nil {
+		return false, err
+	}
+	var applied domain.Cents
+	for _, p := range pays {
+		if p.InvoiceID == inv.ID && p.MatterFee && p.Status == PayCompleted {
+			if applied, err = applied.Add(p.AmountCents); err != nil {
+				return false, err
+			}
+		}
+	}
+	return positive(int64(applied)) && applied >= inv.matterFeeCents(), nil
 }
 
 // Worklist lists flat-fee matters with their status and hourly or mixed matters with unbilled work.
@@ -180,7 +206,9 @@ func (s *Service) mattersByNumber() []domain.Matter {
 
 // ApplyFlatFee moves the confirmed flat fee from the client's trust funds to operating at the
 // earning milestone. Only an attorney or admin can post it, as with any trust withdrawal. The
-// fee is billed on a flat-fee invoice that the transfer pays, so the row shows Collected.
+// fee is billed on a flat-fee invoice, or on the invoice that already bills it with expenses or
+// time, and the transfer is marked as the fee's, so the row shows Collected and a second apply
+// is refused even while the invoice's other lines are unpaid.
 func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, client, account domain.ID, amount domain.Cents) (TrustPosted, Invoice, error) {
 	if err := amountField("amount_cents", amount); err != nil {
 		return TrustPosted{}, Invoice{}, err
@@ -232,7 +260,7 @@ func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, 
 				return err
 			}
 		}
-		if _, posted, err = s.transfer(t, inv, client, account, amount, "Flat fee earned: "+m.Name); err != nil {
+		if _, posted, err = s.transfer(t, inv, client, account, amount, "Flat fee earned: "+m.Name, true); err != nil {
 			return err
 		}
 		out, err = s.invoice(t.ctx, inv.ID)

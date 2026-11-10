@@ -166,6 +166,16 @@ func (i Invoice) HasFlatFee() bool {
 	return false
 }
 
+// matterFeeCents is the amount of the line that bills the matter's own flat fee.
+func (i Invoice) matterFeeCents() domain.Cents {
+	for _, l := range i.Lines {
+		if l.MatterFee {
+			return l.AmountCents
+		}
+	}
+	return noCents
+}
+
 // Payment is money received. TrustAccountID is set for a trust deposit and for the account a
 // trust transfer drew on. ReceivedOn is the firm-date the money arrived.
 type Payment struct {
@@ -175,6 +185,8 @@ type Payment struct {
 	ReversedAt     *time.Time `json:"reversed_at,omitempty"`
 	ReverseReason  string     `json:"reverse_reason,omitempty"`
 	ReversalEntry  domain.ID  `json:"reversal_entry_id,omitempty"`
+	// MatterFee marks the trust transfer Apply flat fee posted for the matter's own fee.
+	MatterFee bool `json:"matter_fee,omitempty"`
 }
 
 // FeeItem is a catalog flat-fee item.

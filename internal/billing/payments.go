@@ -418,14 +418,15 @@ func (s *Service) ApplyTrust(ctx context.Context, p domain.Principal, invoiceID,
 		if !s.isClient(inv.MatterID, client) {
 			return domain.Invalid("client_id", "must be a client on the matter")
 		}
-		out, posted, err = s.transfer(t, inv, client, account, amount, "Applied to invoice "+inv.Number)
+		out, posted, err = s.transfer(t, inv, client, account, amount, "Applied to invoice "+inv.Number, false)
 		return err
 	})
 	return out, posted, err
 }
 
 // transfer posts the trust transfer to operating and records the matching payment on inv.
-func (s *Service) transfer(t *txn, inv Invoice, client, account domain.ID, amount domain.Cents, desc string) (Payment, TrustPosted, error) {
+// matterFee marks the payment as Apply flat fee's transfer for the matter's own fee.
+func (s *Service) transfer(t *txn, inv Invoice, client, account domain.ID, amount domain.Cents, desc string, matterFee bool) (Payment, TrustPosted, error) {
 	meta, err := s.meta(t.p)
 	if err != nil {
 		return Payment{}, TrustPosted{}, err
@@ -437,7 +438,7 @@ func (s *Service) transfer(t *txn, inv Invoice, client, account domain.ID, amoun
 	if err != nil {
 		return Payment{}, TrustPosted{}, err
 	}
-	row := Payment{TrustAccountID: account, ReceivedOn: s.today(t.ctx)}
+	row := Payment{TrustAccountID: account, ReceivedOn: s.today(t.ctx), MatterFee: matterFee}
 	row.Payment = domain.Payment{
 		Meta: meta, ContactID: client, MatterID: inv.MatterID, AmountCents: amount, Destination: DestOperating,
 		Method: MethodInternal, ReferenceNumber: "trust", Status: PayCompleted, InvoiceID: inv.ID,

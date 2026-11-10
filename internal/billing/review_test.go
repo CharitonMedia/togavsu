@@ -262,7 +262,8 @@ func sendAfterCommitCase(t *testing.T, f *fx) {
 	if err != nil || inv.Status != StatusSent || len(f.mail.sent) != 1 || len(inv.SentTo) != 1 {
 		t.Fatalf("retry sends once: %v %d %+v", err, len(f.mail.sent), inv.SentTo)
 	}
-	// A failed mail on a resend of a sent invoice keeps it sent and leaves no extra event.
+	// A failed mail on a resend of a sent invoice keeps it sent. Its invoice.sent event stays
+	// (append-only) and an invoice.send_undone event follows it.
 	events := func() int { rows, _ := f.st.List(f.ctx, kindEvent); return len(rows) }
 	n := events()
 	f.mail.fail = errors.New("smtp down")
@@ -271,8 +272,9 @@ func sendAfterCommitCase(t *testing.T, f *fx) {
 	}
 	f.mail.fail = nil
 	after, _ := f.svc.invoice(f.ctx, id)
-	if after.Status != StatusSent || events() != n {
-		t.Fatalf("resend failure: %s, events %d -> %d", after.Status, n, events())
+	acts := f.eventCounts(id)
+	if after.Status != StatusSent || events() != n+2 || acts["invoice.sent"] != 2 || acts["invoice.send_undone"] != 1 {
+		t.Fatalf("resend failure: %s, events %d -> %d %v", after.Status, n, events(), acts)
 	}
 }
 

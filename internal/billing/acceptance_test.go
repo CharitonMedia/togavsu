@@ -147,18 +147,25 @@ func TestSendFailuresWriteNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	rowsOnly := func(s string) string { return s[:strings.LastIndex(s, "|audit=")] }
-	before := f.snapshot()
+	eventsBefore, _ := f.st.List(f.ctx, kindEvent)
+	before := f.snapshotWithout(kindEvent)
 	auditBefore := f.aud.Len()
 	f.mail.fail = errors.New("smtp down")
 	if _, err := f.svc.SendInvoice(f.ctx, f.attorney, id, "email"); err == nil {
 		t.Fatal("mail failure must fail the send")
 	}
 	f.mail.fail = nil
-	// Mail goes out after the commit, so a failed mail undoes the committed send: the rows are
-	// back as they were (no sent status, no sent_to, no client-visible event) and the audit log
-	// keeps both the send and its undo.
-	if rowsOnly(f.snapshot()) != rowsOnly(before) {
+	// Mail goes out after the commit, so a failed mail undoes the committed send: the billing
+	// rows are back as they were (no sent status, no sent_to). The event stream is append-only:
+	// it keeps invoice.sent and adds invoice.send_undone. The audit log keeps the send and its undo.
+	if rowsOnly(f.snapshotWithout(kindEvent)) != rowsOnly(before) {
 		t.Fatal("a failed mail left the send in place")
+	}
+	if got := f.eventCounts(id); got["invoice.sent"] != 1 || got["invoice.send_undone"] != 1 {
+		t.Fatalf("event stream must keep invoice.sent and append invoice.send_undone: %v", got)
+	}
+	if eventsAfter, _ := f.st.List(f.ctx, kindEvent); len(eventsAfter) != len(eventsBefore)+2 {
+		t.Fatalf("events %d -> %d; no event may be deleted", len(eventsBefore), len(eventsAfter))
 	}
 	if f.aud.Len() <= auditBefore {
 		t.Fatal("the send and its undo must be audited")
@@ -289,6 +296,7 @@ func TestAC004AccountantReadOnly(t *testing.T) {
 		"expense":      mustErr(f.svc.CreateExpense(ctx, acct, ExpenseInput{MatterID: &m.ID, IncurredOn: &date, Description: &desc, AmountCents: cents(1), ExpenseTypeID: &f.expType})),
 		"expense edit": mustErr(f.svc.UpdateExpense(ctx, acct, ex.ID, ExpenseInput{Description: &desc})),
 		"draft":        mustErr(f.svc.DraftInvoices(ctx, acct, DraftRequest{MatterID: m.ID})),
+		"draft range":  mustErr(f.svc.DraftInvoices(ctx, acct, DraftRequest{FromDate: "2026-01-01", ToDate: "2026-12-31"})),
 		"edit":         mustErr(f.svc.EditDraft(ctx, acct, inv.ID, DraftEdit{})),
 		"approve":      mustErr(f.svc.ApproveInvoice(ctx, acct, inv.ID)),
 		"send":         mustErr(f.svc.SendInvoice(ctx, acct, inv.ID, "email")),
@@ -724,8 +732,11 @@ func TestClientSeesOnlySentInvoicesAndMarksViewed(t *testing.T) {
 	f.svc.ApproveInvoice(f.ctx, f.attorney, draft[0].ID)
 	f.svc.SendInvoice(f.ctx, f.attorney, draft[0].ID, "file")
 	seen, err := f.svc.Invoice(f.ctx, clientP, draft[0].ID)
-	if err != nil || seen.Status != StatusViewed || seen.ViewedAt == nil {
+	if err != nil || seen.Status != StatusViewed {
 		t.Fatalf("client view: %v %s", err, seen.Status)
+	}
+	if stored, _ := f.svc.invoice(f.ctx, draft[0].ID); stored.ViewedAt == nil {
+		t.Fatal("viewed_at not stored")
 	}
 	if list, _ := f.svc.Invoices(f.ctx, clientP, InvoiceFilter{}); len(list) != 1 {
 		t.Fatal("client list")

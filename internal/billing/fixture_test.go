@@ -334,6 +334,42 @@ func (f *fx) snapshot() string {
 	return string(b) + "|audit=" + jsonInt(n)
 }
 
+// snapshotWithout is snapshot with one record kind left out.
+func (f *fx) snapshotWithout(skip string) string {
+	f.t.Helper()
+	out := map[string][]json.RawMessage{}
+	for _, k := range []string{kindTime, kindTimer, kindExpense, kindInvoice, kindPayment, kindFeeItem, kindActivity, kindExpenseType, kindEvent, "fake_trust", "fake_replenish"} {
+		if k == skip {
+			continue
+		}
+		rows, err := f.st.List(f.ctx, k)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		for _, r := range rows {
+			out[k] = append(out[k], r)
+		}
+	}
+	b, _ := json.Marshal(out)
+	return string(b) + "|audit=" + jsonInt(f.aud.Len())
+}
+
+// eventCounts counts the stored events on a record by action.
+func (f *fx) eventCounts(record domain.ID) map[string]int {
+	f.t.Helper()
+	rows, err := listOf[domain.Event](f.ctx, f.st, kindEvent)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	out := map[string]int{}
+	for _, e := range rows {
+		if e.RecordID == record {
+			out[e.Action]++
+		}
+	}
+	return out
+}
+
 func jsonInt(n int) string { b, _ := json.Marshal(n); return string(b) }
 
 func code(err error) string {

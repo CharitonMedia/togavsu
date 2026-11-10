@@ -424,6 +424,9 @@ func TestAPIAccountantWritesRefused(t *testing.T) {
 			t.Fatalf("%s %s: accountant got %d %s", rt.method, rt.path, code, resp)
 		}
 	}
+	if code, resp, _ := a.do(f.accountant, "POST", "/api/v1/invoice-drafts", map[string]any{"from_date": "2026-01-01", "to_date": "2026-12-31"}); code != 403 {
+		t.Fatalf("POST /api/v1/invoice-drafts by date range: accountant got %d %s", code, resp)
+	}
 	if f.snapshot() != before {
 		t.Fatal("an accountant API write changed rows")
 	}

@@ -88,7 +88,18 @@ func (s *Service) readInvoice(ctx context.Context, p domain.Principal, inv Invoi
 	})
 }
 
-// Invoice returns one invoice. A client reading a sent invoice marks it viewed.
+// forReader returns inv as p may see it: a client-only principal gets only the InvoiceClient
+// allowlist (ClientInvoice), so every surface built on the service (API, pages, MCP, modules,
+// portal) is redacted here rather than in its handler.
+func forReader(p domain.Principal, inv Invoice) Invoice {
+	if ClientOnly(p) {
+		return ClientInvoice(inv)
+	}
+	return inv
+}
+
+// Invoice returns one invoice. A client reading a sent invoice marks it viewed, and receives
+// only the client allowlist.
 func (s *Service) Invoice(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
 	inv, err := s.invoice(ctx, id)
 	if err != nil {
@@ -98,9 +109,11 @@ func (s *Service) Invoice(ctx context.Context, p domain.Principal, id domain.ID)
 		return Invoice{}, err
 	}
 	if ClientOnly(p) && inv.Status == StatusSent {
-		return s.markViewed(ctx, p, id)
+		if inv, err = s.markViewed(ctx, p, id); err != nil {
+			return Invoice{}, err
+		}
 	}
-	return inv, nil
+	return forReader(p, inv), nil
 }
 
 func (s *Service) markViewed(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
@@ -127,7 +140,8 @@ func (s *Service) markViewed(ctx context.Context, p domain.Principal, id domain.
 	return out, err
 }
 
-// Invoices lists invoices the caller can see. A client sees only shared invoices on its matters.
+// Invoices lists invoices the caller can see. A client sees only shared invoices on its matters,
+// each narrowed to the client allowlist.
 func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFilter) ([]Invoice, error) {
 	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
 	if err != nil {
@@ -144,7 +158,7 @@ func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFil
 		}
 		err := s.readInvoice(ctx, p, r)
 		if err == nil {
-			out = append(out, r)
+			out = append(out, forReader(p, r))
 			continue
 		}
 		var api *domain.APIError
@@ -342,7 +356,8 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 }
 
 // DraftInvoices drafts invoices from unbilled time and expenses. Naming a matter the caller
-// cannot bill fails and drafts nothing; a date range drafts only matters the caller may bill.
+// cannot bill fails and drafts nothing; a date range is refused for a role that cannot draft and
+// otherwise drafts only matters the caller may bill.
 func (s *Service) DraftInvoices(ctx context.Context, p domain.Principal, req DraftRequest) ([]Invoice, error) {
 	byRange := req.FromDate != "" || req.ToDate != ""
 	if byRange {
@@ -358,6 +373,13 @@ func (s *Service) DraftInvoices(ctx context.Context, p domain.Principal, req Dra
 	}
 	if !exactlyOne(!req.MatterID.IsZero(), len(req.MatterIDs) > 0, byRange) {
 		return nil, domain.Invalid("selector", "set exactly one of matter_id, matter_ids, or from_date with to_date")
+	}
+	if byRange {
+		// A date range drafts across matters; a role with no draft right is refused outright
+		// instead of drafting an empty list.
+		if err := s.allow(ctx, p, domain.ResInvoice, domain.ActionWrite, ""); err != nil {
+			return nil, err
+		}
 	}
 	var ids []domain.ID
 	named := true
@@ -573,6 +595,12 @@ func (s *Service) draftLine(t *txn, inv Invoice, li LineInput, held map[domain.I
 			if err != nil {
 				return Line{}, domain.Invalid(field+"/source_id", "unknown time entry")
 			}
+			if !e.Reviewed() {
+				return Line{}, domain.Conflict("time entry is a timer draft; review it with a description before billing it")
+			}
+			if !e.Billable {
+				return Line{}, domain.Invalid(field+"/source_id", "time entry is not billable; mark it billable first")
+			}
 			if computed, err = s.timeLine(t.ctx, e); err != nil {
 				return Line{}, err
 			}
@@ -581,6 +609,9 @@ func (s *Service) draftLine(t *txn, inv Invoice, li LineInput, held map[domain.I
 			e, err := s.expense(t.ctx, li.SourceID)
 			if err != nil {
 				return Line{}, domain.Invalid(field+"/source_id", "unknown expense")
+			}
+			if !e.Billable {
+				return Line{}, domain.Invalid(field+"/source_id", "expense is not billable; mark it billable first")
 			}
 			if computed, err = expenseLine(e); err != nil {
 				return Line{}, err
@@ -751,7 +782,8 @@ func (s *Service) clientEmails(ctx context.Context, matter domain.ID) []string {
 //
 // The send commits first and the mail goes out only after the commit, so a failed commit never
 // emails the client. If system mail then fails, a second write undoes the send (when nothing
-// else changed the invoice in between) and drops its timeline event; both writes are audited.
+// else changed the invoice in between) and appends an invoice.send_undone event after the
+// invoice.sent event, which stays in the append-only stream; both writes are audited.
 // ponytail: ceiling: a crash between the commit and the mail leaves the invoice sent with no
 // email; the user sees no error-free confirmation and can send by email again. Upgrade path: a
 // system-mail outbox row written in the same transaction and delivered by a retrying worker.
@@ -762,7 +794,6 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 	}
 	var out, before Invoice
 	var msg *Message
-	var event domain.ID
 	err := s.write(ctx, p, func(t *txn) error {
 		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
 		if err != nil {
@@ -819,7 +850,6 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 		if err := t.event("invoice.sent", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" sent by "+deliver, true); err != nil {
 			return err
 		}
-		event = t.events[len(t.events)-1].ID
 		out, err = s.invoice(t.ctx, id)
 		return err
 	})
@@ -831,7 +861,7 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 	}
 	if mailErr := s.d.Mail.Send(ctx, *msg); mailErr != nil {
 		mailErr = fmt.Errorf("billing: system mail: %w", mailErr)
-		if err := s.undoSend(ctx, p, before, out, event, mailErr); err != nil {
+		if err := s.undoSend(ctx, p, before, out, mailErr); err != nil {
 			return Invoice{}, errors.Join(mailErr, err)
 		}
 		return Invoice{}, mailErr
@@ -839,9 +869,10 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 	return out, nil
 }
 
-// undoSend restores the delivery fields a send changed after its mail failed. When another
+// undoSend restores the delivery fields a send changed after its mail failed and appends a
+// compensating invoice.send_undone event; the invoice.sent event is never removed. When another
 // write changed the invoice in the meantime it only records the failure.
-func (s *Service) undoSend(ctx context.Context, p domain.Principal, before, sent Invoice, event domain.ID, cause error) error {
+func (s *Service) undoSend(ctx context.Context, p domain.Principal, before, sent Invoice, cause error) error {
 	return s.write(context.WithoutCancel(ctx), p, func(t *txn) error {
 		cur, err := s.invoice(t.ctx, sent.ID)
 		if err != nil {
@@ -860,7 +891,7 @@ func (s *Service) undoSend(ctx context.Context, p domain.Principal, before, sent
 		if err := t.diff("invoice", cur.ID, cur, after, reason+"; send undone"); err != nil {
 			return err
 		}
-		return s.d.Store.Delete(t.ctx, kindEvent, string(event))
+		return t.event("invoice.send_undone", "invoice", cur.ID, cur.MatterID, "Invoice "+cur.Number+" send undone: system mail failed", true)
 	})
 }
 
@@ -1068,6 +1099,7 @@ func (s *Service) ApplyLateInterest(ctx context.Context, p domain.Principal, id 
 }
 
 // InvoicePDF renders the invoice PDF and records the download in the audit log and timeline.
+// The returned row is narrowed to the client allowlist for a client-only principal.
 func (s *Service) InvoicePDF(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, Invoice, error) {
 	inv, err := s.invoice(ctx, id)
 	if err != nil {
@@ -1088,5 +1120,5 @@ func (s *Service) InvoicePDF(ctx context.Context, p domain.Principal, id domain.
 	if err != nil {
 		return nil, Invoice{}, err
 	}
-	return pdf, inv, nil
+	return pdf, forReader(p, inv), nil
 }
