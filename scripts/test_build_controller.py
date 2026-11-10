@@ -64,7 +64,7 @@ class FakeRemote:
             return {"behind_by": self.behind}
         if path == "pulls/7/merge":
             if self.fail_merge:
-                raise RuntimeError("GitHub protection rejected merge")
+                raise RuntimeError(self.fail_merge if isinstance(self.fail_merge, str) else "GitHub protection rejected merge")
             self.pr.update(merged=True,merge_commit_sha=NEW,state="closed")
             self.main=NEW
             return {"merged": True, "sha": NEW}
@@ -2066,6 +2066,208 @@ class ControllerTests(unittest.TestCase):
         self.process()
         self.assertIn("90 minutes", self.record["halted"])
         self.assertFalse(self.posts())
+
+
+class FakeMailer:
+    def __init__(self):
+        self.sent, self.fail = [], False
+
+    def send(self, to, subject, body):
+        if self.fail:
+            raise OSError("mail server unreachable")
+        self.sent.append((to, subject, body))
+
+
+THREADS_405 = "gh: All comments must be resolved. (HTTP 405)\n"
+
+
+class StallAlertTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.remote = FakeRemote()
+        self.mailer = FakeMailer()
+        self.plan = {"tasks": [SPEC], "max_repairs": 1, "max_implementation_agents": 4, "alert_email": "lead@example.com",
+                     "active_run_timeout_seconds": 18900}
+        self.controller = Controller(self.remote, self.plan, self.temp.name, mailer=self.mailer)
+        self.record = {"agent_id": "bc-one", "expected_branch": "cursor/one", "submitted": True, "pr": 7, "repair_count": 0}
+        self.controller.tasks["one"] = self.record
+
+    def at(self, minutes):
+        return patch("build_controller.now", return_value=(dt.datetime(2026, 11, 8,
+            tzinfo=dt.timezone.utc) + dt.timedelta(minutes=minutes)).isoformat())
+
+    def tick(self, minutes):
+        with self.at(minutes):
+            self.controller.tick()
+
+    def merges(self):
+        return [c for c in self.remote.calls if c[1] == "pulls/7/merge"]
+
+    def posts(self):
+        return [c for c in self.remote.calls if c[0] == "POST" and c[1].endswith("/runs")]
+
+    def test_merge_refused_on_two_cycles_is_held_and_emailed_once(self):
+        self.remote.fail_merge = THREADS_405
+        self.remote.pr["mergeable_state"] = "blocked"
+        self.tick(0)
+        self.assertEqual(len(self.merges()), 1)
+        self.assertNotIn("last_error", self.record)
+        self.assertNotIn("stalled", self.record)
+        self.assertFalse(self.mailer.sent)
+        self.tick(3)
+        self.assertEqual(len(self.merges()), 2)
+        self.assertEqual(self.record["stalled"]["kind"], "merge_blocked")
+        self.assertEqual(len(self.mailer.sent), 1)
+        to, subject, body = self.mailer.sent[0]
+        self.assertEqual(to, "lead@example.com")
+        self.assertIn("one", subject)
+        self.assertIn("All comments must be resolved", body)
+        self.assertIn("https://github.com/CharitonMedia/togavsu/pull/7", body)
+        for minutes in (6, 9, 60):
+            self.tick(minutes)
+        self.assertEqual(len(self.merges()), 2)  # Held: no further merge attempts.
+        self.assertEqual(len(self.mailer.sent), 1)  # One email per condition.
+        self.assertNotIn("completed", self.record)
+
+    def test_held_merge_retries_once_github_reports_a_new_state_and_merges(self):
+        self.remote.fail_merge = THREADS_405
+        self.remote.pr["mergeable_state"] = "blocked"
+        self.tick(0)
+        self.tick(3)
+        self.remote.fail_merge = False
+        self.remote.pr["mergeable_state"] = "clean"
+        self.tick(6)
+        self.assertEqual(len(self.merges()), 3)
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+        self.assertNotIn("merge_blocked", self.record)
+        self.assertNotIn("stalled", self.record)
+
+    def test_new_head_clears_held_merge(self):
+        self.remote.fail_merge = THREADS_405
+        self.tick(0)
+        self.tick(3)
+        self.assertTrue(self.record["merge_blocked"]["held"])
+        self.remote.fail_merge = False
+        self.remote.pr["head"]["sha"] = NEW
+        self.remote.context["head"] = NEW
+        self.remote.report["reviewed_head"] = NEW
+        for row in self.remote.check_rows.values():
+            row["head_sha"] = NEW
+        with self.at(6):
+            self.controller.process(SPEC, self.record, self.remote.agent(self.record), BASE)
+        self.assertNotIn("merge_blocked", self.record)
+        self.assertNotEqual(self.record.get("stalled", {}).get("kind"), "merge_blocked")
+
+    def test_unrecognised_merge_error_still_raises(self):
+        self.remote.fail_merge = True
+        with self.assertRaises(RuntimeError):
+            self.controller.process(SPEC, self.record, self.remote.agent(self.record), BASE)
+        self.assertNotIn("merge_blocked", self.record)
+
+    def test_same_failure_twice_stops_after_one_correction_and_emails(self):
+        self.remote.run_status = "ERROR"
+        self.tick(0)
+        self.assertEqual(len(self.posts()), 1)
+        self.remote.run_id = self.record["last_dispatched_run"]
+        self.remote.run_status = "ERROR"
+        for minutes in (30, 33, 36):
+            self.tick(minutes)
+        self.assertEqual(len(self.posts()), 1)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("No more agent runs for this problem", self.mailer.sent[0][2])
+
+    def test_resume_gives_a_stalled_problem_one_more_attempt(self):
+        self.remote.run_status = "ERROR"
+        self.tick(0)
+        self.remote.run_id = self.record["last_dispatched_run"]
+        self.tick(30)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        with self.at(40):
+            self.controller.resume("one", "Integration lead")
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(self.controller.state["operator_resumes"][0]["operator"], "Integration lead")
+        self.tick(45)
+        self.assertEqual(len(self.posts()), 2)
+        with self.assertRaises(ValueError):
+            self.controller.resume("one", "Integration lead")  # Not stalled any more.
+
+    def test_resume_never_clears_a_halt(self):
+        self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
+        with self.assertRaises(ValueError):
+            self.controller.resume("one", "Integration lead")
+        self.assertIn("halted", self.record)
+
+    def test_halt_is_emailed_once_and_again_only_after_it_clears(self):
+        self.record["halted"] = "PR is already assigned to another task"
+        self.tick(0)
+        self.tick(3)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("PR is already assigned to another task", self.mailer.sent[0][2])
+        self.record.pop("halted")
+        self.remote.run_status = "RUNNING"
+        self.tick(6)
+        self.record["halted"] = "PR is already assigned to another task"
+        self.tick(9)
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_repeating_control_error_alerts_after_three_ticks(self):
+        self.remote.checks = lambda head: (_ for _ in ()).throw(RuntimeError("gh: Server Error (HTTP 502)"))
+        self.tick(0)
+        self.tick(3)
+        self.assertFalse(self.mailer.sent)
+        self.tick(6)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("Same control error on 3 ticks", self.mailer.sent[0][2])
+
+    def test_no_progress_for_an_hour_alerts_but_active_runs_do_not(self):
+        self.remote.run_status = "RUNNING"
+        for minutes in (0, 30, 61, 90):
+            self.tick(minutes)
+        self.assertFalse(self.mailer.sent)
+        def pending(check):
+            raise ReviewPending("queued")
+        self.remote.review = pending  # Waits on the review workflow, with no deadline of its own.
+        self.remote.run_status = "FINISHED"
+        self.tick(100)
+        self.tick(130)
+        self.assertFalse(self.mailer.sent)
+        self.tick(161)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("No progress for 61 minutes", self.mailer.sent[0][2])
+
+    def test_failed_alert_email_never_breaks_the_tick_and_retries_later(self):
+        self.mailer.fail = True
+        self.record["halted"] = "PR is already assigned to another task"
+        self.tick(0)
+        self.assertIn("mail server unreachable", self.controller.state["alert_failure"]["error"])
+        self.assertEqual(self.controller.state["health"], "needs_attention")
+        self.mailer.fail = False
+        self.tick(5)
+        self.assertFalse(self.mailer.sent)  # Waits before trying the mail server again.
+        self.tick(16)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertNotIn("alert_failure", self.controller.state)
+
+    def test_no_alert_email_configured_sends_nothing(self):
+        self.plan.pop("alert_email")
+        self.record["halted"] = "PR is already assigned to another task"
+        self.tick(0)
+        self.assertFalse(self.mailer.sent)
+        self.assertNotIn("alerts_sent", self.controller.state)
+
+    def test_dry_run_sends_no_alert(self):
+        self.record["halted"] = "PR is already assigned to another task"
+        self.controller.dry = True
+        self.tick(0)
+        self.assertFalse(self.mailer.sent)
+
+    def test_pinned_plan_alerts_and_stops_on_second_repeat(self):
+        plan = json.loads((Path(__file__).resolve().parents[1] / "docs/build/controller-plan.json").read_text())
+        self.assertTrue(plan["alert_email"])
+        self.assertEqual(plan["max_repairs"], 1)
+        self.assertGreaterEqual(plan["active_run_timeout_seconds"], 300 * 60)
 
 
 class ReviewDataTests(unittest.TestCase):
