@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
@@ -14,17 +16,7 @@ import (
 )
 
 var pages = template.Must(template.New("core").Funcs(template.FuncMap{
-	"label": func(tab string) string {
-		words := strings.Split(tab, "_")
-		for i, w := range words {
-			if w == "ai" || w == "api" {
-				words[i] = strings.ToUpper(w)
-			} else if i == 0 && w != "" {
-				words[i] = strings.ToUpper(w[:1]) + w[1:]
-			}
-		}
-		return strings.Join(words, " ")
-	},
+	"label": tabLabel,
 }).Parse(`
 {{define "top"}}<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -94,6 +86,21 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{end}}</tbody></table>
 {{template "bottom" .}}{{end}}
 `))
+
+// tabLabel turns a settings tab key such as "agents_api" into "Agents API".
+func tabLabel(tab string) string {
+	words := strings.Fields(strings.ReplaceAll(tab, "_", " "))
+	for i, w := range words {
+		if w == "ai" || w == "api" {
+			words[i] = strings.ToUpper(w)
+		}
+	}
+	if len(words) > 0 {
+		r, size := utf8.DecodeRuneInString(words[0])
+		words[0] = string(unicode.ToUpper(r)) + words[0][size:]
+	}
+	return strings.Join(words, " ")
+}
 
 type view struct {
 	Title    string
