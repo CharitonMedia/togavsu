@@ -308,14 +308,22 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 		SharedWithClient: in.SharedWithClient, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
 	}
 	staged, err := os.Open(s.stagingPath(u.ID))
+	if errors.Is(err, os.ErrNotExist) {
+		// A concurrent publish finished and removed the staged bytes.
+		return s.replayPublish(ctx, p, in.UploadID, err)
+	}
 	if err != nil {
 		return FileView{}, err
 	}
 	defer staged.Close()
 	view, err := s.create(ctx, p, nf, staged, u.SizeBytes, u.SHA256, func(ctx context.Context, f fileRow, v domain.FileVersion) error {
-		u.Status, u.FileID, u.VersionID, u.UpdatedAt = "published", f.ID, v.ID, s.now().UTC()
-		return s.st.updateUpload(ctx, u)
+		u.FileID, u.VersionID, u.UpdatedAt = f.ID, v.ID, s.now().UTC()
+		return s.claimUpload(ctx, u)
 	})
+	if errors.Is(err, errUploadTaken) {
+		// create rolled back this file and dropped its stored copy.
+		return s.replayPublish(ctx, p, in.UploadID, err)
+	}
 	if err != nil {
 		return FileView{}, err
 	}
@@ -336,20 +344,62 @@ func (s *Service) AddUploadedVersion(ctx context.Context, p domain.Principal, fi
 		return VersionView{}, domain.Conflict("complete the upload before adding it as a version")
 	}
 	staged, err := os.Open(s.stagingPath(u.ID))
+	if errors.Is(err, os.ErrNotExist) {
+		return s.replayVersion(ctx, p, fileID, uploadID, err)
+	}
 	if err != nil {
 		return VersionView{}, err
 	}
 	defer staged.Close()
 	v, err := s.saveVersion(ctx, p, fileID, staged, u.SizeBytes, u.SHA256, SaveOptions{How: "upload", MediaType: u.MediaType},
 		func(ctx context.Context, v domain.FileVersion) error {
-			u.Status, u.FileID, u.VersionID, u.UpdatedAt = "published", fileID, v.ID, s.now().UTC()
-			return s.st.updateUpload(ctx, u)
+			u.FileID, u.VersionID, u.UpdatedAt = fileID, v.ID, s.now().UTC()
+			return s.claimUpload(ctx, u)
 		})
+	if errors.Is(err, errUploadTaken) {
+		return s.replayVersion(ctx, p, fileID, uploadID, err)
+	}
 	if err != nil {
 		return VersionView{}, err
 	}
 	_ = os.Remove(s.stagingPath(u.ID))
 	return v, nil
+}
+
+// errUploadTaken aborts a publish whose upload another publish already took.
+var errUploadTaken = errors.New("files: upload already published")
+
+// claimUpload marks the upload published inside the file's transaction, or aborts it
+// when a concurrent publish won, so one upload never makes two files or versions.
+func (s *Service) claimUpload(ctx context.Context, u uploadRow) error {
+	ok, err := s.st.publishUpload(ctx, u)
+	if err == nil && !ok {
+		err = errUploadTaken
+	}
+	return err
+}
+
+// replayPublish answers a publish that lost the race with the file the winner made.
+func (s *Service) replayPublish(ctx context.Context, p domain.Principal, id domain.ID, cause error) (FileView, error) {
+	u, err := s.ownUpload(ctx, p, id, false)
+	if err != nil {
+		return FileView{}, err
+	}
+	if u.Status != "published" || u.FileID == "" {
+		return FileView{}, cause
+	}
+	return s.Get(ctx, p, u.FileID)
+}
+
+func (s *Service) replayVersion(ctx context.Context, p domain.Principal, fileID, id domain.ID, cause error) (VersionView, error) {
+	u, err := s.ownUpload(ctx, p, id, false)
+	if err != nil {
+		return VersionView{}, err
+	}
+	if u.Status != "published" || u.VersionID == "" {
+		return VersionView{}, cause
+	}
+	return s.Version(ctx, p, fileID, u.VersionID)
 }
 
 func sourceFor(p domain.Principal) string {

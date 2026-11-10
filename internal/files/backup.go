@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/storage"
 )
 
@@ -134,7 +135,9 @@ func writeEntry(tw *tar.Writer, name string, size int64, r io.Reader) error {
 
 // RestoreBytes puts every object of an ExportBytes stream back where the restored
 // database says it lives, with that location's encryption, and checks each copy's
-// SHA-256 on its backend. An object that already reads back correctly is left alone.
+// SHA-256 on its backend against the database's file_versions or file_renditions row.
+// An entry the database does not know, or whose manifest disagrees with its row, fails
+// the restore before any byte of it is written. An object that already reads back correctly is left alone.
 func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Reader) (BackupReport, error) {
 	var rep BackupReport
 	if err := admin(p); err != nil {
@@ -162,11 +165,21 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 			return rep, err
 		}
 		id := domain.ID(strings.TrimPrefix(hdr.Name, "objects/"))
-		o, ok := byID[id]
-		if !ok || hdr.Size != o.Size {
+		m, ok := byID[id]
+		if !ok || hdr.Size != m.Size {
 			return rep, fmt.Errorf("files: backup entry %s is not in the manifest", hdr.Name)
 		}
-		loc, err := s.st.location(ctx, id, location{Backend: o.BackendID, Key: o.Key})
+		// The restored database, not the archive, says what each object is and where it
+		// lives: an entry it does not know, or whose size or SHA-256 differ, is refused.
+		o, err := s.knownObject(ctx, id)
+		if err != nil {
+			return rep, fmt.Errorf("files: restore %s: %w", id, err)
+		}
+		if m.Kind != o.Kind || m.Size != o.Size || m.SHA256 != o.SHA {
+			return rep, fmt.Errorf("files: restore %s: the backup's %s of %d bytes, sha256 %s, does not match the database's %s of %d bytes, sha256 %s: %w",
+				id, m.Kind, m.Size, m.SHA256, o.Kind, o.Size, o.SHA, storage.ErrIntegrity)
+		}
+		loc, err := s.st.location(ctx, id, o.Home)
 		if err != nil {
 			return rep, err
 		}
@@ -174,7 +187,7 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 		if err != nil {
 			return rep, err
 		}
-		if storage.Check(ctx, b, loc.Key, o.Size, o.SHA256) == nil {
+		if storage.Check(ctx, b, loc.Key, o.Size, o.SHA) == nil {
 			rep.Verified++
 			continue
 		}
@@ -185,11 +198,11 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 		if err := b.Put(ctx, loc.Key, h, o.Size); err != nil {
 			return rep, fmt.Errorf("files: restore %s: %w", id, err)
 		}
-		if h.Sum() != o.SHA256 {
+		if h.Sum() != o.SHA {
 			s.dropObject(ctx, loc)
 			return rep, fmt.Errorf("files: restore %s: %w", id, storage.ErrIntegrity)
 		}
-		if err := storage.Check(ctx, b, loc.Key, o.Size, o.SHA256); err != nil {
+		if err := storage.Check(ctx, b, loc.Key, o.Size, o.SHA); err != nil {
 			return rep, fmt.Errorf("files: restore %s: %w", id, err)
 		}
 		rep.Restored++
@@ -197,4 +210,28 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 	}
 	rep.Objects = len(list)
 	return rep, nil
+}
+
+// knownObject reads a version or rendition row by id. An id in neither table is not
+// one of this database's objects.
+func (s *Service) knownObject(ctx context.Context, id domain.ID) (object, error) {
+	v, err := s.st.getVersion(ctx, id)
+	if err == nil {
+		return versionObject(v), nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return object{}, err
+	}
+	r, err := s.st.getRendition(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return object{}, errors.New("the restored database has no version or rendition with this id")
+	}
+	if err != nil {
+		return object{}, err
+	}
+	v, err = s.st.getVersion(ctx, r.FileVersionID)
+	if err != nil {
+		return object{}, err
+	}
+	return renditionObject(r, v.FileID), nil
 }

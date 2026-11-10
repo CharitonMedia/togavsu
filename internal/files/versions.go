@@ -507,8 +507,9 @@ func (s *Service) Links(ctx context.Context, p domain.Principal, fileID domain.I
 }
 
 // Archive writes the current version of each selected file, or of every file in a
-// folder, into one zip. One hidden file denies the whole archive. Each file is
-// verified as it is written and each download is logged.
+// folder, into one zip. A folder archive holds only the files the caller may see, the
+// way List shows the folder; a hidden file the caller named denies the whole archive.
+// Each file is verified as it is written and each download is logged.
 func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.ID, folder domain.ID, confirmQuarantine bool, w io.Writer) error {
 	var rows []fileRow
 	if folder != "" {
@@ -523,13 +524,30 @@ func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.
 			return err
 		}
 		f := string(folder)
-		if rows, err = s.st.listFiles(ctx, fileQuery{MatterID: fd.MatterID, Folder: &f}); err != nil {
+		listed, err := s.st.listFiles(ctx, fileQuery{MatterID: fd.MatterID, Folder: &f})
+		if err != nil {
 			return err
+		}
+		walls := map[domain.ID]domain.WallView{}
+		for _, f := range listed {
+			if f.PurgedAt != zero {
+				continue
+			}
+			d, err := s.decide(ctx, p, f, domain.ActionRead, walls)
+			if err != nil {
+				return err
+			}
+			if d.Allow {
+				rows = append(rows, f)
+			}
 		}
 	}
 	for _, id := range ids {
 		f, err := s.loadFile(ctx, id)
 		if err != nil {
+			return err
+		}
+		if err := s.visible(ctx, p, f); err != nil {
 			return err
 		}
 		rows = append(rows, f)
@@ -539,9 +557,6 @@ func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.
 	}
 	var versions []domain.FileVersion
 	for _, f := range rows {
-		if err := s.visible(ctx, p, f); err != nil {
-			return err
-		}
 		v, err := s.st.getVersion(ctx, f.CurrentVersionID)
 		if err != nil {
 			return err

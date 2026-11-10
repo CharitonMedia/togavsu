@@ -48,11 +48,13 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
 ## Doc Tender's naming and filing
 
 - `ApplyTender(ctx, p, fileID, TenderUpdate{Name, Category, Folder})` sets only fields a
-  person has not locked (`locked_fields`: `name`, `category`, `matter`, `grouping`) and
-  reports `Set` and `Skipped`. It never changes a file's matter. A name clash in the
+  person has not locked (`locked_fields`: `name`, `category`, `matter`, `folder`, `grouping`) and
+  reports `Set` and `Skipped`. The folder follows the category, so `Folder` is skipped
+  when either `folder` or `category` is locked. It never changes a file's matter. A name clash in the
   matter becomes `-2`, `-3`. `Folder` is the category's folder name; the matter folder
   is created when missing.
-- A person's `Rename` locks `name`; `UpdateMetadata` locks `category` and `matter`.
+- A person's `Rename` locks `name`; `UpdateMetadata` locks `category` and `matter`;
+  `MoveToFolder` locks `folder`.
 - `UniqueName(ctx, matter, name)` previews the clash rule.
 - `MatterFiles(ctx, systemPrincipal, matter)` lists a reopened matter's files to queue.
 

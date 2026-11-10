@@ -28,6 +28,8 @@ type TenderResult struct {
 
 // ApplyTender is Doc Tender's write. A name, category or folder a person set is locked
 // (files.locked_fields) and is never changed here; such a field is reported in Skipped.
+// The folder follows the category (PRD 8.19), so a locked category also keeps the
+// folder, and a person's MoveToFolder locks "folder" itself.
 // It never moves a file to another matter. The caller is Doc Tender's system principal
 // (or a person through the review queue); access is checked like any write.
 func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain.ID, u TenderUpdate) (TenderResult, error) {
@@ -40,7 +42,7 @@ func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain
 		return res, err
 	}
 	var folder domain.ID
-	if u.Folder != "" && f.MatterID != "" && !isLocked(f, "grouping") {
+	if u.Folder != "" && f.MatterID != "" && !folderSettled(f) {
 		fv, err := s.FolderByName(ctx, p, f.MatterID, u.Folder)
 		if err != nil {
 			return res, err
@@ -84,7 +86,9 @@ func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain
 				changes = append(changes, change{"category", cur.Category, u.Category})
 			}
 		}
-		if folder != "" && string(folder) != cur.Folder {
+		if u.Folder != "" && cur.MatterID != "" && folderSettled(cur) {
+			res.Skipped = append(res.Skipped, "folder")
+		} else if folder != "" && string(folder) != cur.Folder {
 			next.Folder = string(folder)
 			changes = append(changes, change{"folder", cur.Folder, string(folder)})
 		}
@@ -106,6 +110,12 @@ func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain
 		return s.event(ctx, p, next, "file.updated", "Doc Tender filed "+next.Name)
 	})
 	return res, err
+}
+
+// folderSettled says a person settled the file's filing: they chose its folder, or
+// locked the category the folder follows.
+func folderSettled(f fileRow) bool {
+	return isLocked(f, "folder") || isLocked(f, "category")
 }
 
 // UniqueName returns name, or name with -2, -3 and so on before the extension, so it

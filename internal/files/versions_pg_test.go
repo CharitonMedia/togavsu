@@ -224,7 +224,8 @@ func TestPGFoldersAndMetadataLocks(t *testing.T) {
 	}
 	cat := "correspondence"
 	got, err := e.svc.UpdateMetadata(ctx, e.staff, f.ID, Metadata{CategoryID: &cat})
-	if err != nil || got.CategoryID == nil || *got.CategoryID != cat || len(got.LockedFields) != 1 || got.LockedFields[0] != "category" {
+	// The person's move locked the folder; the recategorize adds the category lock.
+	if err != nil || got.CategoryID == nil || *got.CategoryID != cat || len(got.LockedFields) != 2 || got.LockedFields[0] != "folder" || got.LockedFields[1] != "category" {
 		t.Fatalf("category = %+v %v", got, err)
 	}
 	bad := "not_a_category"

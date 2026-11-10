@@ -135,6 +135,16 @@ func (s *store) getFile(ctx context.Context, id domain.ID) (fileRow, error) {
 	return scanFile(s.row(ctx, `SELECT `+fileCols+` FROM files WHERE id = ?`, id))
 }
 
+// lockFile reads a file FOR UPDATE inside a transaction, so two saves to one file
+// number their versions one after the other.
+func (s *store) lockFile(ctx context.Context, id domain.ID) (fileRow, error) {
+	query := `SELECT ` + fileCols + ` FROM files WHERE id = ?`
+	if s.dialect == "postgres" {
+		query += " FOR UPDATE"
+	}
+	return scanFile(s.row(ctx, query, id))
+}
+
 // fileQuery narrows a list in SQL. Access is applied to every row afterwards.
 type fileQuery struct {
 	MatterID  domain.ID
@@ -577,6 +587,19 @@ func (s *store) insertUpload(ctx context.Context, u uploadRow) error {
 func (s *store) updateUpload(ctx context.Context, u uploadRow) error {
 	return s.exec(ctx, `UPDATE file_uploads SET updated_at = ?, received_bytes = ?, sha256 = ?, status = ?, file_id = ?, version_id = ? WHERE id = ?`,
 		us(u.UpdatedAt), u.ReceivedBytes, u.SHA256, u.Status, nullID(u.FileID), nullID(u.VersionID), u.ID)
+}
+
+// publishUpload marks a staged upload published in the caller's transaction. It
+// reports false when another publish already took it: the conditional UPDATE waits on
+// the row lock and then sees the committed status, so only one publish wins.
+func (s *store) publishUpload(ctx context.Context, u uploadRow) (bool, error) {
+	res, err := s.q(ctx).ExecContext(ctx, db.Rebind(`UPDATE file_uploads SET updated_at = ?, status = 'published', file_id = ?, version_id = ?
+WHERE id = ? AND status = 'staged'`, s.dialect), us(u.UpdatedAt), nullID(u.FileID), nullID(u.VersionID), u.ID)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > int64(zero), err
 }
 
 // lockUpload reads an upload FOR UPDATE inside a transaction, so two chunk writers

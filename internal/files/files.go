@@ -352,7 +352,7 @@ func (s *Service) saveVersion(ctx context.Context, p domain.Principal, fileID do
 	}
 	var v domain.FileVersion
 	err = s.tx(ctx, func(ctx context.Context) error {
-		f, err := s.st.getFile(ctx, fileID)
+		f, err := s.st.lockFile(ctx, fileID)
 		if err != nil {
 			return err
 		}
@@ -569,7 +569,8 @@ func (s *Service) Rename(ctx context.Context, p domain.Principal, id domain.ID, 
 	})
 }
 
-// MoveToFolder moves a file between its matter's folders. Bytes never move.
+// MoveToFolder moves a file between its matter's folders. Bytes never move. A
+// person's move locks the folder so Doc Tender never refiles it.
 func (s *Service) MoveToFolder(ctx context.Context, p domain.Principal, id domain.ID, folder domain.ID) (FileView, error) {
 	return s.change(ctx, p, id, "folder", func(f *fileRow) (string, string, error) {
 		if err := s.checkFolder(ctx, folder, f.MatterID); err != nil {
@@ -577,6 +578,7 @@ func (s *Service) MoveToFolder(ctx context.Context, p domain.Principal, id domai
 		}
 		old := f.Folder
 		f.Folder = string(folder)
+		lock(f, "folder")
 		return old, f.Folder, nil
 	})
 }
