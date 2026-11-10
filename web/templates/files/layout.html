@@ -1,0 +1,32 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<title>{{.Title}} · Togavsu</title>
+<link rel="stylesheet" href="/practice/static/practice.css">
+<link rel="stylesheet" href="/files/static/files.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/practice/matters">Togavsu</a>
+  <nav>
+    <a href="/practice/matters">Matters</a>
+    <a href="/practice/contacts">Contacts</a>
+    <a href="/practice/notes">Notes</a>
+    <a href="/practice/activity">Activity</a>
+    {{if .Admin}}<a href="/files/admin/storage">Files and storage</a>{{end}}
+    <a href="/admin/settings">Settings</a>
+    <a href="/logout">Sign out</a>
+  </nav>
+</header>
+<main>
+<h1>{{.Title}} <a class="help" href="/help/files" aria-label="Help for this screen">?</a></h1>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
+{{define "foot"}}
+</main>
+<script src="/files/static/files.js"></script>
+</body>
+</html>{{end}}
