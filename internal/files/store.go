@@ -235,22 +235,49 @@ WHERE f.matter_id = ? AND v.sha256 = ? AND f.purged_at = 0 ORDER BY f.id`, matte
 	return out, rows.Err()
 }
 
-// takenDrop finds a file the drop folder already took: same arrived name and a first
-// version with the same SHA-256, on the same matter for a matter subfolder. A top-level
-// drop matches on any matter, because Doc Tender may since have filed it to one.
-func (s *store) takenDrop(ctx context.Context, matter domain.ID, name, sha string) (domain.ID, bool, error) {
-	query := `SELECT f.id FROM files f JOIN file_versions v ON v.file_id = f.id AND v.number = 1
-WHERE f.source = 'drop_folder' AND f.arrived_name = ? AND v.sha256 = ?`
-	args := []any{name, sha}
-	if matter != "" {
-		query, args = query+" AND f.matter_id = ?", append(args, matter)
-	}
-	var id domain.ID
-	err := s.row(ctx, query+" ORDER BY f.id LIMIT 1", args...).Scan(&id)
+// dropTake is a drop-folder file whose record committed but whose share copy has not
+// yet been confirmed gone.
+type dropTake struct {
+	ID      domain.ID
+	FileID  domain.ID
+	Refused bool
+	Purged  bool
+}
+
+func (s *store) insertDropTake(ctx context.Context, id domain.ID, at int64, backend domain.ID, path string, size int64, sha string, file domain.ID) error {
+	return s.exec(ctx, `INSERT INTO drop_takes (id, created_at, storage_backend_id, path, size_bytes, sha256, file_id) VALUES (?,?,?,?,?,?,?)`,
+		id, at, backend, path, size, sha, file)
+}
+
+// pendingDropTake finds the take of exactly this share copy (backend, path, SHA-256)
+// whose delete has not yet succeeded. A taken and removed file dropped again has no
+// pending take, so it is a new drop whatever records already hold the same bytes.
+func (s *store) pendingDropTake(ctx context.Context, backend domain.ID, path, sha string) (dropTake, bool, error) {
+	var t dropTake
+	var refused int
+	var purged int64
+	err := s.row(ctx, `SELECT d.id, d.file_id, d.refused, f.purged_at FROM drop_takes d JOIN files f ON f.id = d.file_id
+WHERE d.storage_backend_id = ? AND d.path = ? AND d.sha256 = ? AND d.closed_at = 0`, backend, path, sha).Scan(&t.ID, &t.FileID, &refused, &purged)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
+		return dropTake{}, false, nil
 	}
-	return id, err == nil, err
+	t.Refused, t.Purged = refused != int(zero), purged != zero
+	return t, err == nil, err
+}
+
+func (s *store) dropTakeClosed(ctx context.Context, id domain.ID, at int64) error {
+	return s.exec(ctx, `UPDATE drop_takes SET closed_at = ? WHERE id = ? AND closed_at = 0`, at, id)
+}
+
+// dropTakeRefused marks the share refusing the delete; it reports whether this call
+// was the first to mark it, so the admins are alerted once.
+func (s *store) dropTakeRefused(ctx context.Context, id domain.ID) (bool, error) {
+	res, err := s.q(ctx).ExecContext(ctx, db.Rebind(`UPDATE drop_takes SET refused = 1 WHERE id = ? AND refused = 0`, s.dialect), id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > zero, err
 }
 
 func (s *store) namesInMatter(ctx context.Context, matter domain.ID) (map[string]bool, error) {
@@ -451,9 +478,18 @@ type Folder struct {
 	SortOrder int
 }
 
-func (s *store) insertFolder(ctx context.Context, f Folder) error {
-	return s.exec(ctx, `INSERT INTO folders (id, created_at, updated_at, created_by, matter_id, name, sort_order) VALUES (?,?,?,?,?,?,?)`,
+// insertFolderOnce inserts f unless the matter already has a folder of that name
+// (ignoring case, folders_matter_name_idx). It reports whether f was inserted; a
+// concurrent insert of the same name waits for the other and then reports false.
+func (s *store) insertFolderOnce(ctx context.Context, f Folder) (bool, error) {
+	res, err := s.q(ctx).ExecContext(ctx, db.Rebind(`INSERT INTO folders (id, created_at, updated_at, created_by, matter_id, name, sort_order)
+VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, s.dialect),
 		f.ID, us(f.CreatedAt), us(f.UpdatedAt), f.CreatedBy, f.MatterID, f.Name, f.SortOrder)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > zero, err
 }
 
 func (s *store) updateFolder(ctx context.Context, f Folder) error {

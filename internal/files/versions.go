@@ -150,13 +150,11 @@ func (s *Service) logDownload(ctx context.Context, p domain.Principal, f fileRow
 		if err := s.record(ctx, p, "file", f.ID, "download", "", what); err != nil {
 			return err
 		}
-		ev := f
-		ev.SharedWithClient = f.SharedWithClient || clientOnly(p)
 		summary := "Downloaded " + f.Name
 		if clientOnly(p) {
 			summary = "Client downloaded " + f.Name
 		}
-		return s.event(ctx, p, ev, "file.downloaded", summary)
+		return s.event(ctx, p, f, "file.downloaded", summary)
 	})
 }
 

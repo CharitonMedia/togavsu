@@ -152,18 +152,28 @@ func (s *Service) scanOne(ctx context.Context, b domain.StorageBackend, root str
 		if !had || now.Sub(cur.since) < steady {
 			continue
 		}
-		// A file is taken once. If an earlier pass (or an earlier process) committed
-		// its record but could not delete it, only the delete is retried.
-		prior, taken, err := s.st.takenDrop(ctx, c.matter, filepath.Base(c.path), cur.sha)
+		// A share copy is taken once. If an earlier pass (or an earlier process)
+		// committed its record but could not delete it, only the delete is retried. The
+		// check is on this copy's own take, not on records with the same name and bytes:
+		// a document taken, removed and later dropped again is a new drop.
+		prior, pending, err := s.st.pendingDropTake(ctx, b.ID, c.path, cur.sha)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
-		if taken {
-			s.removeTaken(ctx, b.ID, c.path, prior, cur.sha)
+		if pending && !prior.Purged {
+			s.removeTaken(ctx, b.ID, c.path, prior)
 			continue
 		}
-		view, err := s.ingest(ctx, who, c.path, c.matter, cur)
+		if pending {
+			// The record was emptied from the trash while the share kept its copy: that
+			// copy is now the only one, so close the old take and take it again.
+			if err := s.st.dropTakeClosed(ctx, prior.ID, us(now)); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
+		view, take, err := s.ingest(ctx, who, b.ID, c.path, c.matter, cur)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -172,17 +182,12 @@ func (s *Service) scanOne(ctx context.Context, b domain.StorageBackend, root str
 		delete(s.drops, c.path)
 		s.mu.Unlock()
 		out = append(out, view)
-		s.removeTaken(ctx, b.ID, c.path, view.ID, cur.sha)
+		s.removeTaken(ctx, b.ID, c.path, take)
 	}
 	s.mu.Lock()
 	for p := range s.drops {
 		if strings.HasPrefix(p, root+string(filepath.Separator)) && !seen[p] {
 			delete(s.drops, p)
-		}
-	}
-	for p := range s.dropAlerted {
-		if strings.HasPrefix(p, root+string(filepath.Separator)) && !seen[p] {
-			delete(s.dropAlerted, p)
 		}
 	}
 	s.mu.Unlock()
@@ -202,45 +207,53 @@ func hashFile(p string) (string, error) {
 	return h.Sum(), nil
 }
 
-// ingest stores the dropped bytes and checks they still hash to what held steady.
-// The caller removes the dropped file only after the record commits.
-func (s *Service) ingest(ctx context.Context, who domain.Principal, p string, matter domain.ID, seen dropSeen) (FileView, error) {
+// ingest stores the dropped bytes and checks they still hash to what held steady. The
+// take of this share copy commits with the record; the caller removes the copy after.
+func (s *Service) ingest(ctx context.Context, who domain.Principal, backend domain.ID, p string, matter domain.ID, seen dropSeen) (FileView, dropTake, error) {
 	f, err := os.Open(p)
 	if err != nil {
-		return FileView{}, err
+		return FileView{}, dropTake{}, err
 	}
 	defer f.Close()
-	return s.create(ctx, who, NewFile{
+	m, err := s.meta(who.UserID)
+	if err != nil {
+		return FileView{}, dropTake{}, err
+	}
+	take := dropTake{ID: m.ID}
+	view, err := s.create(ctx, who, NewFile{
 		Name: filepath.Base(p), MatterID: matter, Source: "drop_folder", How: "upload",
 		MediaType: mediaTypeOf(filepath.Base(p)),
-	}, f, seen.size, seen.sha, nil)
+	}, f, seen.size, seen.sha, func(ctx context.Context, fr fileRow, _ domain.FileVersion) error {
+		take.FileID = fr.ID
+		return s.st.insertDropTake(ctx, m.ID, us(m.CreatedAt), backend, p, seen.size, seen.sha, fr.ID)
+	})
+	return view, take, err
 }
 
-// removeTaken deletes a drop file whose record is committed. When the share refuses
-// the delete (no delete right, a file held open), the file stays where it is, is
-// never taken again (takenDrop), and the admins get one storage alert for it.
-func (s *Service) removeTaken(ctx context.Context, backend domain.ID, p string, file domain.ID, sha string) {
+// removeTaken deletes a drop file whose record is committed and closes its take. When
+// the share refuses the delete (no delete right, a file held open), the file stays
+// where it is, its take stays pending so later passes only retry the delete, and the
+// admins get one storage alert for it.
+func (s *Service) removeTaken(ctx context.Context, backend domain.ID, p string, take dropTake) {
 	err := s.removeDrop(p)
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
-		s.mu.Lock()
-		delete(s.dropAlerted, p)
-		s.mu.Unlock()
+		_ = s.st.dropTakeClosed(ctx, take.ID, us(s.now()))
 		return
 	}
-	s.mu.Lock()
-	already := s.dropAlerted[p] == sha
-	s.dropAlerted[p] = sha
-	s.mu.Unlock()
-	if already {
+	if take.Refused {
+		return
+	}
+	first, merr := s.st.dropTakeRefused(ctx, take.ID)
+	if merr != nil || !first {
 		return
 	}
 	detail := fmt.Sprintf("the drop folder took %s as file %s but could not remove it from the share: %v. "+
-		"It will not be taken again; delete it from the drop folder by hand or give Togavsu delete rights there.", p, file, err)
+		"It will not be taken again; delete it from the drop folder by hand or give Togavsu delete rights there.", p, take.FileID, err)
 	emailed := false
 	if s.mail != nil {
 		emailed = s.mail.MailAdmins(ctx, "Togavsu storage alert: a dropped file could not be removed", detail) == nil
 	}
 	if m, err := s.meta(domain.SystemUserID); err == nil {
-		_ = s.st.insertAlert(ctx, m, backend, file, file, detail, emailed)
+		_ = s.st.insertAlert(ctx, m, backend, take.FileID, take.FileID, detail, emailed)
 	}
 }

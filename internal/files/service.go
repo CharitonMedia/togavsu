@@ -112,9 +112,6 @@ type Service struct {
 	adapters map[domain.ID]cached
 	running  map[domain.ID]bool
 	drops    map[string]dropSeen
-	// dropAlerted is the drop paths (and SHA-256) already reported as taken but not
-	// removable, so a share without delete rights alerts once, not every pass.
-	dropAlerted map[string]string
 	// removeDrop deletes a taken drop file; a test makes it fail like a share without
 	// delete permission.
 	removeDrop func(string) error
@@ -153,7 +150,7 @@ func New(cfg Config) (*Service, error) {
 		blobKey: derive(cfg.Key, "togavsu/storage/bytes"), configKey: derive(cfg.Key, "togavsu/storage/settings"),
 		staging: cfg.StagingDir, http: cfg.HTTP, now: cfg.Now, newID: domain.NewID, onVersion: cfg.OnVersion,
 		adapters: map[domain.ID]cached{}, running: map[domain.ID]bool{}, drops: map[string]dropSeen{},
-		dropAlerted: map[string]string{}, removeDrop: os.Remove,
+		removeDrop: os.Remove,
 	}, nil
 }
 
@@ -220,6 +217,9 @@ func (s *Service) record(ctx context.Context, p domain.Principal, entity string,
 	return err
 }
 
+// event appends a timeline row for f. A client sees it only when the client can see the
+// file (shared and not attorney-only) or when the client did it: an attorney-only file's
+// name and activity never reach the client timeline, whatever its share flag says.
 func (s *Service) event(ctx context.Context, p domain.Principal, f fileRow, action, summary string) error {
 	m, err := s.meta(actor(p, f.CreatedBy))
 	if err != nil {
@@ -228,8 +228,13 @@ func (s *Service) event(ctx context.Context, p domain.Principal, f fileRow, acti
 	return s.st.appendEvent(ctx, domain.Event{
 		Meta: m, ActorKind: actorKind(p), ActorID: actor(p, domain.SystemUserID), Action: action,
 		RecordType: "file", RecordID: f.ID, MatterID: f.MatterID, Summary: summary,
-		ClientVisible: f.SharedWithClient,
+		ClientVisible: clientSees(p, f),
 	})
+}
+
+// clientSees is whether a timeline row about f is client-visible.
+func clientSees(p domain.Principal, f fileRow) bool {
+	return clientOnly(p) || (f.SharedWithClient && !f.AttorneyOnly)
 }
 
 // decide applies walls and roles to one file. A file with a matter follows the

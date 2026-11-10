@@ -455,31 +455,36 @@ func (s *Service) defaultFolders(ctx context.Context, m Matter) ([]string, error
 	return names, nil
 }
 
+// seedFolders creates the matter's default folders. Two first opens (or a first open
+// and Doc Tender) racing each other converge: a name another caller inserted first is
+// skipped, and the result is the matter's folders as committed.
 func (s *Service) seedFolders(ctx context.Context, p domain.Principal, m Matter) ([]Folder, error) {
 	matter := m.ID
 	names, err := s.defaultFolders(ctx, m)
 	if err != nil {
 		return nil, err
 	}
-	var out []Folder
 	err = s.tx(ctx, func(ctx context.Context) error {
 		for i, name := range names {
 			m, err := s.meta(actor(p, domain.SystemUserID))
 			if err != nil {
 				return err
 			}
-			f := Folder{Meta: m, MatterID: matter, Name: name, SortOrder: i}
-			if err := s.st.insertFolder(ctx, f); err != nil {
+			if _, err := s.st.insertFolderOnce(ctx, Folder{Meta: m, MatterID: matter, Name: name, SortOrder: i}); err != nil {
 				return err
 			}
-			out = append(out, f)
 		}
 		return nil
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	return s.st.folders(ctx, matter)
 }
 
 // FolderByName returns a matter folder by its name, for Doc Tender's category folders.
+// It creates the folder when the matter has none of that name; when a concurrent caller
+// creates it first, it returns that folder rather than a conflict.
 func (s *Service) FolderByName(ctx context.Context, p domain.Principal, matter domain.ID, name string) (FolderView, error) {
 	rows, err := s.Folders(ctx, p, matter)
 	if err != nil {
@@ -490,11 +495,16 @@ func (s *Service) FolderByName(ctx context.Context, p domain.Principal, matter d
 			return f, nil
 		}
 	}
-	return s.CreateFolder(ctx, p, matter, name, len(rows))
+	return s.createFolder(ctx, p, matter, name, len(rows), true)
 }
 
-// CreateFolder adds a folder to a matter the caller can write files on.
+// CreateFolder adds a folder to a matter the caller can write files on. A name the
+// matter already has (ignoring case) is a conflict.
 func (s *Service) CreateFolder(ctx context.Context, p domain.Principal, matter domain.ID, name string, order int) (FolderView, error) {
+	return s.createFolder(ctx, p, matter, name, order, false)
+}
+
+func (s *Service) createFolder(ctx context.Context, p domain.Principal, matter domain.ID, name string, order int, existingOK bool) (FolderView, error) {
 	name = strings.TrimSpace(name)
 	if err := validName(name); err != nil {
 		return FolderView{}, err
@@ -508,19 +518,27 @@ func (s *Service) CreateFolder(ctx context.Context, p domain.Principal, matter d
 	}
 	f := Folder{Meta: m, MatterID: matter, Name: name, SortOrder: order}
 	err = s.tx(ctx, func(ctx context.Context) error {
+		inserted, err := s.st.insertFolderOnce(ctx, f)
+		if err != nil {
+			return err
+		}
+		if inserted {
+			return s.record(ctx, p, "folder", f.ID, "name", "", name)
+		}
 		existing, err := s.st.folders(ctx, matter)
 		if err != nil {
 			return err
 		}
 		for _, e := range existing {
 			if strings.EqualFold(e.Name, name) {
-				return domain.Conflict("the matter already has a folder named " + e.Name)
+				if !existingOK {
+					return domain.Conflict("the matter already has a folder named " + e.Name)
+				}
+				f = e
+				return nil
 			}
 		}
-		if err := s.st.insertFolder(ctx, f); err != nil {
-			return err
-		}
-		return s.record(ctx, p, "folder", f.ID, "name", "", name)
+		return domain.Conflict("the matter already has a folder named " + name)
 	})
 	if err != nil {
 		return FolderView{}, err

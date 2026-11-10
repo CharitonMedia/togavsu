@@ -29,6 +29,9 @@ CREATE TABLE folders (
   sort_order INTEGER NOT NULL,
   UNIQUE (matter_id, name)
 );
+-- Folder names are unique per matter ignoring case, so concurrent seeding and Doc
+-- Tender's category folders converge on one row (INSERT ... ON CONFLICT DO NOTHING).
+CREATE UNIQUE INDEX folders_matter_name_idx ON folders (matter_id, LOWER(name));
 
 -- The current home of a version's or rendition's bytes, written with every object and
 -- replaced when a storage move repoints it. sealed records whether those bytes were
@@ -107,6 +110,24 @@ CREATE TABLE storage_alerts (
   emailed INTEGER NOT NULL CHECK (emailed IN (0, 1))
 );
 
+-- One drop-folder file taken into a record. The row commits with the file record;
+-- closed_at is set once the share copy is gone, or when the record it fed was purged
+-- (the share copy is then the only copy and is taken anew). A row with closed_at = 0 is a copy
+-- still on the share whose delete must be retried, never a reason to skip a new drop.
+-- refused marks the share refusing the delete, so the admins are alerted once.
+CREATE TABLE drop_takes (
+  id TEXT PRIMARY KEY,
+  created_at BIGINT NOT NULL,
+  storage_backend_id TEXT NOT NULL REFERENCES storage_backends (id) ON DELETE RESTRICT,
+  path TEXT NOT NULL,
+  size_bytes BIGINT NOT NULL,
+  sha256 TEXT NOT NULL,
+  file_id TEXT NOT NULL REFERENCES files (id) ON DELETE RESTRICT,
+  refused INTEGER NOT NULL DEFAULT 0 CHECK (refused IN (0, 1)),
+  closed_at BIGINT NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX drop_takes_pending_idx ON drop_takes (storage_backend_id, path, sha256) WHERE closed_at = 0;
+
 -- What Files search matches: the newest Markdown copy of each file, lowercased.
 CREATE TABLE file_search_text (
   file_id TEXT PRIMARY KEY REFERENCES files (id) ON DELETE RESTRICT,
@@ -116,12 +137,14 @@ CREATE TABLE file_search_text (
 
 -- +goose Down
 DROP TABLE file_search_text;
+DROP TABLE drop_takes;
 DROP TABLE storage_alerts;
 DROP TABLE storage_move_items;
 ALTER TABLE storage_moves DROP COLUMN progress_total;
 DROP TABLE file_uploads;
 DROP TABLE file_quarantine_marks;
 DROP TABLE file_object_locations;
+DROP INDEX folders_matter_name_idx;
 DROP TABLE folders;
 DROP INDEX file_links_to_idx;
 DROP INDEX file_links_from_idx;

@@ -17,6 +17,8 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
 - Timeline rows go to `core.events` in the same transaction as the write:
   `file.version_created`, `file.updated`, `file.downloaded` (client downloads have
   `actor_kind = client` and `client_visible = 1` for the highlight), `file.purged`.
+  `client_visible` is 1 for a client's own action, or for a file that is shared with the
+  client and not attorney-only; an attorney-only file's events are never client-visible.
 
 ## Reading bytes
 
@@ -81,12 +83,15 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
 
 ## Drop folder
 
-A dropped file is taken once. If its record commits but the share refuses the delete
-(no delete right, a file held open), it stays in the drop folder. Later passes, including
-after a restart, find the record (`source = drop_folder`, arrived name and first-version
-SHA-256; the same matter for a matter subfolder, any matter for a top-level drop Doc
-Tender may since have filed) and only retry the delete. The admins get one storage alert
-per path and content in each process run. A file whose bytes change under the same name is a new drop.
+A dropped share copy is taken once. Its `drop_takes` row (backend, path, size, SHA-256,
+file id) commits in the same transaction as the file record and is closed once the share
+copy is gone. If the share refuses the delete (no delete right, a file held open), the
+copy stays in the drop folder and its take stays open: later passes, including after a
+restart and after Doc Tender files a top-level drop to a matter, only retry the delete.
+The admins get one storage alert per refused take. Only an open take stops a new record;
+a document that was taken, removed and dropped again with the same name and bytes is a
+new drop, and so is a copy whose record was emptied from the trash while the share still
+held it. A file whose bytes change under the same name is a new drop.
 
 ## Editor locks
 
