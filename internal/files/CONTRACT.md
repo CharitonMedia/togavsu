@@ -105,6 +105,9 @@ held it. A file whose bytes change under the same name is a new drop.
 plaintext) of every version and rendition, Markdown copies included, on every backend
 the backup covers (`backed_up` and `files.backup_scope`). `skip` lets the nightly backup
 copy each immutable object once. `RestoreBytes(ctx, admin, r)` puts each object back
-where the restored database says it lives and checks its SHA-256 there. The supervisor
+where the restored database says it lives and checks its SHA-256 there. An archive
+missing a manifest object, or repeating one, fails the restore; an object whose file
+was emptied from the trash after the archive was taken is skipped (`purged`), so a
+purge stays a purge. A storage move skips purged files the same way. The supervisor
 encrypts the archive and restores the database; wiring it to these two calls is
 pending (PONYTAIL-DEBT platform ceiling 13).

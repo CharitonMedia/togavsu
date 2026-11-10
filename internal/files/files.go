@@ -184,7 +184,7 @@ func (s *Service) storeBytes(ctx context.Context, key domain.ID, r io.Reader, si
 func longerThan(r io.Reader) bool {
 	var one [1]byte
 	n, _ := io.ReadFull(r, one[:])
-	return n > 0
+	return n > int(zero)
 }
 
 // dropObject deletes stored bytes; used to undo a put whose record did not commit.

@@ -219,12 +219,26 @@ func (s *Service) RunMove(ctx context.Context, id domain.ID) error {
 	})
 }
 
+// moveOne copies one object and points its record at the copy. An object whose file
+// was emptied from the trash is not moved: before the copy, or if the purge commits
+// while the copy is in flight, the item is marked done with nothing left on either
+// backend, and a purge that commits after the record change deletes the new copy.
 func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
 	o := object{ID: it.ObjectID, Kind: it.ObjectKind, Size: it.SizeBytes, SHA: it.SHA256}
+	known, err := s.knownObject(ctx, it.ObjectID)
+	if err != nil {
+		return err
+	}
+	if purged, err := s.filePurged(ctx, known.FileID); err != nil {
+		return err
+	} else if purged {
+		return s.tx(ctx, func(ctx context.Context) error { return s.moveItemDone(ctx, m, it, "old_deleted") })
+	}
 	from, err := s.st.location(ctx, it.ObjectID, location{Backend: it.FromBackendID, Key: it.FromKey})
 	if err != nil {
 		return err
 	}
+	copied := false
 	if from.Backend == m.FromBackendID {
 		src, err := s.at(ctx, from)
 		if err != nil {
@@ -232,6 +246,10 @@ func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
 		}
 		body, err := storage.OpenVerified(ctx, src, from.Key, o.Size, o.SHA)
 		if err != nil {
+			// A purge that deleted the source since the check above is not a failure.
+			if purged, perr := s.filePurged(ctx, known.FileID); perr == nil && purged {
+				return s.moveOne(ctx, m, it)
+			}
 			return err
 		}
 		body.OnMismatch = func(err error) { s.alert(context.WithoutCancel(ctx), from.Backend, o, err) }
@@ -266,23 +284,46 @@ func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
 			s.dropObject(ctx, to)
 			return fmt.Errorf("the copy on the new backend did not check out: %w", err)
 		}
-		from = to
+		from, copied = to, true
 	}
-	return s.tx(ctx, func(ctx context.Context) error {
-		if err := s.st.setLocation(ctx, it.ObjectID, it.ObjectKind, from, us(s.now())); err != nil {
-			return err
-		}
-		if err := s.st.setMoveItem(ctx, m.ID, it.ObjectID, "checked"); err != nil {
-			return err
-		}
-		cur, err := s.st.getMove(ctx, m.ID)
+	if s.beforeMoveCommit != nil {
+		s.beforeMoveCommit(it.ObjectID)
+	}
+	// The file row is locked, as Purge locks it, so a purge either commits first and is
+	// seen here, or waits and then reads (and deletes) the new location.
+	purged := false
+	err = s.tx(ctx, func(ctx context.Context) error {
+		f, err := s.lockedFile(ctx, known.FileID)
 		if err != nil {
 			return err
 		}
-		cur.Progress++
-		cur.UpdatedAt = s.now().UTC()
-		return s.st.updateMove(ctx, cur)
+		if f.PurgedAt != zero {
+			purged = true
+			return s.moveItemDone(ctx, m, it, "old_deleted")
+		}
+		if err := s.st.setLocation(ctx, it.ObjectID, it.ObjectKind, from, us(s.now())); err != nil {
+			return err
+		}
+		return s.moveItemDone(ctx, m, it, "checked")
 	})
+	if err == nil && purged && copied {
+		s.dropObject(ctx, from)
+	}
+	return err
+}
+
+// moveItemDone marks one move item with its final status and counts it.
+func (s *Service) moveItemDone(ctx context.Context, m moveRow, it moveItem, status string) error {
+	if err := s.st.setMoveItem(ctx, m.ID, it.ObjectID, status); err != nil {
+		return err
+	}
+	cur, err := s.st.getMove(ctx, m.ID)
+	if err != nil {
+		return err
+	}
+	cur.Progress++
+	cur.UpdatedAt = s.now().UTC()
+	return s.st.updateMove(ctx, cur)
 }
 
 // ResumeMoves restarts every move that was running when the core stopped.

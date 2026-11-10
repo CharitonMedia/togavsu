@@ -117,6 +117,8 @@ type Service struct {
 	removeDrop func(string) error
 	// afterMoveItem lets a test stop a move between objects.
 	afterMoveItem func(done int)
+	// beforeMoveCommit lets a test act between a move's copy and its record change.
+	beforeMoveCommit func(object domain.ID)
 }
 
 type cached struct {

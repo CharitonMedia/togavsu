@@ -33,6 +33,7 @@ type BackupReport struct {
 	Skipped  int         `json:"skipped"`
 	Restored int         `json:"restored"`
 	Verified int         `json:"verified"`
+	Purged   int         `json:"purged,omitempty"`
 	Excluded []domain.ID `json:"excluded_backends,omitempty"`
 }
 
@@ -189,6 +190,14 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 			return rep, fmt.Errorf("files: restore %s: the backup's %s of %d bytes, sha256 %s, does not match the database's %s of %d bytes, sha256 %s: %w",
 				id, m.Kind, m.Size, m.SHA256, o.Kind, o.Size, o.SHA, storage.ErrIntegrity)
 		}
+		// A file emptied from the trash after this archive was taken stays emptied:
+		// its bytes are not written back.
+		if purged, err := s.filePurged(ctx, o.FileID); err != nil {
+			return rep, fmt.Errorf("files: restore %s: %w", id, err)
+		} else if purged {
+			rep.Purged++
+			continue
+		}
 		loc, err := s.st.location(ctx, id, o.Home)
 		if err != nil {
 			return rep, err
@@ -227,6 +236,15 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 	}
 	rep.Objects = len(list)
 	return rep, nil
+}
+
+// filePurged reports whether a file has been emptied from the trash.
+func (s *Service) filePurged(ctx context.Context, file domain.ID) (bool, error) {
+	f, err := s.st.getFile(ctx, file)
+	if err != nil {
+		return false, err
+	}
+	return f.PurgedAt != zero, nil
 }
 
 // knownObject reads a version or rendition row by id. An id in neither table is not

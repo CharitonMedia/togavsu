@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -139,5 +140,117 @@ func TestPGStreamsMustMatchTheirDeclaredSize(t *testing.T) {
 	md := "# exact"
 	if _, err := e.svc.AddRendition(ctx, e.attorney, f.ID, v, "markdown", strings.NewReader(md), int64(len(md))); err != nil {
 		t.Fatalf("exact Markdown = %v", err)
+	}
+}
+
+// purgeFile trashes and empties a file and returns how many objects it had.
+func purgeFile(t *testing.T, e *env, f FileView) int {
+	t.Helper()
+	ctx := context.Background()
+	objs, err := e.svc.objectsOf(ctx, f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Trash(ctx, e.staff, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Purge(ctx, e.admin, f.ID, f.Name); err != nil {
+		t.Fatal(err)
+	}
+	return len(objs)
+}
+
+// TestPGRestoreSkipsPurgedFiles is checkpoint 5 finding 2: restoring an archive taken
+// before a file was emptied from the trash does not write that file's bytes back.
+func TestPGRestoreSkipsPurgedFiles(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	gone := e.create(e.staff, NewFile{Name: "gone.txt", MatterID: e.open}, "purged later")
+	kept := e.create(e.staff, NewFile{Name: "kept.txt", MatterID: e.open}, "still here")
+	keptObjs, err := e.svc.objectsOf(ctx, kept.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var archive bytes.Buffer
+	if _, err := e.svc.ExportBytes(ctx, e.admin, &archive, nil); err != nil {
+		t.Fatal(err)
+	}
+	purged := purgeFile(t, e, gone)
+	if err := os.RemoveAll(e.root + "/local/objects"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := e.svc.RestoreBytes(ctx, e.admin, bytes.NewReader(archive.Bytes()))
+	if err != nil || rep.Purged != purged || rep.Restored != len(keptObjs) {
+		t.Fatalf("restore = %+v %v, want %d purged and %d restored", rep, err, purged, len(keptObjs))
+	}
+	if n := localObjectFiles(t, e.root+"/local"); n != len(keptObjs) {
+		t.Fatalf("restore wrote %d objects, want only the %d of the kept file", n, len(keptObjs))
+	}
+	if got := readVersion(t, e, e.staff, kept.ID, *kept.CurrentVersionID); got != "still here" {
+		t.Fatalf("kept file = %q", got)
+	}
+}
+
+// TestPGMoveSkipsPurgedFiles is checkpoint 5 finding 3: a file emptied from the trash
+// before a move, or while one of its objects is being copied, is not left on the new
+// backend and does not fail the move.
+func TestPGMoveSkipsPurgedFiles(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	fs3, s3 := e.s3()
+	before := e.create(e.staff, NewFile{Name: "before.txt", MatterID: e.open}, "purged before the run")
+	during := e.create(e.staff, NewFile{Name: "during.txt", MatterID: e.open}, "purged during the copy")
+	live := e.create(e.staff, NewFile{Name: "live.txt", MatterID: e.open}, "moves normally")
+	liveObjs, err := e.svc.objectsOf(ctx, live.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duringObjs, err := e.svc.objectsOf(ctx, during.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Trash(ctx, e.staff, during.ID); err != nil {
+		t.Fatal(err)
+	}
+	m, err := e.svc.StartMove(ctx, e.admin, MoveRequest{FromBackendID: e.local.ID, ToBackendID: s3.ID, Scope: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	purgeFile(t, e, before)
+	of := map[domain.ID]bool{}
+	for _, o := range duringObjs {
+		of[o.ID] = true
+	}
+	once := false
+	e.svc.beforeMoveCommit = func(obj domain.ID) {
+		if of[obj] && !once {
+			once = true
+			if err := e.svc.Purge(ctx, e.admin, during.ID, during.Name); err != nil {
+				t.Errorf("purge during the move: %v", err)
+			}
+		}
+	}
+	if err := e.svc.RunMove(ctx, m.ID); err != nil {
+		t.Fatalf("move with purged files = %v", err)
+	}
+	e.svc.beforeMoveCommit = nil
+	if !once {
+		t.Fatal("the purge during the copy never ran")
+	}
+	done, err := e.svc.GetMove(ctx, e.admin, m.ID)
+	if err != nil || done.Status != "awaiting_confirmation" || done.ProgressDone != done.ProgressTotal {
+		t.Fatalf("move = %+v %v", done, err)
+	}
+	if fs3.Len() != len(liveObjs) || objectsOnBackend(t, e, s3.ID) != len(liveObjs) {
+		t.Fatalf("s3 holds %d objects, want only the %d of the live file", fs3.Len(), len(liveObjs))
+	}
+	if _, err := e.svc.ConfirmMove(ctx, e.admin, m.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n := localObjectFiles(t, e.root+"/local"); n != 0 {
+		t.Fatalf("local objects after confirm = %d", n)
+	}
+	if got := readVersion(t, e, e.staff, live.ID, *live.CurrentVersionID); got != "moves normally" {
+		t.Fatalf("live file after move = %q", got)
 	}
 }
