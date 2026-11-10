@@ -340,7 +340,23 @@ func (s *Service) Flag(ctx context.Context, who domain.Principal, id domain.ID) 
 	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, f.entryMatter); err != nil {
 		return Flag{}, err
 	}
-	return f, nil
+	err = s.showFlag(ctx, &readable{s: s, who: who, seen: map[domain.ID]bool{f.entryMatter: true}}, &f)
+	return f, err
+}
+
+// showFlag sets a client or account flag's balance_cents to the sum of its parts on
+// matters rd may read, as of the entry that raised it. The stored overall total includes
+// walled matters, so it is shown to nobody who cannot read all of them (PRD 3).
+func (s *Service) showFlag(ctx context.Context, rd *readable, f *Flag) error {
+	if f.Scope == ScopeMatter {
+		return nil
+	}
+	parts, err := s.flagParts(ctx, f.ID)
+	if err != nil {
+		return err
+	}
+	f.BalanceCents, err = parts.shown(ctx, rd.ok)
+	return err
 }
 
 // FlagFilter selects flags. Status is open or resolved; empty is both.
@@ -392,9 +408,13 @@ func (s *Service) visibleFlags(ctx context.Context, who domain.Principal, f Flag
 		if err != nil {
 			return nil, err
 		}
-		if ok {
-			rows = append(rows, fl)
+		if !ok {
+			continue
 		}
+		if err := s.showFlag(ctx, rd, &fl); err != nil {
+			return nil, err
+		}
+		rows = append(rows, fl)
 	}
 	return rows, nil
 }
@@ -432,8 +452,10 @@ func (s *Service) ResolveFlag(ctx context.Context, who domain.Principal, id doma
 		if err := s.record(ctx, who, "trust_flag", id, "resolution_note", "", note, "resolved"); err != nil {
 			return err
 		}
-		f, err = s.flag(ctx, id)
-		return err
+		if f, err = s.flag(ctx, id); err != nil {
+			return err
+		}
+		return s.showFlag(ctx, &readable{s: s, who: who, seen: map[domain.ID]bool{f.entryMatter: true}}, &f)
 	})
 	if err != nil {
 		return Flag{}, err

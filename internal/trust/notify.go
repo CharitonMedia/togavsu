@@ -102,37 +102,88 @@ func isNotFound(err error) bool {
 	return notFound(err, "") != err
 }
 
-// flagAddresses is the recipients' email plus trust.flag_email_extra, once each, mapped
-// to whether that address may get the matter's details. An extra address is not a user
-// the wall can name, so it gets the details only when the matter has no wall. An address
-// shared by a recipient who sees the matter gets the details.
-func (s *Service) flagAddresses(ctx context.Context, people []recipient, matter domain.ID) (map[string]bool, []string, error) {
-	full := map[string]bool{}
-	var order []string
-	add := func(a string, sees bool) {
+// mailTo is one below-zero email address and the people behind it.
+type mailTo struct {
+	addr  string
+	users []domain.User
+	// extra is a trust.flag_email_extra address: not a user the wall can name.
+	extra bool
+}
+
+// addrSees reports whether the address may get matter m's trust amounts. An address
+// shared by several users gets a matter's amounts when any of them reads it; an extra
+// address gets them only for a matter with no wall.
+func (s *Service) addrSees(t *mailTo) func(context.Context, domain.ID) (bool, error) {
+	seen := map[domain.ID]bool{}
+	return func(ctx context.Context, m domain.ID) (bool, error) {
+		if v, hit := seen[m]; hit {
+			return v, nil
+		}
+		v := false
+		if t.extra {
+			ok, err := s.unwalled(ctx, m)
+			if err != nil {
+				return false, err
+			}
+			v = ok
+		}
+		for _, u := range t.users {
+			if v {
+				break
+			}
+			ok, err := s.canSee(ctx, u, m)
+			if err != nil {
+				return false, err
+			}
+			v = ok
+		}
+		seen[m] = v
+		return v, nil
+	}
+}
+
+// unwalled reports whether matter m has no wall: the rule for a reader no wall names
+// (an extra email address, a commit event built before delivery).
+func (s *Service) unwalled(ctx context.Context, m domain.ID) (bool, error) {
+	view, err := s.policy.Walls.View(ctx, domain.Principal{}, m)
+	if err != nil {
+		return false, err
+	}
+	return !view.Walled, nil
+}
+
+// flagAddresses is the recipients' email plus trust.flag_email_extra, once each, in
+// order. addrSees decides per address and per matter what the email may show.
+func (s *Service) flagAddresses(ctx context.Context, people []recipient) []*mailTo {
+	by := map[string]*mailTo{}
+	var order []*mailTo
+	add := func(a string) *mailTo {
 		a = trimmed(a)
 		k := strings.ToLower(a)
 		if a == "" || !strings.Contains(a, "@") {
-			return
+			return nil
 		}
-		if _, dup := full[k]; !dup {
-			order = append(order, a)
+		t, dup := by[k]
+		if !dup {
+			t = &mailTo{addr: a}
+			by[k] = t
+			order = append(order, t)
 		}
-		full[k] = full[k] || sees
+		return t
 	}
 	for _, r := range people {
-		add(r.user.Email, r.sees)
-	}
-	view, err := s.policy.Walls.View(ctx, domain.Principal{}, matter)
-	if err != nil {
-		return nil, nil, err
+		if t := add(r.user.Email); t != nil {
+			t.users = append(t.users, r.user)
+		}
 	}
 	for _, a := range strings.FieldsFunc(s.setting(ctx, "trust.flag_email_extra"), func(r rune) bool {
 		return r == ',' || r == ';' || r == ' ' || r == '\n'
 	}) {
-		add(a, !view.Walled)
+		if t := add(a); t != nil {
+			t.extra = true
+		}
 	}
-	return full, order, nil
+	return order
 }
 
 func (s *Service) notify(ctx context.Context, who domain.Principal, user domain.ID, kind, title, link string, matter domain.ID) error {

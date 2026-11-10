@@ -34,6 +34,16 @@ ALTER TABLE trust_flags ADD COLUMN scope TEXT NOT NULL DEFAULT 'matter' CHECK (s
 ALTER TABLE trust_flags ADD COLUMN trust_account_id TEXT REFERENCES trust_accounts (id) ON DELETE RESTRICT;
 ALTER TABLE trust_flags ADD COLUMN balance_cents BIGINT NOT NULL DEFAULT 0;
 
+-- The per-matter amounts behind a client or account flag's balance_cents, as of the
+-- entry that raised it. A viewer is shown only the sum of the matters they may read, so
+-- a walled matter's trust money never shows through a client or account total.
+CREATE TABLE trust_flag_parts (
+  flag_id TEXT NOT NULL REFERENCES trust_flags (id) ON DELETE RESTRICT,
+  matter_id TEXT NOT NULL,
+  balance_cents BIGINT NOT NULL,
+  PRIMARY KEY (flag_id, matter_id)
+);
+
 -- Evergreen minimum per matter. No row means the trust.evergreen_minimum_cents default.
 CREATE TABLE trust_evergreen (
   matter_id TEXT PRIMARY KEY,
@@ -104,3 +114,4 @@ DROP TABLE mail_outbox;
 DROP TABLE notifications;
 DROP TABLE trust_flat_fee_applications;
 DROP TABLE trust_evergreen;
+DROP TABLE trust_flag_parts;

@@ -114,17 +114,72 @@ func (s *Service) sum(ctx context.Context, where string, args ...any) (int64, er
 	return v.Int64, err
 }
 
-func (s *Service) balances(ctx context.Context, account, client, matter domain.ID) (Balances, error) {
-	var b Balances
+// scopeParts is the ledger sum per matter for one scope: every row for the client, or
+// every row in the account. The overall client or account balance is the sum of the
+// parts; a viewer is shown only the parts on matters they may read (shown).
+type scopeParts map[domain.ID]int64
+
+func (s *Service) parts(ctx context.Context, where string, args ...any) (scopeParts, error) {
+	return s.partsQuery(ctx, `SELECT matter_id, SUM(amount_cents) FROM trust_ledger WHERE `+where+` GROUP BY matter_id`, args...)
+}
+
+func (p scopeParts) total() int64 {
+	var t int64
+	for _, v := range p {
+		t += v
+	}
+	return t
+}
+
+// shown is the sum of the parts on matters sees accepts.
+func (p scopeParts) shown(ctx context.Context, sees func(context.Context, domain.ID) (bool, error)) (int64, error) {
+	var t int64
+	for m, v := range p {
+		ok, err := sees(ctx, m)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			t += v
+		}
+	}
+	return t, nil
+}
+
+// snapshot is the overall balances after a posting, with the per-matter parts behind the
+// client and account totals.
+type snapshot struct {
+	Balances
+	client, account scopeParts
+}
+
+func (s *Service) balances(ctx context.Context, account, client, matter domain.ID) (snapshot, error) {
+	var b snapshot
 	var err error
 	if b.MatterCents, err = s.sum(ctx, `trust_account_id = $1 AND client_id = $2 AND matter_id = $3`, string(account), string(client), string(matter)); err != nil {
 		return b, err
 	}
-	if b.ClientCents, err = s.sum(ctx, `client_id = $1`, string(client)); err != nil {
+	if b.client, err = s.parts(ctx, `client_id = $1`, string(client)); err != nil {
 		return b, err
 	}
-	b.AccountCents, err = s.sum(ctx, `trust_account_id = $1`, string(account))
-	return b, err
+	if b.account, err = s.parts(ctx, `trust_account_id = $1`, string(account)); err != nil {
+		return b, err
+	}
+	b.ClientCents, b.AccountCents = b.client.total(), b.account.total()
+	return b, nil
+}
+
+// visible is the snapshot as sees may be shown it: the matter balance (sees is always a
+// caller authorized on the posting matter) and the client and account totals over the
+// matters sees may read only.
+func (b snapshot) visible(ctx context.Context, sees func(context.Context, domain.ID) (bool, error)) (Balances, error) {
+	out := Balances{MatterCents: b.MatterCents}
+	var err error
+	if out.ClientCents, err = b.client.shown(ctx, sees); err != nil {
+		return out, err
+	}
+	out.AccountCents, err = b.account.shown(ctx, sees)
+	return out, err
 }
 
 // clientMatterCents is the client's balance on a matter across every account.
@@ -283,6 +338,37 @@ func (s *Service) insertFlag(ctx context.Context, f Flag) error {
 		VALUES ($1,$2,$2,$3,$4,$5,$6,$7,0,NULL,'',$8,$9,$10)`,
 		string(f.ID), micro(f.CreatedAt), string(f.CreatedBy), string(f.TrustEntryID), string(f.entryMatter), string(f.entryClient), f.reason, f.Scope, account, f.BalanceCents)
 	return err
+}
+
+func (s *Service) insertFlagParts(ctx context.Context, flag domain.ID, parts scopeParts) error {
+	for m, v := range parts {
+		if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO trust_flag_parts (flag_id, matter_id, balance_cents) VALUES ($1,$2,$3)`, string(flag), string(m), v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) flagParts(ctx context.Context, flag domain.ID) (scopeParts, error) {
+	return s.partsQuery(ctx, `SELECT matter_id, balance_cents FROM trust_flag_parts WHERE flag_id = $1`, string(flag))
+}
+
+func (s *Service) partsQuery(ctx context.Context, q string, args ...any) (scopeParts, error) {
+	rows, err := s.q(ctx).QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := scopeParts{}
+	for rows.Next() {
+		var m string
+		var v int64
+		if err := rows.Scan(&m, &v); err != nil {
+			return nil, err
+		}
+		out[domain.ID(m)] = v
+	}
+	return out, rows.Err()
 }
 
 // Replenishment requests.

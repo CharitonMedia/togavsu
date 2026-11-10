@@ -306,12 +306,20 @@ func (s *Service) commitEntry(ctx context.Context, who domain.Principal, e Entry
 		fmt.Sprintf("%s %s account=%s client=%s matter=%s", e.EntryType, e.Signed, e.TrustAccountID, e.ClientID, e.MatterID), e.Description); err != nil {
 		return PostResult{}, err
 	}
-	res := PostResult{Entry: e, Balances: bal, Flags: []Flag{}, cached: []domain.TrustBalance{cached}}
+	// The caller is authorized on the posting matter; the client and account totals they
+	// get count only the matters they may read, as Balances does (PRD 3: walls apply on
+	// every surface). The overall totals still decide the flags.
+	rd := &readable{s: s, who: who, seen: map[domain.ID]bool{e.MatterID: true}}
+	shown, err := bal.visible(ctx, rd.ok)
+	if err != nil {
+		return PostResult{}, err
+	}
+	res := PostResult{Entry: e, Balances: shown, Flags: []Flag{}, cached: []domain.TrustBalance{cached}}
 	res.Events = append(res.Events, Event{Name: "trust.entry_posted", RecordID: e.ID, MatterID: e.MatterID, Data: map[string]string{
 		"trust_account_id": string(e.TrustAccountID), "client_id": string(e.ClientID), "entry_type": e.EntryType, "amount_cents": e.Signed.String(),
 	}})
 	if isDebit(e.Signed) {
-		flags, events, err := s.raise(ctx, who, e, bal, matter)
+		flags, events, err := s.raise(ctx, who, e, bal, matter, rd.ok)
 		if err != nil {
 			return PostResult{}, err
 		}
@@ -385,44 +393,72 @@ func (s *Service) syncBalances(ctx context.Context, rows []domain.TrustBalance) 
 // the account, the client's balance overall, and the account balance. The admins and the
 // responsible attorney get an in-app notification and an email; the email cannot be
 // turned off (PRD 8.17).
-func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal Balances, matter domain.Matter) ([]Flag, []Event, error) {
+//
+// The overall client and account totals decide the flag and are stored on it, with the
+// per-matter parts behind them. Every reader is shown only the parts on matters they may
+// read: the caller through callerSees, each email address through addrSees, and the
+// commit event through unwalled. A walled matter's amount never shows through a client or
+// account total.
+func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal snapshot, matter domain.Matter, callerSees func(context.Context, domain.ID) (bool, error)) ([]Flag, []Event, error) {
+	type raised struct {
+		flag  Flag
+		parts scopeParts // nil for a matter flag
+	}
+	var all []raised
 	var flags []Flag
 	var events []Event
-	add := func(scope string, cents int64) error {
+	add := func(scope string, cents int64, parts scopeParts) error {
 		id, err := s.newID()
 		if err != nil {
 			return err
 		}
 		now := s.now()
+		reason := fmt.Sprintf("%s balance %s after %s", scope, domain.Cents(cents), e.EntryType)
+		if parts != nil {
+			// The audit row and the stored reason must not carry a walled-inclusive total.
+			reason = fmt.Sprintf("%s balance below zero after %s", scope, e.EntryType)
+		}
 		f := Flag{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actorID(who), TrustEntryID: e.ID, Scope: scope, BalanceCents: cents, Status: "open",
-			entryMatter: e.MatterID, entryClient: e.ClientID, entryAccount: e.TrustAccountID,
-			reason: fmt.Sprintf("%s balance %s after %s", scope, domain.Cents(cents), e.EntryType)}
+			entryMatter: e.MatterID, entryClient: e.ClientID, entryAccount: e.TrustAccountID, reason: reason}
 		if err := s.insertFlag(ctx, f); err != nil {
+			return err
+		}
+		if err := s.insertFlagParts(ctx, f.ID, parts); err != nil {
 			return err
 		}
 		if err := s.record(ctx, who, "trust_flag", f.ID, "raised", "", f.reason, "below-zero trust balance"); err != nil {
 			return err
 		}
+		event := cents
+		if parts != nil {
+			if f.BalanceCents, err = parts.shown(ctx, callerSees); err != nil {
+				return err
+			}
+			if event, err = parts.shown(ctx, s.unwalled); err != nil {
+				return err
+			}
+		}
 		f.expose()
 		flags = append(flags, f)
+		all = append(all, raised{flag: f, parts: parts})
 		events = append(events, Event{Name: "trust.flag_raised", RecordID: f.ID, MatterID: e.MatterID, Data: map[string]string{
 			"matter_id": string(e.MatterID), "client_id": string(e.ClientID), "trust_account_id": string(e.TrustAccountID),
-			"balance_cents": domain.Cents(cents).String(), "trust_entry_id": string(e.ID), "balance_scope": scope,
+			"balance_cents": domain.Cents(event).String(), "trust_entry_id": string(e.ID), "balance_scope": scope,
 		}})
 		return nil
 	}
 	if negative(bal.MatterCents) {
-		if err := add(ScopeMatter, bal.MatterCents); err != nil {
+		if err := add(ScopeMatter, bal.MatterCents, nil); err != nil {
 			return nil, nil, err
 		}
 	}
 	if negative(bal.ClientCents) {
-		if err := add(ScopeClient, bal.ClientCents); err != nil {
+		if err := add(ScopeClient, bal.ClientCents, bal.client); err != nil {
 			return nil, nil, err
 		}
 	}
 	if negative(bal.AccountCents) {
-		if err := add(ScopeAccount, bal.AccountCents); err != nil {
+		if err := add(ScopeAccount, bal.AccountCents, bal.account); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -443,22 +479,29 @@ func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal 
 			return nil, nil, err
 		}
 	}
-	var lines []string
-	for _, f := range flags {
-		lines = append(lines, fmt.Sprintf("- %s balance: %s", f.Scope, domain.Cents(f.BalanceCents)))
-	}
-	body := fmt.Sprintf("A trust %s of %s on matter %s %s took a balance below zero. The entry posted; it was not blocked.\n\n%s\n\nReview and resolve the flag with a note: %s\n",
-		e.EntryType, absCents(e.Signed), matter.Number, matter.Name, strings.Join(lines, "\n"), link)
-	full, order, err := s.flagAddresses(ctx, people, matter.ID)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, addr := range order {
-		subject, text := title, body
-		if !full[strings.ToLower(addr)] {
-			subject, text = walledFlagSubject, walledFlagBody
+	for _, t := range s.flagAddresses(ctx, people) {
+		sees := s.addrSees(t)
+		full, err := sees(ctx, matter.ID)
+		if err != nil {
+			return nil, nil, err
 		}
-		if err := s.queueMail(ctx, who, MailKindTrustFlag, flags[0].ID, addr, subject, text); err != nil {
+		subject, text := walledFlagSubject, walledFlagBody
+		if full {
+			var lines []string
+			for _, r := range all {
+				cents := r.flag.BalanceCents
+				if r.parts != nil {
+					if cents, err = r.parts.shown(ctx, sees); err != nil {
+						return nil, nil, err
+					}
+				}
+				lines = append(lines, fmt.Sprintf("- %s balance: %s", r.flag.Scope, domain.Cents(cents)))
+			}
+			subject = title
+			text = fmt.Sprintf("A trust %s of %s on matter %s %s took a balance below zero. The entry posted; it was not blocked.\n\n%s\n\nReview and resolve the flag with a note: %s\n",
+				e.EntryType, absCents(e.Signed), matter.Number, matter.Name, strings.Join(lines, "\n"), link)
+		}
+		if err := s.queueMail(ctx, who, MailKindTrustFlag, flags[0].ID, t.addr, subject, text); err != nil {
 			return nil, nil, err
 		}
 	}
