@@ -1,0 +1,35 @@
+{{define "storage.html"}}{{template "head" .}}
+<section class="card">
+  <h2>Storage backends</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Kind</th><th>Encryption</th><th>Default</th><th>Backed up</th><th>Drop folder</th><th>Health</th><th></th></tr></thead>
+    <tbody>{{range .Backends}}<tr>
+      <td>{{.Name}}</td><td>{{.Kind}}</td><td>{{if .Encryption}}on{{else}}off{{end}}</td>
+      <td>{{if .Default}}default{{end}}</td><td>{{if .BackedUp}}yes{{else}}<span class="warn">excluded from backups</span>{{end}}</td>
+      <td>{{if .DropFolder}}on{{end}}</td><td><span class="tag health-{{.Health}}">{{.Health}}</span></td>
+      <td><button type="button" data-post="/api/v1/storage-backends/{{.ID}}/test">Test</button></td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+<section class="card">
+  <h2>Move files</h2>
+  <form id="move-form">
+    <label>From <select name="from_backend_id">{{range .Backends}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+    <label>To <select name="to_backend_id">{{range .Backends}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+    <input type="hidden" name="scope" value="all">
+    <button type="submit">Move all files</button>
+  </form>
+  <table>
+    <thead><tr><th>Started</th><th>From</th><th>To</th><th>Status</th><th>Progress</th><th></th></tr></thead>
+    <tbody>{{range .Moves}}<tr>
+      <td>{{.Started}}</td><td>{{.From}}</td><td>{{.To}}</td><td>{{.Label}}</td>
+      <td><progress max="{{.ProgressTotal}}" value="{{.ProgressDone}}">{{.ProgressDone}} of {{.ProgressTotal}}</progress> {{.ProgressDone}} / {{.ProgressTotal}}</td>
+      <td>{{if eq .Status "awaiting_confirmation"}}<button type="button" data-post="/api/v1/storage-moves/{{.ID}}/confirm" data-confirm="Every file checked out on the new backend. Delete the old copies now?">Confirm and delete old copies</button>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table>
+</section>
+<section class="card">
+  <h2>Storage alerts</h2>
+  {{if not .Alerts}}<p class="empty">No file has failed its integrity check.</p>{{else}}<ul>{{range .Alerts}}<li class="warn">{{.Detail}}</li>{{end}}</ul>{{end}}
+</section>
+{{template "foot" .}}{{end}}
