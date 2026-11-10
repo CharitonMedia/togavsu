@@ -32,3 +32,21 @@ func (m PracticeMatters) Matter(ctx context.Context, p domain.Principal, id doma
 	}
 	return info, nil
 }
+
+// Search runs practice matter search as p, so walls and the minimum query length
+// are practice's.
+func (m PracticeMatters) Search(ctx context.Context, p domain.Principal, query string) ([]MatterChoice, error) {
+	res, err := m.Svc.Search(ctx, p, query, practice.ScopeMatters)
+	if err != nil {
+		return nil, err
+	}
+	var out []MatterChoice
+	for _, g := range res.Groups {
+		for _, h := range g.Hits {
+			if h.RecordType == "matter" {
+				out = append(out, MatterChoice{ID: h.RecordID, Label: h.Title})
+			}
+		}
+	}
+	return out, nil
+}

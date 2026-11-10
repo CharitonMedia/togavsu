@@ -37,6 +37,9 @@ type MatterInfo struct {
 // through PracticeMatters.
 type Matters interface {
 	Matter(ctx context.Context, p domain.Principal, id domain.ID) (MatterInfo, error)
+	// Search finds matters the caller can see by name, number or case number. It
+	// must omit walled matters; the calendar rechecks each hit anyway.
+	Search(ctx context.Context, p domain.Principal, query string) ([]MatterChoice, error)
 }
 
 // Users resolves firm users. identity's user repository satisfies it.

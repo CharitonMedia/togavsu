@@ -306,7 +306,10 @@ func page[T any](s *Service, r *http.Request, rows []T) ([]T, map[string]any, er
 		if err != nil || !positiveInt.MatchString(v) {
 			return nil, nil, domain.Invalid("limit", "limit must be a positive integer")
 		}
-		limit = min(n, most)
+		if n > most {
+			return nil, nil, domain.Invalid("limit", "limit must not exceed api.max_page_size ("+strconv.Itoa(most)+")")
+		}
+		limit = n
 	}
 	var off int
 	if c := q.Get("cursor"); c != "" {

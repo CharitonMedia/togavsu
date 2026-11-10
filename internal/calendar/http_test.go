@@ -177,6 +177,18 @@ func TestListPaginationAndViews(t *testing.T) {
 	if status, _ := send(t, srv.URL, f.staff, http.MethodGet, "/api/v1/calendar-events?view=year&from_time=2026-11-18T12:00:00Z", "", nil); status != http.StatusBadRequest {
 		t.Fatal("bad view accepted")
 	}
+	// The contract refuses a limit above api.max_page_size rather than capping it.
+	if _, err := f.reg.Set(f.ctx, "api.max_page_size", "3", f.admin); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"/api/v1/calendar-events?limit=4", "/api/v1/deadlines?limit=4", "/api/v1/calendar-events?limit=0"} {
+		if status, out := send(t, srv.URL, f.staff, http.MethodGet, p, "", nil); status != http.StatusBadRequest || !strings.Contains(out, "limit") {
+			t.Fatalf("%s: %d %s", p, status, out)
+		}
+	}
+	if status, out := send(t, srv.URL, f.staff, http.MethodGet, "/api/v1/calendar-events?limit=3", "", nil); status != http.StatusOK || strings.Count(out, `"title"`) != 3 {
+		t.Fatalf("limit at cap: %d %s", status, out)
+	}
 }
 
 func TestBulkRejectsWholeBatch(t *testing.T) {

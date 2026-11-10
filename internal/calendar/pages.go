@@ -529,6 +529,42 @@ type availableData struct {
 	Form   map[string]string
 	Half   bool
 	Result *AvailableResult
+	// Matter picker (PRD 8.16: the matter is picked by search).
+	MatterQ   string
+	Searched  bool
+	Matches   []MatterChoice
+	SearchErr string
+	Picked    *MatterChoice
+	// Attorney picker; HasRoster is false when users cannot be listed.
+	Attorneys []AttorneyChoice
+	HasRoster bool
+}
+
+// pickers fills the matter and attorney pickers. Search errors show beside the
+// search box; a picked matter the caller cannot see is dropped from the form.
+func (h *Handler) pickers(r *http.Request, p domain.Principal, d *availableData) {
+	ctx := r.Context()
+	if d.MatterQ != "" {
+		d.Searched = true
+		hits, err := h.Svc.SearchMatters(ctx, p, d.MatterQ)
+		var api *domain.APIError
+		switch {
+		case err == nil:
+			d.Matches = hits
+		case errors.As(err, &api):
+			d.SearchErr = api.Message
+		default:
+			d.SearchErr = "search failed"
+		}
+	}
+	if id := domain.ID(d.Form["matter_id"]); !id.IsZero() {
+		if m, err := h.Svc.PickedMatter(ctx, p, id); err == nil {
+			d.Picked = &m
+		}
+	}
+	if list, ok, err := h.Svc.Attorneys(ctx, p); err == nil && ok {
+		d.Attorneys, d.HasRoster = list, true
+	}
 }
 
 func (h *Handler) availablePage(w http.ResponseWriter, r *http.Request) {
@@ -539,9 +575,18 @@ func (h *Handler) availablePage(w http.ResponseWriter, r *http.Request) {
 	}
 	purpose, _ := h.Svc.setting(r.Context(), settingPurpose)
 	title, _ := h.Svc.setting(r.Context(), settingTitle)
+	q := r.URL.Query()
 	form := map[string]string{"user_id": string(p.UserID), "start_date": h.Svc.Today(r.Context()).Format(dateLayout),
-		"purpose": purpose, "title": title, "matter_id": r.URL.Query().Get("matter_id")}
-	v := view{Title: "Available dates", Data: availableData{Form: form}}
+		"purpose": purpose, "title": title, "matter_id": strings.TrimSpace(q.Get("matter_id"))}
+	if u := strings.TrimSpace(q.Get("user_id")); u != "" {
+		form["user_id"] = u
+	}
+	data := availableData{Form: form, MatterQ: strings.TrimSpace(q.Get("matter_q"))}
+	h.pickers(r, p, &data)
+	if data.Picked == nil {
+		form["matter_id"] = ""
+	}
+	v := view{Title: "Available dates", Data: data}
 	h.chrome(r, p, &v)
 	h.render(w, r, http.StatusOK, "available.html", v)
 }
@@ -588,6 +633,7 @@ func (h *Handler) availablePost(w http.ResponseWriter, r *http.Request) {
 	} else {
 		data.Result = &res
 	}
+	h.pickers(r, p, &data)
 	v.Data = data
 	h.chrome(r, p, &v)
 	h.render(w, r, status, "available.html", v)

@@ -326,3 +326,30 @@ func mustNotices(t *testing.T, f *fixture, p domain.Principal) []Notice {
 	}
 	return n
 }
+
+// A PATCH that turns a timed event all-day without new times keeps the firm-local
+// date: 7 PM Chicago on Nov 10 is 01:00Z on Nov 11 and must stay Nov 10.
+func TestTimedToAllDayPatchKeepsLocalDate(t *testing.T) {
+	f := newFixture(t)
+	chi := chicago(t)
+	e := f.event(f.staff, EventInput{Title: "Evening hearing", Kind: KindCourtDate, StartsAt: at(t, "2026-11-10 19:00"), EndsAt: at(t, "2026-11-10 20:30"), Attendees: []domain.ID{f.attorney.UserID}})
+	on := true
+	up, err := f.svc.UpdateEvent(f.ctx, f.staff, e.ID, EventPatch{AllDay: &on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !up.AllDay || !up.Start().Equal(time.Date(2026, 11, 10, 0, 0, 0, 0, chi)) || !up.End().Equal(time.Date(2026, 11, 11, 0, 0, 0, 0, chi)) {
+		t.Fatalf("timed->all-day moved the date: %s .. %s", up.Start().In(chi), up.End().In(chi))
+	}
+	// A timed event spanning local midnight becomes all-day on both local dates.
+	e2 := f.event(f.staff, EventInput{Title: "Overnight", Kind: KindBlock, StartsAt: at(t, "2026-11-12 22:00"), EndsAt: at(t, "2026-11-13 02:00")})
+	up, err = f.svc.UpdateEvent(f.ctx, f.staff, e2.ID, EventPatch{AllDay: &on})
+	if err != nil || !up.Start().Equal(time.Date(2026, 11, 12, 0, 0, 0, 0, chi)) || !up.End().Equal(time.Date(2026, 11, 14, 0, 0, 0, 0, chi)) {
+		t.Fatalf("overnight: %v %s .. %s", err, up.Start().In(chi), up.End().In(chi))
+	}
+	// The available-dates tool now sees Nov 10 (not Nov 11) as busy for the attorney.
+	res, err := f.svc.AvailableDates(f.ctx, f.staff, AvailableRequest{UserID: f.attorney.UserID, StartDate: "2026-11-10", EndDate: "2026-11-11"})
+	if err != nil || len(res.Dates) != 1 || res.Dates[0].Date != "2026-11-11" {
+		t.Fatalf("available after patch: %v %+v", err, res.Dates)
+	}
+}

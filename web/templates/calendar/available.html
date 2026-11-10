@@ -2,13 +2,41 @@
 {{with .Data}}
 <h1>Available dates</h1>
 <p class="muted">Lists weekdays with no court date, block or all-day event for the attorney. This never changes the calendar.</p>
+<form method="get" action="/calendar/available-dates" class="inline" role="search" aria-label="Find a matter">
+  <input type="hidden" name="user_id" value="{{index .Form "user_id"}}">
+  <label>Find matter (name, number or case number) <input type="search" name="matter_q" value="{{.MatterQ}}"></label>
+  <button type="submit">Search</button>
+</form>
+{{if .Searched}}
+<section class="matter-hits" aria-label="Matter search results">
+  {{with .SearchErr}}<p class="error" role="alert">{{.}}</p>{{else}}
+  {{if .Matches}}
+  <ul>
+    {{range .Matches}}<li><a href="/calendar/available-dates?matter_id={{.ID}}&amp;user_id={{index $.Data.Form "user_id"}}">{{.Label}}</a></li>{{end}}
+  </ul>
+  {{else}}<p class="muted">No matters match.</p>{{end}}
+  {{end}}
+</section>
+{{end}}
 <form method="post" action="/calendar/available-dates" class="grid">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  {{if .HasRoster}}
+  <label>Attorney
+    <select name="user_id" required>
+      {{$uid := index .Form "user_id"}}
+      {{range .Attorneys}}<option value="{{.ID}}"{{if eq (print .ID) $uid}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </label>
+  {{else}}
   <label>Attorney user id <input name="user_id" value="{{index .Form "user_id"}}" size="38" required></label>
+  {{end}}
   <label>Start date <input type="date" name="start_date" value="{{index .Form "start_date"}}" required></label>
   <label>End date (blank is the firm default range) <input type="date" name="end_date" value="{{index .Form "end_date"}}"></label>
   <label><input type="checkbox" name="include_half_days"{{if .Half}} checked{{end}}> Include half days</label>
-  <label>Matter id (fills court, caption, parties and case number) <input name="matter_id" value="{{index .Form "matter_id"}}" size="38"></label>
+  <input type="hidden" name="matter_id" value="{{index .Form "matter_id"}}">
+  <p class="picked">Matter (fills court, caption, parties and case number):
+    {{with .Picked}}<strong>{{.Label}}</strong> <a href="/calendar/available-dates?user_id={{index $.Data.Form "user_id"}}">Clear</a>{{else}}<span class="muted">none picked; use Find matter above, or fill the fields by hand</span>{{end}}
+  </p>
   <label>Court <input name="court" value="{{index .Form "court"}}"></label>
   <label>Caption <input name="caption" value="{{index .Form "caption"}}"></label>
   <label>Party labels

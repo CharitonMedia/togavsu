@@ -179,14 +179,22 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 	if patch.Attendees != nil {
 		in.Attendees = *patch.Attendees
 	}
-	if in.AllDay && prev.AllDay {
-		// Re-express stored local midnights as written dates for normalizeAllDay.
+	if in.AllDay {
+		// Re-express unpatched stored instants as firm-local written dates for
+		// normalizeAllDay. This covers both all-day edits and a timed event
+		// turned all-day: a 7 PM Chicago start stored as 01:00Z the next day
+		// must stay on its local date.
 		loc := s.Zone(ctx)
 		if patch.StartsAt == nil {
 			in.StartsAt = localDate(prev.Start(), loc)
 		}
 		if patch.EndsAt == nil {
 			in.EndsAt = localDate(prev.End(), loc)
+			// A timed end after local midnight covers that date too; written
+			// midnight dates are exclusive ends for normalizeAllDay.
+			if !prev.AllDay && !prev.End().Equal(dayStart(in.EndsAt, loc)) {
+				in.EndsAt = nextDay(in.EndsAt)
+			}
 		}
 	}
 	if err := s.validateEvent(ctx, p, &in); err != nil {
