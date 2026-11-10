@@ -1,7 +1,7 @@
 #!/bin/sh
 # AC-001 on a clean Docker host: one Compose up with no edits reaches first-run setup.
 # Then: setup with two-factor, a matter write with its audit rows, proof that the core's
-# database role cannot change audit_log, and a core restart that keeps the session and
+# database role cannot change audit_log or trust_ledger, and a core restart that keeps the session and
 # the matter. Also: dbinit hands a superuser-owned core schema from an older volume to
 # togavsu_app. Synthetic data only. The project and its volumes are removed at the end.
 set -eu
@@ -68,6 +68,14 @@ append_only() {
     return 1
   fi
   echo "audit_log is append-only for the core role ($rows rows)"
+  # AC-006 at the database: the trust ledger refuses every change as well.
+  for stmt in "UPDATE core.trust_ledger SET amount_cents = 0" "UPDATE core.trust_ledger SET description = 'x'" "DELETE FROM core.trust_ledger" "TRUNCATE core.trust_ledger"; do
+    if psql_as "SET ROLE togavsu_app; $stmt" >/dev/null 2>&1; then
+      echo "core role ran: $stmt" >&2
+      return 1
+    fi
+  done
+  echo "trust_ledger is append-only for the core role"
 }
 append_only
 
