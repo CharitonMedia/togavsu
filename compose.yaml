@@ -32,6 +32,18 @@ services:
       retries: 12
     restart: unless-stopped
 
+  dbinit:
+    # Creates the core's non-superuser login role on every up; see deploy/postgres/core-role.sh.
+    image: postgres:17
+    entrypoint: ["/bin/sh", "/core-role.sh"]
+    volumes:
+      - ./deploy/postgres/core-role.sh:/core-role.sh:ro
+      - pgsecrets:/pgsecrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   caddy:
     # ponytail: root so the alpine entrypoint can read the upstream file and write certificates, ceiling: root on the edge container, upgrade: a non-root entrypoint image, trigger: phase 7 release hardening.
     image: caddy:2-alpine
@@ -93,8 +105,8 @@ services:
       start_period: 5s
     restart: unless-stopped
 
-  # The core service is part of the one-project install. Its image build fails
-  # closed until cmd/core lands, so AC-001 is not claimed by this file.
+  # The core migrates, seeds reference rows and serves first-run setup on :8080 behind
+  # Caddy. It logs in as togavsu_app (dbinit), not the Postgres superuser.
   # togavsu.role=core is how the supervisor finds this container.
   core:
     labels:
@@ -110,6 +122,8 @@ services:
     volumes:
       - appsecrets:/appsecrets
     depends_on:
+      dbinit:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       supervisor:
