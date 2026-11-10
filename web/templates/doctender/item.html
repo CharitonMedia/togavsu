@@ -10,7 +10,7 @@
 </section>
 {{end}}
 <form method="post" action="/doc-tender/review/{{.Item.ID}}" class="dt-resolve">
-  <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
   <fieldset>
     <legend>Decide</legend>
     <p><label><input type="radio" name="action" value="accept" checked> Accept the best answer</label></p>

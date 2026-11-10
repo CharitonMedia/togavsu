@@ -3,7 +3,7 @@
 <section aria-labelledby="naming-h">
   <h2 id="naming-h">Naming pattern</h2>
   <form method="post" action="/admin/doc-tender/naming">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <p><label for="pattern">Pattern</label> <input id="pattern" name="pattern" size="60" value="{{.Naming.Pattern}}" required></p>
     <p class="hint">Tokens: {{range $i, $t := .Naming.AllowedTokens}}{{if $i}}, {{end}}&lt;{{$t}}&gt;{{end}}. A status token is refused: status never goes in a name.</p>
     <button type="submit">Save pattern</button>
@@ -16,7 +16,7 @@
     <tbody>{{range .Cats}}<tr><td><code>{{.Key}}</code></td><td>{{.Description}}</td><td>{{.Tier}}</td><td>{{.Folder}}</td><td>{{if .Active}}yes{{else}}retired{{end}}</td></tr>{{end}}</tbody>
   </table>
   <form method="post" action="/admin/doc-tender/categories">
-    <input type="hidden" name="csrf_token" value="{{.CSRF}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <fieldset><legend>Add a category</legend>
       <p><label for="key">Key</label> <input id="key" name="key" required pattern="[a-z0-9_]+"></p>
       <p><label for="description">Covers</label> <input id="description" name="description" size="60" required></p>
