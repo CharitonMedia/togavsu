@@ -559,15 +559,18 @@ func settingErr(err error) error {
 	return domain.Invalid("value", err.Error())
 }
 
+// auditJSON serves the shared ledger to an admin. Each row then keeps its record's
+// practice read scope: a row about a matter behind a wall the caller is not on is
+// dropped, and attorney-only values are redacted, exactly as matter history does.
 func (a *App) auditJSON(w http.ResponseWriter, r *http.Request) {
-	if _, err := a.admin(r); err != nil {
+	p, err := a.admin(r)
+	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	entity, id := r.URL.Query().Get("entity_type"), r.URL.Query().Get("entity_id")
 	var rows []domain.AuditEntry
 	if entity != "" && id != "" {
-		var err error
 		if rows, err = a.Audit.Rows(r.Context(), audit.RowQuery{Entity: entity, EntityID: domain.ID(id)}); err != nil {
 			writeErr(w, err)
 			return
@@ -586,19 +589,10 @@ func (a *App) auditJSON(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	data := make([]map[string]any, 0, len(rows))
-	for _, e := range rows {
-		kind := "user"
-		if e.Source == string(domain.SourceSystem) {
-			kind = "system"
-		} else if e.Source == string(domain.SourceModule) {
-			kind = "module"
-		}
-		data = append(data, map[string]any{
-			"id": e.ID, "at": e.CreatedAt.UTC().Format(time.RFC3339Nano), "actor_id": e.ActorID, "actor_kind": kind,
-			"role": e.Role, "source": e.Source, "entity_type": e.Entity, "entity_id": e.EntityID, "field": e.Field,
-			"old_value": e.OldValue, "new_value": e.NewValue, "reason": e.Reason, "kind": "change",
-		})
+	shown := a.Practice.AuditLog(r.Context(), p, rows)
+	data := make([]map[string]any, 0, len(shown))
+	for _, row := range shown {
+		data = append(data, practice.HistoryItem(row))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data, "page": map[string]any{"next_cursor": nil}})
 }

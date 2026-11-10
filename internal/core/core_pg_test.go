@@ -505,10 +505,49 @@ func TestWallsRolesAuditAndRestart(t *testing.T) {
 		t.Fatal(err, ledger, len(rows))
 	}
 
+	// The audit log keeps each row's matter wall: an admin left off the wall gets no
+	// ledger row for the walled matter, its party contact or its note, by API or MCP.
+	heir := admin.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{"kind": "person", "given_name": "Zebulon", "family_name": "Hiddenheir"})
+	heirID := str(t, heir.json, "id")
+	admin.must(http.StatusCreated, "POST", "/api/v1/matter-parties", map[string]any{"matter_id": walledID, "contact_id": heirID, "role": "client"})
+	admin.must(http.StatusCreated, "POST", "/api/v1/notes", map[string]any{"matter_id": walledID, "title": "Walled memo", "body": "walled-note-body-7e1"})
+	outsider, _ := enrollUser(t, app, srv.URL, admin, "Otto Outside", "otto@firm.example", domain.RoleAdmin)
+	auditHidden := func(c *client, who string) {
+		t.Helper()
+		auditTool := toolName(t, "GET", "/api/v1/audit-log")
+		var bodies []string
+		for _, q := range []string{"", "?entity_type=matter", "?entity_type=matter&entity_id=" + walledID, "?entity_type=contact&entity_id=" + heirID, "?entity_type=note", "?entity_type=matter_party"} {
+			bodies = append(bodies, c.must(http.StatusOK, "GET", "/api/v1/audit-log"+q, nil).body)
+		}
+		for _, q := range []map[string]any{{}, {"entity_type": "matter", "entity_id": walledID}, {"entity_type": "contact", "entity_id": heirID}} {
+			call := mcpCall(c, auditTool, map[string]any{"query": q})
+			if call.code != http.StatusOK || strings.Contains(call.body, `"isError":true`) {
+				t.Fatalf("%s audit log over MCP: %d %s", who, call.code, call.body)
+			}
+			bodies = append(bodies, call.body)
+		}
+		for _, body := range bodies {
+			for _, leak := range []string{walledID, heirID, "Estate of Quist", "Zebulon", "Walled memo", "walled-note-body-7e1"} {
+				if strings.Contains(body, leak) {
+					t.Fatalf("%s outside the wall read %q from the audit log: %s", who, leak, body)
+				}
+			}
+		}
+		if !strings.Contains(bodies[0], openID) || !strings.Contains(bodies[0], "Open Estate of Rivera") || !strings.Contains(bodies[6], openID) {
+			t.Fatalf("%s lost readable audit rows: %s", who, bodies[0])
+		}
+	}
+	auditHidden(outsider, "admin")
+	for _, want := range []string{walledID, heirID, "Walled memo"} {
+		if r := admin.must(http.StatusOK, "GET", "/api/v1/audit-log", nil); !strings.Contains(r.body, want) {
+			t.Fatalf("admin on the wall lost audit row %q", want)
+		}
+	}
+
 	// Restart on the same database: records, walls and sessions survive.
 	app2, srv2 := start(t, dsn)
 	_ = app2
-	for _, c := range []*client{admin, staff} {
+	for _, c := range []*client{admin, staff, outsider} {
 		c.base = srv2.URL
 		u1, _ := url.Parse(srv.URL)
 		u2, _ := url.Parse(srv2.URL)
@@ -518,6 +557,7 @@ func TestWallsRolesAuditAndRestart(t *testing.T) {
 		t.Fatal("matter lost on restart")
 	}
 	hidden(staff, "staff after restart")
+	auditHidden(outsider, "admin after restart")
 	_ = staffID
 }
 

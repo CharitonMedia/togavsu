@@ -548,13 +548,7 @@ func (h *Handler) writeHistory(w http.ResponseWriter, r *http.Request, entity, i
 	}
 	items := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, map[string]any{
-			"id": row.ID, "at": row.At.UTC().Format(timeRFC3339), "actor_id": row.ActorID,
-			"actor_kind": historyActorKind(row.Source, row.Role), "role": row.Role, "source": row.Source,
-			"entity_type": row.Entity, "entity_id": row.EntityID, "field": row.Field,
-			"old_value": historyValue(row, row.Old), "new_value": historyValue(row, row.New),
-			"reason": historyValue(row, row.Reason), "kind": row.Kind,
-		})
+		items = append(items, HistoryItem(row))
 	}
 	writeJSON(w, http.StatusOK, listEnvelope(items, len(items), ""))
 }
