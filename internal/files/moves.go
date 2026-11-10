@@ -91,6 +91,12 @@ func (s *Service) StartMove(ctx context.Context, p domain.Principal, in MoveRequ
 		if err != nil {
 			return err
 		}
+		// One move at a time per backend, a resumed one included.
+		for _, mv := range existing {
+			if (mv.Status == "running" || mv.Status == "checked") && (mv.FromBackendID == in.FromBackendID || mv.ToBackendID == in.FromBackendID) {
+				return domain.Conflict("finish or confirm the move already running on this backend first")
+			}
+		}
 		// Starting the same move again resumes a failed one where it stopped: the
 		// objects that checked out stay checked, and the run picks up the rest.
 		for _, mv := range existing {
@@ -102,11 +108,6 @@ func (s *Service) StartMove(ctx context.Context, p domain.Principal, in MoveRequ
 				}
 				m = mv
 				return s.record(ctx, p, "storage_move", mv.ID, "status", "failed", "running")
-			}
-		}
-		for _, mv := range existing {
-			if (mv.Status == "running" || mv.Status == "checked") && (mv.FromBackendID == in.FromBackendID || mv.ToBackendID == in.FromBackendID) {
-				return domain.Conflict("finish or confirm the move already running on this backend first")
 			}
 		}
 		if err := s.st.insertMove(ctx, m); err != nil {

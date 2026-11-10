@@ -342,3 +342,36 @@ func TestPGPurgeLeavesNoMoveCopies(t *testing.T) {
 		}
 	})
 }
+
+// TestPGResumeWaitsForAMoveOnItsSource is checkpoint 10: restarting a failed move while
+// another move runs on its source is refused, so two moves never copy one object.
+func TestPGResumeWaitsForAMoveOnItsSource(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	seedFiles(t, e, 1)
+	_, s3 := e.s3()
+	_, dbx := e.dropbox()
+	req := MoveRequest{FromBackendID: e.local.ID, ToBackendID: s3.ID, Scope: "all"}
+	failed, err := e.svc.StartMove(ctx, e.admin, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := e.svc.st.moveItems(ctx, failed.ID)
+	if err != nil || len(items) < 2 {
+		t.Fatalf("items = %d %v", len(items), err)
+	}
+	corruptLocal(t, e, items[len(items)-1].ObjectID)
+	if err := e.svc.RunMove(ctx, failed.ID); !errors.Is(err, storage.ErrIntegrity) {
+		t.Fatalf("move over a corrupt object = %v", err)
+	}
+	if _, err := e.svc.StartMove(ctx, e.admin, MoveRequest{FromBackendID: e.local.ID, ToBackendID: dbx.ID, Scope: "all"}); err != nil {
+		t.Fatalf("a second move while the first is failed = %v", err)
+	}
+	if _, err := e.svc.StartMove(ctx, e.admin, req); !isCode(err, domain.CodeConflict) {
+		t.Fatalf("resume while another move runs on the source = %v, want a conflict", err)
+	}
+	got, err := e.svc.GetMove(ctx, e.admin, failed.ID)
+	if err != nil || got.Status != "failed" {
+		t.Fatalf("the refused resume changed the move: %+v %v", got, err)
+	}
+}
