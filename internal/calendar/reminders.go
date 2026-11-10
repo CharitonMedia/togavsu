@@ -86,7 +86,10 @@ func (s *Service) RunReminders(ctx context.Context) (ReminderRun, error) {
 			continue
 		}
 		// The earlier offsets are superseded only once the nearest one is delivered.
-		for _, off := range eligible[1:] {
+		for _, off := range eligible {
+			if off == nearest {
+				continue
+			}
 			if _, err := s.d.Store.ClaimReminder(ctx, deadlineKey(d, off)); err != nil {
 				errs = append(errs, err)
 			}
