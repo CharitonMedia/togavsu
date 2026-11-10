@@ -149,16 +149,23 @@ jobs:
           go-version: "1.22"
       - name: Core tests and first run on one Compose up
         run: |
-          if [ ! -d internal/core ]; then
+          # Fail closed: any of this job's scripts present means all must exist and run.
+          found=0; missing=""
+          for script in scripts/ci/test-core.sh scripts/ci/test-compose-first-run.sh; do
+            if [ -f "$script" ]; then found=$((found + 1)); else missing="$missing $script"; fi
+          done
+          if [ "$found" -eq 0 ]; then
+            if [ -d internal/core ]; then
+              echo "internal/core is present but no core tests script exists" >&2
+              exit 1
+            fi
             echo "Core integration not yet merged; core tests pending"
             exit 0
           fi
-          for script in scripts/ci/test-core.sh scripts/ci/test-compose-first-run.sh; do
-            if [ ! -f "$script" ]; then
-              echo "internal/core is present but $script is absent" >&2
-              exit 1
-            fi
-          done
+          if [ -n "$missing" ]; then
+            echo "core tests scripts are incomplete; missing:$missing" >&2
+            exit 1
+          fi
           sh scripts/ci/test-core.sh
           sh scripts/ci/test-compose-first-run.sh
 
@@ -193,12 +200,21 @@ jobs:
           go-version: "1.22"
       - name: API contract tests
         run: |
-          if [ ! -d internal/core ]; then
+          # Fail closed: any of this job's scripts present means all must exist and run.
+          found=0; missing=""
+          for script in scripts/ci/test-api.sh; do
+            if [ -f "$script" ]; then found=$((found + 1)); else missing="$missing $script"; fi
+          done
+          if [ "$found" -eq 0 ]; then
+            if [ -d internal/core ]; then
+              echo "internal/core is present but no API contract tests script exists" >&2
+              exit 1
+            fi
             echo "Core integration not yet merged; API contract tests pending"
             exit 0
           fi
-          if [ ! -f scripts/ci/test-api.sh ]; then
-            echo "internal/core is present but scripts/ci/test-api.sh is absent" >&2
+          if [ -n "$missing" ]; then
+            echo "API contract tests scripts are incomplete; missing:$missing" >&2
             exit 1
           fi
           sh scripts/ci/test-api.sh
@@ -215,12 +231,21 @@ jobs:
           python-version: "3.12"
       - name: QA harness tests
         run: |
-          if [ ! -d internal/core ]; then
+          # Fail closed: any of this job's scripts present means all must exist and run.
+          found=0; missing=""
+          for script in scripts/ci/test-qa.sh; do
+            if [ -f "$script" ]; then found=$((found + 1)); else missing="$missing $script"; fi
+          done
+          if [ "$found" -eq 0 ]; then
+            if [ -d internal/core ]; then
+              echo "internal/core is present but no QA harness tests script exists" >&2
+              exit 1
+            fi
             echo "Core integration not yet merged; QA harness tests pending"
             exit 0
           fi
-          if [ ! -f scripts/ci/test-qa.sh ]; then
-            echo "internal/core is present but scripts/ci/test-qa.sh is absent" >&2
+          if [ -n "$missing" ]; then
+            echo "QA harness tests scripts are incomplete; missing:$missing" >&2
             exit 1
           fi
           sudo apt-get update
