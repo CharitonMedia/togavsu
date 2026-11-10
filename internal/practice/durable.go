@@ -257,30 +257,14 @@ func (d *Durable) Begin(ctx context.Context) (context.Context, func(error) error
 }
 
 // reload discards a failed unit's Memory changes by loading Memory from Postgres again.
-// When Postgres stays unreachable, Memory may still hold a write that was never stored,
-// so the core stops instead of serving it; on restart it loads the stored state or does
-// not start (Compose restarts it until Postgres is back).
+// When that load fails, Memory may still hold a write that was never stored, so the core
+// stops instead of serving it. Compose restarts it, and the new process loads the stored
+// state or does not start until Postgres is back.
 func (d *Durable) reload(ctx context.Context) {
-	ctx = context.WithoutCancel(ctx)
-	var err error
-	for attempt := 0; attempt < reloadAttempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(reloadBackoff)
-		}
-		if err = d.load(ctx); err == nil {
-			return
-		}
-		log.Printf("practice: reload after failed write (attempt %d): %v", attempt+1, err)
+	if err := d.load(context.WithoutCancel(ctx)); err != nil {
+		stopUnstored(fmt.Errorf("practice: memory may hold a write Postgres did not store and cannot be reloaded: %w", err))
 	}
-	stopUnstored(fmt.Errorf("practice: memory may hold a write Postgres did not store and cannot be reloaded: %w", err))
 }
-
-// reloadAttempts and reloadBackoff bound how long a failed write waits for Postgres
-// before the core stops.
-const (
-	reloadAttempts = 3
-	reloadBackoff  = 500 * time.Millisecond
-)
 
 // stopUnstored ends the process; tests replace it to observe the stop.
 var stopUnstored = func(err error) { log.Fatal(err) }
