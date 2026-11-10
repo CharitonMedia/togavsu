@@ -9,7 +9,9 @@ import (
 )
 
 // CreateConflict stores a conflict name. The reason is attorney-only.
-func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in ConflictInput) (domain.ConflictRecord, error) {
+func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in ConflictInput) (_ domain.ConflictRecord, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionWrite, MatterID: in.MatterID, SharedWithClient: true}); err != nil {
 		return domain.ConflictRecord{}, err
 	}
@@ -75,7 +77,9 @@ func (s *Service) CreateConflict(ctx context.Context, p domain.Principal, in Con
 }
 
 // RunConflictCheck scores contacts, parties, and conflict records in the application.
-func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matter domain.ID) (ConflictRun, error) {
+func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matter domain.ID) (_ ConflictRun, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatterShared(ctx, p, matter, domain.ActionRead, false); err != nil {
 		return ConflictRun{}, err
 	}
@@ -171,7 +175,9 @@ func (s *Service) RunConflictCheck(ctx context.Context, p domain.Principal, matt
 }
 
 // DecideConflictOnCheck records a decision only when the hit belongs to that check.
-func (s *Service) DecideConflictOnCheck(ctx context.Context, p domain.Principal, checkID, hitID domain.ID, decision, reason string) (Hit, error) {
+func (s *Service) DecideConflictOnCheck(ctx context.Context, p domain.Principal, checkID, hitID domain.ID, decision, reason string) (_ Hit, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	run, _, ok := s.db.FindHit(hitID)
 	if !ok || run.ID != checkID {
 		return Hit{}, domain.NotFound("conflict hit")
@@ -180,7 +186,9 @@ func (s *Service) DecideConflictOnCheck(ctx context.Context, p domain.Principal,
 }
 
 // DecideConflict records an attorney decision. The reason is attorney-only.
-func (s *Service) DecideConflict(ctx context.Context, p domain.Principal, hitID domain.ID, decision, reason string) (Hit, error) {
+func (s *Service) DecideConflict(ctx context.Context, p domain.Principal, hitID domain.ID, decision, reason string) (_ Hit, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	switch decision {
 	case DecisionClear, DecisionEscalate, DecisionNoGo:
 	default:

@@ -253,7 +253,9 @@ func (s *Service) historyRow(ctx context.Context, p domain.Principal, row stored
 }
 
 // UpdateAudit refuses to change an audit row.
-func (s *Service) UpdateAudit(ctx context.Context, row domain.AuditEntry) error {
+func (s *Service) UpdateAudit(ctx context.Context, row domain.AuditEntry) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.db.UpdateAudit(ctx, row); err != nil {
 		return domain.AppendOnly("audit_log")
 	}
@@ -261,7 +263,9 @@ func (s *Service) UpdateAudit(ctx context.Context, row domain.AuditEntry) error 
 }
 
 // DeleteAudit refuses to delete an audit row.
-func (s *Service) DeleteAudit(ctx context.Context, id domain.ID) error {
+func (s *Service) DeleteAudit(ctx context.Context, id domain.ID) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.db.DeleteAudit(ctx, id); err != nil {
 		return domain.AppendOnly("audit_log")
 	}
@@ -269,7 +273,9 @@ func (s *Service) DeleteAudit(ctx context.Context, id domain.ID) error {
 }
 
 // UpdateEvent refuses to change a timeline row.
-func (s *Service) UpdateEvent(ctx context.Context, row domain.Event) error {
+func (s *Service) UpdateEvent(ctx context.Context, row domain.Event) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.db.UpdateEvent(ctx, row); err != nil {
 		return domain.AppendOnly("events")
 	}
@@ -277,7 +283,9 @@ func (s *Service) UpdateEvent(ctx context.Context, row domain.Event) error {
 }
 
 // DeleteEvent refuses to delete a timeline row.
-func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) error {
+func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.db.DeleteEvent(ctx, id); err != nil {
 		return domain.AppendOnly("events")
 	}

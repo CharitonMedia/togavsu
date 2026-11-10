@@ -1,0 +1,361 @@
+{
+  "task_id": "integrate-practice",
+  "status": "pass",
+  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. status pass means the assigned integration behavior and all five phase cases pass and all local runs of the six required CI jobs pass on this revision (GitHub CI on it is pending). It is not full product acceptance: 49 of 52 criteria remain pending globally.",
+  "tested_revision": "4b3541d8abdd308854734e524b2f48486f066478",
+  "tests": [
+    {
+      "command": "TOGAVSU_TEST_DATABASE_URL_B=<second synthetic postgres:17 server URL> sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "seconds": 43
+    },
+    {
+      "command": "sh scripts/ci/test-core.sh",
+      "exit_code": 0,
+      "seconds": 74
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 23
+    },
+    {
+      "command": "sh scripts/ci/test-qa.sh",
+      "exit_code": 0,
+      "seconds": 8
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "exit_code": 0,
+      "seconds": 3
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestFailedReloadStopsServing|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0,
+      "seconds": 2
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "seconds": 5
+    },
+    {
+      "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/test-bootstrap.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/test-core-image-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/ui-qc.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "docker compose -f compose.yaml config -q",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/build-core-image.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-core-smoke.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0,
+      "seconds": 21
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "foundation-first-run",
+      "acceptance_ids": [
+        "AC-001"
+      ],
+      "status": "pass",
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0
+    },
+    {
+      "id": "identity-access",
+      "acceptance_ids": [
+        "AC-003",
+        "AC-004",
+        "AC-018",
+        "AC-024"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "exit_code": 0
+    },
+    {
+      "id": "practice-records",
+      "acceptance_ids": [
+        "AC-009",
+        "AC-020",
+        "AC-023",
+        "AC-025"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestFailedReloadStopsServing|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0
+    },
+    {
+      "id": "api-mcp-practice",
+      "acceptance_ids": [
+        "AC-002"
+      ],
+      "status": "pass",
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "id": "settings-audit",
+      "acceptance_ids": [
+        "AC-029",
+        "AC-030",
+        "AC-035"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-025",
+    "AC-030",
+    "AC-035"
+  ],
+  "pending_acceptance_ids": [
+    "AC-001",
+    "AC-002",
+    "AC-003",
+    "AC-004",
+    "AC-005",
+    "AC-006",
+    "AC-007",
+    "AC-008",
+    "AC-009",
+    "AC-010",
+    "AC-011",
+    "AC-012",
+    "AC-013",
+    "AC-014",
+    "AC-015",
+    "AC-016",
+    "AC-017",
+    "AC-018",
+    "AC-019",
+    "AC-020",
+    "AC-021",
+    "AC-022",
+    "AC-023",
+    "AC-024",
+    "AC-026",
+    "AC-027",
+    "AC-028",
+    "AC-029",
+    "AC-031",
+    "AC-032",
+    "AC-033",
+    "AC-034",
+    "AC-036",
+    "AC-037",
+    "AC-038",
+    "AC-039",
+    "AC-040",
+    "AC-041",
+    "AC-042",
+    "AC-043",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-050",
+    "AC-051",
+    "AC-052"
+  ],
+  "pending_notes": {
+    "AC-001": "Phase case passes: one Linux Compose up with no edits reaches setup, two-factor and a ready install. Clean Docker Desktop (Windows/macOS) installation is release acceptance and has not run.",
+    "AC-002": "Phase case passes: 99 of 427 contract operations are mounted on /api/v1 and /mcp, all fail closed, and the spec validates. Billing, trust, calendar, files, editor, Doc Tender, modules and users are not built; GET /api/v1/reports/matters and GET /api/v1/matters/{matter_id}/conflict-checks are served but absent from the contract.",
+    "AC-003": "Phase case passes for list, search, widget, report, screens, API, MCP and the audit log (an admin outside a wall receives no ledger row for the walled matter, its party contact or its note). Files, calendar, billing and trust surfaces of a walled matter are not built; module include rows are pending.",
+    "AC-004": "Phase case passes: the accountant reads the trust and AR reports and every practice, settings and area write is refused. Billing and trust records and their write paths are not built.",
+    "AC-009": "Phase case passes with an invoice written into the practice store as the billing wave's stand-in; real billing and trust ledgers are not built.",
+    "AC-018": "Audit half passes: every write in identity, settings and practice reaches the append-only audit_log with actor and source, and Compose runs the core as a non-superuser role that cannot change it. Backup download, S3 and network-path copies and restore of a running core are not demonstrated end to end in this assignment.",
+    "AC-020": "Phase case passes for matter number, phone and invoice number in each scope and All, and walls hide results; invoices come from the stand-in store and file-text search is pending (files).",
+    "AC-023": "Phase case passes for reopen with reason, restored status and timeline; the zero-fee marker is covered by the practice suite, AR aging over real billing data is pending.",
+    "AC-024": "Phase case passes for history old/new values and attorney-only redaction, on history and on the audit log; the events table is still mutable by the application role (AC-024-F4).",
+    "AC-029": "Phase case passes: PRD defaults are registry settings listed on admin page tabs, a change applies on the next request, is logged with old and new values, and Reset restores it. Settings read by modules that are not built cannot yet show their effect."
+  },
+  "ci": {
+    "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
+    "previous_run": "https://github.com/CharitonMedia/togavsu/actions/runs/42761536976",
+    "previous_run_head_sha": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+    "previous_run_conclusion": "success",
+    "current_revision_ci": "pending: the controller publishes this branch; Product CI runs on PR #24 (https://github.com/CharitonMedia/togavsu/pull/24/checks) have not been observed for 4b3541d8abdd308854734e524b2f48486f066478",
+    "required_jobs": [
+      "Core tests",
+      "API contract tests",
+      "QA harness tests",
+      "Supervisor tests",
+      "Backup integration",
+      "Supervisor image"
+    ],
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), and tesseract-ocr, tesseract-ocr-eng and fonts-dejavu-core from Ubuntu apt, installed before the run as the CI job does. CI pins the Postgres 17 client and Python 3.12. Run history at the tested revision: a first full pass used one shared postgres:17 server (user postgres, database togavsu_test) for every suite; all commands exited 0 except test-backup-integration.sh, which exited 1 (six restore-recovery tests, for example \"recovery deleted the wrong database\"), because that suite expects fresh servers with the CI user and database togavsu, as its separate CI job provides. Both servers were recreated as in CI (user togavsu, database togavsu) and the whole list was rerun with backup integration first; the recorded results are that second pass, every command exit 0. In the second pass test-supervisor.sh took 5 s because its first two go test steps (without -count=1) reused the Go test cache from the first pass at this same revision, where the script ran in 293 s and exited 0; its -count=1 path-share step ran again."
+  },
+  "visual_qc": {
+    "record": "docs/build/reports/screens/integrate-practice/qc.json",
+    "revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+    "summary": "All 14 QC steps repeated at 05fde77 in headless Chrome; no page errors; the only error responses are the two deliberate 400 submissions. Not repeated at the tested revision because no screen changed after 05fde77.",
+    "changed_screens_this_run": "none: git diff 05fde77..4b3541d touches no template, page handler or web asset (the audit-log JSON route, the practice service and store, deploy/postgres/core-role.sh, a CI test script, tests and the debt ledger only), so the QC record at 05fde77 still covers every screen."
+  },
+  "simplification": {
+    "go_lines_added": 3952,
+    "go_lines_removed": 96,
+    "net_go_lines": 3856,
+    "net_non_test_go_lines": 2386,
+    "debt_entries_before": 33,
+    "debt_entries_after": 37,
+    "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules).",
+    "previous_run_79ff33f": {
+      "go_lines_added": 385,
+      "go_lines_removed": 63,
+      "net_go_lines": 322,
+      "net_non_test_go_lines": 177,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "One unit type and a Begin method on Durable reuse the existing commit path; Service.unit is a two-line optional-interface check, so Memory and test stores are unchanged. Practice ceiling 1 is rewritten in place, not added."
+    },
+    "previous_run_05fde77_evidence": {
+      "go_lines_added": 0,
+      "go_lines_removed": 0,
+      "net_go_lines": 0,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "Report, phase report and QC evidence only; no Go, template or debt change."
+    },
+    "basis": "git diff --numstat b3b6165 (PR base) 4b3541d over *.go; debt entries are the numbered and section entries in PONYTAIL-DEBT.md, which states Debt count: 37.",
+    "previous_run_c075397": {
+      "go_lines_added": 231,
+      "go_lines_removed": 23,
+      "net_go_lines": 208,
+      "net_non_test_go_lines": 68,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "The audit-log filter reuses practice visibleMatter, readableContact and historyRow, the same checks History uses; one HistoryItem renderer now serves history and the audit log instead of two copies. No new dependency, no new debt; the existing unpaginated-ledger ponytail is unchanged.",
+      "note": "Counts as recorded for that run. Integration ceiling 5 was removed afterwards in bc29a88, so the ledger now has 37 entries."
+    },
+    "this_run": {
+      "go_lines_added": 32,
+      "go_lines_removed": 1,
+      "net_go_lines": 31,
+      "net_non_test_go_lines": 7,
+      "shell_lines": "deploy/postgres/core-role.sh +19; scripts/ci/test-compose-first-run.sh +44 / -11",
+      "debt_entries_before": 38,
+      "debt_entries_after": 37,
+      "review": "Covers bc29a88, d150a23 and 4b3541d. The failed-reload stop is one package variable and a log.Fatal; the in-process retry loop from bc29a88 was removed in d150a23 because its count and backoff were unregistered firm-tunable literals and a Compose restart already retries the load. The ownership handoff is one DO block in the existing dbinit script, so integration ceiling 5 is removed (38 -> 37). The first-run test reuses its append-only check as a function instead of a second copy. No new dependency."
+    }
+  },
+  "status_reason": "Every assigned phase case and every local test passes at the tested revision 4b3541d8abdd308854734e524b2f48486f066478, the final code commit, including TestFailedReloadStopsServing and the new legacy-volume ownership step of the Compose first-run test. GitHub Product CI on this revision is pending (it passed all six required jobs at 05fde77). Status pass is phase evidence, not full product acceptance: 49 of 52 criteria remain pending globally.",
+  "review_fixes": [
+    {
+      "finding": "Codex checkpoint on 16f9c87, P1 internal/practice/durable.go: one service mutation committed as several transactions, so a failed audit_log append could leave an unaudited change, and check-then-write was not serialized.",
+      "fix": "Durable.Begin unit of work; every exported mutating practice Service method runs in one unit, which commits its records and audit rows in one transaction or reloads on error.",
+      "tests": [
+        "TestServiceMutationIsOneTransaction (fails with the unit disabled; passes with it)",
+        "TestConcurrentClosesSerialize (serialization guard; it also passed with the unit disabled because the race window is small, so it is not proof of the fix)"
+      ]
+    },
+    {
+      "finding": "Codex checkpoint on 16f9c87, P1 report: status pass while the required CI jobs are missing; tested_revision not the published head.",
+      "fix": "status is pending until the jobs exist; tested_revision is 79ff33f, and only docs/build/reports/ files change after it."
+    },
+    {
+      "finding": "Codex checkpoint on 16f9c87, P0 .github/workflows/product-ci.yml: required jobs missing.",
+      "fix": "Not fixable in a lane (no .github/ changes allowed). The exact workflow change is in the PR body under Proposed CI change."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P1 integrate-practice.json: status pending with a stale missing-CI-jobs blocker.",
+      "fix": "The jobs exist on the base (#25) and pass on 05fde77 (run 42761536976). Full suite rerun locally at 05fde77, status set to pass, tested_revision 05fde77, missing-jobs and blocker statements removed. Report-only finding: no code changed, so the regression check is the rerun suite and the CI run on this SHA."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P1 phase-1.md and phase-2.md: stale 'not complete; do not tag' and blocker; PR body 'Proposed CI change' and 'Blocker' sections stale.",
+      "fix": "Both phase reports now state the phase cases and all six CI jobs pass at 05fde77, while 49 criteria remain pending globally. The PR body drops the stale sections."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P2 qc.json: QC recorded at 527a5a1, not the tested revision.",
+      "fix": "QC repeated at 05fde77 with all 14 steps; qc.json revision is 05fde77 and the committed screenshots were regenerated."
+    },
+    {
+      "finding": "Codex checkpoint on aa58133 (base b3b6165), P1 internal/core/http.go: auditJSON returned every ledger row to any admin, including old/new values for matters behind a wall the admin is not on, through the API and the MCP tool.",
+      "fix": "auditJSON passes ledger rows through practice.Service.AuditLog: rows about a matter the caller cannot read (Policy and wall, as History), about a contact who exists only on such matters, or about a matter-scoped practice record practice did not record (fail closed) are dropped; attorney-only values are redacted as history redacts them. Rows render in the contract AuditEntry shape (actor_kind and kind from the published enums).",
+      "tests": [
+        "TestWallsRolesAuditAndRestart: an admin outside the wall gets no row for the walled matter, its party contact or its note over GET /api/v1/audit-log (unfiltered, by entity type, by entity id) and the MCP audit-log tool, before and after a restart; the admin on the wall still sees them. Fails on the previous auditJSON (checked by restoring it).",
+        "TestAuditLogKeepsWallAndRedaction: service level, outside admin vs inside admin, unrecorded note row dropped, other-service rows pass through, attorney-only conflict reason redacted for staff."
+      ]
+    },
+    {
+      "finding": "Codex review comments (three P1 threads) on the practice integration: transactional commits of practice rows and audit rows; a failed reload after a failed write left the core serving rows Postgres did not store; an existing volume whose core schema the Postgres superuser owns could not be migrated by togavsu_app.",
+      "fix": "Transactional commits: already fixed by Durable.Begin at 79ff33f. Failed reload: Durable.reload now stops the process (stopUnstored, log.Fatal) and Compose restarts it (bc29a88, d150a23). Existing volume: deploy/postgres/core-role.sh hands schema core and every table, view, materialized view, foreign table and standalone sequence in it to togavsu_app (bc29a88); integration ceiling 5 removed.",
+      "tests": [
+        "TestServiceMutationIsOneTransaction and TestDurableFailedCommitLeavesNoTrace (transactional commits)",
+        "TestFailedReloadStopsServing (closes the pool, a write fails, the reload fails, the stop hook fires); added to the practice-records phase case",
+        "scripts/ci/test-compose-first-run.sh legacy-volume step (4b3541d): stages schema core, its tables, a sequence and a view owned by togavsu, reruns dbinit, requires every core relation to be owned by togavsu_app, restarts the core and repeats the append-only check. With core-role.sh at c075397 the step fails: dbinit left core owned by togavsu with 58 relations not owned by togavsu_app."
+      ]
+    },
+    {
+      "finding": "Codex checkpoint on d150a23 (base b3b6165), P1 integrate-practice.json: tested_revision c075397 predates code changes in bc29a88 and d150a23; the six CI jobs and five phase cases were not rerun at the head.",
+      "fix": "Every recorded test and phase case was rerun at 4b3541d8abdd308854734e524b2f48486f066478 (the final code commit), tested_revision set to it, and only docs/build/reports/ files are committed after it."
+    },
+    {
+      "finding": "Codex checkpoint on d150a23, P2 integrate-practice.json and phase-1.md: debt counts 38 and five integration ceilings disagree with PONYTAIL-DEBT.md (37, four ceilings); no review_fixes entry for the review-comment fixes.",
+      "fix": "simplification and phase-1.md now say 33 before and 37 after with four integration ceilings; this_run records 38 -> 37; the review-comment fixes have their own review_fixes entry."
+    }
+  ]
+}

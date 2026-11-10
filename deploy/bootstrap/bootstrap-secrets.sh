@@ -19,6 +19,12 @@ if [ ! -s /pgsecrets/postgres_password ]; then
   rand 24 > /pgsecrets/postgres_password
 fi
 
+# The core logs in as togavsu_app, a role without superuser, so audit_log privileges
+# hold against it. deploy/postgres/core-role.sh creates that role with this password.
+if [ ! -s /pgsecrets/app_password ]; then
+  rand 24 > /pgsecrets/app_password
+fi
+
 if [ ! -s /appsecrets/supervisor_token ]; then
   rand 24 > /appsecrets/supervisor_token
 fi
@@ -41,7 +47,8 @@ else
 fi
 
 pass=$(tr -d '\n' < /pgsecrets/postgres_password)
-printf 'postgres://togavsu:%s@postgres:5432/togavsu?sslmode=disable\n' "$pass" > /appsecrets/database_url
+app_pass=$(tr -d '\n' < /pgsecrets/app_password)
+printf 'postgres://togavsu_app:%s@postgres:5432/togavsu?sslmode=disable\n' "$app_pass" > /appsecrets/database_url
 printf 'postgres://togavsu:%s@postgres:5432/postgres?sslmode=disable\n' "$pass" > /appsecrets/admin_database_url
 
 if [ ! -f /appsecrets/backup_passphrase ]; then
@@ -65,6 +72,6 @@ chmod 640 \
 chown "${core_uid}:${core_gid}" /appsecrets/backup_passphrase
 chmod 600 /appsecrets/backup_passphrase
 
-chown "root:${postgres_gid}" /pgsecrets /pgsecrets/postgres_password
+chown "root:${postgres_gid}" /pgsecrets /pgsecrets/postgres_password /pgsecrets/app_password
 chmod 750 /pgsecrets
-chmod 640 /pgsecrets/postgres_password
+chmod 640 /pgsecrets/postgres_password /pgsecrets/app_password

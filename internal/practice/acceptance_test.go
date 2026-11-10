@@ -19,7 +19,7 @@ import (
 
 func TestPendingStaysHonest(t *testing.T) {
 	text := strings.Join(Pending, "\n")
-	for _, needle := range []string{"identity", "application-role SQL", "migration 0001", "module include"} {
+	for _, needle := range []string{"module include", "application-role SQL", "migration 0001", "practice_records"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("pending list lost %q", needle)
 		}
@@ -681,10 +681,21 @@ func TestActivityGroups(t *testing.T) {
 	}
 }
 
+// newSvc runs over the Postgres Durable store when TOGAVSU_TEST_DATABASE_URL is set,
+// so every practice case also exercises the write-through path. Fixtures written
+// straight to the returned Memory stay process-local, as before.
 func newSvc(t *testing.T) (*Service, *Memory) {
 	t.Helper()
 	db := NewMemory()
-	svc, err := NewWithSettings(db)
+	var store Store = db
+	if pool := practiceDB(t); pool != nil {
+		d, err := OpenDurable(context.Background(), pool, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, store = d.Memory, d
+	}
+	svc, err := NewWithSettings(store)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -117,12 +117,21 @@ func actorKind(p domain.Principal) string {
 	return "staff"
 }
 
+// tokenReason keeps the token id on the row the way audit.provenance does for identity,
+// so the shared audit_log has one convention: source api_token, reason "token=<id> ...".
+func tokenReason(p domain.Principal, reason string) string {
+	if p.Source != domain.SourceAPIToken || p.TokenID.IsZero() {
+		return reason
+	}
+	if reason == "" {
+		return "token=" + string(p.TokenID)
+	}
+	return "token=" + string(p.TokenID) + " " + reason
+}
+
 func sourceLabel(p domain.Principal) string {
 	if p.Source == domain.SourceModule && p.ModuleID != "" {
 		return p.ModuleID
-	}
-	if p.Source == domain.SourceAPIToken && !p.TokenID.IsZero() {
-		return string(p.TokenID)
 	}
 	if p.Source == "" {
 		return string(domain.SourceUI)
@@ -283,7 +292,7 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 				Field:    row.Field,
 				OldValue: row.Old,
 				NewValue: row.New,
-				Reason:   row.Reason,
+				Reason:   tokenReason(p, row.Reason),
 			},
 			MatterID:     row.MatterID,
 			ContactID:    row.ContactID,
@@ -433,4 +442,19 @@ func fingerprint(v any) string {
 	}
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
+}
+
+// unitStore is a store that can hold one service mutation in a single transaction.
+type unitStore interface {
+	Begin(context.Context) (context.Context, func(error) error)
+}
+
+// unit starts the store transaction for one mutation. Every exported Service method that
+// writes calls it first and returns through done, so its rows and audit entries commit
+// together or not at all, and its checks cannot interleave with another mutation.
+func (s *Service) unit(ctx context.Context) (context.Context, func(error) error) {
+	if u, ok := s.db.(unitStore); ok {
+		return u.Begin(ctx)
+	}
+	return ctx, func(err error) error { return err }
 }

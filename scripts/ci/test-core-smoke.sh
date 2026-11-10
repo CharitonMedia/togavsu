@@ -1,6 +1,8 @@
 #!/bin/sh
-# Run the core image entrypoint against synthetic secrets. The skeleton
-# accepts bootstrap configuration and does not start HTTP or migrations.
+# Run the core image entrypoint against synthetic secrets. "core check" accepts the
+# bootstrap configuration without touching the database; plain "core" must fail fast,
+# not hang, when the database is unreachable. scripts/ci/test-compose-first-run.sh
+# covers the served first-run on a real stack.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 docker=${DOCKER:-docker}
@@ -21,7 +23,7 @@ chmod 644 "$work/appsecrets/"*
 out=$("$docker" run --rm --user 65532:65532 \
   -e TOGAVSU_DOMAIN=firm.example \
   -v "$work/appsecrets:/appsecrets:ro" \
-  togavsu-core:local)
+  togavsu-core:local check)
 printf '%s\n' "$out"
 printf '%s\n' "$out" | grep -q "bootstrap configuration accepted"
 printf '%s\n' "$out" | grep -q "HTTP service and migrations are not started"
@@ -32,8 +34,17 @@ before=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$w
 out=$("$docker" run --rm --user 65532:65532 \
   -e TOGAVSU_DOMAIN=firm.example \
   -v "$work/appsecrets:/appsecrets:ro" \
-  togavsu-core:local)
+  togavsu-core:local check)
 printf '%s\n' "$out" | grep -q "bootstrap configuration accepted"
 after=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$work/appsecrets/field_key")
 test "$before" = "$after"
-echo "core image smoke passed; HTTP first-run remains pending"
+# Serving without a reachable database exits non-zero instead of serving or hanging.
+if timeout 60 "$docker" run --rm --user 65532:65532 --network none \
+  -e TOGAVSU_DOMAIN=firm.example \
+  -v "$work/appsecrets:/appsecrets:ro" \
+  togavsu-core:local >"$work/serve.log" 2>&1; then
+  echo "core served without a database" >&2
+  exit 1
+fi
+grep -q "core: migrate" "$work/serve.log"
+echo "core image smoke passed"

@@ -11,7 +11,9 @@ import (
 var scriptBlock = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>|<style[^>]*>.*?</style>`)
 
 // CreateNote stores a matter or contact note. Agent and module bodies are sanitized.
-func (s *Service) CreateNote(ctx context.Context, p domain.Principal, in NoteInput) (domain.Note, error) {
+func (s *Service) CreateNote(ctx context.Context, p domain.Principal, in NoteInput) (_ domain.Note, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateNote(ctx, p, in.MatterID, in.ContactID, domain.ActionWrite); err != nil {
 		return domain.Note{}, err
 	}
@@ -51,7 +53,9 @@ func (s *Service) CreateNote(ctx context.Context, p domain.Principal, in NoteInp
 }
 
 // UpdateNote edits a note the caller can see.
-func (s *Service) UpdateNote(ctx context.Context, p domain.Principal, id domain.ID, in NoteInput) (domain.Note, error) {
+func (s *Service) UpdateNote(ctx context.Context, p domain.Principal, id domain.ID, in NoteInput) (_ domain.Note, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Note(ctx, id)
 	if err != nil {
 		return domain.Note{}, missing(err, "note")

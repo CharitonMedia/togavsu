@@ -11,7 +11,9 @@ import (
 )
 
 // CreateMatter assigns the next matter number and writes the audit log.
-func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in MatterInput) (domain.Matter, error) {
+func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in MatterInput) (_ domain.Matter, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionWrite}); err != nil {
 		return domain.Matter{}, err
 	}
@@ -49,7 +51,9 @@ func (s *Service) CreateMatter(ctx context.Context, p domain.Principal, in Matte
 }
 
 // UpdateMatter edits fields other than number and close state.
-func (s *Service) UpdateMatter(ctx context.Context, p domain.Principal, id domain.ID, in MatterInput) (domain.Matter, error) {
+func (s *Service) UpdateMatter(ctx context.Context, p domain.Principal, id domain.ID, in MatterInput) (_ domain.Matter, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatter(ctx, p, id, domain.ActionWrite); err != nil {
 		return domain.Matter{}, err
 	}
@@ -128,7 +132,9 @@ func (s *Service) PreviewClose(ctx context.Context, p domain.Principal, id domai
 }
 
 // CloseMatter closes a matter. Unpaid invoices and leftover trust warn and do not block.
-func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain.ID, in CloseInput) (domain.Matter, CloseRecord, error) {
+func (s *Service) CloseMatter(ctx context.Context, p domain.Principal, id domain.ID, in CloseInput) (_ domain.Matter, _ CloseRecord, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatter(ctx, p, id, domain.ActionWrite); err != nil {
 		return domain.Matter{}, CloseRecord{}, err
 	}
@@ -192,7 +198,9 @@ type replayMatter struct {
 // PRD 8.12 and the OpenAPI reopen roles are admin and attorney. domain.Policy has no
 // reopen action. ActionConflictDecide is the existing decision that allows those two
 // roles, denies staff, and still applies the matter wall.
-func (s *Service) ReopenMatter(ctx context.Context, p domain.Principal, id domain.ID, reason string) (domain.Matter, error) {
+func (s *Service) ReopenMatter(ctx context.Context, p domain.Principal, id domain.ID, reason string) (_ domain.Matter, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{
 		Resource: domain.ResMatter, Action: domain.ActionConflictDecide, MatterID: id,
 	}); err != nil {
@@ -231,7 +239,9 @@ func (s *Service) ReopenMatter(ctx context.Context, p domain.Principal, id domai
 }
 
 // SetWall replaces the users allowed into a matter. An empty list removes the wall. Admin only.
-func (s *Service) SetWall(ctx context.Context, p domain.Principal, matter domain.ID, users []domain.ID) error {
+func (s *Service) SetWall(ctx context.Context, p domain.Principal, matter domain.ID, users []domain.ID) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return err
 	}
@@ -296,7 +306,9 @@ func (s *Service) NeedsCaseNumber(ctx context.Context, p domain.Principal) ([]do
 }
 
 // PinMarker pins a firm marker. Also asked about names a practice area.
-func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) (MatterMarker, error) {
+func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) (_ MatterMarker, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
 		return MatterMarker{}, err
 	}
@@ -336,7 +348,9 @@ func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter doma
 }
 
 // PinMarkerID pins a marker by its definition id.
-func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, markerID, area domain.ID) (MatterMarker, error) {
+func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, markerID, area domain.ID) (_ MatterMarker, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.ensureMarkers(ctx); err != nil {
 		return MatterMarker{}, err
 	}
@@ -348,7 +362,9 @@ func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, m
 }
 
 // RemoveMarker takes a pinned marker off a matter.
-func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) error {
+func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter domain.ID, label string, area domain.ID) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
 		return err
 	}
@@ -363,7 +379,9 @@ func (s *Service) RemoveMarker(ctx context.Context, p domain.Principal, matter d
 }
 
 // RemoveMarkerID takes one pinned marker off by its row id.
-func (s *Service) RemoveMarkerID(ctx context.Context, p domain.Principal, id domain.ID) error {
+func (s *Service) RemoveMarkerID(ctx context.Context, p domain.Principal, id domain.ID) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	row, ok := s.findMarker(id)
 	if !ok {
 		return domain.NotFound("marker")

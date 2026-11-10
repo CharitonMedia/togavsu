@@ -8,7 +8,9 @@ import (
 )
 
 // CreateContact stores a person or organization and writes the audit log.
-func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in ContactInput) (domain.Contact, error) {
+func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in ContactInput) (_ domain.Contact, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResContact, Action: domain.ActionWrite}); err != nil {
 		return domain.Contact{}, err
 	}
@@ -44,7 +46,9 @@ func (s *Service) CreateContact(ctx context.Context, p domain.Principal, in Cont
 }
 
 // UpdateContact edits a contact. A phone number change is a new historical row, not an overwrite.
-func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id domain.ID, in ContactInput) (domain.Contact, error) {
+func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id domain.ID, in ContactInput) (_ domain.Contact, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.readableContact(ctx, p, id); err != nil {
 		return domain.Contact{}, err
 	}
@@ -79,7 +83,9 @@ func (s *Service) UpdateContact(ctx context.Context, p domain.Principal, id doma
 }
 
 // ArchiveContact marks a contact archived and keeps the row.
-func (s *Service) ArchiveContact(ctx context.Context, p domain.Principal, id domain.ID) (domain.Contact, error) {
+func (s *Service) ArchiveContact(ctx context.Context, p domain.Principal, id domain.ID) (_ domain.Contact, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Contact(ctx, id)
 	if err != nil {
 		return domain.Contact{}, missing(err, "contact")
@@ -122,7 +128,9 @@ func (s *Service) ListContacts(ctx context.Context, p domain.Principal) ([]domai
 }
 
 // AddPhone stores an E.164 phone. The previous primary stays in history when a new primary is set.
-func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact domain.ID, label, phone, from string, primary bool) (domain.ContactPhone, error) {
+func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact domain.ID, label, phone, from string, primary bool) (_ domain.ContactPhone, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.readableContact(ctx, p, contact); err != nil {
 		return domain.ContactPhone{}, err
 	}
@@ -159,7 +167,9 @@ func (s *Service) AddPhone(ctx context.Context, p domain.Principal, contact doma
 }
 
 // ChangePhone closes the current row and inserts the new number so history is kept.
-func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain.ID, phone, from, label string) (domain.ContactPhone, error) {
+func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain.ID, phone, from, label string) (_ domain.ContactPhone, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Phone(ctx, id)
 	if err != nil {
 		return domain.ContactPhone{}, missing(err, "phone")
@@ -234,7 +244,9 @@ func (s *Service) ChangePhone(ctx context.Context, p domain.Principal, id domain
 }
 
 // AddEmail stores an email without overwriting an earlier one.
-func (s *Service) AddEmail(ctx context.Context, p domain.Principal, contact domain.ID, label, email, from string, primary bool) (domain.ContactEmail, error) {
+func (s *Service) AddEmail(ctx context.Context, p domain.Principal, contact domain.ID, label, email, from string, primary bool) (_ domain.ContactEmail, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.readableContact(ctx, p, contact); err != nil {
 		return domain.ContactEmail{}, err
 	}
@@ -263,7 +275,9 @@ func (s *Service) AddEmail(ctx context.Context, p domain.Principal, contact doma
 }
 
 // AddAddress stores an address without overwriting an earlier one.
-func (s *Service) AddAddress(ctx context.Context, p domain.Principal, row domain.ContactAddress) (domain.ContactAddress, error) {
+func (s *Service) AddAddress(ctx context.Context, p domain.Principal, row domain.ContactAddress) (_ domain.ContactAddress, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.readableContact(ctx, p, row.ContactID); err != nil {
 		return domain.ContactAddress{}, err
 	}
@@ -288,7 +302,9 @@ func (s *Service) AddAddress(ctx context.Context, p domain.Principal, row domain
 }
 
 // AddContactTag adds a free tag.
-func (s *Service) AddContactTag(ctx context.Context, p domain.Principal, contact domain.ID, tag string) (domain.ContactTag, error) {
+func (s *Service) AddContactTag(ctx context.Context, p domain.Principal, contact domain.ID, tag string) (_ domain.ContactTag, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.readableContact(ctx, p, contact); err != nil {
 		return domain.ContactTag{}, err
 	}

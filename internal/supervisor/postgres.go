@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -85,6 +86,18 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 	target, err := withDatabase(adminURL, fresh)
 	if err != nil {
 		return err
+	}
+	// Restored objects must belong to the core's own login role, not the admin, or a
+	// non-superuser core cannot use them and audit_log privileges cannot hold.
+	owner, err := restoreOwner(adminURL, databaseURL)
+	if err != nil {
+		return err
+	}
+	if owner != "" {
+		if err := psqlExec(ctx, bin, adminURL, "GRANT CONNECT, CREATE ON DATABASE "+fresh+" TO "+owner); err != nil {
+			return err
+		}
+		dump = io.MultiReader(strings.NewReader("SET ROLE "+owner+";\n"), dump)
 	}
 	// The dump is already the managed restore workspace. Streaming it avoids a
 	// second plaintext file that SIGKILL would leave in the system temp dir.
@@ -1197,6 +1210,29 @@ func MeasureCommand(bin, adminURL string) func(context.Context, io.Reader) (map[
 		}
 		return CountCommand(bin, target)(ctx)
 	}
+}
+
+var roleName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
+// restoreOwner is the core login role in databaseURL when it differs from the admin
+// user in adminURL, and "" when both are the same role.
+func restoreOwner(adminURL, databaseURL string) (string, error) {
+	admin, err := url.Parse(adminURL)
+	if err != nil {
+		return "", err
+	}
+	app, err := url.Parse(databaseURL)
+	if err != nil {
+		return "", err
+	}
+	if app.User == nil || admin.User == nil || app.User.Username() == admin.User.Username() {
+		return "", nil
+	}
+	name := app.User.Username()
+	if !roleName.MatchString(name) {
+		return "", fmt.Errorf("DATABASE_URL role %q: %w", name, ErrBadRequest)
+	}
+	return name, nil
 }
 
 func withDatabase(rawURL, name string) (string, error) {

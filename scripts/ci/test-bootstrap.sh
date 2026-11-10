@@ -27,9 +27,18 @@ sudo test -s "$work/appsecrets/database_url"
 sudo test -f "$work/appsecrets/backup_passphrase"
 sudo test ! -s "$work/appsecrets/backup_passphrase"
 pass1=$(sudo cat "$work/pgsecrets/postgres_password")
+app1=$(sudo cat "$work/pgsecrets/app_password")
 sudo sh "$work/bootstrap.sh"
 test "$pass1" = "$(sudo cat "$work/pgsecrets/postgres_password")"
-sudo grep -q "postgres://togavsu:${pass1}@postgres:5432/togavsu" "$work/appsecrets/database_url"
+test "$app1" = "$(sudo cat "$work/pgsecrets/app_password")"
+test "$app1" != "$pass1"
+# The core logs in as the non-superuser togavsu_app; only the supervisor gets the admin role.
+sudo grep -q "postgres://togavsu_app:${app1}@postgres:5432/togavsu" "$work/appsecrets/database_url"
+sudo grep -q "postgres://togavsu:${pass1}@postgres:5432/postgres" "$work/appsecrets/admin_database_url"
+if sudo grep -q "$pass1" "$work/appsecrets/database_url"; then
+  echo "the core database URL carries the admin password" >&2
+  exit 1
+fi
 
 sudo python3 -c '
 import os, sys
@@ -51,7 +60,8 @@ os.setgroups([])
 os.setgid(999)
 os.setuid(999)
 open(sys.argv[1]).read()
-' "$work/pgsecrets/postgres_password"
+open(sys.argv[2]).read()
+' "$work/pgsecrets/postgres_password" "$work/pgsecrets/app_password"
 
 phrase=$(sudo cat "$work/appsecrets/backup_passphrase")
 test "$phrase" = "set-at-first-run"

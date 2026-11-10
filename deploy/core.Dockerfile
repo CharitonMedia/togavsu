@@ -1,6 +1,7 @@
-# Product core image. Builds the contracts bootstrap binary. The process
-# accepts its four environment values and does not start HTTP or migrations.
-# The go.mod and cmd/core checks still fail the build if those files are removed.
+# Product core image. The binary migrates, seeds reference rows and serves HTTP on
+# :8080; templates and the API contract are embedded. "core check" only validates
+# the four bootstrap values. The go.mod and cmd/core checks still fail the build if
+# those files are removed.
 FROM golang:1.22-bookworm AS build
 WORKDIR /src
 COPY . .

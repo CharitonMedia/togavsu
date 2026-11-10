@@ -64,7 +64,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	return cfg, nil
 }
 
-// Run loads configuration and reports that the HTTP service is not started.
+// Run is "core check": it loads configuration and reports that the HTTP service is not started.
 // It returns 0 when the four bootstrap values are valid and 2 when they are not.
 func Run(args []string, stdout, stderr io.Writer) int {
 	return RunFrom(args, os.Getenv, stdout, stderr)
@@ -77,6 +77,6 @@ func RunFrom(_ []string, getenv func(string) string, stdout, stderr io.Writer) i
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
-	fmt.Fprintf(stdout, "togavsu core: bootstrap configuration accepted; domain=%s; HTTP service and migrations are not started by this skeleton\n", cfg.Domain)
+	fmt.Fprintf(stdout, "togavsu core: bootstrap configuration accepted; domain=%s; check only: HTTP service and migrations are not started\n", cfg.Domain)
 	return 0
 }
