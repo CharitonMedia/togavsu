@@ -91,6 +91,9 @@ func (s *Service) AvailableDates(ctx context.Context, p domain.Principal, in Ava
 	if err != nil {
 		return AvailableResult{}, err
 	}
+	if roles, err := domain.ParseRoles(attorney.Roles); err != nil || !(domain.Principal{Roles: roles}).HasRole(domain.RoleAttorney) {
+		return AvailableResult{}, domain.Invalid("user_id", "user is not an attorney")
+	}
 	start, err := parseDate(in.StartDate)
 	if err != nil {
 		return AvailableResult{}, domain.Invalid("start_date", "start date must be YYYY-MM-DD")

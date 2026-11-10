@@ -314,6 +314,7 @@ func TestAvailableDatesFailures(t *testing.T) {
 		{"end before start", f.staff, AvailableRequest{UserID: ada, StartDate: "2026-11-16", EndDate: "2026-11-15"}, domain.CodeValidation},
 		{"range too long", f.staff, AvailableRequest{UserID: ada, StartDate: "2026-01-01", EndDate: "2029-01-02"}, domain.CodeValidation},
 		{"unknown user", f.staff, AvailableRequest{UserID: tid(999), StartDate: "2026-11-16"}, domain.CodeValidation},
+		{"not an attorney", f.staff, AvailableRequest{UserID: f.staff.UserID, StartDate: "2026-11-16"}, domain.CodeValidation},
 		{"bad side", f.staff, AvailableRequest{UserID: ada, StartDate: "2026-11-16", FirmSide: "middle"}, domain.CodeValidation},
 		{"walled matter for staff", f.staff, AvailableRequest{UserID: ada, StartDate: "2026-11-16", MatterID: secret.ID}, domain.CodeNotFound},
 		{"accountant", f.accountant, AvailableRequest{UserID: ada, StartDate: "2026-11-16"}, domain.CodeForbidden},
