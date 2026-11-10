@@ -149,8 +149,10 @@ func (s *Service) VerifyBalances(ctx context.Context) error {
 	return rows.Err()
 }
 
-// RebuildBalances recomputes every cache row from the ledger.
+// RebuildBalances recomputes every cache row from the ledger, then pushes every row to
+// the balance sink, which repairs a practice copy left wrong by a failed sink call.
 func (s *Service) RebuildBalances(ctx context.Context) error {
+	var pushed []domain.TrustBalance
 	_, err := s.tx(ctx, func(ctx context.Context) error {
 		if err := s.lock(ctx); err != nil {
 			return err
@@ -176,13 +178,18 @@ func (s *Service) RebuildBalances(ctx context.Context) error {
 			return err
 		}
 		for _, o := range all {
-			if _, err := s.cache(ctx, domain.SystemPrincipal(), o.a, o.c, o.m, o.v); err != nil {
+			row, err := s.cache(ctx, domain.SystemPrincipal(), o.a, o.c, o.m, o.v)
+			if err != nil {
 				return err
 			}
+			pushed = append(pushed, row)
 		}
 		return nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return s.syncBalances(ctx, pushed)
 }
 
 // Accounts.

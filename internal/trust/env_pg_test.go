@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"os"
 	"sync"
@@ -171,8 +172,9 @@ type env struct {
 		Get(context.Context, domain.ID) (domain.User, error)
 		Update(context.Context, domain.User) error
 	}
-	sunkMu sync.Mutex
-	sunk   []domain.TrustBalance
+	sunkMu   sync.Mutex
+	sunk     []domain.TrustBalance
+	sinkFail bool
 
 	admin, attorney, staff, accountant, client, other domain.Principal
 	account                                           domain.ID
@@ -218,6 +220,9 @@ func newEnv(t *testing.T) *env {
 		BalanceSink: func(_ context.Context, row domain.TrustBalance) error {
 			e.sunkMu.Lock()
 			defer e.sunkMu.Unlock()
+			if e.sinkFail {
+				return errors.New("synthetic practice store outage")
+			}
 			e.sunk = append(e.sunk, row)
 			return nil
 		}})

@@ -64,7 +64,10 @@ type Deps struct {
 	Walls    domain.WallReader
 	Events   Publisher
 	// BalanceSink, when set, gets each changed per-matter cache row after commit, so the
-	// practice close warning and At a Glance read the same balance.
+	// practice close warning and At a Glance read the same balance. Each call holds the
+	// trust write lock and carries the row as re-read from the cache, so calls for one
+	// owner arrive in commit order. A failed call is logged; RebuildBalances repushes
+	// every row.
 	BalanceSink func(ctx context.Context, row domain.TrustBalance) error
 	Now         func() time.Time
 }

@@ -139,8 +139,14 @@ func (s *Service) storeRepl(ctx context.Context, who domain.Principal, r Repleni
 	if err := s.record(ctx, who, "trust_replenishment", r.ID, "created", "", domain.Cents(r.AmountCents).String(), r.Message); err != nil {
 		return err
 	}
-	if matter.ResponsibleAttorneyID.IsZero() {
-		return nil
+	// Only an active responsible attorney who can read the matter is told; the request
+	// itself still opens and shows on the replenishment widget.
+	u, ok, err := s.activeUser(ctx, matter.ResponsibleAttorneyID)
+	if err != nil || !ok {
+		return err
+	}
+	if ok, err = s.canSee(ctx, u, matter.ID); err != nil || !ok {
+		return err
 	}
 	return s.notify(ctx, who, matter.ResponsibleAttorneyID, NotifyReplenish,
 		fmt.Sprintf("Replenishment requested: %s %s", matter.Number, matter.Name), "/trust/replenishment#"+string(r.ID), matter.ID)

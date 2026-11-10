@@ -14,14 +14,61 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
-// flagRecipients is every active admin and the matter's responsible attorney.
-func (s *Service) flagRecipients(ctx context.Context, matter domain.Matter) ([]domain.User, error) {
+// recipient is one person a trust event tells. sees is false when the matter's wall (or
+// the person's role) keeps them from reading the matter's trust records.
+type recipient struct {
+	user domain.User
+	sees bool
+}
+
+// canSee applies the service's own trust read rule, walls included, to u as if u made
+// the request. A user whose roles do not parse sees nothing.
+func (s *Service) canSee(ctx context.Context, u domain.User, matter domain.ID) (bool, error) {
+	roles, err := domain.ParseRoles(u.Roles)
+	if err != nil {
+		return false, nil
+	}
+	r := &readable{s: s, who: domain.Principal{UserID: u.ID, Roles: roles}, seen: map[domain.ID]bool{}}
+	return r.ok(ctx, matter)
+}
+
+// activeUser reads id; ok is false when the user is missing or deactivated.
+func (s *Service) activeUser(ctx context.Context, id domain.ID) (domain.User, bool, error) {
+	if id.IsZero() {
+		return domain.User{}, false, nil
+	}
+	u, err := s.users.Get(ctx, id)
+	if err != nil {
+		if isNotFound(err) {
+			return domain.User{}, false, nil
+		}
+		return domain.User{}, false, err
+	}
+	return u, u.Active, nil
+}
+
+// flagRecipients is every active admin and the matter's active responsible attorney,
+// each marked with whether the matter's wall lets them read it. PRD 8.4 and 8.17: the
+// below-zero email to the admins and the responsible attorney always goes out, so a
+// walled-out recipient is kept, but raise sends them a notice without the matter's
+// identifiers or balances and no in-app notification (PRD 3: walls apply on every
+// surface).
+func (s *Service) flagRecipients(ctx context.Context, matter domain.Matter) ([]recipient, error) {
 	page, err := s.users.List(ctx, repository.Filter{})
 	if err != nil {
 		return nil, err
 	}
 	seen := map[domain.ID]bool{}
-	var out []domain.User
+	var out []recipient
+	add := func(u domain.User) error {
+		ok, err := s.canSee(ctx, u, matter.ID)
+		if err != nil {
+			return err
+		}
+		seen[u.ID] = true
+		out = append(out, recipient{user: u, sees: ok})
+		return nil
+	}
 	for _, u := range page.Items {
 		if !u.Active || seen[u.ID] {
 			continue
@@ -31,18 +78,21 @@ func (s *Service) flagRecipients(ctx context.Context, matter domain.Matter) ([]d
 			continue
 		}
 		if (domain.Principal{Roles: roles}).HasRole(domain.RoleAdmin) {
-			seen[u.ID] = true
-			out = append(out, u)
+			if err := add(u); err != nil {
+				return nil, err
+			}
 		}
 	}
-	if !matter.ResponsibleAttorneyID.IsZero() && !seen[matter.ResponsibleAttorneyID] {
-		u, err := s.users.Get(ctx, matter.ResponsibleAttorneyID)
-		if err != nil && !isNotFound(err) {
+	if !seen[matter.ResponsibleAttorneyID] {
+		// A deactivated attorney gets neither the notification nor the email.
+		u, ok, err := s.activeUser(ctx, matter.ResponsibleAttorneyID)
+		if err != nil {
 			return nil, err
 		}
-		// A deactivated attorney gets neither the notification nor the email.
-		if err == nil && u.Active {
-			out = append(out, u)
+		if ok {
+			if err := add(u); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return out, nil
@@ -52,28 +102,37 @@ func isNotFound(err error) bool {
 	return notFound(err, "") != err
 }
 
-// flagAddresses is the recipients' email plus trust.flag_email_extra, once each.
-func (s *Service) flagAddresses(ctx context.Context, people []domain.User) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(a string) {
+// flagAddresses is the recipients' email plus trust.flag_email_extra, once each, mapped
+// to whether that address may get the matter's details. An extra address is not a user
+// the wall can name, so it gets the details only when the matter has no wall. An address
+// shared by a recipient who sees the matter gets the details.
+func (s *Service) flagAddresses(ctx context.Context, people []recipient, matter domain.ID) (map[string]bool, []string, error) {
+	full := map[string]bool{}
+	var order []string
+	add := func(a string, sees bool) {
 		a = trimmed(a)
 		k := strings.ToLower(a)
-		if a == "" || !strings.Contains(a, "@") || seen[k] {
+		if a == "" || !strings.Contains(a, "@") {
 			return
 		}
-		seen[k] = true
-		out = append(out, a)
+		if _, dup := full[k]; !dup {
+			order = append(order, a)
+		}
+		full[k] = full[k] || sees
 	}
-	for _, u := range people {
-		add(u.Email)
+	for _, r := range people {
+		add(r.user.Email, r.sees)
+	}
+	view, err := s.policy.Walls.View(ctx, domain.Principal{}, matter)
+	if err != nil {
+		return nil, nil, err
 	}
 	for _, a := range strings.FieldsFunc(s.setting(ctx, "trust.flag_email_extra"), func(r rune) bool {
 		return r == ',' || r == ';' || r == ' ' || r == '\n'
 	}) {
-		add(a)
+		add(a, !view.Walled)
 	}
-	return out
+	return full, order, nil
 }
 
 func (s *Service) notify(ctx context.Context, who domain.Principal, user domain.ID, kind, title, link string, matter domain.ID) error {

@@ -331,18 +331,54 @@ func (s *Service) commitEntry(ctx context.Context, who domain.Principal, e Entry
 // audit.WithTx transaction calls it after that transaction commits.
 func (s *Service) Committed(ctx context.Context, results ...PostResult) {
 	var events []Event
+	var rows []domain.TrustBalance
 	for _, r := range results {
 		events = append(events, r.Events...)
-		if s.sink == nil {
-			continue
-		}
-		for _, row := range r.cached {
-			if err := s.sink(ctx, row); err != nil {
-				log.Printf("trust: balance sink: %v", err)
-			}
-		}
+		rows = append(rows, r.cached...)
+	}
+	if err := s.syncBalances(ctx, rows); err != nil {
+		log.Printf("trust: balance sink: %v (RebuildBalances repushes every row)", err)
 	}
 	s.publish(ctx, false, events)
+}
+
+// syncBalances pushes the current cache row for each changed owner to the balance sink.
+// It does not push the snapshot a post computed: two posts on one matter may run their
+// after-commit effects in either order, and an older snapshot pushed last would leave the
+// practice copy (close warning, At a Glance) stale. Each push holds the trust write lock
+// and re-reads the committed cache row, so the last push always carries the newest value,
+// in this process or another.
+func (s *Service) syncBalances(ctx context.Context, rows []domain.TrustBalance) error {
+	if s.sink == nil || len(rows) == 0 {
+		return nil
+	}
+	type owner struct{ account, client, matter domain.ID }
+	seen := map[owner]bool{}
+	var firstErr error
+	for _, row := range rows {
+		k := owner{row.TrustAccountID, row.ClientID, row.MatterID}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		// The sink gets the caller's context without the lock transaction: it writes the
+		// practice store, not trust tables.
+		outer := ctx
+		_, err := s.tx(ctx, func(ctx context.Context) error {
+			if err := s.lock(ctx); err != nil {
+				return err
+			}
+			cur, ok, err := s.cacheRow(ctx, k.account, k.client, k.matter)
+			if err != nil || !ok {
+				return err
+			}
+			return s.sink(outer, cur)
+		})
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 // raise adds the flags for a debit that left a negative balance: the matter balance in
@@ -399,8 +435,11 @@ func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal 
 	}
 	title := fmt.Sprintf("Trust below zero: %s %s", matter.Number, matter.Name)
 	link := "/trust/flags/" + string(flags[0].ID)
-	for _, u := range people {
-		if err := s.notify(ctx, who, u.ID, NotifyTrustFlag, title, link, matter.ID); err != nil {
+	for _, r := range people {
+		if !r.sees {
+			continue
+		}
+		if err := s.notify(ctx, who, r.user.ID, NotifyTrustFlag, title, link, matter.ID); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -410,13 +449,28 @@ func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal 
 	}
 	body := fmt.Sprintf("A trust %s of %s on matter %s %s took a balance below zero. The entry posted; it was not blocked.\n\n%s\n\nReview and resolve the flag with a note: %s\n",
 		e.EntryType, absCents(e.Signed), matter.Number, matter.Name, strings.Join(lines, "\n"), link)
-	for _, addr := range s.flagAddresses(ctx, people) {
-		if err := s.queueMail(ctx, who, MailKindTrustFlag, flags[0].ID, addr, title, body); err != nil {
+	full, order, err := s.flagAddresses(ctx, people, matter.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, addr := range order {
+		subject, text := title, body
+		if !full[strings.ToLower(addr)] {
+			subject, text = walledFlagSubject, walledFlagBody
+		}
+		if err := s.queueMail(ctx, who, MailKindTrustFlag, flags[0].ID, addr, subject, text); err != nil {
 			return nil, nil, err
 		}
 	}
 	return flags, events, nil
 }
+
+// The below-zero email cannot be turned off, but a recipient outside the matter's wall
+// gets this notice with no matter number, name, amount, balance or flag link.
+const (
+	walledFlagSubject = "Trust below zero on a walled matter"
+	walledFlagBody    = "A trust entry took a balance below zero on a matter that is walled from you. The entry posted; it was not blocked.\n\nA user on the matter's wall must review and resolve the flag with a note.\n"
+)
 
 func absCents(c domain.Cents) domain.Cents {
 	if isDebit(c) {

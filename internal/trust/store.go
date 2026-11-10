@@ -159,6 +159,24 @@ func (s *Service) cache(ctx context.Context, who domain.Principal, account, clie
 	return row, err
 }
 
+// cacheRow reads the current per-matter cache row. ok is false when there is none.
+func (s *Service) cacheRow(ctx context.Context, account, client, matter domain.ID) (domain.TrustBalance, bool, error) {
+	row := domain.TrustBalance{TrustAccountID: account, ClientID: client, MatterID: matter}
+	var id, createdBy string
+	var created, updated, cents int64
+	err := s.q(ctx).QueryRowContext(ctx, `SELECT id, created_at, created_by, updated_at, balance_cents FROM trust_balance_cache WHERE trust_account_id = $1 AND client_id = $2 AND matter_id = $3`,
+		string(account), string(client), string(matter)).Scan(&id, &created, &createdBy, &updated, &cents)
+	if err == sql.ErrNoRows {
+		return row, false, nil
+	}
+	if err != nil {
+		return row, false, err
+	}
+	row.Meta = domain.Meta{ID: domain.ID(id), CreatedAt: fromMicro(created), UpdatedAt: fromMicro(updated), CreatedBy: domain.ID(createdBy)}
+	row.BalanceCents = domain.Cents(cents)
+	return row, true, nil
+}
+
 // Account reads.
 
 // Flags are INTEGER 0/1 columns (portable SQL); the comparison reads them as booleans.

@@ -212,7 +212,7 @@ func (s *Service) RemindReconciliations(ctx context.Context, now time.Time) (int
 				continue
 			}
 			for _, u := range admins {
-				if err := s.notify(ctx, sys, u.ID, NotifyReconcile, fmt.Sprintf("Reconcile %s ****%s for %s", a.Name, a.LastFour, lastMonth), link, ""); err != nil {
+				if err := s.notify(ctx, sys, u.user.ID, NotifyReconcile, fmt.Sprintf("Reconcile %s ****%s for %s", a.Name, a.LastFour, lastMonth), link, ""); err != nil {
 					return err
 				}
 				sent++
