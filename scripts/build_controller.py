@@ -20,6 +20,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+import zlib
 
 REPO = "CharitonMedia/togavsu"
 RUN_ACTIVE = {"CREATING", "RUNNING", "WAITING_FOR_BACKGROUND_WORK"}
@@ -42,7 +43,7 @@ for _name in ("Core tests", "API contract tests", "QA harness tests", "Superviso
     CHECK_WORKFLOWS[_name] = ".github/workflows/product-ci.yml"
 PROTECTED = {
     "AGENTS.md", "togavsu-core-prd.md", ".cursor/rules/togavsu.mdc",
-    ".github/workflows/codex-checkpoint.yml", ".github/workflows/setup-checks.yml",
+    ".github/workflows/codex-checkpoint.yml", ".github/workflows/setup-checks.yml", ".github/workflows/lane-agent.yml",
     "scripts/build_controller.py", "scripts/test_build_controller.py", "scripts/cursor_agents.py",
     "scripts/check_review.py", "scripts/check_setup.py", "scripts/test_review_gate.py",
     "docs/build/controller-plan.json", "docs/build/tasks.json", "docs/build/review.schema.json",
@@ -385,6 +386,288 @@ class Remote:
                 for c in checks.values() if c["status"] == "completed" and c.get("conclusion") != "success"]
 
 
+LANE_WORKFLOW = ".github/workflows/lane-agent.yml"
+LANE_PROMPT_LIMIT = 60_000  # GitHub caps a workflow_dispatch payload at 65,535 characters.
+LANE_ARTIFACT_LIMIT = 300_000_000
+LANE_DISPATCH_GRACE = dt.timedelta(minutes=15)  # A dispatched run appears within seconds, even while queued.
+LANE_QUEUED = {"queued", "waiting", "requested", "pending"}
+LANE_OUTCOME = {"success": "FINISHED", "cancelled": "CANCELLED", "timed_out": "EXPIRED"}
+
+
+class LaneRejected(ValueError):
+    """The lane run finished but its result cannot be published; report the run as ERROR."""
+
+
+class ActionsRemote(Remote):
+    """Claude Code lanes in GitHub Actions on the Max subscription, behind the Cursor-shaped interface.
+
+    The controller keeps calling cursor()/agent()/run(); this class answers them from a durable lane
+    registry and the Lane agent workflow. A lane job holds a read-only token and returns a git bundle;
+    this control process verifies the bundle and pushes it as the repository owner, without force, so
+    protected CI and the review gate run on every revision. Nothing here builds or runs candidate code.
+    """
+
+    push_url = "https://github.com/" + REPO + ".git"  # Owner credentials via gh's git credential helper.
+
+    def __init__(self, state_dir, repo_dir, dry=False):
+        self.registry_path = Path(state_dir) / "lane-agents.json"
+        self.work_dir = Path(state_dir)
+        self.repo_dir = Path(repo_dir)
+        self.dry = dry
+
+    def load(self):
+        return json.loads(self.registry_path.read_text()) if self.registry_path.exists() else {}
+
+    def store(self, registry):
+        if not self.dry:
+            atomic(self.registry_path, registry)
+
+    def git(self, *args, timeout=120):
+        proc = subprocess.run(["git", "-C", str(self.repo_dir)] + list(args), capture_output=True, timeout=timeout)
+        if proc.returncode:
+            raise RuntimeError("git " + args[0] + " failed: " + proc.stderr.decode(errors="replace")[-1200:])
+        return proc.stdout.decode().strip()
+
+    @staticmethod
+    def missing(path, reason):
+        return urllib.error.HTTPError("lane:" + path, 404, reason, {}, None)
+
+    def legacy(self, agent_id):
+        # Agents launched on Cursor before the switch stay on Cursor until they finish; new ones are lanes.
+        return agent_id not in self.load() and bool(os.environ.get("CURSOR_API_KEY"))
+
+    def cursor(self, method, path, body=None):
+        parts = path.strip("/").split("/")
+        if method == "POST" and parts == ["agents"]:
+            return self.create(body)
+        if len(parts) >= 2 and parts[0] == "agents" and self.legacy(parts[1]):
+            return Remote.cursor(self, method, path, body)
+        if method == "GET" and len(parts) == 2 and parts[0] == "agents":
+            agent = self.load().get(parts[1])
+            if not agent:
+                raise self.missing(path, "lane agent unknown")
+            return {"id": parts[1], "status": "ACTIVE", "repos": [{"url": "https://github.com/" + REPO}],
+                    "latestRunId": agent["runs"][-1]["id"] if agent["runs"] else None}
+        if method == "POST" and len(parts) == 3 and parts[0] == "agents" and parts[2] == "runs":
+            registry = self.load()
+            if parts[1] not in registry:
+                raise self.missing(path, "lane agent unknown")
+            agent = registry[parts[1]]
+            prompt = ("Your original assignment follows, then the controller's new instruction for the same "
+                "assignment, branch and pull request.\n\n## Original assignment\n\n" + agent["assignment"]
+                + "\n\n## New instruction\n\n" + body["prompt"]["text"])
+            return {"run": {"id": self.dispatch(registry, parts[1], prompt)}}
+        raise ValueError("Unsupported lane control request: " + method + " " + path)
+
+    def create(self, body):
+        agent_id = body["agentId"]
+        registry = self.load()
+        if agent_id in registry:
+            # Same contract as Cursor: a conflicting create is verified by GET, never re-sent.
+            raise urllib.error.HTTPError("lane:/agents", 409, "lane agent exists", {}, None)
+        if not re.fullmatch(r"bc-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", agent_id):
+            raise ValueError("Lane agent ID is malformed")
+        task = body["name"].removeprefix("Togavsu ")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", task):
+            raise ValueError("Lane task ID is malformed")
+        starting = body["repos"][0]["startingRef"]
+        if not re.fullmatch(r"[0-9a-f]{40}", starting):
+            raise ValueError("Lane starting revision is malformed")
+        registry[agent_id] = {"task": task, "branch": "claude/togavsu-" + task + "-" + agent_id[3:11],
+            "starting_sha": starting, "assignment": body["prompt"]["text"], "created_at": now(), "runs": []}
+        run_id = self.dispatch(registry, agent_id, body["prompt"]["text"])
+        return {"agent": {"id": agent_id}, "run": {"id": run_id}}
+
+    def check_paths(self, base, ref):
+        # Pushing with owner credentials runs the branch's workflow files with repository secrets and any token
+        # scope they request, before the controller's later protected-file halt sees the PR. So lane commits may
+        # not touch .github/ at all, control files, links or submodules. CI changes go through a control PR.
+        # -z: paths arrive verbatim, never C-quoted, so a quoted name cannot slip past a prefix check.
+        raw = subprocess.run(["git", "-C", str(self.repo_dir), "log", "--format=", "--raw", "-z", "-m", "--no-renames",
+                              "--no-abbrev", base + ".." + ref], capture_output=True, timeout=120)
+        if raw.returncode:
+            raise RuntimeError("git log failed: " + raw.stderr.decode(errors="replace")[-1200:])
+        fields = raw.stdout.split(b"\0")
+        if fields and fields[-1] == b"":
+            fields.pop()
+        if len(fields) % 2:
+            raise LaneRejected("Lane change list is malformed")
+        for meta, name in zip(fields[0::2], fields[1::2]):
+            meta = meta.strip(b"\n").decode("ascii", "replace")
+            path = name.decode("utf-8", "surrogateescape")
+            if not meta.startswith(":") or not path:
+                raise LaneRejected("Lane change list is malformed")
+            modes = meta.lstrip(":").split()[:2]
+            if any(m in {"120000", "160000"} for m in modes):
+                raise LaneRejected("Lane commits add a symlink or submodule: " + path)
+            if path in PROTECTED or path.startswith(("deploy/controller/", ".git/")) or path == ".gitmodules":
+                raise LaneRejected("Lane commits change a protected control-plane file: " + path)
+            if path.startswith(".github/"):
+                raise LaneRejected("Lane commits change a GitHub workflow or setting file; propose it in the PR instead: " + path)
+
+    def branch_head(self, branch):
+        try:
+            return self.gh("git/ref/heads/" + urllib.parse.quote(branch, safe="/"))["object"]["sha"]
+        except RuntimeError as error:
+            if "HTTP 404" in str(error):
+                return None
+            raise
+
+    def dispatch(self, registry, agent_id, prompt):
+        agent = registry[agent_id]
+        packed = base64.b64encode(zlib.compress(prompt.encode(), 9)).decode()
+        if len(packed) > LANE_PROMPT_LIMIT:
+            raise ValueError("Lane prompt exceeds the workflow dispatch limit; nothing was sent")
+        base = self.branch_head(agent["branch"]) or agent["starting_sha"]
+        run_id = "run-" + str(uuid.uuid4())
+        # Persist before the non-idempotent POST: a lost response leaves a findable run ID.
+        agent["runs"].append({"id": run_id, "base": base, "dispatched_at": now(), "state": "dispatching"})
+        self.store(registry)
+        try:
+            self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/dispatches", "POST", {"ref": "main", "inputs": {
+                "agent_id": agent_id, "run_id": run_id, "task": agent["task"], "branch": agent["branch"],
+                "base": base, "prompt_z": packed}})
+        except RuntimeError as error:
+            if not re.search(r"HTTP 4\d\d", str(error)):
+                raise  # Ambiguous: the run may exist; run() finds it or reports it lost after the grace period.
+            agent["runs"][-1]["state"] = "dispatch_failed"
+            agent["runs"][-1]["error"] = str(error)[-300:]
+            if len(agent["runs"]) == 1:
+                registry.pop(agent_id)  # A refused create leaves no agent, like Cursor; the next launch retries.
+            self.store(registry)
+            raise
+        agent["runs"][-1]["state"] = "dispatched"
+        self.store(registry)
+        return run_id
+
+    def find_github_run(self, entry):
+        since = entry["dispatched_at"][:10]
+        runs, page = [], 1
+        while page <= 5:
+            rows = self.gh("actions/workflows/" + Path(LANE_WORKFLOW).name + "/runs?event=workflow_dispatch&per_page=100"
+                "&created=%3E%3D" + since + "&page=" + str(page)).get("workflow_runs", [])
+            runs += [r for r in rows if r.get("display_title") == "Lane " + entry["id"]]
+            if len(rows) < 100:
+                break
+            page += 1
+        if len(runs) > 1:
+            raise ObservationError("More than one workflow run claims lane run " + entry["id"])
+        return runs[0] if runs else None
+
+    def run(self, record, run_id):
+        if self.legacy(record["agent_id"]):
+            return Remote.run(self, record, run_id)
+        registry = self.load()
+        agent = registry.get(record["agent_id"])
+        entry = next((r for r in (agent or {}).get("runs", []) if r["id"] == run_id), None)
+        if not entry:
+            raise self.missing("/agents/" + record["agent_id"] + "/runs/" + run_id, "lane run unknown")
+        if entry.get("github_run_id"):
+            github = self.gh("actions/runs/" + str(entry["github_run_id"]))
+        else:
+            github = self.find_github_run(entry)
+            if github:
+                entry["github_run_id"] = github["id"]
+                self.store(registry)
+        if github and (github.get("path") != LANE_WORKFLOW or github.get("event") != "workflow_dispatch"
+                or github.get("head_branch") != "main" or github.get("display_title") != "Lane " + run_id):
+            raise ObservationError("Workflow run does not belong to the protected Lane agent workflow")
+        if not github and (entry.get("state") == "dispatch_failed" or entry.get("lost") or
+                (parse_time(entry["dispatched_at"]) or dt.datetime.now(dt.timezone.utc))
+                < dt.datetime.now(dt.timezone.utc) - LANE_DISPATCH_GRACE):
+            if not entry.get("lost") and not self.dry:
+                entry["lost"] = now()  # GitHub never created the run; report it rather than wait forever.
+                self.store(registry)
+            status = "ERROR"
+        elif not github or github.get("status") in LANE_QUEUED:
+            status = "CREATING"
+        elif github.get("status") != "completed":
+            status = "RUNNING"
+        else:
+            status = LANE_OUTCOME.get(github.get("conclusion"), "ERROR")
+            if not entry.get("published") and not entry.get("rejected"):
+                if self.dry:
+                    status = "RUNNING"  # A dry run never pushes, so the result is not yet published.
+                else:
+                    try:
+                        entry["published"] = self.publish(record["agent_id"], agent, entry, github)
+                    except LaneRejected as error:
+                        entry["rejected"] = {"reason": str(error)[:600], "time": now()}
+                    self.store(registry)
+            if entry.get("rejected"):
+                status = "ERROR"
+        branch = {"branch": agent["branch"], "repoUrl": "https://github.com/" + REPO}
+        if agent.get("pr_url"):
+            branch["prUrl"] = agent["pr_url"]
+        return {"status": status, "run_id": run_id, "git": {"branches": [branch]},
+                "updated_at": (github or {}).get("updated_at"), "created_at": entry["dispatched_at"]}
+
+    def publish(self, agent_id, agent, entry, github):
+        artifacts = self.gh("actions/runs/" + str(github["id"]) + "/artifacts?per_page=100")["artifacts"]
+        found = [a for a in artifacts if a["name"] == "lane-" + entry["id"] and not a["expired"]]
+        if len(found) != 1:
+            if github.get("conclusion") != "success":
+                return {"head": None, "time": now(), "note": "no result artifact"}
+            raise LaneRejected("Lane result artifact missing")
+        if found[0].get("size_in_bytes", 0) > LANE_ARTIFACT_LIMIT:
+            raise LaneRejected("Lane result artifact is oversized")
+        blob = self.gh("actions/artifacts/" + str(found[0]["id"]) + "/zip", binary=True)
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            names = {Path(i.filename).name: i for i in archive.infolist()}
+            if "lane-result.json" not in names or names["lane-result.json"].file_size > 2_000_000:
+                raise LaneRejected("Lane result is missing or oversized")
+            result = json.loads(archive.read(names["lane-result.json"]))
+            bundle = archive.read(names["lane.bundle"]) if "lane.bundle" in names else None
+        expected = {"agent_id": agent_id, "run_id": entry["id"], "task": agent["task"], "branch": agent["branch"], "base": entry["base"]}
+        for key, value in expected.items():
+            if result.get(key) != value:
+                raise LaneRejected("Lane result " + key + " does not match the dispatched run")
+        head = result.get("head")
+        if not isinstance(head, str) or not re.fullmatch(r"[0-9a-f]{40}", head):
+            raise LaneRejected("Lane result head is malformed")
+        published = {"head": head, "time": now()}
+        if head != entry["base"]:
+            if bundle is None:
+                raise LaneRejected("Lane reported new commits without a bundle")
+            current = self.branch_head(agent["branch"])
+        if head != entry["base"] and current != head:  # Equal only when an earlier attempt already pushed.
+            if current not in {None, entry["base"]} or (current is None and entry["base"] != agent["starting_sha"]):
+                raise LaneRejected("Branch moved during the lane run; its result would not fast-forward")
+            path = self.work_dir / (".lane-" + entry["id"] + ".bundle")
+            ref = "refs/lane-import/" + entry["id"]
+            try:
+                path.write_bytes(bundle)
+                # The base is often a squash merge made through the API, absent from this checkout.
+                self.git("fetch", "--no-tags", "--quiet", self.push_url, entry["base"], timeout=300)
+                self.git("bundle", "verify", str(path))
+                self.git("fetch", "--no-tags", "--quiet", str(path), "refs/heads/lane:" + ref)
+                if self.git("rev-parse", ref) != head:
+                    raise LaneRejected("Lane bundle head does not match its result")
+                proc = subprocess.run(["git", "-C", str(self.repo_dir), "merge-base", "--is-ancestor", entry["base"], head],
+                                      capture_output=True, timeout=60)
+                if proc.returncode:
+                    raise LaneRejected("Lane commits do not descend from the dispatched base")
+                self.check_paths(entry["base"], ref)
+                self.git("push", "--quiet", self.push_url, ref + ":refs/heads/" + agent["branch"], timeout=300)
+            finally:
+                path.unlink(missing_ok=True)
+                subprocess.run(["git", "-C", str(self.repo_dir), "update-ref", "-d", ref], capture_output=True, timeout=60)
+        title = str(result.get("pr_title") or "").strip()[:200] or "Togavsu " + agent["task"]
+        body = str(result.get("pr_body") or "")[:60_000]
+        if self.branch_head(agent["branch"]) is None:
+            return dict(published, note="no commits; no branch")
+        if not agent.get("pr"):
+            prs = self.gh("pulls?state=all&head=CharitonMedia:" + urllib.parse.quote(agent["branch"], safe=""))
+            pr = prs[0] if len(prs) == 1 else self.gh("pulls", "POST", {"title": title, "head": agent["branch"],
+                "base": "main", "body": body, "draft": False})
+            agent["pr"], agent["pr_url"] = pr["number"], pr["html_url"]
+        elif body.strip():
+            pull = self.gh("pulls/" + str(agent["pr"]))
+            if pull.get("body") != body and pull.get("state") == "open":
+                self.gh("pulls/" + str(agent["pr"]), "PATCH", {"body": body})
+        return published
+
+
 class Controller:
     def __init__(self, remote, plan, state_dir, dry=False):
         self.remote, self.plan, self.dir, self.dry = remote, plan, Path(state_dir), dry
@@ -598,6 +881,32 @@ class Controller:
             "run_id": run_id, "evidence": timing})
         self.event(task, "Operator " + operator + " reconciled delivery intent " + intent["key"] + " to run "
             + run_id + " (" + timing + "); no prompt sent")
+        self.save()
+
+    def rehome(self, task, operator):
+        # Operator path: retire a stopped Cursor record so the next tick launches the task as a fresh lane.
+        record = self.tasks.get(task)
+        if self.plan.get("worker_backend") != "claude-actions" or not isinstance(self.remote, ActionsRemote):
+            raise ValueError("Rehoming needs the claude-actions backend")
+        if not record or record.get("completed"):
+            raise ValueError("Task " + str(task) + " has no unfinished record")
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited rehome")
+        if record["agent_id"] in self.remote.load():
+            raise ValueError("Task " + task + " already runs as a lane")
+        if record.get("pr") or record.get("merge_intent"):
+            raise ValueError("Task " + task + " has a pull request; finish or close it first")
+        if record.get("agent_status") not in {"ERROR", "EXPIRED", "CANCELLED"}:
+            # A halt alone is not enough: a halted agent may still be running and could push untracked work.
+            raise ValueError("Task " + task + " has no terminal Cursor status; rehome only a stopped agent")
+        if self.dry:
+            print("WOULD rehome " + task + " from Cursor agent " + record["agent_id"], flush=True)
+            return
+        self.state.setdefault("retired_records", {}).setdefault(task, []).append(
+            {"time": now(), "operator": operator, "reason": "rehomed to claude-actions lane", "record": record})
+        del self.tasks[task]
+        self.event(task, "Operator " + operator + " retired Cursor agent " + record["agent_id"]
+            + " for a fresh Claude Code lane launch")
         self.save()
 
     def flag_volume(self, record):
@@ -1027,7 +1336,7 @@ class Controller:
         self.save()
         prompt = ("Implement Togavsu assignment " + task + ". Read AGENTS.md, the full togavsu-core-prd.md, "
             "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. Your exact approved assignment follows. "
-            "Work in this isolated Cursor-hosted VM on your own branch using synthetic data only. "
+            "Work in your isolated hosted workspace (a Cursor-hosted VM or a GitHub-hosted lane runner) on your own branch using synthetic data only. "
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
             "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "
             "Commit/push explicit paths and open a ready PR when your bounded assignment is complete. "
@@ -1161,6 +1470,8 @@ class Controller:
                 continue
             if not all(self.tasks.get(dep, {}).get("completed") for dep in spec["depends_on"]):
                 continue
+            if task in self.plan.get("held_tasks", []):
+                continue  # Operator hold: launch only after Patrick approves this assignment.
             try:
                 self.launch(spec, main)
             except Exception as error:
@@ -1224,10 +1535,12 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--reconcile-intent", nargs=2, metavar=("TASK", "RUN_ID"),
         help="bind TASK's outstanding delivery intent to RUN_ID after verifying it; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent")
+    parser.add_argument("--rehome", metavar="TASK",
+        help="retire TASK's stopped Cursor record so the next tick launches it as a lane; runs no tick")
+    parser.add_argument("--operator", help="name recorded with --reconcile-intent or --rehome")
     args = parser.parse_args()
-    if args.reconcile_intent and not args.operator:
-        parser.error("--reconcile-intent requires --operator")
+    if (args.reconcile_intent or args.rehome) and not args.operator:
+        parser.error("--reconcile-intent and --rehome require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1237,9 +1550,14 @@ def main():
         except BlockingIOError:
             print("Another controller tick owns the lock")
             return
-        controller = Controller(Remote(), plan, state, args.dry_run)
+        # worker_backend selects who runs assignments; every gate after the PR is unchanged.
+        remote = (ActionsRemote(state, state.resolve().parent, args.dry_run)
+                  if plan.get("worker_backend") == "claude-actions" else Remote())
+        controller = Controller(remote, plan, state, args.dry_run)
         if args.reconcile_intent:
             controller.reconcile_intent(*args.reconcile_intent, args.operator)
+        elif args.rehome:
+            controller.rehome(args.rehome, args.operator)
         else:
             controller.tick()
 

@@ -51,10 +51,14 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 6. `internal/audit/postgres.go` — `Rows` filters by entity, id, field, and time, and `audit_log_entity_idx` covers only entity and entity id. Ceiling: field and time are filtered across every audit row for that account. Upgrade path: the integration lead adds an index on (entity, entity_id, field, created_at). Trigger: one account's sign-in reads more than 10000 audit rows.
 7. `internal/identity/pgstore.go` — lockout serialization uses `pg_try_advisory_lock(hashtextextended(user id))` and gives up after two seconds. Waiters release the pooled connection between tries. Ceiling: the winner still holds one connection while the callback uses others, so `SetMaxOpenConns(1)` can stall, and two different ids that hash together wait on each other. Upgrade path: run the failure check, the audit write, and the session insert on that lock connection. Trigger: a sign-in with `SetMaxOpenConns(1)` does not return.
 
+## .github/workflows/lane-agent.yml shared Max token
+
+ponytail: ceiling: lane jobs and the review gate share the CLAUDE_CODE_OAUTH_TOKEN repository secret, and the lane job exposes it to a Claude Code process that runs candidate and dependency code with network access, so a malicious dependency or prompt-injected content could exfiltrate it; only committed output is scanned. Upgrade path: a separate lane-only Max token stored as its own secret, so lane and review credentials are revoked independently, plus egress limits on the lane job. trigger: any unexpected use of the token, a lane run that reaches the network for something other than module, package or image downloads, or Cursor usage returning (switch lanes back to Cursor).
+
 ## Practice ceilings
 
 1. `internal/practice/memory.go` — practice rows live in process memory and are scanned under one lock. Ceiling: `Service` depends on the `Store` interface, and `Memory` is the only implementation. Upgrade path: a Postgres `Store` over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001, using the repository interfaces. Trigger: identity passes a Postgres pool and a session principal into `practice.New`.
 2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `events` in Postgres. On `audit_log`, the owning application role can grant UPDATE, DELETE and TRUNCATE back to itself after `InstallPrivileges`. Upgrade path: reject those statements for the application role without a business-logic trigger, and move `audit_log` ownership to a migration role. Trigger: AC-024-F4 is run against Postgres as the application role.
 3. `internal/practice/service.go` — `New` seals SSN and EIN with a process-local AES-256-GCM key. Ceiling: a restart, or a second process, cannot open those values, and the read then returns empty. Upgrade path: identity calls `NewWithKey` with the installer Docker secret before a persistent Store is used. Trigger: practice rows move to Postgres.
 
-Debt count: 32.
+Debt count: 33.
