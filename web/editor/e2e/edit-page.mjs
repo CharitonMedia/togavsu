@@ -13,7 +13,7 @@ const [base, fileId, user, shots] = process.argv.slice(2);
 const require = createRequire(path.join(process.env.PUPPETEER_CORE, "package.json"));
 const puppeteer = require("puppeteer-core");
 
-const out = { messages: [], console: [], violations: [], state: "", saved: false };
+const out = { messages: [], console: [], violations: [], missing: [], state: "", saved: false };
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME,
   headless: true,
@@ -25,6 +25,7 @@ try {
   await page.setExtraHTTPHeaders({ "X-Test-User": user });
   page.on("console", (m) => { if (m.type() === "error") out.console.push(m.text()); });
   page.on("pageerror", (e) => out.console.push(String(e)));
+  page.on("response", (r) => { if (r.status() >= 400) out.missing.push(r.status() + " " + new URL(r.url()).pathname); });
   await page.evaluateOnNewDocument(() => {
     window.__seen = [];
     window.addEventListener("message", (e) => {

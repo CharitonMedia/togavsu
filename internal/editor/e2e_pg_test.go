@@ -58,6 +58,7 @@ func TestBrowserEditPageE2E(t *testing.T) {
 		Messages   []map[string]any `json:"messages"`
 		Console    []string         `json:"console"`
 		Violations []string         `json:"violations"`
+		Missing    []string         `json:"missing"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("e2e output %q: %v (%v)", raw, err, runErr)
@@ -98,5 +99,11 @@ func TestBrowserEditPageE2E(t *testing.T) {
 			t.Fatalf("console: %s", c)
 		}
 	}
-	t.Logf("browser save: %s; console errors: %v", out.State, out.Console)
+	// The browser asks for /favicon.ico, which the core shell serves; nothing else may fail.
+	for _, m := range out.Missing {
+		if m != "404 /favicon.ico" {
+			t.Fatalf("a request failed: %s (all: %v)", m, out.Missing)
+		}
+	}
+	t.Logf("browser save: %s; console errors: %v; failed requests: %v", out.State, out.Console, out.Missing)
 }
