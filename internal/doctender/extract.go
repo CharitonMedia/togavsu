@@ -715,6 +715,13 @@ func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
 		}
 		resp, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: checkMethod, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
 			FileID: w.file.ID, MatterID: w.job.MatterID})
+		if checkMethod && errors.Is(err, ErrNoCheckModel) {
+			// No second transcription model is set: the last attempt uses the model again,
+			// still under the coverage check.
+			checkMethod = false
+			resp, err = s.d.Models.Call(ctx, Request{Task: TaskTranscription, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
+				FileID: w.file.ID, MatterID: w.job.MatterID})
+		}
 		model := resp.Provider + "/" + resp.Model
 		if err != nil {
 			return unitWork{Method: "speech_to_text", Model: model}, err

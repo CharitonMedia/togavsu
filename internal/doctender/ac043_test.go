@@ -71,7 +71,7 @@ func TestAC043ArrivalsAreProcessedAtOnce(t *testing.T) {
 			t.Fatalf("cited fields %+v", res.Fields)
 		}
 		r, md := e.markdown(e.attorney, f.ID)
-		if r.Name != strings.TrimSuffix(want, ".txt")+".md" || !strings.Contains(md, "Counsel for Jordan Example") || !strings.Contains(md, "source: "+src.name) {
+		if r.Name != strings.TrimSuffix(want, ".txt")+".md" || !strings.Contains(md, "Counsel for Jordan Example") || !strings.Contains(md, "source: "+want) {
 			t.Fatalf("markdown %q:\n%s", r.Name, md)
 		}
 	}

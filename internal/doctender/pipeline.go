@@ -326,10 +326,10 @@ func (s *Service) assemble(w *work, units []Unit) *content {
 
 // markdownCopy is the published Markdown: a header naming the source file and version,
 // the pages, the models and check results, then the body.
-func markdownCopy(f files.FileView, v files.VersionView, c *content, label, cat *Unit) string {
+func markdownCopy(name string, v files.VersionView, c *content, label, cat *Unit) string {
 	var b strings.Builder
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "source: %s\n", f.Name)
+	fmt.Fprintf(&b, "source: %s\n", name)
 	fmt.Fprintf(&b, "source_version: %d\n", v.Number)
 	fmt.Fprintf(&b, "source_sha256: %s\n", v.SHA256)
 	if c.PageCount > zero {
@@ -466,7 +466,13 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 	if match.Review {
 		reviews = append(reviews, pending{"unmatched_matter", match.Reason, best})
 	}
-	md := markdownCopy(w.file, w.version, c, labelU, catU)
+	// The header names the source by the name it is published under; the arrival name
+	// stays on the record for audit and is not searchable as the file's name.
+	source := w.file.Name
+	if applyName && !contains(w.file.LockedFields, "name") {
+		source = proposed
+	}
+	md := markdownCopy(source, w.version, c, labelU, catU)
 	var rendition files.RenditionView
 	err = s.tx(ctx, func(ctx context.Context) error {
 		rendition, err = s.d.Files.AddRendition(ctx, s.d.System, w.file.ID, w.version.ID, "markdown", bytes.NewReader([]byte(md)), int64(len(md)))
