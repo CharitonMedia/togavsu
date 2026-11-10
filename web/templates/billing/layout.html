@@ -1,0 +1,32 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Togavsu</title>
+<link rel="stylesheet" href="/practice/static/practice.css">
+<link rel="stylesheet" href="/billing/static/billing.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/practice/matters">Togavsu</a>
+  <nav aria-label="Main">
+    <a href="/practice/matters">Matters</a>
+    <a href="/billing/time">Time Entries</a>
+    <a href="/billing">Billing / Generate</a>
+    <a href="/billing/invoices">Invoices</a>
+    <a href="/billing/payments">Payments</a>
+    <a href="/billing/reports/ar-aging">Reports</a>
+  </nav>
+</header>
+<main>
+<h1>{{.Title}}</h1>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
+{{define "foot"}}
+</main>
+</body>
+</html>
+{{end}}
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}

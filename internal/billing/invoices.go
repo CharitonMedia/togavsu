@@ -1,0 +1,1037 @@
+package billing
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/domain"
+)
+
+// DefaultInvoiceNumberFormat is used while billing.invoice_number_format is empty.
+// YYYY is the issue year; the last run of two or more N is the zero-padded sequence.
+const DefaultInvoiceNumberFormat = "INV-YYYY-NNNN"
+
+// InvoiceFilter narrows an invoice list.
+type InvoiceFilter struct {
+	MatterID domain.ID
+	Status   string
+	FromDate string
+	ToDate   string
+}
+
+// DraftRequest selects what to draft: one matter, several, or a date range across matters.
+type DraftRequest struct {
+	MatterID  domain.ID
+	MatterIDs []domain.ID
+	FromDate  string
+	ToDate    string
+}
+
+// LineInput is one line on a draft edit. A nil amount on a time or expense line uses the
+// computed amount; on a fee-item line it uses the catalog default.
+type LineInput struct {
+	Kind        string
+	SourceID    domain.ID
+	Description string
+	AmountCents *domain.Cents
+	FeeItemID   domain.ID
+}
+
+// DraftEdit replaces the lines on a draft.
+type DraftEdit struct {
+	Lines            []LineInput
+	AdjustmentCents  *domain.Cents
+	AdjustmentReason *string
+	ClientMessage    *string
+	IssuedOn         *string
+}
+
+// InvoicePatch changes fields that may change after the draft.
+type InvoicePatch struct {
+	ClientMessage *string
+	InternalNotes *string
+	DisputeStatus *string
+	DisputeNotes  *string
+	IssuedOn      *string
+}
+
+func (s *Service) invoice(ctx context.Context, id domain.ID) (Invoice, error) {
+	var row Invoice
+	if err := s.d.Store.Get(ctx, kindInvoice, string(id), &row); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return Invoice{}, domain.NotFound("invoice")
+		}
+		return Invoice{}, err
+	}
+	return row, nil
+}
+
+// sharedWithClient is true once the invoice has gone to the client.
+func sharedWithClient(inv Invoice) bool {
+	return inv.Status == StatusSent || inv.Status == StatusViewed || inv.Status == StatusPaid
+}
+
+// ClientOnly reports a principal whose only firm-facing role is client.
+func ClientOnly(p domain.Principal) bool {
+	return p.HasRole(domain.RoleClient) && !p.HasRole(domain.RoleAdmin) && !p.HasRole(domain.RoleAttorney) &&
+		!p.HasRole(domain.RoleStaff) && !p.HasRole(domain.RoleAccountant)
+}
+
+func (s *Service) readInvoice(ctx context.Context, p domain.Principal, inv Invoice) error {
+	return s.gate.Allow(ctx, p, domain.ResourceRef{
+		Resource: domain.ResInvoice, Action: domain.ActionRead, ID: inv.ID, MatterID: inv.MatterID,
+		SharedWithClient: sharedWithClient(inv),
+	})
+}
+
+// Invoice returns one invoice. A client reading a sent invoice marks it viewed.
+func (s *Service) Invoice(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
+	inv, err := s.invoice(ctx, id)
+	if err != nil {
+		return Invoice{}, err
+	}
+	if err := s.readInvoice(ctx, p, inv); err != nil {
+		return Invoice{}, err
+	}
+	if ClientOnly(p) && inv.Status == StatusSent {
+		return s.markViewed(ctx, p, id)
+	}
+	return inv, nil
+}
+
+func (s *Service) markViewed(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.invoice(t.ctx, id)
+		if err != nil {
+			return err
+		}
+		out = inv
+		if inv.Status != StatusSent {
+			return nil
+		}
+		now := s.now()
+		inv.Status = StatusViewed
+		inv.ViewedAt = &now
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		t.audit("invoice", id, "status", StatusSent, StatusViewed, "client viewed")
+		return t.event("invoice.viewed", "invoice", id, inv.MatterID, "Client viewed invoice "+inv.Number, true)
+	})
+	return out, err
+}
+
+// Invoices lists invoices the caller can see. A client sees only shared invoices on its matters.
+func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFilter) ([]Invoice, error) {
+	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.gate.Allow(ctx, p, domain.ResourceRef{Resource: domain.ResInvoice, Action: domain.ActionRead}); err != nil && !ClientOnly(p) {
+		return nil, err
+	}
+	var out []Invoice
+	for _, r := range rows {
+		if !f.MatterID.IsZero() && r.MatterID != f.MatterID || f.Status != "" && r.Status != f.Status ||
+			f.FromDate != "" && r.IssuedOn < f.FromDate || f.ToDate != "" && r.IssuedOn > f.ToDate {
+			continue
+		}
+		err := s.readInvoice(ctx, p, r)
+		if err == nil {
+			out = append(out, r)
+			continue
+		}
+		var api *domain.APIError
+		if !errors.As(err, &api) {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func recompute(inv *Invoice) error {
+	var lines []domain.Cents
+	for _, l := range inv.Lines {
+		lines = append(lines, l.AmountCents)
+	}
+	sub, err := sum(lines...)
+	if err != nil {
+		return domain.Invalid("lines", "amounts do not fit")
+	}
+	total, err := sum(sub, inv.AdjustmentCents, inv.InterestCents)
+	if err != nil {
+		return domain.Invalid("lines", "amounts do not fit")
+	}
+	owed, err := sum(inv.AmountPaidCents, inv.WriteOffCents)
+	if err != nil {
+		return domain.Invalid("lines", "amounts do not fit")
+	}
+	balance, err := total.Sub(owed)
+	if err != nil {
+		return domain.Invalid("lines", "amounts do not fit")
+	}
+	inv.SubtotalCents, inv.TotalCents, inv.BalanceDueCents = sub, total, balance
+	return nil
+}
+
+// settle sets paid, sent or viewed from the balance on an invoice that has left draft.
+func (s *Service) settle(inv *Invoice) {
+	if inv.Status == StatusDraft || inv.Status == StatusVoid {
+		return
+	}
+	if inv.BalanceDueCents <= 0 {
+		if inv.Status != StatusPaid {
+			inv.Status = StatusPaid
+			inv.PaidAt = s.now().UnixMicro()
+		}
+		return
+	}
+	inv.PaidAt = 0
+	if inv.ViewedAt != nil {
+		inv.Status = StatusViewed
+	} else {
+		inv.Status = StatusSent
+	}
+}
+
+var nRun = regexp.MustCompile(`N{2,}`)
+
+// nextNumber renders the firm invoice number format for the issue year with the next sequence.
+func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, error) {
+	format := strings.TrimSpace(s.setting(ctx, "billing.invoice_number_format"))
+	if format == "" {
+		format = DefaultInvoiceNumberFormat
+	}
+	all := nRun.FindAllStringIndex(format, -1)
+	if all == nil {
+		format += "-NNNN"
+		all = nRun.FindAllStringIndex(format, -1)
+	}
+	loc := all[len(all)-1]
+	year := issuedOn
+	if len(year) >= 4 {
+		year = year[:4]
+	}
+	prefix := strings.ReplaceAll(format[:loc[0]], "YYYY", year)
+	suffix := strings.ReplaceAll(format[loc[1]:], "YYYY", year)
+	width := loc[1] - loc[0]
+	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	if err != nil {
+		return "", err
+	}
+	high := 0
+	for _, r := range rows {
+		if !strings.HasPrefix(r.Number, prefix) || !strings.HasSuffix(r.Number, suffix) || len(r.Number) < len(prefix)+len(suffix) {
+			continue
+		}
+		if n, err := strconv.Atoi(r.Number[len(prefix) : len(r.Number)-len(suffix)]); err == nil && n > high {
+			high = n
+		}
+	}
+	return fmt.Sprintf("%s%0*d%s", prefix, width, high+1, suffix), nil
+}
+
+func hours(minutes int64) string {
+	return fmt.Sprintf("%d.%02d", minutes/60, (minutes%60)*100/60)
+}
+
+func (s *Service) userName(ctx context.Context, id domain.ID) string {
+	if u, err := s.d.Practice.User(ctx, id); err == nil && u.Name != "" {
+		return u.Name
+	}
+	return "Unknown user"
+}
+
+func (s *Service) timeLine(ctx context.Context, e TimeEntry) (Line, error) {
+	amount, err := timeAmount(e.RateCents, e.Minutes())
+	if err != nil {
+		return Line{}, err
+	}
+	desc := fmt.Sprintf("%s %s: %s (%s h at %s/h)", e.WorkedOn, s.userName(ctx, e.UserID), e.Description, hours(e.Minutes()), money(e.RateCents))
+	return Line{Kind: LineTime, SourceID: e.ID, Description: desc, AmountCents: amount}, nil
+}
+
+func expenseLine(e Expense) (Line, error) {
+	amount, err := expenseAmount(e.AmountCents, e.MarkupPercent)
+	if err != nil {
+		return Line{}, err
+	}
+	desc := e.IncurredOn + " " + e.Description
+	if e.MarkupPercent != 0 {
+		desc += fmt.Sprintf(" (%s plus %d%%)", money(e.AmountCents), e.MarkupPercent)
+	}
+	return Line{Kind: LineExpense, SourceID: e.ID, Description: desc, AmountCents: amount}, nil
+}
+
+// flatFeeBilled reports a non-void invoice on the matter that already bills the flat fee.
+func (s *Service) flatFeeInvoice(ctx context.Context, matter domain.ID) (Invoice, bool, error) {
+	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	if err != nil {
+		return Invoice{}, false, err
+	}
+	for _, r := range rows {
+		if r.MatterID == matter && r.Status != StatusVoid && r.HasFlatFee() {
+			return r, true, nil
+		}
+	}
+	return Invoice{}, false, nil
+}
+
+// pending gathers the matter's unbilled lines. Flat-fee matters bill the fee and expenses;
+// hourly, contingency and pro bono matters bill time and expenses; mixed matters bill all three.
+func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string) ([]Line, []TimeEntry, []Expense, error) {
+	var lines []Line
+	var times []TimeEntry
+	var costs []Expense
+	if m.BillingType == billingFlat || m.BillingType == billingMixed {
+		_, billed, err := s.flatFeeInvoice(ctx, m.ID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if !billed && m.FlatFeeCents > 0 {
+			lines = append(lines, Line{Kind: LineFlatFee, Description: "Flat fee: " + m.Name, AmountCents: m.FlatFeeCents})
+		}
+	}
+	if m.BillingType != billingFlat {
+		rows, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		f := TimeFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
+		for _, e := range rows {
+			if !f.match(e) || !e.Billable {
+				continue
+			}
+			line, err := s.timeLine(ctx, e)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			lines = append(lines, line)
+			times = append(times, e)
+		}
+	}
+	rows, err := listOf[Expense](ctx, s.d.Store, kindExpense)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	f := ExpenseFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
+	for _, e := range rows {
+		if !f.match(e) || !e.Billable {
+			continue
+		}
+		line, err := expenseLine(e)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		lines = append(lines, line)
+		costs = append(costs, e)
+	}
+	return lines, times, costs, nil
+}
+
+// DraftInvoices drafts invoices from unbilled time and expenses. Naming a matter the caller
+// cannot bill fails and drafts nothing; a date range drafts only matters the caller may bill.
+func (s *Service) DraftInvoices(ctx context.Context, p domain.Principal, req DraftRequest) ([]Invoice, error) {
+	selectors := 0
+	if !req.MatterID.IsZero() {
+		selectors++
+	}
+	if len(req.MatterIDs) > 0 {
+		selectors++
+	}
+	if req.FromDate != "" || req.ToDate != "" {
+		selectors++
+		if _, err := parseDate("from_date", req.FromDate); err != nil {
+			return nil, err
+		}
+		if _, err := parseDate("to_date", req.ToDate); err != nil {
+			return nil, err
+		}
+		if req.FromDate > req.ToDate {
+			return nil, domain.Invalid("from_date", "must be on or before to_date")
+		}
+	}
+	if selectors != 1 {
+		return nil, domain.Invalid("selector", "set exactly one of matter_id, matter_ids, or from_date with to_date")
+	}
+	var ids []domain.ID
+	named := true
+	switch {
+	case !req.MatterID.IsZero():
+		ids = []domain.ID{req.MatterID}
+	case len(req.MatterIDs) > 0:
+		seen := map[domain.ID]bool{}
+		for _, id := range req.MatterIDs {
+			if !seen[id] {
+				ids = append(ids, id)
+				seen[id] = true
+			}
+		}
+	default:
+		named = false
+		for _, m := range s.mattersByNumber() {
+			if m.Status == matterClosed {
+				continue
+			}
+			if err := s.allow(ctx, p, domain.ResInvoice, domain.ActionWrite, m.ID); err == nil {
+				ids = append(ids, m.ID)
+			}
+		}
+	}
+	if named {
+		for _, id := range ids {
+			if err := s.allow(ctx, p, domain.ResInvoice, domain.ActionWrite, id); err != nil {
+				return nil, err
+			}
+			if _, err := s.matter(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+	}
+	var out []Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		for _, id := range ids {
+			m, err := s.matter(t.ctx, id)
+			if err != nil {
+				return err
+			}
+			inv, ok, err := s.draftOne(t, m, req.FromDate, req.ToDate)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				if named {
+					return domain.Conflict("matter " + m.Number + " has nothing unbilled")
+				}
+				continue
+			}
+			out = append(out, inv)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Service) draftOne(t *txn, m domain.Matter, from, to string) (Invoice, bool, error) {
+	lines, times, costs, err := s.pending(t.ctx, m, from, to)
+	if err != nil || len(lines) == 0 {
+		return Invoice{}, false, err
+	}
+	meta, err := s.meta(t.p)
+	if err != nil {
+		return Invoice{}, false, err
+	}
+	issued := s.today(t.ctx)
+	number, err := s.nextNumber(t.ctx, issued)
+	if err != nil {
+		return Invoice{}, false, err
+	}
+	inv := Invoice{Lines: lines, FromDate: from, ToDate: to, MatterName: m.Name, MatterNum: m.Number}
+	inv.Invoice = domain.Invoice{
+		Meta: meta, MatterID: m.ID, Number: number, IssuedOn: issued, Status: StatusDraft,
+		ClientMessage: s.setting(t.ctx, "billing.default_client_message"),
+	}
+	inv.DueOn = addDays(issued, s.settingInt(t.ctx, "billing.payment_terms_days"))
+	if err := recompute(&inv); err != nil {
+		return Invoice{}, false, err
+	}
+	for _, e := range times {
+		e.InvoiceID = inv.ID
+		e.UpdatedAt = s.now()
+		if err := t.put(kindTime, e.ID, e); err != nil {
+			return Invoice{}, false, err
+		}
+		t.audit("time_entry", e.ID, "invoice_id", "", string(inv.ID), "drafted on "+number)
+	}
+	for _, e := range costs {
+		e.InvoiceID = inv.ID
+		e.UpdatedAt = s.now()
+		if err := t.put(kindExpense, e.ID, e); err != nil {
+			return Invoice{}, false, err
+		}
+		t.audit("expense", e.ID, "invoice_id", "", string(inv.ID), "drafted on "+number)
+	}
+	if err := t.putInvoice(inv); err != nil {
+		return Invoice{}, false, err
+	}
+	if err := t.created("invoice", inv.ID, inv, ""); err != nil {
+		return Invoice{}, false, err
+	}
+	return inv, true, t.event("invoice.drafted", "invoice", inv.ID, m.ID, "Invoice "+number+" drafted", false)
+}
+
+// writable loads an invoice for a write the caller must be allowed on its matter.
+func (s *Service) writable(t *txn, id domain.ID, act domain.Action) (Invoice, error) {
+	inv, err := s.invoice(t.ctx, id)
+	if err != nil {
+		return Invoice{}, err
+	}
+	if err := s.allow(t.ctx, t.p, domain.ResInvoice, act, inv.MatterID); err != nil {
+		return Invoice{}, err
+	}
+	return inv, nil
+}
+
+// EditDraft replaces the lines of a draft. Removed time and expense rows return to unbilled;
+// added rows must be unbilled on the same matter. Any edit clears the approval.
+func (s *Service) EditDraft(ctx context.Context, p domain.Principal, id domain.ID, in DraftEdit) (Invoice, error) {
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		before, err := s.writable(t, id, domain.ActionWrite)
+		if err != nil {
+			return err
+		}
+		if before.Status != StatusDraft {
+			return domain.Conflict("only a draft invoice can be edited")
+		}
+		after := before
+		after.Lines = nil
+		held := map[domain.ID]bool{}
+		for _, l := range before.Lines {
+			if !l.SourceID.IsZero() {
+				held[l.SourceID] = true
+			}
+		}
+		used := map[domain.ID]bool{}
+		for i, li := range in.Lines {
+			line, err := s.draftLine(t, before, li, held, i)
+			if err != nil {
+				return err
+			}
+			if !line.SourceID.IsZero() {
+				if used[line.SourceID] {
+					return domain.Invalid(fmt.Sprintf("lines/%d/source_id", i), "a source is billed once")
+				}
+				used[line.SourceID] = true
+			}
+			after.Lines = append(after.Lines, line)
+		}
+		if in.AdjustmentCents != nil {
+			after.AdjustmentCents = *in.AdjustmentCents
+		}
+		if in.AdjustmentReason != nil {
+			after.AdjustmentReason = strings.TrimSpace(*in.AdjustmentReason)
+		}
+		if after.AdjustmentCents != 0 && after.AdjustmentReason == "" {
+			return domain.Invalid("adjustment_reason", "an adjustment needs a reason")
+		}
+		if in.ClientMessage != nil {
+			after.ClientMessage = *in.ClientMessage
+		}
+		if in.IssuedOn != nil {
+			if _, err := parseDate("issued_on", *in.IssuedOn); err != nil {
+				return err
+			}
+			after.IssuedOn = *in.IssuedOn
+			after.DueOn = addDays(after.IssuedOn, s.settingInt(t.ctx, "billing.payment_terms_days"))
+		}
+		after.ApprovedAt, after.ApprovedBy = nil, ""
+		if err := recompute(&after); err != nil {
+			return err
+		}
+		if err := s.relink(t, before, used); err != nil {
+			return err
+		}
+		if err := t.putInvoice(after); err != nil {
+			return err
+		}
+		if err := t.diff("invoice", id, before, after, ""); err != nil {
+			return err
+		}
+		out = after
+		return t.event("invoice.updated", "invoice", id, after.MatterID, "Draft invoice "+after.Number+" edited", false)
+	})
+	return out, err
+}
+
+func (s *Service) draftLine(t *txn, inv Invoice, li LineInput, held map[domain.ID]bool, i int) (Line, error) {
+	field := fmt.Sprintf("lines/%d", i)
+	line := Line{Kind: li.Kind, SourceID: li.SourceID, Description: strings.TrimSpace(li.Description), FeeItemID: li.FeeItemID}
+	switch li.Kind {
+	case LineTime, LineExpense:
+		if li.SourceID.IsZero() {
+			return Line{}, domain.Invalid(field+"/source_id", "a time or expense line names its source")
+		}
+		var computed Line
+		var matter, billedOn domain.ID
+		if li.Kind == LineTime {
+			e, err := s.timeEntry(t.ctx, li.SourceID)
+			if err != nil {
+				return Line{}, domain.Invalid(field+"/source_id", "unknown time entry")
+			}
+			if computed, err = s.timeLine(t.ctx, e); err != nil {
+				return Line{}, err
+			}
+			matter, billedOn = e.MatterID, e.InvoiceID
+		} else {
+			e, err := s.expense(t.ctx, li.SourceID)
+			if err != nil {
+				return Line{}, domain.Invalid(field+"/source_id", "unknown expense")
+			}
+			if computed, err = expenseLine(e); err != nil {
+				return Line{}, err
+			}
+			matter, billedOn = e.MatterID, e.InvoiceID
+		}
+		if matter != inv.MatterID {
+			return Line{}, domain.Invalid(field+"/source_id", "source is on another matter")
+		}
+		if !billedOn.IsZero() && (billedOn != inv.ID || !held[li.SourceID]) {
+			return Line{}, domain.Conflict("source is already billed on another invoice")
+		}
+		if line.Description == "" {
+			line.Description = computed.Description
+		}
+		line.AmountCents = computed.AmountCents
+	case LineFlatFee:
+		if !li.FeeItemID.IsZero() {
+			item, err := s.feeItem(t.ctx, li.FeeItemID)
+			if err != nil {
+				return Line{}, domain.Invalid(field+"/fee_item_id", "unknown fee item")
+			}
+			onInvoice := false
+			for _, l := range inv.Lines {
+				onInvoice = onInvoice || l.FeeItemID == item.ID
+			}
+			if !item.Active && !onInvoice {
+				return Line{}, domain.Invalid(field+"/fee_item_id", "fee item is not active")
+			}
+			if line.Description == "" {
+				line.Description = item.Name
+			}
+			line.AmountCents = item.DefaultAmountCents
+		}
+	case LineAdjustment:
+	default:
+		return Line{}, domain.Invalid(field+"/kind", "must be time, expense, flat_fee or adjustment")
+	}
+	if li.AmountCents != nil {
+		line.AmountCents = *li.AmountCents
+	}
+	if line.Description == "" {
+		return Line{}, domain.Invalid(field+"/description", "is required")
+	}
+	if line.Kind != LineAdjustment && line.AmountCents < 0 {
+		return Line{}, domain.Invalid(field+"/amount_cents", "only an adjustment line may be negative")
+	}
+	return line, nil
+}
+
+// relink points billed rows at the invoice and releases rows that left it.
+func (s *Service) relink(t *txn, inv Invoice, keep map[domain.ID]bool) error {
+	for _, l := range inv.Lines {
+		if l.SourceID.IsZero() || keep[l.SourceID] {
+			continue
+		}
+		if err := s.setBilled(t, l.Kind, l.SourceID, "", inv.Number); err != nil {
+			return err
+		}
+	}
+	held := map[domain.ID]bool{}
+	for _, l := range inv.Lines {
+		held[l.SourceID] = true
+	}
+	for id := range keep {
+		if held[id] {
+			continue
+		}
+		kind := LineTime
+		if _, err := s.timeEntry(t.ctx, id); err != nil {
+			kind = LineExpense
+		}
+		if err := s.setBilled(t, kind, id, inv.ID, inv.Number); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) setBilled(t *txn, kind string, id, invoice domain.ID, number string) error {
+	reason := "released from " + number
+	if !invoice.IsZero() {
+		reason = "billed on " + number
+	}
+	switch kind {
+	case LineTime:
+		e, err := s.timeEntry(t.ctx, id)
+		if err != nil {
+			return err
+		}
+		old := e.InvoiceID
+		e.InvoiceID, e.UpdatedAt = invoice, s.now()
+		if err := t.put(kindTime, id, e); err != nil {
+			return err
+		}
+		t.audit("time_entry", id, "invoice_id", string(old), string(invoice), reason)
+	case LineExpense:
+		e, err := s.expense(t.ctx, id)
+		if err != nil {
+			return err
+		}
+		old := e.InvoiceID
+		e.InvoiceID, e.UpdatedAt = invoice, s.now()
+		if err := t.put(kindExpense, id, e); err != nil {
+			return err
+		}
+		t.audit("expense", id, "invoice_id", string(old), string(invoice), reason)
+	}
+	return nil
+}
+
+// ApproveInvoice records an attorney or admin approval of a draft.
+func (s *Service) ApproveInvoice(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
+		if err != nil {
+			return err
+		}
+		if inv.Status != StatusDraft {
+			return domain.Conflict("only a draft invoice can be approved")
+		}
+		if len(inv.Lines) == 0 {
+			return domain.Conflict("an invoice needs at least one line")
+		}
+		if inv.TotalCents < 0 {
+			return domain.Conflict("an invoice total cannot be negative")
+		}
+		now := s.now()
+		inv.ApprovedAt, inv.ApprovedBy = &now, actor(p)
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		t.audit("invoice", id, "approved_by", "", string(actor(p)), "")
+		return t.event("invoice.approved", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" approved", false)
+	})
+	return out, err
+}
+
+// clientEmails returns the primary current email of each client party, or any current email.
+func (s *Service) clientEmails(ctx context.Context, matter domain.ID) []string {
+	today := s.today(ctx)
+	var out []string
+	for _, contact := range s.clientParties(matter) {
+		var pick string
+		for _, e := range s.d.Practice.Emails(contact) {
+			if e.Email == "" || e.EffectiveTo != "" && e.EffectiveTo < today {
+				continue
+			}
+			if pick == "" || e.Primary {
+				pick = e.Email
+			}
+			if e.Primary {
+				break
+			}
+		}
+		if pick != "" {
+			out = append(out, pick)
+		}
+	}
+	return out
+}
+
+// SendInvoice sends an approved draft. deliver email mails the PDF by system mail to the
+// matter's clients; deliver file marks it sent and the user downloads the PDF. A sent invoice
+// can be emailed again; its status does not change.
+func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain.ID, deliver string) (Invoice, error) {
+	if deliver != "email" && deliver != "file" {
+		return Invoice{}, domain.Invalid("deliver", "must be email or file")
+	}
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
+		if err != nil {
+			return err
+		}
+		switch inv.Status {
+		case StatusDraft:
+			if !inv.Approved() {
+				return domain.Conflict("an attorney or admin must approve the draft before it is sent")
+			}
+		case StatusSent, StatusViewed:
+			if deliver != "email" {
+				return domain.Conflict("invoice is already sent")
+			}
+		default:
+			return domain.Conflict("a " + inv.Status + " invoice cannot be sent")
+		}
+		before := inv
+		if deliver == "email" {
+			if s.d.Mail == nil {
+				return domain.Conflict("system mail is not configured")
+			}
+			to := s.clientEmails(t.ctx, inv.MatterID)
+			if len(to) == 0 {
+				return domain.Invalid("deliver", "the matter's client has no email address")
+			}
+			sending := inv
+			if sending.Status == StatusDraft {
+				sending.Status = StatusSent
+			}
+			pdf, err := s.renderPDF(t.ctx, sending)
+			if err != nil {
+				return err
+			}
+			firm := s.setting(t.ctx, "firm.name")
+			msg := Message{
+				To: to, Subject: strings.TrimSpace(firm + " invoice " + inv.Number),
+				Text:        invoiceMailText(inv, firm),
+				Attachments: []Attachment{{Name: "invoice-" + inv.Number + ".pdf", ContentType: "application/pdf", Data: pdf}},
+			}
+			if err := s.d.Mail.Send(t.ctx, msg); err != nil {
+				return fmt.Errorf("billing: system mail: %w", err)
+			}
+			inv.SentTo = to
+		}
+		if inv.Status == StatusDraft {
+			inv.Status = StatusSent
+			inv.SentAt = s.now().UnixMicro()
+			s.settle(&inv)
+		}
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		if err := t.diff("invoice", id, before, inv, "deliver "+deliver); err != nil {
+			return err
+		}
+		return t.event("invoice.sent", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" sent by "+deliver, true)
+	})
+	return out, err
+}
+
+func invoiceMailText(inv Invoice, firm string) string {
+	var b strings.Builder
+	if inv.ClientMessage != "" {
+		b.WriteString(inv.ClientMessage + "\n\n")
+	}
+	fmt.Fprintf(&b, "Invoice %s dated %s is attached.\nAmount due: %s, due by %s.\n", inv.Number, inv.IssuedOn, money(inv.BalanceDueCents), inv.DueOn)
+	if firm != "" {
+		b.WriteString("\n" + firm + "\n")
+	}
+	return b.String()
+}
+
+// UpdateInvoice patches the message, notes, dispute and issue date.
+func (s *Service) UpdateInvoice(ctx context.Context, p domain.Principal, id domain.ID, in InvoicePatch) (Invoice, error) {
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		before, err := s.writable(t, id, domain.ActionWrite)
+		if err != nil {
+			return err
+		}
+		if before.Status == StatusVoid {
+			return domain.Conflict("a void invoice cannot change")
+		}
+		after := before
+		if in.ClientMessage != nil {
+			after.ClientMessage = *in.ClientMessage
+		}
+		if in.InternalNotes != nil {
+			after.InternalNotes = *in.InternalNotes
+		}
+		if in.DisputeStatus != nil {
+			switch *in.DisputeStatus {
+			case "", "none", "disputed", "resolved":
+			default:
+				return domain.Invalid("dispute_status", "must be none, disputed or resolved")
+			}
+			after.DisputeStatus = *in.DisputeStatus
+		}
+		if in.DisputeNotes != nil {
+			after.DisputeNotes = *in.DisputeNotes
+		}
+		if in.IssuedOn != nil {
+			if _, err := parseDate("issued_on", *in.IssuedOn); err != nil {
+				return err
+			}
+			after.IssuedOn = *in.IssuedOn
+			after.DueOn = addDays(after.IssuedOn, s.settingInt(t.ctx, "billing.payment_terms_days"))
+		}
+		if err := t.putInvoice(after); err != nil {
+			return err
+		}
+		out = after
+		if err := t.diff("invoice", id, before, after, ""); err != nil {
+			return err
+		}
+		return t.event("invoice.updated", "invoice", id, after.MatterID, "Invoice "+after.Number+" updated", false)
+	})
+	return out, err
+}
+
+// VoidInvoice voids an invoice and returns its time and expenses to unbilled. An invoice with
+// a completed or pending payment must have that payment reversed first.
+func (s *Service) VoidInvoice(ctx context.Context, p domain.Principal, id domain.ID, reason string) (Invoice, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return Invoice{}, domain.Invalid("reason", "is required")
+	}
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
+		if err != nil {
+			return err
+		}
+		if inv.Status == StatusVoid {
+			return domain.Conflict("invoice is already void")
+		}
+		pays, err := listOf[Payment](t.ctx, s.d.Store, kindPayment)
+		if err != nil {
+			return err
+		}
+		for _, pay := range pays {
+			if pay.InvoiceID == id && (pay.Status == PayCompleted || pay.Status == PayPending) {
+				return domain.Conflict("reverse the payments on this invoice before voiding it")
+			}
+		}
+		before := inv
+		for _, l := range inv.Lines {
+			if !l.SourceID.IsZero() {
+				if err := s.setBilled(t, l.Kind, l.SourceID, "", inv.Number); err != nil {
+					return err
+				}
+			}
+		}
+		now := s.now()
+		inv.Status, inv.VoidReason, inv.VoidedAt = StatusVoid, reason, &now
+		inv.BalanceDueCents = 0
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		if err := t.diff("invoice", id, before, inv, reason); err != nil {
+			return err
+		}
+		return t.event("invoice.voided", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" voided", false)
+	})
+	return out, err
+}
+
+// WriteOff writes off part or all of an open invoice's balance with a reason.
+func (s *Service) WriteOff(ctx context.Context, p domain.Principal, id domain.ID, amount domain.Cents, reason string) (Invoice, error) {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return Invoice{}, domain.Invalid("reason", "is required")
+	}
+	if err := amountField("amount_cents", amount); err != nil {
+		return Invoice{}, err
+	}
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
+		if err != nil {
+			return err
+		}
+		if !inv.Open() {
+			return domain.Conflict("only a sent invoice with a balance can be written off")
+		}
+		if amount > inv.BalanceDueCents {
+			return domain.Invalid("amount_cents", "is more than the balance due "+money(inv.BalanceDueCents))
+		}
+		before := inv
+		if inv.WriteOffCents, err = sum(inv.WriteOffCents, amount); err != nil {
+			return domain.Invalid("amount_cents", "does not fit")
+		}
+		if inv.WriteOffReason != "" {
+			reason = inv.WriteOffReason + "; " + reason
+		}
+		inv.WriteOffReason, inv.WriteOffOn = reason, s.today(t.ctx)
+		if err := recompute(&inv); err != nil {
+			return err
+		}
+		s.settle(&inv)
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		if err := t.diff("invoice", id, before, inv, ""); err != nil {
+			return err
+		}
+		return t.event("invoice.updated", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" written off "+money(amount), false)
+	})
+	return out, err
+}
+
+// ApplyLateInterest sets simple late interest on an open invoice past its due date and grace
+// period, when billing.late_interest_enabled is on. It replaces the previous interest, so a
+// rerun on the same day changes nothing.
+func (s *Service) ApplyLateInterest(ctx context.Context, p domain.Principal, id domain.ID) (Invoice, error) {
+	if s.setting(ctx, "billing.late_interest_enabled") != "true" {
+		return Invoice{}, domain.Conflict("late interest is off")
+	}
+	pct := s.settingInt(ctx, "billing.late_interest_annual_percent")
+	var out Invoice
+	err := s.write(ctx, p, func(t *txn) error {
+		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
+		if err != nil {
+			return err
+		}
+		if !inv.Open() {
+			return domain.Conflict("only a sent invoice with a balance accrues interest")
+		}
+		late := daysBetween(addDays(inv.DueOn, s.settingInt(t.ctx, "billing.grace_period_days")), s.today(t.ctx))
+		if late <= 0 {
+			return domain.Conflict("invoice is not past its grace period")
+		}
+		base, err := sum(inv.SubtotalCents, inv.AdjustmentCents, -inv.AmountPaidCents, -inv.WriteOffCents)
+		if err != nil {
+			return err
+		}
+		interest := domain.Cents(0)
+		if base > 0 {
+			if interest, err = mulDiv(base, int64(pct)*int64(late), 36500); err != nil {
+				return err
+			}
+		}
+		before := inv
+		inv.InterestCents = interest
+		if err := recompute(&inv); err != nil {
+			return err
+		}
+		s.settle(&inv)
+		if err := t.putInvoice(inv); err != nil {
+			return err
+		}
+		out = inv
+		if err := t.diff("invoice", id, before, inv, fmt.Sprintf("%d days late at %d%%", late, pct)); err != nil {
+			return err
+		}
+		return t.event("invoice.updated", "invoice", id, inv.MatterID, "Late interest on "+inv.Number, false)
+	})
+	return out, err
+}
+
+// InvoicePDF renders the invoice PDF and records the download in the audit log and timeline.
+func (s *Service) InvoicePDF(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, Invoice, error) {
+	inv, err := s.invoice(ctx, id)
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	if err := s.readInvoice(ctx, p, inv); err != nil {
+		return nil, Invoice{}, err
+	}
+	pdf, err := s.renderPDF(ctx, inv)
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	client := ClientOnly(p)
+	err = s.write(ctx, p, func(t *txn) error {
+		t.audit("invoice", id, "download", "", "invoice-"+inv.Number+".pdf", "")
+		return t.event("file.downloaded", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" PDF downloaded", client)
+	})
+	if err != nil {
+		return nil, Invoice{}, err
+	}
+	return pdf, inv, nil
+}

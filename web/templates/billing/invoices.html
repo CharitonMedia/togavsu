@@ -1,0 +1,27 @@
+{{template "head" .}}
+<nav class="filters" aria-label="Status">
+  <a href="/billing/invoices">All</a> <a href="/billing/invoices?status=draft">Drafts</a>
+  <a href="/billing/invoices?status=sent">Sent</a> <a href="/billing/invoices?status=paid">Paid</a> <a href="/billing/invoices?status=void">Void</a>
+</nav>
+{{if .Overdue}}
+<section class="card warn" aria-labelledby="od-h">
+<h2 id="od-h">Overdue</h2>
+<div class="scroll"><table>
+<thead><tr><th>Invoice</th><th>Due</th><th class="num">Balance</th></tr></thead>
+<tbody>{{range .Overdue}}<tr><td><a href="/billing/invoices/{{.ID}}">{{.Number}}</a> {{.MatterNum}} {{.MatterName}}</td><td>{{.DueOn}}</td><td class="num">{{money .BalanceDueCents}}</td></tr>{{end}}</tbody>
+</table></div>
+</section>
+{{end}}
+{{if .Invoices}}
+<div class="scroll"><table>
+<thead><tr><th>Number</th><th>Matter</th><th>Date</th><th>Status</th><th class="num">Total</th><th class="num">Balance</th></tr></thead>
+<tbody>
+{{range .Invoices}}
+<tr><td><a href="/billing/invoices/{{.ID}}">{{.Number}}</a></td><td>{{.MatterNum}} {{.MatterName}}</td><td>{{.IssuedOn}}</td>
+<td><span class="tag tag-{{.Status}}">{{.Status}}{{if and (eq .Status "draft") .Approved}} · approved{{end}}</span></td>
+<td class="num">{{money .TotalCents}}</td><td class="num">{{money .BalanceDueCents}}</td></tr>
+{{end}}
+</tbody>
+</table></div>
+{{else}}<p class="muted">No invoices.</p>{{end}}
+{{template "foot" .}}
