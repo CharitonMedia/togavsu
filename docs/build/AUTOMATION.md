@@ -73,4 +73,4 @@ Agent records live in `.build-state/lane-agents.json`. Agents launched on Cursor
 
 The Run assignment step gives Claude Code the CLAUDE_CODE_OAUTH_TOKEN secret, which the review gate also uses, inside a job that runs candidate and dependency code with network access. Committed output is scanned, but network egress is not; see PONYTAIL-DEBT.md. Before verifying a bundle the controller fetches its base from GitHub, because that base is often a squash merge this checkout never saw. The lane job scans every published commit, not just the net diff, and the Claude step has its own time limit below the job's so committed work is always packaged.
 
-Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. Calendar and files are held until Patrick approves them; releasing a hold is a reviewed plan change.
+Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. Releasing a hold is a reviewed plan change. Patrick released calendar and files on 2026-11-10; no task is held now.
