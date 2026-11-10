@@ -1,0 +1,154 @@
+{
+ "pages": [
+  {
+   "name": "00-practice-nav-to-billing",
+   "role": "attorney",
+   "url": "/practice/matters",
+   "landed": "/billing",
+   "title": "Billing / Generate \u00b7 Togavsu"
+  },
+  {
+   "name": "00-billing-nav-to-trust",
+   "role": "attorney",
+   "url": "/billing",
+   "landed": "/trust/ledger",
+   "title": "Trust Ledger \u00b7 Togavsu"
+  },
+  {
+   "name": "01-billing-worklist",
+   "role": "attorney",
+   "url": "/billing",
+   "status": 200,
+   "title": "Billing / Generate \u00b7 Togavsu"
+  },
+  {
+   "name": "02-invoices",
+   "role": "attorney",
+   "url": "/billing/invoices",
+   "status": 200,
+   "title": "Invoices \u00b7 Togavsu"
+  },
+  {
+   "name": "03-invoice",
+   "role": "attorney",
+   "url": "/billing/invoices/01a1c7ab-4839-70e4-a47a-363b8df4b9b8",
+   "status": 200,
+   "title": "Invoice INV-2026-0001 \u00b7 Togavsu"
+  },
+  {
+   "name": "04-time",
+   "role": "attorney",
+   "url": "/billing/time",
+   "status": 200,
+   "title": "Time Entries \u00b7 Togavsu"
+  },
+  {
+   "name": "05-payments",
+   "role": "attorney",
+   "url": "/billing/payments",
+   "status": 200,
+   "title": "Payments \u00b7 Togavsu"
+  },
+  {
+   "name": "06-report-ar-aging",
+   "role": "attorney",
+   "url": "/billing/reports/ar-aging",
+   "status": 200,
+   "title": "AR aging \u00b7 Togavsu"
+  },
+  {
+   "name": "07-trust-ledger",
+   "role": "attorney",
+   "url": "/trust/ledger",
+   "status": 200,
+   "title": "Trust Ledger \u00b7 Togavsu"
+  },
+  {
+   "name": "08-trust-balances",
+   "role": "attorney",
+   "url": "/trust/balances",
+   "status": 200,
+   "title": "Trust Balances \u00b7 Togavsu"
+  },
+  {
+   "name": "09-trust-flags",
+   "role": "attorney",
+   "url": "/trust/flags",
+   "status": 200,
+   "title": "Trust Flags \u00b7 Togavsu"
+  },
+  {
+   "name": "10-trust-notifications",
+   "role": "attorney",
+   "url": "/trust/notifications",
+   "status": 200,
+   "title": "Notifications \u00b7 Togavsu"
+  },
+  {
+   "name": "11-trust-notifications-read",
+   "role": "attorney",
+   "url": "/trust/notifications?notice=All+notifications+marked+read.",
+   "title": "Notifications \u00b7 Togavsu"
+  },
+  {
+   "name": "12-trust-matter-flat",
+   "role": "attorney",
+   "url": "/trust/matters/01a1c7ab-48d1-776a-b958-1999449f500d",
+   "status": 200,
+   "title": "Trust: 2026-0002 Will of Pell \u00b7 Togavsu"
+  },
+  {
+   "name": "13-close-warnings",
+   "role": "attorney",
+   "url": "/practice/matters/01a1c7ab-4811-7753-bf18-94184bf1e1ca/close",
+   "status": 200,
+   "title": "Close 2026-0001 \u00b7 Togavsu"
+  },
+  {
+   "name": "14-trust-reconciliation",
+   "role": "admin",
+   "url": "/trust/reconciliation",
+   "status": 200,
+   "title": "Trust Reconciliation \u00b7 Togavsu"
+  },
+  {
+   "name": "15-trust-replenishment",
+   "role": "admin",
+   "url": "/trust/replenishment",
+   "status": 200,
+   "title": "Trust Replenishment \u00b7 Togavsu"
+  },
+  {
+   "name": "16-accountant-ledger",
+   "role": "accountant",
+   "url": "/trust/ledger",
+   "status": 200,
+   "title": "Trust Ledger \u00b7 Togavsu"
+  },
+  {
+   "name": "17-accountant-invoice",
+   "role": "accountant",
+   "url": "/billing/invoices/01a1c7ab-4839-70e4-a47a-363b8df4b9b8",
+   "status": 200,
+   "title": "Invoice INV-2026-0001 \u00b7 Togavsu"
+  },
+  {
+   "name": "signed-out-billing",
+   "role": "none",
+   "url": "/billing/invoices",
+   "landed": "/login",
+   "status": 200
+  },
+  {
+   "name": "signed-out-trust",
+   "role": "none",
+   "url": "/trust/ledger",
+   "landed": "/login",
+   "status": 200
+  }
+ ],
+ "console_errors": [],
+ "error_responses": [],
+ "revision": "b59f0aaeaa0aefafa4acec593f1322d35c33b496",
+ "note": "Headless Google Chrome through playwright-core against the core at the revision above (git worktree of that commit, served by a local seeding helper over httptest on a fresh synthetic postgres:17 database, core role non-superuser), signed in as the attorney, admin, accountant and signed out. Steps 00 click the new practice -> Billing and billing -> Trust nav links. Step 11 clicks Mark all read on the notifications screen; the badge clears. No console errors, no page errors and no 4xx/5xx responses. The seeding helper and the browser script are local QC tools and are not committed."
+}
