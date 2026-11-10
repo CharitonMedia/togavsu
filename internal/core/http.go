@@ -185,21 +185,15 @@ func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	return c.Principal, err
 }
 
-// status maps identity codes the shared table does not know.
+// status is the HTTP status for err: identity's own codes go through shared, and the
+// two setup codes are conflicts.
 func status(err error) int {
 	var api *domain.APIError
-	if !errors.As(err, &api) {
+	if !errors.As(shared(err), &api) {
 		return http.StatusInternalServerError
 	}
-	switch api.Code {
-	case "csrf_required", "scope_denied":
-		return http.StatusForbidden
-	case "already_set_up", "setup_required":
+	if api.Code == "already_set_up" || api.Code == "setup_required" {
 		return http.StatusConflict
-	case "ambiguous_auth":
-		return http.StatusBadRequest
-	case "locked_out":
-		return http.StatusTooManyRequests
 	}
 	return api.HTTPStatus()
 }
