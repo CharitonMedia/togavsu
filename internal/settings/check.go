@@ -603,6 +603,9 @@ func fixedSite(path, fn string) bool {
 		case "Search", "groupActivity", "searchInvoices", "sortMatterRows":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/calendar/ical.go"):
+		// RFC 5545 folds content lines at 75 octets. A protocol width, not a firm setting.
+		return fn == "foldWidth"
 	case strings.HasSuffix(slash, "internal/practice/service.go"):
 		// AES-256-GCM key width and the position of @ in an email address.
 		switch fn {

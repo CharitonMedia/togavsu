@@ -1,0 +1,102 @@
+{{template "head" .}}
+{{with .Data}}
+<h1>Available dates</h1>
+<p class="muted">Lists weekdays with no court date, block or all-day event for the attorney. This never changes the calendar.</p>
+<form method="get" action="/calendar/available-dates" class="inline" role="search" aria-label="Find a matter">
+  <input type="hidden" name="user_id" value="{{index .Form "user_id"}}">
+  <label>Find matter (name, number or case number) <input type="search" name="matter_q" value="{{.MatterQ}}"></label>
+  <button type="submit">Search</button>
+</form>
+{{if .Searched}}
+<section class="matter-hits" aria-label="Matter search results">
+  {{with .SearchErr}}<p class="error" role="alert">{{.}}</p>{{else}}
+  {{if .Matches}}
+  <ul>
+    {{range .Matches}}<li><a href="/calendar/available-dates?matter_id={{.ID}}&amp;user_id={{index $.Data.Form "user_id"}}">{{.Label}}</a></li>{{end}}
+  </ul>
+  {{else}}<p class="muted">No matters match.</p>{{end}}
+  {{end}}
+</section>
+{{end}}
+<form method="post" action="/calendar/available-dates" class="grid">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  {{if .HasRoster}}
+  <label>Attorney
+    <select name="user_id" required>
+      {{$uid := index .Form "user_id"}}
+      {{range .Attorneys}}<option value="{{.ID}}"{{if eq (print .ID) $uid}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </label>
+  {{else}}
+  <label>Attorney user id <input name="user_id" value="{{index .Form "user_id"}}" size="38" required></label>
+  {{end}}
+  <label>Start date <input type="date" name="start_date" value="{{index .Form "start_date"}}" required></label>
+  <label>End date (blank is the firm default range) <input type="date" name="end_date" value="{{index .Form "end_date"}}"></label>
+  <label><input type="checkbox" name="include_half_days"{{if .Half}} checked{{end}}> Include half days</label>
+  <input type="hidden" name="matter_id" value="{{index .Form "matter_id"}}">
+  <p class="picked">Matter (fills court, caption, parties and case number):
+    {{with .Picked}}<strong>{{.Label}}</strong> <a href="/calendar/available-dates?user_id={{index $.Data.Form "user_id"}}">Clear</a>{{else}}<span class="muted">none picked; use Find matter above, or fill the fields by hand</span>{{end}}
+  </p>
+  <label>Court <input name="court" value="{{index .Form "court"}}"></label>
+  <label>Caption <input name="caption" value="{{index .Form "caption"}}"></label>
+  <label>Party labels
+    <select name="left_label">
+      <option value="">Matter default</option>
+      <option{{if eq (index .Form "left_label") "Plaintiff"}} selected{{end}}>Plaintiff</option>
+      <option{{if eq (index .Form "left_label") "Petitioner"}} selected{{end}}>Petitioner</option>
+    </select>
+    <select name="right_label">
+      <option value="">Matter default</option>
+      <option{{if eq (index .Form "right_label") "Defendant"}} selected{{end}}>Defendant</option>
+      <option{{if eq (index .Form "right_label") "Respondent"}} selected{{end}}>Respondent</option>
+    </select>
+  </label>
+  <label>First party name <input name="left_party_name" value="{{index .Form "left_party_name"}}"></label>
+  <label>Second party name <input name="right_party_name" value="{{index .Form "right_party_name"}}"></label>
+  <label>Case number <input name="case_number" value="{{index .Form "case_number"}}"></label>
+  <label>Firm represents
+    <select name="firm_side">
+      <option value="">Matter default</option>
+      <option value="left"{{if eq (index .Form "firm_side") "left"}} selected{{end}}>First party</option>
+      <option value="right"{{if eq (index .Form "firm_side") "right"}} selected{{end}}>Second party</option>
+    </select>
+  </label>
+  <label>Purpose <input name="purpose" value="{{index .Form "purpose"}}"></label>
+  <label>Coordinate with <input name="coordinate_with" value="{{index .Form "coordinate_with"}}"></label>
+  <label>Title <input name="title" value="{{index .Form "title"}}"></label>
+  <label>Service date <input type="date" name="service_date" value="{{index .Form "service_date"}}"></label>
+  <label>Letter recipient <input name="letter_recipient" value="{{index .Form "letter_recipient"}}"></label>
+  <label>Letter address <textarea name="letter_address" rows="3">{{index .Form "letter_address"}}</textarea></label>
+  <label>Re line <input name="letter_re" value="{{index .Form "letter_re"}}"></label>
+  <label>Salutation <input name="letter_salutation" value="{{index .Form "letter_salutation"}}"></label>
+  <button type="submit">List available dates</button>
+</form>
+{{with .Result}}
+<section class="result" aria-labelledby="result-h">
+  <h2 id="result-h">{{len .Dates}} available date{{if ne (len .Dates) 1}}s{{end}}</h2>
+  <div class="panes">
+    <div>
+      <h3>Pleading</h3>
+      <textarea id="pleading" rows="24" readonly>{{.Pleading}}</textarea>
+      <button type="button" data-copy="pleading">Copy</button>
+    </div>
+    <div>
+      <h3>Letter</h3>
+      <textarea id="letter" rows="24" readonly>{{.Letter}}</textarea>
+      <button type="button" data-copy="letter">Copy</button>
+    </div>
+  </div>
+  {{$form := $.Data.Form}}
+  {{range $kind := (list "pleading" "letter")}}
+  <form method="post" action="/calendar/available-dates/download" class="inline">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <input type="hidden" name="form" value="{{$kind}}">
+    {{range $k, $v := $form}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}
+    {{if $.Data.Half}}<input type="hidden" name="include_half_days" value="on">{{end}}
+    <button type="submit">Download {{$kind}}</button>
+  </form>
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{template "foot" .}}

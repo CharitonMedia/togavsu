@@ -1,0 +1,48 @@
+{{template "head" .}}
+{{with .Data}}
+<h1>Deadlines</h1>
+<form class="filters" method="get" action="/calendar/deadlines">
+  <label>From <input type="date" name="from_date" value="{{.From}}"></label>
+  <label>To <input type="date" name="to_date" value="{{.To}}"></label>
+  <label>Status
+    <select name="status">
+      <option value=""{{if eq .Status ""}} selected{{end}}>Any</option>
+      <option value="open"{{if eq .Status "open"}} selected{{end}}>Open</option>
+      <option value="done"{{if eq .Status "done"}} selected{{end}}>Done</option>
+      <option value="waived"{{if eq .Status "waived"}} selected{{end}}>Waived</option>
+    </select>
+  </label>
+  <label><input type="checkbox" name="include_overdue" value="true"{{if .IncludeOverdue}} checked{{end}}> Include overdue</label>
+  <label>Matter id <input name="matter_id" value="{{.MatterID}}" size="38"></label>
+  {{if .ResponsibleUserID}}<input type="hidden" name="responsible_user_id" value="{{.ResponsibleUserID}}">{{end}}
+  <button type="submit">Filter</button>
+</form>
+{{if .Rows}}
+<table class="list">
+  <thead><tr><th scope="col">Due</th><th scope="col">Deadline</th><th scope="col">Responsible</th><th scope="col">Status</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr{{if .Overdue}} class="late"{{end}}>
+      <td>{{.DueOn}}{{if .Overdue}} <strong>overdue</strong>{{end}}</td>
+      <td><a href="/calendar/deadlines/{{.ID}}">{{.Title}}</a></td>
+      <td>{{.Responsible}}</td>
+      <td>{{.Status}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}<p class="muted">No deadlines match.</p>{{end}}
+{{end}}
+<details class="new">
+  <summary>New deadline</summary>
+  <form method="post" action="/calendar/deadlines">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Matter id <input name="matter_id" size="38" required></label>
+    <label>Title <input name="title" required></label>
+    <label>Due <input type="date" name="due_on" required></label>
+    <label>Responsible user id (blank is you) <input name="responsible_user_id" size="38"></label>
+    <label>Reminder days before (blank is the firm default) <input name="reminder_offsets_days" placeholder="7,1"></label>
+    <button type="submit">Save deadline</button>
+  </form>
+</details>
+{{template "foot" .}}
