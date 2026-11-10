@@ -479,6 +479,9 @@ func fixedSite(path, fn string) bool {
 		case "ApplyReference", "ApplySynthetic", "insertSynthetic", "sid", "bit":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/core/mail.go"):
+		// The RFC 2045 base64 line length of a mail attachment. Not a firm limit.
+		return fn == "base64Lines"
 	case strings.HasSuffix(slash, "internal/db/ranges.go"):
 		// Version allocation bands and the "exactly one band" invariant.
 		switch fn {

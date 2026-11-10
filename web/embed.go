@@ -7,3 +7,13 @@ import "embed"
 //
 //go:embed templates/practice
 var Practice embed.FS
+
+// Billing holds templates/billing: the billing screens and CSS.
+//
+//go:embed templates/billing
+var Billing embed.FS
+
+// Trust holds templates/trust: the trust screens and CSS.
+//
+//go:embed templates/trust
+var Trust embed.FS

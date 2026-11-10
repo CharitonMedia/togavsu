@@ -1,5 +1,5 @@
 // Package core composes the running product: Postgres, migrations, settings, the
-// append-only audit ledger, identity, practice, the HTTP routes and /mcp.
+// append-only audit ledger, identity, practice, billing, trust, the HTTP routes and /mcp.
 // Access control stays in the services; this package only authenticates the caller
 // and hands the principal to them.
 package core
@@ -12,16 +12,19 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/api"
 	"github.com/CharitonMedia/togavsu/internal/audit"
+	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/settings"
+	"github.com/CharitonMedia/togavsu/internal/trust"
 	"github.com/CharitonMedia/togavsu/web"
 )
 
@@ -34,6 +37,9 @@ type Config struct {
 	Key         []byte
 	Domain      string
 	Now         func() time.Time
+	// MailEvery is how often queued trust mail is sent. Zero is 30 seconds; a negative
+	// value starts no delivery loop (tests call DeliverMail).
+	MailEvery time.Duration
 }
 
 // App is one running core.
@@ -47,12 +53,20 @@ type App struct {
 	}
 	Practice *practice.Service
 	Store    *practice.Durable
+	Trust    *trust.Service
+	Billing  *billing.Service
 
 	ledger   *audit.Postgres
 	tools    []tool
 	practice http.Handler
+	// domains are the service muxes behind the core routes, first match wins: trust and
+	// billing own their reports ahead of practice's mirrored ones.
+	domains  []*http.ServeMux
 	mux      *http.ServeMux
 	ready    atomic.Bool
+	mailMu   sync.Mutex
+	stopMail context.CancelFunc
+	mailDone chan struct{}
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
@@ -62,7 +76,7 @@ func Migrate(ctx context.Context, dsn string) error {
 		return err
 	}
 	defer plain.Close()
-	ms, err := db.Embedded()
+	ms, err := migrations()
 	if err != nil {
 		return err
 	}
@@ -134,15 +148,45 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.practice = ph.Routes()
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, app.principal, app.scopes, now)
+	if err != nil {
+		return fail(err)
+	}
+	app.Trust, app.Billing = fin.Trust, fin.Billing
+	for _, h := range []http.Handler{fin.trustH, fin.billH, app.practice} {
+		mux, ok := h.(*http.ServeMux)
+		if !ok {
+			return fail(errors.New("core: a service handler is not a ServeMux"))
+		}
+		app.domains = append(app.domains, mux)
+	}
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
 	app.routes()
+	if cfg.MailEvery >= 0 {
+		every := cfg.MailEvery
+		if every == 0 {
+			every = 30 * time.Second
+		}
+		mailCtx, stop := context.WithCancel(context.Background())
+		app.stopMail, app.mailDone = stop, make(chan struct{})
+		go func() {
+			defer close(app.mailDone)
+			app.deliverTrustMail(mailCtx, every)
+		}()
+	}
 	return app, nil
 }
 
-// Close releases the pool.
-func (a *App) Close() error { return a.Pool.Close() }
+// Close stops mail delivery and releases the pool.
+func (a *App) Close() error {
+	if a.stopMail != nil {
+		a.stopMail()
+		<-a.mailDone
+	}
+	return a.Pool.Close()
+}
 
 // Handler is the whole HTTP surface.
 func (a *App) Handler() http.Handler { return a.setupGate(a.mux) }
