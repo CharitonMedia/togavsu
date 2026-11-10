@@ -79,5 +79,7 @@
   "400 POST /setup",
   "400 POST /admin/settings/security.api_rate_per_minute"
  ],
- "note": "Captured with Chrome headless via Playwright against the core binary on a fresh synthetic database. 03-enroll and 04-recovery-codes were inspected but are not committed because they display synthetic TOTP secrets and recovery codes."
+ "after_logout_redirect": "/login",
+ "revision": "527a5a1b1b9923f6ec3f19eb51cb642f632d2849",
+ "note": "Chrome headless via Playwright against the core binary on a fresh synthetic database. 03-enroll and 04-recovery-codes were inspected but not committed because they display synthetic TOTP secrets and recovery codes. The two 400 responses are the deliberate invalid setup and invalid setting submissions."
 }

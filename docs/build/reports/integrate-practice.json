@@ -1,0 +1,270 @@
+{
+  "task_id": "integrate-practice",
+  "status": "pass",
+  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. This is not full product acceptance; 49 of 52 criteria remain pending globally.",
+  "tested_revision": "527a5a1b1b9923f6ec3f19eb51cb642f632d2849",
+  "tests": [
+    {
+      "command": "sh scripts/ci/test-core.sh",
+      "exit_code": 0,
+      "seconds": 82
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 32
+    },
+    {
+      "command": "sh scripts/ci/test-qa.sh",
+      "exit_code": 0,
+      "seconds": 10
+    },
+    {
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "seconds": 5
+    },
+    {
+      "command": "sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "seconds": 58
+    },
+    {
+      "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/test-bootstrap.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-core-image-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/ui-qc.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "docker compose -f compose.yaml config -q",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
+      "exit_code": 0,
+      "seconds": 11
+    },
+    {
+      "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/build-core-image.sh",
+      "exit_code": 0,
+      "seconds": 18
+    },
+    {
+      "command": "sh scripts/ci/test-core-smoke.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0,
+      "seconds": 17
+    },
+    {
+      "command": "GOFLAGS=-count=1 sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "seconds": 329
+    },
+    {
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "foundation-first-run",
+      "acceptance_ids": [
+        "AC-001"
+      ],
+      "status": "pass",
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0
+    },
+    {
+      "id": "identity-access",
+      "acceptance_ids": [
+        "AC-003",
+        "AC-004",
+        "AC-018",
+        "AC-024"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "exit_code": 0
+    },
+    {
+      "id": "practice-records",
+      "acceptance_ids": [
+        "AC-009",
+        "AC-020",
+        "AC-023",
+        "AC-025"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0
+    },
+    {
+      "id": "api-mcp-practice",
+      "acceptance_ids": [
+        "AC-002"
+      ],
+      "status": "pass",
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "id": "settings-audit",
+      "acceptance_ids": [
+        "AC-029",
+        "AC-030",
+        "AC-035"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-025",
+    "AC-030",
+    "AC-035"
+  ],
+  "pending_acceptance_ids": [
+    "AC-001",
+    "AC-002",
+    "AC-003",
+    "AC-004",
+    "AC-005",
+    "AC-006",
+    "AC-007",
+    "AC-008",
+    "AC-009",
+    "AC-010",
+    "AC-011",
+    "AC-012",
+    "AC-013",
+    "AC-014",
+    "AC-015",
+    "AC-016",
+    "AC-017",
+    "AC-018",
+    "AC-019",
+    "AC-020",
+    "AC-021",
+    "AC-022",
+    "AC-023",
+    "AC-024",
+    "AC-026",
+    "AC-027",
+    "AC-028",
+    "AC-029",
+    "AC-031",
+    "AC-032",
+    "AC-033",
+    "AC-034",
+    "AC-036",
+    "AC-037",
+    "AC-038",
+    "AC-039",
+    "AC-040",
+    "AC-041",
+    "AC-042",
+    "AC-043",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-050",
+    "AC-051",
+    "AC-052"
+  ],
+  "pending_notes": {
+    "AC-001": "Phase case passes: one Linux Compose up with no edits reaches setup, two-factor and a ready install. Clean Docker Desktop (Windows/macOS) installation is release acceptance and has not run.",
+    "AC-002": "Phase case passes: 99 of 427 contract operations are mounted on /api/v1 and /mcp, all fail closed, and the spec validates. Billing, trust, calendar, files, editor, Doc Tender, modules and users are not built; GET /api/v1/reports/matters and GET /api/v1/matters/{matter_id}/conflict-checks are served but absent from the contract.",
+    "AC-003": "Phase case passes for list, search, widget, report, screens, API and MCP. Files, calendar, billing and trust surfaces of a walled matter are not built; module include rows are pending.",
+    "AC-004": "Phase case passes: the accountant reads the trust and AR reports and every practice, settings and area write is refused. Billing and trust records and their write paths are not built.",
+    "AC-009": "Phase case passes with an invoice written into the practice store as the billing wave's stand-in; real billing and trust ledgers are not built.",
+    "AC-018": "Audit half passes: every write in identity, settings and practice reaches the append-only audit_log with actor and source, and Compose runs the core as a non-superuser role that cannot change it. Backup download, S3 and network-path copies and restore of a running core are not demonstrated end to end in this assignment.",
+    "AC-020": "Phase case passes for matter number, phone and invoice number in each scope and All, and walls hide results; invoices come from the stand-in store and file-text search is pending (files).",
+    "AC-023": "Phase case passes for reopen with reason, restored status and timeline; the zero-fee marker is covered by the practice suite, AR aging over real billing data is pending.",
+    "AC-024": "Phase case passes for history old/new values and attorney-only redaction; the events table is still mutable by the application role (AC-024-F4).",
+    "AC-029": "Phase case passes: PRD defaults are registry settings listed on admin page tabs, a change applies on the next request, is logged with old and new values, and Reset restores it. Settings read by modules that are not built cannot yet show their effect."
+  },
+  "ci": {
+    "existing_jobs_run_locally": [
+      "Supervisor tests",
+      "Backup integration",
+      "Supervisor image",
+      "API bootstrap validation"
+    ],
+    "jobs_needing_workflow_change": [
+      "Core tests",
+      "API contract tests",
+      "QA harness tests"
+    ],
+    "blocker": "Lane workers cannot change .github/; the exact product-ci.yml change is in the PR body under Proposed CI change for the integration lead's control PR."
+  },
+  "visual_qc": "docs/build/reports/screens/integrate-practice/qc.json",
+  "simplification": {
+    "go_lines_added": 3335,
+    "go_lines_removed": 40,
+    "net_go_lines": 3295,
+    "net_non_test_go_lines": 2134,
+    "debt_entries_before": 33,
+    "debt_entries_after": 38,
+    "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules)."
+  }
+}
