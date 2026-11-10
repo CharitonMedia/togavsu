@@ -352,8 +352,8 @@ func TestBrowserSetupAndSignIn(t *testing.T) {
 		t.Fatalf("settings form without csrf: %d %s", r.code, r.body)
 	}
 	b.must(http.StatusSeeOther, "POST", "/logout", url.Values{"csrf": {csrfFrom(t, b)}})
-	if r := b.do("GET", "/practice/matters", nil); r.code == http.StatusOK {
-		t.Fatal("signed out browser still sees matters")
+	if r := b.do("GET", "/practice/matters", nil); r.code != http.StatusSeeOther || r.loc != "/login" {
+		t.Fatalf("signed out browser on a screen: %d %q", r.code, r.loc)
 	}
 	// Sign in again with a code from the next step, so the setup code is not replayed.
 	login := b.must(http.StatusOK, "POST", "/login", url.Values{"email": {"fran@firm.example"}, "password": {adminPassword}})

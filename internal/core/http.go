@@ -53,12 +53,27 @@ func (a *App) routes() {
 	m.HandleFunc("GET /login", a.loginPage)
 	m.HandleFunc("POST /login", a.loginPost)
 	m.HandleFunc("POST /login/totp", a.totpPost)
+	m.HandleFunc("GET /logout", a.logoutPage)
 	m.HandleFunc("POST /logout", a.logoutPost)
 	m.HandleFunc("GET /admin/settings", a.settingsPage)
 	m.HandleFunc("POST /admin/settings/{setting_key}", a.settingsPost)
 	m.HandleFunc("POST /admin/settings/{setting_key}/reset", a.settingsResetPost)
-	m.Handle("/", a.practice)
+	m.Handle("/", a.screens(a.practice))
 	a.mux = m
+}
+
+// screens sends a signed-out browser on a practice screen to sign-in. API callers keep
+// their 401; static files and anything else pass through to the practice handler.
+func (a *App) screens(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/practice/") && !strings.HasPrefix(r.URL.Path, "/practice/static/") {
+			if _, err := a.principal(r); status(err) == http.StatusUnauthorized {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // openBeforeSetup are the paths a fresh install serves before setup completes. Sign-in

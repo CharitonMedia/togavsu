@@ -1,0 +1,83 @@
+{
+ "pages": [
+  {
+   "name": "01-setup",
+   "url": "/setup",
+   "title": "Set up Togavsu \u00b7 Togavsu"
+  },
+  {
+   "name": "02-setup-error",
+   "url": "/setup",
+   "title": "Set up Togavsu \u00b7 Togavsu"
+  },
+  {
+   "name": "03-enroll",
+   "url": "/setup",
+   "title": "Turn on two-factor sign-in \u00b7 Togavsu"
+  },
+  {
+   "name": "04-recovery-codes",
+   "url": "/setup/confirm",
+   "title": "Recovery codes \u00b7 Togavsu"
+  },
+  {
+   "name": "05-matters",
+   "url": "/practice/matters",
+   "title": "Matters \u00b7 Togavsu"
+  },
+  {
+   "name": "06-settings-security",
+   "url": "/admin/settings?tab=security",
+   "title": "Settings \u00b7 Togavsu"
+  },
+  {
+   "name": "07-settings-changed",
+   "url": "/admin/settings?tab=security",
+   "title": "Settings \u00b7 Togavsu"
+  },
+  {
+   "name": "08-settings-reset",
+   "url": "/admin/settings?tab=security",
+   "title": "Settings \u00b7 Togavsu"
+  },
+  {
+   "name": "09-settings-invalid",
+   "url": "/admin/settings/security.api_rate_per_minute",
+   "title": "Settings \u00b7 Togavsu"
+  },
+  {
+   "name": "10-contacts",
+   "url": "/practice/contacts",
+   "title": "Contacts \u00b7 Togavsu"
+  },
+  {
+   "name": "11-sign-out-confirm",
+   "url": "/logout",
+   "title": "Sign out \u00b7 Togavsu"
+  },
+  {
+   "name": "11b-signed-out-login",
+   "url": "/login",
+   "title": "Sign in \u00b7 Togavsu"
+  },
+  {
+   "name": "12-totp",
+   "url": "/login",
+   "title": "Two-factor code \u00b7 Togavsu"
+  },
+  {
+   "name": "13-signed-in-matters",
+   "url": "/practice/matters",
+   "title": "Matters \u00b7 Togavsu"
+  }
+ ],
+ "console_errors": [
+  "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "Failed to load resource: the server responded with a status of 400 (Bad Request)"
+ ],
+ "error_responses": [
+  "400 POST /setup",
+  "400 POST /admin/settings/security.api_rate_per_minute"
+ ],
+ "note": "Captured with Chrome headless via Playwright against the core binary on a fresh synthetic database. 03-enroll and 04-recovery-codes were inspected but are not committed because they display synthetic TOTP secrets and recovery codes."
+}

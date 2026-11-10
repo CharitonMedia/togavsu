@@ -13,10 +13,24 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
-var pages = template.Must(template.New("core").Parse(`
+var pages = template.Must(template.New("core").Funcs(template.FuncMap{
+	"label": func(tab string) string {
+		words := strings.Split(tab, "_")
+		for i, w := range words {
+			if w == "ai" || w == "api" {
+				words[i] = strings.ToUpper(w)
+			} else if i == 0 && w != "" {
+				words[i] = strings.ToUpper(w[:1]) + w[1:]
+			}
+		}
+		return strings.Join(words, " ")
+	},
+}).Parse(`
 {{define "top"}}<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}} · Togavsu</title><link rel="stylesheet" href="/practice/static/practice.css"></head>
+<title>{{.Title}} · Togavsu</title><link rel="stylesheet" href="/practice/static/practice.css">
+<style>nav.tabs{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 16px}nav.tabs a[aria-current]{font-weight:700;text-decoration:none}
+td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}header.bar form button{margin-left:12px}</style></head>
 <body><header class="bar"><a class="brand" href="/">Togavsu</a>{{if .Nav}}<nav><a href="/practice/matters">Matters</a><a href="/practice/contacts">Contacts</a><a href="/admin/settings">Settings</a>
 <form method="post" action="/logout" style="display:inline"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Sign out</button></form></nav>{{end}}</header>
 <main><h1>{{.Title}}</h1>{{if .Error}}<p class="warn" role="alert">{{.Error}}</p>{{end}}{{end}}
@@ -62,16 +76,21 @@ var pages = template.Must(template.New("core").Parse(`
 <p><button type="submit">Verify</button></p></form>
 {{template "bottom" .}}{{end}}
 
+{{define "logout"}}{{template "top" .}}
+<form class="card" method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p>Sign out of Togavsu on this browser?</p><p><button type="submit">Sign out</button> <a href="/practice/matters">Cancel</a></p></form>
+{{template "bottom" .}}{{end}}
+
 {{define "settings"}}{{template "top" .}}
-<nav class="tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{.}}</a> {{end}}</nav>
+<nav class="tabs" aria-label="Settings tabs">{{range .Tabs}}<a href="/admin/settings?tab={{.}}" {{if eq . $.Tab}}aria-current="page"{{end}}>{{label .}}</a>{{end}}</nav>
 <table><thead><tr><th>Setting</th><th>Value</th><th>Default</th><th></th></tr></thead><tbody>
 {{range .Settings}}<tr><td><strong>{{.Key}}</strong><br><span class="muted">{{.Help}}</span></td>
-<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if .Overridden}} <span class="badge">changed</span>{{end}}</td>
+<td>{{if .Secret}}<span class="muted">{{if .SecretSet}}configured{{else}}not set{{end}}</span>{{else}}{{.Value}}{{end}}{{if and (not .Secret) (ne .Value .Default)}} <span class="badge">changed</span>{{end}}</td>
 <td>{{if not .Secret}}{{.Default}}{{end}}</td>
 <td>{{if .Locked}}<span class="muted">locked</span>{{else}}
 <form method="post" action="/admin/settings/{{.Key}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}">
 <input name="value" aria-label="New value for {{.Key}}" {{if not .Secret}}value="{{.Value}}"{{end}} {{if .Secret}}type="password"{{end}}> <button type="submit">Save</button></form>
-{{if .Overridden}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">Reset to default</button></form>{{end}}{{end}}</td></tr>
+{{if and (not .Secret) (ne .Value .Default)}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Tab}}"><button type="submit">Reset to default</button></form>{{end}}{{end}}</td></tr>
 {{end}}</tbody></table>
 {{template "bottom" .}}{{end}}
 `))
@@ -204,6 +223,14 @@ func (a *App) totpPost(w http.ResponseWriter, r *http.Request) {
 	a.loginStep(w, r, res)
 }
 
+func (a *App) logoutPage(w http.ResponseWriter, r *http.Request) {
+	if _, err := a.principal(r); err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	render(w, http.StatusOK, "logout", view{Title: "Sign out", CSRF: csrfOf(r)})
+}
+
 func (a *App) logoutPost(w http.ResponseWriter, r *http.Request) {
 	if c, err := a.caller(r); err == nil {
 		_ = a.Identity.Logout(r.Context(), c)
@@ -281,7 +308,7 @@ func (a *App) settingsChange(w http.ResponseWriter, r *http.Request, change func
 		return
 	}
 	if err := change(p); err != nil {
-		v, verr := a.settingsView(r, message(settingErr(err)))
+		v, verr := a.settingsView(r, "That value is not allowed for "+r.PathValue("setting_key")+". "+strings.TrimPrefix(message(settingErr(err)), "settings: "))
 		if verr != nil {
 			writeErr(w, verr)
 			return
