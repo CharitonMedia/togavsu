@@ -80,6 +80,8 @@
   "400 POST /admin/settings/security.api_rate_per_minute"
  ],
  "after_logout_redirect": "/login",
- "revision": "527a5a1b1b9923f6ec3f19eb51cb642f632d2849",
- "note": "Chrome headless via Playwright against the core binary on a fresh synthetic database. 03-enroll and 04-recovery-codes were inspected but not committed because they display synthetic TOTP secrets and recovery codes. The two 400 responses are the deliberate invalid setup and invalid setting submissions."
+ "revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+ "note": "Chrome headless via Playwright against the core binary built at the revision above, on a fresh synthetic postgres:17 database in its own Docker network. All 14 steps were repeated at this revision; it replaces the earlier record taken at 527a5a1. No screen template changed after 527a5a1 (git log 527a5a1..05fde77 -- internal/core web is empty), but the practice store did, so QC was repeated. 03-enroll and 04-recovery-codes were inspected but not committed because they display synthetic TOTP secrets and recovery codes. The two 400 responses are the deliberate invalid setup and invalid setting submissions. Open, unchanged from the earlier QC: the invalid-setting message repeats the registry text; the settings screens show a shorter nav (Matters, Contacts, Settings) than the practice screens.",
+ "screen_paths_changed_since_previous_qc": false,
+ "previous_qc_revision": "527a5a1b1b9923f6ec3f19eb51cb642f632d2849"
 }

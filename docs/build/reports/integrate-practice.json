@@ -1,18 +1,18 @@
 {
   "task_id": "integrate-practice",
-  "status": "pending",
-  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. This is not full product acceptance; 49 of 52 criteria remain pending globally.",
-  "tested_revision": "79ff33f758ccc62bf60892ffc74470b273789b4a",
+  "status": "pass",
+  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. status pass means the assigned integration behavior and all five phase cases pass and all six required CI jobs pass on this revision. It is not full product acceptance: 49 of 52 criteria remain pending globally.",
+  "tested_revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
   "tests": [
     {
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 82
+      "seconds": 131
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 24
+      "seconds": 25
     },
     {
       "command": "sh scripts/ci/test-qa.sh",
@@ -22,22 +22,22 @@
     {
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 280
+      "seconds": 291
     },
     {
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
-      "seconds": 47
+      "seconds": 43
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
       "exit_code": 0,
-      "seconds": 0
+      "seconds": 1
     },
     {
       "command": "sh scripts/ci/test-bootstrap.sh",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 0
     },
     {
       "command": "sh scripts/ci/test-core-image-gate.sh",
@@ -72,17 +72,17 @@
     {
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
       "exit_code": 0,
-      "seconds": 0
+      "seconds": 21
     },
     {
       "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 0
     },
     {
       "command": "sh scripts/ci/build-core-image.sh",
       "exit_code": 0,
-      "seconds": 17
+      "seconds": 18
     },
     {
       "command": "sh scripts/ci/test-core-smoke.sh",
@@ -92,34 +92,22 @@
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 17
-    },
-    {
-      "command": "GOFLAGS=-count=1 sh scripts/ci/test-supervisor.sh",
-      "exit_code": 0,
-      "seconds": 280
-    },
-    {
-      "command": "sh scripts/ci/test-compose-first-run.sh",
-      "exit_code": 0,
-      "seconds": 17
+      "seconds": 16
     },
     {
       "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
-      "exit_code": 0
+      "exit_code": 0,
+      "seconds": 2
     },
     {
       "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
-      "exit_code": 0
-    },
-    {
-      "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 24
+      "seconds": 2
     },
     {
       "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
-      "exit_code": 0
+      "exit_code": 0,
+      "seconds": 1
     }
   ],
   "phase_cases": [
@@ -246,26 +234,25 @@
     "AC-029": "Phase case passes: PRD defaults are registry settings listed on admin page tabs, a change applies on the next request, is logged with old and new values, and Reset restores it. Settings read by modules that are not built cannot yet show their effect."
   },
   "ci": {
-    "existing_jobs_run_locally": [
-      "Supervisor tests",
-      "Backup integration",
-      "Supervisor image"
-    ],
-    "required_jobs_missing_from_workflow": [
-      "Core tests",
-      "API contract tests",
-      "QA harness tests"
-    ],
-    "scripts_for_missing_jobs": {
-      "Core tests": "sh scripts/ci/test-core.sh && sh scripts/ci/test-compose-first-run.sh",
-      "API contract tests": "sh scripts/ci/test-api.sh",
-      "QA harness tests": "sh scripts/ci/test-qa.sh"
+    "workflow": ".github/workflows/product-ci.yml (jobs added on main by #25, merged into this branch at 05fde77)",
+    "run": "https://github.com/CharitonMedia/togavsu/actions/runs/42761536976",
+    "run_head_sha": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+    "run_conclusion": "success",
+    "required_jobs": {
+      "Core tests": "pass",
+      "API contract tests": "pass",
+      "QA harness tests": "pass",
+      "Supervisor tests": "pass",
+      "Backup integration": "pass",
+      "Supervisor image": "pass"
     },
-    "placeholder_to_replace": "The existing 'API bootstrap validation' job exits 0 when api/ is absent; the proposal replaces it with 'API contract tests'.",
-    "blocker": "Lane workers cannot change .github/. The exact product-ci.yml change is in the PR body under 'Proposed CI change'. The integration lead must land it through a reviewed control PR. Until then the three required checks are missing on GitHub, and this report's pass status covers local runs only.",
-    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers and a PostgreSQL 18 client for the backup test (postgresql-client-17 was not installable on this VM), plus Python 3.14. CI pins Postgres 17 client and Python 3.12. The supervisor image build at the tested revision reused Docker layer cache because no supervisor input changed."
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), Python 3.14, and tesseract-ocr from Ubuntu apt as in CI. CI pins Postgres 17 client and Python 3.12. The first local test-qa run exited 1 with 'tesseract is required' before tesseract was installed; after installing the packages the CI job installs, it exited 0 and that result is recorded."
   },
-  "visual_qc": "docs/build/reports/screens/integrate-practice/qc.json",
+  "visual_qc": {
+    "record": "docs/build/reports/screens/integrate-practice/qc.json",
+    "revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+    "summary": "All 14 QC steps repeated at the tested revision in headless Chrome; no page errors; the only error responses are the two deliberate 400 submissions."
+  },
   "simplification": {
     "go_lines_added": 3335,
     "go_lines_removed": 40,
@@ -274,7 +261,7 @@
     "debt_entries_before": 33,
     "debt_entries_after": 38,
     "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules).",
-    "this_run": {
+    "previous_run_79ff33f": {
       "go_lines_added": 385,
       "go_lines_removed": 63,
       "net_go_lines": 322,
@@ -282,9 +269,17 @@
       "debt_entries_before": 38,
       "debt_entries_after": 38,
       "review": "One unit type and a Begin method on Durable reuse the existing commit path; Service.unit is a two-line optional-interface check, so Memory and test stores are unchanged. Practice ceiling 1 is rewritten in place, not added."
+    },
+    "this_run": {
+      "go_lines_added": 0,
+      "go_lines_removed": 0,
+      "net_go_lines": 0,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "Report, phase report and QC evidence only; no Go, template or debt change."
     }
   },
-  "status_reason": "Every assigned phase case and every local test passes at the tested revision, but the assignment also requires CI to expose Core tests, API contract tests and QA harness tests. Those jobs are not in .github/workflows/product-ci.yml, and lane workers cannot change .github/. Status becomes pass once the integration lead lands the proposed workflow change and those jobs pass on the published head.",
+  "status_reason": "Every assigned phase case and every local test passes at the tested revision, and GitHub Product CI run 42761536976 passed Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration and Supervisor image on the same head SHA.",
   "review_fixes": [
     {
       "finding": "Codex checkpoint on 16f9c87, P1 internal/practice/durable.go: one service mutation committed as several transactions, so a failed audit_log append could leave an unaudited change, and check-then-write was not serialized.",
@@ -301,6 +296,18 @@
     {
       "finding": "Codex checkpoint on 16f9c87, P0 .github/workflows/product-ci.yml: required jobs missing.",
       "fix": "Not fixable in a lane (no .github/ changes allowed). The exact workflow change is in the PR body under Proposed CI change."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P1 integrate-practice.json: status pending with a stale missing-CI-jobs blocker.",
+      "fix": "The jobs exist on the base (#25) and pass on 05fde77 (run 42761536976). Full suite rerun locally at 05fde77, status set to pass, tested_revision 05fde77, missing-jobs and blocker statements removed. Report-only finding: no code changed, so the regression check is the rerun suite and the CI run on this SHA."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P1 phase-1.md and phase-2.md: stale 'not complete; do not tag' and blocker; PR body 'Proposed CI change' and 'Blocker' sections stale.",
+      "fix": "Both phase reports now state the phase cases and all six CI jobs pass at 05fde77, while 49 criteria remain pending globally. The PR body drops the stale sections."
+    },
+    {
+      "finding": "Codex checkpoint on 05fde77, P2 qc.json: QC recorded at 527a5a1, not the tested revision.",
+      "fix": "QC repeated at 05fde77 with all 14 steps; qc.json revision is 05fde77 and the committed screenshots were regenerated."
     }
   ]
 }

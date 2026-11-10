@@ -1,10 +1,10 @@
 # Phase 1 report: foundation, identity, settings and audit
 
-Status: **not complete; do not tag phase-1.** The assigned integration behavior passes on the composed core at `79ff33f758ccc62bf60892ffc74470b273789b4a`, but criteria remain pending globally and three named CI jobs need a workflow change (see the integrate-practice PR, "Proposed CI change").
+Status: **phase cases pass; full product acceptance pending.** Every phase 1 case passes on the composed core at `05fde772418cf3b9ffbcf56e521e2b02cae8f67b`, and GitHub Product CI run [42761536976](https://github.com/CharitonMedia/togavsu/actions/runs/42761536976) passed all six required jobs (Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration, Supervisor image) on that same SHA. Only AC-030 and AC-035 of the phase 1 criteria pass globally; the rest are pending below, so this is phase evidence, not global acceptance of those criteria.
 
 Inputs: contracts, platform, api, qa (bootstrap wave), identity (#21) and practice (#20), merged on main at `a7d0526`. Integration branch: `claude/togavsu-integrate-practice-ee9793df`.
 
-## Phase cases at 79ff33f758ccc62bf60892ffc74470b273789b4a (all exit 0)
+## Phase cases at 05fde772418cf3b9ffbcf56e521e2b02cae8f67b (all exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Pending globally, with what passes now:
 
 ## Visual QC
 
-Chrome headless screenshots of setup, the setup validation error, matters, settings (security tab, changed, reset, invalid), contacts, sign-out, sign-in and two-factor are in `docs/build/reports/screens/integrate-practice/`, with `qc.json`: no page errors; the only error responses are the two deliberate 400 submissions. Fixed during QC: every setting showed "changed" because the seed stores defaults; practice screens had no sign-out; a signed-out browser on a practice screen got a JSON 401 instead of the sign-in page. Open: the invalid-setting message repeats the registry text.
+Repeated at `05fde772418cf3b9ffbcf56e521e2b02cae8f67b` (all 14 steps; previous record was at 527a5a1, and no screen template changed since). Chrome headless screenshots of setup, the setup validation error, matters, settings (security tab, changed, reset, invalid), contacts, sign-out, sign-in and two-factor are in `docs/build/reports/screens/integrate-practice/`, with `qc.json`: no page errors; the only error responses are the two deliberate 400 submissions. Fixed during QC: every setting showed "changed" because the seed stores defaults; practice screens had no sign-out; a signed-out browser on a practice screen got a JSON 401 instead of the sign-in page. Open: the invalid-setting message repeats the registry text.
 
 ## Simplification and debt
 
