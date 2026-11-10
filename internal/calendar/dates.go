@@ -40,11 +40,14 @@ func addMonths(d time.Time, n int) time.Time {
 	return time.Date(d.Year(), d.Month()+time.Month(n), d.Day(), 0, 0, 0, 0, time.UTC)
 }
 
-// monthStep is day dd of the month delta months from y-mo, or that month's last day when
-// it is shorter, so Next from January 31 is February 28 and no month is skipped.
-func monthStep(y int, mo time.Month, dd, delta int) time.Time {
-	first := time.Date(y, mo+time.Month(delta), 1, 0, 0, 0, 0, time.UTC)
-	last := first.AddDate(0, 1, -1).Day()
+// monthStep is day dd of the month before y-mo (back) or after it, or that month's last
+// day when it is shorter, so Next from January 31 is February 28 and no month is skipped.
+func monthStep(y int, mo time.Month, dd int, back bool) time.Time {
+	first := time.Date(y, mo+1, 1, 0, 0, 0, 0, time.UTC)
+	if back {
+		first = time.Date(y, mo-1, 1, 0, 0, 0, 0, time.UTC)
+	}
+	last := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
 	return time.Date(first.Year(), first.Month(), min(dd, last), 0, 0, 0, 0, time.UTC)
 }
 

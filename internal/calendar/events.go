@@ -221,6 +221,9 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 			if before, err = s.d.Store.Event(ctx, next.ID); err != nil {
 				return missing(err, "calendar event")
 			}
+			if err := stale(prev, before, "the calendar event"); err != nil {
+				return err
+			}
 			return s.d.Store.PutEvent(ctx, next)
 		},
 		func(ctx context.Context) error { return s.d.Store.PutEvent(ctx, before) },
@@ -248,6 +251,9 @@ func (s *Service) DeleteEvent(ctx context.Context, p domain.Principal, id domain
 			var err error
 			if before, err = s.d.Store.Event(ctx, id); err != nil {
 				return missing(err, "calendar event")
+			}
+			if err := stale(prev, before, "the calendar event"); err != nil {
+				return err
 			}
 			return missing(s.d.Store.DeleteEvent(ctx, id), "calendar event")
 		},

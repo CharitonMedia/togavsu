@@ -187,19 +187,20 @@ func TestCalendarWritesRollBackWhenAuditFails(t *testing.T) {
 
 func TestMonthStepNeverSkipsAMonth(t *testing.T) {
 	for _, c := range []struct {
-		y         int
-		mo        time.Month
-		dd, delta int
-		want      string
+		y    int
+		mo   time.Month
+		dd   int
+		back bool
+		want string
 	}{
-		{2026, time.January, 31, 1, "2026-02-28"},
-		{2026, time.March, 31, -1, "2026-02-28"},
-		{2028, time.January, 31, 1, "2028-02-29"},
-		{2026, time.December, 31, 1, "2027-01-31"},
-		{2026, time.January, 15, -1, "2025-12-15"},
+		{2026, time.January, 31, false, "2026-02-28"},
+		{2026, time.March, 31, true, "2026-02-28"},
+		{2028, time.January, 31, false, "2028-02-29"},
+		{2026, time.December, 31, false, "2027-01-31"},
+		{2026, time.January, 15, true, "2025-12-15"},
 	} {
-		if got := monthStep(c.y, c.mo, c.dd, c.delta).Format(dateLayout); got != c.want {
-			t.Errorf("monthStep(%d-%02d-%02d, %+d) = %s, want %s", c.y, c.mo, c.dd, c.delta, got, c.want)
+		if got := monthStep(c.y, c.mo, c.dd, c.back).Format(dateLayout); got != c.want {
+			t.Errorf("monthStep(%d-%02d-%02d, back=%v) = %s, want %s", c.y, c.mo, c.dd, c.back, got, c.want)
 		}
 	}
 }
@@ -220,5 +221,119 @@ func TestMonthPageLinksFromMonthEnd(t *testing.T) {
 	}
 	if !strings.Contains(body, "date=2026-02-28") || !strings.Contains(body, "date=2026-04-30") {
 		t.Fatal("month page from March 31 does not link to February 28 and April 30")
+	}
+}
+
+// racyStore runs land once, right after the next read of a deadline or event: a concurrent
+// patch that commits between a caller's read and its locked write.
+type racyStore struct {
+	*Memory
+	land func()
+}
+
+func (r *racyStore) fire() {
+	if f := r.land; f != nil {
+		r.land = nil
+		f()
+	}
+}
+
+func (r *racyStore) Deadline(ctx context.Context, id domain.ID) (Deadline, error) {
+	row, err := r.Memory.Deadline(ctx, id)
+	r.fire()
+	return row, err
+}
+
+func (r *racyStore) Event(ctx context.Context, id domain.ID) (Event, error) {
+	row, err := r.Memory.Event(ctx, id)
+	r.fire()
+	return row, err
+}
+
+// A patch built from a read that a concurrent patch has since changed is refused with
+// conflict, so the concurrent change and its audit rows stand.
+func TestConcurrentPatchIsRefusedNotLost(t *testing.T) {
+	f := newFixture(t)
+	racy := &racyStore{Memory: f.store}
+	d := f.svc.d
+	d.Store = racy
+	svc, err := New(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := f.matter("Race v. Patch")
+	dl := f.deadline(f.staff, DeadlineInput{MatterID: m.ID, Title: "Answer", DueOn: "2026-11-24", ResponsibleUserID: f.staff.UserID})
+	done := StatusDone
+	racy.land = func() {
+		if _, err := f.svc.UpdateDeadline(f.ctx, f.staff, dl.ID, DeadlinePatch{Status: &done}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	title := "Amended answer"
+	if _, err := svc.UpdateDeadline(f.ctx, f.staff, dl.ID, DeadlinePatch{Title: &title}); code(err) != domain.CodeConflict {
+		t.Fatalf("stale deadline patch: %v", err)
+	}
+	if got, _ := f.store.Deadline(f.ctx, dl.ID); got.Status != StatusDone || got.Title != "Answer" {
+		t.Fatalf("concurrent done was lost: status %q title %q", got.Status, got.Title)
+	}
+
+	e := f.event(f.staff, EventInput{Title: "Hearing", Kind: KindCourtDate, MatterID: m.ID, StartsAt: at(t, "2026-11-20 09:00"), EndsAt: at(t, "2026-11-20 10:00")})
+	where := "Courtroom 2"
+	racy.land = func() {
+		if _, err := f.svc.UpdateEvent(f.ctx, f.staff, e.ID, EventPatch{Location: &where}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	renamed := "Moved hearing"
+	if _, err := svc.UpdateEvent(f.ctx, f.staff, e.ID, EventPatch{Title: &renamed}); code(err) != domain.CodeConflict {
+		t.Fatalf("stale event patch: %v", err)
+	}
+	if got, _ := f.store.Event(f.ctx, e.ID); got.Location != where || got.Title != "Hearing" {
+		t.Fatalf("concurrent location was lost: %q %q", got.Location, got.Title)
+	}
+	racy.land = func() {
+		if _, err := f.svc.UpdateEvent(f.ctx, f.staff, e.ID, EventPatch{Title: &renamed}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := svc.DeleteEvent(f.ctx, f.staff, e.ID); code(err) != domain.CodeConflict {
+		t.Fatalf("stale delete: %v", err)
+	}
+	if got, err := f.store.Event(f.ctx, e.ID); err != nil || got.Title != renamed {
+		t.Fatalf("stale delete removed the event: %v", err)
+	}
+}
+
+// An admin off a matter's wall who makes a feed for an attorney on the wall holds its secret
+// URL, so that feed leaves the walled matter out; the attorney's own feed still has it.
+func TestAdminMadeFeedKeepsAdminOffWalledMatters(t *testing.T) {
+	f := newFixture(t)
+	ada := f.attorney.UserID
+	open := f.matter("Open case")
+	sealed := f.walled("Sealed case")
+	f.event(f.attorney, EventInput{Title: "Open hearing", Kind: KindCourtDate, MatterID: open.ID, StartsAt: at(t, "2026-11-20 09:00"), EndsAt: at(t, "2026-11-20 10:00"), Attendees: []domain.ID{ada}})
+	f.event(f.attorney, EventInput{Title: "Sealed hearing", Kind: KindCourtDate, MatterID: sealed.ID, StartsAt: at(t, "2026-11-20 11:00"), EndsAt: at(t, "2026-11-20 12:00"), Attendees: []domain.ID{ada}})
+	f.deadline(f.attorney, DeadlineInput{MatterID: sealed.ID, Title: "Sealed report", DueOn: "2026-11-25", ResponsibleUserID: ada})
+
+	_, adminLink, err := f.svc.CreateFeed(f.ctx, f.admin, ada)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := f.svc.Download(f.ctx, secretOf(t, adminLink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ics := string(b); !strings.Contains(ics, "Open hearing") || strings.Contains(ics, "Sealed") {
+		t.Fatalf("admin-made feed for the attorney:\n%s", ics)
+	}
+	_, ownLink, err := f.svc.CreateFeed(f.ctx, f.attorney, ada)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err = f.svc.Download(f.ctx, secretOf(t, ownLink)); err != nil {
+		t.Fatal(err)
+	}
+	if ics := string(b); !strings.Contains(ics, "Sealed hearing") || !strings.Contains(ics, "Sealed report") {
+		t.Fatalf("attorney's own feed lost the walled matter:\n%s", ics)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -311,6 +312,15 @@ func (s *Service) commit(ctx context.Context, p domain.Principal, write, undo fu
 		return err
 	}
 	return s.activity(ctx, p, entity, id, matter, action, summary)
+}
+
+// stale refuses a write built from a row that changed after the caller read it: a
+// concurrent patch committed in between, and writing would undo it and audit wrong old values.
+func stale(read, now any, what string) error {
+	if reflect.DeepEqual(read, now) {
+		return nil
+	}
+	return domain.Conflict(what + " changed while this change was being made; reload and try again")
 }
 
 func (s *Service) auditRows(ctx context.Context, p domain.Principal, entity string, id domain.ID, changes []change) error {

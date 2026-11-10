@@ -176,6 +176,9 @@ func (s *Service) UpdateDeadline(ctx context.Context, p domain.Principal, id dom
 			if before, err = s.d.Store.Deadline(ctx, next.ID); err != nil {
 				return missing(err, "deadline")
 			}
+			if err := stale(prev, before, "the deadline"); err != nil {
+				return err
+			}
 			return s.d.Store.PutDeadline(ctx, next)
 		},
 		func(ctx context.Context) error { return s.d.Store.PutDeadline(ctx, before) },

@@ -55,7 +55,8 @@ func (s *Service) canManageFeed(p domain.Principal, f Feed) bool {
 
 // CreateFeed issues a feed and returns its secret URL once. A zero owner is the firm
 // feed, which only an admin may create. A user feed is for the caller, or any
-// user when an admin creates it.
+// user when an admin creates it; the admin then holds the secret URL, so Download
+// shows only matters both the owner and that admin can see.
 func (s *Service) CreateFeed(ctx context.Context, p domain.Principal, owner domain.ID) (Feed, string, error) {
 	if err := s.gate(ctx, p, domain.ActionRead, ""); err != nil {
 		return Feed{}, "", err
@@ -144,6 +145,7 @@ func (s *Service) RevokeFeed(ctx context.Context, p domain.Principal, id domain.
 	if f.Revoked {
 		return f, nil
 	}
+	read := f
 	f.Revoked, f.RevokedAt, f.RevokedBy, f.UpdatedAt = true, s.now(), p.UserID, s.now()
 	var before Feed
 	err = s.commit(ctx, p,
@@ -151,6 +153,9 @@ func (s *Service) RevokeFeed(ctx context.Context, p domain.Principal, id domain.
 			var err error
 			if before, err = s.d.Store.Feed(ctx, f.ID); err != nil {
 				return domain.NotFound("ical feed")
+			}
+			if err := stale(read, before, "the iCal feed"); err != nil {
+				return err
 			}
 			return s.d.Store.PutFeed(ctx, f)
 		},
@@ -199,6 +204,22 @@ func (s *Service) Download(ctx context.Context, secret string) ([]byte, error) {
 		}
 		name = u.Name + " calendar"
 		see = func(matter domain.ID) bool { return s.visible(ctx, owner, matter) }
+		// Walls bind admins too: a feed an admin made for another user carries only
+		// matters the admin can also see, because the admin holds its secret URL.
+		if by := f.CreatedBy; !by.IsZero() && by != f.OwnerUserID {
+			var creator domain.Principal
+			ok := false
+			if cu, err := s.d.Users.Get(ctx, by); err == nil {
+				creator, ok = userPrincipal(cu)
+			}
+			ownerSees := see
+			see = func(matter domain.ID) bool {
+				if !ownerSees(matter) {
+					return false
+				}
+				return matter.IsZero() || ok && s.visible(ctx, creator, matter)
+			}
+		}
 	}
 	events, err := s.d.Store.Events(ctx)
 	if err != nil {
