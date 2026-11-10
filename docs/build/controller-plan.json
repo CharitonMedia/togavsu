@@ -1,7 +1,7 @@
 {
   "max_implementation_agents": 4,
   "worker_backend": "claude-actions",
-  "held_tasks": ["calendar", "files"],
+  "held_tasks": [],
   "alert_email": "pnolan@nemolegal.com",
   "idle_alert_seconds": 3600,
   "active_run_timeout_seconds": 18900,
