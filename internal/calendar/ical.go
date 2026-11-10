@@ -91,14 +91,15 @@ func (s *Service) CreateFeed(ctx context.Context, p domain.Principal, owner doma
 		return Feed{}, "", err
 	}
 	f := Feed{Meta: m, OwnerUserID: owner, SecretHash: hashSecret(secret)}
-	if err := s.d.Store.PutFeed(ctx, f); err != nil {
-		return Feed{}, "", err
-	}
 	ownerText := string(owner)
 	if owner.IsZero() {
 		ownerText = "firm"
 	}
-	if err := s.record(ctx, p, "ical_feed", f.ID, "", "ical_feed.created", "iCal feed created", []change{{"owner_user_id", "", ownerText}}); err != nil {
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error { return s.d.Store.PutFeed(ctx, f) },
+		func(ctx context.Context) error { return s.d.Store.DeleteFeed(ctx, f.ID) },
+		"ical_feed", f.ID, "", "ical_feed.created", "iCal feed created", []change{{"owner_user_id", "", ownerText}})
+	if err != nil {
 		return Feed{}, "", err
 	}
 	return f, s.FeedURL(secret), nil
@@ -144,10 +145,21 @@ func (s *Service) RevokeFeed(ctx context.Context, p domain.Principal, id domain.
 		return f, nil
 	}
 	f.Revoked, f.RevokedAt, f.RevokedBy, f.UpdatedAt = true, s.now(), p.UserID, s.now()
-	if err := s.d.Store.PutFeed(ctx, f); err != nil {
+	var before Feed
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error {
+			var err error
+			if before, err = s.d.Store.Feed(ctx, f.ID); err != nil {
+				return domain.NotFound("ical feed")
+			}
+			return s.d.Store.PutFeed(ctx, f)
+		},
+		func(ctx context.Context) error { return s.d.Store.PutFeed(ctx, before) },
+		"ical_feed", f.ID, "", "ical_feed.revoked", "iCal feed revoked", []change{{"revoked", "false", "true"}})
+	if err != nil {
 		return Feed{}, err
 	}
-	return f, s.record(ctx, p, "ical_feed", f.ID, "", "ical_feed.revoked", "iCal feed revoked", []change{{"revoked", "false", "true"}})
+	return f, nil
 }
 
 // Download renders the feed behind secret. A revoked or unknown secret, an inactive

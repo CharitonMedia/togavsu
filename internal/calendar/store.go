@@ -18,10 +18,14 @@ type Store interface {
 	Events(ctx context.Context) ([]Event, error)
 
 	PutDeadline(ctx context.Context, row Deadline) error
+	// DeleteDeadline removes a deadline. It only undoes a create whose audit failed.
+	DeleteDeadline(ctx context.Context, id domain.ID) error
 	Deadline(ctx context.Context, id domain.ID) (Deadline, error)
 	Deadlines(ctx context.Context) ([]Deadline, error)
 
 	PutFeed(ctx context.Context, row Feed) error
+	// DeleteFeed removes a feed. It only undoes a create whose audit failed.
+	DeleteFeed(ctx context.Context, id domain.ID) error
 	Feed(ctx context.Context, id domain.ID) (Feed, error)
 	FeedBySecret(ctx context.Context, hash string) (Feed, error)
 	Feeds(ctx context.Context) ([]Feed, error)
@@ -121,6 +125,16 @@ func (m *Memory) PutDeadline(_ context.Context, row Deadline) error {
 	return nil
 }
 
+func (m *Memory) DeleteDeadline(_ context.Context, id domain.ID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.deadlines[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(m.deadlines, id)
+	return nil
+}
+
 func (m *Memory) Deadline(_ context.Context, id domain.ID) (Deadline, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -153,6 +167,16 @@ func (m *Memory) PutFeed(_ context.Context, row Feed) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.feeds[row.ID] = row
+	return nil
+}
+
+func (m *Memory) DeleteFeed(_ context.Context, id domain.ID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.feeds[id]; !ok {
+		return repository.ErrNotFound
+	}
+	delete(m.feeds, id)
 	return nil
 }
 

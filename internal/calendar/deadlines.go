@@ -74,10 +74,14 @@ func (s *Service) CreateDeadline(ctx context.Context, p domain.Principal, in Dea
 		Status: in.Status, ReminderOffsets: encodeOffsets(in.Offsets),
 	}, Offsets: in.Offsets}
 	s.applyDone(&row, StatusOpen, p)
-	if err := s.d.Store.PutDeadline(ctx, row); err != nil {
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error { return s.d.Store.PutDeadline(ctx, row) },
+		func(ctx context.Context) error { return s.d.Store.DeleteDeadline(ctx, row.ID) },
+		"deadline", row.ID, row.MatterID, "deadline.created", row.Title, deadlineChanges(Deadline{}, row))
+	if err != nil {
 		return Deadline{}, err
 	}
-	return row, s.record(ctx, p, "deadline", row.ID, row.MatterID, "deadline.created", row.Title, deadlineChanges(Deadline{}, row))
+	return row, nil
 }
 
 func (s *Service) applyDone(row *Deadline, prevStatus string, p domain.Principal) {
@@ -165,10 +169,21 @@ func (s *Service) UpdateDeadline(ctx context.Context, p domain.Principal, id dom
 	next.MatterID, next.Title, next.DueOn, next.ResponsibleUserID, next.Status = in.MatterID, in.Title, in.DueOn, in.ResponsibleUserID, in.Status
 	next.Offsets, next.ReminderOffsets = in.Offsets, encodeOffsets(in.Offsets)
 	s.applyDone(&next, prev.Status, p)
-	if err := s.d.Store.PutDeadline(ctx, next); err != nil {
+	var before Deadline
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error {
+			var err error
+			if before, err = s.d.Store.Deadline(ctx, next.ID); err != nil {
+				return missing(err, "deadline")
+			}
+			return s.d.Store.PutDeadline(ctx, next)
+		},
+		func(ctx context.Context) error { return s.d.Store.PutDeadline(ctx, before) },
+		"deadline", next.ID, next.MatterID, "deadline.updated", next.Title, deadlineChanges(prev, next))
+	if err != nil {
 		return Deadline{}, err
 	}
-	return next, s.record(ctx, p, "deadline", next.ID, next.MatterID, "deadline.updated", next.Title, deadlineChanges(prev, next))
+	return next, nil
 }
 
 // ListDeadlines returns visible deadlines by due date.

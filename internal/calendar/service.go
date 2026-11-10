@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -79,6 +80,8 @@ type Deps struct {
 // Service is the calendar application service.
 type Service struct {
 	d Deps
+	// wmu serializes calendar writes in commit, so an undo never overwrites a later write.
+	wmu sync.Mutex
 }
 
 // New checks the required dependencies and returns a service.
@@ -274,11 +277,43 @@ func missing(err error, what string) error {
 	return err
 }
 
-// record writes audit rows for each change, then the activity row.
 // change is one audited field value pair.
 type change struct{ Field, Old, New string }
 
-func (s *Service) record(ctx context.Context, p domain.Principal, entity string, id, matter domain.ID, action, summary string, changes []change) error {
+// commit applies one calendar write with its audit rows and activity row as one unit.
+// write and the audit rows run inside audit.Service.Atomic, so on Postgres the audit rows
+// commit or roll back together. The calendar store does not join that transaction, so
+// when an audit row or the commit fails after write succeeded, undo puts the store back
+// as write found it: the caller gets the error, nothing is left half-recorded, and a
+// retry starts clean instead of creating a second event.
+//
+// ponytail: ceiling: the activity row is appended to the calendar store after the audit
+// commit; Memory.AppendEvent cannot fail, so the two cannot disagree today. Upgrade path:
+// a Postgres calendar Store whose writes and AppendEvent join WithTx inside Atomic, and
+// undo goes away. Trigger: the Postgres calendar Store lands.
+func (s *Service) commit(ctx context.Context, p domain.Principal, write, undo func(context.Context) error, entity string, id, matter domain.ID, action, summary string, changes []change) error {
+	s.wmu.Lock()
+	defer s.wmu.Unlock()
+	wrote := false
+	err := s.d.Audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := write(ctx); err != nil {
+			return err
+		}
+		wrote = true
+		return s.auditRows(ctx, p, entity, id, changes)
+	})
+	if err != nil {
+		if wrote {
+			if uerr := undo(context.WithoutCancel(ctx)); uerr != nil {
+				return errors.Join(err, fmt.Errorf("calendar: undo %s %s: %w", entity, id, uerr))
+			}
+		}
+		return err
+	}
+	return s.activity(ctx, p, entity, id, matter, action, summary)
+}
+
+func (s *Service) auditRows(ctx context.Context, p domain.Principal, entity string, id domain.ID, changes []change) error {
 	for _, c := range changes {
 		if c.Old == c.New {
 			continue
@@ -287,6 +322,10 @@ func (s *Service) record(ctx context.Context, p domain.Principal, entity string,
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *Service) activity(ctx context.Context, p domain.Principal, entity string, id, matter domain.ID, action, summary string) error {
 	m, err := s.meta(p)
 	if err != nil {
 		return err

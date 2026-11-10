@@ -310,7 +310,7 @@ func (h *Handler) calendarPage(w http.ResponseWriter, r *http.Request) {
 	case "week":
 		prev, next = time.Date(y, mo, dd-7, 0, 0, 0, 0, time.UTC), time.Date(y, mo, dd+7, 0, 0, 0, 0, time.UTC)
 	default:
-		prev, next = time.Date(y, mo-1, dd, 0, 0, 0, 0, time.UTC), time.Date(y, mo+1, dd, 0, 0, 0, 0, time.UTC)
+		prev, next = monthStep(y, mo, dd, -1), monthStep(y, mo, dd, 1)
 	}
 	ds := date.Format(dateLayout)
 	data := calendarData{

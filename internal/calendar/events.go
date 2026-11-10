@@ -89,10 +89,14 @@ func (s *Service) CreateEvent(ctx context.Context, p domain.Principal, in EventI
 		Meta: m, Title: in.Title, Kind: in.Kind, StartsAt: domain.UnixMicroUTC(in.StartsAt), EndsAt: domain.UnixMicroUTC(in.EndsAt),
 		AllDay: in.AllDay, MatterID: in.MatterID, Location: in.Location, TravelMinutes: in.TravelMinutes, Notes: in.Notes,
 	}, Attendees: in.Attendees}
-	if err := s.d.Store.PutEvent(ctx, row); err != nil {
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error { return s.d.Store.PutEvent(ctx, row) },
+		func(ctx context.Context) error { return s.d.Store.DeleteEvent(ctx, row.ID) },
+		"calendar_event", row.ID, row.MatterID, "calendar_event.created", row.Title, eventChanges(Event{}, row))
+	if err != nil {
 		return Event{}, err
 	}
-	return row, s.record(ctx, p, "calendar_event", row.ID, row.MatterID, "calendar_event.created", row.Title, eventChanges(Event{}, row))
+	return row, nil
 }
 
 func eventChanges(a, b Event) []change {
@@ -210,10 +214,21 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 	next.Title, next.Kind, next.AllDay, next.MatterID = in.Title, in.Kind, in.AllDay, in.MatterID
 	next.StartsAt, next.EndsAt = domain.UnixMicroUTC(in.StartsAt), domain.UnixMicroUTC(in.EndsAt)
 	next.Location, next.TravelMinutes, next.Notes, next.Attendees = in.Location, in.TravelMinutes, in.Notes, in.Attendees
-	if err := s.d.Store.PutEvent(ctx, next); err != nil {
+	var before Event
+	err = s.commit(ctx, p,
+		func(ctx context.Context) error {
+			var err error
+			if before, err = s.d.Store.Event(ctx, next.ID); err != nil {
+				return missing(err, "calendar event")
+			}
+			return s.d.Store.PutEvent(ctx, next)
+		},
+		func(ctx context.Context) error { return s.d.Store.PutEvent(ctx, before) },
+		"calendar_event", next.ID, next.MatterID, "calendar_event.updated", next.Title, eventChanges(prev, next))
+	if err != nil {
 		return Event{}, err
 	}
-	return next, s.record(ctx, p, "calendar_event", next.ID, next.MatterID, "calendar_event.updated", next.Title, eventChanges(prev, next))
+	return next, nil
 }
 
 // DeleteEvent removes an event. The audit log keeps every value it had.
@@ -225,12 +240,19 @@ func (s *Service) DeleteEvent(ctx context.Context, p domain.Principal, id domain
 	if err := s.gate(ctx, p, domain.ActionWrite, prev.MatterID); err != nil {
 		return err
 	}
-	if err := s.d.Store.DeleteEvent(ctx, id); err != nil {
-		return missing(err, "calendar event")
-	}
 	changes := eventChanges(prev, Event{CalendarEvent: domain.CalendarEvent{Meta: domain.Meta{ID: prev.ID}}})
 	changes = append(changes, change{"deleted", "false", "true"})
-	return s.record(ctx, p, "calendar_event", prev.ID, prev.MatterID, "calendar_event.deleted", prev.Title, changes)
+	var before Event
+	return s.commit(ctx, p,
+		func(ctx context.Context) error {
+			var err error
+			if before, err = s.d.Store.Event(ctx, id); err != nil {
+				return missing(err, "calendar event")
+			}
+			return missing(s.d.Store.DeleteEvent(ctx, id), "calendar event")
+		},
+		func(ctx context.Context) error { return s.d.Store.PutEvent(ctx, before) },
+		"calendar_event", prev.ID, prev.MatterID, "calendar_event.deleted", prev.Title, changes)
 }
 
 // ListEvents returns visible events overlapping the filter window, by start.
