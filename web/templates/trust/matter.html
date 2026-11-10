@@ -1,0 +1,46 @@
+{{template "head" .}}
+<dl class="facts">
+  <dt>Client</dt><dd>{{label .Labels .Matter.Client}}</dd>
+  <dt>Trust balance</dt><dd class="{{if lt .MatterBalance 0}}debit{{end}}">{{money .MatterBalance}}</dd>
+  <dt>Evergreen minimum</dt><dd>{{if .Evergreen}}{{.Evergreen}}{{else}}None{{end}}</dd>
+  {{if ne .Fee.Status "not_flat_fee"}}<dt>Flat fee</dt><dd>{{money .Fee.FlatFeeCents}} · <strong class="status" data-status="{{.Fee.Status}}">{{feeLabel .Fee.Status}}</strong></dd>{{end}}
+</dl>
+{{if and (eq .Fee.Status "ready_to_apply") .CanWithdraw}}
+<section class="card">
+<h2>Apply flat fee</h2>
+<form method="post" action="/trust/matters/{{.Matter.ID}}/flat-fee" class="grid">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Amount to move from trust to operating <input name="amount" inputmode="decimal" required value="{{money .Fee.FlatFeeCents}}"></label>
+  <button type="submit">Apply flat fee</button>
+</form>
+</section>
+{{end}}
+{{if .CanDeposit}}
+<section class="card">
+<h2>Evergreen minimum</h2>
+<form method="post" action="/trust/matters/{{.Matter.ID}}/evergreen" class="grid">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Minimum (0 for none) <input name="minimum" inputmode="decimal" required value="{{if .Evergreen}}{{.Evergreen}}{{else}}0.00{{end}}"></label>
+  <button type="submit">Save minimum</button>
+</form>
+</section>
+<section class="card">
+<h2>Post to this matter</h2>
+<form method="post" action="/trust/ledger" class="grid">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="matter_id" value="{{.Matter.ID}}">
+  <input type="hidden" name="client_id" value="{{.Matter.Client}}">
+  <input type="hidden" name="return" value="matter">
+  <label>Account <select name="trust_account_id" required>{{range .Accounts}}<option value="{{.ID}}">{{.Name}} ****{{.LastFour}}</option>{{end}}</select></label>
+  <label>Type <select name="entry_type"><option value="deposit">Deposit</option>{{if .CanWithdraw}}<option value="withdrawal">Withdrawal</option><option value="transfer_to_operating">Transfer to operating</option><option value="refund">Refund</option>{{end}}</select></label>
+  <label>Amount <input name="amount" inputmode="decimal" required placeholder="0.00"></label>
+  <label>Method <select name="method"><option>check</option><option>ach</option><option>card</option><option>cash</option><option>internal_transfer</option><option>other</option></select></label>
+  <label class="wide">Description <input name="description" required></label>
+  <button type="submit">Post entry</button>
+</form>
+</section>
+{{end}}
+<h2>Ledger</h2>
+<p><a href="/api/v1/reports/trust-client-ledger?client_id={{.Matter.Client}}&amp;matter_id={{.Matter.ID}}&amp;format=csv">Download client ledger CSV</a></p>
+{{template "entries" .}}
+{{template "foot" .}}

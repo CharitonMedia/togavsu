@@ -1,0 +1,34 @@
+{{template "head" .}}
+{{if .CanDeposit}}
+<section class="card">
+<h2>Post an entry</h2>
+<p class="hint">A withdrawal that takes a balance below zero still posts. It raises a trust flag and emails the admins and the responsible attorney. Corrections are reversals; entries are never edited or deleted.</p>
+<form method="post" action="/trust/ledger" class="grid">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Account
+    <select name="trust_account_id" required>{{range .Accounts}}<option value="{{.ID}}">{{.Name}} ****{{.LastFour}}</option>{{end}}</select></label>
+  <label>Matter
+    <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Label}}</option>{{end}}</select></label>
+  <label>Type
+    <select name="entry_type">
+      <option value="deposit">Deposit</option>
+      {{if .CanWithdraw}}<option value="withdrawal">Withdrawal</option>
+      <option value="transfer_to_operating">Transfer to operating</option>
+      <option value="refund">Refund</option>
+      <option value="adjustment">Adjustment</option>{{end}}
+    </select></label>
+  {{if .CanWithdraw}}<label>Adjustment direction
+    <select name="adjustment_direction"><option value="credit">Credit</option><option value="debit">Debit</option></select></label>{{end}}
+  <label>Amount <input name="amount" inputmode="decimal" required placeholder="0.00"></label>
+  <label>Method
+    <select name="method"><option>check</option><option>ach</option><option>card</option><option>cash</option><option>internal_transfer</option><option>other</option></select></label>
+  <label class="wide">Description <input name="description" required></label>
+  <button type="submit">Post entry</button>
+</form>
+</section>
+{{end}}
+<section>
+<h2>Entries</h2>
+{{template "entries" .}}
+</section>
+{{template "foot" .}}
