@@ -167,8 +167,12 @@ type env struct {
 	practice *practice.Memory
 	reg      *settings.Registry
 	events   *recorder
-	sunkMu   sync.Mutex
-	sunk     []domain.TrustBalance
+	users    interface {
+		Get(context.Context, domain.ID) (domain.User, error)
+		Update(context.Context, domain.User) error
+	}
+	sunkMu sync.Mutex
+	sunk   []domain.TrustBalance
 
 	admin, attorney, staff, accountant, client, other domain.Principal
 	account                                           domain.ID
@@ -190,7 +194,7 @@ func newEnv(t *testing.T) *env {
 	}
 	ids := identity.NewMemory()
 	mem := practice.NewMemory()
-	e := &env{t: t, ctx: ctx, db: app, super: super, practice: mem, reg: reg, events: &recorder{}}
+	e := &env{t: t, ctx: ctx, db: app, super: super, practice: mem, reg: reg, events: &recorder{}, users: ids.Users()}
 	user := func(name, email string, roles ...domain.Role) domain.Principal {
 		id := mustID(t)
 		js, err := domain.MarshalRoles(roles)

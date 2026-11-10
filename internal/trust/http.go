@@ -15,11 +15,56 @@ import (
 // Handler serves the trust JSON API (the /api/v1 contract routes) and the trust pages.
 // Principal authenticates the caller (the core's session or bearer check, including
 // token scopes and CSRF). Every access decision is the service's.
+//
+// Scopes checks bearer token scopes the route table cannot: postTrustEntry and its bulk
+// form need a scope per entry_type (the contract's entry_type_scopes), so the core must
+// mount those two routes without a static scope list and wire Scopes to the caller's
+// RequireScopes (a session passes, a token must hold every scope named). Nil means the
+// core checked scopes before the handler, which is only correct for session callers.
 type Handler struct {
 	Svc       *Service
 	Principal func(*http.Request) (domain.Principal, error)
+	Scopes    func(r *http.Request, need ...string) error
 	FS        fs.FS
 	Templates *template.Template
+}
+
+// EntryTypeScopes is the contract's entry_type_scopes for postTrustEntry and
+// bulkPostTrustEntries: a deposit needs trust:write, every debit or adjustment
+// trust:withdraw. A trust:write-only token is scope_denied on the other four.
+var EntryTypeScopes = map[string]string{
+	TypeDeposit:    "trust:write",
+	TypeWithdrawal: "trust:withdraw",
+	TypeTransfer:   "trust:withdraw",
+	TypeRefund:     "trust:withdraw",
+	TypeAdjustment: "trust:withdraw",
+}
+
+// entryScopes checks the bearer scopes for every item before anything posts, so a
+// batch with one scope-denied item posts nothing. An unknown entry_type needs no scope
+// here; the service rejects it as a validation error.
+func (h *Handler) entryScopes(r *http.Request, items ...PostInput) error {
+	if h.Scopes == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var need []string
+	for _, in := range items {
+		if sc, ok := EntryTypeScopes[in.EntryType]; ok && !seen[sc] {
+			seen[sc] = true
+			need = append(need, sc)
+		}
+	}
+	if len(need) == 0 {
+		return nil
+	}
+	err := h.Scopes(r, need...)
+	var api *domain.APIError
+	if errors.As(err, &api) && api.Code == "scope_denied" {
+		// identity's scope_denied is a 403 on the shared error table.
+		return domain.Forbidden(api.Message)
+	}
+	return err
 }
 
 // NewHandler parses the trust templates from fsys (web/templates/trust). fsys may be nil
@@ -274,6 +319,10 @@ func (h *Handler) postEntry(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if err := h.entryScopes(r, in); err != nil {
+		writeErr(w, err)
+		return
+	}
 	res, err := h.Svc.Post(r.Context(), p, in, idKey(r))
 	if err != nil {
 		writeErr(w, err)
@@ -291,6 +340,10 @@ func (h *Handler) bulkEntries(w http.ResponseWriter, r *http.Request) {
 		Items []PostInput `json:"items"`
 	}
 	if err := decode(r, &in); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := h.entryScopes(r, in.Items...); err != nil {
 		writeErr(w, err)
 		return
 	}

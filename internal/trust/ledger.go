@@ -378,7 +378,7 @@ func (s *Service) visibleFlags(ctx context.Context, who domain.Principal, f Flag
 	var rows []Flag
 	for _, fl := range all {
 		if (f.Status != "" && fl.Status != f.Status) || (f.Scope != "" && fl.Scope != f.Scope) ||
-			(!f.MatterID.IsZero() && fl.entryMatter != f.MatterID) || (!f.TrustAccountID.IsZero() && fl.TrustAccountID != f.TrustAccountID) {
+			(!f.MatterID.IsZero() && fl.entryMatter != f.MatterID) || (!f.TrustAccountID.IsZero() && fl.entryAccount != f.TrustAccountID) {
 			continue
 		}
 		ok, err := rd.ok(ctx, fl.entryMatter)

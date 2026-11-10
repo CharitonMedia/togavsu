@@ -116,6 +116,9 @@ type PostInput struct {
 	AdjustmentDirection string    `json:"adjustment_direction,omitempty"`
 	Method              string    `json:"method"`
 	Description         string    `json:"description"`
+	// ReversesEntryID is in the contract's TrustEntryWrite. It must be null or absent:
+	// a reversal is posted through /trust-ledger/{id}/reversals.
+	ReversesEntryID *domain.ID `json:"reverses_entry_id,omitempty"`
 }
 
 // ReverseInput is the body of a reversal. The reason is required and becomes the
@@ -172,6 +175,10 @@ type Flag struct {
 	reason      string
 	entryMatter domain.ID
 	entryClient domain.ID
+	// entryAccount is the posting's trust account. It filters and authorizes every
+	// scope, but only an account-scope flag carries trust_account_id in its JSON: the
+	// matter and client TrustFlag shapes do not allow it.
+	entryAccount domain.ID
 }
 
 // Replenishment is a trust replenishment request.

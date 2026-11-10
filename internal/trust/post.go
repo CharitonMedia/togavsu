@@ -188,6 +188,9 @@ func (s *Service) prepare(ctx context.Context, who domain.Principal, in PostInpu
 			return p, domain.Invalid(field, "a UUID is required")
 		}
 	}
+	if in.ReversesEntryID != nil {
+		return p, domain.Invalid("reverses_entry_id", "reverses_entry_id must be null; post a reversal through /api/v1/trust-ledger/{trust_entry_id}/reversals")
+	}
 	if !methods[in.Method] {
 		return p, domain.Invalid("method", "method must be cash, check, card, ach, internal_transfer or other")
 	}
@@ -356,7 +359,7 @@ func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal 
 		}
 		now := s.now()
 		f := Flag{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: actorID(who), TrustEntryID: e.ID, Scope: scope, BalanceCents: cents, Status: "open",
-			entryMatter: e.MatterID, entryClient: e.ClientID, TrustAccountID: e.TrustAccountID,
+			entryMatter: e.MatterID, entryClient: e.ClientID, entryAccount: e.TrustAccountID,
 			reason: fmt.Sprintf("%s balance %s after %s", scope, domain.Cents(cents), e.EntryType)}
 		if err := s.insertFlag(ctx, f); err != nil {
 			return err
@@ -364,12 +367,7 @@ func (s *Service) raise(ctx context.Context, who domain.Principal, e Entry, bal 
 		if err := s.record(ctx, who, "trust_flag", f.ID, "raised", "", f.reason, "below-zero trust balance"); err != nil {
 			return err
 		}
-		switch scope {
-		case ScopeMatter:
-			f.MatterID, f.ClientID = e.MatterID, e.ClientID
-		case ScopeClient:
-			f.ClientID, f.TrustAccountID = e.ClientID, ""
-		}
+		f.expose()
 		flags = append(flags, f)
 		events = append(events, Event{Name: "trust.flag_raised", RecordID: f.ID, MatterID: e.MatterID, Data: map[string]string{
 			"matter_id": string(e.MatterID), "client_id": string(e.ClientID), "trust_account_id": string(e.TrustAccountID),

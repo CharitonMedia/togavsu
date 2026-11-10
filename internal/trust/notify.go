@@ -40,7 +40,8 @@ func (s *Service) flagRecipients(ctx context.Context, matter domain.Matter) ([]d
 		if err != nil && !isNotFound(err) {
 			return nil, err
 		}
-		if err == nil {
+		// A deactivated attorney gets neither the notification nor the email.
+		if err == nil && u.Active {
 			out = append(out, u)
 		}
 	}

@@ -214,15 +214,24 @@ func scanFlag(sc scanner) (Flag, error) {
 		by := domain.ID(resolvedBy.String)
 		f.Status, f.ResolvedAt, f.ResolvedBy = "resolved", &t, &by
 	}
+	f.entryAccount = domain.ID(account.String)
+	f.expose()
+	return f, nil
+}
+
+// expose sets the public ids for the flag's scope from the stored posting ids, matching
+// the contract's per-scope TrustFlag shapes (additionalProperties false): a matter flag
+// has matter_id and client_id, a client flag client_id, an account flag trust_account_id.
+func (f *Flag) expose() {
+	f.MatterID, f.ClientID, f.TrustAccountID = "", "", ""
 	switch f.Scope {
 	case ScopeMatter:
-		f.MatterID, f.ClientID, f.TrustAccountID = f.entryMatter, f.entryClient, domain.ID(account.String)
+		f.MatterID, f.ClientID = f.entryMatter, f.entryClient
 	case ScopeClient:
 		f.ClientID = f.entryClient
 	case ScopeAccount:
-		f.TrustAccountID = domain.ID(account.String)
+		f.TrustAccountID = f.entryAccount
 	}
-	return f, nil
 }
 
 func (s *Service) flag(ctx context.Context, id domain.ID) (Flag, error) {
@@ -249,8 +258,8 @@ func (s *Service) flags(ctx context.Context) ([]Flag, error) {
 
 func (s *Service) insertFlag(ctx context.Context, f Flag) error {
 	var account any
-	if !f.TrustAccountID.IsZero() {
-		account = string(f.TrustAccountID)
+	if !f.entryAccount.IsZero() {
+		account = string(f.entryAccount)
 	}
 	_, err := s.q(ctx).ExecContext(ctx, `INSERT INTO trust_flags (id, created_at, updated_at, created_by, trust_entry_id, matter_id, client_id, reason, resolved_at, resolved_by, resolution_note, scope, trust_account_id, balance_cents)
 		VALUES ($1,$2,$2,$3,$4,$5,$6,$7,0,NULL,'',$8,$9,$10)`,
