@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -174,5 +175,69 @@ func TestPGRenameFolderToATakenNameIsAConflict(t *testing.T) {
 	code, _ := c.json("PATCH", "/api/v1/folders/"+string(b.ID), map[string]any{"name": "Experts"}, nil)
 	if code != http.StatusConflict {
 		t.Fatalf("PATCH to a taken name = %d", code)
+	}
+}
+
+// TestPGPurgeRemovesTheSearchText is checkpoint 8 finding 1: emptying a file from the
+// trash also removes the lowercased Markdown text Files search keeps for it.
+func TestPGPurgeRemovesTheSearchText(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	f := e.create(e.staff, NewFile{Name: "memo.txt", MatterID: e.open}, "memo")
+	md := "# Settlement terms\nconfidential figures\n"
+	if _, err := e.svc.AddRendition(ctx, e.attorney, f.ID, *f.CurrentVersionID, "markdown", strings.NewReader(md), int64(len(md))); err != nil {
+		t.Fatal(err)
+	}
+	rows := func() int {
+		t.Helper()
+		var n int
+		if err := e.pool.QueryRowContext(ctx, `SELECT COUNT(*) FROM file_search_text WHERE file_id = $1`, f.ID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if rows() != 1 {
+		t.Fatal("no search text before the purge")
+	}
+	purgeFile(t, e, f)
+	if n := rows(); n != 0 {
+		t.Fatalf("search text rows after the purge = %d", n)
+	}
+}
+
+// TestPGDropSubfoldersStayInsideTheRoot is checkpoint 8 finding 2: a matter number
+// with a separator gets a hyphenated subfolder, and one that would leave the drop root
+// gets none.
+func TestPGDropSubfoldersStayInsideTheRoot(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	root := filepath.Join(e.root, "share", "drop")
+	matters := []Matter{
+		{ID: e.open, Number: "2026/0001", Status: "open"},
+		{ID: e.walled, Number: "../escape", Status: "open"},
+	}
+	if _, err := e.svc.scanOne(ctx, domain.StorageBackend{}, root, matters, 0); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "2026-0001")); err != nil || !fi.IsDir() {
+		t.Fatalf("hyphenated subfolder = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "2026")); !os.IsNotExist(err) {
+		t.Fatalf("nested subfolder made: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(e.root, "share", "escape")); !os.IsNotExist(err) {
+		t.Fatalf("a folder was made outside the drop root: %v", err)
+	}
+	for _, c := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"2026-0001", "2026-0001", true}, {"2026/0001", "2026-0001", true}, {`2026\0001`, "2026-0001", true},
+		{"../escape", "", false}, {"..", "", false}, {".hidden", "", false}, {"", "", false}, {"a/../b", "", false},
+	} {
+		if got, ok := dropFolderName(c.in); got != c.want || ok != c.ok {
+			t.Fatalf("dropFolderName(%q) = %q %v", c.in, got, ok)
+		}
 	}
 }

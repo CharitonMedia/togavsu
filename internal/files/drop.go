@@ -83,9 +83,22 @@ func (s *Service) scanOne(ctx context.Context, b domain.StorageBackend, root str
 		return nil, err
 	}
 	byNumber := map[string]domain.ID{}
+	clash := map[string]bool{}
 	for _, m := range matters {
-		byNumber[m.Number] = m.ID
-		if err := os.MkdirAll(filepath.Join(root, m.Number), fs.ModePerm&0o750); err != nil {
+		name, ok := dropFolderName(m.Number)
+		if !ok {
+			continue // no subfolder for a number that cannot be one safe folder name
+		}
+		if id, taken := byNumber[name]; taken && id != m.ID {
+			clash[name] = true
+		}
+		byNumber[name] = m.ID
+	}
+	for name := range clash {
+		delete(byNumber, name) // two matters map to one folder name: neither gets it
+	}
+	for name := range byNumber {
+		if err := os.MkdirAll(filepath.Join(root, name), fs.ModePerm&0o750); err != nil {
 			return nil, err
 		}
 	}
@@ -256,4 +269,16 @@ func (s *Service) removeTaken(ctx context.Context, backend domain.ID, p string, 
 	if m, err := s.meta(domain.SystemUserID); err == nil {
 		_ = s.st.insertAlert(ctx, m, backend, take.FileID, take.FileID, detail, emailed)
 	}
+}
+
+// dropFolderName turns a matter number into its drop subfolder name: one path
+// component, with any slash or backslash in the number (a format like YYYY/NNNN)
+// replaced by a hyphen. A number that would still not be one safe component (empty,
+// dot-led, or holding "..") gets no subfolder, so the scanner never leaves the root.
+func dropFolderName(number string) (string, bool) {
+	n := strings.NewReplacer("/", "-", `\`, "-").Replace(strings.TrimSpace(number))
+	if n == "" || strings.HasPrefix(n, ".") || strings.Contains(n, "..") || filepath.Base(n) != n {
+		return "", false
+	}
+	return n, true
 }

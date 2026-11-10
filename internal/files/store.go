@@ -457,6 +457,10 @@ func (s *store) setSearchText(ctx context.Context, file, rendition domain.ID, bo
 	return s.exec(ctx, `INSERT INTO file_search_text (file_id, rendition_id, body) VALUES (?,?,?)`, file, rendition, strings.ToLower(body))
 }
 
+func (s *store) deleteSearchText(ctx context.Context, file domain.ID) error {
+	return s.exec(ctx, `DELETE FROM file_search_text WHERE file_id = ?`, file)
+}
+
 func (s *store) insertLink(ctx context.Context, l domain.FileLink) error {
 	return s.exec(ctx, `INSERT INTO file_links (id, created_at, updated_at, created_by, from_file_id, to_file_id, kind) VALUES (?,?,?,?,?,?,?)`,
 		l.ID, us(l.CreatedAt), us(l.UpdatedAt), l.CreatedBy, l.FromFileID, l.ToFileID, l.Kind)

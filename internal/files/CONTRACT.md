@@ -83,6 +83,10 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
 
 ## Drop folder
 
+Each open matter gets a subfolder named for its number; a slash or backslash in the
+number becomes a hyphen, and a number that is still not one safe folder name (or that
+two matters share after that change) gets no subfolder.
+
 A dropped share copy is taken once. Its `drop_takes` row (backend, path, size, SHA-256,
 file id) commits in the same transaction as the file record and is closed once the share
 copy is gone. If the share refuses the delete (no delete right, a file held open), the

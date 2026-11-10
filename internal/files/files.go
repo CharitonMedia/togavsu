@@ -740,7 +740,8 @@ func (s *Service) Restore(ctx context.Context, p domain.Principal, id domain.ID)
 }
 
 // Purge empties a trashed file: an admin types its name, every stored copy of its
-// versions and renditions is deleted, and the record stays for the audit log.
+// versions and renditions is deleted with its search text, and the record stays for
+// the audit log.
 func (s *Service) Purge(ctx context.Context, p domain.Principal, id domain.ID, confirmName string) error {
 	if err := admin(p); err != nil {
 		return err
@@ -773,6 +774,10 @@ func (s *Service) Purge(ctx context.Context, p domain.Principal, id domain.ID, c
 			return domain.Invalid("confirm_name", "type the file's name to empty it from the trash")
 		}
 		if objs, err = s.objectsOf(ctx, f.ID); err != nil {
+			return err
+		}
+		// The search copy of the Markdown text goes with the file's bytes.
+		if err := s.st.deleteSearchText(ctx, f.ID); err != nil {
 			return err
 		}
 		f.PurgedAt, f.PurgedBy, f.UpdatedAt = us(s.now()), p.UserID, s.now().UTC()
