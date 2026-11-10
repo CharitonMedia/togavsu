@@ -241,3 +241,104 @@ func TestPGDropSubfoldersStayInsideTheRoot(t *testing.T) {
 		}
 	}
 }
+
+// onLocalDisk reports whether the local disk backend still holds object.
+func onLocalDisk(e *env, object domain.ID) bool {
+	found := false
+	_ = filepath.Walk(e.root+"/local/objects", func(p string, info os.FileInfo, err error) error {
+		if err == nil && info.Name() == string(object) {
+			found = true
+		}
+		return nil
+	})
+	return found
+}
+
+func purgeAsAttorney(t *testing.T, e *env, f FileView) []domain.ID {
+	t.Helper()
+	ctx := context.Background()
+	objs, err := e.svc.objectsOf(ctx, f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Trash(ctx, e.attorney, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.Purge(ctx, e.admin, f.ID, f.Name); err != nil {
+		t.Fatal(err)
+	}
+	var ids []domain.ID
+	for _, o := range objs {
+		ids = append(ids, o.ID)
+	}
+	return ids
+}
+
+// TestPGPurgeLeavesNoMoveCopies is checkpoint 9: emptying a file from the trash removes
+// every copy of its bytes that a storage move made or kept, on both backends, whether
+// the move failed or is waiting for confirmation.
+func TestPGPurgeLeavesNoMoveCopies(t *testing.T) {
+	t.Run("failed move", func(t *testing.T) {
+		e := newEnv(t)
+		ctx := context.Background()
+		files := seedFiles(t, e, 1)
+		fs3, s3 := e.s3()
+		m, err := e.svc.StartMove(ctx, e.admin, MoveRequest{FromBackendID: e.local.ID, ToBackendID: s3.ID, Scope: "all"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, err := e.svc.st.moveItems(ctx, m.ID)
+		if err != nil || len(items) < 2 {
+			t.Fatalf("items = %d %v", len(items), err)
+		}
+		bad := items[len(items)-1].ObjectID
+		corruptLocal(t, e, bad)
+		if err := e.svc.RunMove(ctx, m.ID); !errors.Is(err, storage.ErrIntegrity) {
+			t.Fatalf("move over a corrupt object = %v", err)
+		}
+		// A run that stopped mid-copy can leave a copy on the target under the object id.
+		raw, _, err := e.svc.adapter(ctx, s3.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := raw.Put(ctx, string(bad), strings.NewReader("partial"), int64(len("partial"))); err != nil {
+			t.Fatal(err)
+		}
+		purgeAsAttorney(t, e, files[0].file)
+		if n := localObjectFiles(t, e.root+"/local"); n != 0 {
+			t.Fatalf("local disk keeps %d copies of the purged file", n)
+		}
+		if fs3.Len() != 0 {
+			t.Fatalf("s3 keeps %d copies of the purged file: %v", fs3.Len(), fs3.Keys())
+		}
+	})
+	t.Run("move awaiting confirmation", func(t *testing.T) {
+		e := newEnv(t)
+		ctx := context.Background()
+		files := seedFiles(t, e, 1)
+		kept := e.create(e.attorney, NewFile{Name: "kept.txt", MatterID: e.open}, "stays")
+		fs3, s3 := e.s3()
+		m, err := e.svc.StartMove(ctx, e.admin, MoveRequest{FromBackendID: e.local.ID, ToBackendID: s3.ID, Scope: "all"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.svc.RunMove(ctx, m.ID); err != nil {
+			t.Fatal(err)
+		}
+		gone := purgeAsAttorney(t, e, files[0].file)
+		for _, id := range gone {
+			if onLocalDisk(e, id) || fs3.Get(string(id)) != nil {
+				t.Fatalf("object %s of the purged file is still stored", id)
+			}
+		}
+		if _, err := e.svc.ConfirmMove(ctx, e.admin, m.ID); err != nil {
+			t.Fatalf("confirm after a purge = %v", err)
+		}
+		if n := localObjectFiles(t, e.root+"/local"); n != 0 {
+			t.Fatalf("local disk keeps %d copies after the confirmation", n)
+		}
+		if got := readVersion(t, e, e.attorney, kept.ID, *kept.CurrentVersionID); got != "stays" {
+			t.Fatalf("the kept file reads %q", got)
+		}
+	})
+}

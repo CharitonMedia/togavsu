@@ -764,6 +764,32 @@ func (s *store) setMoveItem(ctx context.Context, move, object domain.ID, status 
 	return s.exec(ctx, `UPDATE storage_move_items SET status = ? WHERE move_id = ? AND object_id = ?`, status, move, object)
 }
 
+// moveCopies lists every place a storage move may have left bytes of an object: each
+// move's old copy and each move's target copy (stored under the object id).
+func (s *store) moveCopies(ctx context.Context, object domain.ID) ([]location, error) {
+	rows, err := s.query(ctx, `SELECT i.from_backend_id, i.from_key FROM storage_move_items i WHERE i.object_id = ? AND i.status <> 'old_deleted'
+UNION SELECT m.to_backend_id, i.object_id FROM storage_move_items i JOIN storage_moves m ON m.id = i.move_id WHERE i.object_id = ?`, object, object)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []location
+	for rows.Next() {
+		var l location
+		if err := rows.Scan(&l.Backend, &l.Key); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// closeMoveCopies marks a purged object's checked move items as having no old copy,
+// so a later confirmation does not try to delete it again.
+func (s *store) closeMoveCopies(ctx context.Context, object domain.ID) error {
+	return s.exec(ctx, `UPDATE storage_move_items SET status = 'old_deleted' WHERE object_id = ? AND status = 'checked'`, object)
+}
+
 func (s *store) moveItems(ctx context.Context, move domain.ID) ([]moveItem, error) {
 	rows, err := s.query(ctx, `SELECT move_id, object_id, object_kind, from_backend_id, from_key, size_bytes, sha256, status FROM storage_move_items WHERE move_id = ? ORDER BY object_id`, move)
 	if err != nil {

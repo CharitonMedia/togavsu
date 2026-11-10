@@ -797,6 +797,18 @@ func (s *Service) Purge(ctx context.Context, p domain.Principal, id domain.ID, c
 		if err == nil {
 			s.dropObject(ctx, loc)
 		}
+		// A storage move keeps the old copy until it is confirmed, and a stopped run
+		// can leave a copy on its target: those go too, so no byte of the file is left.
+		copies, err := s.st.moveCopies(ctx, o.ID)
+		if err != nil {
+			continue
+		}
+		for _, c := range copies {
+			if c.Backend != loc.Backend || c.Key != loc.Key {
+				s.dropObject(ctx, c)
+			}
+		}
+		_ = s.st.closeMoveCopies(context.WithoutCancel(ctx), o.ID)
 	}
 	return nil
 }

@@ -115,6 +115,8 @@ was emptied from the trash after the archive was taken is skipped (`purged`), so
 purge stays a purge. A storage move skips purged files the same way. A move that fails
 stays failed and keeps every old copy; starting the same move again (same source, target
 and scope) resumes it, and old copies go only when it checks out and is confirmed.
-Confirming never deletes a copy that is an object's current location. The supervisor
+Confirming never deletes a copy that is an object's current location. Emptying a file
+from the trash deletes every copy of its objects: the current one, any old copy a move
+kept, and any copy a stopped move left on its target. The supervisor
 encrypts the archive and restores the database; wiring it to these two calls is
 pending (PONYTAIL-DEBT platform ceiling 13).
