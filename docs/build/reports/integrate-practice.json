@@ -2,32 +2,32 @@
   "task_id": "integrate-practice",
   "status": "pass",
   "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. This is not full product acceptance; 49 of 52 criteria remain pending globally.",
-  "tested_revision": "527a5a1b1b9923f6ec3f19eb51cb642f632d2849",
+  "tested_revision": "16f9c870cdeeba190fb6dc72f175edbaa467f959",
   "tests": [
     {
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 82
+      "seconds": 119
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 32
+      "seconds": 26
     },
     {
       "command": "sh scripts/ci/test-qa.sh",
       "exit_code": 0,
-      "seconds": 10
+      "seconds": 8
     },
     {
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 5
+      "seconds": 302
     },
     {
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
-      "seconds": 58
+      "seconds": 46
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
@@ -72,7 +72,7 @@
     {
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
       "exit_code": 0,
-      "seconds": 11
+      "seconds": 22
     },
     {
       "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
@@ -92,16 +92,17 @@
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 17
+      "seconds": 16
     },
     {
       "command": "GOFLAGS=-count=1 sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 329
+      "seconds": 302
     },
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
-      "exit_code": 0
+      "exit_code": 0,
+      "seconds": 16
     },
     {
       "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
@@ -113,7 +114,8 @@
     },
     {
       "command": "sh scripts/ci/test-api.sh",
-      "exit_code": 0
+      "exit_code": 0,
+      "seconds": 26
     },
     {
       "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
@@ -247,15 +249,21 @@
     "existing_jobs_run_locally": [
       "Supervisor tests",
       "Backup integration",
-      "Supervisor image",
-      "API bootstrap validation"
+      "Supervisor image"
     ],
-    "jobs_needing_workflow_change": [
+    "required_jobs_missing_from_workflow": [
       "Core tests",
       "API contract tests",
       "QA harness tests"
     ],
-    "blocker": "Lane workers cannot change .github/; the exact product-ci.yml change is in the PR body under Proposed CI change for the integration lead's control PR."
+    "scripts_for_missing_jobs": {
+      "Core tests": "sh scripts/ci/test-core.sh && sh scripts/ci/test-compose-first-run.sh",
+      "API contract tests": "sh scripts/ci/test-api.sh",
+      "QA harness tests": "sh scripts/ci/test-qa.sh"
+    },
+    "placeholder_to_replace": "The existing 'API bootstrap validation' job exits 0 when api/ is absent; the proposal replaces it with 'API contract tests'.",
+    "blocker": "Lane workers cannot change .github/. The exact product-ci.yml change is in the PR body under 'Proposed CI change'. The integration lead must land it through a reviewed control PR. Until then the three required checks are missing on GitHub, and this report's pass status covers local runs only.",
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers and a PostgreSQL 18 client for the backup test (postgresql-client-17 was not installable on this VM), plus Python 3.14. CI pins Postgres 17 client and Python 3.12."
   },
   "visual_qc": "docs/build/reports/screens/integrate-practice/qc.json",
   "simplification": {
