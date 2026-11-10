@@ -2193,6 +2193,32 @@ class StallAlertTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.controller.resume("one", "Integration lead")  # Not stalled any more.
 
+    def test_resume_resets_every_exhausted_finding_of_a_multi_finding_stall(self):
+        self.remote.report.update(verdict="fail", findings=[{"detail": "defect A"}, {"detail": "defect B"}])
+        self.remote.check_rows["Codex checkpoint"]["conclusion"] = "failure"
+        with self.at(0):
+            self.controller.process(SPEC, self.record, self.remote.agent(self.record), BASE)
+        self.assertEqual(len(self.posts()), 1)
+        self.remote.run_id = self.record["last_dispatched_run"]
+        with self.at(30):
+            self.controller.process(SPEC, self.record, self.remote.agent(self.record), BASE)
+        self.assertEqual(self.record["stalled"]["kind"], "no_progress")
+        with self.at(40):
+            self.controller.resume("one", "Integration lead")
+        with self.at(45):
+            self.controller.process(SPEC, self.record, self.remote.agent(self.record), BASE)
+        self.assertEqual(len(self.posts()), 2)
+        self.assertNotIn("stalled", self.record)
+
+    def test_test_alert_honours_dry_run(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps(self.plan))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--dry-run", "--test-alert"]
+        with patch.object(sys, "argv", argv), patch("build_controller.Mailer.send") as send:
+            build_controller.main()
+        send.assert_not_called()
+
     def test_resume_never_clears_a_halt(self):
         self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
         with self.assertRaises(ValueError):

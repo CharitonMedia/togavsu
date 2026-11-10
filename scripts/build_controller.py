@@ -1675,10 +1675,11 @@ class Controller:
             print("WOULD resume " + task + " from " + stalled["kind"], flush=True)
             return
         if stalled["kind"] == "no_progress":
-            window = record.get("repair_problems", {}).get(stalled.get("fingerprint"))
-            if window:
-                window["attempts"] = 0
-            if record.get("repair_window", {}).get("fingerprint") == stalled.get("fingerprint"):
+            # Every exhausted problem gets the fresh attempt: a correction for [A, B] spends both budgets.
+            for window in record.get("repair_problems", {}).values():
+                if window.get("attempts", 0) >= self.plan["max_repairs"]:
+                    window["attempts"] = 0
+            if record.get("repair_window", {}).get("attempts", 0) >= self.plan["max_repairs"]:
                 record["repair_window"]["attempts"] = 0
         else:
             record.pop("merge_blocked", None)
@@ -1770,6 +1771,9 @@ def main():
         if args.test_alert:
             if not plan.get("alert_email"):
                 raise SystemExit("Plan has no alert_email")
+            if args.dry_run:
+                print("WOULD email a test alert to " + plan["alert_email"], flush=True)
+                return
             controller.mailer.send(plan["alert_email"], "Togavsu build controller: test alert",
                 "This is a test of the Togavsu build controller's stall alerts. No action is needed.\n")
         elif args.reconcile_intent:
