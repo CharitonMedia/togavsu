@@ -65,13 +65,17 @@ func (s *Service) live(ctx context.Context, l lockRow) (bool, error) {
 }
 
 func (s *Service) readLock(ctx context.Context, fileID domain.ID, forUpdate bool) (lockRow, bool, error) {
+	return readLockOn(ctx, audit.Conn(ctx, s.pool), fileID, forUpdate)
+}
+
+func readLockOn(ctx context.Context, db audit.Querier, fileID domain.ID, forUpdate bool) (lockRow, bool, error) {
 	q := `SELECT id, file_id, user_id, since_at, renewed_at FROM edit_locks WHERE file_id = $1`
 	if forUpdate {
 		q += ` FOR UPDATE`
 	}
 	var l lockRow
 	var since, renewed int64
-	err := audit.Conn(ctx, s.pool).QueryRowContext(ctx, q, fileID).Scan(&l.ID, &l.FileID, &l.UserID, &since, &renewed)
+	err := db.QueryRowContext(ctx, q, fileID).Scan(&l.ID, &l.FileID, &l.UserID, &since, &renewed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return lockRow{}, false, nil
 	}
@@ -108,8 +112,11 @@ func (s *Service) AcquireLock(ctx context.Context, p domain.Principal, fileID do
 	}
 	var out lockRow
 	err := audit.WithTx(ctx, s.pool, func(ctx context.Context) error {
-		now := s.now().UTC()
 		db := audit.Conn(ctx, s.pool)
+		if err := serialize(ctx, db, fileID); err != nil {
+			return err
+		}
+		now := s.now().UTC()
 		id, err := newID()
 		if err != nil {
 			return err
@@ -168,6 +175,9 @@ func (s *Service) RenewLock(ctx context.Context, p domain.Principal, fileID doma
 	}
 	var out lockRow
 	err := audit.WithTx(ctx, s.pool, func(ctx context.Context) error {
+		if err := serialize(ctx, audit.Conn(ctx, s.pool), fileID); err != nil {
+			return err
+		}
 		l, ok, err := s.readLock(ctx, fileID, true)
 		if err != nil {
 			return err
@@ -211,6 +221,9 @@ func (s *Service) ReleaseLock(ctx context.Context, p domain.Principal, fileID do
 		return err
 	}
 	return audit.WithTx(ctx, s.pool, func(ctx context.Context) error {
+		if err := serialize(ctx, audit.Conn(ctx, s.pool), fileID); err != nil {
+			return err
+		}
 		l, ok, err := s.readLock(ctx, fileID, true)
 		if err != nil {
 			return err
@@ -242,6 +255,10 @@ func (s *Service) holdsLock(ctx context.Context, p domain.Principal, fileID doma
 	if err != nil {
 		return err
 	}
+	return s.checkHolder(ctx, p, l, ok)
+}
+
+func (s *Service) checkHolder(ctx context.Context, p domain.Principal, l lockRow, ok bool) error {
 	if !ok {
 		return domain.Conflict("open the file in the editor first: you do not hold its edit lock")
 	}
@@ -264,12 +281,81 @@ func (s *Service) holdsLock(ctx context.Context, p domain.Principal, fileID doma
 // otherHolds reports a live lock someone other than p holds.
 func (s *Service) otherHolds(ctx context.Context, p domain.Principal, fileID domain.ID) error {
 	l, ok, err := s.readLock(ctx, fileID, false)
-	if err != nil || !ok || l.UserID == p.UserID {
+	if err != nil {
 		return err
+	}
+	return s.checkOther(ctx, p, l, ok)
+}
+
+func (s *Service) checkOther(ctx context.Context, p domain.Principal, l lockRow, ok bool) error {
+	if !ok || l.UserID == p.UserID {
+		return nil
 	}
 	alive, err := s.live(ctx, l)
 	if err != nil || !alive {
 		return err
 	}
 	return s.held(ctx, l)
+}
+
+// serialize takes the file's edit-lock advisory lock for the rest of the transaction on
+// db. Every change to a file's edit lock (AcquireLock, RenewLock, ReleaseLock) and every
+// locked write (writeUnderLock) takes it first, so they run one at a time per file. It is
+// an advisory lock rather than the edit_locks row lock because the write runs on another
+// connection: a waiting AcquireLock would otherwise hold a foreign-key share lock on the
+// files row that files.SaveVersion needs, and the two would wait on each other forever.
+func serialize(ctx context.Context, db audit.Querier, fileID domain.ID) error {
+	_, err := db.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "togavsu.editor.edit_lock/"+string(fileID))
+	return err
+}
+
+// writeUnderLock runs write, a new version of the file, inside the file's edit-lock
+// serialization (serialize) and after the lock check passes there: holder (Save) means p
+// must hold the live lock, otherwise (a run saved as a version) nobody else may. No one
+// can take, renew or release the lock between the check and the write, so the lock
+// cannot lapse into someone else's hands with this version still to come, and a new
+// holder opens the file only after it is in. A save by the holder renews the lock in the
+// same transaction.
+//
+// write runs on its own connection (files.SaveVersion opens its own transaction), so
+// ctx must not carry a transaction on s.pool.
+func (s *Service) writeUnderLock(ctx context.Context, p domain.Principal, fileID domain.ID, holder bool, write func() error) error {
+	if audit.Tx(ctx, s.pool) != nil {
+		return errors.New("editor: a locked write cannot run inside a transaction")
+	}
+	tx, err := s.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := serialize(ctx, tx, fileID); err != nil {
+		return err
+	}
+	l, ok, err := readLockOn(ctx, tx, fileID, false)
+	if err != nil {
+		return err
+	}
+	if holder {
+		err = s.checkHolder(ctx, p, l, ok)
+	} else {
+		err = s.checkOther(ctx, p, l, ok)
+	}
+	if err != nil {
+		return err
+	}
+	if s.beforeLockedWrite != nil {
+		s.beforeLockedWrite()
+	}
+	if err := write(); err != nil {
+		return err
+	}
+	if holder {
+		// A save is activity: it renews the lock too. The version is in either way: a
+		// lost renewal is made up by the page's own, so it does not fail the save.
+		at := us(s.now().UTC())
+		if _, err := tx.ExecContext(ctx, `UPDATE edit_locks SET renewed_at = $1, updated_at = $1 WHERE id = $2`, at, l.ID); err == nil {
+			_ = tx.Commit()
+		}
+	}
+	return nil
 }

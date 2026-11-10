@@ -50,6 +50,10 @@ type Service struct {
 	matters  Matters
 	cli      *CLI
 	now      func() time.Time
+
+	// beforeLockedWrite, when set (tests), runs inside writeUnderLock after the lock check
+	// and before the version is written.
+	beforeLockedWrite func()
 }
 
 // New validates cfg.

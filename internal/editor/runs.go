@@ -65,22 +65,28 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 	if !Editable(cur.File.Extension) {
 		return RunResult{}, domain.Invalid("file", "editor runs work on documents the editor opens (DOCX, DOC, ODT, RTF, HTML, Markdown, text)")
 	}
-	known, err := s.knownCommands(ctx)
-	if err != nil {
-		return RunResult{}, err
-	}
 	summary := map[string]any{"commands": commandIDs(req.Commands), "save_as": req.SaveAs, "from_version": cur.Version.ID}
-	if err := checkCommands(known, req.Commands); err != nil {
-		summary["refused"] = err.Error()
+	// fail audits a run that ends in an error, under "refused" (nothing ran) or "failed"
+	// (with what was saved, if anything was, before the failure).
+	fail := func(key string, err error) (RunResult, error) {
+		summary[key] = err.Error()
 		if aerr := s.auditRun(ctx, p, fileID, "editor_run", summary); aerr != nil {
 			return RunResult{}, aerr
 		}
 		return RunResult{}, err
 	}
+	known, err := s.knownCommands(ctx)
+	if err != nil {
+		return fail("failed", err)
+	}
+	if err := checkCommands(known, req.Commands); err != nil {
+		return fail("refused", err)
+	}
 	if req.SaveAs == "version" {
 		// A new version under someone's open editor would be lost on their next save.
+		// This early check spares the run; writeUnderLock checks again at the write.
 		if err := s.otherHolds(ctx, p, fileID); err != nil {
-			return RunResult{}, err
+			return fail("refused", err)
 		}
 	}
 	name := req.FileName
@@ -93,19 +99,15 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 	}
 	profiles, err := s.profileFiles(ctx)
 	if err != nil {
-		return RunResult{}, err
+		return fail("failed", err)
 	}
 	out, err := s.cli.Run(ctx, RunInput{Document: cur.Bytes, Ext: cur.File.Extension, Commands: req.Commands, Profiles: profiles,
 		Out: "docx", Author: s.userName(ctx, p.UserID)})
-	if err != nil {
-		summary["failed"] = err.Error()
-		if aerr := s.auditRun(ctx, p, fileID, "editor_run", summary); aerr != nil {
-			return RunResult{}, aerr
-		}
-		return RunResult{}, err
+	if err == nil {
+		err = CheckDOCX(out)
 	}
-	if err := CheckDOCX(out); err != nil {
-		return RunResult{}, err
+	if err != nil {
+		return fail("failed", err)
 	}
 	var res RunResult
 	if req.SaveAs == "version" {
@@ -113,28 +115,28 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 		if !sameFormat(cur.File.Extension, "docx") {
 			opt.Extension = "docx"
 		}
-		r, n := reader(out)
-		v, err := s.files.SaveVersion(ctx, p, fileID, r, n, opt)
-		if err != nil {
-			return RunResult{}, err
+		err = s.writeUnderLock(ctx, p, fileID, false, func() error {
+			r, n := reader(out)
+			v, err := s.files.SaveVersion(ctx, p, fileID, r, n, opt)
+			res.Version = v
+			return err
+		})
+		if err == nil {
+			summary["file"], summary["version"] = fileID, res.Version.ID
+			res.File, err = s.files.Get(ctx, p, fileID)
 		}
-		f, err := s.files.Get(ctx, p, fileID)
-		if err != nil {
-			return RunResult{}, err
-		}
-		res = RunResult{File: f, Version: v}
 	} else {
-		f, err := s.createBeside(ctx, p, cur.File, name, out, "editor_run", runNote(req.Commands))
-		if err != nil {
-			return RunResult{}, err
+		res.File, err = s.createBeside(ctx, p, cur.File, name, out, "editor_run", runNote(req.Commands))
+		if err == nil {
+			summary["file"] = res.File.ID
+			res.Version, err = s.files.Version(ctx, p, res.File.ID, *res.File.CurrentVersionID)
+			summary["version"] = res.Version.ID
 		}
-		v, err := s.files.Version(ctx, p, f.ID, *f.CurrentVersionID)
-		if err != nil {
-			return RunResult{}, err
-		}
-		res = RunResult{File: f, Version: v}
 	}
-	summary["file"], summary["version"] = res.File.ID, res.Version.ID
+	if err != nil {
+		// A failure after the save still names what was saved.
+		return fail("failed", err)
+	}
 	if err := s.auditRun(ctx, p, fileID, "editor_run", summary); err != nil {
 		return RunResult{}, err
 	}
@@ -198,14 +200,22 @@ func (s *Service) Convert(ctx context.Context, p domain.Principal, fileID domain
 	}
 	f, err := s.createBeside(ctx, p, cur.File, baseName(cur.File.Name)+"."+target, out, "conversion", "Converted from "+cur.File.Name)
 	if err != nil {
-		return ConversionResult{}, err
-	}
-	link, err := s.files.Link(ctx, p, f.ID, fileID, "conversion_of")
-	if err != nil {
+		summary["failed"] = err.Error()
+		if aerr := s.auditRun(ctx, p, fileID, "conversion", summary); aerr != nil {
+			return ConversionResult{}, aerr
+		}
 		return ConversionResult{}, err
 	}
 	summary["file"] = f.ID
-	if err := s.auditRun(ctx, p, fileID, "conversion", summary); err != nil {
+	link, err := s.files.Link(ctx, p, f.ID, fileID, "conversion_of")
+	if err != nil {
+		// The new file exists but is not linked: the row names it so it can be found.
+		summary["failed"] = err.Error()
+	}
+	if aerr := s.auditRun(ctx, p, fileID, "conversion", summary); aerr != nil {
+		return ConversionResult{}, aerr
+	}
+	if err != nil {
 		return ConversionResult{}, err
 	}
 	return ConversionResult{File: f, Link: link}, nil
@@ -281,13 +291,18 @@ func (s *Service) Save(ctx context.Context, p domain.Principal, fileID domain.ID
 	if !sameFormat(f.Extension, "docx") {
 		opt.Extension = "docx"
 	}
-	r, n := reader(data)
-	v, err := s.files.SaveVersion(ctx, p, fileID, r, n, opt)
+	// The lock is checked again with its row held until the version is in, so it cannot
+	// lapse to someone else between the check and the write.
+	var v files.VersionView
+	err = s.writeUnderLock(ctx, p, fileID, true, func() error {
+		r, n := reader(data)
+		var err error
+		v, err = s.files.SaveVersion(ctx, p, fileID, r, n, opt)
+		return err
+	})
 	if err != nil {
 		return files.VersionView{}, err
 	}
-	// A save is activity: it renews the lock too.
-	_, _ = s.RenewLock(ctx, p, fileID)
 	return v, nil
 }
 

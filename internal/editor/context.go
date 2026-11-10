@@ -7,13 +7,22 @@ import (
 )
 
 // EditContext is what the edit page gives LawCraft when the editor opens (PRD 8.20):
-// the firm's details from firm settings, the firm's court profiles, and the matter's
-// court, county, case number and parties, each through LawCraft's own commands.
+// the firm's details from firm settings, the firm's court profiles and the matter's court
+// through LawCraft's own commands, and the matter's caption (see Matter for what is still
+// pending).
 type EditContext struct {
 	Author string `json:"author"`
 	// Commands are LawCraft commands the page runs in the browser editor on open.
 	Commands []Command `json:"commands"`
 	// Matter is the caption New Pleading fills from, when the file has a matter.
+	//
+	// Pending (PRD 8.20, editor open): LawCraft at the pin has no command that seeds its
+	// own New Pleading dialog (law-ui pleading.rs opens PleadingForm::default(); only
+	// law.courts.save and law.firm.set reach it), so the case number and parties here do
+	// not fill that dialog in the browser. The server's "New pleading from this matter"
+	// (pleading.go) fills the whole caption. Upstream ask: a law.pleadings.defaults
+	// command, or New Pleading opened with parameters, whose values the dialog starts
+	// from; the page then sends it with the rest of Commands.
 	Matter *CaptionView `json:"matter,omitempty"`
 }
 

@@ -79,6 +79,19 @@ var deniedCommands = map[string]string{
 // equation.edit, shape.connect) is an array, and "dir" is a direction, so neither is one.
 var pathKeys = map[string]bool{"path": true, "folder": true, "file": true, "import": true, "original": true, "template": true, "output": true}
 
+// urlKeys are parameter names that carry a web or file address when their value is text.
+var urlKeys = map[string]bool{"url": true, "uri": true, "href": true, "src": true}
+
+// urlCommands are the allowed commands reviewed at the pin that take an address in a
+// urlKeys parameter, and why that is safe: each only writes the address into the
+// document, and none fetches it. Any other command given an address is refused, so a
+// command that would read the network (an online picture, a source lookup) never runs
+// with one. TestPinnedCommandListIsFiltered fails on an allowed command that takes an
+// address and is not listed here.
+var urlCommands = map[string]string{
+	"insert.link": "stores the address as the hyperlink's target (engine insert/links.rs); nothing is fetched",
+}
+
 // allowedCommand says whether id may run headless, and why not.
 func allowedCommand(id string) (bool, string) {
 	for _, f := range deniedFamilies {
@@ -93,25 +106,32 @@ func allowedCommand(id string) (bool, string) {
 }
 
 // pathParam finds a parameter naming a file or folder.
-func pathParam(v any) (string, bool) {
+func pathParam(v any) (string, bool) { return textParam(v, pathKeys) }
+
+// urlParam finds a parameter carrying an address.
+func urlParam(v any) (string, bool) { return textParam(v, urlKeys) }
+
+// textParam finds, at any depth, a parameter whose name is one of keys (in any case) and
+// whose value is text.
+func textParam(v any, keys map[string]bool) (string, bool) {
 	switch t := v.(type) {
 	case map[string]any:
-		keys := make([]string, 0, len(t))
+		names := make([]string, 0, len(t))
 		for k := range t {
-			keys = append(keys, k)
+			names = append(names, k)
 		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			if _, text := t[k].(string); text && pathKeys[strings.ToLower(k)] {
+		sort.Strings(names)
+		for _, k := range names {
+			if _, text := t[k].(string); text && keys[strings.ToLower(k)] {
 				return k, true
 			}
-			if k2, ok := pathParam(t[k]); ok {
+			if k2, ok := textParam(t[k], keys); ok {
 				return k2, true
 			}
 		}
 	case []any:
 		for _, e := range t {
-			if k, ok := pathParam(e); ok {
+			if k, ok := textParam(e, keys); ok {
 				return k, true
 			}
 		}
@@ -140,6 +160,9 @@ func checkCommands(known map[string]CommandInfo, cmds []Command) error {
 		}
 		if k, ok := pathParam(map[string]any(c.Parameters)); ok {
 			return refused("command %d (%s) is refused: parameter %q names a file or folder, and runs never read or write the file system", i+1, c.ID, k)
+		}
+		if k, ok := urlParam(map[string]any(c.Parameters)); ok && urlCommands[c.ID] == "" {
+			return refused("command %d (%s) is refused: parameter %q is an address, and runs never reach the network", i+1, c.ID, k)
 		}
 	}
 	return nil

@@ -48,6 +48,13 @@ func (s *Service) validateProfile(ctx context.Context, body map[string]any) ([]b
 	if body == nil {
 		return nil, domain.Invalid("body", "body is the LawCraft court profile JSON")
 	}
+	// law.profiles.validate reads a profile file when given {"path": …}, so a body that
+	// names a file is refused before LawCraft sees it. No profile field is named so.
+	for k := range body {
+		if pathKeys[strings.ToLower(k)] || urlKeys[strings.ToLower(k)] {
+			return nil, domain.Invalid("body."+k, "a court profile is the profile JSON itself; it cannot name a file to read")
+		}
+	}
 	if !safeProfileID(lawcraftID(body)) {
 		return nil, domain.Invalid("body.id", "the profile id must be letters, digits, hyphens or underscores")
 	}
