@@ -1,18 +1,18 @@
 {
   "task_id": "integrate-practice",
-  "status": "pass",
+  "status": "pending",
   "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. This is not full product acceptance; 49 of 52 criteria remain pending globally.",
-  "tested_revision": "16f9c870cdeeba190fb6dc72f175edbaa467f959",
+  "tested_revision": "79ff33f758ccc62bf60892ffc74470b273789b4a",
   "tests": [
     {
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 119
+      "seconds": 82
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 26
+      "seconds": 24
     },
     {
       "command": "sh scripts/ci/test-qa.sh",
@@ -22,12 +22,12 @@
     {
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 302
+      "seconds": 280
     },
     {
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
-      "seconds": 46
+      "seconds": 47
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
@@ -72,7 +72,7 @@
     {
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
       "exit_code": 0,
-      "seconds": 22
+      "seconds": 0
     },
     {
       "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
@@ -82,30 +82,30 @@
     {
       "command": "sh scripts/ci/build-core-image.sh",
       "exit_code": 0,
-      "seconds": 18
+      "seconds": 17
     },
     {
       "command": "sh scripts/ci/test-core-smoke.sh",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 0
     },
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 16
+      "seconds": 17
     },
     {
       "command": "GOFLAGS=-count=1 sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 302
+      "seconds": 280
     },
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 16
+      "seconds": 17
     },
     {
-      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
       "exit_code": 0
     },
     {
@@ -115,7 +115,7 @@
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 26
+      "seconds": 24
     },
     {
       "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
@@ -141,7 +141,7 @@
         "AC-024"
       ],
       "status": "pass",
-      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
       "exit_code": 0
     },
     {
@@ -263,7 +263,7 @@
     },
     "placeholder_to_replace": "The existing 'API bootstrap validation' job exits 0 when api/ is absent; the proposal replaces it with 'API contract tests'.",
     "blocker": "Lane workers cannot change .github/. The exact product-ci.yml change is in the PR body under 'Proposed CI change'. The integration lead must land it through a reviewed control PR. Until then the three required checks are missing on GitHub, and this report's pass status covers local runs only.",
-    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers and a PostgreSQL 18 client for the backup test (postgresql-client-17 was not installable on this VM), plus Python 3.14. CI pins Postgres 17 client and Python 3.12."
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers and a PostgreSQL 18 client for the backup test (postgresql-client-17 was not installable on this VM), plus Python 3.14. CI pins Postgres 17 client and Python 3.12. The supervisor image build at the tested revision reused Docker layer cache because no supervisor input changed."
   },
   "visual_qc": "docs/build/reports/screens/integrate-practice/qc.json",
   "simplification": {
@@ -273,6 +273,34 @@
     "net_non_test_go_lines": 2134,
     "debt_entries_before": 33,
     "debt_entries_after": 38,
-    "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules)."
-  }
+    "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules).",
+    "this_run": {
+      "go_lines_added": 385,
+      "go_lines_removed": 63,
+      "net_go_lines": 322,
+      "net_non_test_go_lines": 177,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "One unit type and a Begin method on Durable reuse the existing commit path; Service.unit is a two-line optional-interface check, so Memory and test stores are unchanged. Practice ceiling 1 is rewritten in place, not added."
+    }
+  },
+  "status_reason": "Every assigned phase case and every local test passes at the tested revision, but the assignment also requires CI to expose Core tests, API contract tests and QA harness tests. Those jobs are not in .github/workflows/product-ci.yml, and lane workers cannot change .github/. Status becomes pass once the integration lead lands the proposed workflow change and those jobs pass on the published head.",
+  "review_fixes": [
+    {
+      "finding": "Codex checkpoint on 16f9c87, P1 internal/practice/durable.go: one service mutation committed as several transactions, so a failed audit_log append could leave an unaudited change, and check-then-write was not serialized.",
+      "fix": "Durable.Begin unit of work; every exported mutating practice Service method runs in one unit, which commits its records and audit rows in one transaction or reloads on error.",
+      "tests": [
+        "TestServiceMutationIsOneTransaction (fails with the unit disabled; passes with it)",
+        "TestConcurrentClosesSerialize (serialization guard; it also passed with the unit disabled because the race window is small, so it is not proof of the fix)"
+      ]
+    },
+    {
+      "finding": "Codex checkpoint on 16f9c87, P1 report: status pass while the required CI jobs are missing; tested_revision not the published head.",
+      "fix": "status is pending until the jobs exist; tested_revision is 79ff33f, and only docs/build/reports/ files change after it."
+    },
+    {
+      "finding": "Codex checkpoint on 16f9c87, P0 .github/workflows/product-ci.yml: required jobs missing.",
+      "fix": "Not fixable in a lane (no .github/ changes allowed). The exact workflow change is in the PR body under Proposed CI change."
+    }
+  ]
 }

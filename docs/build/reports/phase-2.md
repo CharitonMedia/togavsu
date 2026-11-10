@@ -1,8 +1,8 @@
 # Phase 2 report: practice records on the composed core
 
-Status: **not complete; do not tag phase-2.** The practice phase case passes on the composed core at `16f9c870cdeeba190fb6dc72f175edbaa467f959`; criteria remain pending globally, and the Core tests, API contract tests and QA harness tests CI jobs need the proposed workflow change.
+Status: **not complete; do not tag phase-2.** The practice phase case passes on the composed core at `79ff33f758ccc62bf60892ffc74470b273789b4a`; criteria remain pending globally, and the Core tests, API contract tests and QA harness tests CI jobs need the proposed workflow change.
 
-## Phase case at 16f9c870cdeeba190fb6dc72f175edbaa467f959 (exit 0)
+## Phase case at 79ff33f758ccc62bf60892ffc74470b273789b4a (exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |

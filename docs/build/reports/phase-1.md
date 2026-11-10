@@ -1,15 +1,15 @@
 # Phase 1 report: foundation, identity, settings and audit
 
-Status: **not complete; do not tag phase-1.** The assigned integration behavior passes on the composed core at `16f9c870cdeeba190fb6dc72f175edbaa467f959`, but criteria remain pending globally and three named CI jobs need a workflow change (see the integrate-practice PR, "Proposed CI change").
+Status: **not complete; do not tag phase-1.** The assigned integration behavior passes on the composed core at `79ff33f758ccc62bf60892ffc74470b273789b4a`, but criteria remain pending globally and three named CI jobs need a workflow change (see the integrate-practice PR, "Proposed CI change").
 
 Inputs: contracts, platform, api, qa (bootstrap wave), identity (#21) and practice (#20), merged on main at `a7d0526`. Integration branch: `claude/togavsu-integrate-practice-ee9793df`.
 
-## Phase cases at 16f9c870cdeeba190fb6dc72f175edbaa467f959 (all exit 0)
+## Phase cases at 79ff33f758ccc62bf60892ffc74470b273789b4a (all exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
 | foundation-first-run | AC-001 | `sh scripts/ci/test-compose-first-run.sh` |
-| identity-access | AC-003, AC-004, AC-018, AC-024 | `go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart\|TestFirstRunGate\|TestBrowserSetupAndSignIn\|TestAC003WallHidesMatter\|TestAC024HistoryRedactsAttorneyOnly\|TestAC024AppendOnlyRefusesMutation\|TestApplicationRoleCannotChangeAuditRows)$' ./internal/core/ ./internal/practice/ ./internal/audit/` |
+| identity-access | AC-003, AC-004, AC-018, AC-024 | `go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart\|TestFirstRunGate\|TestBrowserSetupAndSignIn\|TestAC003WallHidesMatter\|TestAC024HistoryRedactsAttorneyOnly\|TestAC024AppendOnlyRefusesMutation\|TestApplicationRoleCannotChangeAuditRows\|TestServiceMutationIsOneTransaction\|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/` |
 | api-mcp-practice | AC-002 | `sh scripts/ci/test-api.sh` |
 | settings-audit | AC-029, AC-030, AC-035 | `go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings\|TestFreshInstallSchemaAndSeed\|TestPRDDefaults\|TestModuleClean\|TestAC030Fixtures\|TestScanSource\|TestRegistrySetResetAndReload\|TestRegistryAtomicAudit\|TestSeedAndSetup\|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/` |
 
