@@ -1,0 +1,26 @@
+{{template "head" .}}
+{{if .CanDeposit}}
+<section class="card">
+<h2>Reconcile a statement</h2>
+<p class="hint">Enter the bank statement balance. Togavsu shows the ledger total, the sum of client balances and the difference, and keeps the result.</p>
+<form method="post" action="/trust/reconciliation" class="grid">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Account <select name="trust_account_id" required>{{range .Accounts}}<option value="{{.ID}}">{{.Name}} ****{{.LastFour}}</option>{{end}}</select></label>
+  <label>Statement date <input type="date" name="statement_on" required value="{{.Today}}"></label>
+  <label>Statement balance <input name="statement_balance" inputmode="decimal" required placeholder="0.00"></label>
+  <button type="submit">Reconcile</button>
+</form>
+</section>
+{{end}}
+<h2>History</h2>
+<p><a href="/api/v1/reports/reconciliations?format=csv">Download CSV</a></p>
+<table>
+<thead><tr><th>Statement date</th><th>Account</th><th class="num">Statement</th><th class="num">Ledger total</th><th class="num">Client balances</th><th class="num">Difference</th></tr></thead>
+<tbody>
+{{range .Recons}}
+<tr><td>{{.StatementOn}}</td><td>{{label $.Labels .TrustAccountID}}</td><td class="num">{{money .StatementBalanceCents}}</td><td class="num">{{money .LedgerTotalCents}}</td>
+<td class="num">{{money .ClientBalancesSumCents}}</td><td class="num {{if ne .StatementDifferenceCents 0}}debit{{end}}">{{money .StatementDifferenceCents}}</td></tr>
+{{else}}<tr><td colspan="6">No reconciliations yet.</td></tr>{{end}}
+</tbody>
+</table>
+{{template "foot" .}}
