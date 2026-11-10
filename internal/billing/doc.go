@@ -25,7 +25,7 @@ package billing
 // Pending lists what this package does not yet deliver. Reports and the PR body repeat it.
 var Pending = []string{
 	"trust: TrustLink adapts the merged trust service and is tested against it on Postgres; until core wires Deps.Trust, trust deposits, Apply trust, Apply flat fee and trust-linked reversals return conflict",
-	"flat fee from the trust page: trust's own Apply flat fee shares the application record with billing, so the fee is never taken twice, but it writes no billing invoice or payment; a fee part-applied there is finished from the trust page",
+	"flat fee from the trust page: trust's own Apply flat fee shares the application record with billing and is credited to an open fee invoice through TrustEvents; until core sets trust.Deps.Events to a bound billing.TrustEvents, the credit waits for the next billing write on the invoice or Resync, and a trust-page apply with no fee invoice creates none",
 	"system mail: no SMTP Mailer exists in core yet; deliver=email returns conflict until one is wired. Mail is sent after the commit, with no outbox",
 	"core wiring: migration 300, the handler mount, web embed and the /billing sign-in redirect are lead-owned",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",

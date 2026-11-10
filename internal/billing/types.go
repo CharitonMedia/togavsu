@@ -187,6 +187,9 @@ type Payment struct {
 	ReversalEntry  domain.ID  `json:"reversal_entry_id,omitempty"`
 	// MatterFee marks the trust transfer Apply flat fee posted for the matter's own fee.
 	MatterFee bool `json:"matter_fee,omitempty"`
+	// TrustSynced marks a fee payment that credits a flat-fee application made on the trust
+	// page. It has no trust entry of its own and is reversed only from the trust page.
+	TrustSynced bool `json:"trust_synced,omitempty"`
 }
 
 // FeeItem is a catalog flat-fee item.

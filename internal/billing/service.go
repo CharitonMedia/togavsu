@@ -101,6 +101,8 @@ type Trust interface {
 	Post(ctx context.Context, p domain.Principal, in TrustPosting) (TrustPosted, error)
 	ApplyFlatFee(ctx context.Context, p domain.Principal, in FlatFeeApplication) (TrustPosted, error)
 	Reverse(ctx context.Context, p domain.Principal, entryID domain.ID, reason string) (TrustPosted, error)
+	// Reversal returns the entry that reverses entryID on the matter, or zero when none does.
+	Reversal(ctx context.Context, matterID, entryID domain.ID) (domain.ID, error)
 	RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (TrustPosted, error)
 	Committed(ctx context.Context, posted ...TrustPosted)
 }
@@ -365,6 +367,21 @@ type txn struct {
 // write serializes billing writes, runs fn in one store transaction, appends the audit rows
 // and events fn queued, and mirrors changed invoices to practice after the commit.
 func (s *Service) write(ctx context.Context, p domain.Principal, fn func(t *txn) error) error {
+	t, err := s.commit(ctx, p, fn)
+	if err != nil {
+		return err
+	}
+	// Trust's after-commit effects run outside billing's lock: they publish trust events, and
+	// TrustEvents answers those with a billing write of its own (SyncFlatFee).
+	if len(t.trust) > 0 && s.d.Trust != nil {
+		s.d.Trust.Committed(context.WithoutCancel(ctx), t.trust...)
+	}
+	return nil
+}
+
+// commit runs fn in one billing transaction under the write lock and mirrors the invoices
+// it changed.
+func (s *Service) commit(ctx context.Context, p domain.Principal, fn func(t *txn) error) (*txn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	t := &txn{s: s, p: p, mirror: map[domain.ID]Invoice{}}
@@ -390,14 +407,10 @@ func (s *Service) write(ctx context.Context, p domain.Principal, fn func(t *txn)
 		})
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	after := context.WithoutCancel(ctx)
-	if len(t.trust) > 0 && s.d.Trust != nil {
-		s.d.Trust.Committed(after, t.trust...)
-	}
-	s.mirrorInvoices(after, t.mirror)
-	return nil
+	s.mirrorInvoices(context.WithoutCancel(ctx), t.mirror)
+	return t, nil
 }
 
 // trusted keeps a trust result whose after-commit effects wait for billing's commit.
@@ -425,7 +438,16 @@ func (s *Service) mirrorInvoices(ctx context.Context, rows map[domain.ID]Invoice
 }
 
 // Resync mirrors every invoice to practice. The core calls it once at start.
+// It first brings flat matters' fee invoices in line with trust's flat-fee record, so a
+// trust-page application whose commit event was lost is credited.
 func (s *Service) Resync(ctx context.Context) error {
+	for _, m := range s.d.Practice.Matters() {
+		if m.BillingType == billingFlat {
+			if err := s.SyncFlatFee(ctx, m.ID); err != nil {
+				return err
+			}
+		}
+	}
 	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
 	if err != nil {
 		return err

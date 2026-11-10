@@ -866,15 +866,22 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 	if err != nil {
 		return Invoice{}, err
 	}
-	if msg == nil {
-		return out, nil
-	}
-	if mailErr := s.d.Mail.Send(ctx, *msg); mailErr != nil {
-		mailErr = fmt.Errorf("billing: system mail: %w", mailErr)
-		if err := s.undoSend(ctx, p, before, out, mailErr); err != nil {
-			return Invoice{}, errors.Join(mailErr, err)
+	if msg != nil {
+		if mailErr := s.d.Mail.Send(ctx, *msg); mailErr != nil {
+			mailErr = fmt.Errorf("billing: system mail: %w", mailErr)
+			if err := s.undoSend(ctx, p, before, out, mailErr); err != nil {
+				return Invoice{}, errors.Join(mailErr, err)
+			}
+			return Invoice{}, mailErr
 		}
-		return Invoice{}, mailErr
+	}
+	// A flat fee applied on the trust page before the invoice went out is credited now, so
+	// the invoice does not ask the client for it or stay open for Apply trust.
+	if out.HasFlatFee() {
+		s.syncAfter(ctx, out.MatterID)
+		if cur, err := s.invoice(ctx, out.ID); err == nil {
+			out = cur
+		}
 	}
 	return out, nil
 }

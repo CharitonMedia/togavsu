@@ -152,6 +152,15 @@ func (f *fakeTrust) Reverse(ctx context.Context, p domain.Principal, entry domai
 	return TrustPosted{EntryID: id, Pending: true}, nil
 }
 
+func (f *fakeTrust) Reversal(ctx context.Context, matter, entry domain.ID) (domain.ID, error) {
+	for _, e := range f.entries(ctx) {
+		if e.Reverses == entry && e.Matter == matter {
+			return e.ID, nil
+		}
+	}
+	return "", nil
+}
+
 func (f *fakeTrust) RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (TrustPosted, error) {
 	id, _ := domain.NewID()
 	row := map[string]any{"id": id, "matter_id": in.MatterID, "client_id": in.ClientID, "amount_requested_cents": int64(in.AmountCents), "invoice_id": in.InvoiceID, "message": in.Message, "status": "active"}

@@ -237,7 +237,40 @@ func (s *Service) complete(t *txn, row *Payment) error {
 	if row.InvoiceID.IsZero() {
 		return nil
 	}
+	if err := s.outsideCap(t, row.InvoiceID, row.AmountCents); err != nil {
+		return err
+	}
 	return s.applyToInvoice(t, row.InvoiceID, row.AmountCents)
+}
+
+// outsideCap refuses an outside payment that would settle a flat matter's fee: that fee is
+// collected from trust through the trust service's flat-fee record (Apply flat fee, or Apply
+// trust on the invoice), so trust's page cannot take it a second time. The payment may cover
+// the invoice's other lines.
+func (s *Service) outsideCap(t *txn, id domain.ID, amount domain.Cents) error {
+	inv, err := s.invoice(t.ctx, id)
+	if err != nil {
+		return err
+	}
+	if inv, err = s.syncInvoiceFee(t, inv); err != nil {
+		return err
+	}
+	ok, err := s.trustSettled(t.ctx, inv)
+	if err != nil || !ok {
+		return err
+	}
+	owed, err := s.feeOwed(t.ctx, inv)
+	if err != nil {
+		return err
+	}
+	if !positive(int64(owed)) {
+		return nil
+	}
+	if room := inv.BalanceDueCents - owed; amount > room {
+		return domain.Invalid("amount_cents", "the flat fee "+money(owed)+" on invoice "+inv.Number+
+			" is collected from trust (Apply flat fee or Apply trust); an outside payment may cover only the other "+money(max(room, 0)))
+	}
+	return nil
 }
 
 // applyToInvoice adds amount (negative for a reversal) to the invoice's amount paid.
@@ -360,6 +393,9 @@ func (s *Service) ReversePayment(ctx context.Context, p domain.Principal, id dom
 		if row.Status != PayCompleted {
 			return domain.Conflict("only a completed payment can be reversed")
 		}
+		if row.TrustSynced {
+			return domain.Conflict("this payment records a flat fee applied on the trust page; reverse that application on the trust page")
+		}
 		before := row
 		if !row.TrustEntryID.IsZero() {
 			posted, err := s.d.Trust.Reverse(t.ctx, p, row.TrustEntryID, reason)
@@ -389,6 +425,10 @@ func (s *Service) ReversePayment(ctx context.Context, p domain.Principal, id dom
 
 // ApplyTrust moves an explicit amount from a client's trust funds to operating and applies it
 // to an open invoice: one trust transfer entry and one internal-transfer payment, together.
+// On a flat matter's fee invoice the amount settles the unpaid fee first, through the trust
+// service's ApplyFlatFee, so trust's own Apply flat fee sees it and refuses a second apply;
+// any rest is a second transfer and payment for the invoice's other lines. The fee payment
+// is returned when there is one.
 func (s *Service) ApplyTrust(ctx context.Context, p domain.Principal, invoiceID, client, account domain.ID, amount domain.Cents) (Payment, TrustPosted, error) {
 	if err := amountField("amount_cents", amount); err != nil {
 		return Payment{}, TrustPosted{}, err
@@ -418,7 +458,37 @@ func (s *Service) ApplyTrust(ctx context.Context, p domain.Principal, invoiceID,
 		if !s.isClient(inv.MatterID, client) {
 			return domain.Invalid("client_id", "must be a client on the matter")
 		}
-		out, posted, err = s.transfer(t, inv, client, account, amount, "Applied to invoice "+inv.Number, false)
+		if inv, err = s.syncInvoiceFee(t, inv); err != nil {
+			return err
+		}
+		if !inv.Open() {
+			return domain.Conflict("invoice " + inv.Number + " has no balance: its flat fee was applied on the trust page")
+		}
+		if amount > inv.BalanceDueCents {
+			return domain.Invalid("amount_cents", "is more than the balance due "+money(inv.BalanceDueCents))
+		}
+		rest := amount
+		if ok, err := s.trustSettled(t.ctx, inv); err != nil {
+			return err
+		} else if ok {
+			owed, err := s.feeOwed(t.ctx, inv)
+			if err != nil {
+				return err
+			}
+			if fee := min(amount, owed); positive(int64(fee)) {
+				if out, posted, err = s.applyFlatFee(t, inv, client, account, fee, "Flat fee applied to invoice "+inv.Number); err != nil {
+					return err
+				}
+				rest -= fee
+			}
+		}
+		if !positive(int64(rest)) {
+			return nil
+		}
+		other, otherPosted, err := s.transfer(t, inv, client, account, rest, "Applied to invoice "+inv.Number, false)
+		if out.ID.IsZero() {
+			out, posted = other, otherPosted
+		}
 		return err
 	})
 	return out, posted, err

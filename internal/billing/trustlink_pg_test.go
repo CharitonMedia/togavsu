@@ -56,6 +56,7 @@ type realTrust struct {
 	pool *sql.DB
 	tr   *trust.Service
 	rec  *trustRec
+	hook *TrustEvents
 }
 
 // realTrustFx runs billing on Postgres with the merged trust package behind TrustLink, both
@@ -87,7 +88,8 @@ func realTrustFx(t *testing.T) *realTrust {
 		}
 	}
 	rec := &trustRec{}
-	tr, err := trust.New(trust.Deps{DB: pool, Audit: aud, Settings: reg, Practice: f.pm, Users: ids.Users(), Walls: f.ps.Policy.Walls, Events: rec,
+	hook := &TrustEvents{Next: rec}
+	tr, err := trust.New(trust.Deps{DB: pool, Audit: aud, Settings: reg, Practice: f.pm, Users: ids.Users(), Walls: f.ps.Policy.Walls, Events: hook,
 		BalanceSink: func(_ context.Context, row domain.TrustBalance) error {
 			rec.mu.Lock()
 			defer rec.mu.Unlock()
@@ -108,7 +110,8 @@ func realTrustFx(t *testing.T) *realTrust {
 	}
 	f.link = link
 	f.newService(audit.NewPostgres(pool))
-	return &realTrust{fx: f, pool: pool, tr: tr, rec: rec}
+	hook.Bind(f.svc)
+	return &realTrust{fx: f, pool: pool, tr: tr, rec: rec, hook: hook}
 }
 
 func (r *realTrust) ledgerRows() int {

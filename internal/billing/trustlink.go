@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sync"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -115,6 +116,77 @@ func (l *TrustLink) RequestReplenishment(ctx context.Context, p domain.Principal
 	}
 	ev := trust.PostResult{Events: []trust.Event{{Name: "trust.replenishment_requested", RecordID: r.ID, MatterID: r.MatterID}}}
 	return TrustPosted{EntryID: r.ID, Result: r, Pending: joined, Effects: ev}, nil
+}
+
+// Reversal finds the ledger entry that reverses entry on the matter, reading the matter's
+// ledger as the system.
+func (l *TrustLink) Reversal(ctx context.Context, matter, entry domain.ID) (domain.ID, error) {
+	if entry.IsZero() {
+		return "", nil
+	}
+	f := trust.EntryFilter{MatterID: matter}
+	for {
+		page, err := l.Svc.Entries(ctx, domain.SystemPrincipal(), f)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range page.Items {
+			if e.ReversesEntryID != nil && *e.ReversesEntryID == entry {
+				return e.ID, nil
+			}
+		}
+		if page.NextCursor == "" {
+			return "", nil
+		}
+		f.Cursor = page.NextCursor
+	}
+}
+
+// TrustEvents is the trust service's commit-event publisher (trust.Deps.Events). On each
+// committed ledger entry it brings billing's fee invoice in line with trust's flat-fee
+// record (Service.SyncFlatFee), so an Apply flat fee or reversal made on the trust page
+// credits or reopens billing's fee invoice, then it hands the events to Next. Bind the
+// billing service once it is built; trust is built first because billing needs it.
+// ponytail: ceiling: trust delivers these events in process after its commit, so a crash
+// between trust's commit and this sync leaves the fee invoice open until the next billing
+// write that settles it (ApplyTrust, an outside payment, Apply flat fee or Send, each of which
+// syncs first) or Resync at start. Upgrade path: billing consumes trust's durable events
+// outbox. Trigger: trust's in-process publish ponytail is upgraded to an outbox.
+type TrustEvents struct {
+	Next trust.Publisher
+	mu   sync.RWMutex
+	svc  *Service
+}
+
+// Bind sets the billing service the events sync.
+func (h *TrustEvents) Bind(svc *Service) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.svc = svc
+}
+
+// Publish syncs every flat matter with a committed ledger entry, then forwards the events.
+func (h *TrustEvents) Publish(ctx context.Context, events []trust.Event) error {
+	h.mu.RLock()
+	svc := h.svc
+	h.mu.RUnlock()
+	var errs []error
+	if svc != nil {
+		seen := map[domain.ID]bool{}
+		for _, e := range events {
+			if e.Name != "trust.entry_posted" || e.MatterID.IsZero() || seen[e.MatterID] {
+				continue
+			}
+			seen[e.MatterID] = true
+			if err := svc.SyncFlatFee(ctx, e.MatterID); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if h.Next != nil {
+		errs = append(errs, h.Next.Publish(ctx, events))
+	}
+	return errors.Join(errs...)
 }
 
 // Committed runs the after-commit effects of results that joined billing's transaction.
