@@ -219,6 +219,30 @@ func failAudit(t *testing.T, pool *sql.DB) {
 	}
 }
 
+// TestFailedReloadStopsServing: when a commit fails and Postgres cannot be reached to
+// reload, the core stops rather than keep serving a write that was never stored.
+func TestFailedReloadStopsServing(t *testing.T) {
+	ctx := context.Background()
+	pool := requirePG(t)
+	store, err := OpenDurable(ctx, pool, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stopped error
+	prev := stopUnstored
+	stopUnstored = func(err error) { stopped = err }
+	t.Cleanup(func() { stopUnstored = prev })
+	_ = pool.Close()
+	now := time.Date(2026, 6, 15, 15, 0, 0, 0, time.UTC)
+	contact := domain.Contact{Meta: domain.Meta{ID: tid(60), CreatedAt: now, UpdatedAt: now, CreatedBy: tid(1)}, Kind: "person", FullName: "Never Stored"}
+	if err := store.InsertContact(ctx, contact); err == nil {
+		t.Fatal("insert succeeded with Postgres closed")
+	}
+	if stopped == nil || !strings.Contains(stopped.Error(), "cannot be reloaded") {
+		t.Fatalf("core kept serving after a failed reload: %v", stopped)
+	}
+}
+
 // TestServiceMutationIsOneTransaction: when the audit append of a service mutation fails,
 // none of that mutation's rows persist, in Memory, in Postgres or after a restart. Before
 // the unit of work, UpdateMatter and CloseMatter committed the matter row, the close record
