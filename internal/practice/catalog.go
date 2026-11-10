@@ -33,7 +33,9 @@ func (s *Service) GetArea(ctx context.Context, p domain.Principal, id domain.ID)
 	return row, nil
 }
 
-func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.ID, name string, stages []string, active *bool) (domain.PracticeArea, error) {
+func (s *Service) UpdateArea(ctx context.Context, p domain.Principal, id domain.ID, name string, stages []string, active *bool) (_ domain.PracticeArea, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.PracticeArea{}, err
 	}
@@ -87,7 +89,9 @@ func (s *Service) GetCounty(ctx context.Context, p domain.Principal, id domain.I
 	return row, nil
 }
 
-func (s *Service) UpdateCounty(ctx context.Context, p domain.Principal, id domain.ID, name, state string) (domain.County, error) {
+func (s *Service) UpdateCounty(ctx context.Context, p domain.Principal, id domain.ID, name, state string) (_ domain.County, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.County{}, err
 	}
@@ -133,7 +137,9 @@ func (s *Service) GetReferral(ctx context.Context, p domain.Principal, id domain
 	return row, nil
 }
 
-func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id domain.ID, name, kind string, active *bool) (domain.ReferralSource, error) {
+func (s *Service) UpdateReferral(ctx context.Context, p domain.Principal, id domain.ID, name, kind string, active *bool) (_ domain.ReferralSource, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.ReferralSource{}, err
 	}
@@ -230,7 +236,9 @@ func (s *Service) GetConflict(ctx context.Context, p domain.Principal, id domain
 	return s.redactConflict(ctx, p, row), nil
 }
 
-func (s *Service) UpdateConflict(ctx context.Context, p domain.Principal, id domain.ID, in ConflictInput) (domain.ConflictRecord, error) {
+func (s *Service) UpdateConflict(ctx context.Context, p domain.Principal, id domain.ID, in ConflictInput) (_ domain.ConflictRecord, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Conflict(ctx, id)
 	if err != nil {
 		return domain.ConflictRecord{}, missing(err, "conflict record")
@@ -346,7 +354,9 @@ func (s *Service) GetField(ctx context.Context, p domain.Principal, id domain.ID
 	return row, nil
 }
 
-func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain.ID, label string, required *bool, areas []domain.ID) (FieldDef, error) {
+func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain.ID, label string, required *bool, areas []domain.ID) (_ FieldDef, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return FieldDef{}, err
 	}
@@ -378,7 +388,9 @@ func (s *Service) UpdateField(ctx context.Context, p domain.Principal, id domain
 	return row, nil
 }
 
-func (s *Service) ArchiveNote(ctx context.Context, p domain.Principal, id domain.ID) (domain.Note, error) {
+func (s *Service) ArchiveNote(ctx context.Context, p domain.Principal, id domain.ID) (_ domain.Note, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Note(ctx, id)
 	if err != nil {
 		return domain.Note{}, missing(err, "note")
@@ -392,7 +404,9 @@ func (s *Service) ArchiveNote(ctx context.Context, p domain.Principal, id domain
 	})
 }
 
-func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain.ID, e164, from, label string) (domain.ContactPhone, error) {
+func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain.ID, e164, from, label string) (_ domain.ContactPhone, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	current, err := s.db.Phone(ctx, id)
 	if err != nil {
 		return domain.ContactPhone{}, missing(err, "phone")
@@ -424,7 +438,9 @@ func (s *Service) RevisePhone(ctx context.Context, p domain.Principal, id domain
 	return current, nil
 }
 
-func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain.ID, email, label string) (domain.ContactEmail, error) {
+func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain.ID, email, label string) (_ domain.ContactEmail, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	row, err := s.GetEmail(ctx, p, id)
 	if err != nil {
 		return domain.ContactEmail{}, err
@@ -455,7 +471,9 @@ func (s *Service) ReviseEmail(ctx context.Context, p domain.Principal, id domain
 	return row, nil
 }
 
-func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id domain.ID, line1, label string) (domain.ContactAddress, error) {
+func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id domain.ID, line1, label string) (_ domain.ContactAddress, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	row, err := s.GetAddress(ctx, p, id)
 	if err != nil {
 		return domain.ContactAddress{}, err
@@ -483,7 +501,9 @@ func (s *Service) ReviseAddress(ctx context.Context, p domain.Principal, id doma
 	return row, nil
 }
 
-func (s *Service) ReviseTag(ctx context.Context, p domain.Principal, id domain.ID, tag string) (domain.ContactTag, error) {
+func (s *Service) ReviseTag(ctx context.Context, p domain.Principal, id domain.ID, tag string) (_ domain.ContactTag, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	row, err := s.GetTag(ctx, p, id)
 	if err != nil {
 		return domain.ContactTag{}, err

@@ -9,7 +9,9 @@ import (
 )
 
 // CreateField defines a custom field. Admin only. The schema does not change.
-func (s *Service) CreateField(ctx context.Context, p domain.Principal, def FieldDef) (FieldDef, error) {
+func (s *Service) CreateField(ctx context.Context, p domain.Principal, def FieldDef) (_ FieldDef, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return FieldDef{}, err
 	}
@@ -43,7 +45,9 @@ func (s *Service) CreateField(ctx context.Context, p domain.Principal, def Field
 }
 
 // RetireField hides a field and keeps its values.
-func (s *Service) RetireField(ctx context.Context, p domain.Principal, id domain.ID) (FieldDef, error) {
+func (s *Service) RetireField(ctx context.Context, p domain.Principal, id domain.ID) (_ FieldDef, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return FieldDef{}, err
 	}
@@ -66,7 +70,9 @@ func (s *Service) RetireField(ctx context.Context, p domain.Principal, id domain
 }
 
 // SetCustomFields saves values for a matter or contact. A field limited to other practice areas is rejected.
-func (s *Service) SetCustomFields(ctx context.Context, p domain.Principal, recordType string, recordID, area domain.ID, values []CustomInput) error {
+func (s *Service) SetCustomFields(ctx context.Context, p domain.Principal, recordType string, recordID, area domain.ID, values []CustomInput) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateRecord(ctx, p, recordType, recordID, domain.ActionWrite); err != nil {
 		return err
 	}

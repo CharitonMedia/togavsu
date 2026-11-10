@@ -29,7 +29,9 @@ type MatterPatch struct {
 }
 
 // PatchMatter changes the fields that were sent and leaves the rest.
-func (s *Service) PatchMatter(ctx context.Context, p domain.Principal, id domain.ID, patch MatterPatch) (domain.Matter, error) {
+func (s *Service) PatchMatter(ctx context.Context, p domain.Principal, id domain.ID, patch MatterPatch) (_ domain.Matter, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Matter(ctx, id)
 	if err != nil {
 		return domain.Matter{}, missing(err, "matter")
@@ -116,7 +118,9 @@ type ContactPatch struct {
 }
 
 // PatchContact changes the fields that were sent and leaves the rest.
-func (s *Service) PatchContact(ctx context.Context, p domain.Principal, id domain.ID, patch ContactPatch) (domain.Contact, error) {
+func (s *Service) PatchContact(ctx context.Context, p domain.Principal, id domain.ID, patch ContactPatch) (_ domain.Contact, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Contact(ctx, id)
 	if err != nil {
 		return domain.Contact{}, missing(err, "contact")
@@ -194,7 +198,9 @@ type NotePatch struct {
 }
 
 // PatchNote changes the fields that were sent and leaves the rest.
-func (s *Service) PatchNote(ctx context.Context, p domain.Principal, id domain.ID, patch NotePatch) (domain.Note, error) {
+func (s *Service) PatchNote(ctx context.Context, p domain.Principal, id domain.ID, patch NotePatch) (_ domain.Note, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Note(ctx, id)
 	if err != nil {
 		return domain.Note{}, missing(err, "note")
@@ -228,7 +234,9 @@ type PartyPatch struct {
 }
 
 // PatchParty changes the fields that were sent and leaves the rest.
-func (s *Service) PatchParty(ctx context.Context, p domain.Principal, id domain.ID, patch PartyPatch) (domain.MatterParty, error) {
+func (s *Service) PatchParty(ctx context.Context, p domain.Principal, id domain.ID, patch PartyPatch) (_ domain.MatterParty, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Party(ctx, id)
 	if err != nil {
 		return domain.MatterParty{}, missing(err, "party")

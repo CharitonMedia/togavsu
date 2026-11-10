@@ -8,7 +8,9 @@ import (
 )
 
 // AddParty links a contact to a matter. The matter shows an unchecked-conflicts badge until a check includes the party.
-func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domain.ID, in PartyInput) (domain.MatterParty, error) {
+func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domain.ID, in PartyInput) (_ domain.MatterParty, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
 		return domain.MatterParty{}, err
 	}
@@ -46,7 +48,9 @@ func (s *Service) AddParty(ctx context.Context, p domain.Principal, matter domai
 }
 
 // UpdateParty edits a party.
-func (s *Service) UpdateParty(ctx context.Context, p domain.Principal, id domain.ID, in PartyInput) (domain.MatterParty, error) {
+func (s *Service) UpdateParty(ctx context.Context, p domain.Principal, id domain.ID, in PartyInput) (_ domain.MatterParty, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	prev, err := s.db.Party(ctx, id)
 	if err != nil {
 		return domain.MatterParty{}, missing(err, "party")
@@ -141,7 +145,9 @@ func (s *Service) unchecked(matter domain.ID) bool {
 }
 
 // CreateArea stores a practice area. Admin only.
-func (s *Service) CreateArea(ctx context.Context, p domain.Principal, name, matterTypes string, stages []string) (domain.PracticeArea, error) {
+func (s *Service) CreateArea(ctx context.Context, p domain.Principal, name, matterTypes string, stages []string) (_ domain.PracticeArea, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.PracticeArea{}, err
 	}
@@ -171,7 +177,9 @@ func (s *Service) CreateArea(ctx context.Context, p domain.Principal, name, matt
 }
 
 // CreateCounty stores a county.
-func (s *Service) CreateCounty(ctx context.Context, p domain.Principal, name, state string) (domain.County, error) {
+func (s *Service) CreateCounty(ctx context.Context, p domain.Principal, name, state string) (_ domain.County, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.County{}, err
 	}
@@ -196,7 +204,9 @@ func (s *Service) CreateCounty(ctx context.Context, p domain.Principal, name, st
 }
 
 // CreateReferral stores a referral source.
-func (s *Service) CreateReferral(ctx context.Context, p domain.Principal, name, kind string, contact domain.ID) (domain.ReferralSource, error) {
+func (s *Service) CreateReferral(ctx context.Context, p domain.Principal, name, kind string, contact domain.ID) (_ domain.ReferralSource, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResSettings, Action: domain.ActionWrite}); err != nil {
 		return domain.ReferralSource{}, err
 	}

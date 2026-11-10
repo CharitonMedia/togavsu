@@ -443,3 +443,18 @@ func fingerprint(v any) string {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])
 }
+
+// unitStore is a store that can hold one service mutation in a single transaction.
+type unitStore interface {
+	Begin(context.Context) (context.Context, func(error) error)
+}
+
+// unit starts the store transaction for one mutation. Every exported Service method that
+// writes calls it first and returns through done, so its rows and audit entries commit
+// together or not at all, and its checks cannot interleave with another mutation.
+func (s *Service) unit(ctx context.Context) (context.Context, func(error) error) {
+	if u, ok := s.db.(unitStore); ok {
+		return u.Begin(ctx)
+	}
+	return ctx, func(err error) error { return err }
+}

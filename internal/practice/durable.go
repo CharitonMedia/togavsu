@@ -13,15 +13,19 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// Durable is the Postgres practice store. Reads come from the embedded Memory; every
-// mutation commits to practice_records (migration 200) in one transaction, and audit rows
-// are also appended to the shared append-only audit_log through the writer role.
-// A failed commit reloads Memory from Postgres, so the process never serves a write that
-// was not stored.
+// Durable is the Postgres practice store. Reads come from the embedded Memory. A service
+// mutation runs as one unit (Begin): its practice_records rows (migration 200) and its rows
+// in the shared append-only audit_log, written through the writer role, commit in one
+// transaction when the service call returns without error. Units are serialized, so a
+// check-then-write such as closing an open matter cannot interleave with another write.
+// A failed call or commit reloads Memory from Postgres, so the process never keeps a write
+// that was not stored.
 // ponytail: ceiling: one core process per database and a full load at start; the section 5
-// relational tables are not yet the practice source of truth. Upgrade path: typed
-// repositories over contacts, matters, matter_parties and notes with SQL filters.
-// Trigger: a second core replica, or a firm above 100k practice rows.
+// relational tables are not yet the practice source of truth. Concurrent readers can see a
+// unit's Memory changes before it commits, and briefly until the reload if the commit fails.
+// Upgrade path: typed repositories over contacts, matters, matter_parties and notes with SQL
+// filters, read inside the same transaction. Trigger: a second core replica, a firm above
+// 100k practice rows, or a reader that must never see an uncommitted write.
 type Durable struct {
 	*Memory
 	db     *sql.DB
@@ -213,16 +217,78 @@ func (m *Memory) restore(kind, id string, raw []byte) error {
 	return nil
 }
 
-// write runs op on Memory, then commits recs (computed after op) and any audit rows.
-func (d *Durable) write(ctx context.Context, op func() error, recs func() []record, audits []domain.AuditEntry) error {
+// unit collects the rows of one service mutation until it commits.
+type unit struct {
+	d      *Durable
+	recs   []record
+	audits []domain.AuditEntry
+}
+
+type unitKey struct{}
+
+func (d *Durable) unitOf(ctx context.Context) *unit {
+	u, _ := ctx.Value(unitKey{}).(*unit)
+	if u == nil || u.d != d {
+		return nil
+	}
+	return u
+}
+
+// Begin starts a unit of work for one service mutation. Store writes made with the
+// returned context are applied to Memory and buffered; done(err) commits them all in one
+// transaction when err is nil, and otherwise discards them by reloading Memory. done
+// returns the commit error, or err. A nested Begin joins the outer unit.
+func (d *Durable) Begin(ctx context.Context) (context.Context, func(error) error) {
+	if d.unitOf(ctx) != nil {
+		return ctx, func(err error) error { return err }
+	}
 	d.wmu.Lock()
-	defer d.wmu.Unlock()
+	u := &unit{d: d}
+	return context.WithValue(ctx, unitKey{}, u), func(err error) error {
+		defer d.wmu.Unlock()
+		if err != nil {
+			if len(u.recs) > 0 || len(u.audits) > 0 {
+				d.reload(ctx)
+			}
+			return err
+		}
+		return d.commit(ctx, u.recs, u.audits)
+	}
+}
+
+func (d *Durable) reload(ctx context.Context) {
+	if err := d.load(context.WithoutCancel(ctx)); err != nil {
+		log.Printf("practice: reload after failed write: %v", err)
+	}
+}
+
+// write runs op on Memory, then commits recs (computed after op) and any audit rows. Inside
+// a unit the rows are buffered for the unit's commit instead.
+func (d *Durable) write(ctx context.Context, op func() error, recs func() []record, audits []domain.AuditEntry) error {
+	u := d.unitOf(ctx)
+	if u == nil {
+		d.wmu.Lock()
+		defer d.wmu.Unlock()
+	}
 	if err := op(); err != nil {
 		return err
 	}
 	var list []record
 	if recs != nil {
 		list = recs()
+	}
+	if u != nil {
+		u.recs = append(u.recs, list...)
+		u.audits = append(u.audits, audits...)
+		return nil
+	}
+	return d.commit(ctx, list, audits)
+}
+
+// commit stores list and appends audits to audit_log in one transaction. The caller holds wmu.
+func (d *Durable) commit(ctx context.Context, list []record, audits []domain.AuditEntry) error {
+	if len(list) == 0 && len(audits) == 0 {
+		return nil
 	}
 	err := audit.WithTx(ctx, d.db, func(ctx context.Context) error {
 		tx := audit.Tx(ctx, d.db)
@@ -251,9 +317,7 @@ func (d *Durable) write(ctx context.Context, op func() error, recs func() []reco
 		return nil
 	})
 	if err != nil {
-		if rerr := d.load(context.WithoutCancel(ctx)); rerr != nil {
-			log.Printf("practice: reload after failed commit: %v", rerr)
-		}
+		d.reload(ctx)
 		return err
 	}
 	return nil
