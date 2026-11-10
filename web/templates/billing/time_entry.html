@@ -1,0 +1,28 @@
+{{template "head" .}}
+{{with .Entry}}
+<p class="meta"><a href="/practice/matters/{{.MatterID}}">{{index $.MatterNames .MatterID}}</a> · {{.WorkedOn}} · {{hours .}} h at {{money .RateCents}} = {{amount .}}
+{{if .NeedsReview}} · <span class="tag">timer draft: needs review</span>{{end}}{{if not .Billable}} · <span class="tag">non-billable</span>{{end}}
+· {{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">billed</a>{{else}}unbilled{{end}}</p>
+<p>{{.Description}}</p>
+<p class="muted">Activity: {{index $.TypeNames .ActivityType}} · Source: {{.Source}}</p>
+{{end}}
+{{$e := .Entry}}
+{{if and .CanWrite (not $e.InvoiceID)}}
+<section class="card" aria-labelledby="edit-h">
+<h2 id="edit-h">Edit time entry</h2>
+<form method="post" action="/billing/time/{{$e.ID}}" class="grid">
+  {{template "csrf" .CSRF}}
+  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}" {{if eq .ID $e.MatterID}}selected{{end}}>{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Date <input type="date" name="worked_on" value="{{$e.WorkedOn}}" required></label>
+  <label>Minutes <input type="number" name="minutes" min="1" value="{{$e.Minutes}}" required></label>
+  <label>Rate <input name="rate" value="{{money $e.RateCents}}" inputmode="decimal" size="9"></label>
+  <label>Activity <select name="activity_type_id" required>{{range .Activities}}<option value="{{.ID}}" {{if eq (print .ID) $e.ActivityType}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+  <label class="wide">Description <input name="description" value="{{$e.Description}}" required></label>
+  <label><input type="checkbox" name="billable" value="1" {{if $e.Billable}}checked{{end}}> Billable</label>
+  <button type="submit">Save time entry</button>
+</form>
+</section>
+{{else if $e.InvoiceID}}<p class="muted">This entry is billed. It can change only after its invoice is voided.</p>
+{{end}}
+{{template "history" .History}}
+{{template "foot" .}}

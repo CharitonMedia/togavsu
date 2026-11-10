@@ -1,0 +1,9 @@
+{{template "head" .}}
+{{if .Payments}}
+<div class="scroll"><table>
+<thead><tr><th>Received</th><th>Matter</th><th>Destination</th><th>Method</th><th>Reference</th><th>Status</th><th class="num">Amount</th><th>Invoice</th></tr></thead>
+<tbody>{{range .Payments}}<tr><td>{{.ReceivedOn}}</td><td>{{index $.MatterNames .MatterID}}</td><td>{{.Destination}}</td><td>{{.Method}}</td><td>{{.ReferenceNumber}}</td><td>{{.Status}}</td><td class="num">{{money .AmountCents}}</td>
+<td>{{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">open</a>{{end}}</td></tr>{{end}}</tbody>
+</table></div>
+{{else}}<p class="muted">No payments.</p>{{end}}
+{{template "foot" .}}

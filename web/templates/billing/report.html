@@ -1,0 +1,14 @@
+{{template "head" .}}
+<nav class="filters" aria-label="Reports">{{range .Reports}}<a href="/billing/reports/{{.}}">{{index $.ReportTitles .}}</a> {{end}}</nav>
+<form method="get" class="inline">
+  {{if eq .Report.Report "ar-aging"}}<label>As of <input type="date" name="as_of"></label>
+  {{else}}<label>From <input type="date" name="from_date"></label> <label>To <input type="date" name="to_date"></label>{{end}}
+  <button type="submit">Run</button>
+  <a href="/api/v1/reports/{{.Report.Report}}?format=csv">Export CSV</a>
+</form>
+{{$cols := shown .Report.Columns}}
+<div class="scroll"><table>
+<thead><tr>{{range $cols}}<th{{if isMoney .}} class="num"{{end}}>{{heading .}}</th>{{end}}</tr></thead>
+<tbody>{{range .Report.Rows}}{{$row := .}}<tr>{{range $cols}}{{if isMoney .}}<td class="num">{{centsCell (index $row .)}}</td>{{else}}<td class="nowrap">{{cell (index $row .)}}</td>{{end}}{{end}}</tr>{{else}}<tr><td colspan="{{len $cols}}" class="muted">No rows.</td></tr>{{end}}</tbody>
+</table></div>
+{{template "foot" .}}

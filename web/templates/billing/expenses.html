@@ -1,0 +1,50 @@
+{{template "head" .}}
+{{if .CanWrite}}
+<section class="card" aria-labelledby="exp-h">
+<h2 id="exp-h">Record expense</h2>
+<form method="post" action="/billing/expenses" class="grid">
+  {{template "csrf" .CSRF}}
+  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Date <input type="date" name="incurred_on" value="{{.Today}}" required></label>
+  <label>Amount <input name="amount" inputmode="decimal" size="9" required></label>
+  <label>Type <select name="expense_type_id" required>{{range .ExpenseTypes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+  <label>Markup % <input type="number" name="markup_percent" min="0" value="{{.Markup}}" size="4"></label>
+  <label class="wide">Description <input name="description" required></label>
+  <label><input type="checkbox" name="billable" value="1" checked> Billable</label>
+  <button type="submit">Record expense</button>
+</form>
+<p class="muted">To attach a receipt, open the expense after recording it and upload the receipt there.</p>
+</section>
+<details class="card">
+<summary>Bulk entry</summary>
+<form method="post" action="/billing/expenses/bulk">
+  {{template "csrf" .CSRF}}
+  <p class="muted">Fill as many rows as you need; blank rows are skipped. Every row saves, or none do.</p>
+  <div class="scroll"><table>
+  <thead><tr><th>Matter</th><th>Date</th><th>Amount</th><th>Type</th><th>Markup %</th><th>Description</th><th>Billable</th></tr></thead>
+  <tbody>{{range $i := rows 5}}{{$p := printf "items.%d." $i}}<tr>
+  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{range $.Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></td>
+  <td><input type="date" name="{{$p}}incurred_on" value="{{$.Today}}" aria-label="Row {{$i}} date"></td>
+  <td><input name="{{$p}}amount" inputmode="decimal" size="9" aria-label="Row {{$i}} amount"></td>
+  <td><select name="{{$p}}expense_type_id" aria-label="Row {{$i}} type">{{range $.ExpenseTypes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></td>
+  <td><input type="number" name="{{$p}}markup_percent" min="0" value="{{$.Markup}}" size="4" aria-label="Row {{$i}} markup"></td>
+  <td><input name="{{$p}}description" size="30" aria-label="Row {{$i}} description"></td>
+  <td><input type="checkbox" name="{{$p}}billable" value="1" checked aria-label="Row {{$i}} billable"></td>
+  </tr>{{end}}</tbody></table></div>
+  <button type="submit">Record all rows</button>
+</form>
+</details>
+{{end}}
+<section aria-labelledby="list-h">
+<h2 id="list-h">Recent expenses</h2>
+{{if .Expenses}}
+<div class="scroll"><table>
+<thead><tr><th>Date</th><th>Matter</th><th>Description</th><th>Type</th><th class="num">Amount</th><th class="num">Markup</th><th>Billed</th></tr></thead>
+<tbody>{{range .Expenses}}<tr><td><a href="/billing/expenses/{{.ID}}">{{.IncurredOn}}</a></td><td>{{index $.MatterNames .MatterID}}</td>
+<td>{{.Description}}{{if not .Billable}} <span class="tag">non-billable</span>{{end}}</td><td>{{index $.TypeNames .ExpenseType}}</td>
+<td class="num">{{money .AmountCents}}</td><td class="num">{{.MarkupPercent}}%</td>
+<td>{{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">invoice</a>{{else}}unbilled{{end}}</td></tr>{{end}}</tbody>
+</table></div>
+{{else}}<p class="muted">No expenses.</p>{{end}}
+</section>
+{{template "foot" .}}
