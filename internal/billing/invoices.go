@@ -765,13 +765,15 @@ func (s *Service) ApproveInvoice(ctx context.Context, p domain.Principal, id dom
 }
 
 // clientEmails returns the primary current email of each client party, or any current email.
+// Current means in effect on the firm-local date: started (EffectiveFrom) and not ended
+// (EffectiveTo), so an address scheduled for later never receives an invoice early.
 func (s *Service) clientEmails(ctx context.Context, matter domain.ID) []string {
 	today := s.today(ctx)
 	var out []string
 	for _, contact := range s.clientParties(matter) {
 		var pick string
 		for _, e := range s.d.Practice.Emails(contact) {
-			if e.Email == "" || e.EffectiveTo != "" && e.EffectiveTo < today {
+			if e.Email == "" || e.EffectiveTo != "" && e.EffectiveTo < today || e.EffectiveFrom != "" && e.EffectiveFrom > today {
 				continue
 			}
 			if pick == "" || e.Primary {

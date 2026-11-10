@@ -64,6 +64,20 @@ func (s *Service) clientName(ctx context.Context, id domain.ID) string {
 	return ""
 }
 
+// held is what client holds for the matter in one trust account.
+func (s *Service) held(ctx context.Context, matter, client, account domain.ID) (domain.Cents, error) {
+	bals, _, err := s.balances(ctx, matter)
+	if err != nil {
+		return 0, err
+	}
+	for _, b := range bals {
+		if b.ClientID == client && b.AccountID == account {
+			return b.BalanceCents, nil
+		}
+	}
+	return 0, nil
+}
+
 // balances returns the matter's trust balances, or none when no trust service is wired.
 func (s *Service) balances(ctx context.Context, matter domain.ID) ([]TrustBalance, domain.Cents, error) {
 	if s.d.Trust == nil {
@@ -128,7 +142,9 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 		row.Status = FlatCollected
 	case !positive(int64(m.FlatFeeCents)):
 		row.Status = FlatNeedsFee
-	case total < remaining:
+	case best < remaining:
+		// Apply posts from one client trust account, so the fee is ready only when one
+		// account covers it; funds split across accounts stay Awaiting.
 		row.Status = FlatAwaiting
 	default:
 		row.Status = FlatReady
@@ -269,6 +285,13 @@ func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, 
 		}
 		if !s.isClient(m.ID, client) {
 			return domain.Invalid("client_id", "must be a client on the matter")
+		}
+		have, err := s.held(t.ctx, m.ID, client, account)
+		if err != nil {
+			return err
+		}
+		if have < amount {
+			return domain.Conflict("the selected trust account holds " + money(have) + " for this client; the fee is " + money(amount))
 		}
 		inv, billed, err := s.flatFeeInvoice(t.ctx, m.ID)
 		if err != nil {
