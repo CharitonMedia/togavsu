@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -17,7 +19,13 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
-const testAdminDSN = "postgres://togavsu:togavsu@127.0.0.1:5432/togavsu?sslmode=disable"
+// testAdminDSN is TOGAVSU_TEST_DATABASE_URL, the same variable CI sets for every package.
+var testAdminDSN = func() string {
+	if raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL"); raw != "" {
+		return raw
+	}
+	return "postgres://togavsu:togavsu@127.0.0.1:5432/togavsu?sslmode=disable"
+}()
 
 func openDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -63,8 +71,12 @@ func openPostgres(t *testing.T, searchPath string) *sql.DB {
 
 func openPostgresNamed(t *testing.T, name, searchPath string) *sql.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("postgres://togavsu:togavsu@127.0.0.1:5432/%s?sslmode=disable", name)
-	db, err := OpenPostgres(dsn, searchPath)
+	u, err := url.Parse(testAdminDSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Path = "/" + name
+	db, err := OpenPostgres(u.String(), searchPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +105,9 @@ func applyEmbedded(t *testing.T, db *sql.DB) {
 func actor() domain.Principal {
 	return domain.Principal{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
 }
+
+// laterRangeTables are tables outside PRD section 5. Each lives in its task's migration range.
+var laterRangeTables = map[string]bool{"practice_records": true}
 
 func TestSchemaContract(t *testing.T) {
 	sqlText, err := SchemaSQL()
@@ -141,7 +156,7 @@ func TestSchemaContract(t *testing.T) {
 		}
 	}
 	for name := range bodies {
-		if !seen[name] {
+		if !seen[name] && !laterRangeTables[name] {
 			t.Errorf("unexpected table %s", name)
 		}
 	}
@@ -382,16 +397,19 @@ func TestRangesAndEmbedded(t *testing.T) {
 	if err := ValidateMigrationVersions(ms); err != nil {
 		t.Fatal(err)
 	}
-	found := false
+	want := map[int]string{1: "contracts", 200: "practice"}
 	for _, m := range ms {
 		task, ok := TaskForVersion(m.Version)
-		if !ok || m.Version != 1 || task != "contracts" || !strings.Contains(m.Name, "core_schema") {
+		if !ok || want[m.Version] != task {
 			t.Fatal(m.Version, task, m.Name)
 		}
-		found = true
+		if m.Version == 1 && !strings.Contains(m.Name, "core_schema") {
+			t.Fatal(m.Name)
+		}
+		delete(want, m.Version)
 	}
-	if !found || len(ms) != 1 {
-		t.Fatal(len(ms))
+	if len(want) != 0 || len(ms) != 2 {
+		t.Fatal(len(ms), want)
 	}
 	if err := ValidateMigrationVersions([]Migration{{Version: 5000}}); err == nil {
 		t.Fatal("unallocated version accepted")
