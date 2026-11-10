@@ -91,6 +91,19 @@ func (s *Service) StartMove(ctx context.Context, p domain.Principal, in MoveRequ
 		if err != nil {
 			return err
 		}
+		// Starting the same move again resumes a failed one where it stopped: the
+		// objects that checked out stay checked, and the run picks up the rest.
+		for _, mv := range existing {
+			if mv.Status == "failed" && mv.FromBackendID == in.FromBackendID && mv.ToBackendID == in.ToBackendID &&
+				mv.Scope == in.Scope && mv.MatterID == in.MatterID {
+				mv.Status, mv.UpdatedAt = "running", s.now().UTC()
+				if err := s.st.updateMove(ctx, mv); err != nil {
+					return err
+				}
+				m = mv
+				return s.record(ctx, p, "storage_move", mv.ID, "status", "failed", "running")
+			}
+		}
 		for _, mv := range existing {
 			if (mv.Status == "running" || mv.Status == "checked") && (mv.FromBackendID == in.FromBackendID || mv.ToBackendID == in.FromBackendID) {
 				return domain.Conflict("finish or confirm the move already running on this backend first")
@@ -224,6 +237,12 @@ func (s *Service) RunMove(ctx context.Context, id domain.ID) error {
 // while the copy is in flight, the item is marked done with nothing left on either
 // backend, and a purge that commits after the record change deletes the new copy.
 func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
+	return s.moveObject(ctx, m, it, false)
+}
+
+// moveObject is moveOne; again is set on its single retry, after a bad copy left by an
+// earlier run was removed from the new backend, so the retry cannot repeat forever.
+func (s *Service) moveObject(ctx context.Context, m moveRow, it moveItem, again bool) error {
 	o := object{ID: it.ObjectID, Kind: it.ObjectKind, Size: it.SizeBytes, SHA: it.SHA256}
 	known, err := s.knownObject(ctx, it.ObjectID)
 	if err != nil {
@@ -248,7 +267,7 @@ func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
 		if err != nil {
 			// A purge that deleted the source since the check above is not a failure.
 			if purged, perr := s.filePurged(ctx, known.FileID); perr == nil && purged {
-				return s.moveOne(ctx, m, it)
+				return s.tx(ctx, func(ctx context.Context) error { return s.moveItemDone(ctx, m, it, "old_deleted") })
 			}
 			return err
 		}
@@ -268,8 +287,17 @@ func (s *Service) moveOne(ctx context.Context, m moveRow, it moveItem) error {
 				return aerr
 			}
 			if storage.Check(ctx, dst, to.Key, o.Size, o.SHA) != nil {
-				s.dropObject(ctx, to)
-				return s.moveOne(ctx, m, it)
+				if again {
+					return fmt.Errorf("a bad copy on the new backend came back after it was removed: %w", storage.ErrIntegrity)
+				}
+				raw, _, aerr := s.adapter(ctx, m.ToBackendID)
+				if aerr != nil {
+					return aerr
+				}
+				if derr := raw.Delete(ctx, to.Key); derr != nil {
+					return fmt.Errorf("a bad copy on the new backend could not be removed: %w", derr)
+				}
+				return s.moveObject(ctx, m, it, true)
 			}
 			err = nil
 		}
@@ -353,7 +381,8 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 	if m.Status == "confirmed" {
 		return s.moveView(m), nil
 	}
-	if m.Status != "checked" {
+	failed := m.Status == "failed"
+	if m.Status != "checked" && !failed {
 		return MoveView{}, domain.Conflict("a move is confirmed only after every file checks out on the new backend")
 	}
 	items, err := s.st.moveItems(ctx, id)
@@ -361,10 +390,14 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 		return MoveView{}, err
 	}
 	for _, it := range items {
-		if it.Status == "pending" {
+		if it.Status == "pending" && !failed {
 			return MoveView{}, domain.Conflict("an object has not checked out on the new backend")
 		}
 	}
+	// A failed move is cleaned up rather than confirmed: the old copies of the objects
+	// that checked out (their records already point at the new backend) are deleted,
+	// the rest stay where they are, and the move stays failed so starting it again
+	// resumes it.
 	for _, it := range items {
 		if it.Status != "checked" {
 			continue
@@ -379,6 +412,14 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 		if err := s.st.setMoveItem(ctx, id, it.ObjectID, "old_deleted"); err != nil {
 			return MoveView{}, err
 		}
+	}
+	if failed {
+		if err := s.tx(ctx, func(ctx context.Context) error {
+			return s.record(ctx, p, "storage_move", m.ID, "old_copies", "", "deleted for the objects that checked out")
+		}); err != nil {
+			return MoveView{}, err
+		}
+		return s.moveView(m), nil
 	}
 	m.Status, m.ConfirmedBy, m.ConfirmedAt, m.UpdatedAt = "confirmed", p.UserID, us(s.now()), s.now().UTC()
 	err = s.tx(ctx, func(ctx context.Context) error {

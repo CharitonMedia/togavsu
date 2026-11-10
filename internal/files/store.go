@@ -11,6 +11,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // store is the files repository over schema core. Queries are portable SQL with ?
@@ -280,6 +281,15 @@ func (s *store) dropTakeRefused(ctx context.Context, id domain.ID) (bool, error)
 	return n > zero, err
 }
 
+// lockMatterNames takes a transaction-scoped lock on one matter's file names, so name
+// clash resolution for that matter runs one transaction at a time.
+func (s *store) lockMatterNames(ctx context.Context, matter domain.ID) error {
+	if matter == "" || s.dialect != "postgres" {
+		return nil
+	}
+	return s.exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(?, 0))`, "togavsu.files.names:"+string(matter))
+}
+
 func (s *store) namesInMatter(ctx context.Context, matter domain.ID) (map[string]bool, error) {
 	rows, err := s.query(ctx, `SELECT LOWER(name) FROM files WHERE matter_id = ? AND purged_at = 0`, matter)
 	if err != nil {
@@ -493,8 +503,17 @@ VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, s.dialect),
 }
 
 func (s *store) updateFolder(ctx context.Context, f Folder) error {
-	return s.exec(ctx, `UPDATE folders SET updated_at = ?, name = ?, sort_order = ? WHERE id = ?`, us(f.UpdatedAt), f.Name, f.SortOrder, f.ID)
+	err := s.exec(ctx, `UPDATE folders SET updated_at = ?, name = ?, sort_order = ? WHERE id = ?`, us(f.UpdatedAt), f.Name, f.SortOrder, f.ID)
+	// A concurrent rename or create that took the name first trips the unique index.
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+		return domain.Conflict("this matter already has a folder with that name")
+	}
+	return err
 }
+
+// uniqueViolation is Postgres's SQLSTATE for a unique index violation.
+const uniqueViolation = "23505"
 
 func (s *store) deleteFolder(ctx context.Context, id domain.ID) error {
 	return s.exec(ctx, `DELETE FROM folders WHERE id = ?`, id)

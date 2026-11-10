@@ -595,6 +595,17 @@ func (s *Service) UpdateFolder(ctx context.Context, p domain.Principal, id domai
 				return err
 			}
 			f.Name = strings.TrimSpace(*name)
+			if !strings.EqualFold(f.Name, old) {
+				rows, err := s.st.folders(ctx, f.MatterID)
+				if err != nil {
+					return err
+				}
+				for _, o := range rows {
+					if o.ID != f.ID && strings.EqualFold(o.Name, f.Name) {
+						return domain.Conflict("this matter already has a folder with that name")
+					}
+				}
+			}
 		}
 		if order != nil {
 			f.SortOrder = *order

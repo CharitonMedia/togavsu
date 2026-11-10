@@ -76,6 +76,11 @@ func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain
 			if isLocked(cur, "name") {
 				res.Skipped = append(res.Skipped, "name")
 			} else {
+				// Clash resolution reads the matter's names: hold the matter's name
+				// lock so two files filed at once cannot both take the same name.
+				if err := s.st.lockMatterNames(ctx, cur.MatterID); err != nil {
+					return err
+				}
 				name, err := s.uniqueName(ctx, cur.MatterID, cur.ID, u.Name)
 				if err != nil {
 					return err

@@ -53,7 +53,7 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
   person has not locked (`locked_fields`: `name`, `category`, `matter`, `folder`, `grouping`) and
   reports `Set` and `Skipped`. The folder follows the category, so `Folder` is skipped
   when either `folder` or `category` is locked. It never changes a file's matter. A name clash in the
-  matter becomes `-2`, `-3`. `Folder` is the category's folder name; the matter folder
+  matter becomes `-2`, `-3`; clash resolution holds a per-matter lock, so files filed at once never share a name. `Folder` is the category's folder name; the matter folder
   is created when missing.
 - A person's `Rename` locks `name`; `UpdateMetadata` locks `category` and `matter`;
   `MoveToFolder` locks `folder`.
@@ -108,6 +108,8 @@ copy each immutable object once. `RestoreBytes(ctx, admin, r)` puts each object 
 where the restored database says it lives and checks its SHA-256 there. An archive
 missing a manifest object, or repeating one, fails the restore; an object whose file
 was emptied from the trash after the archive was taken is skipped (`purged`), so a
-purge stays a purge. A storage move skips purged files the same way. The supervisor
+purge stays a purge. A storage move skips purged files the same way. A move that fails
+stays failed: confirming it deletes only the old copies of the objects that checked out,
+and starting the same move again (same source, target and scope) resumes it. The supervisor
 encrypts the archive and restores the database; wiring it to these two calls is
 pending (PONYTAIL-DEBT platform ceiling 13).
