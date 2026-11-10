@@ -17,6 +17,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/settings"
+	"github.com/CharitonMedia/togavsu/internal/smtpsend"
 )
 
 // smtpMailer is billing's system mail (PRD 8.8): the admin's mail.smtp_* settings, read on
@@ -52,7 +53,7 @@ func (m smtpMailer) Send(ctx context.Context, msg billing.Message) error {
 	if user := get("mail.smtp_username"); user != "" {
 		auth = smtp.PlainAuth("", user, get("mail.smtp_password"), host)
 	}
-	return smtp.SendMail(net.JoinHostPort(host, port), auth, from, msg.To, raw)
+	return smtpsend.Send(ctx, net.JoinHostPort(host, port), auth, from, msg.To, raw)
 }
 
 // buildMessage renders msg as text/plain, or multipart/mixed with base64 attachments.

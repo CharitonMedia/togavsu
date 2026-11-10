@@ -12,6 +12,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
+	"github.com/CharitonMedia/togavsu/internal/smtpsend"
 )
 
 // recipient is one person a trust event tells. sees is false when the matter's wall (or
@@ -458,7 +459,7 @@ func (m SMTP) Send(ctx context.Context, to, subject, body string) error {
 	}
 	msg := "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + headerSafe(subject) +
 		"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.ReplaceAll(body, "\n", "\r\n")
-	return smtp.SendMail(net.JoinHostPort(host, port), auth, from, []string{to}, []byte(msg))
+	return smtpsend.Send(ctx, net.JoinHostPort(host, port), auth, from, []string{to}, []byte(msg))
 }
 
 func headerSafe(s string) string {

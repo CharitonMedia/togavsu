@@ -179,11 +179,20 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	return app, nil
 }
 
-// Close stops mail delivery and releases the pool.
+// mailStopWait bounds how long Close waits for the mail worker. Sends are cancelled and
+// deadline-bound (internal/smtpsend), so this only guards against a future regression.
+const mailStopWait = 15 * time.Second
+
+// Close stops mail delivery and releases the pool. It never waits on the mail worker
+// longer than mailStopWait, so a stalled SMTP server cannot block shutdown or an update.
 func (a *App) Close() error {
 	if a.stopMail != nil {
 		a.stopMail()
-		<-a.mailDone
+		select {
+		case <-a.mailDone:
+		case <-time.After(mailStopWait):
+			log.Printf("core: trust mail worker did not stop within %v; closing anyway", mailStopWait)
+		}
 	}
 	return a.Pool.Close()
 }
