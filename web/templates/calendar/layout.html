@@ -1,0 +1,43 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Togavsu</title>
+<link rel="stylesheet" href="/calendar/static/calendar.css">
+<script src="/calendar/static/calendar.js" defer></script>
+</head>
+<body>
+<header class="cal-top">
+  <nav aria-label="Calendar">
+    <a href="/">Home</a>
+    <a href="/practice/matters">Matters</a>
+    <a href="/practice/contacts">Contacts</a>
+    <a href="/calendar" aria-current="page">Calendar</a>
+    <span class="sep" aria-hidden="true">|</span>
+    <a href="/calendar/deadlines?status=open&amp;include_overdue=true">Deadlines</a>
+    <a href="/calendar/available-dates">Available dates</a>
+    <a href="/calendar/feeds">Calendar feeds</a>
+  </nav>
+</header>
+<main>
+{{if .Overdue}}
+<section class="overdue" aria-labelledby="overdue-h">
+  <h2 id="overdue-h">Overdue deadlines</h2>
+  <ul>{{range .Overdue}}<li><a href="/calendar/deadlines/{{.ID}}">{{.Title}}</a> — due {{.DueOn}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{if .Remind}}
+<section class="reminders" aria-labelledby="remind-h">
+  <h2 id="remind-h">Reminders</h2>
+  <ul>{{range .Remind}}<li><a href="{{.Path}}">{{.Title}}</a> <span class="muted">{{.Body}}</span></li>{{end}}</ul>
+</section>
+{{end}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
+
+{{define "foot"}}
+</main>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,18 @@
+{{template "head" .}}
+{{with .Data}}
+<h1>{{.Title}}</h1>
+<dl class="facts">
+  <dt>Kind</dt><dd>{{kindLabel .Kind}}</dd>
+  <dt>When</dt><dd>{{.When}}</dd>
+  {{if .Location}}<dt>Location</dt><dd>{{.Location}}</dd>{{end}}
+  {{if .MatterID}}<dt>Matter</dt><dd><a href="/practice/matters/{{.MatterID}}">Open matter</a></dd>{{end}}
+  <dt>Attendees</dt><dd>{{range $i, $a := .Attendees}}{{if $i}}, {{end}}{{$a}}{{else}}None{{end}}</dd>
+  {{if .Notes}}<dt>Notes</dt><dd class="pre">{{.Notes}}</dd>{{end}}
+</dl>
+<form method="post" action="/calendar/events/{{.ID}}/delete">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <button type="submit" class="danger">Delete event</button>
+</form>
+{{end}}
+<p><a href="/calendar">Back to the calendar</a></p>
+{{template "foot" .}}

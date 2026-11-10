@@ -1,0 +1,21 @@
+{{template "head" .}}
+{{with .Data}}
+<h1>{{.Title}}</h1>
+<dl class="facts">
+  <dt>Due</dt><dd>{{.DueOn}}{{if .Overdue}} <strong class="late">overdue</strong>{{end}}</dd>
+  <dt>Status</dt><dd>{{.Status}}{{if .DoneAt}} by {{.DoneBy}} on {{.DoneAt}}{{end}}</dd>
+  <dt>Responsible</dt><dd>{{.Responsible}}</dd>
+  <dt>Reminders</dt><dd>{{if .Offsets}}{{.Offsets}} days before{{else}}None{{end}}</dd>
+  <dt>Matter</dt><dd><a href="/practice/matters/{{.MatterID}}">Open matter</a></dd>
+</dl>
+<div class="actions">
+  {{if eq .Status "open"}}
+  <form method="post" action="/calendar/deadlines/{{.ID}}/status"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="status" value="done"><button type="submit">Mark done</button></form>
+  <form method="post" action="/calendar/deadlines/{{.ID}}/status"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="status" value="waived"><button type="submit">Waive</button></form>
+  {{else}}
+  <form method="post" action="/calendar/deadlines/{{.ID}}/status"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="status" value="open"><button type="submit">Reopen</button></form>
+  {{end}}
+</div>
+{{end}}
+<p><a href="/calendar/deadlines?status=open&amp;include_overdue=true">All open deadlines</a></p>
+{{template "foot" .}}

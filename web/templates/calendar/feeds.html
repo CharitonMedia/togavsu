@@ -1,0 +1,35 @@
+{{template "head" .}}
+{{with .Data}}
+<h1>Calendar feeds</h1>
+<p class="muted">A read-only iCal link for Google or Outlook. Anyone with the link can read the feed, so revoke a link you no longer use. Two-way sync belongs to a module.</p>
+{{if .NewURL}}
+<div class="newurl" role="status">
+  <p>Copy this link now. It is shown only once.</p>
+  <input id="feed-url" value="{{.NewURL}}" readonly size="90">
+  <button type="button" data-copy="feed-url">Copy</button>
+</div>
+{{end}}
+{{if .Enabled}}
+<form method="post" action="/calendar/feeds" class="inline">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <button type="submit" name="scope" value="me">New link for my calendar</button>
+  {{if .IsAdmin}}<button type="submit" name="scope" value="firm">New firm-wide link</button>{{end}}
+</form>
+{{else}}<p class="error">iCal feeds are turned off on the admin page.</p>{{end}}
+{{if .Rows}}
+<table class="list">
+  <thead><tr><th scope="col">Feed</th><th scope="col">Created</th><th scope="col">State</th><th scope="col"></th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+  <tr>
+    <td>{{if .Firm}}Firm-wide{{else}}{{.Owner}}{{end}}</td>
+    <td>{{.Created}}</td>
+    <td>{{if .Revoked}}Revoked{{else}}Active{{end}}</td>
+    <td>{{if not .Revoked}}<form method="post" action="/calendar/feeds/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Revoke</button></form>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}<p class="muted">No feeds yet.</p>{{end}}
+{{end}}
+{{template "foot" .}}
