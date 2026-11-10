@@ -375,3 +375,53 @@ func TestPGResumeWaitsForAMoveOnItsSource(t *testing.T) {
 		t.Fatalf("the refused resume changed the move: %+v %v", got, err)
 	}
 }
+
+// TestPGHistoryHidesTheAttorneyOnlyStretch is checkpoint 11: once an attorney-only file
+// is shared, the client and staff history leave out what happened while it was
+// attorney-only, including its old name, and the attorney still sees all of it.
+func TestPGHistoryHidesTheAttorneyOnlyStretch(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	f := e.create(e.attorney, NewFile{Name: "Smith - fraud exposure memo.docx", MatterID: e.open, AttorneyOnly: true}, "memo")
+	if _, err := e.svc.OpenVersion(ctx, e.attorney, f.ID, *f.CurrentVersionID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Rename(ctx, e.attorney, f.ID, "Letter.docx"); err != nil {
+		t.Fatal(err)
+	}
+	no, yes := false, true
+	if _, err := e.svc.UpdateMetadata(ctx, e.attorney, f.ID, Metadata{AttorneyOnly: &no, SharedWithClient: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Rename(ctx, e.staff, f.ID, "Letter to client.docx"); err != nil {
+		t.Fatal(err)
+	}
+	for _, who := range []domain.Principal{e.client, e.staff} {
+		h, err := e.svc.History(ctx, who, f.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		renamed := false
+		for _, x := range h {
+			if x.Field == "attorney_only" || strings.Contains(x.OldValue+x.NewValue, "Smith") || x.OldValue == "Letter.docx" {
+				t.Fatalf("%v sees the attorney-only stretch: %+v", who.Roles, x)
+			}
+			renamed = renamed || x.NewValue == "Letter to client.docx"
+		}
+		if !renamed {
+			t.Fatalf("%v history lost the later rename: %+v", who.Roles, h)
+		}
+	}
+	h, err := e.svc.History(ctx, e.attorney, f.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sawFlag, sawOldName := false, false
+	for _, x := range h {
+		sawFlag = sawFlag || x.Field == "attorney_only"
+		sawOldName = sawOldName || x.OldValue == "Smith - fraud exposure memo.docx"
+	}
+	if !sawFlag || !sawOldName {
+		t.Fatalf("the attorney's history is redacted: %+v", h)
+	}
+}

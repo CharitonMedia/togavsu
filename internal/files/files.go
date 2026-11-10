@@ -858,6 +858,9 @@ func (s *Service) History(ctx context.Context, p domain.Principal, id domain.ID)
 	if err != nil {
 		return nil, err
 	}
+	if rows, err = s.historyFor(ctx, p, f, rows); err != nil {
+		return nil, err
+	}
 	out := make([]HistoryEntry, 0, len(rows))
 	for _, a := range rows {
 		kind := "field_edit"
@@ -873,6 +876,50 @@ func (s *Service) History(ctx context.Context, p domain.Principal, id domain.ID)
 		}
 		out = append(out, HistoryEntry{At: domain.FormatUTC(a.CreatedAt), ActorID: optID(a.ActorID), ActorKind: actorKind,
 			Kind: kind, Field: a.Field, OldValue: a.OldValue, NewValue: a.NewValue})
+	}
+	return out, nil
+}
+
+// historyFor redacts a file's history for a caller who may not see attorney-only files.
+// It leaves out every row recorded while the file was attorney-only and every change
+// of the flag itself, and blanks the old value of each field's first change after an
+// attorney-only stretch, since that value was set while the file was hidden.
+func (s *Service) historyFor(ctx context.Context, p domain.Principal, f fileRow, rows []domain.AuditEntry) ([]domain.AuditEntry, error) {
+	hidden := f
+	hidden.AttorneyOnly = true
+	d, err := s.decide(ctx, p, hidden, domain.ActionRead, nil)
+	if err != nil {
+		return nil, err
+	}
+	if d.Allow && !d.Redact {
+		return rows, nil
+	}
+	restricted := f.AttorneyOnly
+	for _, a := range rows {
+		if a.Field == "attorney_only" {
+			restricted = a.OldValue == "true"
+			break
+		}
+	}
+	var out []domain.AuditEntry
+	fresh := map[string]bool{}
+	after := false
+	for _, a := range rows {
+		if a.Field == "attorney_only" {
+			if restricted && a.NewValue != "true" {
+				after, fresh = true, map[string]bool{}
+			}
+			restricted = a.NewValue == "true"
+			continue
+		}
+		if restricted {
+			continue
+		}
+		if after && !fresh[a.Field] {
+			a.OldValue = ""
+		}
+		fresh[a.Field] = true
+		out = append(out, a)
 	}
 	return out, nil
 }

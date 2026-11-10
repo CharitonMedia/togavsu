@@ -19,6 +19,9 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
   `actor_kind = client` and `client_visible = 1` for the highlight), `file.purged`.
   `client_visible` is 1 for a client's own action, or for a file that is shared with the
   client and not attorney-only; an attorney-only file's events are never client-visible.
+- A file's history (`GET /api/v1/files/{id}/history`) shows a caller without attorney
+  access nothing recorded while the file was attorney-only and no change of the flag, and
+  blanks the old value of each field's first change after such a stretch.
 
 ## Reading bytes
 
