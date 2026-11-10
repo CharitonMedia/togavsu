@@ -520,8 +520,9 @@ func (s *Service) Archive(ctx context.Context, p domain.Principal, ids []domain.
 		if err != nil {
 			return err
 		}
-		if err := s.matterVisible(ctx, p, fd.MatterID); err != nil {
-			return err
+		// A folder is matter information: the same check as Folders and GetFolder.
+		if err := s.matterReadable(ctx, p, fd.MatterID); err != nil {
+			return domain.NotFound("folder")
 		}
 		f := string(folder)
 		listed, err := s.st.listFiles(ctx, fileQuery{MatterID: fd.MatterID, Folder: &f})

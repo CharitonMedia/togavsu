@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,9 +26,18 @@ const zero = int64(0)
 
 // Matter is what the file store needs to know about a matter.
 type Matter struct {
-	ID     domain.ID
-	Number string
-	Status string
+	ID             domain.ID
+	Number         string
+	Status         string
+	PracticeAreaID domain.ID
+}
+
+// AreaFolders is an optional Directory method: a practice area's default_folders
+// (PRD 5 practice_areas, PRD 8.19). An empty list falls back to files.default_folders.
+// PracticeDirectory does not implement it yet: practice_areas has no default_folders
+// column (pending, owner practice; see CONTRACT.md).
+type AreaFolders interface {
+	AreaFolders(ctx context.Context, area domain.ID) ([]string, error)
 }
 
 // Directory reads matters and client contacts. It does no access checks; the files
@@ -102,6 +112,12 @@ type Service struct {
 	adapters map[domain.ID]cached
 	running  map[domain.ID]bool
 	drops    map[string]dropSeen
+	// dropAlerted is the drop paths (and SHA-256) already reported as taken but not
+	// removable, so a share without delete rights alerts once, not every pass.
+	dropAlerted map[string]string
+	// removeDrop deletes a taken drop file; a test makes it fail like a share without
+	// delete permission.
+	removeDrop func(string) error
 	// afterMoveItem lets a test stop a move between objects.
 	afterMoveItem func(done int)
 }
@@ -137,6 +153,7 @@ func New(cfg Config) (*Service, error) {
 		blobKey: derive(cfg.Key, "togavsu/storage/bytes"), configKey: derive(cfg.Key, "togavsu/storage/settings"),
 		staging: cfg.StagingDir, http: cfg.HTTP, now: cfg.Now, newID: domain.NewID, onVersion: cfg.OnVersion,
 		adapters: map[domain.ID]cached{}, running: map[domain.ID]bool{}, drops: map[string]dropSeen{},
+		dropAlerted: map[string]string{}, removeDrop: os.Remove,
 	}, nil
 }
 
@@ -310,6 +327,19 @@ func (s *Service) loadFile(ctx context.Context, id domain.ID) (fileRow, error) {
 		return fileRow{}, domain.NotFound("file")
 	}
 	f, err := s.st.getFile(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return fileRow{}, domain.NotFound("file")
+	}
+	return f, err
+}
+
+// lockedFile is loadFile inside a transaction with the row held FOR UPDATE until the
+// transaction ends. Every read-modify-write of a files row goes through it.
+func (s *Service) lockedFile(ctx context.Context, id domain.ID) (fileRow, error) {
+	if _, err := domain.ParseID(string(id)); err != nil {
+		return fileRow{}, domain.NotFound("file")
+	}
+	f, err := s.st.lockFile(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return fileRow{}, domain.NotFound("file")
 	}

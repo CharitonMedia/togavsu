@@ -98,6 +98,13 @@ type dir struct {
 	walls    map[domain.ID][]domain.ID
 	clients  map[domain.ID]domain.ID // matter -> client contact
 	contacts map[domain.ID]domain.ID // user -> contact
+	areas    map[domain.ID][]string  // practice area -> default folders
+}
+
+func (d *dir) AreaFolders(_ context.Context, area domain.ID) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.areas[area], nil
 }
 
 func (d *dir) Matter(_ context.Context, id domain.ID) (Matter, error) {

@@ -55,8 +55,38 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
   is created when missing.
 - A person's `Rename` locks `name`; `UpdateMetadata` locks `category` and `matter`;
   `MoveToFolder` locks `folder`.
+- `ApplyTender`, `Rename`, `MoveToFolder`, `MarkStatus`, `Trash`, `Restore`,
+  `UpdateMetadata` and `Purge` read the file row `FOR UPDATE` inside their transaction,
+  the same lock `SaveVersion` takes. Handling `file.version_created` for version N while
+  the editor saves N+1 therefore never makes N current again, and never writes back a
+  name, folder or `locked_fields` that a person committed while Doc Tender waited.
 - `UniqueName(ctx, matter, name)` previews the clash rule.
 - `MatterFiles(ctx, systemPrincipal, matter)` lists a reopened matter's files to queue.
+
+## Folders and default folders
+
+- `Folders`, `GetFolder`, the folder zip and the matter Files tab use the full matter read
+  check (wall, then role and client scope, as practice applies to the matter record).
+  A client sees only a matter they are a party to; an accountant sees no folders. Each
+  refusal is not found. Only a caller who may write files on the matter creates its
+  default folders on first open.
+- Default folders come from the matter's practice area when the `Directory` implements
+  `AreaFolders(ctx, area) ([]string, error)` and returns a non-empty list, otherwise from
+  the global `files.default_folders` setting.
+- **Pending, owner practice:** `practice_areas` has no `default_folders` column yet (PRD 5,
+  API contract `PracticeArea.default_folders`), so `PracticeDirectory` does not implement
+  `AreaFolders`, and every matter in the running product gets the global list. Once
+  practice stores the column, `PracticeDirectory.AreaFolders` should return it. The files
+  side is implemented and tested with a directory that supplies area folders.
+
+## Drop folder
+
+A dropped file is taken once. If its record commits but the share refuses the delete
+(no delete right, a file held open), it stays in the drop folder. Later passes, including
+after a restart, find the record (`source = drop_folder`, arrived name and first-version
+SHA-256; the same matter for a matter subfolder, any matter for a top-level drop Doc
+Tender may since have filed) and only retry the delete. The admins get one storage alert
+per path and content in each process run. A file whose bytes change under the same name is a new drop.
 
 ## Editor locks
 

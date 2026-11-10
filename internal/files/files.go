@@ -356,6 +356,9 @@ func (s *Service) saveVersion(ctx context.Context, p domain.Principal, fileID do
 		if err != nil {
 			return err
 		}
+		if f.TrashedAt != zero || f.PurgedAt != zero {
+			return domain.Conflict("restore the file from the trash before saving to it")
+		}
 		prior, err := s.st.listVersions(ctx, fileID)
 		if err != nil {
 			return err
@@ -497,6 +500,31 @@ func (s *Service) matterVisible(ctx context.Context, p domain.Principal, matter 
 	return nil
 }
 
+// matterReadable is the full matter read check for what describes a matter itself:
+// its folders and its Files tab (matter number and status). On top of the wall it
+// applies the role and client rules practice uses for the matter record: a client
+// reads only a matter they are a party to, and an accountant, who cannot read
+// matters, sees none. Every refusal is not found, so a matter's existence leaks to no
+// one who couldn't open it. (List keeps matterVisible: an accountant may still list a
+// matter's receipts, and each row there passes the file decision anyway.)
+func (s *Service) matterReadable(ctx context.Context, p domain.Principal, matter domain.ID) error {
+	if _, err := domain.ParseID(string(matter)); err != nil {
+		return domain.NotFound("matter")
+	}
+	view, err := s.policy.Walls.View(ctx, p, matter)
+	if err != nil {
+		return err
+	}
+	d := domain.Decide(p, domain.AccessInput{
+		Resource: domain.ResMatter, Action: domain.ActionRead, MatterID: matter,
+		Walled: view.Walled, WallAllows: view.Allows, ClientMatter: view.ClientMatter, SharedWithClient: view.ClientMatter,
+	})
+	if !d.Allow {
+		return domain.NotFound("matter")
+	}
+	return nil
+}
+
 func (s *Service) checkFolder(ctx context.Context, folder, matter domain.ID) error {
 	if folder == "" {
 		return nil
@@ -508,11 +536,13 @@ func (s *Service) checkFolder(ctx context.Context, folder, matter domain.ID) err
 	return err
 }
 
-// change applies one field edit with its audit row and timeline event.
+// change applies one field edit with its audit row and timeline event. The row is
+// read FOR UPDATE, so the whole-row write never puts back a version, name, folder or
+// lock that a concurrent save or edit committed first.
 func (s *Service) change(ctx context.Context, p domain.Principal, id domain.ID, field string, apply func(f *fileRow) (old, new string, err error)) (FileView, error) {
 	var out fileRow
 	err := s.tx(ctx, func(ctx context.Context) error {
-		f, err := s.loadFile(ctx, id)
+		f, err := s.lockedFile(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -611,7 +641,7 @@ type Metadata struct {
 func (s *Service) UpdateMetadata(ctx context.Context, p domain.Principal, id domain.ID, m Metadata) (FileView, error) {
 	var out FileView
 	err := s.tx(ctx, func(ctx context.Context) error {
-		f, err := s.loadFile(ctx, id)
+		f, err := s.lockedFile(ctx, id)
 		if err != nil {
 			return err
 		}
@@ -720,11 +750,23 @@ func (s *Service) Purge(ctx context.Context, p domain.Principal, id domain.ID, c
 	if confirmName != f.Name {
 		return domain.Invalid("confirm_name", "type the file's name to empty it from the trash")
 	}
-	objs, err := s.objectsOf(ctx, f.ID)
-	if err != nil {
-		return err
-	}
+	var objs []object
 	err = s.tx(ctx, func(ctx context.Context) error {
+		// Recheck under the row lock: a concurrent Restore or rename must not be purged
+		// over, and the object list is read after any save in flight has committed.
+		f, err := s.lockedFile(ctx, id)
+		if err != nil {
+			return err
+		}
+		if f.TrashedAt == zero || f.PurgedAt != zero {
+			return domain.Conflict("only a file in the trash can be emptied")
+		}
+		if confirmName != f.Name {
+			return domain.Invalid("confirm_name", "type the file's name to empty it from the trash")
+		}
+		if objs, err = s.objectsOf(ctx, f.ID); err != nil {
+			return err
+		}
 		f.PurgedAt, f.PurgedBy, f.UpdatedAt = us(s.now()), p.UserID, s.now().UTC()
 		if err := s.st.updateFile(ctx, f); err != nil {
 			return err

@@ -399,13 +399,17 @@ func folderView(f Folder) FolderView {
 	return FolderView{ID: f.ID, CreatedAt: domain.FormatUTC(f.CreatedAt), CreatedBy: f.CreatedBy, UpdatedAt: domain.FormatUTC(f.UpdatedAt), MatterID: f.MatterID, Name: f.Name, SortOrder: f.SortOrder}
 }
 
-// Folders lists a visible matter's folders, creating the defaults from
-// files.default_folders the first time the matter's files are opened.
+// Folders lists the folders of a matter the caller may read (walls, role and client
+// scope, matterReadable). The first time someone who can write files on the matter
+// opens it, its default folders are created: the matter's practice area defaults when
+// the directory knows them, else files.default_folders. A reader who cannot write
+// never creates rows.
 func (s *Service) Folders(ctx context.Context, p domain.Principal, matter domain.ID) ([]FolderView, error) {
-	if err := s.matterVisible(ctx, p, matter); err != nil {
+	if err := s.matterReadable(ctx, p, matter); err != nil {
 		return nil, err
 	}
-	if _, err := s.dir.Matter(ctx, matter); err != nil {
+	m, err := s.dir.Matter(ctx, matter)
+	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, domain.NotFound("matter")
 		}
@@ -415,8 +419,8 @@ func (s *Service) Folders(ctx context.Context, p domain.Principal, matter domain
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
-		if rows, err = s.seedFolders(ctx, p, matter); err != nil {
+	if len(rows) == 0 && s.canWriteTo(ctx, p, matter, "", false) == nil {
+		if rows, err = s.seedFolders(ctx, p, m); err != nil {
 			return nil, err
 		}
 	}
@@ -427,13 +431,34 @@ func (s *Service) Folders(ctx context.Context, p domain.Principal, matter domain
 	return out, nil
 }
 
-func (s *Service) seedFolders(ctx context.Context, p domain.Principal, matter domain.ID) ([]Folder, error) {
+// defaultFolders is the folder list for a new matter: its practice area's
+// default_folders when the directory provides them (AreaFolders), else the global
+// files.default_folders setting.
+func (s *Service) defaultFolders(ctx context.Context, m Matter) ([]string, error) {
+	if src, ok := s.dir.(AreaFolders); ok && m.PracticeAreaID != "" {
+		names, err := src.AreaFolders(ctx, m.PracticeAreaID)
+		if err != nil {
+			return nil, err
+		}
+		if len(names) > 0 {
+			return names, nil
+		}
+	}
 	raw, err := s.settings.Get(ctx, "files.default_folders")
 	if err != nil {
 		return nil, err
 	}
 	var names []string
 	if err := json.Unmarshal([]byte(raw), &names); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+func (s *Service) seedFolders(ctx context.Context, p domain.Principal, m Matter) ([]Folder, error) {
+	matter := m.ID
+	names, err := s.defaultFolders(ctx, m)
+	if err != nil {
 		return nil, err
 	}
 	var out []Folder
@@ -532,7 +557,7 @@ func (s *Service) GetFolder(ctx context.Context, p domain.Principal, id domain.I
 	if err != nil {
 		return FolderView{}, err
 	}
-	if err := s.matterVisible(ctx, p, f.MatterID); err != nil {
+	if err := s.matterReadable(ctx, p, f.MatterID); err != nil {
 		return FolderView{}, domain.NotFound("folder")
 	}
 	return folderView(f), nil

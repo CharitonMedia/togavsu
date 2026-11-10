@@ -235,6 +235,24 @@ WHERE f.matter_id = ? AND v.sha256 = ? AND f.purged_at = 0 ORDER BY f.id`, matte
 	return out, rows.Err()
 }
 
+// takenDrop finds a file the drop folder already took: same arrived name and a first
+// version with the same SHA-256, on the same matter for a matter subfolder. A top-level
+// drop matches on any matter, because Doc Tender may since have filed it to one.
+func (s *store) takenDrop(ctx context.Context, matter domain.ID, name, sha string) (domain.ID, bool, error) {
+	query := `SELECT f.id FROM files f JOIN file_versions v ON v.file_id = f.id AND v.number = 1
+WHERE f.source = 'drop_folder' AND f.arrived_name = ? AND v.sha256 = ?`
+	args := []any{name, sha}
+	if matter != "" {
+		query, args = query+" AND f.matter_id = ?", append(args, matter)
+	}
+	var id domain.ID
+	err := s.row(ctx, query+" ORDER BY f.id LIMIT 1", args...).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return id, err == nil, err
+}
+
 func (s *store) namesInMatter(ctx context.Context, matter domain.ID) (map[string]bool, error) {
 	rows, err := s.query(ctx, `SELECT LOWER(name) FROM files WHERE matter_id = ? AND purged_at = 0`, matter)
 	if err != nil {

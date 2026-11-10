@@ -59,9 +59,15 @@ func (s *Service) ApplyTender(ctx context.Context, p domain.Principal, id domain
 		}
 	}
 	err = s.tx(ctx, func(ctx context.Context) error {
-		cur, err := s.st.getFile(ctx, id)
+		// FOR UPDATE: the whole-row write below must not put back a current version, a
+		// name, a folder or the locks that a save or a person's edit committed first.
+		cur, err := s.lockedFile(ctx, id)
 		if err != nil {
 			return err
+		}
+		if folder != "" && cur.MatterID != f.MatterID {
+			// The file moved to another matter after the folder was resolved.
+			folder = ""
 		}
 		next := cur
 		type change struct{ field, old, new string }

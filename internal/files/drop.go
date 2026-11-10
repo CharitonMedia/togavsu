@@ -35,7 +35,8 @@ func DropPath(set storage.Settings) string {
 // matter gets a subfolder named by its matter number. A file whose size and SHA-256
 // have held for files.drop_steady_seconds is added as a file record (to that matter,
 // or to no matter at the top level, for Doc Tender to match) and then removed from the
-// drop folder. It returns the files it took.
+// drop folder. A file whose record committed but which the share would not let us
+// delete is never taken again, and raises one admin alert. It returns the files it took.
 // ponytail: ceiling: steadiness is tracked in this process and each pass rehashes a
 // file whose size and modification time held. Upgrade path: keep sightings in a table
 // and hash only after the size holds. trigger: a drop folder routinely holds files over
@@ -151,6 +152,17 @@ func (s *Service) scanOne(ctx context.Context, b domain.StorageBackend, root str
 		if !had || now.Sub(cur.since) < steady {
 			continue
 		}
+		// A file is taken once. If an earlier pass (or an earlier process) committed
+		// its record but could not delete it, only the delete is retried.
+		prior, taken, err := s.st.takenDrop(ctx, c.matter, filepath.Base(c.path), cur.sha)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if taken {
+			s.removeTaken(ctx, b.ID, c.path, prior, cur.sha)
+			continue
+		}
 		view, err := s.ingest(ctx, who, c.path, c.matter, cur)
 		if err != nil {
 			errs = append(errs, err)
@@ -160,11 +172,17 @@ func (s *Service) scanOne(ctx context.Context, b domain.StorageBackend, root str
 		delete(s.drops, c.path)
 		s.mu.Unlock()
 		out = append(out, view)
+		s.removeTaken(ctx, b.ID, c.path, view.ID, cur.sha)
 	}
 	s.mu.Lock()
 	for p := range s.drops {
 		if strings.HasPrefix(p, root+string(filepath.Separator)) && !seen[p] {
 			delete(s.drops, p)
+		}
+	}
+	for p := range s.dropAlerted {
+		if strings.HasPrefix(p, root+string(filepath.Separator)) && !seen[p] {
+			delete(s.dropAlerted, p)
 		}
 	}
 	s.mu.Unlock()
@@ -184,23 +202,45 @@ func hashFile(p string) (string, error) {
 	return h.Sum(), nil
 }
 
-// ingest stores the dropped bytes, checks they still hash to what held steady, and
-// removes the dropped file only after the record commits.
+// ingest stores the dropped bytes and checks they still hash to what held steady.
+// The caller removes the dropped file only after the record commits.
 func (s *Service) ingest(ctx context.Context, who domain.Principal, p string, matter domain.ID, seen dropSeen) (FileView, error) {
 	f, err := os.Open(p)
 	if err != nil {
 		return FileView{}, err
 	}
 	defer f.Close()
-	view, err := s.create(ctx, who, NewFile{
+	return s.create(ctx, who, NewFile{
 		Name: filepath.Base(p), MatterID: matter, Source: "drop_folder", How: "upload",
 		MediaType: mediaTypeOf(filepath.Base(p)),
 	}, f, seen.size, seen.sha, nil)
-	if err != nil {
-		return FileView{}, err
+}
+
+// removeTaken deletes a drop file whose record is committed. When the share refuses
+// the delete (no delete right, a file held open), the file stays where it is, is
+// never taken again (takenDrop), and the admins get one storage alert for it.
+func (s *Service) removeTaken(ctx context.Context, backend domain.ID, p string, file domain.ID, sha string) {
+	err := s.removeDrop(p)
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		s.mu.Lock()
+		delete(s.dropAlerted, p)
+		s.mu.Unlock()
+		return
 	}
-	if err := os.Remove(p); err != nil {
-		return view, err
+	s.mu.Lock()
+	already := s.dropAlerted[p] == sha
+	s.dropAlerted[p] = sha
+	s.mu.Unlock()
+	if already {
+		return
 	}
-	return view, nil
+	detail := fmt.Sprintf("the drop folder took %s as file %s but could not remove it from the share: %v. "+
+		"It will not be taken again; delete it from the drop folder by hand or give Togavsu delete rights there.", p, file, err)
+	emailed := false
+	if s.mail != nil {
+		emailed = s.mail.MailAdmins(ctx, "Togavsu storage alert: a dropped file could not be removed", detail) == nil
+	}
+	if m, err := s.meta(domain.SystemUserID); err == nil {
+		_ = s.st.insertAlert(ctx, m, backend, file, file, detail, emailed)
+	}
 }

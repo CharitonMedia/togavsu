@@ -26,7 +26,7 @@ func (d PracticeDirectory) Matter(ctx context.Context, id domain.ID) (Matter, er
 		}
 		return Matter{}, err
 	}
-	return Matter{ID: m.ID, Number: m.Number, Status: m.Status}, nil
+	return Matter{ID: m.ID, Number: m.Number, Status: m.Status, PracticeAreaID: m.PracticeAreaID}, nil
 }
 
 // OpenMatters implements Directory. Prospect, open and on-hold matters get drop
@@ -35,7 +35,7 @@ func (d PracticeDirectory) OpenMatters(context.Context) ([]Matter, error) {
 	var out []Matter
 	for _, m := range d.Store.Matters() {
 		if m.Status != "closed" {
-			out = append(out, Matter{ID: m.ID, Number: m.Number, Status: m.Status})
+			out = append(out, Matter{ID: m.ID, Number: m.Number, Status: m.Status, PracticeAreaID: m.PracticeAreaID})
 		}
 	}
 	return out, nil
