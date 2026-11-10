@@ -1,7 +1,7 @@
 {
   "max_implementation_agents": 4,
   "worker_backend": "claude-actions",
-  "held_tasks": ["calendar", "files"],
+  "held_tasks": [],
   "tasks": [
     {
       "id": "contracts",
