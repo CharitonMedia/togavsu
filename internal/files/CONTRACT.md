@@ -109,7 +109,8 @@ where the restored database says it lives and checks its SHA-256 there. An archi
 missing a manifest object, or repeating one, fails the restore; an object whose file
 was emptied from the trash after the archive was taken is skipped (`purged`), so a
 purge stays a purge. A storage move skips purged files the same way. A move that fails
-stays failed: confirming it deletes only the old copies of the objects that checked out,
-and starting the same move again (same source, target and scope) resumes it. The supervisor
+stays failed and keeps every old copy; starting the same move again (same source, target
+and scope) resumes it, and old copies go only when it checks out and is confirmed.
+Confirming never deletes a copy that is an object's current location. The supervisor
 encrypts the archive and restores the database; wiring it to these two calls is
 pending (PONYTAIL-DEBT platform ceiling 13).

@@ -381,8 +381,7 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 	if m.Status == "confirmed" {
 		return s.moveView(m), nil
 	}
-	failed := m.Status == "failed"
-	if m.Status != "checked" && !failed {
+	if m.Status != "checked" {
 		return MoveView{}, domain.Conflict("a move is confirmed only after every file checks out on the new backend")
 	}
 	items, err := s.st.moveItems(ctx, id)
@@ -390,16 +389,19 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 		return MoveView{}, err
 	}
 	for _, it := range items {
-		if it.Status == "pending" && !failed {
+		if it.Status == "pending" {
 			return MoveView{}, domain.Conflict("an object has not checked out on the new backend")
 		}
 	}
-	// A failed move is cleaned up rather than confirmed: the old copies of the objects
-	// that checked out (their records already point at the new backend) are deleted,
-	// the rest stay where they are, and the move stays failed so starting it again
-	// resumes it.
 	for _, it := range items {
 		if it.Status != "checked" {
+			continue
+		}
+		// Never delete an object's current bytes: a later move (an undo, say) may have
+		// pointed the record back at this old copy.
+		if cur, err := s.st.location(ctx, it.ObjectID, location{}); err != nil {
+			return MoveView{}, err
+		} else if cur.Backend == it.FromBackendID && cur.Key == it.FromKey {
 			continue
 		}
 		raw, _, err := s.adapter(ctx, it.FromBackendID)
@@ -412,14 +414,6 @@ func (s *Service) ConfirmMove(ctx context.Context, p domain.Principal, id domain
 		if err := s.st.setMoveItem(ctx, id, it.ObjectID, "old_deleted"); err != nil {
 			return MoveView{}, err
 		}
-	}
-	if failed {
-		if err := s.tx(ctx, func(ctx context.Context) error {
-			return s.record(ctx, p, "storage_move", m.ID, "old_copies", "", "deleted for the objects that checked out")
-		}); err != nil {
-			return MoveView{}, err
-		}
-		return s.moveView(m), nil
 	}
 	m.Status, m.ConfirmedBy, m.ConfirmedAt, m.UpdatedAt = "confirmed", p.UserID, us(s.now()), s.now().UTC()
 	err = s.tx(ctx, func(ctx context.Context) error {

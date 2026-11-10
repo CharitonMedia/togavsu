@@ -29,46 +29,59 @@ func localPath(t *testing.T, e *env, object domain.ID) string {
 	return path
 }
 
-// TestPGFailedMoveResumesAndCleansUp is checkpoint 6 finding 1: a move that fails can
-// have the old copies of its checked objects deleted, and starting the same move again
-// resumes it where it stopped, so it can still finish and be confirmed.
-func TestPGFailedMoveResumesAndCleansUp(t *testing.T) {
+// TestPGFailedMoveResumesWithoutLosingBytes is checkpoint 6 finding 1 and checkpoint 7
+// finding 1: a failed move keeps every old copy and cannot be confirmed; starting the
+// same move again resumes it. An undo move in between (new backend back to the old one)
+// points some records back at their old copies, and the resumed move's confirmation
+// leaves those current copies alone.
+func TestPGFailedMoveResumesWithoutLosingBytes(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	files := seedFiles(t, e, 2)
 	_, s3 := e.s3()
-	path := localPath(t, e, files[0].version)
-	good, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	corruptLocal(t, e, files[0].version)
 	req := MoveRequest{FromBackendID: e.local.ID, ToBackendID: s3.ID, Scope: "all"}
 	m, err := e.svc.StartMove(ctx, e.admin, req)
 	if err != nil {
 		t.Fatal(err)
 	}
+	items, err := e.svc.st.moveItems(ctx, m.ID)
+	if err != nil || len(items) != m.ProgressTotal {
+		t.Fatalf("items = %d %v", len(items), err)
+	}
+	// The last object the run reaches is corrupt, so every other one checks out first.
+	bad := items[len(items)-1].ObjectID
+	path := localPath(t, e, bad)
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corruptLocal(t, e, bad)
 	if err := e.svc.RunMove(ctx, m.ID); !errors.Is(err, storage.ErrIntegrity) {
 		t.Fatalf("move over a corrupt object = %v", err)
 	}
-	// Clean up what checked out; the move stays failed and the rest stays put.
-	cleaned, err := e.svc.ConfirmMove(ctx, e.admin, m.ID)
-	if err != nil || cleaned.Status != "failed" {
-		t.Fatalf("clean up a failed move = %+v %v", cleaned, err)
+	if _, err := e.svc.ConfirmMove(ctx, e.admin, m.ID); !isCode(err, domain.CodeConflict) {
+		t.Fatalf("confirm a failed move = %v", err)
 	}
-	onS3 := objectsOnBackend(t, e, s3.ID)
-	if n := localObjectFiles(t, e.root+"/local"); n != m.ProgressTotal-onS3 {
-		t.Fatalf("local objects after clean up = %d, want %d", n, m.ProgressTotal-onS3)
+	if n := localObjectFiles(t, e.root+"/local"); n != m.ProgressTotal {
+		t.Fatalf("a failed move deleted old copies: %d of %d left", n, m.ProgressTotal)
 	}
-	readAllFiles2 := func() {
-		t.Helper()
-		if got := readVersion(t, e, e.attorney, files[1].file.ID, files[1].version); got != files[1].body {
-			t.Fatal("a moved object is not readable")
-		}
+	if n := objectsOnBackend(t, e, s3.ID); n != m.ProgressTotal-1 {
+		t.Fatalf("objects on s3 after the failure = %d", n)
 	}
-	readAllFiles2()
 
-	// The source is repaired; starting the same move resumes the failed one.
+	// Undo: move what reached S3 back to local disk, and confirm that.
+	undo, err := e.svc.StartMove(ctx, e.admin, MoveRequest{FromBackendID: s3.ID, ToBackendID: e.local.ID, Scope: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.RunMove(ctx, undo.ID); err != nil {
+		t.Fatalf("undo move = %v", err)
+	}
+	if _, err := e.svc.ConfirmMove(ctx, e.admin, undo.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Repair the source and start the first move again: it resumes, not a new move.
 	if err := os.WriteFile(path, good, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -86,10 +99,12 @@ func TestPGFailedMoveResumesAndCleansUp(t *testing.T) {
 	if _, err := e.svc.ConfirmMove(ctx, e.admin, m.ID); err != nil {
 		t.Fatal(err)
 	}
-	if n := localObjectFiles(t, e.root+"/local"); n != 0 {
-		t.Fatalf("local objects after confirm = %d", n)
-	}
+	// The objects the undo brought back live on local disk again; the confirmation
+	// did not delete them, and every file still reads.
 	readAllFiles(t, e, files)
+	if local := objectsOnBackend(t, e, e.local.ID); local != m.ProgressTotal-1 || localObjectFiles(t, e.root+"/local") != local {
+		t.Fatalf("local objects = %d recorded, %d on disk", local, localObjectFiles(t, e.root+"/local"))
+	}
 }
 
 // TestPGConcurrentTenderNamesStayUnique is checkpoint 6 finding 3: Doc Tender filing

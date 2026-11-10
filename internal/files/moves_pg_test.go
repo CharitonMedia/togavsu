@@ -223,6 +223,9 @@ func TestPGMoveFailsClosedOnACorruptSource(t *testing.T) {
 	if got.Status != "failed" {
 		t.Fatalf("move status = %s", got.Status)
 	}
+	if _, err := e.svc.ConfirmMove(ctx, e.admin, m.ID); !isCode(err, domain.CodeConflict) {
+		t.Fatalf("confirm a failed move = %v", err)
+	}
 	if fs3.Get(string(files[0].version)) != nil {
 		t.Fatal("a corrupt object was copied to the new backend")
 	}
