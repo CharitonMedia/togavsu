@@ -299,6 +299,8 @@ func writeCSV(w http.ResponseWriter, name string, items []any) {
 		b, _ := json.Marshal(it)
 		var m map[string]any
 		// UseNumber keeps each number's exact JSON text, so large cents stay exact in CSV.
+		// The json.Number stays typed so cell() writes it as a number: only real strings
+		// get formula neutralisation, and -1000 cents is not turned into the text '-1000.
 		dec := json.NewDecoder(bytes.NewReader(b))
 		dec.UseNumber()
 		_ = dec.Decode(&m)
@@ -307,8 +309,6 @@ func writeCSV(w http.ResponseWriter, name string, items []any) {
 			case []any, map[string]any:
 				enc, _ := json.Marshal(x)
 				m[k] = string(enc)
-			case json.Number:
-				m[k] = x.String()
 			}
 		}
 		if rep.Columns == nil {

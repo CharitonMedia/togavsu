@@ -100,6 +100,13 @@ type Mailer interface {
 	Send(ctx context.Context, m Message) error
 }
 
+// Receipts checks a file before an expense names it as its receipt. The files lane
+// provides it: CheckReceipt returns nil only when fileID is a receipt file record on
+// matterID that p may read under roles, matter walls and attorney-only rules.
+type Receipts interface {
+	CheckReceipt(ctx context.Context, p domain.Principal, matterID, fileID domain.ID) error
+}
+
 // Deps wires a Service. Store, Practice, Walls and Audit are required.
 type Deps struct {
 	Store    Store
@@ -110,6 +117,8 @@ type Deps struct {
 	Trust    Trust
 	Mail     Mailer
 	Mirror   InvoiceMirror
+	// Receipts is nil until the files lane lands; expenses then refuse receipt_file_id.
+	Receipts Receipts
 	// Logo returns the bytes of the firm logo file. A JPEG is drawn on the invoice PDF.
 	Logo  func(ctx context.Context, fileID domain.ID) ([]byte, error)
 	Now   func() time.Time

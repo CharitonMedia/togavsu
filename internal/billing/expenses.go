@@ -141,7 +141,9 @@ func (s *Service) buildExpense(ctx context.Context, p domain.Principal, before E
 		}
 		row.MarkupPercent = *in.MarkupPercent
 	}
+	receiptChanged := false
 	if in.ReceiptFileID != nil {
+		receiptChanged = *in.ReceiptFileID != row.FileID
 		row.FileID = *in.ReceiptFileID
 	}
 	if in.Source != nil && *in.Source != "" {
@@ -155,6 +157,11 @@ func (s *Service) buildExpense(ctx context.Context, p domain.Principal, before E
 	}
 	if !create && before.MatterID != row.MatterID {
 		if err := s.allow(ctx, p, domain.ResExpense, domain.ActionWrite, before.MatterID); err != nil {
+			return Expense{}, err
+		}
+	}
+	if !row.FileID.IsZero() && (receiptChanged || before.MatterID != row.MatterID) {
+		if err := s.checkReceipt(ctx, p, row.MatterID, row.FileID); err != nil {
 			return Expense{}, err
 		}
 	}
@@ -243,4 +250,24 @@ func (s *Service) UpdateExpense(ctx context.Context, p domain.Principal, id doma
 		return t.event("expense.updated", "expense", id, after.MatterID, "Expense updated", false)
 	})
 	return out, err
+}
+
+// checkReceipt refuses a receipt file the caller cannot read or that is not a receipt on
+// the expense's matter. The files service owns that answer, so walls and attorney-only
+// rules apply there, not in billing.
+// ponytail: ceiling: no files service exists yet, so with Deps.Receipts nil every
+// receipt_file_id is refused and expenses carry no receipt. Upgrade trigger: the files
+// lane lands file records; wire its receipt check into Deps.Receipts.
+func (s *Service) checkReceipt(ctx context.Context, p domain.Principal, matterID, fileID domain.ID) error {
+	if s.d.Receipts == nil {
+		return domain.Invalid("receipt_file_id", "receipt files are not available until the files service is installed")
+	}
+	if err := s.d.Receipts.CheckReceipt(ctx, p, matterID, fileID); err != nil {
+		var ae *domain.APIError
+		if errors.As(err, &ae) {
+			return domain.Invalid("receipt_file_id", "is not a receipt file on this matter that you can read")
+		}
+		return err
+	}
+	return nil
 }
