@@ -125,7 +125,9 @@ jobs:
           out, pack = temp / "lane-out", temp / "lane-pack"
           pack.mkdir()
           def git(*args):
-              return subprocess.run(["git"] + list(args), check=True, capture_output=True, text=True).stdout.strip()
+              # Lanes may commit binary files (screenshots); undecodable bytes become U+FFFD so the scan still sees ASCII tokens.
+              return subprocess.run(["git"] + list(args), check=True, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace").stdout.strip()
           base, head = os.environ["LANE_BASE"], git("rev-parse", "refs/heads/lane")
           if git("merge-base", base, head) != base:
               sys.exit("Lane head does not descend from its base")
