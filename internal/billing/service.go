@@ -523,9 +523,14 @@ func sourceOf(p domain.Principal, given string) string {
 	return "manual"
 }
 
-// Events returns billing events for a matter the caller can see, newest first.
+// Events returns billing events for a matter the caller can see, newest first. A client-only
+// principal gets only client-visible events, so every surface built on this read (timeline,
+// MCP, portal) is filtered here rather than in its handler.
 func (s *Service) Events(ctx context.Context, p domain.Principal, matter domain.ID) ([]domain.Event, error) {
-	if err := s.gate.VisibleMatter(ctx, p, matter); err != nil {
+	client := ClientOnly(p)
+	// A client reads the matter as shared; the policy still checks the client is a party on it.
+	if err := s.gate.Allow(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead,
+		MatterID: matter, SharedWithClient: client}); err != nil {
 		return nil, err
 	}
 	rows, err := listOf[domain.Event](ctx, s.d.Store, kindEvent)
@@ -534,6 +539,9 @@ func (s *Service) Events(ctx context.Context, p domain.Principal, matter domain.
 	}
 	var out []domain.Event
 	for i := len(rows) - 1; i >= 0; i-- {
+		if client && !rows[i].ClientVisible {
+			continue
+		}
 		if rows[i].MatterID == matter {
 			out = append(out, rows[i])
 		}
