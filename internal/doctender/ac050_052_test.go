@@ -325,7 +325,7 @@ func TestHTTPRoutesAndPages(t *testing.T) {
 	e.drain()
 	res := e.call(h, e.attorney, "GET", "/api/v1/doc-tender/exceptions?status=open", "")
 	var page struct {
-		Data []Exception   `json:"data"`
+		Data []Exception    `json:"data"`
 		Page map[string]any `json:"page"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &page); err != nil || res.Code != http.StatusOK || len(page.Data) != 1 {

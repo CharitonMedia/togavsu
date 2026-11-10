@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -441,7 +442,7 @@ func (h *Handler) spend(w http.ResponseWriter, r *http.Request) {
 		_ = cw.Write(cols)
 		for _, row := range rows {
 			_ = cw.Write([]string{row.Day, row.MatterID, row.FileType, strconv.Itoa(row.Calls), strconv.Itoa(row.PromptTokens),
-				strconv.Itoa(row.CompletionTokens), strconv.FormatInt(row.CostCents, 10)})
+				strconv.Itoa(row.CompletionTokens), fmt.Sprint(row.CostCents)})
 		}
 		cw.Flush()
 		return

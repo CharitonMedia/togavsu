@@ -239,7 +239,7 @@ type env struct {
 	router *Router
 
 	admin, attorney, staff, outsider, system domain.Principal
-	open, walled, closed, other               domain.ID
+	open, walled, closed, other              domain.ID
 }
 
 func id(t *testing.T) domain.ID {
