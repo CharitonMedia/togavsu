@@ -1,19 +1,16 @@
 package practice
 
-// Pending is the honest list of criteria this package does not claim.
-// Identity has not passed, so session mounting, the core router, and Postgres are pending.
+// Pending is the honest list of criteria this package does not claim. The core
+// (internal/core) mounts these routes with the identity session principal, serves /mcp,
+// and stores practice rows in Postgres through Durable.
 var Pending = []string{
-	"identity session principal, CSRF on the core router, and mounting these routes in cmd/core",
-	"AC-003-P1 core /api/v1 router (identity)",
 	"AC-003-P5 and AC-003-F3 module include rows (modules)",
-	"AC-009 integrated browser close on the signed-in app (identity, ui)",
 	"AC-020 file-text search (files)",
-	"AC-024-F4 application-role SQL UPDATE and DELETE of audit_log and events; no trigger is added; the database immutability debt stays open",
-	"AC-025 live browser save on the integrated matter screen (identity, ui)",
-	"Postgres Store over the contacts, matters, matter_parties, notes, and audit_log tables already created by migration 0001 (integration lead)",
+	"AC-024-F4 application-role SQL UPDATE and DELETE of the events table; audit_log refuses them for the non-superuser core role, but the owning role can grant them back (identity ceiling 4)",
+	"section 5 relational tables from migration 0001 (contacts, matters, matter_parties, notes) are not the practice source of truth: practice rows persist as documents in practice_records (migration 200), so rows seeded into the relational tables do not appear on practice screens",
 	"bulk writes POST /api/v1/contacts:bulk, /api/v1/matters:bulk, /api/v1/notes:bulk, /api/v1/conflict-records:bulk, /api/v1/matter-parties:bulk, /api/v1/contact-phones:bulk, /api/v1/contact-emails:bulk, /api/v1/contact-addresses:bulk, /api/v1/contact-tags:bulk, /api/v1/matter-markers:bulk, and /api/v1/custom-field-values:bulk stay one-transaction batches for the integration lead",
 	"merge POST /api/v1/contacts/{id}/merge and POST /api/v1/matters/{id}/merge",
-	"archive matter POST /api/v1/matters/{id}/archive is blocked on a contracts change: domain.Matter and migration 0001 have no archived column, and the integration lead must add that field before this route can be implemented",
-	"MCP transport for these practice operations waits for identity to mount /mcp",
-	"CSRF cookie Secure is set on HTTPS and on X-Forwarded-Proto https; plain HTTP local checks omit Secure so the browser keeps the cookie, and the core session cookie remains identity's",
+	"archive matter POST /api/v1/matters/{id}/archive is blocked on a contracts change: domain.Matter and migration 0001 have no archived column",
+	"MCP and bearer tokens reach only contract operations: GET /api/v1/reports/matters and GET /api/v1/matters/{matter_id}/conflict-checks are served but are not in api/openapi/v1, so they need a contract change",
+	"practice area, county and referral admin screens; a fresh install has no practice area until one is created through POST /api/v1/practice-areas",
 }
