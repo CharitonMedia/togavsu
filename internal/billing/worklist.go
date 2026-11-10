@@ -305,14 +305,48 @@ func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, 
 // applyFlatFee posts a flat matter's fee through the trust service's ApplyFlatFee, which
 // records the application trust's own page and worklist read and refuses a second apply,
 // and records the matching operating payment on inv.
+//
+// Billing's checks read trust's flat-fee record before trust's lock is held, and billing's
+// mutex does not serialize trust-page applies, so a partial apply on the trust page can
+// commit between those checks and this post (trust refuses only a Collected fee; it does not
+// cap the amount). Once trust's ApplyFlatFee returns inside billing's transaction, that
+// transaction holds trust's account lock, so the record read again here is final: if it
+// is not exactly what billing read plus this amount, or it exceeds the matter's flat fee,
+// the write fails and rolls back with the trust entry, and nothing leaves trust twice.
 func (s *Service) applyFlatFee(t *txn, inv Invoice, client, account domain.ID, amount domain.Cents, desc string) (Payment, TrustPosted, error) {
 	meta, err := s.meta(t.p)
 	if err != nil {
 		return Payment{}, TrustPosted{}, err
 	}
-	posted, err := s.d.Trust.ApplyFlatFee(t.ctx, t.p, FlatFeeApplication{MatterID: inv.MatterID, ClientID: client, AccountID: account, AmountCents: amount})
+	m, err := s.matter(t.ctx, inv.MatterID)
 	if err != nil {
 		return Payment{}, TrustPosted{}, err
+	}
+	prior, err := s.d.Trust.FlatFeeCollected(t.ctx, m.ID)
+	if err != nil {
+		return Payment{}, TrustPosted{}, err
+	}
+	want, err := prior.Add(amount)
+	if err != nil {
+		return Payment{}, TrustPosted{}, err
+	}
+	if want > m.FlatFeeCents {
+		return Payment{}, TrustPosted{}, domain.Conflict("the flat fee was applied on the trust page meanwhile; review the invoice and try again")
+	}
+	posted, err := s.d.Trust.ApplyFlatFee(t.ctx, t.p, FlatFeeApplication{MatterID: m.ID, ClientID: client, AccountID: account, AmountCents: amount})
+	if err != nil {
+		return Payment{}, TrustPosted{}, err
+	}
+	after, err := s.d.Trust.FlatFeeCollected(t.ctx, m.ID)
+	if err != nil {
+		return Payment{}, TrustPosted{}, err
+	}
+	if after != want || after > m.FlatFeeCents {
+		// ponytail: ceiling: rollback undoes the trust entry only when trust joined billing's
+		// transaction (TrustLink on the shared pool, as wired); an unjoined trust has already
+		// committed it, and the next sync credits it. Upgrade trigger: trust's ApplyFlatFee
+		// caps the amount at fee minus collected under its own lock.
+		return Payment{}, TrustPosted{}, domain.Conflict("the flat fee was applied on the trust page meanwhile; review the invoice and try again")
 	}
 	return s.transferred(t, meta, inv, client, account, amount, desc, true, posted)
 }
