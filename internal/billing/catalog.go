@@ -134,7 +134,7 @@ func applyFeeItem(row *FeeItem, in FeeItemInput) error {
 		row.Description = *in.Description
 	}
 	if in.DefaultAmountCents != nil {
-		if *in.DefaultAmountCents < 0 {
+		if negative(int64(*in.DefaultAmountCents)) {
 			return domain.Invalid("default_amount_cents", "must be zero or greater")
 		}
 		row.DefaultAmountCents = *in.DefaultAmountCents

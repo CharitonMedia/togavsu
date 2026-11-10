@@ -246,7 +246,7 @@ func (s *Service) applyToInvoice(t *txn, id domain.ID, amount domain.Cents) erro
 	if err != nil {
 		return err
 	}
-	if amount > 0 && amount > inv.BalanceDueCents {
+	if positive(int64(amount)) && amount > inv.BalanceDueCents {
 		return domain.Invalid("amount_cents", "is more than the balance due "+money(inv.BalanceDueCents))
 	}
 	before := inv

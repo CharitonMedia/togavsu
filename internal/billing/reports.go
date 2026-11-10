@@ -226,18 +226,14 @@ func (s *Service) TimeByUserReport(ctx context.Context, p domain.Principal, f Re
 	return r, nil
 }
 
+// agingBuckets are the standard 30-day AR aging columns after the due date. The last one is open-ended.
+var agingBuckets = []string{"1-30", "31-60", "61-90", "91+"}
+
 func agingBucket(days int) string {
-	switch {
-	case days <= 0:
+	if !positive(int64(days)) {
 		return "current"
-	case days <= 30:
-		return "1-30"
-	case days <= 60:
-		return "31-60"
-	case days <= 90:
-		return "61-90"
 	}
-	return "91+"
+	return agingBuckets[min((days-1)/30, len(agingBuckets)-1)]
 }
 
 // ARAgingReport lists each invoice with a balance on the as-of date by days past due.
@@ -285,18 +281,21 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 				return Report{}, err
 			}
 		}
-		if inv.WriteOffCents > 0 && inv.WriteOffOn <= asOf {
-			if owed, err = owed.Sub(inv.WriteOffCents); err != nil {
+		for _, wo := range inv.WriteOffs {
+			if wo.On > asOf {
+				continue
+			}
+			if owed, err = owed.Sub(wo.AmountCents); err != nil {
 				return Report{}, err
 			}
 		}
-		if owed <= 0 {
+		if !positive(int64(owed)) {
 			continue
 		}
 		days := daysBetween(inv.DueOn, asOf)
 		r.Rows = append(r.Rows, map[string]any{"invoice_id": inv.ID, "number": inv.Number, "matter_id": inv.MatterID,
 			"matter_number": s.matterNumber(ctx, inv.MatterID), "issued_on": inv.IssuedOn, "due_on": inv.DueOn,
-			"days_past_due": max(days, 0), "bucket": agingBucket(days), "balance_cents": int64(owed)})
+			"days_past_due": max(days, int(0)), "bucket": agingBucket(days), "balance_cents": int64(owed)})
 	}
 	return r, nil
 }
@@ -346,17 +345,19 @@ func (s *Service) WriteOffsReport(ctx context.Context, p domain.Principal, f Rep
 	}
 	r := Report{Report: "write-offs", Columns: []string{"invoice_id", "number", "matter_id", "matter_number", "written_off_on", "reason", "amount_cents"}, Rows: []map[string]any{}}
 	for _, inv := range invs {
-		if inv.WriteOffCents == 0 || !inRange(inv.WriteOffOn, f.FromDate, f.ToDate) {
-			continue
+		for _, wo := range inv.WriteOffs {
+			if !inRange(wo.On, f.FromDate, f.ToDate) {
+				continue
+			}
+			if vis, err := ok(inv.MatterID); err != nil {
+				return Report{}, err
+			} else if !vis {
+				break
+			}
+			r.Rows = append(r.Rows, map[string]any{"invoice_id": inv.ID, "number": inv.Number, "matter_id": inv.MatterID,
+				"matter_number": s.matterNumber(ctx, inv.MatterID), "written_off_on": wo.On, "reason": wo.Reason,
+				"amount_cents": int64(wo.AmountCents)})
 		}
-		if vis, err := ok(inv.MatterID); err != nil {
-			return Report{}, err
-		} else if !vis {
-			continue
-		}
-		r.Rows = append(r.Rows, map[string]any{"invoice_id": inv.ID, "number": inv.Number, "matter_id": inv.MatterID,
-			"matter_number": s.matterNumber(ctx, inv.MatterID), "written_off_on": inv.WriteOffOn, "reason": inv.WriteOffReason,
-			"amount_cents": int64(inv.WriteOffCents)})
 	}
 	return r, nil
 }

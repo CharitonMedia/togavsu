@@ -10,11 +10,11 @@
 </tbody>
 <tfoot>
 <tr><th colspan="2">Subtotal</th><td class="num">{{money .SubtotalCents}}</td></tr>
-{{if .AdjustmentCents}}<tr><th colspan="2">Adjustment: {{.AdjustmentReason}}</th><td class="num">{{money .AdjustmentCents}}</td></tr>{{end}}
+{{if .AdjustmentCents}}<tr><th colspan="2">Adjustment{{if .AdjustmentReason}}: {{.AdjustmentReason}}{{end}}</th><td class="num">{{money .AdjustmentCents}}</td></tr>{{end}}
 {{if .InterestCents}}<tr><th colspan="2">Late interest</th><td class="num">{{money .InterestCents}}</td></tr>{{end}}
 <tr><th colspan="2">Total</th><td class="num">{{money .TotalCents}}</td></tr>
 <tr><th colspan="2">Paid</th><td class="num">{{money .AmountPaidCents}}</td></tr>
-{{if .WriteOffCents}}<tr><th colspan="2">Written off: {{.WriteOffReason}}</th><td class="num">{{money .WriteOffCents}}</td></tr>{{end}}
+{{if .WriteOffCents}}<tr><th colspan="2">Written off{{if .WriteOffReason}}: {{.WriteOffReason}}{{end}}</th><td class="num">{{money .WriteOffCents}}</td></tr>{{end}}
 <tr class="due"><th colspan="2">Balance due</th><td class="num">{{money .BalanceDueCents}}</td></tr>
 </tfoot>
 </table></div>
@@ -102,9 +102,11 @@
 </details>
 {{end}}
 
+{{if .Staff}}
 <details class="card">
 <summary>Edit history</summary>
 <div class="scroll"><table><thead><tr><th>When</th><th>Role</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
 <tbody>{{range .History}}<tr><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td>{{.Role}}</td><td>{{.Field}}</td><td class="clip">{{.OldValue}}</td><td class="clip">{{.NewValue}}</td></tr>{{end}}</tbody></table></div>
 </details>
+{{end}}
 {{template "foot" .}}

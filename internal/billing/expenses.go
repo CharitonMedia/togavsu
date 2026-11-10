@@ -121,7 +121,7 @@ func (s *Service) buildExpense(ctx context.Context, p domain.Principal, before E
 		row.Description = strings.TrimSpace(*in.Description)
 	}
 	if in.AmountCents != nil {
-		if *in.AmountCents < 0 {
+		if negative(int64(*in.AmountCents)) {
 			return Expense{}, domain.Invalid("amount_cents", "must be zero or greater")
 		}
 		row.AmountCents = *in.AmountCents
@@ -136,7 +136,7 @@ func (s *Service) buildExpense(ctx context.Context, p domain.Principal, before E
 		row.Billable = *in.Billable
 	}
 	if in.MarkupPercent != nil {
-		if *in.MarkupPercent < 0 {
+		if negative(int64(*in.MarkupPercent)) {
 			return Expense{}, domain.Invalid("markup_percent", "must be zero or greater")
 		}
 		row.MarkupPercent = *in.MarkupPercent

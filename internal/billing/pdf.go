@@ -3,20 +3,70 @@ package billing
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
-	"errors"
+	_ "embed"
+	"encoding/json"
 	"fmt"
+	"image/color"
+	"image/jpeg"
 	"strings"
+	"sync"
+	"unicode"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
+// pdfLayout is the invoice page design in PDF points on US Letter: margins, columns, line
+// spacing and font sizes. It is a fixed page design shipped with the code, like billing.css,
+// not a firm setting; the firm's name, contact lines, logo and terms come from the registry.
+type pdfLayout struct {
+	Top           float64 `json:"top"`
+	Margin        float64 `json:"margin"`
+	Right         float64 `json:"right"`
+	LogoTop       float64 `json:"logo_top"`
+	LogoMaxWidth  float64 `json:"logo_max_width"`
+	LogoMaxHeight float64 `json:"logo_max_height"`
+	HeaderX       float64 `json:"header_x"`
+	AmountX       float64 `json:"amount_x"`
+	TotalsX       float64 `json:"totals_x"`
+	LinesBottom   float64 `json:"lines_bottom"`
+	TotalsBottom  float64 `json:"totals_bottom"`
+	FooterY       float64 `json:"footer_y"`
+	Line          float64 `json:"line"`
+	TitleGap      float64 `json:"title_gap"`
+	Gap           float64 `json:"gap"`
+	Section       float64 `json:"section"`
+	RuleGap       float64 `json:"rule_gap"`
+	TitleSize     float64 `json:"title_size"`
+	HeadingSize   float64 `json:"heading_size"`
+	BodySize      float64 `json:"body_size"`
+	SmallSize     float64 `json:"small_size"`
+	WrapLines     int     `json:"wrap_lines"`
+	WrapMessage   int     `json:"wrap_message"`
+}
+
+//go:embed pdf_layout.json
+var pdfLayoutJSON []byte
+
+var loadLayout = sync.OnceValues(func() (pdfLayout, error) {
+	var l pdfLayout
+	dec := json.NewDecoder(bytes.NewReader(pdfLayoutJSON))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&l); err != nil {
+		return pdfLayout{}, fmt.Errorf("billing: pdf layout: %w", err)
+	}
+	return l, nil
+})
+
 // renderPDF draws the invoice on US Letter pages with the firm's name, address, logo and terms.
 // ponytail: ceiling: a built-in text PDF writer with the standard Helvetica font; characters
-// outside Latin-1 print as "?", and only a baseline JPEG logo is drawn. Upgrade path: a PDF
+// outside Latin-1 print as "?", and only a JPEG logo is drawn. Upgrade path: a PDF
 // library with embedded fonts and PNG logos. Trigger: a firm name or client name outside
 // Latin-1, or a PNG logo upload.
 func (s *Service) renderPDF(ctx context.Context, inv Invoice) ([]byte, error) {
+	L, err := loadLayout()
+	if err != nil {
+		return nil, err
+	}
 	firm := s.setting(ctx, "firm.name")
 	if firm == "" {
 		firm = "Invoice"
@@ -31,98 +81,100 @@ func (s *Service) renderPDF(ctx context.Context, inv Invoice) ([]byte, error) {
 	}
 	doc := &pdfDoc{}
 	page := doc.page()
-	y := 740.0
+	y := L.Top
 	if logo != nil {
-		h := 54.0
+		h := L.LogoMaxHeight
 		w := h * float64(logo.width) / float64(logo.height)
-		if w > 160 {
-			w, h = 160, 160*float64(logo.height)/float64(logo.width)
+		if w > L.LogoMaxWidth {
+			w, h = L.LogoMaxWidth, L.LogoMaxWidth*float64(logo.height)/float64(logo.width)
 		}
-		page.imageAt(w, h, 54, 760-h)
-		y = 740 - h
+		page.imageAt(w, h, L.Margin, L.LogoTop-h)
+		y = L.Top - h
 	}
-	page.text(54, y, 16, firm)
-	y -= 16
+	page.text(L.Margin, y, L.TitleSize, firm)
+	y -= L.TitleSize
 	for _, line := range []string{s.setting(ctx, "firm.address"), s.setting(ctx, "firm.phone"), s.setting(ctx, "firm.email"), s.setting(ctx, "firm.website")} {
 		if strings.TrimSpace(line) != "" {
-			page.text(54, y, 10, line)
-			y -= 13
+			page.text(L.Margin, y, L.BodySize, line)
+			y -= L.Line
 		}
 	}
-	page.text(400, 740, 16, "INVOICE")
-	page.text(400, 722, 10, "Number: "+inv.Number)
-	page.text(400, 709, 10, "Date: "+inv.IssuedOn)
-	page.text(400, 696, 10, "Due: "+inv.DueOn)
-	page.text(400, 683, 10, "Status: "+inv.Status)
-	y -= 14
-	page.text(54, y, 11, "Matter "+inv.MatterNum+" "+inv.MatterName)
+	hy := L.Top
+	page.text(L.HeaderX, hy, L.TitleSize, "INVOICE")
+	hy -= L.TitleGap
+	for _, line := range []string{"Number: " + inv.Number, "Date: " + inv.IssuedOn, "Due: " + inv.DueOn, "Status: " + inv.Status} {
+		page.text(L.HeaderX, hy, L.BodySize, line)
+		hy -= L.Line
+	}
+	y -= L.Gap
+	page.text(L.Margin, y, L.HeadingSize, "Matter "+inv.MatterNum+" "+inv.MatterName)
 	for _, c := range s.clientParties(inv.MatterID) {
 		if contact, err := s.d.Practice.Contact(ctx, c); err == nil {
-			y -= 13
-			page.text(54, y, 10, "Bill to: "+contact.FullName)
+			y -= L.Line
+			page.text(L.Margin, y, L.BodySize, "Bill to: "+contact.FullName)
 		}
 	}
-	y -= 28
+	y -= L.Section
 	header := func() {
-		page.text(54, y, 10, "Description")
-		page.text(480, y, 10, "Amount")
-		y -= 6
-		page.rule(54, y, 558)
-		y -= 14
+		page.text(L.Margin, y, L.BodySize, "Description")
+		page.text(L.AmountX, y, L.BodySize, "Amount")
+		y -= L.RuleGap
+		page.rule(L.Margin, y, L.Right)
+		y -= L.Gap
+	}
+	newPage := func() {
+		page = doc.page()
+		y = L.Top
 	}
 	header()
 	for _, l := range inv.Lines {
-		parts := wrap(l.Description, 80)
-		if y-float64(13*len(parts)) < 120 {
-			page = doc.page()
-			y = 740
+		parts := wrap(l.Description, L.WrapLines)
+		if y-L.Line*float64(len(parts)) < L.LinesBottom {
+			newPage()
 			header()
 		}
-		for i, part := range parts {
-			page.text(54, y, 10, part)
-			if i == 0 {
-				page.textRight(558, y, 10, money(l.AmountCents))
-			}
-			y -= 13
+		page.textRight(L.Right, y, L.BodySize, money(l.AmountCents))
+		for _, part := range parts {
+			page.text(L.Margin, y, L.BodySize, part)
+			y -= L.Line
 		}
 	}
-	y -= 6
-	page.rule(360, y, 558)
-	y -= 14
-	totals := [][2]string{{"Subtotal", money(inv.SubtotalCents)}}
-	if inv.AdjustmentCents != 0 {
-		totals = append(totals, [2]string{"Adjustment " + inv.AdjustmentReason, money(inv.AdjustmentCents)})
+	y -= L.RuleGap
+	page.rule(L.TotalsX, y, L.Right)
+	y -= L.Gap
+	type total struct{ label, amount string }
+	totals := []total{{"Subtotal", money(inv.SubtotalCents)}}
+	if !isZero(int64(inv.AdjustmentCents)) {
+		totals = append(totals, total{"Adjustment", money(inv.AdjustmentCents)})
 	}
-	if inv.InterestCents != 0 {
-		totals = append(totals, [2]string{"Late interest", money(inv.InterestCents)})
+	if !isZero(int64(inv.InterestCents)) {
+		totals = append(totals, total{"Late interest", money(inv.InterestCents)})
 	}
-	totals = append(totals, [2]string{"Total", money(inv.TotalCents)}, [2]string{"Paid", money(inv.AmountPaidCents)})
-	if inv.WriteOffCents != 0 {
-		totals = append(totals, [2]string{"Written off", money(inv.WriteOffCents)})
+	totals = append(totals, total{"Total", money(inv.TotalCents)}, total{"Paid", money(inv.AmountPaidCents)})
+	if !isZero(int64(inv.WriteOffCents)) {
+		totals = append(totals, total{"Written off", money(inv.WriteOffCents)})
 	}
-	totals = append(totals, [2]string{"Balance due", money(inv.BalanceDueCents)})
+	totals = append(totals, total{"Balance due", money(inv.BalanceDueCents)})
 	for _, row := range totals {
-		if y < 60 {
-			page = doc.page()
-			y = 740
+		if y < L.TotalsBottom {
+			newPage()
 		}
-		page.text(360, y, 10, row[0])
-		page.textRight(558, y, 10, row[1])
-		y -= 13
+		page.text(L.TotalsX, y, L.BodySize, row.label)
+		page.textRight(L.Right, y, L.BodySize, row.amount)
+		y -= L.Line
 	}
 	if inv.ClientMessage != "" {
-		y -= 14
-		for _, part := range wrap(inv.ClientMessage, 95) {
-			if y < 60 {
-				page = doc.page()
-				y = 740
+		y -= L.Gap
+		for _, part := range wrap(inv.ClientMessage, L.WrapMessage) {
+			if y < L.TotalsBottom {
+				newPage()
 			}
-			page.text(54, y, 10, part)
-			y -= 13
+			page.text(L.Margin, y, L.BodySize, part)
+			y -= L.Line
 		}
 	}
 	terms := s.settingInt(ctx, "billing.payment_terms_days")
-	page.text(54, 48, 9, fmt.Sprintf("Payment is due within %d days of the invoice date.", terms))
+	page.text(L.Margin, L.FooterY, L.SmallSize, fmt.Sprintf("Payment is due within %d days of the invoice date.", terms))
 	return doc.bytes(logo), nil
 }
 
@@ -169,8 +221,8 @@ func latin1(s string) string {
 			b.WriteRune(r)
 		case r == '\t':
 			b.WriteByte(' ')
-		case r < 32:
-		case r < 256:
+		case unicode.IsControl(r):
+		case r <= unicode.MaxLatin1:
 			b.WriteByte(byte(r))
 		default:
 			b.WriteByte('?')
@@ -251,34 +303,19 @@ type jpegInfo struct {
 	data          []byte
 }
 
-// parseJPEG reads the frame size and colour space from a baseline or progressive JPEG.
+// parseJPEG reads the frame size and colour model of a JPEG with the standard library decoder.
+// The PDF embeds the original bytes with DCTDecode.
 func parseJPEG(b []byte) (jpegInfo, error) {
-	if len(b) < 4 || b[0] != 0xFF || b[1] != 0xD8 {
-		return jpegInfo{}, errors.New("not a jpeg")
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(b))
+	if err != nil {
+		return jpegInfo{}, err
 	}
-	i := 2
-	for i+4 <= len(b) {
-		if b[i] != 0xFF {
-			return jpegInfo{}, errors.New("bad jpeg marker")
-		}
-		marker := b[i+1]
-		size := int(binary.BigEndian.Uint16(b[i+2:]))
-		if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2) && i+9 < len(b) {
-			h := int(binary.BigEndian.Uint16(b[i+5:]))
-			w := int(binary.BigEndian.Uint16(b[i+7:]))
-			space := "DeviceRGB"
-			switch b[i+9] {
-			case 1:
-				space = "DeviceGray"
-			case 4:
-				space = "DeviceCMYK"
-			}
-			if w == 0 || h == 0 {
-				break
-			}
-			return jpegInfo{width: w, height: h, space: space, data: b}, nil
-		}
-		i += 2 + size
+	space := "DeviceRGB"
+	switch cfg.ColorModel {
+	case color.GrayModel:
+		space = "DeviceGray"
+	case color.CMYKModel:
+		space = "DeviceCMYK"
 	}
-	return jpegInfo{}, errors.New("no jpeg frame")
+	return jpegInfo{width: cfg.Width, height: cfg.Height, space: space, data: b}, nil
 }

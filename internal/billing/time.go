@@ -110,10 +110,10 @@ func (f TimeFilter) match(r TimeEntry) bool {
 
 // defaultRate is the matter rate, then the user's default rate, then the firm default.
 func (s *Service) defaultRate(ctx context.Context, m domain.Matter, user domain.ID) domain.Cents {
-	if m.MatterRateCents > 0 {
+	if positive(int64(m.MatterRateCents)) {
 		return m.MatterRateCents
 	}
-	if u, err := s.d.Practice.User(ctx, user); err == nil && u.DefaultHourlyRateCents > 0 {
+	if u, err := s.d.Practice.User(ctx, user); err == nil && positive(int64(u.DefaultHourlyRateCents)) {
 		return u.DefaultHourlyRateCents
 	}
 	return s.settingCents(ctx, "billing.default_hourly_rate_cents")
@@ -146,7 +146,7 @@ func (s *Service) buildTime(ctx context.Context, p domain.Principal, before Time
 		row.WorkedOn = *in.WorkedOn
 	}
 	if in.Increments != nil {
-		if *in.Increments < 1 {
+		if !positive(int64(*in.Increments)) {
 			return TimeEntry{}, domain.Invalid("increments", "must be at least one increment")
 		}
 		row.Increments = *in.Increments
@@ -165,6 +165,10 @@ func (s *Service) buildTime(ctx context.Context, p domain.Principal, before Time
 	}
 	if in.Billable != nil {
 		row.Billable = *in.Billable
+	}
+	if row.NeedsReview && row.Description != "" && row.ActivityType != "" {
+		// Saving a timer draft with a description and an activity type is its review.
+		row.NeedsReview = false
 	}
 	if in.Source != nil && *in.Source != "" {
 		row.Source = *in.Source
@@ -189,7 +193,7 @@ func (s *Service) buildTime(ctx context.Context, p domain.Principal, before Time
 	}
 	switch {
 	case in.RateCents != nil:
-		if *in.RateCents < 0 {
+		if negative(int64(*in.RateCents)) {
 			return TimeEntry{}, domain.Invalid("rate_cents", "must be zero or greater")
 		}
 		row.RateCents = *in.RateCents
@@ -440,7 +444,9 @@ func (s *Service) moveTimer(ctx context.Context, p domain.Principal, id domain.I
 }
 
 // StopTimer stops the timer and creates one draft time entry, rounded up to the firm increment,
-// for review. The entry carries the first active activity type until the user changes it.
+// for review (PRD 8.3). The entry carries the first active activity type until the user changes
+// it, and it is not invoiced until a person saves it with a description. With no active
+// activity type the stop is refused and the timer keeps its time.
 func (s *Service) StopTimer(ctx context.Context, p domain.Principal, id domain.ID) (Timer, TimeEntry, error) {
 	var timer Timer
 	var entry TimeEntry
@@ -471,13 +477,17 @@ func (s *Service) StopTimer(ctx context.Context, p domain.Principal, id domain.I
 		if err != nil {
 			return err
 		}
+		activity := s.firstActiveType(t.ctx)
+		if activity.IsZero() {
+			return domain.Conflict("add an active activity type before stopping a timer; the timer keeps running")
+		}
 		inc := s.incrementMinutes(t.ctx)
-		entry = TimeEntry{IncrementMinutes: inc}
+		entry = TimeEntry{IncrementMinutes: inc, NeedsReview: true}
 		entry.TimeEntry = domain.TimeEntry{
 			Meta: meta, MatterID: m.ID, UserID: p.UserID, WorkedOn: s.today(t.ctx),
 			Increments: incrementsFor(after.AccumulatedSeconds, inc), Billable: true,
 			RateCents: s.defaultRate(t.ctx, m, p.UserID), Source: "timer",
-			ActivityType: string(s.firstActiveType(t.ctx)),
+			ActivityType: string(activity),
 		}
 		after.TimeEntryID = entry.ID
 		timer = after

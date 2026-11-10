@@ -69,7 +69,13 @@ const (
 type TimeEntry struct {
 	domain.TimeEntry
 	IncrementMinutes int `json:"increment_minutes"`
+	// NeedsReview marks a draft entry from a stopped timer (PRD 8.3). It is not invoiced until
+	// a person saves it with a description and an activity type.
+	NeedsReview bool `json:"needs_review,omitempty"`
 }
+
+// Reviewed reports whether the entry can be invoiced.
+func (t TimeEntry) Reviewed() bool { return !t.NeedsReview }
 
 // Minutes is the billed duration.
 func (t TimeEntry) Minutes() int64 { return int64(t.Increments) * int64(t.IncrementMinutes) }
@@ -111,6 +117,17 @@ type Line struct {
 	Description string       `json:"description"`
 	AmountCents domain.Cents `json:"amount_cents"`
 	FeeItemID   domain.ID    `json:"fee_item_id,omitempty"`
+	// MatterFee marks the line that bills the matter's own flat fee. A fee-catalog item is
+	// also kind flat_fee but never carries this mark.
+	MatterFee bool `json:"matter_fee,omitempty"`
+}
+
+// WriteOff is one dated write-off on an invoice.
+type WriteOff struct {
+	On          string       `json:"on"`
+	AmountCents domain.Cents `json:"amount_cents"`
+	Reason      string       `json:"reason"`
+	By          domain.ID    `json:"by"`
 }
 
 // Invoice is an invoice with its lines. ApprovedAt is set by an attorney or admin; editing the
@@ -123,7 +140,7 @@ type Invoice struct {
 	ApprovedAt *time.Time `json:"approved_at,omitempty"`
 	ViewedAt   *time.Time `json:"viewed_at,omitempty"`
 	VoidedAt   *time.Time `json:"voided_at,omitempty"`
-	WriteOffOn string     `json:"write_off_on,omitempty"`
+	WriteOffs  []WriteOff `json:"write_offs,omitempty"`
 	SentTo     []string   `json:"sent_to,omitempty"`
 	FromDate   string     `json:"from_date,omitempty"`
 	ToDate     string     `json:"to_date,omitempty"`
@@ -133,16 +150,16 @@ type Invoice struct {
 
 // Open reports whether the invoice is sent or viewed and still owes money.
 func (i Invoice) Open() bool {
-	return (i.Status == StatusSent || i.Status == StatusViewed) && i.BalanceDueCents > 0
+	return (i.Status == StatusSent || i.Status == StatusViewed) && positive(int64(i.BalanceDueCents))
 }
 
 // Approved reports whether a draft carries a current approval.
 func (i Invoice) Approved() bool { return i.ApprovedAt != nil }
 
-// HasFlatFee reports whether a line bills the flat fee.
+// HasFlatFee reports whether a line bills the matter's flat fee. Fee-catalog items do not count.
 func (i Invoice) HasFlatFee() bool {
 	for _, l := range i.Lines {
-		if l.Kind == LineFlatFee {
+		if l.MatterFee {
 			return true
 		}
 	}

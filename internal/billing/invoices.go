@@ -185,14 +185,14 @@ func (s *Service) settle(inv *Invoice) {
 	if inv.Status == StatusDraft || inv.Status == StatusVoid {
 		return
 	}
-	if inv.BalanceDueCents <= 0 {
+	if !positive(int64(inv.BalanceDueCents)) {
 		if inv.Status != StatusPaid {
 			inv.Status = StatusPaid
 			inv.PaidAt = s.now().UnixMicro()
 		}
 		return
 	}
-	inv.PaidAt = 0
+	inv.PaidAt = int64(0)
 	if inv.ViewedAt != nil {
 		inv.Status = StatusViewed
 	} else {
@@ -214,18 +214,19 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 		all = nRun.FindAllStringIndex(format, -1)
 	}
 	loc := all[len(all)-1]
+	lo, hi := loc[0], loc[len(loc)-1]
 	year := issuedOn
-	if len(year) >= 4 {
-		year = year[:4]
+	if len(year) >= len("YYYY") {
+		year = year[:len("YYYY")]
 	}
-	prefix := strings.ReplaceAll(format[:loc[0]], "YYYY", year)
-	suffix := strings.ReplaceAll(format[loc[1]:], "YYYY", year)
-	width := loc[1] - loc[0]
+	prefix := strings.ReplaceAll(format[:lo], "YYYY", year)
+	suffix := strings.ReplaceAll(format[hi:], "YYYY", year)
+	width := hi - lo
 	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
 	if err != nil {
 		return "", err
 	}
-	high := 0
+	var high int
 	for _, r := range rows {
 		if !strings.HasPrefix(r.Number, prefix) || !strings.HasSuffix(r.Number, suffix) || len(r.Number) < len(prefix)+len(suffix) {
 			continue
@@ -263,7 +264,7 @@ func expenseLine(e Expense) (Line, error) {
 		return Line{}, err
 	}
 	desc := e.IncurredOn + " " + e.Description
-	if e.MarkupPercent != 0 {
+	if !isZero(int64(e.MarkupPercent)) {
 		desc += fmt.Sprintf(" (%s plus %d%%)", money(e.AmountCents), e.MarkupPercent)
 	}
 	return Line{Kind: LineExpense, SourceID: e.ID, Description: desc, AmountCents: amount}, nil
@@ -283,6 +284,11 @@ func (s *Service) flatFeeInvoice(ctx context.Context, matter domain.ID) (Invoice
 	return Invoice{}, false, nil
 }
 
+// matterFeeLine bills the matter's own flat fee. Only this line marks the fee as billed.
+func matterFeeLine(m domain.Matter) Line {
+	return Line{Kind: LineFlatFee, Description: "Flat fee: " + m.Name, AmountCents: m.FlatFeeCents, MatterFee: true}
+}
+
 // pending gathers the matter's unbilled lines. Flat-fee matters bill the fee and expenses;
 // hourly, contingency and pro bono matters bill time and expenses; mixed matters bill all three.
 func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string) ([]Line, []TimeEntry, []Expense, error) {
@@ -294,8 +300,8 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if !billed && m.FlatFeeCents > 0 {
-			lines = append(lines, Line{Kind: LineFlatFee, Description: "Flat fee: " + m.Name, AmountCents: m.FlatFeeCents})
+		if !billed && positive(int64(m.FlatFeeCents)) {
+			lines = append(lines, matterFeeLine(m))
 		}
 	}
 	if m.BillingType != billingFlat {
@@ -305,7 +311,7 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 		}
 		f := TimeFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
 		for _, e := range rows {
-			if !f.match(e) || !e.Billable {
+			if !f.match(e) || !e.Billable || !e.Reviewed() {
 				continue
 			}
 			line, err := s.timeLine(ctx, e)
@@ -338,15 +344,8 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 // DraftInvoices drafts invoices from unbilled time and expenses. Naming a matter the caller
 // cannot bill fails and drafts nothing; a date range drafts only matters the caller may bill.
 func (s *Service) DraftInvoices(ctx context.Context, p domain.Principal, req DraftRequest) ([]Invoice, error) {
-	selectors := 0
-	if !req.MatterID.IsZero() {
-		selectors++
-	}
-	if len(req.MatterIDs) > 0 {
-		selectors++
-	}
-	if req.FromDate != "" || req.ToDate != "" {
-		selectors++
+	byRange := req.FromDate != "" || req.ToDate != ""
+	if byRange {
 		if _, err := parseDate("from_date", req.FromDate); err != nil {
 			return nil, err
 		}
@@ -357,7 +356,7 @@ func (s *Service) DraftInvoices(ctx context.Context, p domain.Principal, req Dra
 			return nil, domain.Invalid("from_date", "must be on or before to_date")
 		}
 	}
-	if selectors != 1 {
+	if !exactlyOne(!req.MatterID.IsZero(), len(req.MatterIDs) > 0, byRange) {
 		return nil, domain.Invalid("selector", "set exactly one of matter_id, matter_ids, or from_date with to_date")
 	}
 	var ids []domain.ID
@@ -502,10 +501,16 @@ func (s *Service) EditDraft(ctx context.Context, p domain.Principal, id domain.I
 			}
 		}
 		used := map[domain.ID]bool{}
+		// The matter-fee mark stays on the first flat-fee line that is not a catalog item, so
+		// editing its text or amount keeps the fee billed. Removing every such line releases it.
+		keepFee := before.HasFlatFee()
 		for i, li := range in.Lines {
 			line, err := s.draftLine(t, before, li, held, i)
 			if err != nil {
 				return err
+			}
+			if keepFee && line.Kind == LineFlatFee && line.FeeItemID.IsZero() {
+				line.MatterFee, keepFee = true, false
 			}
 			if !line.SourceID.IsZero() {
 				if used[line.SourceID] {
@@ -521,7 +526,7 @@ func (s *Service) EditDraft(ctx context.Context, p domain.Principal, id domain.I
 		if in.AdjustmentReason != nil {
 			after.AdjustmentReason = strings.TrimSpace(*in.AdjustmentReason)
 		}
-		if after.AdjustmentCents != 0 && after.AdjustmentReason == "" {
+		if !isZero(int64(after.AdjustmentCents)) && after.AdjustmentReason == "" {
 			return domain.Invalid("adjustment_reason", "an adjustment needs a reason")
 		}
 		if in.ClientMessage != nil {
@@ -620,7 +625,7 @@ func (s *Service) draftLine(t *txn, inv Invoice, li LineInput, held map[domain.I
 	if line.Description == "" {
 		return Line{}, domain.Invalid(field+"/description", "is required")
 	}
-	if line.Kind != LineAdjustment && line.AmountCents < 0 {
+	if line.Kind != LineAdjustment && negative(int64(line.AmountCents)) {
 		return Line{}, domain.Invalid(field+"/amount_cents", "only an adjustment line may be negative")
 	}
 	return line, nil
@@ -701,7 +706,7 @@ func (s *Service) ApproveInvoice(ctx context.Context, p domain.Principal, id dom
 		if len(inv.Lines) == 0 {
 			return domain.Conflict("an invoice needs at least one line")
 		}
-		if inv.TotalCents < 0 {
+		if negative(int64(inv.TotalCents)) {
 			return domain.Conflict("an invoice total cannot be negative")
 		}
 		now := s.now()
@@ -743,11 +748,21 @@ func (s *Service) clientEmails(ctx context.Context, matter domain.ID) []string {
 // SendInvoice sends an approved draft. deliver email mails the PDF by system mail to the
 // matter's clients; deliver file marks it sent and the user downloads the PDF. A sent invoice
 // can be emailed again; its status does not change.
+//
+// The send commits first and the mail goes out only after the commit, so a failed commit never
+// emails the client. If system mail then fails, a second write undoes the send (when nothing
+// else changed the invoice in between) and drops its timeline event; both writes are audited.
+// ponytail: ceiling: a crash between the commit and the mail leaves the invoice sent with no
+// email; the user sees no error-free confirmation and can send by email again. Upgrade path: a
+// system-mail outbox row written in the same transaction and delivered by a retrying worker.
+// Trigger: core gains a system-mail outbox, or a firm reports a sent invoice that never arrived.
 func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain.ID, deliver string) (Invoice, error) {
 	if deliver != "email" && deliver != "file" {
 		return Invoice{}, domain.Invalid("deliver", "must be email or file")
 	}
-	var out Invoice
+	var out, before Invoice
+	var msg *Message
+	var event domain.ID
 	err := s.write(ctx, p, func(t *txn) error {
 		inv, err := s.writable(t, id, domain.ActionApproveInvoice)
 		if err != nil {
@@ -765,7 +780,7 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 		default:
 			return domain.Conflict("a " + inv.Status + " invoice cannot be sent")
 		}
-		before := inv
+		before = inv
 		if deliver == "email" {
 			if s.d.Mail == nil {
 				return domain.Conflict("system mail is not configured")
@@ -783,13 +798,10 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 				return err
 			}
 			firm := s.setting(t.ctx, "firm.name")
-			msg := Message{
+			msg = &Message{
 				To: to, Subject: strings.TrimSpace(firm + " invoice " + inv.Number),
 				Text:        invoiceMailText(inv, firm),
 				Attachments: []Attachment{{Name: "invoice-" + inv.Number + ".pdf", ContentType: "application/pdf", Data: pdf}},
-			}
-			if err := s.d.Mail.Send(t.ctx, msg); err != nil {
-				return fmt.Errorf("billing: system mail: %w", err)
 			}
 			inv.SentTo = to
 		}
@@ -801,13 +813,55 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 		if err := t.putInvoice(inv); err != nil {
 			return err
 		}
-		out = inv
 		if err := t.diff("invoice", id, before, inv, "deliver "+deliver); err != nil {
 			return err
 		}
-		return t.event("invoice.sent", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" sent by "+deliver, true)
+		if err := t.event("invoice.sent", "invoice", id, inv.MatterID, "Invoice "+inv.Number+" sent by "+deliver, true); err != nil {
+			return err
+		}
+		event = t.events[len(t.events)-1].ID
+		out, err = s.invoice(t.ctx, id)
+		return err
 	})
-	return out, err
+	if err != nil {
+		return Invoice{}, err
+	}
+	if msg == nil {
+		return out, nil
+	}
+	if mailErr := s.d.Mail.Send(ctx, *msg); mailErr != nil {
+		mailErr = fmt.Errorf("billing: system mail: %w", mailErr)
+		if err := s.undoSend(ctx, p, before, out, event, mailErr); err != nil {
+			return Invoice{}, errors.Join(mailErr, err)
+		}
+		return Invoice{}, mailErr
+	}
+	return out, nil
+}
+
+// undoSend restores the delivery fields a send changed after its mail failed. When another
+// write changed the invoice in the meantime it only records the failure.
+func (s *Service) undoSend(ctx context.Context, p domain.Principal, before, sent Invoice, event domain.ID, cause error) error {
+	return s.write(context.WithoutCancel(ctx), p, func(t *txn) error {
+		cur, err := s.invoice(t.ctx, sent.ID)
+		if err != nil {
+			return err
+		}
+		reason := "system mail failed: " + cause.Error()
+		if !cur.UpdatedAt.Equal(sent.UpdatedAt) {
+			t.audit("invoice", cur.ID, "deliver", "email", "failed", reason+"; the invoice changed since, so the send stands")
+			return nil
+		}
+		after := cur
+		after.Status, after.SentAt, after.SentTo, after.PaidAt = before.Status, before.SentAt, before.SentTo, before.PaidAt
+		if err := t.putInvoice(after); err != nil {
+			return err
+		}
+		if err := t.diff("invoice", cur.ID, cur, after, reason+"; send undone"); err != nil {
+			return err
+		}
+		return s.d.Store.Delete(t.ctx, kindEvent, string(event))
+	})
 }
 
 func invoiceMailText(inv Invoice, firm string) string {
@@ -905,7 +959,7 @@ func (s *Service) VoidInvoice(ctx context.Context, p domain.Principal, id domain
 		}
 		now := s.now()
 		inv.Status, inv.VoidReason, inv.VoidedAt = StatusVoid, reason, &now
-		inv.BalanceDueCents = 0
+		inv.BalanceDueCents = noCents
 		if err := t.putInvoice(inv); err != nil {
 			return err
 		}
@@ -943,10 +997,11 @@ func (s *Service) WriteOff(ctx context.Context, p domain.Principal, id domain.ID
 		if inv.WriteOffCents, err = sum(inv.WriteOffCents, amount); err != nil {
 			return domain.Invalid("amount_cents", "does not fit")
 		}
+		inv.WriteOffs = append(inv.WriteOffs, WriteOff{On: s.today(t.ctx), AmountCents: amount, Reason: reason, By: actor(t.p)})
 		if inv.WriteOffReason != "" {
 			reason = inv.WriteOffReason + "; " + reason
 		}
-		inv.WriteOffReason, inv.WriteOffOn = reason, s.today(t.ctx)
+		inv.WriteOffReason = reason
 		if err := recompute(&inv); err != nil {
 			return err
 		}
@@ -981,16 +1036,16 @@ func (s *Service) ApplyLateInterest(ctx context.Context, p domain.Principal, id 
 			return domain.Conflict("only a sent invoice with a balance accrues interest")
 		}
 		late := daysBetween(addDays(inv.DueOn, s.settingInt(t.ctx, "billing.grace_period_days")), s.today(t.ctx))
-		if late <= 0 {
+		if !positive(int64(late)) {
 			return domain.Conflict("invoice is not past its grace period")
 		}
 		base, err := sum(inv.SubtotalCents, inv.AdjustmentCents, -inv.AmountPaidCents, -inv.WriteOffCents)
 		if err != nil {
 			return err
 		}
-		interest := domain.Cents(0)
-		if base > 0 {
-			if interest, err = mulDiv(base, int64(pct)*int64(late), 36500); err != nil {
+		var interest domain.Cents
+		if positive(int64(base)) {
+			if interest, err = lateInterest(base, pct, late); err != nil {
 				return err
 			}
 		}

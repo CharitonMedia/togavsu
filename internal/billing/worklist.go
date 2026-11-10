@@ -80,7 +80,7 @@ func (s *Service) balances(ctx context.Context, matter domain.ID) ([]TrustBalanc
 }
 
 func flatBilled(m domain.Matter) bool {
-	return m.BillingType == billingFlat || m.BillingType == billingMixed && m.FlatFeeCents > 0
+	return m.BillingType == billingFlat || m.BillingType == billingMixed && positive(int64(m.FlatFeeCents))
 }
 
 func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error) {
@@ -111,7 +111,7 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 	switch {
 	case billed && inv.Status == StatusPaid:
 		row.Status = FlatCollected
-	case m.FlatFeeCents <= 0:
+	case !positive(int64(m.FlatFeeCents)):
 		row.Status = FlatNeedsFee
 	case total < m.FlatFeeCents:
 		row.Status = FlatAwaiting
@@ -152,14 +152,14 @@ func (s *Service) Worklist(ctx context.Context, p domain.Principal) (Worklist, e
 			}
 			var total domain.Cents
 			for _, l := range lines {
-				if l.Kind == LineFlatFee {
+				if l.MatterFee {
 					continue
 				}
 				if total, err = total.Add(l.AmountCents); err != nil {
 					return Worklist{}, err
 				}
 			}
-			if total > 0 && (m.BillingType == billingHourly || m.BillingType == billingMixed) {
+			if positive(int64(total)) && (m.BillingType == billingHourly || m.BillingType == billingMixed) {
 				var client string
 				if c := s.clientParties(m.ID); len(c) > 0 {
 					client = s.clientName(ctx, c[0])
@@ -254,7 +254,7 @@ func (s *Service) flatInvoice(t *txn, m domain.Matter) (Invoice, error) {
 	}
 	now := s.now()
 	inv := Invoice{
-		Lines: []Line{{Kind: LineFlatFee, Description: "Flat fee: " + m.Name, AmountCents: m.FlatFeeCents}},
+		Lines: []Line{matterFeeLine(m)},
 		DueOn: issued, ApprovedBy: actor(t.p), ApprovedAt: &now, MatterName: m.Name, MatterNum: m.Number,
 	}
 	inv.Invoice = domain.Invoice{
@@ -317,11 +317,11 @@ func (s *Service) CollectionsFor(ctx context.Context, p domain.Principal, inv In
 		return Collections{}, err
 	}
 	for _, b := range bals {
-		if b.BalanceCents > 0 && s.isClient(inv.MatterID, b.ClientID) {
+		if positive(int64(b.BalanceCents)) && s.isClient(inv.MatterID, b.ClientID) {
 			out.Funded = append(out.Funded, b)
 		}
 	}
-	if len(out.Funded) == 1 {
+	if onlyOne(len(out.Funded)) {
 		out.DefaultClient, out.DefaultAcct = out.Funded[0].ClientID, out.Funded[0].AccountID
 		out.Suggested = min(out.Balance, out.Funded[0].BalanceCents)
 	}

@@ -5,9 +5,10 @@
 // catalog, invoice PDFs and the billing reports with CSV export.
 //
 // Money is integer cents throughout; every product of a rate or percent rounds once, half away
-// from zero, with math/big (mulDiv). Access is checked in Service on every read and write
-// through access.Gate, so the HTTP API, the screens, MCP and modules get the same answers;
-// a matter wall answers not_found.
+// from zero, with overflow-checked integer arithmetic (money.go). Access is checked in Service
+// on every read and write through access.Gate, so the HTTP API, the screens, MCP and modules
+// get the same answers; a matter wall answers not_found. Edit history is staff-only, and a
+// client sees only the InvoiceClient fields of its own sent invoices.
 //
 // Integration (owned by the lead, not this package):
 //   - core.Migrate applies Migrations() (version 300, billing_records) with the core files.
@@ -22,9 +23,8 @@ package billing
 // Pending lists what this package does not yet deliver. Reports and the PR body repeat it.
 var Pending = []string{
 	"trust: the Trust interface is implemented by the trust package; until it is wired, trust deposits, Apply trust, Apply flat fee and trust-linked reversals return conflict",
-	"system mail: no SMTP Mailer exists in core yet; deliver=email returns conflict until one is wired",
+	"system mail: no SMTP Mailer exists in core yet; deliver=email returns conflict until one is wired. Mail is sent after the commit, with no outbox",
 	"core wiring: migration 300, the handler mount, web embed and the /billing sign-in redirect are lead-owned",
-	"settings check: internal/settings/check.go needs the billing fixedSite entries proposed in the PR",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",
 	"invoices:bulk and payment processor initializations are not implemented",
 	"invoice PDFs are rendered on demand, not stored as file records; the logo is drawn only when it is a JPEG",

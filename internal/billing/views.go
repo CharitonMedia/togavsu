@@ -18,7 +18,7 @@ func idOrNil(id domain.ID) *domain.ID {
 }
 
 func microOrNil(v int64) *string {
-	if v == 0 {
+	if isZero(v) {
 		return nil
 	}
 	s := ts(domain.FromUnixMicro(v))
@@ -275,7 +275,7 @@ func worklistView(w Worklist) map[string]any {
 	flat := make([]flatRowJSON, 0, len(w.Flat))
 	for _, r := range w.Flat {
 		var fee *int64
-		if r.FlatFeeCents > 0 {
+		if positive(int64(r.FlatFeeCents)) {
 			v := int64(r.FlatFeeCents)
 			fee = &v
 		}

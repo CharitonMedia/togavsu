@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
@@ -245,7 +246,7 @@ func (h *Handler) pageOf(r *http.Request, n int) (from, to int, next *string, li
 	}
 	if v := r.URL.Query().Get("limit"); v != "" {
 		l, convErr := strconv.Atoi(v)
-		if convErr != nil || l < 1 {
+		if convErr != nil || !positive(int64(l)) {
 			return 0, 0, nil, 0, domain.Invalid("limit", "must be a positive integer")
 		}
 		if l > maxSize {
@@ -256,7 +257,7 @@ func (h *Handler) pageOf(r *http.Request, n int) (from, to int, next *string, li
 	if c := r.URL.Query().Get("cursor"); c != "" {
 		raw, decErr := base64.RawURLEncoding.DecodeString(c)
 		off, convErr := strconv.Atoi(strings.TrimPrefix(string(raw), "o:"))
-		if decErr != nil || convErr != nil || off < 0 || !strings.HasPrefix(string(raw), "o:") {
+		if decErr != nil || convErr != nil || negative(int64(off)) || !strings.HasPrefix(string(raw), "o:") {
 			return 0, 0, nil, 0, domain.Invalid("cursor", "is not a cursor from this list")
 		}
 		from = off
@@ -297,14 +298,17 @@ func writeCSV(w http.ResponseWriter, name string, items []any) {
 	for _, it := range items {
 		b, _ := json.Marshal(it)
 		var m map[string]any
-		_ = json.Unmarshal(b, &m)
+		// UseNumber keeps each number's exact JSON text, so large cents stay exact in CSV.
+		dec := json.NewDecoder(bytes.NewReader(b))
+		dec.UseNumber()
+		_ = dec.Decode(&m)
 		for k, v := range m {
 			switch x := v.(type) {
 			case []any, map[string]any:
 				enc, _ := json.Marshal(x)
 				m[k] = string(enc)
-			case float64:
-				m[k] = strconv.FormatFloat(x, 'f', -1, 64)
+			case json.Number:
+				m[k] = x.String()
 			}
 		}
 		if rep.Columns == nil {
@@ -574,7 +578,7 @@ func (h *Handler) runningTimerWidget(w http.ResponseWriter, r *http.Request, p d
 			title = m.Number + " " + m.Name
 		}
 		out = append(out, map[string]any{"id": t.ID, "title": title,
-			"subtitle":    t.Status() + ", " + strconv.FormatInt(t.AccumulatedSeconds/60, 10) + " min counted",
+			"subtitle":    t.Status() + ", " + fmt.Sprint(t.AccumulatedSeconds/60) + " min counted",
 			"target_path": "/billing/time?matter_id=" + string(t.MatterID)})
 	}
 	query := map[string]any{}

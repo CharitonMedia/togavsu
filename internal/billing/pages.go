@@ -47,7 +47,7 @@ func shownColumns(cols []string) []string {
 
 // dateOf formats a stored unix-microsecond time as a calendar date. Zero is unset.
 func dateOf(micros int64) string {
-	if micros == 0 {
+	if isZero(micros) {
 		return ""
 	}
 	return domain.FromUnixMicro(micros).Format(dateLayout)
@@ -71,6 +71,7 @@ type page struct {
 	Clients      map[domain.ID]string
 	Payments     []Payment
 	History      []domain.AuditEntry
+	Staff        bool
 	Time         []TimeEntry
 	Timers       []Timer
 	Matters      []domain.Matter
@@ -187,7 +188,7 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 		if err != nil {
 			return "/billing", "", err
 		}
-		if len(invs) == 1 {
+		if onlyOne(len(invs)) {
 			return "/billing/invoices/" + string(invs[0].ID), "Draft invoice " + invs[0].Number + " created.", nil
 		}
 		return "/billing/invoices", strconv.Itoa(len(invs)) + " draft invoices created.", nil
@@ -197,13 +198,21 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 		matter, act := domain.ID(r.FormValue("matter_id")), domain.ID(r.FormValue("activity_type_id"))
 		date, desc := r.FormValue("worked_on"), r.FormValue("description")
 		minutes, err := strconv.Atoi(r.FormValue("minutes"))
-		if err != nil || minutes < 1 {
+		if err != nil || !positive(int64(minutes)) {
 			return "/billing/time", "", domain.Invalid("minutes", "enter the minutes worked")
 		}
 		inc := incrementsFor(int64(minutes)*60, h.Svc.incrementMinutes(r.Context()))
 		billable := r.FormValue("billable") != ""
 		_, err = h.Svc.CreateTime(r.Context(), p, TimeInput{MatterID: &matter, WorkedOn: &date, Increments: &inc, Description: &desc, ActivityTypeID: &act, Billable: &billable})
 		return "/billing/time", "Time logged.", err
+	})
+	post("POST /billing/time/{time_entry_id}/review", func(r *http.Request, p domain.Principal) (string, string, error) {
+		desc, act := r.FormValue("description"), domain.ID(r.FormValue("activity_type_id"))
+		if strings.TrimSpace(desc) == "" {
+			return "/billing/time", "", domain.Invalid("description", "describe the work before saving the timer entry")
+		}
+		_, err := h.Svc.UpdateTime(r.Context(), p, domain.ID(r.PathValue("time_entry_id")), TimeInput{Description: &desc, ActivityTypeID: &act})
+		return "/billing/time", "Time entry saved.", err
 	})
 	post("POST /billing/timers", func(r *http.Request, p domain.Principal) (string, string, error) {
 		_, _, err := h.Svc.StartTimer(r.Context(), p, domain.ID(r.FormValue("matter_id")))
@@ -258,12 +267,12 @@ func (h *Handler) basePage(w http.ResponseWriter, r *http.Request, p domain.Prin
 }
 
 func csrf(w http.ResponseWriter, r *http.Request) string {
-	if c, err := r.Cookie(practice.CSRFCookie); err == nil && len(c.Value) >= 32 {
+	var b [32]byte // a 256-bit token, the size practice issues
+	if c, err := r.Cookie(practice.CSRFCookie); err == nil && len(c.Value) >= len(b) {
 		return c.Value
 	}
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	token := hex.EncodeToString(b)
+	_, _ = rand.Read(b[:])
+	token := hex.EncodeToString(b[:])
 	http.SetCookie(w, &http.Cookie{Name: practice.CSRFCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode,
 		Secure: r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")})
 	return token
@@ -317,7 +326,12 @@ func (h *Handler) invoicePage(_ http.ResponseWriter, r *http.Request, p domain.P
 	if err != nil {
 		return "", err
 	}
-	pg.Title, pg.Invoice = "Invoice "+inv.Number, inv
+	if ClientOnly(p) {
+		// A client sees the allowlisted invoice only: no reasons, notes, payments or history.
+		pg.Title, pg.Invoice = "Invoice "+inv.Number, ClientInvoice(inv)
+		return "invoice.html", nil
+	}
+	pg.Title, pg.Invoice, pg.Staff = "Invoice "+inv.Number, inv, true
 	if pg.Collections, err = h.Svc.CollectionsFor(ctx, p, inv); err != nil {
 		return "", err
 	}

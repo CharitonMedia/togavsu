@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/jpeg"
 	"strings"
 	"testing"
 	"time"
@@ -144,12 +146,28 @@ func TestSendFailuresWriteNothing(t *testing.T) {
 	if _, err := f.svc.ApproveInvoice(f.ctx, f.attorney, id); err != nil {
 		t.Fatal(err)
 	}
+	rowsOnly := func(s string) string { return s[:strings.LastIndex(s, "|audit=")] }
 	before := f.snapshot()
+	auditBefore := f.aud.Len()
 	f.mail.fail = errors.New("smtp down")
 	if _, err := f.svc.SendInvoice(f.ctx, f.attorney, id, "email"); err == nil {
 		t.Fatal("mail failure must fail the send")
 	}
 	f.mail.fail = nil
+	// Mail goes out after the commit, so a failed mail undoes the committed send: the rows are
+	// back as they were (no sent status, no sent_to, no client-visible event) and the audit log
+	// keeps both the send and its undo.
+	if rowsOnly(f.snapshot()) != rowsOnly(before) {
+		t.Fatal("a failed mail left the send in place")
+	}
+	if f.aud.Len() <= auditBefore {
+		t.Fatal("the send and its undo must be audited")
+	}
+	hist, err := f.svc.History(f.ctx, f.attorney, "invoice", id)
+	if err != nil || !strings.Contains(hist[0].Reason, "send undone") {
+		t.Fatalf("undo not audited: %v %+v", err, hist)
+	}
+	before = f.snapshot()
 	f.svc.d.Mail = nil
 	wantCode(t, mustErr(f.svc.SendInvoice(f.ctx, f.attorney, id, "email")), domain.CodeConflict)
 	wantCode(t, mustErr(f.svc.SendInvoice(f.ctx, f.attorney, id, "fax")), domain.CodeValidation)
@@ -172,28 +190,36 @@ func strPtr(s string) *string { return &s }
 
 func TestExactCents(t *testing.T) {
 	cases := []struct {
-		a        domain.Cents
-		num, den int64
-		want     domain.Cents
+		name string
+		got  func() (domain.Cents, error)
+		want domain.Cents
 	}{
-		{333_33, 42, 60, 233_33}, // 233.331
-		{1_00, 1, 3, 33},         // 0.333
-		{2_00, 1, 3, 67},         // 0.667
-		{1, 1, 2, 1},             // half rounds away from zero
-		{-1, 1, 2, -1},
-		{10_01, 115, 100, 11_51},
-		{10_05, 115, 100, 11_56}, // 11.5575
+		{"233.331", func() (domain.Cents, error) { return timeAmount(333_33, 42) }, 233_33},
+		{"0.333", func() (domain.Cents, error) { return timeAmount(1_00, 20) }, 33},
+		{"0.667", func() (domain.Cents, error) { return timeAmount(2_00, 20) }, 67},
+		{"half up", func() (domain.Cents, error) { return timeAmount(1, 30) }, 1},
+		{"just under half", func() (domain.Cents, error) { return timeAmount(1, 29) }, 0},
+		{"half away from zero", func() (domain.Cents, error) { return timeAmount(-1, 30) }, -1},
+		{"11.5115", func() (domain.Cents, error) { return expenseAmount(10_01, 15) }, 11_51},
+		{"11.5575", func() (domain.Cents, error) { return expenseAmount(10_05, 15) }, 11_56},
+		{"no markup", func() (domain.Cents, error) { return expenseAmount(10_05, 0) }, 10_05},
+		{"5.9178", func() (domain.Cents, error) { return lateInterest(900_00, 12, 20) }, 5_92},
+		{"interest half", func() (domain.Cents, error) { return lateInterest(182_50, 1, 1) }, 1}, // 0.5 cent
 	}
 	for _, c := range cases {
-		got, err := mulDiv(c.a, c.num, c.den)
+		got, err := c.got()
 		if err != nil || got != c.want {
-			t.Fatalf("mulDiv(%d,%d,%d)=%d %v want %d", c.a, c.num, c.den, got, err, c.want)
+			t.Fatalf("%s: %d %v want %d", c.name, got, err, c.want)
 		}
 	}
-	if _, err := mulDiv(domain.Cents(1<<62), 4, 1); !errors.Is(err, domain.ErrOverflow) {
+	if _, err := timeAmount(domain.Cents(1<<62), 4); !errors.Is(err, domain.ErrOverflow) {
 		t.Fatal("overflow must fail")
 	}
-	if incrementsFor(0, 6) != 1 || incrementsFor(360, 6) != 1 || incrementsFor(361, 6) != 2 || incrementsFor(540, 6) != 2 {
+	if _, err := lateInterest(domain.Cents(1<<62), 100, 365); !errors.Is(err, domain.ErrOverflow) {
+		t.Fatal("interest overflow must fail")
+	}
+	if incrementsFor(0, 6) != 1 || incrementsFor(1, 6) != 1 || incrementsFor(360, 6) != 1 || incrementsFor(361, 6) != 2 || incrementsFor(540, 6) != 2 ||
+		incrementsFor(-5, 6) != 1 || incrementsFor(61, 0) != incrementsFor(61, domain.BillingTimeIncrementMinutes) {
 		t.Fatal("increment rounding")
 	}
 	f := newFx(t)
@@ -723,7 +749,7 @@ func TestWriteOffAndLateInterest(t *testing.T) {
 	wantCode(t, mustErr(f.svc.WriteOff(f.ctx, f.attorney, inv.ID, 1001_00, "too much")), domain.CodeValidation)
 	wantCode(t, mustErr(f.svc.WriteOff(f.ctx, f.staff, inv.ID, 1_00, "staff")), domain.CodeForbidden)
 	wo, err := f.svc.WriteOff(f.ctx, f.attorney, inv.ID, 100_00, "Goodwill")
-	if err != nil || wo.BalanceDueCents != 900_00 || wo.WriteOffOn != "2026-01-10" {
+	if err != nil || wo.BalanceDueCents != 900_00 || len(wo.WriteOffs) != 1 || wo.WriteOffs[0].On != "2026-01-10" {
 		t.Fatalf("write-off: %v %+v", err, wo.Invoice)
 	}
 	rep, _ := f.svc.WriteOffsReport(f.ctx, f.accountant, ReportFilter{FromDate: "2026-01-01", ToDate: "2026-01-31"})
@@ -770,8 +796,11 @@ func TestPDFStructure(t *testing.T) {
 	m, _ := f.matter("Smith (PDF)", "hourly", 0, 0)
 	f.logTime(f.attorney, m.ID, "2026-06-01", 2, nil)
 	inv := f.sent(m.ID)
-	jpeg := []byte{0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x10, 0x00, 0x20, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1, 0xFF, 0xD9}
-	f.svc.d.Logo = func(context.Context, domain.ID) ([]byte, error) { return jpeg, nil }
+	var logo bytes.Buffer
+	if err := jpeg.Encode(&logo, image.NewRGBA(image.Rect(0, 0, 32, 16)), nil); err != nil {
+		t.Fatal(err)
+	}
+	f.svc.d.Logo = func(context.Context, domain.ID) ([]byte, error) { return logo.Bytes(), nil }
 	restore := overrideSettings(f.svc, settingOverride{"firm.name": "Reed & Moss LLP", "firm.logo_file_id": string(f.id())})
 	defer restore()
 	pdf, _, err := f.svc.InvoicePDF(f.ctx, f.staff, inv.ID)

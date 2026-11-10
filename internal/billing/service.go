@@ -166,14 +166,14 @@ func addDays(date string, days int) string {
 	if err != nil {
 		return date
 	}
-	return t.AddDate(0, 0, days).Format(dateLayout)
+	return time.Date(t.Year(), t.Month(), t.Day()+days, 0, 0, 0, 0, time.UTC).Format(dateLayout)
 }
 
 func daysBetween(from, to string) int {
 	a, err1 := time.Parse(dateLayout, from)
 	b, err2 := time.Parse(dateLayout, to)
 	if err1 != nil || err2 != nil {
-		return 0
+		b = a // an unreadable date counts as no days
 	}
 	return int(b.Sub(a).Hours() / 24)
 }
@@ -215,7 +215,7 @@ func defaultOf(key string) string {
 func (s *Service) settingCents(ctx context.Context, key string) domain.Cents {
 	c, err := domain.ParseCents(s.setting(ctx, key))
 	if err != nil {
-		return 0
+		return noCents
 	}
 	return c
 }
@@ -339,13 +339,15 @@ func (s *Service) write(ctx context.Context, p domain.Principal, fn func(t *txn)
 			if err := fn(t); err != nil {
 				return err
 			}
-			for _, c := range t.changes {
-				if _, err := s.d.Audit.Record(ctx, p, c); err != nil {
+			for _, e := range t.events {
+				if err := s.d.Store.Put(ctx, kindEvent, string(e.ID), e); err != nil {
 					return err
 				}
 			}
-			for _, e := range t.events {
-				if err := s.d.Store.Put(ctx, kindEvent, string(e.ID), e); err != nil {
+			// Audit rows go last, so a failed store write appends none even where the audit
+			// store cannot roll back (audit.Memory).
+			for _, c := range t.changes {
+				if _, err := s.d.Audit.Record(ctx, p, c); err != nil {
 					return err
 				}
 			}
@@ -366,7 +368,7 @@ func (s *Service) mirrorInvoices(ctx context.Context, rows map[domain.ID]Invoice
 	for _, inv := range rows {
 		row := inv.Invoice
 		if row.Status == StatusDraft {
-			row.BalanceDueCents = 0
+			row.BalanceDueCents = noCents
 		}
 		// ponytail: ceiling: the mirror runs after the billing commit, so a failed mirror write
 		// leaves the close screen stale until Resync. Upgrade path: practice reads billing's
@@ -531,7 +533,7 @@ func (s *Service) Events(ctx context.Context, p domain.Principal, matter domain.
 }
 
 func amountField(field string, v domain.Cents) error {
-	if v <= 0 {
+	if !positive(int64(v)) {
 		return domain.Invalid(field, "must be greater than zero")
 	}
 	return nil
