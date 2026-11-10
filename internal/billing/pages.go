@@ -21,7 +21,15 @@ var funcs = map[string]any{
 		a, _ := timeAmount(e.RateCents, e.Minutes())
 		return a.String()
 	},
-	"cell":    cell,
+	"cell": cell,
+	// rows gives a form n row numbers, 0 to n-1; the template sets n as part of its layout.
+	"rows": func(n int) []int {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = i
+		}
+		return out
+	},
 	"date":    dateOf,
 	"shown":   shownColumns,
 	"isMoney": func(col string) bool { return strings.HasSuffix(col, "_cents") },
@@ -86,7 +94,6 @@ type page struct {
 	ExpenseTypes []NamedType
 	TypeNames    map[string]string
 	Markup       int
-	BulkRows     []int
 	DraftLines   []draftLineRow
 	FeeItems     []FeeItem
 	Unbilled     []unbilledSource
@@ -379,10 +386,6 @@ func (h *Handler) timePage(_ http.ResponseWriter, r *http.Request, p domain.Prin
 		rows = rows[:n]
 	}
 	pg.Title, pg.Time = "Time Entries", rows
-	pg.BulkRows = make([]int, bulkRows)
-	for i := range pg.BulkRows {
-		pg.BulkRows[i] = i
-	}
 	if timers, err := h.Svc.Timers(ctx, p); err == nil {
 		pg.Timers = timers
 	}

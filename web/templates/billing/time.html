@@ -34,7 +34,7 @@
   <p class="muted">Fill as many rows as you need; blank rows are skipped. Every row saves, or none do.</p>
   <div class="scroll"><table>
   <thead><tr><th>Matter</th><th>Date</th><th>Minutes</th><th>Activity</th><th>Description</th><th>Billable</th></tr></thead>
-  <tbody>{{range $i := .BulkRows}}{{$p := printf "items.%d." $i}}<tr>
+  <tbody>{{range $i := rows 5}}{{$p := printf "items.%d." $i}}<tr>
   <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{range $.Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></td>
   <td><input type="date" name="{{$p}}worked_on" value="{{$.Today}}" aria-label="Row {{$i}} date"></td>
   <td><input type="number" name="{{$p}}minutes" min="1" size="5" aria-label="Row {{$i}} minutes"></td>

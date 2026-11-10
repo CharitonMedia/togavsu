@@ -14,8 +14,27 @@ import (
 // Screens for one time entry, expenses, bulk entry and draft-invoice editing (PRD 5, 8.3,
 // 8.14, 8.15). Every read and write goes through the Service, which applies roles and walls.
 
-// bulkRows is how many blank rows a bulk-entry form offers. Blank rows are skipped.
-const bulkRows = 5
+// bulkIndexes returns the row numbers a bulk-entry form posted (fields named items.N.field),
+// in order. The template decides how many blank rows it offers; blank rows are skipped.
+func bulkIndexes(r *http.Request) []int {
+	seen := map[int]bool{}
+	var out []int
+	for k := range r.Form {
+		rest, ok := strings.CutPrefix(k, "items.")
+		if !ok {
+			continue
+		}
+		num, _, ok := strings.Cut(rest, ".")
+		n, err := strconv.Atoi(num)
+		if !ok || err != nil || negative(int64(n)) || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	sort.Ints(out)
+	return out
+}
 
 // historyRow is one row of an Edit history card (PRD 8.14): when, who and their role, the
 // field, the old and new values, the kind and any note.
@@ -130,10 +149,6 @@ func (h *Handler) expensesPage(_ http.ResponseWriter, r *http.Request, p domain.
 		pg.Matters = h.writableMatters(ctx, p, domain.ResExpense)
 	}
 	pg.Markup = h.Svc.settingInt(ctx, "billing.expense_markup_percent")
-	pg.BulkRows = make([]int, bulkRows)
-	for i := range pg.BulkRows {
-		pg.BulkRows[i] = i
-	}
 	for _, e := range rows {
 		h.names(r, pg, e.MatterID)
 	}
@@ -207,7 +222,7 @@ func blankRow(r *http.Request, prefix string, fields ...string) bool {
 func (h *Handler) recordRoutes(post func(string, func(*http.Request, domain.Principal) (string, string, error))) {
 	post("POST /billing/time/bulk", func(r *http.Request, p domain.Principal) (string, string, error) {
 		var items []TimeInput
-		for i := 0; i < bulkRows; i++ {
+		for _, i := range bulkIndexes(r) {
 			prefix := fmt.Sprintf("items.%d.", i)
 			if blankRow(r, prefix, "minutes", "description") {
 				continue
@@ -256,7 +271,7 @@ func (h *Handler) recordRoutes(post func(string, func(*http.Request, domain.Prin
 	})
 	post("POST /billing/expenses/bulk", func(r *http.Request, p domain.Principal) (string, string, error) {
 		var items []ExpenseInput
-		for i := 0; i < bulkRows; i++ {
+		for _, i := range bulkIndexes(r) {
 			prefix := fmt.Sprintf("items.%d.", i)
 			if blankRow(r, prefix, "amount", "description") {
 				continue
@@ -368,7 +383,7 @@ func draftEdit(r *http.Request) (DraftEdit, error) {
 		}
 		in.Lines = append(in.Lines, LineInput{Kind: kind, Description: r.FormValue("add_description"), AmountCents: &amount})
 	}
-	adj := domain.Cents(0)
+	var adj domain.Cents
 	if strings.TrimSpace(r.FormValue("adjustment")) != "" {
 		var err error
 		if adj, err = formCents(r, "adjustment"); err != nil {
