@@ -16,7 +16,11 @@ func encodeOffsets(v []int) string {
 	return string(b)
 }
 
-func (s *Service) validateDeadline(ctx context.Context, p domain.Principal, in *DeadlineInput) error {
+// validateDeadline checks a deadline. stored is the responsible user already
+// saved on the row (zero for a new deadline); keeping that user is allowed even
+// after deactivation so status changes on a departed attorney's deadline still
+// work. Assigning a user requires the user to be active.
+func (s *Service) validateDeadline(ctx context.Context, p domain.Principal, in *DeadlineInput, stored domain.ID) error {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.MatterID.IsZero() {
 		return domain.Invalid("matter_id", "matter is required")
@@ -38,8 +42,10 @@ func (s *Service) validateDeadline(ctx context.Context, p domain.Principal, in *
 		return err
 	}
 	in.Offsets = offsets
-	if _, err := s.activeUser(ctx, "responsible_user_id", in.ResponsibleUserID); err != nil {
-		return err
+	if in.ResponsibleUserID.IsZero() || in.ResponsibleUserID != stored {
+		if _, err := s.activeUser(ctx, "responsible_user_id", in.ResponsibleUserID); err != nil {
+			return err
+		}
 	}
 	return s.checkMatter(ctx, p, in.MatterID)
 }
@@ -56,7 +62,7 @@ func (s *Service) CreateDeadline(ctx context.Context, p domain.Principal, in Dea
 		}
 		in.Offsets = def
 	}
-	if err := s.validateDeadline(ctx, p, &in); err != nil {
+	if err := s.validateDeadline(ctx, p, &in, ""); err != nil {
 		return Deadline{}, err
 	}
 	m, err := s.meta(p)
@@ -151,7 +157,7 @@ func (s *Service) UpdateDeadline(ctx context.Context, p domain.Principal, id dom
 	if patch.Offsets != nil {
 		in.Offsets = *patch.Offsets
 	}
-	if err := s.validateDeadline(ctx, p, &in); err != nil {
+	if err := s.validateDeadline(ctx, p, &in, prev.ResponsibleUserID); err != nil {
 		return Deadline{}, err
 	}
 	next := prev

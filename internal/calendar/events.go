@@ -26,7 +26,10 @@ func normalizeAllDay(start, end time.Time, loc *time.Location) (time.Time, time.
 	return dayStart(sd, loc).UTC(), dayStart(ed, loc).UTC()
 }
 
-func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *EventInput) error {
+// validateEvent checks an event. stored holds attendees already saved on the
+// row (nil for a new event); they may stay after deactivation so unrelated
+// edits still work. Newly added attendees must be active.
+func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *EventInput, stored []domain.ID) error {
 	in.Title = strings.TrimSpace(in.Title)
 	if in.Title == "" {
 		return domain.Invalid("title", "title is required")
@@ -56,8 +59,10 @@ func (s *Service) validateEvent(ctx context.Context, p domain.Principal, in *Eve
 			continue
 		}
 		seen[id] = true
-		if _, err := s.activeUser(ctx, "attendee_user_ids", id); err != nil {
-			return err
+		if id.IsZero() || !containsID(stored, id) {
+			if _, err := s.activeUser(ctx, "attendee_user_ids", id); err != nil {
+				return err
+			}
 		}
 		att = append(att, id)
 	}
@@ -73,7 +78,7 @@ func (s *Service) CreateEvent(ctx context.Context, p domain.Principal, in EventI
 	if err := s.gate(ctx, p, domain.ActionWrite, ""); err != nil {
 		return Event{}, err
 	}
-	if err := s.validateEvent(ctx, p, &in); err != nil {
+	if err := s.validateEvent(ctx, p, &in, nil); err != nil {
 		return Event{}, err
 	}
 	m, err := s.meta(p)
@@ -197,7 +202,7 @@ func (s *Service) UpdateEvent(ctx context.Context, p domain.Principal, id domain
 			}
 		}
 	}
-	if err := s.validateEvent(ctx, p, &in); err != nil {
+	if err := s.validateEvent(ctx, p, &in, prev.Attendees); err != nil {
 		return Event{}, err
 	}
 	next := prev
@@ -282,6 +287,15 @@ func matchEvent(row Event, f EventFilter) bool {
 }
 
 func hasID(ids []domain.ID, id domain.ID) bool {
+	for _, v := range ids {
+		if v == id {
+			return true
+		}
+	}
+	return false
+}
+
+func containsID(ids []domain.ID, id domain.ID) bool {
 	for _, v := range ids {
 		if v == id {
 			return true

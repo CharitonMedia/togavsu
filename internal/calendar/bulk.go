@@ -23,7 +23,7 @@ func (s *Service) BulkEvents(ctx context.Context, p domain.Principal, ins []Even
 	for i := range ins {
 		cp := ins[i]
 		cp.Attendees = append([]domain.ID(nil), ins[i].Attendees...)
-		if err := s.validateEvent(ctx, p, &cp); err != nil {
+		if err := s.validateEvent(ctx, p, &cp, nil); err != nil {
 			return nil, indexed(i, err)
 		}
 	}
@@ -55,7 +55,7 @@ func (s *Service) BulkDeadlines(ctx context.Context, p domain.Principal, ins []D
 		if len(cp.Offsets) == 0 {
 			cp.Offsets = defaults
 		}
-		if err := s.validateDeadline(ctx, p, &cp); err != nil {
+		if err := s.validateDeadline(ctx, p, &cp, ""); err != nil {
 			return nil, indexed(i, err)
 		}
 	}
