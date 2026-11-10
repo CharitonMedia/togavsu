@@ -120,7 +120,9 @@ func TestPGEveryRouteOverHTTP(t *testing.T) {
 	code, _ = c.json("GET", f, nil, nil)
 	must(code, nil, 404)
 	// No principal: 401 on every route.
-	anon := e.server(func(*http.Request) (domain.Principal, error) { return domain.Principal{}, domain.Unauthenticated("sign in") })
+	anon := e.server(func(*http.Request) (domain.Principal, error) {
+		return domain.Principal{}, domain.Unauthenticated("sign in")
+	})
 	resp, err = http.Get(anon.URL + "/api/v1/files")
 	if err != nil {
 		t.Fatal(err)
