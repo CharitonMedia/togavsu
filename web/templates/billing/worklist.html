@@ -1,0 +1,57 @@
+{{template "head" .}}
+<section aria-labelledby="flat-h">
+<h2 id="flat-h">Flat-fee matters</h2>
+{{if .Worklist.Flat}}
+<div class="scroll"><table>
+<thead><tr><th>Matter</th><th>Client</th><th class="num">Flat fee</th><th class="num">Trust balance</th><th>Status</th><th></th></tr></thead>
+<tbody>
+{{range .Worklist.Flat}}
+<tr>
+  <td><a href="/practice/matters/{{.MatterID}}">{{.MatterNumber}}</a> {{.MatterName}}</td>
+  <td>{{.ClientName}}</td>
+  <td class="num">{{if .FlatFeeCents}}{{money .FlatFeeCents}}{{else}}—{{end}}</td>
+  <td class="num">{{money .TrustCents}}</td>
+  <td><span class="tag tag-{{.Status}}">{{label .Status}}</span></td>
+  <td>
+  {{if and (eq .Status "ready_to_apply") $.CanTrust}}
+    <form class="inline" method="post" action="/billing/flat-fees/{{.MatterID}}/apply">
+      {{template "csrf" $.CSRF}}
+      <input type="hidden" name="client_id" value="{{.ClientID}}">
+      <input type="hidden" name="trust_account_id" value="{{.AccountID}}">
+      <label>Amount <input name="amount" value="{{money .FlatFeeCents}}" inputmode="decimal" size="9" required></label>
+      <button type="submit">Apply flat fee</button>
+    </form>
+  {{else if eq .Status "ready_to_apply"}}<span class="muted">An attorney or admin applies it</span>
+  {{else if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">Invoice</a>{{end}}
+  </td>
+</tr>
+{{end}}
+</tbody>
+</table></div>
+{{else}}<p class="muted">No open flat-fee matters.</p>{{end}}
+</section>
+
+<section aria-labelledby="hourly-h">
+<h2 id="hourly-h">Hourly and mixed matters with unbilled work</h2>
+{{if .Worklist.Hourly}}
+<form method="post" action="/billing/generate">
+{{template "csrf" .CSRF}}
+<div class="scroll"><table>
+<thead><tr><th><span class="sr">Select</span></th><th>Matter</th><th>Client</th><th class="num">Unbilled</th><th></th></tr></thead>
+<tbody>
+{{range .Worklist.Hourly}}
+<tr>
+  <td><input type="checkbox" name="matter_id" value="{{.MatterID}}" aria-label="Select {{.MatterNumber}}"></td>
+  <td><a href="/practice/matters/{{.MatterID}}">{{.MatterNumber}}</a> {{.MatterName}}</td>
+  <td>{{.ClientName}}</td>
+  <td class="num">{{money .UnbilledCents}}</td>
+  <td>{{if $.CanWrite}}<button type="submit" name="one" value="{{.MatterID}}">Generate draft invoice</button>{{end}}</td>
+</tr>
+{{end}}
+</tbody>
+</table></div>
+{{if .CanWrite}}<p><button type="submit">Generate drafts for selected rows</button></p>{{end}}
+</form>
+{{else}}<p class="muted">Nothing unbilled.</p>{{end}}
+</section>
+{{template "foot" .}}

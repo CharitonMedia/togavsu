@@ -1,0 +1,175 @@
+{{template "head" .}}
+{{with .Invoice}}
+<p class="meta"><a href="/practice/matters/{{.MatterID}}">{{.MatterNum}} {{.MatterName}}</a> · Issued {{.IssuedOn}} · Due {{.DueOn}} ·
+<span class="tag tag-{{.Status}}">{{.Status}}{{if and (eq .Status "draft") .Approved}} · approved{{end}}</span>
+· <a href="/billing/invoices/{{.ID}}/pdf">Download PDF</a></p>
+<div class="scroll"><table>
+<thead><tr><th>Line</th><th>Kind</th><th class="num">Amount</th></tr></thead>
+<tbody>
+{{range .Lines}}<tr><td>{{.Description}}</td><td>{{.Kind}}</td><td class="num">{{money .AmountCents}}</td></tr>{{end}}
+</tbody>
+<tfoot>
+<tr><th colspan="2">Subtotal</th><td class="num">{{money .SubtotalCents}}</td></tr>
+{{if .AdjustmentCents}}<tr><th colspan="2">Adjustment{{if .AdjustmentReason}}: {{.AdjustmentReason}}{{end}}</th><td class="num">{{money .AdjustmentCents}}</td></tr>{{end}}
+{{if .InterestCents}}<tr><th colspan="2">Late interest</th><td class="num">{{money .InterestCents}}</td></tr>{{end}}
+<tr><th colspan="2">Total</th><td class="num">{{money .TotalCents}}</td></tr>
+<tr><th colspan="2">Paid</th><td class="num">{{money .AmountPaidCents}}</td></tr>
+{{if .WriteOffCents}}<tr><th colspan="2">Written off{{if .WriteOffReason}}: {{.WriteOffReason}}{{end}}</th><td class="num">{{money .WriteOffCents}}</td></tr>{{end}}
+<tr class="due"><th colspan="2">Balance due</th><td class="num">{{money .BalanceDueCents}}</td></tr>
+</tfoot>
+</table></div>
+{{if .VoidReason}}<p class="error">Void: {{.VoidReason}}</p>{{end}}
+{{end}}
+
+{{$inv := .Invoice}}
+{{if and (eq .Invoice.Status "draft") .CanApprove}}
+<div class="actions">
+  {{if not .Invoice.Approved}}
+  <form class="inline" method="post" action="/billing/invoices/{{$inv.ID}}/approve">{{template "csrf" .CSRF}}<button type="submit">Approve</button></form>
+  {{else}}
+  <form class="inline" method="post" action="/billing/invoices/{{$inv.ID}}/send">{{template "csrf" .CSRF}}<input type="hidden" name="deliver" value="email"><button type="submit">Send by email</button></form>
+  <form class="inline" method="post" action="/billing/invoices/{{$inv.ID}}/send">{{template "csrf" .CSRF}}<input type="hidden" name="deliver" value="file"><button type="submit">Mark sent (download)</button></form>
+  {{end}}
+</div>
+{{end}}
+
+{{if and (eq .Invoice.Status "draft") .CanWrite .Staff}}
+<section class="card" aria-labelledby="draft-h">
+<h2 id="draft-h">Edit draft</h2>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/draft" class="draft">
+  {{template "csrf" .CSRF}}
+  <input type="hidden" name="lines" value="{{len .DraftLines}}">
+  <div class="scroll"><table>
+  <thead><tr><th>Kind</th><th>Description</th><th class="num">Amount</th><th>Remove</th></tr></thead>
+  <tbody>
+  {{range .DraftLines}}{{$p := printf "line.%d." .Index}}
+  <tr><td>{{.Kind}}{{if .MatterFee}} · matter fee{{end}}{{if .FeeItemID}} · fee item{{end}}
+    <input type="hidden" name="{{$p}}kind" value="{{.Kind}}"><input type="hidden" name="{{$p}}source_id" value="{{.SourceID}}"><input type="hidden" name="{{$p}}fee_item_id" value="{{.FeeItemID}}"></td>
+  <td><input name="{{$p}}description" value="{{.Description}}" aria-label="Line {{.Index}} description" size="40" required></td>
+  <td class="num"><input name="{{$p}}amount" value="{{money .AmountCents}}" aria-label="Line {{.Index}} amount" inputmode="decimal" size="9" required></td>
+  <td><input type="checkbox" name="{{$p}}remove" value="1" aria-label="Remove line {{.Index}}"></td></tr>
+  {{end}}
+  </tbody></table></div>
+  {{if .Unbilled}}
+  <fieldset><legend>Add unbilled work on this matter</legend>
+  {{range .Unbilled}}<label><input type="checkbox" name="add_source" value="{{.Kind}}|{{.ID}}"> {{.Kind}}: {{.Label}} ({{.Amount}})</label>{{end}}
+  </fieldset>
+  {{end}}
+  <fieldset><legend>Add a fee item</legend>
+  <label>Fee item <select name="add_fee_item"><option value="">None</option>{{range .FeeItems}}<option value="{{.ID}}">{{.Name}} ({{money .DefaultAmountCents}})</option>{{end}}</select></label>
+  <label>Description <input name="add_fee_description" size="30" placeholder="from the item"></label>
+  <label>Amount <input name="add_fee_amount" inputmode="decimal" size="9" placeholder="from the item"></label>
+  <p class="muted">The item fills in its text and amount. Both stay editable on the line once added.</p>
+  </fieldset>
+  <fieldset><legend>Add a line</legend>
+  <label>Kind <select name="add_kind"><option value="">None</option><option value="flat_fee">Flat fee</option><option value="adjustment">Adjustment</option></select></label>
+  <label>Description <input name="add_description" size="30"></label>
+  <label>Amount <input name="add_amount" inputmode="decimal" size="9"></label>
+  </fieldset>
+  <fieldset><legend>Adjustment</legend>
+  <label>Amount <input name="adjustment" value="{{money $inv.AdjustmentCents}}" inputmode="decimal" size="9"></label>
+  <label>Reason <input name="adjustment_reason" value="{{$inv.AdjustmentReason}}" size="30"></label>
+  <label>Issued <input type="date" name="issued_on" value="{{$inv.IssuedOn}}"></label>
+  </fieldset>
+  <button type="submit">Save draft</button>
+  {{if $inv.Approved}}<p class="muted">Saving clears the approval.</p>{{end}}
+</form>
+</section>
+{{end}}
+
+{{if and .CanWrite .Staff (ne .Invoice.Status "void")}}
+<details class="card">
+<summary>Messages, notes and dispute</summary>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/notes" class="grid">
+  {{template "csrf" .CSRF}}
+  <label class="wide">Client message <textarea name="client_message" rows="2">{{$inv.ClientMessage}}</textarea></label>
+  <label class="wide">Internal notes <textarea name="internal_notes" rows="2">{{$inv.InternalNotes}}</textarea></label>
+  <label>Dispute <select name="dispute_status">
+    <option value="none" {{if or (eq $inv.DisputeStatus "") (eq $inv.DisputeStatus "none")}}selected{{end}}>None</option>
+    <option value="disputed" {{if eq $inv.DisputeStatus "disputed"}}selected{{end}}>Disputed</option>
+    <option value="resolved" {{if eq $inv.DisputeStatus "resolved"}}selected{{end}}>Resolved</option></select></label>
+  <label class="wide">Dispute notes <textarea name="dispute_notes" rows="2">{{$inv.DisputeNotes}}</textarea></label>
+  <button type="submit">Save notes</button>
+</form>
+</details>
+{{end}}
+
+{{if .Collections.Show}}
+<section class="card" aria-labelledby="col-h">
+<h2 id="col-h">Collections</h2>
+{{if .CanTrust}}
+<form method="post" action="/billing/invoices/{{$inv.ID}}/apply-trust">
+  {{template "csrf" .CSRF}}
+  <h3>Apply trust</h3>
+  {{if .Collections.Funded}}
+  <label>Client holding funds
+  <select name="funds" required>
+  {{range .Collections.Funded}}<option value="{{.ClientID}}|{{.AccountID}}" {{if eq .ClientID $.Collections.DefaultClient}}selected{{end}}>{{index $.Clients .ClientID}} ({{money .BalanceCents}})</option>{{end}}
+  </select></label>
+  <label>Amount <input name="amount" value="{{money .Collections.Suggested}}" inputmode="decimal" size="9" required></label>
+  <button type="submit">Apply trust</button>
+  {{else}}<p class="muted">No client on this matter holds trust funds.</p>{{end}}
+</form>
+{{end}}
+{{if .CanWrite}}
+<form method="post" action="/billing/invoices/{{$inv.ID}}/payment">
+  {{template "csrf" .CSRF}}
+  <h3>Record outside payment</h3>
+  <label>From <select name="contact_id">{{range $id, $name := .Clients}}<option value="{{$id}}">{{$name}}</option>{{end}}</select></label>
+  <label>Amount <input name="amount" value="{{money .Collections.Balance}}" inputmode="decimal" size="9" required></label>
+  <label>Method <select name="method"><option>check</option><option>cash</option><option>card</option><option value="ach">ACH</option><option>other</option></select></label>
+  <label>Reference <input name="reference_number" size="10"></label>
+  <label>Received <input type="date" name="received_on" value="{{.Today}}"></label>
+  <button type="submit">Record payment</button>
+</form>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/replenish">
+  {{template "csrf" .CSRF}}
+  <h3>Request replenishment</h3>
+  <label>Client <select name="client_id">{{range $id, $name := .Clients}}<option value="{{$id}}">{{$name}}</option>{{end}}</select></label>
+  <label>Amount <input name="amount" value="{{money .Collections.Balance}}" inputmode="decimal" size="9" required></label>
+  <label>Message <input name="message" size="30"></label>
+  <button type="submit">Request replenishment</button>
+</form>
+{{end}}
+{{if and .CanApprove .InterestOn}}
+<form method="post" action="/billing/invoices/{{$inv.ID}}/interest">
+  {{template "csrf" .CSRF}}
+  <h3>Late interest</h3>
+  <p class="muted">Charges the firm's late interest for the days past the grace period.</p>
+  <button type="submit">Apply late interest</button>
+</form>
+{{end}}
+{{if .CanApprove}}
+<form method="post" action="/billing/invoices/{{$inv.ID}}/write-off">
+  {{template "csrf" .CSRF}}
+  <h3>Write off</h3>
+  <label>Amount <input name="amount" inputmode="decimal" size="9" required></label>
+  <label>Reason <input name="reason" size="30" required></label>
+  <button type="submit">Write off</button>
+</form>
+{{end}}
+</section>
+{{end}}
+
+{{if .Payments}}
+<section aria-labelledby="pay-h">
+<h2 id="pay-h">Payments</h2>
+<div class="scroll"><table><thead><tr><th>Received</th><th>Method</th><th>Reference</th><th>Status</th><th class="num">Amount</th></tr></thead>
+<tbody>{{range .Payments}}<tr><td>{{.ReceivedOn}}</td><td>{{.Method}}</td><td>{{.ReferenceNumber}}</td><td>{{.Status}}</td><td class="num">{{money .AmountCents}}</td></tr>{{end}}</tbody></table></div>
+</section>
+{{end}}
+
+{{if and .CanApprove (ne .Invoice.Status "void")}}
+<details class="card">
+<summary>Void this invoice</summary>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/void">
+  {{template "csrf" .CSRF}}
+  <p>Voiding returns its time and expenses to unbilled. Reverse any payments first.</p>
+  <label>Reason <input name="reason" size="40" required></label>
+  <button type="submit" class="danger">Void invoice</button>
+</form>
+</details>
+{{end}}
+
+{{if .Staff}}{{template "history" .History}}{{end}}
+{{template "foot" .}}
