@@ -242,3 +242,16 @@ func TestSimilarityAndCitations(t *testing.T) {
 func newAdmin(t *testing.T) domain.Principal {
 	return domain.Principal{UserID: id(t), Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
 }
+
+// A page tree that points back at itself is damaged, not an endless walk.
+func TestLoopingPageTreeIsDamaged(t *testing.T) {
+	loop := []byte("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [2 0 R] /Count 1 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n")
+	if _, err := parsePDF(loop); err == nil || !strings.Contains(err.Error(), "damaged") {
+		t.Fatalf("looping tree: %v", err)
+	}
+	for _, junk := range [][]byte{[]byte("%PDF-1.7\n1 0 obj << /Type /ObjStm /N 5 /First 999 >> stream\nxx\nendstream endobj"), []byte("%PDF-"), []byte("%PDF-1.4 1 0 obj <</Kids [ (unterminated")} {
+		if _, err := parsePDF(junk); err == nil {
+			t.Fatalf("junk opened: %q", junk)
+		}
+	}
+}

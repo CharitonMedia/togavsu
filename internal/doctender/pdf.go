@@ -57,7 +57,12 @@ var objHeader = regexp.MustCompile(`(\d+)\s+(\d+)\s+obj\b`)
 
 // parsePDF opens a PDF. An encrypted file returns ErrEncrypted; one that does not
 // parse returns ErrDamaged with the reason.
-func parsePDF(data []byte) (*pdfDoc, error) {
+func parsePDF(data []byte) (doc *pdfDoc, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			doc, err = nil, fmt.Errorf("%w: %v", ErrDamaged, r)
+		}
+	}()
 	if !bytes.HasPrefix(bytes.TrimLeft(data, "\x00\t\r\n "), []byte("%PDF-")) {
 		return nil, fmt.Errorf("%w: no PDF header", ErrDamaged)
 	}
@@ -125,7 +130,8 @@ func parsePDF(data []byte) (*pdfDoc, error) {
 	if !ok {
 		return nil, fmt.Errorf("%w: no page tree", ErrDamaged)
 	}
-	if err := d.walkPages(tree, pdfDict{}, map[*pdfDict]bool{}); err != nil {
+	visits := zero
+	if err := d.walkPages(tree, pdfDict{}, &visits); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDamaged, err)
 	}
 	if len(d.pages) == 0 {
@@ -175,11 +181,13 @@ func (d *pdfDoc) expandObjectStreams() error {
 
 var inheritable = []pdfName{"Resources", "MediaBox", "CropBox", "Rotate"}
 
-func (d *pdfDoc) walkPages(node pdfDict, inherited pdfDict, seen map[*pdfDict]bool) error {
-	if seen[&node] {
+// walkPages flattens the page tree. A tree can't have more nodes than the file has
+// objects, so more visits than that means it loops back on itself.
+func (d *pdfDoc) walkPages(node pdfDict, inherited pdfDict, visits *int) error {
+	*visits++
+	if *visits > len(d.objs) {
 		return errors.New("page tree loops")
 	}
-	seen[&node] = true
 	here := pdfDict{}
 	for k, v := range inherited {
 		here[k] = v
@@ -206,15 +214,12 @@ func (d *pdfDoc) walkPages(node pdfDict, inherited pdfDict, seen map[*pdfDict]bo
 	if !ok {
 		return errors.New("page tree kids are not an array")
 	}
-	if len(d.pages)+len(kids) > len(d.objs)+len(kids) {
-		return errors.New("page tree is larger than the file")
-	}
 	for _, k := range kids {
 		kid, ok := d.resolve(k).(pdfDict)
 		if !ok {
 			return errors.New("a page is missing")
 		}
-		if err := d.walkPages(kid, here, seen); err != nil {
+		if err := d.walkPages(kid, here, visits); err != nil {
 			return err
 		}
 	}

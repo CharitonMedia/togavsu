@@ -87,7 +87,7 @@ func (s *Service) runFile(ctx context.Context, j Job) error {
 		w.kind = typePDF
 	} else {
 		var pre *precheck
-		specs, pre, err = s.plan(ctx, w)
+		specs, pre, err = s.safePlan(ctx, w)
 		if err != nil {
 			return err
 		}
@@ -562,4 +562,14 @@ critical_fields, matter_id, file_id, job_id, confidences, markdown_rendition_id,
 		id, at, at, string(s.d.System.UserID), w.version.ID, jsonText(parts), l.Summary, category, how, jsonText(fields), nullID(m.Keep),
 		w.file.ID, w.job.ID, jsonText(conf), nullID(rendition), nullID(m.Best))
 	return err
+}
+
+// safePlan opens the file for its units; a file that makes a reader panic is damaged.
+func (s *Service) safePlan(ctx context.Context, w *work) (specs []unitSpec, pre *precheck, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			specs, pre, err = nil, &precheck{"damaged", fmt.Sprintf("the file could not be opened: %v", r)}, nil
+		}
+	}()
+	return s.plan(ctx, w)
 }

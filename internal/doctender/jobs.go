@@ -453,7 +453,7 @@ func (s *Service) runUnit(ctx context.Context, j *Job, u *Unit, spec unitSpec) e
 		if err := s.saveUnit(ctx, *u); err != nil {
 			return err
 		}
-		work, err := spec.Run(ctx, checkMethod)
+		work, err := safeRun(ctx, spec, checkMethod)
 		if errors.Is(err, ErrNoAI) {
 			u.Attempts--
 			_ = s.saveUnit(ctx, *u)
@@ -760,4 +760,15 @@ func trimErr(err error) string {
 		return ""
 	}
 	return strings.TrimSpace(err.Error())
+}
+
+// safeRun runs a unit; a reader that panics on a hostile file fails the attempt
+// instead of stopping the worker.
+func safeRun(ctx context.Context, spec unitSpec, checkMethod bool) (work unitWork, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s could not be read: %v", spec.Name, r)
+		}
+	}()
+	return spec.Run(ctx, checkMethod)
 }
