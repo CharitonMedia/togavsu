@@ -97,12 +97,9 @@ func ledgerReport(name string, entries []Entry) Report {
 	return rep
 }
 
-// ReconciliationReport is the reconciliation history.
+// ReconciliationReport is the reconciliation history the caller may read.
 func (s *Service) ReconciliationReport(ctx context.Context, who domain.Principal, account domain.ID) (Report, error) {
-	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
-		return Report{}, err
-	}
-	all, err := s.reconciliations(ctx, account)
+	all, err := s.readRecons(ctx, who, account)
 	if err != nil {
 		return Report{}, err
 	}

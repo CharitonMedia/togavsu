@@ -387,12 +387,12 @@ func (h *Handler) replPost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) reconPage(w http.ResponseWriter, r *http.Request) {
-	_, v, ok := h.base(w, r, "Trust Reconciliation")
+	p, v, ok := h.base(w, r, "Trust Reconciliation")
 	if !ok {
 		return
 	}
 	v.Accounts, _ = h.Svc.accounts(r.Context())
-	recons, err := h.Svc.reconciliations(r.Context(), qID(r, "trust_account_id"))
+	recons, err := h.Svc.readRecons(r.Context(), p, qID(r, "trust_account_id"))
 	if err != nil {
 		h.fail(w, err)
 		return

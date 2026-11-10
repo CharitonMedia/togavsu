@@ -11,9 +11,11 @@ import (
 
 // Reconcile stores one reconciliation: the statement balance the caller entered, the
 // ledger total for the account through the statement date, the sum of the client
-// balances in that account on that date, and both differences (PRD 8.4). Reconciliation
-// sees every matter: it is about the bank account, so a matter wall does not hide rows
-// from the totals. Staff, attorneys and admins may reconcile.
+// balances in that account on that date, and both differences (PRD 8.4). The totals are
+// about the bank account, so they count every matter; a wall cannot hide rows from them.
+// So only a caller who may read every matter with ledger rows in the account through the
+// statement date may create or read the reconciliation (PRD 3: walls apply on every
+// surface). Anyone else gets not_found. Staff, attorneys and admins may reconcile.
 func (s *Service) Reconcile(ctx context.Context, who domain.Principal, in ReconcileInput, key string) (Reconciliation, error) {
 	out, err := s.ReconcileBulk(ctx, who, []ReconcileInput{in}, key)
 	if err != nil {
@@ -65,12 +67,18 @@ func (s *Service) ReconcileBulk(ctx context.Context, who domain.Principal, items
 		if err := s.lock(ctx); err != nil {
 			return err
 		}
+		rd := &readable{s: s, who: who, seen: map[domain.ID]bool{}}
 		var err error
 		out, _, err = idem(ctx, s, who, "trust.reconcile", key, items, func() ([]Reconciliation, error) {
 			var res []Reconciliation
 			for i, in := range items {
 				if _, err := s.account(ctx, in.TrustAccountID); err != nil {
 					return nil, itemErr(i, err)
+				}
+				if ok, err := s.seesAccount(ctx, rd, in.TrustAccountID, in.StatementOn); err != nil {
+					return nil, itemErr(i, err)
+				} else if !ok {
+					return nil, itemErr(i, domain.NotFound("trust_account"))
 				}
 				r, err := s.reconcileOne(ctx, who, in)
 				if err != nil {
@@ -137,15 +145,83 @@ func (s *Service) reconcileOne(ctx context.Context, who domain.Principal, in Rec
 		fmt.Sprintf("statement %s on %s; ledger %s; clients %s", domain.Cents(r.StatementBalanceCents), r.StatementOn, domain.Cents(ledger), domain.Cents(clients)))
 }
 
-// Reconciliation returns one stored reconciliation.
-func (s *Service) Reconciliation(ctx context.Context, who domain.Principal, id domain.ID) (Reconciliation, error) {
-	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
-		return Reconciliation{}, err
+// seesAccount reports whether rd may read every matter with ledger rows in the account
+// before the end of the statement date: the matters a reconciliation's totals count.
+func (s *Service) seesAccount(ctx context.Context, rd *readable, account domain.ID, statementOn string) (bool, error) {
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT DISTINCT matter_id FROM trust_ledger WHERE trust_account_id = $1 AND created_at < $2`,
+		string(account), dayEnd(statementOn))
+	if err != nil {
+		return false, err
 	}
-	return s.reconciliation(ctx, id)
+	var matters []domain.ID
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			rows.Close()
+			return false, err
+		}
+		matters = append(matters, domain.ID(m))
+	}
+	if err := rows.Close(); err != nil {
+		return false, err
+	}
+	for _, m := range matters {
+		if ok, err := rd.ok(ctx, m); err != nil || !ok {
+			return false, err
+		}
+	}
+	return true, nil
 }
 
-// Reconciliations lists stored reconciliations, oldest first.
+// visibleRecons keeps the reconciliations rd may read: those whose account totals count
+// no matter walled from rd.
+func (s *Service) visibleRecons(ctx context.Context, rd *readable, all []Reconciliation) ([]Reconciliation, error) {
+	out := make([]Reconciliation, 0, len(all))
+	for _, r := range all {
+		ok, err := s.seesAccount(ctx, rd, r.TrustAccountID, r.StatementOn)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// readRecons lists the stored reconciliations who may read, oldest first.
+func (s *Service) readRecons(ctx context.Context, who domain.Principal, account domain.ID) ([]Reconciliation, error) {
+	rd, err := s.reader(ctx, who)
+	if err != nil {
+		return nil, err
+	}
+	all, err := s.reconciliations(ctx, account)
+	if err != nil {
+		return nil, err
+	}
+	return s.visibleRecons(ctx, rd, all)
+}
+
+// Reconciliation returns one stored reconciliation. One whose totals count a matter
+// walled from the caller is not_found.
+func (s *Service) Reconciliation(ctx context.Context, who domain.Principal, id domain.ID) (Reconciliation, error) {
+	rd, err := s.reader(ctx, who)
+	if err != nil {
+		return Reconciliation{}, err
+	}
+	r, err := s.reconciliation(ctx, id)
+	if err != nil {
+		return Reconciliation{}, err
+	}
+	if ok, err := s.seesAccount(ctx, rd, r.TrustAccountID, r.StatementOn); err != nil {
+		return Reconciliation{}, err
+	} else if !ok {
+		return Reconciliation{}, domain.NotFound("trust_reconciliation")
+	}
+	return r, nil
+}
+
+// Reconciliations lists the stored reconciliations the caller may read, oldest first.
 func (s *Service) Reconciliations(ctx context.Context, who domain.Principal, account domain.ID, cursor string, limit int) (Page[Reconciliation], error) {
 	if err := s.allow(ctx, who, domain.ResTrust, domain.ActionRead, ""); err != nil {
 		return Page[Reconciliation]{}, err
@@ -154,7 +230,7 @@ func (s *Service) Reconciliations(ctx context.Context, who domain.Principal, acc
 	if err != nil {
 		return Page[Reconciliation]{}, err
 	}
-	all, err := s.reconciliations(ctx, account)
+	all, err := s.readRecons(ctx, who, account)
 	if err != nil {
 		return Page[Reconciliation]{}, err
 	}

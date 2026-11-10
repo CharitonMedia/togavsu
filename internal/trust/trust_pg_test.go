@@ -399,11 +399,12 @@ func TestPGReconciliation(t *testing.T) {
 	if err != nil || past.LedgerTotalCents != 0 || past.StatementDifferenceCents != 0 {
 		t.Fatalf("past %+v %v", past, err)
 	}
-	// A wall does not change the bank-account totals.
+	// A wall does not change the bank-account totals for a reader on every wall. A reader
+	// outside the wall cannot reconcile the account (TestPGReconciliationUnderWall).
 	if err := e.practice.ReplaceWalls(e.ctx, m2.ID, []domain.MatterWall{{Meta: domain.Meta{ID: mustID(t)}, MatterID: m2.ID, UserID: e.attorney.UserID}}); err != nil {
 		t.Fatal(err)
 	}
-	r3, err := e.svc.Reconcile(e.ctx, e.staff, ReconcileInput{TrustAccountID: e.account, StatementOn: today, StatementBalanceCents: &right}, "")
+	r3, err := e.svc.Reconcile(e.ctx, e.attorney, ReconcileInput{TrustAccountID: e.account, StatementOn: today, StatementBalanceCents: &right}, "")
 	if err != nil || r3.StatementDifferenceCents != 0 {
 		t.Fatalf("walled %+v %v", r3, err)
 	}
@@ -416,9 +417,14 @@ func TestPGReconciliation(t *testing.T) {
 	if _, err := e.svc.Reconcile(e.ctx, e.staff, ReconcileInput{TrustAccountID: mustID(t), StatementOn: today, StatementBalanceCents: &right}, ""); code(err) != domain.CodeNotFound {
 		t.Fatalf("unknown account: %v", err)
 	}
-	rep, err := e.svc.ReconciliationReport(e.ctx, e.accountant, e.account)
+	rep, err := e.svc.ReconciliationReport(e.ctx, e.attorney, e.account)
 	if err != nil || len(rep.Rows) != 4 || rep.Rows[1]["statement_difference"] != "-12.34" {
 		t.Fatalf("history %+v %v", rep, err)
+	}
+	// The accountant is outside the new wall: only the statement dated before M2's rows.
+	rep, err = e.svc.ReconciliationReport(e.ctx, e.accountant, e.account)
+	if err != nil || len(rep.Rows) != 1 || rep.Rows[0]["statement_on"] != "2020-01-31" {
+		t.Fatalf("walled history %+v %v", rep, err)
 	}
 }
 
