@@ -10,7 +10,12 @@
 //
 // Access: every job, exception and result is read through the files service as the
 // caller, so walls, roles and attorney-only files apply exactly as they do to the file
-// itself, in the API, the review queue and the Doc Tender pages.
+// itself, in the API, the review queue and the Doc Tender pages. A matter-matching
+// suggestion names another matter, so it is checked against that matter's wall for
+// each reader (Deps.Walls) and removed, with what matched it, for anyone walled from
+// it; mail and the daily summary, which go to lists, say nothing about a walled matter.
+// A grouped photo PDF is as restricted as its most restricted photo, and photos are
+// grouped only within one matter or, with no matter, one contact.
 //
 // Settled stays settled: fields a person locked (files.locked_fields) are never written
 // (files.ApplyTender skips them), a person's photo grouping is never redone, and a
@@ -25,8 +30,13 @@
 //
 // ponytail: Word-family documents go through WordcraftCLI, which needs the editor
 // task's wordcraft-cli in the core image; until then each such file is an
-// extraction_failed review item and stays available. Trigger: the core image ships
-// wordcraft-cli at the pinned LawCraft commit (AC-043-P3).
+// extraction_failed review item and stays available. The independent check reads the
+// document's own counts (DOCX app.xml, ODT meta.xml, DOC SummaryInformation, RTF \info
+// or an in-package read of the RTF text); a document with no count of its own fails
+// its check and goes to review. Ceiling: a DOC saved without SummaryInformation counts
+// is never published as checked. Upgrade: read the DOC's WordDocument text (piece
+// table) in-package. Trigger: the core image ships wordcraft-cli at the pinned LawCraft
+// commit (AC-043-P3), or a firm reports such DOCs in the review queue.
 //
 // ponytail: the core image (platform-owned Dockerfile) does not yet ship tesseract or
 // ffmpeg. Without Tesseract the scanned-page check falls back to the check model's

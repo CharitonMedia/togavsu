@@ -97,21 +97,24 @@ func (s *Service) openException(ctx context.Context, j *Job, kind, detail string
 	if _, ok := exceptionKinds[kind]; !ok {
 		return fmt.Errorf("doctender: unknown exception kind %q", kind)
 	}
-	var n int
-	if err := s.row(ctx, `SELECT COUNT(*) FROM doc_tender_exceptions WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`,
-		j.FileID, j.VersionID, kind).Scan(&n); err != nil {
+	if best == nil {
+		best = map[string]any{}
+	}
+	at := us(s.now())
+	// The same item already open (a reprocess, a requeue after a matter was set) keeps
+	// its id and takes the newest detail and best answer, so Accept never applies an
+	// answer built before the matter changed.
+	res, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET detail = ?, best_answer = ?, updated_at = ? WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`,
+		detail, jsonText(best), at, j.FileID, j.VersionID, kind)
+	if err != nil {
 		return err
 	}
-	if n > zero {
-		return nil
+	if n, err := res.RowsAffected(); err != nil || n > int64(zero) {
+		return err
 	}
 	id, err := s.id()
 	if err != nil {
 		return err
-	}
-	at := us(s.now())
-	if best == nil {
-		best = map[string]any{}
 	}
 	_, err = s.exec(ctx, `INSERT INTO doc_tender_exceptions (id, created_at, updated_at, created_by, file_id, kind, opened_at, detail, status, resolved_by,
 resolved_at, resolution, job_id, file_version_id, best_answer, emailed_at) VALUES (?,?,?,?,?,?,?,?,'open',NULL,0,'',?,?,?,0)`,
@@ -169,6 +172,10 @@ func (s *Service) FlushExceptionMail(ctx context.Context) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Doc Tender put %d item(s) in the review queue. Each file stays listed, viewable and downloadable with its flag.\n\n", len(fresh))
 	for _, e := range fresh {
+		if s.walledItem(ctx, e) {
+			fmt.Fprintf(&b, "- a file on a walled matter: %s (open it in the review queue)\n", KindLabel(e.Kind))
+			continue
+		}
 		name := string(e.FileID)
 		if f, err := s.d.Files.Get(ctx, s.d.System, e.FileID); err == nil {
 			name = f.Name
@@ -208,6 +215,44 @@ func (s *Service) mailReviewers(ctx context.Context, subject, body string) error
 		errs = append(errs, s.d.Mail.Send(ctx, to, subject, body))
 	}
 	return errors.Join(errs...)
+}
+
+// walledItem reports whether an item touches a walled matter: the file's own or the
+// suggested one. Mail goes to lists that can't be checked per reader, so such an item
+// is mailed by kind only. A file that can't be read counts as walled.
+func (s *Service) walledItem(ctx context.Context, e Exception) bool {
+	f, err := s.d.Files.Get(ctx, s.d.System, e.FileID)
+	if err != nil {
+		return true
+	}
+	if f.MatterID != nil && s.matterWalled(ctx, *f.MatterID) {
+		return true
+	}
+	m, _ := e.BestAnswer["matter_id"].(string)
+	return s.matterWalled(ctx, domain.ID(m))
+}
+
+// forReader is the item as p may see it. A suggested matter p can't read (a wall, a
+// role) is removed with what matched it. An unmatched_matter item on a file that has a
+// matter is only about the suggested matter, so a reader who can't read that matter
+// doesn't see the item at all (ok is false).
+func (s *Service) forReader(ctx context.Context, p domain.Principal, e Exception, f files.FileView) (Exception, bool) {
+	m, _ := e.BestAnswer["matter_id"].(string)
+	if m == "" || s.matterReadable(ctx, p, domain.ID(m)) {
+		return e, true
+	}
+	if e.Kind == "unmatched_matter" && f.MatterID != nil {
+		return Exception{}, false
+	}
+	best := make(map[string]any, len(e.BestAnswer))
+	for k, v := range e.BestAnswer {
+		best[k] = v
+	}
+	delete(best, "matter_id")
+	delete(best, "matter")
+	delete(best, "match_reason")
+	e.BestAnswer = best
+	return e, true
 }
 
 // visibleFile is the file as p sees it; a walled, attorney-only or missing file is
@@ -250,7 +295,12 @@ func (s *Service) Exceptions(ctx context.Context, p domain.Principal, q Exceptio
 	}
 	var out []Exception
 	for _, e := range all {
-		if _, err := s.visibleFile(ctx, p, e.FileID); err != nil {
+		f, err := s.visibleFile(ctx, p, e.FileID)
+		if err != nil {
+			continue
+		}
+		e, ok := s.forReader(ctx, p, e, f)
+		if !ok {
 			continue
 		}
 		if q.Limit > zero && len(out) == q.Limit {
@@ -282,10 +332,15 @@ func (s *Service) Exception(ctx context.Context, p domain.Principal, id domain.I
 	if len(items) == 0 {
 		return Exception{}, domain.NotFound("doc_tender_exception")
 	}
-	if _, err := s.visibleFile(ctx, p, items[zero].FileID); err != nil {
+	f, err := s.visibleFile(ctx, p, items[zero].FileID)
+	if err != nil {
 		return Exception{}, domain.NotFound("doc_tender_exception")
 	}
-	return items[zero], nil
+	e, ok := s.forReader(ctx, p, items[zero], f)
+	if !ok {
+		return Exception{}, domain.NotFound("doc_tender_exception")
+	}
+	return e, nil
 }
 
 // Resolve is one person's decision on a review-queue item.
@@ -316,6 +371,20 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 	var requeue bool
 	switch in.Action {
 	case "accept":
+		if e.Kind == "unmatched_matter" {
+			// Accepting the suggested matter sets it and requeues the file: the name and
+			// folder are then built from that matter's tokens. Nothing is renamed or
+			// filed here, since the proposed name and folder belong to no settled matter.
+			m, _ := e.BestAnswer["matter_id"].(string)
+			if m == "" {
+				return Exception{}, domain.Invalid("action", "there is no suggested matter to accept; assign a matter")
+			}
+			if err := s.setMatter(ctx, p, f, domain.ID(m)); err != nil {
+				return Exception{}, err
+			}
+			requeue = true
+			break
+		}
 		if name, _ := e.BestAnswer["name"].(string); name != "" && name != f.Name {
 			if _, err := s.d.Files.Rename(ctx, p, f.ID, name); err != nil {
 				return Exception{}, err
@@ -325,12 +394,6 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 			if err := s.setCategory(ctx, p, f, key); err != nil {
 				return Exception{}, err
 			}
-		}
-		if m, _ := e.BestAnswer["matter_id"].(string); m != "" && e.Kind == "unmatched_matter" {
-			if err := s.setMatter(ctx, p, f, domain.ID(m)); err != nil {
-				return Exception{}, err
-			}
-			requeue = true
 		}
 	case "correct":
 		if in.Name == "" && in.CategoryID == nil && in.MatterID == nil && in.Grouping == "" {
@@ -503,6 +566,9 @@ func (s *Service) Status(ctx context.Context, p domain.Principal, fileID domain.
 		return out, err
 	}
 	for _, e := range items {
+		if _, ok := s.forReader(ctx, p, e, f); !ok {
+			continue
+		}
 		out.Flags = append(out.Flags, Flag{Kind: e.Kind, Label: KindLabel(e.Kind), Detail: e.Detail})
 	}
 	return out, nil

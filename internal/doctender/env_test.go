@@ -354,7 +354,7 @@ VALUES (?,?,?,?,?,?,?,?,'',?,'','','','','','','hourly',0,0,?)`, m, at, at, sys,
 	e.set("ai.primary_fast_model", "gpt-test-fast")
 	e.set("ai.speech_to_text_model", "whisper-test")
 	e.router = &Router{Settings: reg, BaseURLs: map[string]string{ProviderOpenAI: e.ai.srv.URL, ProviderAnthropic: e.ai.srv.URL}}
-	e.deps = Deps{Pool: pool, Files: e.files, Settings: reg, Models: e.router, Matters: e.dir, Mail: e.mail, Notify: e.notes, Audit: aud,
+	e.deps = Deps{Pool: pool, Files: e.files, Settings: reg, Models: e.router, Matters: e.dir, Walls: e.dir, Mail: e.mail, Notify: e.notes, Audit: aud,
 		Second: secondReader(t), System: e.system, Worker: "worker-1", Now: e.clock.now}
 	svc, err = New(e.deps)
 	if err != nil {

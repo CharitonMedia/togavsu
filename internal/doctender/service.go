@@ -88,7 +88,11 @@ type Deps struct {
 	Settings Settings
 	Models   Models
 	Matters  Matters
-	Mail     Mailer
+	// Walls resolves matter walls for what Doc Tender says about a matter that is not
+	// the file's own (a matter-matching suggestion, a grouping call's spend row). It is
+	// the same reader files uses (practice.Service.Policy.Walls in the running core).
+	Walls domain.WallReader
+	Mail  Mailer
 	// Audit records category edits; the settings registry audits its own writes.
 	Audit  *audit.Service
 	Notify Notifier
@@ -120,8 +124,8 @@ type Service struct {
 // New validates the dependencies.
 func New(d Deps) (*Service, error) {
 	switch {
-	case d.Pool == nil, d.Files == nil, d.Settings == nil, d.Models == nil, d.Matters == nil:
-		return nil, errors.New("doctender: pool, files, settings, models and matters are required")
+	case d.Pool == nil, d.Files == nil, d.Settings == nil, d.Models == nil, d.Matters == nil, d.Walls == nil:
+		return nil, errors.New("doctender: pool, files, settings, models, matters and walls are required")
 	case d.System.Source != domain.SourceSystem || d.System.UserID.IsZero():
 		return nil, errors.New("doctender: a system principal with a user id is required")
 	}
@@ -145,6 +149,35 @@ func (s *Service) signal() {
 	case s.wake <- struct{}{}:
 	default:
 	}
+}
+
+// matterReadable reports whether p may read the matter itself (its number, name and
+// parties): the matter wall, then the role and client rules, as files and practice
+// decide them. Any error is a no.
+func (s *Service) matterReadable(ctx context.Context, p domain.Principal, matter domain.ID) bool {
+	if matter == "" {
+		return false
+	}
+	if p.Source == domain.SourceSystem {
+		return true
+	}
+	view, err := s.d.Walls.View(ctx, p, matter)
+	if err != nil {
+		return false
+	}
+	return domain.Decide(p, domain.AccessInput{Resource: domain.ResMatter, Action: domain.ActionRead, MatterID: matter,
+		Walled: view.Walled, WallAllows: view.Allows, ClientMatter: view.ClientMatter, SharedWithClient: view.ClientMatter}).Allow
+}
+
+// matterWalled reports whether the matter has a wall at all. Mail to a list (admins,
+// addresses) can't be checked per reader, so nothing about a walled matter goes in it.
+// Any error counts as walled.
+func (s *Service) matterWalled(ctx context.Context, matter domain.ID) bool {
+	if matter == "" {
+		return false
+	}
+	view, err := s.d.Walls.View(ctx, domain.Principal{}, matter)
+	return err != nil || view.Walled
 }
 
 // ---- small helpers ----

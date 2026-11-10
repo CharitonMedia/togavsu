@@ -303,7 +303,13 @@ type matchOutcome struct {
 	// Best is the matter the content points to, when it is not Keep or Keep is empty.
 	Best      domain.ID
 	BestLabel string
-	Reason    string
+	// Reason is the review item's detail. It names no other matter: the item, the
+	// email and the timeline are read by people who may be walled from Best.
+	Reason string
+	// Why is what matched Best (a case number, a party). It names Best's details, so it
+	// is kept in best_answer.match_reason and redacted with matter_id for readers
+	// walled from Best.
+	Why string
 	// Review is set when a person must confirm the matter.
 	Review bool
 }
@@ -350,8 +356,7 @@ func (s *Service) matchMatter(ctx context.Context, w *work, c *content, l Label)
 		out.Review = true
 		out.Reason = "the file arrived with no matter"
 		if len(hits) > zero {
-			out.Best, out.BestLabel = hits[zero].m.ID, hits[zero].m.Number+" "+hits[zero].m.Name
-			out.Reason += "; best match by " + hits[zero].why
+			out.Best, out.BestLabel, out.Why = hits[zero].m.ID, hits[zero].m.Number+" "+hits[zero].m.Name, hits[zero].why
 		}
 		return out, nil
 	}
@@ -364,8 +369,8 @@ func (s *Service) matchMatter(ctx context.Context, w *work, c *content, l Label)
 		}
 		if hits[zero].score > keepScore {
 			out.Review = true
-			out.Best, out.BestLabel = hits[zero].m.ID, hits[zero].m.Number+" "+hits[zero].m.Name
-			out.Reason = "the content points to another matter by " + hits[zero].why
+			out.Best, out.BestLabel, out.Why = hits[zero].m.ID, hits[zero].m.Number+" "+hits[zero].m.Name, hits[zero].why
+			out.Reason = "the content may belong to another matter"
 		}
 	}
 	return out, nil

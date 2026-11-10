@@ -405,20 +405,32 @@ func (s *Service) wordUnits(w *work) ([]unitSpec, *precheck, error) {
 		if err != nil {
 			return unitWork{Method: "wordcraft-cli"}, err
 		}
+		// The check is independent of the converter: the counts come from the document
+		// itself (its properties, or for RTF without them an in-package read of its text).
+		// With no independent count the unit fails its check and goes to review; the
+		// converter's agreement with its own Markdown is not a check.
 		ownWords, ownPages, known := documentCounts(ext, w.data)
 		gotWords := len(strings.Fields(stripMarkdown(md)))
-		passed := gotWords == words
-		result := fmt.Sprintf("words %d/%d pages %d", gotWords, words, pages)
-		if known {
-			passed = passed && words == ownWords && (ownPages == zero || pages == ownPages)
-			result = fmt.Sprintf("words %d/%d (document says %d) pages %d (document says %d)", gotWords, words, ownWords, pages, ownPages)
+		if !known {
+			return unitWork{Text: md, Method: "wordcraft-cli", CheckMethod: "word_page_counts", Passed: false,
+				CheckResult: fmt.Sprintf("words %d/%d pages %d: the document has no word count of its own to check against", gotWords, words, pages)}, nil
 		}
+		passed := gotWords == words && words == ownWords && (ownPages == zero || pages == ownPages)
+		result := fmt.Sprintf("words %d/%d (document says %d) pages %d (document says %d)", gotWords, words, ownWords, pages, ownPages)
 		return unitWork{Text: md, Method: "wordcraft-cli", CheckMethod: "word_page_counts", CheckResult: result, Passed: passed}, nil
 	}}}, nil, nil
 }
 
-// documentCounts reads a DOCX or ODT's own word and page counts from its properties.
+// documentCounts reads a document's own word and page counts: DOCX and ODT from their
+// properties, DOC from its OLE SummaryInformation, RTF from its \info group or, when
+// it has none, from an in-package read of its text.
 func documentCounts(ext string, data []byte) (words, pages int, ok bool) {
+	switch ext {
+	case ".doc":
+		return docCounts(data)
+	case ".rtf":
+		return rtfCounts(data)
+	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return zero, zero, false

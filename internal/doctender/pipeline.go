@@ -437,9 +437,14 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 		best         map[string]any
 	}
 	var reviews []pending
-	best := map[string]any{"name": proposed, "category": cat.Answer.Category, "what_it_is": l.WhatItIs, "doc_date": l.DocDate}
+	best := map[string]any{"category": cat.Answer.Category, "what_it_is": l.WhatItIs, "doc_date": l.DocDate}
+	if !match.Review {
+		// A name is only proposed once the matter is settled: it is built from the
+		// matter's tokens, and Accept would lock it.
+		best["name"] = proposed
+	}
 	if match.Best != "" {
-		best["matter_id"], best["matter"] = string(match.Best), match.BestLabel
+		best["matter_id"], best["matter"], best["match_reason"] = string(match.Best), match.BestLabel, match.Why
 	}
 	applyName := labelOK && j.MatterID != "" && !match.Review
 	applyCat := catOK && cat.Agree && category != nil

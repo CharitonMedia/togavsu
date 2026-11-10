@@ -307,7 +307,9 @@ FROM ai_call_log c LEFT JOIN files f ON f.id = c.file_id WHERE `+where+` ORDER B
 			if !ok {
 				continue
 			}
-		} else if c.matter != "" && !reviewer(p) {
+		} else if c.matter != "" && (!reviewer(p) || !s.matterReadable(ctx, p, domain.ID(c.matter))) {
+			// A call with a matter but no file (photo grouping) is shown only to a
+			// reviewer who may read that matter.
 			continue
 		}
 		t := fromUS(c.at)
@@ -433,6 +435,10 @@ WHERE created_at >= ? AND task IN ('ocr', 'photo_description', 'photo_grouping',
 	fmt.Fprintf(&b, "Open review-queue items: %d\n", len(open))
 	for _, e := range open {
 		age := now.Sub(e.openedAt).Round(minuteUnit)
+		if s.walledItem(ctx, e) {
+			fmt.Fprintf(&b, "  - %s, open %s: a file on a walled matter\n", KindLabel(e.Kind), age)
+			continue
+		}
 		fmt.Fprintf(&b, "  - %s, open %s: %s\n", KindLabel(e.Kind), age, e.Detail)
 	}
 	fmt.Fprintf(&b, "Spend since the last summary: %d model calls, %d tokens, %s\n", calls, tokens, domain.Cents(cost).String())

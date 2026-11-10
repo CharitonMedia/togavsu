@@ -69,8 +69,16 @@ func (s *Service) awaitGroup(ctx context.Context, j *Job) error {
 	return errDeferred
 }
 
-// groupDue starts a grouping job for each matter whose read photos have waited out the
-// quiet time with no newer photo arriving.
+// groupScope is the set of photos one grouping may span: one matter, or, for photos
+// with no matter, one contact. Photos with neither are never grouped with anything.
+type groupScope struct {
+	Matter, Contact domain.ID
+}
+
+// groupDue starts a grouping job for each matter (or, with no matter, each contact)
+// whose read photos have waited out the quiet time with no newer photo arriving. A
+// photo with no matter and no contact is its own document at once: nothing ties it to
+// any other photo, so it is never offered to the grouping model with other clients'.
 func (s *Service) groupDue(ctx context.Context) error {
 	quiet, err := s.duration(ctx, "doctender.photo_quiet")
 	if err != nil {
@@ -80,31 +88,64 @@ func (s *Service) groupDue(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	byMatter := map[domain.ID][]Job{}
-	var order []domain.ID
+	byScope := map[groupScope][]Job{}
+	var order []groupScope
 	for _, j := range waiting {
-		if _, ok := byMatter[j.MatterID]; !ok {
-			order = append(order, j.MatterID)
+		sc := groupScope{Matter: j.MatterID}
+		if sc.Matter == "" {
+			if err := s.row(ctx, `SELECT COALESCE(contact_id, '') FROM files WHERE id = ?`, j.FileID).Scan(&sc.Contact); err != nil {
+				return err
+			}
+			if sc.Contact == "" {
+				if err := s.singlePhoto(ctx, j); err != nil {
+					return err
+				}
+				continue
+			}
 		}
-		byMatter[j.MatterID] = append(byMatter[j.MatterID], j)
+		if _, ok := byScope[sc]; !ok {
+			order = append(order, sc)
+		}
+		byScope[sc] = append(byScope[sc], j)
 	}
-	for _, matter := range order {
-		// The newest photo arrival in the matter, including photos still being read.
+	for _, sc := range order {
+		// The newest photo arrival in the scope, including photos still being read.
 		var newest sql.NullInt64
 		err := s.row(ctx, `SELECT MAX(j.created_at) FROM doc_tender_jobs j JOIN files f ON f.id = j.file_id
-WHERE j.kind = 'file' AND COALESCE(j.matter_id, '') = ? AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')`,
-			string(matter)).Scan(&newest)
+WHERE j.kind = 'file' AND COALESCE(j.matter_id, '') = ? AND (? = '' OR COALESCE(f.contact_id, '') = ?)
+AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')`,
+			string(sc.Matter), string(sc.Contact), string(sc.Contact)).Scan(&newest)
 		if err != nil {
 			return err
 		}
 		if newest.Valid && s.now().Sub(fromUS(newest.Int64)) < quiet {
 			continue
 		}
-		if err := s.startGroup(ctx, matter, byMatter[matter]); err != nil {
+		if err := s.startGroup(ctx, sc.Matter, byScope[sc]); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// singlePhoto records a photo as its own document and queues it for labeling.
+func (s *Service) singlePhoto(ctx context.Context, j Job) error {
+	return s.tx(ctx, func(ctx context.Context) error {
+		gid, err := s.id()
+		if err != nil {
+			return err
+		}
+		at := us(s.now())
+		if err := s.insertGroup(ctx, gid, at, Job{MatterID: j.MatterID}, "single", "photo", []domain.ID{j.FileID}, ""); err != nil {
+			return err
+		}
+		_, err = s.exec(ctx, `UPDATE doc_tender_jobs SET stage = ?, status = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?`,
+			stageLabel, StatusQueued, at, at, j.ID)
+		if err == nil {
+			s.signal()
+		}
+		return err
+	})
 }
 
 func (s *Service) startGroup(ctx context.Context, matter domain.ID, photos []Job) error {
@@ -350,21 +391,21 @@ func (s *Service) makeGroup(ctx context.Context, j Job, how, title string, membe
 			return err
 		})
 	}
+	var views []files.FileView
+	for _, m := range members {
+		f, err := s.d.Files.Get(ctx, s.d.System, m)
+		if err != nil {
+			return err
+		}
+		views = append(views, f)
+	}
+	nf, err := groupedFile(title, views)
+	if err != nil {
+		return err
+	}
 	pdf, err := imagesToPDF(datas)
 	if err != nil {
 		return err
-	}
-	first, err := s.d.Files.Get(ctx, s.d.System, members[zero])
-	if err != nil {
-		return err
-	}
-	nf := files.NewFile{Name: groupFileName(title), MediaType: "application/pdf", Source: first.Source, How: "grouping",
-		AttorneyOnly: first.AttorneyOnly, SharedWithClient: first.SharedWithClient, Origin: first.Origin, Note: "grouped from " + strconv.Itoa(len(members)) + " photos"}
-	if first.MatterID != nil {
-		nf.MatterID = *first.MatterID
-	}
-	if first.ContactID != nil {
-		nf.ContactID = *first.ContactID
 	}
 	out, err := s.d.Files.Create(ctx, s.d.System, nf, bytes.NewReader(pdf), int64(len(pdf)))
 	if err != nil {
@@ -401,6 +442,44 @@ func (s *Service) makeGroup(ctx context.Context, j Job, how, title string, membe
 		}
 		return nil
 	})
+}
+
+// groupedFile is the new PDF's record. Its pages are every member's pixels and text,
+// so its access is the most restrictive of its members: attorney-only if any member
+// is, shared with the client only if every member is. Its members share one matter,
+// or, with no matter, one contact; anything else is refused.
+func groupedFile(title string, ms []files.FileView) (files.NewFile, error) {
+	first := ms[zero]
+	nf := files.NewFile{Name: groupFileName(title), MediaType: "application/pdf", Source: first.Source, How: "grouping",
+		SharedWithClient: true, Origin: first.Origin, Note: "grouped from " + strconv.Itoa(len(ms)) + " photos"}
+	idOf := func(p *domain.ID) domain.ID {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	nf.MatterID, nf.ContactID = idOf(first.MatterID), idOf(first.ContactID)
+	for _, f := range ms {
+		if idOf(f.MatterID) != nf.MatterID {
+			return files.NewFile{}, domain.Invalid("grouping", "a group's photos share one matter")
+		}
+		if nf.MatterID == "" && (nf.ContactID == "" || idOf(f.ContactID) != nf.ContactID) {
+			return files.NewFile{}, domain.Invalid("grouping", "photos with no matter are grouped only within one contact")
+		}
+		if idOf(f.ContactID) != nf.ContactID {
+			// Photos of one matter from different contacts: the PDF names none of them.
+			nf.ContactID = ""
+		}
+		nf.AttorneyOnly = nf.AttorneyOnly || f.AttorneyOnly
+		nf.SharedWithClient = nf.SharedWithClient && f.SharedWithClient
+		if f.Source != nf.Source {
+			nf.Source = "upload"
+		}
+		if f.Origin != nf.Origin {
+			nf.Origin = ""
+		}
+	}
+	return nf, nil
 }
 
 func (s *Service) insertGroup(ctx context.Context, gid domain.ID, at int64, j Job, how, title string, members []domain.ID, out domain.ID) error {
@@ -453,12 +532,14 @@ func (s *Service) PersonGrouping(ctx context.Context, p domain.Principal, spec s
 			if err != nil {
 				return err
 			}
+			fm := domain.ID("")
 			if f.MatterID != nil {
-				if k > zero && *f.MatterID != matter {
-					return domain.Invalid("grouping", "a group's photos share one matter")
-				}
-				matter = *f.MatterID
+				fm = *f.MatterID
 			}
+			if k > zero && fm != matter {
+				return domain.Invalid("grouping", "a group's photos share one matter")
+			}
+			matter = fm
 			if locked, err := s.inGroup(ctx, m); err != nil || locked {
 				if err == nil {
 					err = domain.Conflict("photo " + string(m) + " is already grouped")
