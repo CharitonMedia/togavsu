@@ -1,0 +1,20 @@
+{{template "head" .}}
+{{with .Flag}}
+<dl class="facts">
+  <dt>Matter</dt><dd>{{flagLabel $.Labels .ID}}</dd>
+  <dt>Scope</dt><dd>{{.Scope}} balance</dd>
+  <dt>Balance</dt><dd class="debit">{{money .BalanceCents}}</dd>
+  <dt>Status</dt><dd>{{.Status}}</dd>
+  {{if .ResolvedAt}}<dt>Resolution</dt><dd>{{.ResolutionNote}}</dd>{{end}}
+</dl>
+{{if and (eq .Status "open") $.CanWithdraw}}
+<form method="post" action="/trust/flags/{{.ID}}/resolve" class="grid">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <label class="wide">Resolution note <input name="note" required></label>
+  <button type="submit">Resolve flag</button>
+</form>
+{{end}}
+{{end}}
+<h2>Entry that raised it</h2>
+{{template "entries" .}}
+{{template "foot" .}}
