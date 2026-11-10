@@ -268,7 +268,7 @@ func (s *Service) outsideCap(t *txn, id domain.ID, amount domain.Cents) error {
 	}
 	if room := inv.BalanceDueCents - owed; amount > room {
 		return domain.Invalid("amount_cents", "the flat fee "+money(owed)+" on invoice "+inv.Number+
-			" is collected from trust (Apply flat fee or Apply trust); an outside payment may cover only the other "+money(max(room, 0)))
+			" is collected from trust (Apply flat fee or Apply trust); an outside payment may cover only the other "+money(max(room, noCents)))
 	}
 	return nil
 }

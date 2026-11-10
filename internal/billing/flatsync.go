@@ -46,7 +46,7 @@ func sumPaid(rows []Payment) (domain.Cents, error) {
 	var err error
 	for _, p := range rows {
 		if sum, err = sum.Add(p.AmountCents); err != nil {
-			return 0, err
+			return noCents, err
 		}
 	}
 	return sum, nil
@@ -55,23 +55,23 @@ func sumPaid(rows []Payment) (domain.Cents, error) {
 // feeOwed is the part of inv's matter-fee line no completed fee payment covers yet.
 func (s *Service) feeOwed(ctx context.Context, inv Invoice) (domain.Cents, error) {
 	if !inv.HasFlatFee() {
-		return 0, nil
+		return noCents, nil
 	}
 	own, synced, err := s.feePayments(ctx, inv.MatterID)
 	if err != nil {
-		return 0, err
+		return noCents, err
 	}
-	paid := domain.Cents(0)
+	paid := noCents
 	for _, p := range append(own, synced...) {
 		if p.InvoiceID == inv.ID {
 			if paid, err = paid.Add(p.AmountCents); err != nil {
-				return 0, err
+				return noCents, err
 			}
 		}
 	}
 	owed := inv.matterFeeCents() - paid
-	if owed < 0 {
-		owed = 0
+	if !positive(int64(owed)) {
+		owed = noCents
 	}
 	return owed, nil
 }
@@ -128,8 +128,8 @@ func (s *Service) syncFlatFee(t *txn, m domain.Matter) error {
 		}
 	}
 	target := applied - ownCents
-	if target < 0 {
-		target = 0
+	if !positive(int64(target)) {
+		target = noCents
 	}
 	have, err := sumPaid(synced)
 	if err != nil {
