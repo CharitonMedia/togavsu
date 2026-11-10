@@ -18,6 +18,8 @@ import (
 type fakeTrust struct {
 	st   Store
 	fail error
+	// committed counts the results billing handed to Committed after its commit.
+	committed []TrustPosted
 }
 
 type fakeEntry struct {
@@ -31,6 +33,7 @@ type fakeEntry struct {
 	Payment  domain.ID
 	Invoice  domain.ID
 	Flagged  bool
+	FlatFee  bool
 }
 
 func (f *fakeTrust) entries(ctx context.Context) []fakeEntry {
@@ -91,7 +94,40 @@ func (f *fakeTrust) Post(ctx context.Context, p domain.Principal, in TrustPostin
 	if err := f.st.Put(ctx, "fake_trust", string(id), e); err != nil {
 		return TrustPosted{}, err
 	}
-	return TrustPosted{EntryID: id, Result: map[string]any{"entry": map[string]any{"id": id, "entry_type": in.EntryType, "amount_cents": int64(in.AmountCents)}, "flags": []any{}}}, nil
+	return TrustPosted{EntryID: id, Pending: true, Result: map[string]any{"entry": map[string]any{"id": id, "entry_type": in.EntryType, "amount_cents": int64(in.AmountCents)}, "flags": []any{}}}, nil
+}
+
+// ApplyFlatFee posts the transfer and marks it as the matter's flat-fee application, as the
+// trust package records it in trust_flat_fee_applications.
+func (f *fakeTrust) ApplyFlatFee(ctx context.Context, p domain.Principal, in FlatFeeApplication) (TrustPosted, error) {
+	posted, err := f.Post(ctx, p, TrustPosting{EntryType: "transfer_to_operating", MatterID: in.MatterID, ClientID: in.ClientID, AccountID: in.AccountID, AmountCents: in.AmountCents})
+	if err != nil {
+		return TrustPosted{}, err
+	}
+	var e fakeEntry
+	if err := f.st.Get(ctx, "fake_trust", string(posted.EntryID), &e); err != nil {
+		return TrustPosted{}, err
+	}
+	e.FlatFee = true
+	return posted, f.st.Put(ctx, "fake_trust", string(e.ID), e)
+}
+
+func (f *fakeTrust) FlatFeeCollected(ctx context.Context, matter domain.ID) (domain.Cents, error) {
+	reversed := map[domain.ID]bool{}
+	for _, e := range f.entries(ctx) {
+		reversed[e.Reverses] = true
+	}
+	var sum domain.Cents
+	for _, e := range f.entries(ctx) {
+		if e.FlatFee && e.Matter == matter && !reversed[e.ID] {
+			sum -= e.Signed
+		}
+	}
+	return sum, nil
+}
+
+func (f *fakeTrust) Committed(_ context.Context, posted ...TrustPosted) {
+	f.committed = append(f.committed, posted...)
 }
 
 func (f *fakeTrust) Reverse(ctx context.Context, p domain.Principal, entry domain.ID, reason string) (TrustPosted, error) {
@@ -113,13 +149,13 @@ func (f *fakeTrust) Reverse(ctx context.Context, p domain.Principal, entry domai
 	if err := f.st.Put(ctx, "fake_trust", string(id), e); err != nil {
 		return TrustPosted{}, err
 	}
-	return TrustPosted{EntryID: id}, nil
+	return TrustPosted{EntryID: id, Pending: true}, nil
 }
 
-func (f *fakeTrust) RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (any, error) {
+func (f *fakeTrust) RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (TrustPosted, error) {
 	id, _ := domain.NewID()
 	row := map[string]any{"id": id, "matter_id": in.MatterID, "client_id": in.ClientID, "amount_requested_cents": int64(in.AmountCents), "invoice_id": in.InvoiceID, "message": in.Message, "status": "active"}
-	return row, f.st.Put(ctx, "fake_replenish", string(id), row)
+	return TrustPosted{EntryID: id, Result: row, Pending: true}, f.st.Put(ctx, "fake_replenish", string(id), row)
 }
 
 type fakeMail struct {
@@ -144,8 +180,10 @@ type fx struct {
 	st    Store
 	aud   *audit.Memory
 	trust *fakeTrust
-	mail  *fakeMail
-	now   time.Time
+	// link, when set, replaces the stand-in with the real trust service.
+	link Trust
+	mail *fakeMail
+	now  time.Time
 	// auditLen counts audit rows; Postgres tests point it at audit_log.
 	auditLen func() int
 
@@ -217,7 +255,11 @@ func (f *fx) newService(a audit.Store) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	svc, err := New(Deps{Store: f.st, Practice: f.pm, Walls: f.ps.Policy.Walls, Audit: aud, Trust: f.trust,
+	var tr Trust = f.trust
+	if f.link != nil {
+		tr = f.link
+	}
+	svc, err := New(Deps{Store: f.st, Practice: f.pm, Walls: f.ps.Policy.Walls, Audit: aud, Trust: tr,
 		Mail: f.mail, Mirror: f.pm, Now: func() time.Time { return f.now }})
 	if err != nil {
 		f.t.Fatal(err)

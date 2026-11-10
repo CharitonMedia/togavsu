@@ -17,6 +17,9 @@ type FlatRow struct {
 	AccountID    domain.ID
 	FlatFeeCents domain.Cents
 	TrustCents   domain.Cents
+	// AppliedCents is what the trust service's flat-fee applications still cover on a flat
+	// matter, from either page.
+	AppliedCents domain.Cents
 	Status       string
 	InvoiceID    domain.ID
 }
@@ -105,19 +108,27 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 	if err != nil {
 		return FlatRow{}, err
 	}
-	collected := false
-	if billed {
-		row.InvoiceID = inv.ID
-		if collected, err = s.feeCollected(ctx, inv); err != nil {
+	if m.BillingType == billingFlat && s.d.Trust != nil {
+		if row.AppliedCents, err = s.d.Trust.FlatFeeCollected(ctx, m.ID); err != nil {
 			return FlatRow{}, err
 		}
 	}
+	collected := m.BillingType == billingFlat && positive(int64(m.FlatFeeCents)) && row.AppliedCents >= m.FlatFeeCents
+	if billed {
+		row.InvoiceID = inv.ID
+		if !collected {
+			if collected, err = s.feeCollected(ctx, m, inv); err != nil {
+				return FlatRow{}, err
+			}
+		}
+	}
+	remaining := m.FlatFeeCents - row.AppliedCents
 	switch {
 	case collected:
 		row.Status = FlatCollected
 	case !positive(int64(m.FlatFeeCents)):
 		row.Status = FlatNeedsFee
-	case total < m.FlatFeeCents:
+	case total < remaining:
 		row.Status = FlatAwaiting
 	default:
 		row.Status = FlatReady
@@ -126,11 +137,17 @@ func (s *Service) flatRow(ctx context.Context, m domain.Matter) (FlatRow, error)
 }
 
 // feeCollected reports whether the matter fee billed on inv is collected: the invoice is paid,
-// or completed Apply flat fee transfers on it cover the fee line. The fee may share an invoice
-// with expenses or time, so a balance left by those lines does not keep the fee uncollected.
-func (s *Service) feeCollected(ctx context.Context, inv Invoice) (bool, error) {
+// or, on a mixed matter, completed Apply flat fee transfers on it cover the fee line. A flat
+// matter's fee is collected from the trust service's flat-fee applications instead (flatRow),
+// the record trust's own Apply flat fee keeps, so neither page can apply it twice. The fee
+// may share an invoice with expenses or time, so a balance left by those lines does not keep
+// the fee uncollected.
+func (s *Service) feeCollected(ctx context.Context, m domain.Matter, inv Invoice) (bool, error) {
 	if inv.Status == StatusPaid {
 		return true, nil
+	}
+	if m.BillingType == billingFlat {
+		return false, nil
 	}
 	pays, err := listOf[Payment](ctx, s.d.Store, kindPayment)
 	if err != nil {
@@ -239,6 +256,9 @@ func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, 
 		if row.Status != FlatReady {
 			return domain.Conflict("flat fee is not ready to apply: " + StatusLabel(row.Status))
 		}
+		if positive(int64(row.AppliedCents)) {
+			return domain.Conflict("part of the flat fee was applied from the trust page; apply the rest there")
+		}
 		if amount != m.FlatFeeCents {
 			return domain.Invalid("amount_cents", "confirm the matter's flat fee "+money(m.FlatFeeCents))
 		}
@@ -260,13 +280,37 @@ func (s *Service) ApplyFlatFee(ctx context.Context, p domain.Principal, matter, 
 				return err
 			}
 		}
-		if _, posted, err = s.transfer(t, inv, client, account, amount, "Flat fee earned: "+m.Name, true); err != nil {
+		desc := "Flat fee earned: " + m.Name
+		if m.BillingType != billingFlat {
+			// The trust service's flat-fee record covers flat matters only; a mixed matter's
+			// fee is applied here alone, as a transfer marked as the fee's.
+			_, posted, err = s.transfer(t, inv, client, account, amount, desc, true)
+		} else {
+			posted, err = s.applyFlatFee(t, inv, client, account, amount, desc)
+		}
+		if err != nil {
 			return err
 		}
 		out, err = s.invoice(t.ctx, inv.ID)
 		return err
 	})
 	return posted, out, err
+}
+
+// applyFlatFee posts a flat matter's fee through the trust service's ApplyFlatFee, which
+// records the application trust's own page and worklist read and refuses a second apply,
+// and records the matching operating payment on inv.
+func (s *Service) applyFlatFee(t *txn, inv Invoice, client, account domain.ID, amount domain.Cents, desc string) (TrustPosted, error) {
+	meta, err := s.meta(t.p)
+	if err != nil {
+		return TrustPosted{}, err
+	}
+	posted, err := s.d.Trust.ApplyFlatFee(t.ctx, t.p, FlatFeeApplication{MatterID: inv.MatterID, ClientID: client, AccountID: account, AmountCents: amount})
+	if err != nil {
+		return TrustPosted{}, err
+	}
+	_, posted, err = s.transferred(t, meta, inv, client, account, amount, desc, true, posted)
+	return posted, err
 }
 
 // flatInvoice writes an approved, sent invoice for the matter's flat fee.

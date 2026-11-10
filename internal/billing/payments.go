@@ -231,7 +231,7 @@ func (s *Service) complete(t *txn, row *Payment) error {
 		if err != nil {
 			return err
 		}
-		row.TrustEntryID = posted.EntryID
+		row.TrustEntryID = t.trusted(posted).EntryID
 		return nil
 	}
 	if row.InvoiceID.IsZero() {
@@ -366,7 +366,7 @@ func (s *Service) ReversePayment(ctx context.Context, p domain.Principal, id dom
 			if err != nil {
 				return err
 			}
-			row.ReversalEntry = posted.EntryID
+			row.ReversalEntry = t.trusted(posted).EntryID
 		}
 		if !row.InvoiceID.IsZero() {
 			if err := s.applyToInvoice(t, row.InvoiceID, -row.AmountCents); err != nil {
@@ -438,6 +438,12 @@ func (s *Service) transfer(t *txn, inv Invoice, client, account domain.ID, amoun
 	if err != nil {
 		return Payment{}, TrustPosted{}, err
 	}
+	return s.transferred(t, meta, inv, client, account, amount, desc, matterFee, posted)
+}
+
+// transferred records the operating payment on inv for a trust transfer that just posted.
+func (s *Service) transferred(t *txn, meta domain.Meta, inv Invoice, client, account domain.ID, amount domain.Cents, desc string, matterFee bool, posted TrustPosted) (Payment, TrustPosted, error) {
+	t.trusted(posted)
 	row := Payment{TrustAccountID: account, ReceivedOn: s.today(t.ctx), MatterFee: matterFee}
 	row.Payment = domain.Payment{
 		Meta: meta, ContactID: client, MatterID: inv.MatterID, AmountCents: amount, Destination: DestOperating,
@@ -480,12 +486,13 @@ func (s *Service) RequestReplenishment(ctx context.Context, p domain.Principal, 
 		if !s.isClient(inv.MatterID, client) {
 			return domain.Invalid("client_id", "must be a client on the matter")
 		}
-		out, err = s.d.Trust.RequestReplenishment(t.ctx, p, ReplenishmentInput{
+		posted, err := s.d.Trust.RequestReplenishment(t.ctx, p, ReplenishmentInput{
 			MatterID: inv.MatterID, ClientID: client, AmountCents: amount, InvoiceID: inv.ID, Message: message,
 		})
 		if err != nil {
 			return err
 		}
+		out = t.trusted(posted).Result
 		t.audit("invoice", inv.ID, "replenishment_requested", "", money(amount), message)
 		return nil
 	})

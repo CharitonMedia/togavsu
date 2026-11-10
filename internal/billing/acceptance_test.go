@@ -436,7 +436,7 @@ func TestAC026FlatFeeReadyToApply(t *testing.T) {
 			transfer = &c
 		}
 	}
-	if transfer == nil || transfer.Type != "transfer_to_operating" || transfer.Signed != -1500_00 || transfer.Account != f.account || transfer.Invoice != inv.ID {
+	if transfer == nil || transfer.Type != "transfer_to_operating" || transfer.Signed != -1500_00 || transfer.Account != f.account || !transfer.FlatFee {
 		t.Fatalf("ledger entry: %+v", transfer)
 	}
 	if got := status(m.ID); got.Status != FlatCollected || got.TrustCents != 100_00 || StatusLabel(got.Status) != "Collected" {
@@ -467,11 +467,18 @@ func TestFlatFeeTrustFailureRollsBack(t *testing.T) {
 	if f.snapshot() != before {
 		t.Fatal("failed apply left rows behind")
 	}
+	if len(f.trust.committed) != 1 {
+		t.Fatalf("only the deposit's trust effects run after commit: %d", len(f.trust.committed))
+	}
 }
 
 type failingPost struct{ Trust }
 
 func (failingPost) Post(context.Context, domain.Principal, TrustPosting) (TrustPosted, error) {
+	return TrustPosted{}, errors.New("ledger unavailable")
+}
+
+func (failingPost) ApplyFlatFee(context.Context, domain.Principal, FlatFeeApplication) (TrustPosted, error) {
 	return TrustPosted{}, errors.New("ledger unavailable")
 }
 

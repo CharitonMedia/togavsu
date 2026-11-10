@@ -14,15 +14,18 @@
 //   - core.Migrate applies Migrations() (version 300, billing_records) with the core files.
 //   - core.Open builds New(Deps{Store: NewPostgres(pool), Practice: <practice.Durable>,
 //     Walls: app.Practice.Policy.Walls, Audit: aud, Settings: reg, Mirror: <practice.Durable>,
-//     Trust: <trust service>, Mail: <system mail>}), calls Resync once, and mounts
+//     Trust: NewTrustLink(<trust service>, pool), Mail: <system mail>}), calls Resync once, and mounts
 //     NewHandler(svc, sub(web.Billing, "templates/billing"), app.principal).Routes() for
 //     /api/v1 billing paths and /billing screens ahead of the practice catch-all.
 //   - web/embed.go embeds templates/billing.
+//   - Trust and billing share pool: a trust write billing makes joins billing's transaction,
+//     and billing calls Trust.Committed after its commit (balance sink, trust events).
 package billing
 
 // Pending lists what this package does not yet deliver. Reports and the PR body repeat it.
 var Pending = []string{
-	"trust: the Trust interface is implemented by the trust package; until it is wired, trust deposits, Apply trust, Apply flat fee and trust-linked reversals return conflict",
+	"trust: TrustLink adapts the merged trust service and is tested against it on Postgres; until core wires Deps.Trust, trust deposits, Apply trust, Apply flat fee and trust-linked reversals return conflict",
+	"flat fee from the trust page: trust's own Apply flat fee shares the application record with billing, so the fee is never taken twice, but it writes no billing invoice or payment; a fee part-applied there is finished from the trust page",
 	"system mail: no SMTP Mailer exists in core yet; deliver=email returns conflict until one is wired. Mail is sent after the commit, with no outbox",
 	"core wiring: migration 300, the handler mount, web embed and the /billing sign-in redirect are lead-owned",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",

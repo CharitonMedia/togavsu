@@ -314,7 +314,17 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		if !billed && positive(int64(m.FlatFeeCents)) {
+		applied := false
+		if !billed && m.BillingType == billingFlat && s.d.Trust != nil {
+			// A fee applied from the trust page has no billing invoice; billing it again
+			// would charge the client for money already taken from trust.
+			cents, err := s.d.Trust.FlatFeeCollected(ctx, m.ID)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			applied = positive(int64(cents))
+		}
+		if !billed && !applied && positive(int64(m.FlatFeeCents)) {
 			lines = append(lines, matterFeeLine(m))
 		}
 	}

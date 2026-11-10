@@ -17,7 +17,10 @@ import (
 // billingDB creates a fresh database with the core migrations and billing's migration 300
 // applied in one db.Apply call, as the core is expected to run them. It skips without
 // TOGAVSU_TEST_DATABASE_URL.
-func billingDB(t *testing.T) *sql.DB {
+func billingDB(t *testing.T) *sql.DB { return billingDBWith(t) }
+
+// billingDBWith also applies extra migrations, such as the trust package's 400 range.
+func billingDBWith(t *testing.T, extra ...db.Migration) *sql.DB {
 	t.Helper()
 	raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
 	if raw == "" {
@@ -69,7 +72,7 @@ func billingDB(t *testing.T) *sql.DB {
 	if task, _ := db.TaskForVersion(mine[0].Version); task != "billing" {
 		t.Fatalf("migration %d is outside the billing range", mine[0].Version)
 	}
-	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: append(core, mine...)}); err != nil {
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: append(append(core, mine...), extra...)}); err != nil {
 		t.Fatal(err)
 	}
 	_ = plain.Close()

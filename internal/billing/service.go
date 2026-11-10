@@ -56,9 +56,15 @@ type TrustPosting struct {
 }
 
 // TrustPosted is the trust service's answer: the entry id and its TrustPostResult body.
+// Pending is set when the trust write joined billing's transaction, so its after-commit
+// effects (balance sink push, commit events) wait for Trust.Committed; billing calls it
+// after its own commit and never after a rollback. Effects is the trust service's own
+// result for that call.
 type TrustPosted struct {
 	EntryID domain.ID
 	Result  any
+	Pending bool
+	Effects any
 }
 
 // ReplenishmentInput is a collections-panel replenishment request linked to an invoice.
@@ -70,14 +76,33 @@ type ReplenishmentInput struct {
 	Message     string
 }
 
+// FlatFeeApplication asks the trust service to apply a flat fee from trust to operating and
+// record it as the matter's flat-fee application, the record the trust page reads too.
+type FlatFeeApplication struct {
+	MatterID    domain.ID
+	ClientID    domain.ID
+	AccountID   domain.ID
+	AmountCents domain.Cents
+}
+
 // Trust is the trust service seam. The trust package owns the append-only ledger, the
-// below-zero flags and their email; billing never writes a ledger row itself. Post and Reverse
-// must join the transaction carried by ctx, so a payment and its ledger row commit together.
+// below-zero flags and their email; billing never writes a ledger row itself. Post, Reverse,
+// ApplyFlatFee and RequestReplenishment must join the transaction carried by ctx, so a
+// payment and its ledger row commit together; Committed then runs their after-commit effects.
+// TrustLink adapts *trust.Service.
+//
+// Balances and FlatFeeCollected are read after billing has authorized the caller on the
+// matter. FlatFeeCollected is the amount the matter's flat-fee applications still cover (not
+// reversed), whether they were applied from billing or from the trust page, so one record
+// backs the worklist status and the second-apply refusal on both pages.
 type Trust interface {
 	Balances(ctx context.Context, matterID domain.ID) ([]TrustBalance, error)
+	FlatFeeCollected(ctx context.Context, matterID domain.ID) (domain.Cents, error)
 	Post(ctx context.Context, p domain.Principal, in TrustPosting) (TrustPosted, error)
+	ApplyFlatFee(ctx context.Context, p domain.Principal, in FlatFeeApplication) (TrustPosted, error)
 	Reverse(ctx context.Context, p domain.Principal, entryID domain.ID, reason string) (TrustPosted, error)
-	RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (any, error)
+	RequestReplenishment(ctx context.Context, p domain.Principal, in ReplenishmentInput) (TrustPosted, error)
+	Committed(ctx context.Context, posted ...TrustPosted)
 }
 
 // Attachment is one mail attachment.
@@ -334,6 +359,7 @@ type txn struct {
 	changes []audit.Change
 	events  []domain.Event
 	mirror  map[domain.ID]Invoice
+	trust   []TrustPosted
 }
 
 // write serializes billing writes, runs fn in one store transaction, appends the audit rows
@@ -366,8 +392,20 @@ func (s *Service) write(ctx context.Context, p domain.Principal, fn func(t *txn)
 	if err != nil {
 		return err
 	}
-	s.mirrorInvoices(context.WithoutCancel(ctx), t.mirror)
+	after := context.WithoutCancel(ctx)
+	if len(t.trust) > 0 && s.d.Trust != nil {
+		s.d.Trust.Committed(after, t.trust...)
+	}
+	s.mirrorInvoices(after, t.mirror)
 	return nil
+}
+
+// trusted keeps a trust result whose after-commit effects wait for billing's commit.
+func (t *txn) trusted(posted TrustPosted) TrustPosted {
+	if posted.Pending {
+		t.trust = append(t.trust, posted)
+	}
+	return posted
 }
 
 func (s *Service) mirrorInvoices(ctx context.Context, rows map[domain.ID]Invoice) {
