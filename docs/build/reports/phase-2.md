@@ -1,12 +1,12 @@
 # Phase 2 report: practice records on the composed core
 
-Status: **phase case passes; full product acceptance pending.** The practice phase case passes on the composed core at `c0753972fc5f83c4d7b142f90891c9770a90467a`, and local runs of all six required CI jobs pass there. GitHub Product CI on that SHA is pending; it last passed at 05fde77 ([run 42761536976](https://github.com/CharitonMedia/togavsu/actions/runs/42761536976)). Only AC-025 of the phase 2 criteria passes globally; AC-009, AC-020 and AC-023 stay pending below.
+Status: **phase case passes; full product acceptance pending.** The practice phase case passes on the composed core at `4b3541d8abdd308854734e524b2f48486f066478`, and local runs of all six required CI jobs pass there. GitHub Product CI on that SHA is pending; it last passed at 05fde77 ([run 42761536976](https://github.com/CharitonMedia/togavsu/actions/runs/42761536976)). Only AC-025 of the phase 2 criteria passes globally; AC-009, AC-020 and AC-023 stay pending below.
 
-## Phase case at c0753972fc5f83c4d7b142f90891c9770a90467a (exit 0)
+## Phase case at 4b3541d8abdd308854734e524b2f48486f066478 (exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
-| practice-records | AC-009, AC-020, AC-023, AC-025 | `go test -count=1 -v -run '^(TestPracticeRecordsOnCore\|TestDurableSurvivesRestart\|TestDurableFailedCommitLeavesNoTrace\|TestAC009CloseWarnsAndStillCloses\|TestAC020SearchScopesAndWall\|TestAC023ReopenAndZeroFee\|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/` |
+| practice-records | AC-009, AC-020, AC-023, AC-025 | `go test -count=1 -v -run '^(TestPracticeRecordsOnCore\|TestDurableSurvivesRestart\|TestDurableFailedCommitLeavesNoTrace\|TestFailedReloadStopsServing\|TestAC009CloseWarnsAndStillCloses\|TestAC020SearchScopesAndWall\|TestAC023ReopenAndZeroFee\|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/` |
 
 Every practice suite also runs over the Postgres `Durable` store when `TOGAVSU_TEST_DATABASE_URL` is set (`sh scripts/ci/test-core.sh`).
 
@@ -23,4 +23,4 @@ Pending globally, with what passes now:
 
 ## Persistence
 
-Practice rows now live in Postgres: `practice_records` (migration 200) holds each row as a document, and each mutation commits with its `audit_log` rows in one transaction; a failed commit reloads from Postgres (`TestDurableFailedCommitLeavesNoTrace`), and a restart keeps matters, walls and history (`TestDurableSurvivesRestart`, `TestWallsRolesAuditAndRestart`). Ceiling: the section 5 relational tables are not yet the practice source of truth (PONYTAIL-DEBT.md, practice ceiling 1).
+Practice rows now live in Postgres: `practice_records` (migration 200) holds each row as a document, and each mutation commits with its `audit_log` rows in one transaction; a failed commit reloads from Postgres (`TestDurableFailedCommitLeavesNoTrace`), and if that reload fails the core stops instead of serving unstored rows (`TestFailedReloadStopsServing`), and a restart keeps matters, walls and history (`TestDurableSurvivesRestart`, `TestWallsRolesAuditAndRestart`). Ceiling: the section 5 relational tables are not yet the practice source of truth (PONYTAIL-DEBT.md, practice ceiling 1).

@@ -2,22 +2,27 @@
   "task_id": "integrate-practice",
   "status": "pass",
   "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. status pass means the assigned integration behavior and all five phase cases pass and all local runs of the six required CI jobs pass on this revision (GitHub CI on it is pending). It is not full product acceptance: 49 of 52 criteria remain pending globally.",
-  "tested_revision": "c0753972fc5f83c4d7b142f90891c9770a90467a",
+  "tested_revision": "4b3541d8abdd308854734e524b2f48486f066478",
   "tests": [
+    {
+      "command": "TOGAVSU_TEST_DATABASE_URL_B=<second synthetic postgres:17 server URL> sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "seconds": 43
+    },
     {
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 110
+      "seconds": 74
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 33
+      "seconds": 23
     },
     {
       "command": "sh scripts/ci/test-qa.sh",
       "exit_code": 0,
-      "seconds": 10
+      "seconds": 8
     },
     {
       "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
@@ -25,7 +30,7 @@
       "seconds": 3
     },
     {
-      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestFailedReloadStopsServing|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
       "exit_code": 0,
       "seconds": 2
     },
@@ -35,19 +40,14 @@
       "seconds": 1
     },
     {
-      "command": "TOGAVSU_TEST_DATABASE_URL_B=<second synthetic postgres:17 server URL> sh scripts/ci/test-backup-integration.sh",
-      "exit_code": 0,
-      "seconds": 48
-    },
-    {
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 351
+      "seconds": 5
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 0
     },
     {
       "command": "sh scripts/ci/test-bootstrap.sh",
@@ -67,7 +67,7 @@
     {
       "command": "sh scripts/ci/ui-qc.sh",
       "exit_code": 0,
-      "seconds": 1
+      "seconds": 0
     },
     {
       "command": "sh scripts/ci/update-load.sh",
@@ -87,7 +87,7 @@
     {
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
       "exit_code": 0,
-      "seconds": 22
+      "seconds": 0
     },
     {
       "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
@@ -97,7 +97,7 @@
     {
       "command": "sh scripts/ci/build-core-image.sh",
       "exit_code": 0,
-      "seconds": 21
+      "seconds": 1
     },
     {
       "command": "sh scripts/ci/test-core-smoke.sh",
@@ -107,7 +107,7 @@
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
-      "seconds": 16
+      "seconds": 21
     }
   ],
   "phase_cases": [
@@ -141,7 +141,7 @@
         "AC-025"
       ],
       "status": "pass",
-      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestFailedReloadStopsServing|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
       "exit_code": 0
     },
     {
@@ -238,7 +238,7 @@
     "previous_run": "https://github.com/CharitonMedia/togavsu/actions/runs/42761536976",
     "previous_run_head_sha": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
     "previous_run_conclusion": "success",
-    "current_revision_ci": "pending: the controller publishes this branch; Product CI runs on PR #24 (https://github.com/CharitonMedia/togavsu/pull/24/checks) have not been observed for c0753972fc5f83c4d7b142f90891c9770a90467a",
+    "current_revision_ci": "pending: the controller publishes this branch; Product CI runs on PR #24 (https://github.com/CharitonMedia/togavsu/pull/24/checks) have not been observed for 4b3541d8abdd308854734e524b2f48486f066478",
     "required_jobs": [
       "Core tests",
       "API contract tests",
@@ -247,21 +247,21 @@
       "Backup integration",
       "Supervisor image"
     ],
-    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), Python 3.14, and tesseract-ocr from Ubuntu apt as in CI. CI pins Postgres 17 client and Python 3.12. The first local test-qa run at this revision exited 1 with tesseract is required, because the fresh VM lacked it; after installing the apt packages the CI job installs (tesseract-ocr tesseract-ocr-eng fonts-dejavu-core) it exited 0 and that result is recorded."
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), and tesseract-ocr, tesseract-ocr-eng and fonts-dejavu-core from Ubuntu apt, installed before the run as the CI job does. CI pins the Postgres 17 client and Python 3.12. Run history at the tested revision: a first full pass used one shared postgres:17 server (user postgres, database togavsu_test) for every suite; all commands exited 0 except test-backup-integration.sh, which exited 1 (six restore-recovery tests, for example \"recovery deleted the wrong database\"), because that suite expects fresh servers with the CI user and database togavsu, as its separate CI job provides. Both servers were recreated as in CI (user togavsu, database togavsu) and the whole list was rerun with backup integration first; the recorded results are that second pass, every command exit 0. In the second pass test-supervisor.sh took 5 s because its first two go test steps (without -count=1) reused the Go test cache from the first pass at this same revision, where the script ran in 293 s and exited 0; its -count=1 path-share step ran again."
   },
   "visual_qc": {
     "record": "docs/build/reports/screens/integrate-practice/qc.json",
     "revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
     "summary": "All 14 QC steps repeated at 05fde77 in headless Chrome; no page errors; the only error responses are the two deliberate 400 submissions. Not repeated at the tested revision because no screen changed after 05fde77.",
-    "changed_screens_this_run": "none: the audit-log fix changes only the JSON route and the practice service; git diff 05fde77..c075397 touches no template, page handler or web asset, so the QC record at 05fde77 still covers every screen."
+    "changed_screens_this_run": "none: git diff 05fde77..4b3541d touches no template, page handler or web asset (the audit-log JSON route, the practice service and store, deploy/postgres/core-role.sh, a CI test script, tests and the debt ledger only), so the QC record at 05fde77 still covers every screen."
   },
   "simplification": {
-    "go_lines_added": 3335,
-    "go_lines_removed": 40,
-    "net_go_lines": 3295,
-    "net_non_test_go_lines": 2134,
+    "go_lines_added": 3952,
+    "go_lines_removed": 96,
+    "net_go_lines": 3856,
+    "net_non_test_go_lines": 2386,
     "debt_entries_before": 33,
-    "debt_entries_after": 38,
+    "debt_entries_after": 37,
     "review": "Folded duplicate identity error mapping into one shared() table; reused Memory behind Durable instead of a second store; reused the contract tool catalog for bearer scopes, MCP tools/list and dispatch; kept the Go standard library and existing pgx/goose dependencies (no new modules).",
     "previous_run_79ff33f": {
       "go_lines_added": 385,
@@ -280,17 +280,29 @@
       "debt_entries_after": 38,
       "review": "Report, phase report and QC evidence only; no Go, template or debt change."
     },
-    "this_run": {
+    "basis": "git diff --numstat b3b6165 (PR base) 4b3541d over *.go; debt entries are the numbered and section entries in PONYTAIL-DEBT.md, which states Debt count: 37.",
+    "previous_run_c075397": {
       "go_lines_added": 231,
       "go_lines_removed": 23,
       "net_go_lines": 208,
       "net_non_test_go_lines": 68,
       "debt_entries_before": 38,
       "debt_entries_after": 38,
-      "review": "The audit-log filter reuses practice visibleMatter, readableContact and historyRow, the same checks History uses; one HistoryItem renderer now serves history and the audit log instead of two copies. No new dependency, no new debt; the existing unpaginated-ledger ponytail is unchanged."
+      "review": "The audit-log filter reuses practice visibleMatter, readableContact and historyRow, the same checks History uses; one HistoryItem renderer now serves history and the audit log instead of two copies. No new dependency, no new debt; the existing unpaginated-ledger ponytail is unchanged.",
+      "note": "Counts as recorded for that run. Integration ceiling 5 was removed afterwards in bc29a88, so the ledger now has 37 entries."
+    },
+    "this_run": {
+      "go_lines_added": 32,
+      "go_lines_removed": 1,
+      "net_go_lines": 31,
+      "net_non_test_go_lines": 7,
+      "shell_lines": "deploy/postgres/core-role.sh +19; scripts/ci/test-compose-first-run.sh +44 / -11",
+      "debt_entries_before": 38,
+      "debt_entries_after": 37,
+      "review": "Covers bc29a88, d150a23 and 4b3541d. The failed-reload stop is one package variable and a log.Fatal; the in-process retry loop from bc29a88 was removed in d150a23 because its count and backoff were unregistered firm-tunable literals and a Compose restart already retries the load. The ownership handoff is one DO block in the existing dbinit script, so integration ceiling 5 is removed (38 -> 37). The first-run test reuses its append-only check as a function instead of a second copy. No new dependency."
     }
   },
-  "status_reason": "Every assigned phase case and every local test passes at the tested revision c0753972fc5f83c4d7b142f90891c9770a90467a, including the new audit-log wall regression tests. GitHub Product CI on this revision is pending (it passed all six required jobs at 05fde77, before this fix). Status pass is phase evidence, not full product acceptance: 49 of 52 criteria remain pending globally.",
+  "status_reason": "Every assigned phase case and every local test passes at the tested revision 4b3541d8abdd308854734e524b2f48486f066478, the final code commit, including TestFailedReloadStopsServing and the new legacy-volume ownership step of the Compose first-run test. GitHub Product CI on this revision is pending (it passed all six required jobs at 05fde77). Status pass is phase evidence, not full product acceptance: 49 of 52 criteria remain pending globally.",
   "review_fixes": [
     {
       "finding": "Codex checkpoint on 16f9c87, P1 internal/practice/durable.go: one service mutation committed as several transactions, so a failed audit_log append could leave an unaudited change, and check-then-write was not serialized.",
@@ -327,6 +339,23 @@
         "TestWallsRolesAuditAndRestart: an admin outside the wall gets no row for the walled matter, its party contact or its note over GET /api/v1/audit-log (unfiltered, by entity type, by entity id) and the MCP audit-log tool, before and after a restart; the admin on the wall still sees them. Fails on the previous auditJSON (checked by restoring it).",
         "TestAuditLogKeepsWallAndRedaction: service level, outside admin vs inside admin, unrecorded note row dropped, other-service rows pass through, attorney-only conflict reason redacted for staff."
       ]
+    },
+    {
+      "finding": "Codex review comments (three P1 threads) on the practice integration: transactional commits of practice rows and audit rows; a failed reload after a failed write left the core serving rows Postgres did not store; an existing volume whose core schema the Postgres superuser owns could not be migrated by togavsu_app.",
+      "fix": "Transactional commits: already fixed by Durable.Begin at 79ff33f. Failed reload: Durable.reload now stops the process (stopUnstored, log.Fatal) and Compose restarts it (bc29a88, d150a23). Existing volume: deploy/postgres/core-role.sh hands schema core and every table, view, materialized view, foreign table and standalone sequence in it to togavsu_app (bc29a88); integration ceiling 5 removed.",
+      "tests": [
+        "TestServiceMutationIsOneTransaction and TestDurableFailedCommitLeavesNoTrace (transactional commits)",
+        "TestFailedReloadStopsServing (closes the pool, a write fails, the reload fails, the stop hook fires); added to the practice-records phase case",
+        "scripts/ci/test-compose-first-run.sh legacy-volume step (4b3541d): stages schema core, its tables, a sequence and a view owned by togavsu, reruns dbinit, requires every core relation to be owned by togavsu_app, restarts the core and repeats the append-only check. With core-role.sh at c075397 the step fails: dbinit left core owned by togavsu with 58 relations not owned by togavsu_app."
+      ]
+    },
+    {
+      "finding": "Codex checkpoint on d150a23 (base b3b6165), P1 integrate-practice.json: tested_revision c075397 predates code changes in bc29a88 and d150a23; the six CI jobs and five phase cases were not rerun at the head.",
+      "fix": "Every recorded test and phase case was rerun at 4b3541d8abdd308854734e524b2f48486f066478 (the final code commit), tested_revision set to it, and only docs/build/reports/ files are committed after it."
+    },
+    {
+      "finding": "Codex checkpoint on d150a23, P2 integrate-practice.json and phase-1.md: debt counts 38 and five integration ceilings disagree with PONYTAIL-DEBT.md (37, four ceilings); no review_fixes entry for the review-comment fixes.",
+      "fix": "simplification and phase-1.md now say 33 before and 37 after with four integration ceilings; this_run records 38 -> 37; the review-comment fixes have their own review_fixes entry."
     }
   ]
 }
