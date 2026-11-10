@@ -1270,10 +1270,11 @@ class Controller:
                 record.pop("stalled")
             blocked = None
         if blocked and blocked.get("held"):
-            if fresh.get("mergeable_state") in MERGE_HOLD_STATES:
+            seen = [fresh.get("mergeable_state"), fresh.get("updated_at")]
+            if seen[0] in MERGE_HOLD_STATES or seen == blocked.get("held_on"):
                 record["waiting"] = "Merge held after repeated GitHub refusals; await a change to the pull request"
                 return False
-            # GitHub now reports another state (threads resolved, review given): one more attempt.
+            # The pull request changed since the hold (threads resolved, review given): one more attempt.
             blocked.pop("held")
             blocked["attempts"] = MERGE_REFUSAL_LIMIT - 1
             if record.get("stalled", {}).get("kind") == "merge_blocked":
@@ -1291,13 +1292,13 @@ class Controller:
                 raise
             result = {"merged": False, "message": " ".join(str(error).split())[-300:]}
         if not result.get("merged"):
-            self.merge_refused(task, record, head, number, result.get("message") or "GitHub did not permit merge")
+            self.merge_refused(task, record, head, number, result.get("message") or "GitHub did not permit merge", fresh)
             return False
         record["merge_intent"]["result_sha"] = result["sha"]
         self.save()
         return self.verify_merge(task, record, self.remote.gh("pulls/" + str(number)))
 
-    def merge_refused(self, task, record, head, number, reason):
+    def merge_refused(self, task, record, head, number, reason, fresh):
         # Protections stay in force; a refusal on a second cycle holds retries and alerts.
         blocked = record.get("merge_blocked")
         if not blocked or blocked["head"] != head:
@@ -1305,8 +1306,10 @@ class Controller:
         blocked.update(attempts=blocked["attempts"] + 1, reason=reason, last=now())
         self.event(task, "GitHub refused merge of PR #" + str(number) + " (attempt " + str(blocked["attempts"]) + "): " + reason)
         if blocked["attempts"] >= MERGE_REFUSAL_LIMIT:
-            blocked["held"] = True
-            record["stalled"] = {"kind": "merge_blocked", "head": head, "reason": "GitHub refused to merge PR #"
+            # Remember what GitHub showed at the hold, so the same state never releases it twice.
+            blocked.update(held=True, held_on=[fresh.get("mergeable_state"), fresh.get("updated_at")],
+                           holds=blocked.get("holds", 0) + 1)
+            record["stalled"] = {"kind": "merge_blocked", "head": head, "hold": blocked["holds"], "reason": "GitHub refused to merge PR #"
                 + str(number) + " on " + str(blocked["attempts"]) + " controller cycles: " + reason
                 + ". Merge retries are held until the pull request changes"}
         self.save()
@@ -1591,6 +1594,8 @@ class Controller:
             stalled = rec.get("stalled")
             if stalled:
                 marker = stalled.get("fingerprint") or stalled.get("head") or stalled.get("run_id") or ""
+                if stalled.get("hold"):
+                    marker += ":" + str(stalled["hold"])  # A merge held again after its one retry alerts again.
                 action = {"merge_blocked": "Merge retries are held until the pull request changes, for example when its "
                               "review threads are resolved or a new commit lands.",
                           "no_progress": "No more agent runs for this problem until the integration lead resumes it.",

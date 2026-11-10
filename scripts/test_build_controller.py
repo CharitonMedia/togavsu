@@ -2143,6 +2143,24 @@ class StallAlertTests(unittest.TestCase):
         self.assertNotIn("merge_blocked", self.record)
         self.assertNotIn("stalled", self.record)
 
+    def test_held_merge_retries_once_per_pull_request_change(self):
+        self.remote.fail_merge = THREADS_405
+        self.remote.pr["mergeable_state"] = "blocked"
+        self.remote.pr["updated_at"] = "2026-11-08T00:00:00Z"
+        self.tick(0)
+        self.tick(3)
+        self.remote.pr["mergeable_state"] = "clean"  # GitHub shows clean but still refuses the merge.
+        for minutes in (6, 9, 12, 15):
+            self.tick(minutes)
+        self.assertEqual(len(self.merges()), 3)  # Exactly one retry for the changed state.
+        self.assertTrue(self.record["merge_blocked"]["held"])
+        self.assertEqual(len(self.mailer.sent), 2)  # Held again after the retry: a second email.
+        self.remote.pr["updated_at"] = "2026-11-08T00:20:00Z"
+        for minutes in (18, 21, 24):
+            self.tick(minutes)
+        self.assertEqual(len(self.merges()), 4)
+        self.assertEqual(len(self.mailer.sent), 3)
+
     def test_new_head_clears_held_merge(self):
         self.remote.fail_merge = THREADS_405
         self.tick(0)

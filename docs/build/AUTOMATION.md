@@ -78,7 +78,7 @@ Tasks listed in the plan's `held_tasks` never launch, even when their dependenci
 ## Stall alerts
 With `alert_email` in the plan, the controller emails that address instead of retrying a stopped or repeating step silently. Mail goes over SMTP with SSL using the SMTP_* settings above.
 
-- A merge GitHub refuses (HTTP 405, 409 or 422, such as unresolved review threads) is recorded, not treated as a control error. A second refusal for the same head holds merge retries and reports `stalled.kind=merge_blocked`. The hold lifts by itself on a new head, or when GitHub reports a mergeable state other than `blocked` or `unknown`; the controller then tries once more.
+- A merge GitHub refuses (HTTP 405, 409 or 422, such as unresolved review threads) is recorded, not treated as a control error. A second refusal for the same head holds merge retries and reports `stalled.kind=merge_blocked`. The hold lifts by itself on a new head, or once for each change to the pull request (its mergeable state or update time) while GitHub reports a state other than `blocked` or `unknown`; the controller then tries once more, and a further refusal holds and emails again.
 - Every halt and every stall kind is emailed.
 - The same task `last_error` on three consecutive ticks, or the same `tick_error` three ticks in a row, is emailed.
 - An unfinished assignment whose state hasn't changed for `idle_alert_seconds` (default 3600) while no agent run is active is emailed.
