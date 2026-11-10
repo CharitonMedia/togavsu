@@ -14,6 +14,14 @@ import (
 // idem runs fn once per (actor, operation, Idempotency-Key) inside the caller's
 // transaction. A replay with the same body returns the stored result and writes and emits
 // nothing. The same key with a different body is a conflict. An empty key always runs fn.
+//
+// The claim is serialized before the lookup: a transaction-scoped advisory lock on the
+// (actor, operation, key) triple makes a second request with the same key wait until the
+// first commits or rolls back, then read its stored result. Without it two concurrent
+// requests could both miss the row, both run fn, and one would fail on the primary key
+// instead of replaying. Callers that skip the trust write lock (CreateAccount,
+// CreateReplenishments) depend on this.
+// Two triples that share a 64-bit hash only wait on each other; neither replays the other.
 func idem[T any](ctx context.Context, s *Service, who domain.Principal, op, key string, body any, fn func() (T, error)) (T, bool, error) {
 	var zero T
 	if key == "" {
@@ -26,9 +34,14 @@ func idem[T any](ctx context.Context, s *Service, who domain.Principal, op, key 
 	}
 	sum := sha256.Sum256(raw)
 	hash := hex.EncodeToString(sum[:])
+	actor := string(actorID(who))
+	if _, err := s.q(ctx).ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`,
+		"togavsu.trust_idempotency/"+actor+"/"+op+"/"+key); err != nil {
+		return zero, false, err
+	}
 	var stored, response string
 	err = s.q(ctx).QueryRowContext(ctx, `SELECT request_hash, response FROM trust_idempotency WHERE actor_id = $1 AND operation = $2 AND idem_key = $3`,
-		string(actorID(who)), op, key).Scan(&stored, &response)
+		actor, op, key).Scan(&stored, &response)
 	switch {
 	case err == nil:
 		if stored != hash {
@@ -51,6 +64,6 @@ func idem[T any](ctx context.Context, s *Service, who domain.Principal, op, key 
 		return zero, false, err
 	}
 	_, err = s.q(ctx).ExecContext(ctx, `INSERT INTO trust_idempotency (actor_id, operation, idem_key, request_hash, response, created_at) VALUES ($1,$2,$3,$4,$5,$6)`,
-		string(actorID(who)), op, key, hash, string(out), micro(s.now()))
+		actor, op, key, hash, string(out), micro(s.now()))
 	return v, false, err
 }
