@@ -1,0 +1,12 @@
+{{template "head" .}}
+<form method="post" action="/trust/notifications/read-all"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Mark all read</button></form>
+<ul class="notes">
+{{range .Notes}}
+<li class="{{if .ReadAt}}read{{else}}unread{{end}}">
+  <form method="post" action="/trust/notifications/{{.ID}}/open" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <button class="link" type="submit">{{.Title}}</button></form>
+  <small>{{date .CreatedAt}} · {{.Kind}}</small>
+</li>
+{{else}}<li>No notifications.</li>{{end}}
+</ul>
+{{template "foot" .}}

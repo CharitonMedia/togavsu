@@ -1,0 +1,16 @@
+{{template "head" .}}
+<p class="filters"><a href="/trust/replenishment?status=active">Active</a> · <a href="/trust/replenishment">All</a></p>
+<table>
+<thead><tr><th>Requested</th><th>Matter</th><th>Client</th><th class="num">Amount</th><th class="num">Minimum</th><th>Message</th><th>Status</th>{{if .CanDeposit}}<th></th>{{end}}</tr></thead>
+<tbody>
+{{range .Repls}}
+<tr id="{{.ID}}"><td>{{date .CreatedAt}}</td><td><a href="/trust/matters/{{.MatterID}}">{{label $.Labels .MatterID}}</a></td><td>{{label $.Labels .ClientID}}</td>
+<td class="num">{{money .AmountCents}}</td><td class="num">{{if .ThresholdCents}}{{money (derefc .ThresholdCents)}}{{end}}</td><td>{{.Message}}</td><td>{{.Status}}</td>
+{{if $.CanDeposit}}<td>{{if eq .Status "active"}}
+  <form method="post" action="/trust/replenishment/{{.ID}}/satisfy" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Satisfied</button></form>
+  <form method="post" action="/trust/replenishment/{{.ID}}/cancel" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Cancel</button></form>
+{{end}}</td>{{end}}</tr>
+{{else}}<tr><td colspan="8">No replenishment requests.</td></tr>{{end}}
+</tbody>
+</table>
+{{template "foot" .}}
