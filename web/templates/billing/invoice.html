@@ -33,6 +33,67 @@
 </div>
 {{end}}
 
+{{if and (eq .Invoice.Status "draft") .CanWrite .Staff}}
+<section class="card" aria-labelledby="draft-h">
+<h2 id="draft-h">Edit draft</h2>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/draft" class="draft">
+  {{template "csrf" .CSRF}}
+  <input type="hidden" name="lines" value="{{len .DraftLines}}">
+  <div class="scroll"><table>
+  <thead><tr><th>Kind</th><th>Description</th><th class="num">Amount</th><th>Remove</th></tr></thead>
+  <tbody>
+  {{range .DraftLines}}{{$p := printf "line.%d." .Index}}
+  <tr><td>{{.Kind}}{{if .MatterFee}} · matter fee{{end}}{{if .FeeItemID}} · fee item{{end}}
+    <input type="hidden" name="{{$p}}kind" value="{{.Kind}}"><input type="hidden" name="{{$p}}source_id" value="{{.SourceID}}"><input type="hidden" name="{{$p}}fee_item_id" value="{{.FeeItemID}}"></td>
+  <td><input name="{{$p}}description" value="{{.Description}}" aria-label="Line {{.Index}} description" size="40" required></td>
+  <td class="num"><input name="{{$p}}amount" value="{{money .AmountCents}}" aria-label="Line {{.Index}} amount" inputmode="decimal" size="9" required></td>
+  <td><input type="checkbox" name="{{$p}}remove" value="1" aria-label="Remove line {{.Index}}"></td></tr>
+  {{end}}
+  </tbody></table></div>
+  {{if .Unbilled}}
+  <fieldset><legend>Add unbilled work on this matter</legend>
+  {{range .Unbilled}}<label><input type="checkbox" name="add_source" value="{{.Kind}}|{{.ID}}"> {{.Kind}}: {{.Label}} ({{.Amount}})</label>{{end}}
+  </fieldset>
+  {{end}}
+  <fieldset><legend>Add a fee item</legend>
+  <label>Fee item <select name="add_fee_item"><option value="">None</option>{{range .FeeItems}}<option value="{{.ID}}">{{.Name}} ({{money .DefaultAmountCents}})</option>{{end}}</select></label>
+  <label>Description <input name="add_fee_description" size="30" placeholder="from the item"></label>
+  <label>Amount <input name="add_fee_amount" inputmode="decimal" size="9" placeholder="from the item"></label>
+  <p class="muted">The item fills in its text and amount. Both stay editable on the line once added.</p>
+  </fieldset>
+  <fieldset><legend>Add a line</legend>
+  <label>Kind <select name="add_kind"><option value="">None</option><option value="flat_fee">Flat fee</option><option value="adjustment">Adjustment</option></select></label>
+  <label>Description <input name="add_description" size="30"></label>
+  <label>Amount <input name="add_amount" inputmode="decimal" size="9"></label>
+  </fieldset>
+  <fieldset><legend>Adjustment</legend>
+  <label>Amount <input name="adjustment" value="{{money $inv.AdjustmentCents}}" inputmode="decimal" size="9"></label>
+  <label>Reason <input name="adjustment_reason" value="{{$inv.AdjustmentReason}}" size="30"></label>
+  <label>Issued <input type="date" name="issued_on" value="{{$inv.IssuedOn}}"></label>
+  </fieldset>
+  <button type="submit">Save draft</button>
+  {{if $inv.Approved}}<p class="muted">Saving clears the approval.</p>{{end}}
+</form>
+</section>
+{{end}}
+
+{{if and .CanWrite .Staff (ne .Invoice.Status "void")}}
+<details class="card">
+<summary>Messages, notes and dispute</summary>
+<form method="post" action="/billing/invoices/{{$inv.ID}}/notes" class="grid">
+  {{template "csrf" .CSRF}}
+  <label class="wide">Client message <textarea name="client_message" rows="2">{{$inv.ClientMessage}}</textarea></label>
+  <label class="wide">Internal notes <textarea name="internal_notes" rows="2">{{$inv.InternalNotes}}</textarea></label>
+  <label>Dispute <select name="dispute_status">
+    <option value="none" {{if or (eq $inv.DisputeStatus "") (eq $inv.DisputeStatus "none")}}selected{{end}}>None</option>
+    <option value="disputed" {{if eq $inv.DisputeStatus "disputed"}}selected{{end}}>Disputed</option>
+    <option value="resolved" {{if eq $inv.DisputeStatus "resolved"}}selected{{end}}>Resolved</option></select></label>
+  <label class="wide">Dispute notes <textarea name="dispute_notes" rows="2">{{$inv.DisputeNotes}}</textarea></label>
+  <button type="submit">Save notes</button>
+</form>
+</details>
+{{end}}
+
 {{if .Collections.Show}}
 <section class="card" aria-labelledby="col-h">
 <h2 id="col-h">Collections</h2>
@@ -70,6 +131,14 @@
   <button type="submit">Request replenishment</button>
 </form>
 {{end}}
+{{if and .CanApprove .InterestOn}}
+<form method="post" action="/billing/invoices/{{$inv.ID}}/interest">
+  {{template "csrf" .CSRF}}
+  <h3>Late interest</h3>
+  <p class="muted">Charges the firm's late interest for the days past the grace period.</p>
+  <button type="submit">Apply late interest</button>
+</form>
+{{end}}
 {{if .CanApprove}}
 <form method="post" action="/billing/invoices/{{$inv.ID}}/write-off">
   {{template "csrf" .CSRF}}
@@ -102,11 +171,5 @@
 </details>
 {{end}}
 
-{{if .Staff}}
-<details class="card">
-<summary>Edit history</summary>
-<div class="scroll"><table><thead><tr><th>When</th><th>Role</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
-<tbody>{{range .History}}<tr><td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td><td>{{.Role}}</td><td>{{.Field}}</td><td class="clip">{{.OldValue}}</td><td class="clip">{{.NewValue}}</td></tr>{{end}}</tbody></table></div>
-</details>
-{{end}}
+{{if .Staff}}{{template "history" .History}}{{end}}
 {{template "foot" .}}

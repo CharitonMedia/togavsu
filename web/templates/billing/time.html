@@ -27,6 +27,24 @@
   <button type="submit">Start timer</button>
 </form>
 </section>
+<details class="card">
+<summary>Bulk entry</summary>
+<form method="post" action="/billing/time/bulk">
+  {{template "csrf" .CSRF}}
+  <p class="muted">Fill as many rows as you need; blank rows are skipped. Every row saves, or none do.</p>
+  <div class="scroll"><table>
+  <thead><tr><th>Matter</th><th>Date</th><th>Minutes</th><th>Activity</th><th>Description</th><th>Billable</th></tr></thead>
+  <tbody>{{range $i := .BulkRows}}{{$p := printf "items.%d." $i}}<tr>
+  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{range $.Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></td>
+  <td><input type="date" name="{{$p}}worked_on" value="{{$.Today}}" aria-label="Row {{$i}} date"></td>
+  <td><input type="number" name="{{$p}}minutes" min="1" size="5" aria-label="Row {{$i}} minutes"></td>
+  <td><select name="{{$p}}activity_type_id" aria-label="Row {{$i}} activity">{{range $.Activities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></td>
+  <td><input name="{{$p}}description" size="30" aria-label="Row {{$i}} description"></td>
+  <td><input type="checkbox" name="{{$p}}billable" value="1" checked aria-label="Row {{$i}} billable"></td>
+  </tr>{{end}}</tbody></table></div>
+  <button type="submit">Log all rows</button>
+</form>
+</details>
 {{range .Time}}{{if .NeedsReview}}{{$act := .ActivityType}}
 <section class="card" aria-label="Review timer entry">
 <h2>Review timer entry</h2>
@@ -45,7 +63,7 @@
 {{if .Time}}
 <div class="scroll"><table>
 <thead><tr><th>Date</th><th>Matter</th><th>Description</th><th class="num">Hours</th><th class="num">Rate</th><th class="num">Amount</th><th>Billed</th></tr></thead>
-<tbody>{{range .Time}}<tr><td>{{.WorkedOn}}</td><td>{{index $.MatterNames .MatterID}}</td><td>{{.Description}}{{if .NeedsReview}} <span class="tag">timer draft: needs review</span>{{end}}{{if not .Billable}} <span class="tag">non-billable</span>{{end}}</td>
+<tbody>{{range .Time}}<tr><td><a href="/billing/time/{{.ID}}">{{.WorkedOn}}</a></td><td>{{index $.MatterNames .MatterID}}</td><td>{{.Description}}{{if .NeedsReview}} <span class="tag">timer draft: needs review</span>{{end}}{{if not .Billable}} <span class="tag">non-billable</span>{{end}}</td>
 <td class="num">{{hours .}}</td><td class="num">{{money .RateCents}}</td><td class="num">{{amount .}}</td><td>{{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">invoice</a>{{else}}unbilled{{end}}</td></tr>{{end}}</tbody>
 </table></div>
 {{else}}<p class="muted">No time entries.</p>{{end}}

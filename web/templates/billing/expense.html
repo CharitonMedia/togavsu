@@ -1,0 +1,28 @@
+{{template "head" .}}
+{{with .Cost}}
+<p class="meta"><a href="/practice/matters/{{.MatterID}}">{{index $.MatterNames .MatterID}}</a> · {{.IncurredOn}} · {{money .AmountCents}} plus {{.MarkupPercent}}% markup
+{{if not .Billable}} · <span class="tag">non-billable</span>{{end}}
+· {{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">billed</a>{{else}}unbilled{{end}}</p>
+<p>{{.Description}}</p>
+<p class="muted">Type: {{index $.TypeNames .ExpenseType}} · Source: {{.Source}}{{if .FileID}} · Receipt on file{{end}}</p>
+{{end}}
+{{$e := .Cost}}
+{{if and .CanWrite (not $e.InvoiceID)}}
+<section class="card" aria-labelledby="edit-h">
+<h2 id="edit-h">Edit expense</h2>
+<form method="post" action="/billing/expenses/{{$e.ID}}" class="grid">
+  {{template "csrf" .CSRF}}
+  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}" {{if eq .ID $e.MatterID}}selected{{end}}>{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Date <input type="date" name="incurred_on" value="{{$e.IncurredOn}}" required></label>
+  <label>Amount <input name="amount" value="{{money $e.AmountCents}}" inputmode="decimal" size="9" required></label>
+  <label>Type <select name="expense_type_id" required>{{range .ExpenseTypes}}<option value="{{.ID}}" {{if eq (print .ID) $e.ExpenseType}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+  <label>Markup % <input type="number" name="markup_percent" min="0" value="{{$e.MarkupPercent}}" size="4"></label>
+  <label class="wide">Description <input name="description" value="{{$e.Description}}" required></label>
+  <label><input type="checkbox" name="billable" value="1" {{if $e.Billable}}checked{{end}}> Billable</label>
+  <button type="submit">Save expense</button>
+</form>
+</section>
+{{else if $e.InvoiceID}}<p class="muted">This expense is billed. It can change only after its invoice is voided.</p>
+{{end}}
+{{template "history" .History}}
+{{template "foot" .}}

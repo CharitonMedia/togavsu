@@ -29,6 +29,7 @@ var Pending = []string{
 	"invoices:bulk and payment processor initializations are not implemented",
 	"invoice PDFs are rendered on demand, not stored as file records; the logo is drawn only when it is a JPEG",
 	"billing events are stored in billing_records; merging them into the practice timeline is lead-owned",
-	"late interest is a service call with no API route or nightly job",
+	"late interest is applied from the invoice screen (attorney or admin, only when enabled); there is no API route or nightly job",
+	"expense screens offer no receipt upload until the files lane wires Deps.Receipts; custom-field cards on time entries and expenses wait on custom fields",
 	"expense receipts: no files service exists yet, so receipt_file_id is refused until the files lane wires Deps.Receipts",
 }

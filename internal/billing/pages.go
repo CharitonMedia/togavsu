@@ -70,7 +70,7 @@ type page struct {
 	Collections  Collections
 	Clients      map[domain.ID]string
 	Payments     []Payment
-	History      []domain.AuditEntry
+	History      []historyRow
 	Staff        bool
 	Time         []TimeEntry
 	Timers       []Timer
@@ -80,6 +80,17 @@ type page struct {
 	Report       Report
 	Reports      []string
 	ReportTitles map[string]string
+	Entry        TimeEntry
+	Cost         Expense
+	Expenses     []Expense
+	ExpenseTypes []NamedType
+	TypeNames    map[string]string
+	Markup       int
+	BulkRows     []int
+	DraftLines   []draftLineRow
+	FeeItems     []FeeItem
+	Unbilled     []unbilledSource
+	InterestOn   bool
 }
 
 var reportNames = []string{"unbilled-time", "time-by-user", "ar-aging", "payments-received", "write-offs"}
@@ -152,6 +163,9 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 	screen("GET /billing/invoices", h.invoicesPage)
 	screen("GET /billing/invoices/{invoice_id}", h.invoicePage)
 	screen("GET /billing/time", h.timePage)
+	screen("GET /billing/time/{time_entry_id}", h.timeEntryPage)
+	screen("GET /billing/expenses", h.expensesPage)
+	screen("GET /billing/expenses/{expense_id}", h.expensePage)
 	screen("GET /billing/payments", h.paymentsPage)
 	screen("GET /billing/reports/{report}", h.reportPage)
 	mux.HandleFunc("GET /billing/invoices/{invoice_id}/pdf", func(w http.ResponseWriter, r *http.Request) {
@@ -194,6 +208,7 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 		return "/billing/invoices", strconv.Itoa(len(invs)) + " draft invoices created.", nil
 	})
 	post("POST /billing/invoices/{invoice_id}/{action}", h.invoiceAction)
+	h.recordRoutes(post)
 	post("POST /billing/time", func(r *http.Request, p domain.Principal) (string, string, error) {
 		matter, act := domain.ID(r.FormValue("matter_id")), domain.ID(r.FormValue("activity_type_id"))
 		date, desc := r.FormValue("worked_on"), r.FormValue("description")
@@ -262,7 +277,7 @@ func (h *Handler) basePage(w http.ResponseWriter, r *http.Request, p domain.Prin
 		CSRF: csrf(w, r), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
 		CanWrite: can(domain.ResInvoice, domain.ActionWrite), CanApprove: can(domain.ResInvoice, domain.ActionApproveInvoice),
 		CanTrust: can(domain.ResTrust, domain.ActionTrustWithdraw), Today: h.Svc.today(ctx), Reports: reportNames, ReportTitles: reportTitles,
-		Clients: map[domain.ID]string{}, MatterNames: map[domain.ID]string{},
+		Clients: map[domain.ID]string{}, MatterNames: map[domain.ID]string{}, TypeNames: map[string]string{},
 	}
 }
 
@@ -341,9 +356,15 @@ func (h *Handler) invoicePage(_ http.ResponseWriter, r *http.Request, p domain.P
 	if pays, err := h.Svc.Payments(ctx, p, PaymentFilter{InvoiceID: inv.ID}); err == nil {
 		pg.Payments = pays
 	}
-	if hist, err := h.Svc.History(ctx, p, "invoice", inv.ID); err == nil {
-		pg.History = hist
+	if pg.History, err = h.historyRows(ctx, p, "invoice", inv.ID); err != nil {
+		return "", err
 	}
+	if inv.Status == StatusDraft && pg.CanWrite {
+		if err := h.draftData(ctx, p, inv, pg); err != nil {
+			return "", err
+		}
+	}
+	pg.InterestOn = h.Svc.setting(ctx, "billing.late_interest_enabled") == "true"
 	return "invoice.html", nil
 }
 
@@ -358,20 +379,17 @@ func (h *Handler) timePage(_ http.ResponseWriter, r *http.Request, p domain.Prin
 		rows = rows[:n]
 	}
 	pg.Title, pg.Time = "Time Entries", rows
+	pg.BulkRows = make([]int, bulkRows)
+	for i := range pg.BulkRows {
+		pg.BulkRows[i] = i
+	}
 	if timers, err := h.Svc.Timers(ctx, p); err == nil {
 		pg.Timers = timers
 	}
 	if acts, err := h.Svc.Types(ctx, p, false, boolPtr(true)); err == nil {
 		pg.Activities = acts
 	}
-	for _, m := range h.Svc.mattersByNumber() {
-		if m.Status == matterClosed {
-			continue
-		}
-		if h.Svc.allow(ctx, p, domain.ResTime, domain.ActionWrite, m.ID) == nil {
-			pg.Matters = append(pg.Matters, m)
-		}
-	}
+	pg.Matters = h.writableMatters(ctx, p, domain.ResTime)
 	for _, e := range rows {
 		h.names(r, pg, e.MatterID)
 	}
@@ -478,8 +496,16 @@ func (h *Handler) invoiceAction(r *http.Request, p domain.Principal) (string, st
 		return back, "Replenishment requested.", err
 	case "notes":
 		msg, notes := r.FormValue("client_message"), r.FormValue("internal_notes")
-		_, err := h.Svc.UpdateInvoice(ctx, p, id, InvoicePatch{ClientMessage: &msg, InternalNotes: &notes})
+		dispute, disputeNotes := r.FormValue("dispute_status"), r.FormValue("dispute_notes")
+		_, err := h.Svc.UpdateInvoice(ctx, p, id, InvoicePatch{ClientMessage: &msg, InternalNotes: &notes, DisputeStatus: &dispute, DisputeNotes: &disputeNotes})
 		return back, "Saved.", err
+	case "draft":
+		in, err := draftEdit(r)
+		if err != nil {
+			return back, "", err
+		}
+		_, err = h.Svc.EditDraft(ctx, p, id, in)
+		return back, "Draft saved. It needs approval again.", err
 	}
 	return back, "", domain.NotFound("action")
 }

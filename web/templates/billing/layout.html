@@ -13,6 +13,7 @@
   <nav aria-label="Main">
     <a href="/practice/matters">Matters</a>
     <a href="/billing/time">Time Entries</a>
+    <a href="/billing/expenses">Expenses</a>
     <a href="/billing">Billing / Generate</a>
     <a href="/billing/invoices">Invoices</a>
     <a href="/billing/payments">Payments</a>
@@ -30,3 +31,10 @@
 </html>
 {{end}}
 {{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}
+{{define "history"}}
+<details class="card history">
+<summary>Edit history</summary>
+<div class="scroll"><table><thead><tr><th>When</th><th>Who</th><th>Role</th><th>Field</th><th>Old</th><th>New</th><th>Kind</th><th>Note</th></tr></thead>
+<tbody>{{range .}}<tr><td class="nowrap">{{.When}}</td><td>{{.Who}}</td><td>{{.Role}}</td><td>{{.Field}}</td><td class="clip">{{.Old}}</td><td class="clip">{{.New}}</td><td>{{.Kind}}</td><td class="clip">{{.Note}}</td></tr>{{else}}<tr><td colspan="8" class="muted">No changes recorded.</td></tr>{{end}}</tbody></table></div>
+</details>
+{{end}}

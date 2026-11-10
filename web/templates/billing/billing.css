@@ -27,3 +27,6 @@ button { cursor: pointer; }
 .scroll { overflow-x: auto; }
 .timer { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin: 0.4rem 0; }
 td.nowrap { white-space: nowrap; }
+form.draft fieldset { border: 1px solid #d9d1c3; border-radius: 4px; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: end; width: 100%; }
+form.draft fieldset label { display: flex; gap: 0.3rem; align-items: center; }
+.grid textarea { width: 100%; }
