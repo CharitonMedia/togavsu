@@ -154,8 +154,14 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 	}
 	byID := map[domain.ID]BackupObject{}
 	for _, o := range list {
+		if _, dup := byID[o.ObjectID]; dup {
+			return rep, fmt.Errorf("files: manifest lists object %s twice", o.ObjectID)
+		}
 		byID[o.ObjectID] = o
 	}
+	// Every manifest object must appear exactly once: an archive that ends cleanly
+	// before all of them, or repeats one, is incomplete and fails the restore.
+	seen := make(map[domain.ID]bool, len(byID))
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -169,6 +175,10 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 		if !ok || hdr.Size != m.Size {
 			return rep, fmt.Errorf("files: backup entry %s is not in the manifest", hdr.Name)
 		}
+		if seen[id] {
+			return rep, fmt.Errorf("files: backup entry %s appears twice", hdr.Name)
+		}
+		seen[id] = true
 		// The restored database, not the archive, says what each object is and where it
 		// lives: an entry it does not know, or whose size or SHA-256 differ, is refused.
 		o, err := s.knownObject(ctx, id)
@@ -207,6 +217,13 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 		}
 		rep.Restored++
 		rep.Bytes += o.Size
+	}
+	if len(seen) != len(byID) {
+		for _, o := range list {
+			if !seen[o.ObjectID] {
+				return rep, fmt.Errorf("files: the backup ends before object %s of its manifest (%d of %d present)", o.ObjectID, len(seen), len(byID))
+			}
+		}
 	}
 	rep.Objects = len(list)
 	return rep, nil

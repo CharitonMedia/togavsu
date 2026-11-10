@@ -266,6 +266,9 @@ func (s *Service) AddRendition(ctx context.Context, p domain.Principal, fileID, 
 		if text, err = io.ReadAll(io.LimitReader(r, size+1)); err != nil {
 			return RenditionView{}, err
 		}
+		if int64(len(text)) != size {
+			return RenditionView{}, domain.Invalid("size_bytes", "the rendition is not the size it declares")
+		}
 		r = bytes.NewReader(text)
 	}
 	by := actor(p, v.SavedBy)
@@ -283,9 +286,9 @@ func (s *Service) AddRendition(ctx context.Context, p domain.Principal, fileID, 
 	if err != nil {
 		return RenditionView{}, err
 	}
-	if h.N != size {
+	if h.N != size || longerThan(r) {
 		s.dropObject(ctx, loc)
-		return RenditionView{}, domain.Invalid("size_bytes", "the rendition is shorter than its size")
+		return RenditionView{}, domain.Invalid("size_bytes", "the rendition is not the size it declares")
 	}
 	var row domain.FileRendition
 	err = s.tx(ctx, func(ctx context.Context) error {

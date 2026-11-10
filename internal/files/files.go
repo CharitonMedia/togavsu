@@ -172,11 +172,19 @@ func (s *Service) storeBytes(ctx context.Context, key domain.ID, r io.Reader, si
 	if err != nil {
 		return location{}, "", err
 	}
-	if h.N != size || (wantSHA != "" && h.Sum() != wantSHA) {
+	if h.N != size || longerThan(r) || (wantSHA != "" && h.Sum() != wantSHA) {
 		s.dropObject(ctx, loc)
 		return location{}, "", domain.Conflict("the bytes stored do not match the declared size and sha256")
 	}
 	return loc, h.Sum(), nil
+}
+
+// longerThan reports whether r still has bytes after its declared size was read, so
+// a stream longer than declared is refused instead of saved truncated.
+func longerThan(r io.Reader) bool {
+	var one [1]byte
+	n, _ := io.ReadFull(r, one[:])
+	return n > 0
 }
 
 // dropObject deletes stored bytes; used to undo a put whose record did not commit.

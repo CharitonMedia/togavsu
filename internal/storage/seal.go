@@ -239,6 +239,7 @@ type openReader struct {
 	remain    int64
 	plain     []byte
 	err       error
+	opened    bool // at least one segment was authenticated
 }
 
 func (o *openReader) Read(p []byte) (int, error) {
@@ -247,6 +248,12 @@ func (o *openReader) Read(p []byte) (int, error) {
 			return 0, o.err
 		}
 		if o.remain <= zero || o.index > o.lastSeg {
+			// An empty object still has one sealed segment; open it before the
+			// first EOF so a forged or swapped empty object fails its tag check.
+			if o.size == zero && !o.opened {
+				o.err = o.next()
+				continue
+			}
 			return 0, io.EOF
 		}
 		o.err = o.next()
@@ -270,6 +277,7 @@ func (o *openReader) next() error {
 	if err != nil {
 		return fmt.Errorf("%w: segment %d", ErrIntegrity, o.index)
 	}
+	o.opened = true
 	o.index++
 	plain = plain[o.skip:]
 	o.skip = zero
