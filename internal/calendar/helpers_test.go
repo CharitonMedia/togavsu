@@ -32,13 +32,31 @@ func (c *clock) Set(t time.Time) { c.mu.Lock(); c.t = t; c.mu.Unlock() }
 type mail struct {
 	mu   sync.Mutex
 	sent []string
+	fail error // when set, Send returns it and records nothing
 }
 
 func (m *mail) Send(_ context.Context, to, subject, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.fail != nil {
+		return m.fail
+	}
 	m.sent = append(m.sent, to+"|"+subject)
 	return nil
+}
+
+func (m *mail) setFail(err error) { m.mu.Lock(); m.fail = err; m.mu.Unlock() }
+
+func (m *mail) to(addr string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []string
+	for _, s := range m.sent {
+		if strings.HasPrefix(s, addr+"|") {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func (m *mail) count() int { m.mu.Lock(); defer m.mu.Unlock(); return len(m.sent) }

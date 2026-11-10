@@ -28,7 +28,8 @@ func userPrincipal(u domain.User) (domain.Principal, bool) {
 }
 
 // RunReminders sends every reminder that is due at the current time. It is the
-// reminders job: safe to run repeatedly, because each reminder is claimed once.
+// reminders job: safe to run repeatedly, because each reminder channel is claimed
+// once, and a failed delivery releases its claim so the next run retries it.
 //
 // A deadline reminder for offset N fires from firm-local midnight N days before the
 // due date until the due date passes, and only while the deadline is open. When
@@ -72,31 +73,24 @@ func (s *Service) RunReminders(ctx context.Context) (ReminderRun, error) {
 		}
 		sort.Ints(eligible)
 		nearest := eligible[0]
-		claimed, err := s.d.Store.ClaimReminder(ctx, deadlineKey(d, nearest))
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		for _, off := range eligible {
-			if off == nearest {
-				continue
-			}
-			if _, err := s.d.Store.ClaimReminder(ctx, deadlineKey(d, off)); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		if !claimed {
-			continue
-		}
 		title := "Deadline: " + d.Title
 		body := fmt.Sprintf("%s is due %s.", d.Title, longDate(due))
 		if due.Equal(today) {
 			body = fmt.Sprintf("%s is due today, %s.", d.Title, longDate(due))
 		}
-		s.deliver(ctx, &run, &errs, d.ResponsibleUserID, Notice{
+		settled := s.deliver(ctx, &run, &errs, deadlineKey(d, nearest), d.ResponsibleUserID, Notice{
 			Kind: NoticeDeadline, Title: title, Body: body, Path: "/calendar/deadlines/" + string(d.ID),
 			MatterID: d.MatterID, RecordID: d.ID,
 		})
+		if !settled {
+			continue
+		}
+		// The earlier offsets are superseded only once the nearest one is delivered.
+		for _, off := range eligible[1:] {
+			if _, err := s.d.Store.ClaimReminder(ctx, deadlineKey(d, off)); err != nil {
+				errs = append(errs, err)
+			}
+		}
 	}
 
 	lead, err := s.settingInt(ctx, settingEventOffset)
@@ -122,19 +116,11 @@ func (s *Service) RunReminders(ctx context.Context) (ReminderRun, error) {
 		}
 		for _, user := range e.Attendees {
 			key := fmt.Sprintf("event:%s:%d:%d:%s", e.ID, e.StartsAt, lead, user)
-			claimed, err := s.d.Store.ClaimReminder(ctx, key)
-			if err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			if !claimed {
-				continue
-			}
 			when := e.Start().In(loc).Format("Monday, January 2, 2006 at 3:04 PM MST")
 			if e.AllDay {
 				when = longDate(localDate(e.Start(), loc))
 			}
-			s.deliver(ctx, &run, &errs, user, Notice{
+			s.deliver(ctx, &run, &errs, key, user, Notice{
 				Kind: NoticeEvent, Title: "Event: " + e.Title, Body: fmt.Sprintf("%s is on %s.", e.Title, when),
 				Path: "/calendar/events/" + string(e.ID), MatterID: e.MatterID, RecordID: e.ID,
 			})
@@ -149,40 +135,75 @@ func deadlineKey(d Deadline, off int) string {
 
 func longDate(d time.Time) string { return d.Format("Monday, January 2, 2006") }
 
-// deliver stores the in-app notice and, with a mailer and an address, emails it.
-// A recipient who can no longer see the matter gets nothing.
-func (s *Service) deliver(ctx context.Context, run *ReminderRun, errs *[]error, userID domain.ID, n Notice) {
+// deliver sends one reminder on each channel: the in-app notice, and with a mailer
+// and an address, the email. Each channel is claimed under key+":app" or
+// key+":email" before it is attempted and released if the attempt fails, so a
+// concurrent run never sends twice and a failed lookup, mail or store write is
+// retried by the next run. It reports whether every channel is settled (sent now
+// or earlier). A recipient who cannot currently see the matter gets nothing, and
+// the reminder is re-evaluated on the next run.
+//
+// A notice stored while its email failed keeps Emailed false even after a later
+// run delivers the email; the email retry does not add a second in-app notice.
+func (s *Service) deliver(ctx context.Context, run *ReminderRun, errs *[]error, key string, userID domain.ID, n Notice) bool {
 	u, err := s.d.Users.Get(ctx, userID)
 	if err != nil {
-		*errs = append(*errs, err)
-		return
+		*errs = append(*errs, fmt.Errorf("reminder %s: user %s: %w", key, userID, err))
+		return false
 	}
 	p, ok := userPrincipal(u)
 	if !ok {
-		return
+		return false
 	}
 	if !s.visible(ctx, p, n.MatterID) {
-		return
+		return false
 	}
-	id, err := s.d.IDs()
-	if err != nil {
-		*errs = append(*errs, err)
-		return
-	}
-	n.ID, n.UserID, n.At = id, userID, s.now()
+	settled := true
 	if s.d.Mailer != nil && u.Email != "" {
-		if err := s.d.Mailer.Send(ctx, u.Email, n.Title, n.Body); err != nil {
-			*errs = append(*errs, err)
-		} else {
+		emailed, err := s.attempt(ctx, key+":email", func() error {
+			return s.d.Mailer.Send(ctx, u.Email, n.Title, n.Body)
+		})
+		switch {
+		case err != nil:
+			*errs = append(*errs, fmt.Errorf("reminder %s: email: %w", key, err))
+			settled = false
+		case emailed:
 			n.Emailed = true
 			run.Emailed++
 		}
 	}
-	if err := s.d.Store.PutNotice(ctx, n); err != nil {
-		*errs = append(*errs, err)
-		return
+	stored, err := s.attempt(ctx, key+":app", func() error {
+		id, err := s.d.IDs()
+		if err != nil {
+			return err
+		}
+		n.ID, n.UserID, n.At = id, userID, s.now()
+		return s.d.Store.PutNotice(ctx, n)
+	})
+	switch {
+	case err != nil:
+		*errs = append(*errs, fmt.Errorf("reminder %s: notice: %w", key, err))
+		settled = false
+	case stored:
+		run.Sent++
 	}
-	run.Sent++
+	return settled
+}
+
+// attempt claims key and runs send. It reports false with no error when the key was
+// already claimed. When send fails the claim is released so a later run retries.
+func (s *Service) attempt(ctx context.Context, key string, send func() error) (bool, error) {
+	claimed, err := s.d.Store.ClaimReminder(ctx, key)
+	if err != nil || !claimed {
+		return false, err
+	}
+	if err := send(); err != nil {
+		if rerr := s.d.Store.ReleaseReminder(ctx, key); rerr != nil {
+			return false, errors.Join(err, rerr)
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // Notices returns the caller's own reminders, newest first, dropping any whose

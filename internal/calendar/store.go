@@ -28,6 +28,8 @@ type Store interface {
 
 	// ClaimReminder records that key was sent. It reports false when it was already sent.
 	ClaimReminder(ctx context.Context, key string) (bool, error)
+	// ReleaseReminder drops a claim whose delivery failed, so the next run retries it.
+	ReleaseReminder(ctx context.Context, key string) error
 	PutNotice(ctx context.Context, n Notice) error
 	Notices(ctx context.Context, user domain.ID) ([]Notice, error)
 	AppendEvent(ctx context.Context, row domain.Event) error
@@ -194,6 +196,13 @@ func (m *Memory) ClaimReminder(_ context.Context, key string) (bool, error) {
 	}
 	m.sent[key] = true
 	return true, nil
+}
+
+func (m *Memory) ReleaseReminder(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sent, key)
+	return nil
 }
 
 func (m *Memory) PutNotice(_ context.Context, n Notice) error {
