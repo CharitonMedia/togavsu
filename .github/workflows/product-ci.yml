@@ -120,3 +120,82 @@ jobs:
           fi
           python -m pip install -r api/requirements-dev.txt
           sh api/check.sh
+
+  core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: togavsu
+          POSTGRES_PASSWORD: synthetic-postgres-password
+          POSTGRES_DB: togavsu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U togavsu -d togavsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TOGAVSU_TEST_DATABASE_URL: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: "1.22"
+      - name: Core tests and first run on one Compose up
+        run: |
+          sh scripts/ci/test-core.sh
+          sh scripts/ci/test-compose-first-run.sh
+
+  api-contract:
+    name: API contract tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: togavsu
+          POSTGRES_PASSWORD: synthetic-postgres-password
+          POSTGRES_DB: togavsu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U togavsu -d togavsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TOGAVSU_TEST_DATABASE_URL: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version: "1.22"
+      - name: API contract tests
+        run: sh scripts/ci/test-api.sh
+
+  qa:
+    name: QA harness tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: QA harness tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-eng fonts-dejavu-core
+          sh scripts/ci/test-qa.sh
