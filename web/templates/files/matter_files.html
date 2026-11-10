@@ -1,0 +1,40 @@
+{{define "matter_files.html"}}{{template "head" .}}
+<p class="crumbs"><a href="/practice/matters/{{.MatterID}}">Matter {{.MatterNumber}}</a> · Files{{if eq .MatterStatus "closed"}} · <span class="tag">closed</span>{{end}}</p>
+<section class="card" id="upload" data-matter="{{.MatterID}}" data-folder="{{.FolderID}}">
+  <h2>Upload</h2>
+  <p class="hint">Drop files here or pick them. Uploads go in {{bytes .ChunkBytes}} pieces and pick up where they stopped if the connection drops. Largest file: {{bytes .MaxBytes}}.</p>
+  <label class="drop" for="pick">Drop files or <span class="link">choose files</span></label>
+  <input id="pick" type="file" multiple>
+  <ul id="progress" aria-live="polite"></ul>
+</section>
+<section class="card">
+  <h2>Folders</h2>
+  <ul class="folders">
+    <li><a href="?"{{if not .FolderID}} aria-current="page"{{end}}>All files</a></li>
+    {{range .Folders}}<li><a href="?folder_id={{.ID}}"{{if eq .ID $.FolderID}} aria-current="page"{{end}}>{{.Name}}</a></li>{{end}}
+    <li><a href="?trashed=true"{{if .Trashed}} aria-current="page"{{end}}>Trash</a></li>
+  </ul>
+  <form method="get" class="filter"><label for="q">Search files</label> <input id="q" name="q" value="{{.Query}}"> <button type="submit">Search</button></form>
+</section>
+<section class="card">
+  <h2>{{if .Trashed}}Trash{{else}}Files{{end}} <span class="count">{{len .Files}}</span></h2>
+  {{if not .Files}}<p class="empty">No files here yet.</p>{{else}}
+  <table class="files">
+    <thead><tr><th>Name</th><th>Folder</th><th>Size</th><th>Versions</th><th></th></tr></thead>
+    <tbody>
+    {{range .Files}}<tr>
+      <td><span class="name">{{.Name}}</span>{{if .Status}} <span class="tag status-{{.Status}}">{{.Status}}</span>{{end}}{{if .AttorneyOnly}} <span class="tag">attorney only</span>{{end}}{{if .Quarantined}} <span class="tag warn">quarantined</span>{{end}}</td>
+      <td>{{.Folder}}</td>
+      <td>{{bytes .Size}}</td>
+      <td>{{.Versions}}</td>
+      <td class="actions"><div class="acts">
+        <a href="/api/v1/files/{{.ID}}/versions/{{.VersionID}}/download?disposition=inline{{if .Quarantined}}&amp;confirm=true{{end}}"{{if .Quarantined}} data-confirm="A scanner quarantined this version. Open it anyway?"{{end}}>Open</a>
+        <a href="/api/v1/files/{{.ID}}/versions/{{.VersionID}}/download{{if .Quarantined}}?confirm=true{{end}}"{{if .Quarantined}} data-confirm="A scanner quarantined this version. Download it anyway?"{{end}}>Download</a>
+        {{if .Markdown}}<a href="/api/v1/files/{{.ID}}/renditions/{{.Markdown}}">{{.MarkdownName}}</a>{{end}}
+        {{if $.Trashed}}<button type="button" data-post="/api/v1/files/{{.ID}}/restore">Restore</button>{{else}}<button type="button" data-post="/api/v1/files/{{.ID}}/trash">Move to trash</button>{{end}}
+      </div></td>
+    </tr>{{end}}
+    </tbody>
+  </table>{{end}}
+</section>
+{{template "foot" .}}{{end}}
