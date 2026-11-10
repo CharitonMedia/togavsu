@@ -2639,7 +2639,7 @@ class LanePackageScanTests(unittest.TestCase):
             path.unlink()
             self.git("rm", "-q", name)
         else:
-            path.write_text(text)
+            path.write_bytes(text) if isinstance(text, bytes) else path.write_text(text)
             self.git("add", name)
         self.git("commit", "-q", "-m", "change " + name)
 
@@ -2665,6 +2665,21 @@ class LanePackageScanTests(unittest.TestCase):
         self.assertTrue((self.runner / "lane-pack" / "lane.bundle").exists())
         data = json.loads((self.runner / "lane-pack" / "lane-result.json").read_text())
         self.assertEqual(data["head"], self.git("rev-parse", "lane"))
+
+    PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\xff\xfe\x80\x81"
+
+    def test_binary_file_is_bundled(self):
+        self.commit("screenshot.png", self.PNG + bytes(range(256)))
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    def test_token_inside_binary_file_is_withheld(self):
+        self.commit("screenshot.png", self.PNG + b"tEXt" + self.TOKEN.encode() + b"\xff\x00")
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("credential", result.stderr)
+        self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
 
 
 if __name__ == "__main__":
