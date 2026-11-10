@@ -1,33 +1,48 @@
 {
   "task_id": "integrate-practice",
   "status": "pass",
-  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. status pass means the assigned integration behavior and all five phase cases pass and all six required CI jobs pass on this revision. It is not full product acceptance: 49 of 52 criteria remain pending globally.",
-  "tested_revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+  "scope": "Phase 1 and 2 integration: the composed core, Postgres persistence, identity, practice, settings, audit, API and MCP. status pass means the assigned integration behavior and all five phase cases pass and all local runs of the six required CI jobs pass on this revision (GitHub CI on it is pending). It is not full product acceptance: 49 of 52 criteria remain pending globally.",
+  "tested_revision": "c0753972fc5f83c4d7b142f90891c9770a90467a",
   "tests": [
     {
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "seconds": 131
+      "seconds": 110
     },
     {
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
-      "seconds": 25
+      "seconds": 33
     },
     {
       "command": "sh scripts/ci/test-qa.sh",
       "exit_code": 0,
-      "seconds": 8
+      "seconds": 10
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "exit_code": 0,
+      "seconds": 3
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
+      "exit_code": 0,
+      "seconds": 2
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "command": "TOGAVSU_TEST_DATABASE_URL_B='postgres://togavsu:synthetic-postgres-password@127.0.0.1:5433/togavsu?sslmode=disable' sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "seconds": 48
     },
     {
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
-      "seconds": 291
-    },
-    {
-      "command": "sh scripts/ci/test-backup-integration.sh",
-      "exit_code": 0,
-      "seconds": 43
+      "seconds": 351
     },
     {
       "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
@@ -50,17 +65,17 @@
       "seconds": 0
     },
     {
-      "command": "python3 scripts/ci/check-compose.py",
-      "exit_code": 0,
-      "seconds": 0
-    },
-    {
       "command": "sh scripts/ci/ui-qc.sh",
       "exit_code": 0,
-      "seconds": 0
+      "seconds": 1
     },
     {
       "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "command": "python3 scripts/ci/check-compose.py",
       "exit_code": 0,
       "seconds": 0
     },
@@ -72,42 +87,27 @@
     {
       "command": "docker build -f Dockerfile -t togavsu-supervisor:local .",
       "exit_code": 0,
-      "seconds": 21
+      "seconds": 22
     },
     {
       "command": "docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null'",
       "exit_code": 0,
-      "seconds": 0
+      "seconds": 1
     },
     {
       "command": "sh scripts/ci/build-core-image.sh",
       "exit_code": 0,
-      "seconds": 18
+      "seconds": 21
     },
     {
       "command": "sh scripts/ci/test-core-smoke.sh",
       "exit_code": 0,
-      "seconds": 0
+      "seconds": 1
     },
     {
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
       "seconds": 16
-    },
-    {
-      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
-      "exit_code": 0,
-      "seconds": 2
-    },
-    {
-      "command": "go test -count=1 -v -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI)$' ./internal/core/ ./internal/practice/",
-      "exit_code": 0,
-      "seconds": 2
-    },
-    {
-      "command": "go test -count=1 -v -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
-      "exit_code": 0,
-      "seconds": 1
     }
   ],
   "phase_cases": [
@@ -129,7 +129,7 @@
         "AC-024"
       ],
       "status": "pass",
-      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
+      "command": "go test -count=1 -v -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestServiceMutationIsOneTransaction|TestConcurrentClosesSerialize)$' ./internal/core/ ./internal/practice/ ./internal/audit/",
       "exit_code": 0
     },
     {
@@ -224,34 +224,36 @@
   "pending_notes": {
     "AC-001": "Phase case passes: one Linux Compose up with no edits reaches setup, two-factor and a ready install. Clean Docker Desktop (Windows/macOS) installation is release acceptance and has not run.",
     "AC-002": "Phase case passes: 99 of 427 contract operations are mounted on /api/v1 and /mcp, all fail closed, and the spec validates. Billing, trust, calendar, files, editor, Doc Tender, modules and users are not built; GET /api/v1/reports/matters and GET /api/v1/matters/{matter_id}/conflict-checks are served but absent from the contract.",
-    "AC-003": "Phase case passes for list, search, widget, report, screens, API and MCP. Files, calendar, billing and trust surfaces of a walled matter are not built; module include rows are pending.",
+    "AC-003": "Phase case passes for list, search, widget, report, screens, API, MCP and the audit log (an admin outside a wall receives no ledger row for the walled matter, its party contact or its note). Files, calendar, billing and trust surfaces of a walled matter are not built; module include rows are pending.",
     "AC-004": "Phase case passes: the accountant reads the trust and AR reports and every practice, settings and area write is refused. Billing and trust records and their write paths are not built.",
     "AC-009": "Phase case passes with an invoice written into the practice store as the billing wave's stand-in; real billing and trust ledgers are not built.",
     "AC-018": "Audit half passes: every write in identity, settings and practice reaches the append-only audit_log with actor and source, and Compose runs the core as a non-superuser role that cannot change it. Backup download, S3 and network-path copies and restore of a running core are not demonstrated end to end in this assignment.",
     "AC-020": "Phase case passes for matter number, phone and invoice number in each scope and All, and walls hide results; invoices come from the stand-in store and file-text search is pending (files).",
     "AC-023": "Phase case passes for reopen with reason, restored status and timeline; the zero-fee marker is covered by the practice suite, AR aging over real billing data is pending.",
-    "AC-024": "Phase case passes for history old/new values and attorney-only redaction; the events table is still mutable by the application role (AC-024-F4).",
+    "AC-024": "Phase case passes for history old/new values and attorney-only redaction, on history and on the audit log; the events table is still mutable by the application role (AC-024-F4).",
     "AC-029": "Phase case passes: PRD defaults are registry settings listed on admin page tabs, a change applies on the next request, is logged with old and new values, and Reset restores it. Settings read by modules that are not built cannot yet show their effect."
   },
   "ci": {
-    "workflow": ".github/workflows/product-ci.yml (jobs added on main by #25, merged into this branch at 05fde77)",
-    "run": "https://github.com/CharitonMedia/togavsu/actions/runs/42761536976",
-    "run_head_sha": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
-    "run_conclusion": "success",
-    "required_jobs": {
-      "Core tests": "pass",
-      "API contract tests": "pass",
-      "QA harness tests": "pass",
-      "Supervisor tests": "pass",
-      "Backup integration": "pass",
-      "Supervisor image": "pass"
-    },
-    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), Python 3.14, and tesseract-ocr from Ubuntu apt as in CI. CI pins Postgres 17 client and Python 3.12. The first local test-qa run exited 1 with 'tesseract is required' before tesseract was installed; after installing the packages the CI job installs, it exited 0 and that result is recorded."
+    "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
+    "previous_run": "https://github.com/CharitonMedia/togavsu/actions/runs/42761536976",
+    "previous_run_head_sha": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
+    "previous_run_conclusion": "success",
+    "current_revision_ci": "pending: the controller publishes this branch; Product CI runs on PR #24 (https://github.com/CharitonMedia/togavsu/pull/24/checks) have not been observed for c0753972fc5f83c4d7b142f90891c9770a90467a",
+    "required_jobs": [
+      "Core tests",
+      "API contract tests",
+      "QA harness tests",
+      "Supervisor tests",
+      "Backup integration",
+      "Supervisor image"
+    ],
+    "local_environment_note": "Local runs at the tested revision used Docker postgres:17 servers, a PostgreSQL 18 client for the backup test (postgresql-client-17 is not installable on this VM), Python 3.14, and tesseract-ocr from Ubuntu apt as in CI. CI pins Postgres 17 client and Python 3.12. The first local test-qa run at this revision exited 1 with tesseract is required, because the fresh VM lacked it; after installing the apt packages the CI job installs (tesseract-ocr tesseract-ocr-eng fonts-dejavu-core) it exited 0 and that result is recorded."
   },
   "visual_qc": {
     "record": "docs/build/reports/screens/integrate-practice/qc.json",
     "revision": "05fde772418cf3b9ffbcf56e521e2b02cae8f67b",
-    "summary": "All 14 QC steps repeated at the tested revision in headless Chrome; no page errors; the only error responses are the two deliberate 400 submissions."
+    "summary": "All 14 QC steps repeated at 05fde77 in headless Chrome; no page errors; the only error responses are the two deliberate 400 submissions. Not repeated at the tested revision because no screen changed after 05fde77.",
+    "changed_screens_this_run": "none: the audit-log fix changes only the JSON route and the practice service; git diff 05fde77..c075397 touches no template, page handler or web asset, so the QC record at 05fde77 still covers every screen."
   },
   "simplification": {
     "go_lines_added": 3335,
@@ -270,16 +272,25 @@
       "debt_entries_after": 38,
       "review": "One unit type and a Begin method on Durable reuse the existing commit path; Service.unit is a two-line optional-interface check, so Memory and test stores are unchanged. Practice ceiling 1 is rewritten in place, not added."
     },
-    "this_run": {
+    "previous_run_05fde77_evidence": {
       "go_lines_added": 0,
       "go_lines_removed": 0,
       "net_go_lines": 0,
       "debt_entries_before": 38,
       "debt_entries_after": 38,
       "review": "Report, phase report and QC evidence only; no Go, template or debt change."
+    },
+    "this_run": {
+      "go_lines_added": 231,
+      "go_lines_removed": 23,
+      "net_go_lines": 208,
+      "net_non_test_go_lines": 68,
+      "debt_entries_before": 38,
+      "debt_entries_after": 38,
+      "review": "The audit-log filter reuses practice visibleMatter, readableContact and historyRow, the same checks History uses; one HistoryItem renderer now serves history and the audit log instead of two copies. No new dependency, no new debt; the existing unpaginated-ledger ponytail is unchanged."
     }
   },
-  "status_reason": "Every assigned phase case and every local test passes at the tested revision, and GitHub Product CI run 42761536976 passed Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration and Supervisor image on the same head SHA.",
+  "status_reason": "Every assigned phase case and every local test passes at the tested revision c0753972fc5f83c4d7b142f90891c9770a90467a, including the new audit-log wall regression tests. GitHub Product CI on this revision is pending (it passed all six required jobs at 05fde77, before this fix). Status pass is phase evidence, not full product acceptance: 49 of 52 criteria remain pending globally.",
   "review_fixes": [
     {
       "finding": "Codex checkpoint on 16f9c87, P1 internal/practice/durable.go: one service mutation committed as several transactions, so a failed audit_log append could leave an unaudited change, and check-then-write was not serialized.",
@@ -308,6 +319,14 @@
     {
       "finding": "Codex checkpoint on 05fde77, P2 qc.json: QC recorded at 527a5a1, not the tested revision.",
       "fix": "QC repeated at 05fde77 with all 14 steps; qc.json revision is 05fde77 and the committed screenshots were regenerated."
+    },
+    {
+      "finding": "Codex checkpoint on aa58133 (base b3b6165), P1 internal/core/http.go: auditJSON returned every ledger row to any admin, including old/new values for matters behind a wall the admin is not on, through the API and the MCP tool.",
+      "fix": "auditJSON passes ledger rows through practice.Service.AuditLog: rows about a matter the caller cannot read (Policy and wall, as History), about a contact who exists only on such matters, or about a matter-scoped practice record practice did not record (fail closed) are dropped; attorney-only values are redacted as history redacts them. Rows render in the contract AuditEntry shape (actor_kind and kind from the published enums).",
+      "tests": [
+        "TestWallsRolesAuditAndRestart: an admin outside the wall gets no row for the walled matter, its party contact or its note over GET /api/v1/audit-log (unfiltered, by entity type, by entity id) and the MCP audit-log tool, before and after a restart; the admin on the wall still sees them. Fails on the previous auditJSON (checked by restoring it).",
+        "TestAuditLogKeepsWallAndRedaction: service level, outside admin vs inside admin, unrecorded note row dropped, other-service rows pass through, attorney-only conflict reason redacted for staff."
+      ]
     }
   ]
 }

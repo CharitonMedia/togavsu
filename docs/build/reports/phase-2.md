@@ -1,8 +1,8 @@
 # Phase 2 report: practice records on the composed core
 
-Status: **phase case passes; full product acceptance pending.** The practice phase case passes on the composed core at `05fde772418cf3b9ffbcf56e521e2b02cae8f67b`, and GitHub Product CI run [42761536976](https://github.com/CharitonMedia/togavsu/actions/runs/42761536976) passed all six required jobs on that same SHA. Only AC-025 of the phase 2 criteria passes globally; AC-009, AC-020 and AC-023 stay pending below.
+Status: **phase case passes; full product acceptance pending.** The practice phase case passes on the composed core at `c0753972fc5f83c4d7b142f90891c9770a90467a`, and local runs of all six required CI jobs pass there. GitHub Product CI on that SHA is pending; it last passed at 05fde77 ([run 42761536976](https://github.com/CharitonMedia/togavsu/actions/runs/42761536976)). Only AC-025 of the phase 2 criteria passes globally; AC-009, AC-020 and AC-023 stay pending below.
 
-## Phase case at 05fde772418cf3b9ffbcf56e521e2b02cae8f67b (exit 0)
+## Phase case at c0753972fc5f83c4d7b142f90891c9770a90467a (exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
