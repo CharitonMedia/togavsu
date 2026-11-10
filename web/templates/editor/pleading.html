@@ -1,0 +1,17 @@
+{{template "head" .}}
+<main>
+<h1>New pleading</h1>
+<p>LawCraft's New Pleading writes the caption, title, body, signature block and certificate of service, with the court,
+county, case number and parties from this matter and the firm's details from Firm settings. The new document is saved in
+the matter's Pleadings folder and opens in the editor.</p>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+<form method="post" action="/matters/{{.MatterID}}/pleadings">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <label>Document type
+    <select name="type">{{$t := .Type}}{{range .Types}}<option value="{{.}}"{{if eq . $t}} selected{{end}}>{{.}}</option>{{end}}</select>
+  </label>
+  <label>Title <input name="title" required maxlength="200" value="{{.PleadTitle}}" placeholder="Motion to Continue"></label>
+  <button type="submit">Create and edit</button>
+</form>
+</main>
+{{template "foot" .}}
