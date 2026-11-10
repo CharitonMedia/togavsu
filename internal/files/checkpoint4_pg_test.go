@@ -254,3 +254,49 @@ func TestPGMoveSkipsPurgedFiles(t *testing.T) {
 		t.Fatalf("live file after move = %q", got)
 	}
 }
+
+// TestPGRestoreKeepsACopyItCannotRead is checkpoint 12: when a backend fails a read for
+// a reason other than a bad or missing copy, the restore stops and the copy stays,
+// even when the archive's own entry is bad.
+func TestPGRestoreKeepsACopyItCannotRead(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	fs3, s3 := e.s3()
+	e.makeDefault(s3)
+	f := e.create(e.staff, NewFile{Name: "kept.txt", MatterID: e.open}, "bytes that must survive")
+	objs, err := e.svc.objectsOf(ctx, f.ID)
+	if err != nil || len(objs) == 0 {
+		t.Fatalf("objects = %v %v", objs, err)
+	}
+	var archive bytes.Buffer
+	if _, err := e.svc.ExportBytes(ctx, e.admin, &archive, nil); err != nil {
+		t.Fatal(err)
+	}
+	list, bodies := archiveBodies(t, archive.Bytes())
+	for i := range bodies {
+		bodies[i] = append([]byte("tampered "), bodies[i]...)
+	}
+	bad := buildArchiveWith(t, list, list, bodies)
+	before := map[string][]byte{}
+	for _, o := range objs {
+		before[string(o.ID)] = fs3.Get(string(o.ID))
+		if before[string(o.ID)] == nil {
+			t.Fatalf("object %s is not on s3", o.ID)
+		}
+	}
+	fs3.Unavailable.Store(true)
+	for name, a := range map[string][]byte{"good archive": archive.Bytes(), "bad archive": bad} {
+		if rep, err := e.svc.RestoreBytes(ctx, e.admin, bytes.NewReader(a)); err == nil {
+			t.Fatalf("restore of a %s over an unreadable backend = %+v, want an error", name, rep)
+		}
+	}
+	fs3.Unavailable.Store(false)
+	for key, want := range before {
+		if got := fs3.Get(key); !bytes.Equal(got, want) {
+			t.Fatalf("object %s changed or went missing during the failed restores", key)
+		}
+	}
+	if got := readVersion(t, e, e.staff, f.ID, *f.CurrentVersionID); got != "bytes that must survive" {
+		t.Fatalf("file reads %q", got)
+	}
+}

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/storage"
@@ -89,10 +90,13 @@ func (o *Objects) count(name string) {
 // S3 is a path-style S3 endpoint for one bucket.
 type S3 struct {
 	*Objects
-	Server    *httptest.Server
-	Bucket    string
-	AccessKey string
-	SecretKey string
+	// Unavailable makes object reads answer 503 while it is set, the way a backend
+	// having a bad moment does.
+	Unavailable atomic.Bool
+	Server      *httptest.Server
+	Bucket      string
+	AccessKey   string
+	SecretKey   string
 }
 
 // NewS3 starts the endpoint. Close the Server when done.
@@ -130,6 +134,10 @@ func (s *S3) serve(w http.ResponseWriter, r *http.Request) {
 	s.count(r.Method + " " + r.URL.Path)
 	if !s.authorized(r) {
 		http.Error(w, "<Error><Code>SignatureDoesNotMatch</Code></Error>", http.StatusForbidden)
+		return
+	}
+	if s.Unavailable.Load() && r.Method == http.MethodGet {
+		http.Error(w, "<Error><Code>ServiceUnavailable</Code></Error>", http.StatusServiceUnavailable)
 		return
 	}
 	prefix := "/" + s.Bucket

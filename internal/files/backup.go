@@ -206,9 +206,15 @@ func (s *Service) RestoreBytes(ctx context.Context, p domain.Principal, r io.Rea
 		if err != nil {
 			return rep, err
 		}
-		if storage.Check(ctx, b, loc.Key, o.Size, o.SHA) == nil {
+		// Only a copy that is missing or fails its check is replaced. Any other error
+		// (a backend that is down or slow) stops the restore and keeps the copy.
+		switch err := storage.Check(ctx, b, loc.Key, o.Size, o.SHA); {
+		case err == nil:
 			rep.Verified++
 			continue
+		case errors.Is(err, storage.ErrIntegrity), errors.Is(err, storage.ErrNotFound):
+		default:
+			return rep, fmt.Errorf("files: restore %s: read the stored copy: %w", id, err)
 		}
 		if raw, _, err := s.adapter(ctx, loc.Backend); err == nil {
 			_ = raw.Delete(ctx, loc.Key)

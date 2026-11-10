@@ -19,6 +19,11 @@ the user id is written to `saved_by`/`made_by`, which reference `users`).
   `actor_kind = client` and `client_visible = 1` for the highlight), `file.purged`.
   `client_visible` is 1 for a client's own action, or for a file that is shared with the
   client and not attorney-only; an attorney-only file's events are never client-visible.
+- The OpenAPI contract names more events than these: `file.created`, `file.trashed` (today
+  `file.updated`), `file.linked`, `file.quarantine_changed`, `file_upload.*`, `folder.*`,
+  `storage_backend.*` and `storage_move.*`. They are pending, listed per operation in
+  `events_test.go` (`TestFilesEventsFollowTheContract`), and proposed to the integration
+  lead as a shared change: write them here, or narrow the contract.
 - A file's history (`GET /api/v1/files/{id}/history`) shows a caller without attorney
   access nothing recorded while the file was attorney-only and no change of the flag, and
   blanks the old value of each field's first change after such a stretch.
