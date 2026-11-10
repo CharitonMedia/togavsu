@@ -35,7 +35,7 @@
       "seconds": 1
     },
     {
-      "command": "TOGAVSU_TEST_DATABASE_URL_B='postgres://togavsu:synthetic-postgres-password@127.0.0.1:5433/togavsu?sslmode=disable' sh scripts/ci/test-backup-integration.sh",
+      "command": "TOGAVSU_TEST_DATABASE_URL_B=<second synthetic postgres:17 server URL> sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
       "seconds": 48
     },
