@@ -47,45 +47,156 @@ func NewHandler(svc *Service, fsys fs.FS, principal func(*http.Request) (domain.
 // Routes returns the mux. Paths and methods are the published contract's.
 func (h *Handler) Routes() *http.ServeMux {
 	m := http.NewServeMux()
-	m.HandleFunc("GET /api/v1/files", h.list)
-	m.HandleFunc("POST /api/v1/files", h.publish)
-	m.HandleFunc("GET /api/v1/files/{file_id}", h.get)
-	m.HandleFunc("PATCH /api/v1/files/{file_id}", h.metadata)
-	m.HandleFunc("POST /api/v1/files/{file_id}/rename", h.rename)
-	m.HandleFunc("POST /api/v1/files/{file_id}/move", h.move)
-	m.HandleFunc("POST /api/v1/files/{file_id}/status", h.status)
-	m.HandleFunc("POST /api/v1/files/{file_id}/trash", h.trash)
-	m.HandleFunc("POST /api/v1/files/{file_id}/restore", h.restore)
-	m.HandleFunc("POST /api/v1/files/{file_id}/purge", h.purge)
-	m.HandleFunc("GET /api/v1/files/{file_id}/history", h.history)
-	m.HandleFunc("GET /api/v1/files/{file_id}/versions", h.versions)
-	m.HandleFunc("POST /api/v1/files/{file_id}/versions", h.addVersion)
+	ok, created := http.StatusOK, http.StatusCreated
+	id := pathID
+	file := func(run func(r *http.Request, p domain.Principal, id domain.ID) (FileView, error)) http.HandlerFunc {
+		return op(h, ok, func(r *http.Request, p domain.Principal) (FileView, error) { return run(r, p, id(r, "file_id")) })
+	}
+	type nameBody struct {
+		Name string `json:"name"`
+	}
+	type folderBody struct {
+		FolderID *domain.ID `json:"folder_id"`
+	}
+	type statusBody struct {
+		Status string `json:"status"`
+	}
+	type purgeBody struct {
+		ConfirmName string `json:"confirm_name"`
+	}
+	type quarantineBody struct {
+		Quarantined *bool `json:"quarantined"`
+	}
+	type linkBody struct {
+		ToFileID     domain.ID `json:"to_file_id"`
+		Relationship string    `json:"relationship"`
+	}
+	type newFolderBody struct {
+		MatterID  domain.ID `json:"matter_id"`
+		Name      string    `json:"name"`
+		SortOrder int       `json:"sort_order"`
+	}
+	type folderPatch struct {
+		Name      *string    `json:"name"`
+		SortOrder *int       `json:"sort_order"`
+		MatterID  *domain.ID `json:"matter_id"`
+	}
+	m.HandleFunc("GET /api/v1/files", op(h, ok, h.list))
+	m.HandleFunc("POST /api/v1/files", opBody(h, created, func(r *http.Request, p domain.Principal, in Publish) (FileView, error) {
+		return h.Svc.PublishUpload(r.Context(), p, in)
+	}))
+	m.HandleFunc("GET /api/v1/files/{file_id}", file(func(r *http.Request, p domain.Principal, f domain.ID) (FileView, error) {
+		return h.Svc.Get(r.Context(), p, f)
+	}))
+	m.HandleFunc("PATCH /api/v1/files/{file_id}", opBody(h, ok, func(r *http.Request, p domain.Principal, in Metadata) (FileView, error) {
+		return h.Svc.UpdateMetadata(r.Context(), p, id(r, "file_id"), in)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/rename", opBody(h, ok, func(r *http.Request, p domain.Principal, in nameBody) (FileView, error) {
+		return h.Svc.Rename(r.Context(), p, id(r, "file_id"), in.Name)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/move", opBody(h, ok, func(r *http.Request, p domain.Principal, in folderBody) (FileView, error) {
+		var folder domain.ID
+		if in.FolderID != nil {
+			folder = *in.FolderID
+		}
+		return h.Svc.MoveToFolder(r.Context(), p, id(r, "file_id"), folder)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/status", opBody(h, ok, func(r *http.Request, p domain.Principal, in statusBody) (FileView, error) {
+		return h.Svc.MarkStatus(r.Context(), p, id(r, "file_id"), in.Status)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/trash", file(func(r *http.Request, p domain.Principal, f domain.ID) (FileView, error) {
+		return h.Svc.Trash(r.Context(), p, f)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/restore", file(func(r *http.Request, p domain.Principal, f domain.ID) (FileView, error) {
+		return h.Svc.Restore(r.Context(), p, f)
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/purge", opBody(h, http.StatusNoContent, func(r *http.Request, p domain.Principal, in purgeBody) (none, error) {
+		return none{}, h.Svc.Purge(r.Context(), p, id(r, "file_id"), in.ConfirmName)
+	}))
+	m.HandleFunc("GET /api/v1/files/{file_id}/history", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.History(r.Context(), p, id(r, "file_id")))
+	}))
+	m.HandleFunc("GET /api/v1/files/{file_id}/versions", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.Versions(r.Context(), p, id(r, "file_id")))
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/versions", opBody(h, created, func(r *http.Request, p domain.Principal, in Publish) (VersionView, error) {
+		return h.Svc.AddUploadedVersion(r.Context(), p, id(r, "file_id"), in.UploadID)
+	}))
 	m.HandleFunc("GET /api/v1/files/{file_id}/versions/{version_id}/download", h.download)
-	m.HandleFunc("POST /api/v1/files/{file_id}/versions/{version_id}/restore", h.restoreVersion)
-	m.HandleFunc("POST /api/v1/files/{file_id}/versions/{version_id}/quarantine", h.quarantine)
-	m.HandleFunc("GET /api/v1/files/{file_id}/renditions", h.renditions)
-	m.HandleFunc("GET /api/v1/files/{file_id}/renditions/{rendition_id}", h.rendition)
-	m.HandleFunc("GET /api/v1/files/{file_id}/links", h.links)
-	m.HandleFunc("POST /api/v1/files/{file_id}/links", h.link)
-	m.HandleFunc("POST /api/v1/file-uploads", h.createUpload)
-	m.HandleFunc("GET /api/v1/file-uploads/{upload_id}", h.getUpload)
-	m.HandleFunc("PUT /api/v1/file-uploads/{upload_id}", h.putChunk)
-	m.HandleFunc("POST /api/v1/file-uploads/{upload_id}/complete", h.completeUpload)
+	m.HandleFunc("POST /api/v1/files/{file_id}/versions/{version_id}/restore", op(h, created, func(r *http.Request, p domain.Principal) (VersionView, error) {
+		return h.Svc.RestoreVersion(r.Context(), p, id(r, "file_id"), id(r, "version_id"))
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/versions/{version_id}/quarantine", opBody(h, ok, func(r *http.Request, p domain.Principal, in quarantineBody) (VersionView, error) {
+		if in.Quarantined == nil {
+			return VersionView{}, domain.Invalid("quarantined", "quarantined is required")
+		}
+		return h.Svc.Quarantine(r.Context(), p, id(r, "file_id"), id(r, "version_id"), *in.Quarantined)
+	}))
+	m.HandleFunc("GET /api/v1/files/{file_id}/renditions", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.Renditions(r.Context(), p, id(r, "file_id")))
+	}))
+	m.HandleFunc("GET /api/v1/files/{file_id}/renditions/{rendition_id}", h.download)
+	m.HandleFunc("GET /api/v1/files/{file_id}/links", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.Links(r.Context(), p, id(r, "file_id")))
+	}))
+	m.HandleFunc("POST /api/v1/files/{file_id}/links", opBody(h, created, func(r *http.Request, p domain.Principal, in linkBody) (LinkView, error) {
+		return h.Svc.Link(r.Context(), p, id(r, "file_id"), in.ToFileID, in.Relationship)
+	}))
+	m.HandleFunc("POST /api/v1/file-uploads", opBody(h, created, func(r *http.Request, p domain.Principal, in UploadRequest) (Upload, error) {
+		return h.Svc.CreateUpload(r.Context(), p, in)
+	}))
+	m.HandleFunc("GET /api/v1/file-uploads/{upload_id}", op(h, ok, func(r *http.Request, p domain.Principal) (Upload, error) {
+		return h.Svc.GetUpload(r.Context(), p, id(r, "upload_id"))
+	}))
+	m.HandleFunc("PUT /api/v1/file-uploads/{upload_id}", op(h, ok, h.putChunk))
+	m.HandleFunc("POST /api/v1/file-uploads/{upload_id}/complete", op(h, ok, func(r *http.Request, p domain.Principal) (Upload, error) {
+		return h.Svc.CompleteUpload(r.Context(), p, id(r, "upload_id"))
+	}))
 	m.HandleFunc("POST /api/v1/file-archives", h.archive)
-	m.HandleFunc("GET /api/v1/folders", h.folders)
-	m.HandleFunc("POST /api/v1/folders", h.createFolder)
-	m.HandleFunc("GET /api/v1/folders/{folder_id}", h.getFolder)
-	m.HandleFunc("PATCH /api/v1/folders/{folder_id}", h.updateFolder)
-	m.HandleFunc("DELETE /api/v1/folders/{folder_id}", h.deleteFolder)
-	m.HandleFunc("GET /api/v1/storage-backends", h.backends)
-	m.HandleFunc("POST /api/v1/storage-backends", h.createBackend)
-	m.HandleFunc("GET /api/v1/storage-backends/{storage_backend_id}", h.getBackend)
-	m.HandleFunc("PATCH /api/v1/storage-backends/{storage_backend_id}", h.updateBackend)
-	m.HandleFunc("POST /api/v1/storage-backends/{storage_backend_id}/test", h.testBackend)
-	m.HandleFunc("GET /api/v1/storage-moves", h.moves)
-	m.HandleFunc("POST /api/v1/storage-moves", h.createMove)
-	m.HandleFunc("GET /api/v1/storage-moves/{storage_move_id}", h.getMove)
-	m.HandleFunc("POST /api/v1/storage-moves/{storage_move_id}/confirm", h.confirmMove)
+	m.HandleFunc("GET /api/v1/folders", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		matter := domain.ID(r.URL.Query().Get("matter_id"))
+		if matter == "" {
+			return nil, domain.Invalid("matter_id", "matter_id is required")
+		}
+		return listed(h.Svc.Folders(r.Context(), p, matter))
+	}))
+	m.HandleFunc("POST /api/v1/folders", opBody(h, created, func(r *http.Request, p domain.Principal, in newFolderBody) (FolderView, error) {
+		return h.Svc.CreateFolder(r.Context(), p, in.MatterID, in.Name, in.SortOrder)
+	}))
+	m.HandleFunc("GET /api/v1/folders/{folder_id}", op(h, ok, func(r *http.Request, p domain.Principal) (FolderView, error) {
+		return h.Svc.GetFolder(r.Context(), p, id(r, "folder_id"))
+	}))
+	m.HandleFunc("PATCH /api/v1/folders/{folder_id}", opBody(h, ok, func(r *http.Request, p domain.Principal, in folderPatch) (FolderView, error) {
+		return h.Svc.UpdateFolder(r.Context(), p, id(r, "folder_id"), in.Name, in.SortOrder)
+	}))
+	m.HandleFunc("DELETE /api/v1/folders/{folder_id}", op(h, http.StatusNoContent, func(r *http.Request, p domain.Principal) (none, error) {
+		return none{}, h.Svc.DeleteFolder(r.Context(), p, id(r, "folder_id"))
+	}))
+	m.HandleFunc("GET /api/v1/storage-backends", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.Backends(r.Context(), p))
+	}))
+	m.HandleFunc("POST /api/v1/storage-backends", opBody(h, created, func(r *http.Request, p domain.Principal, in BackendWrite) (BackendView, error) {
+		return h.Svc.CreateBackend(r.Context(), p, in)
+	}))
+	m.HandleFunc("GET /api/v1/storage-backends/{storage_backend_id}", op(h, ok, func(r *http.Request, p domain.Principal) (BackendView, error) {
+		return h.Svc.GetBackend(r.Context(), p, id(r, "storage_backend_id"))
+	}))
+	m.HandleFunc("PATCH /api/v1/storage-backends/{storage_backend_id}", opBody(h, ok, func(r *http.Request, p domain.Principal, in BackendWrite) (BackendView, error) {
+		return h.Svc.UpdateBackend(r.Context(), p, id(r, "storage_backend_id"), in)
+	}))
+	m.HandleFunc("POST /api/v1/storage-backends/{storage_backend_id}/test", op(h, ok, func(r *http.Request, p domain.Principal) (BackendView, error) {
+		return h.Svc.TestBackend(r.Context(), p, id(r, "storage_backend_id"))
+	}))
+	m.HandleFunc("GET /api/v1/storage-moves", op(h, ok, func(r *http.Request, p domain.Principal) (map[string]any, error) {
+		return listed(h.Svc.Moves(r.Context(), p))
+	}))
+	m.HandleFunc("POST /api/v1/storage-moves", opBody(h, created, h.createMove))
+	m.HandleFunc("GET /api/v1/storage-moves/{storage_move_id}", op(h, ok, func(r *http.Request, p domain.Principal) (MoveView, error) {
+		return h.Svc.GetMove(r.Context(), p, id(r, "storage_move_id"))
+	}))
+	m.HandleFunc("POST /api/v1/storage-moves/{storage_move_id}/confirm", op(h, ok, func(r *http.Request, p domain.Principal) (MoveView, error) {
+		return h.Svc.ConfirmMove(r.Context(), p, id(r, "storage_move_id"))
+	}))
 	if h.Templates != nil {
 		m.HandleFunc("GET /files/static/{name}", h.static)
 		m.HandleFunc("GET /practice/matters/{matter_id}/files", h.matterPage)
@@ -174,15 +285,55 @@ func (h *Handler) limit(r *http.Request) (int, error) {
 	return int(n), nil
 }
 
-func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
+// op answers one JSON operation: authenticate, run, write code and the result.
+func op[T any](h *Handler, code int, run func(r *http.Request, p domain.Principal) (T, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := h.who(w, r)
+		if !ok {
+			return
+		}
+		out, err := run(r, p)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if code == http.StatusNoContent {
+			w.WriteHeader(code)
+			return
+		}
+		writeJSON(w, code, out)
 	}
+}
+
+// opBody is op with a JSON request body decoded into In first.
+func opBody[In, T any](h *Handler, code int, run func(r *http.Request, p domain.Principal, in In) (T, error)) http.HandlerFunc {
+	return op(h, code, func(r *http.Request, p domain.Principal) (T, error) {
+		var in In
+		if err := decode(r, &in); err != nil {
+			var zero T
+			return zero, err
+		}
+		return run(r, p, in)
+	})
+}
+
+// listed wraps a list in the contract's page envelope.
+func listed[T any](rows []T, err error) (map[string]any, error) {
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []T{}
+	}
+	return page(rows, ""), nil
+}
+
+type none struct{}
+
+func (h *Handler) list(r *http.Request, p domain.Principal) (map[string]any, error) {
 	limit, err := h.limit(r)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	q := r.URL.Query()
 	lq := ListQuery{MatterID: domain.ID(q.Get("matter_id")), ContactID: domain.ID(q.Get("contact_id")), Text: q.Get("q"),
@@ -193,176 +344,12 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, next, err := h.Svc.List(r.Context(), p, lq)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	if rows == nil {
 		rows = []FileView{}
 	}
-	writeJSON(w, http.StatusOK, page(rows, next))
-}
-
-func (h *Handler) publish(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in Publish
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.PublishUpload(r.Context(), p, in)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.Get(r.Context(), p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) fileAction(w http.ResponseWriter, r *http.Request, body any, run func(p domain.Principal, id domain.ID) (FileView, error)) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	if body != nil {
-		if err := decode(r, body); err != nil {
-			writeErr(w, err)
-			return
-		}
-	}
-	v, err := run(p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) metadata(w http.ResponseWriter, r *http.Request) {
-	var in Metadata
-	h.fileAction(w, r, &in, func(p domain.Principal, id domain.ID) (FileView, error) {
-		return h.Svc.UpdateMetadata(r.Context(), p, id, in)
-	})
-}
-
-func (h *Handler) rename(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Name string `json:"name"`
-	}
-	h.fileAction(w, r, &in, func(p domain.Principal, id domain.ID) (FileView, error) {
-		return h.Svc.Rename(r.Context(), p, id, in.Name)
-	})
-}
-
-func (h *Handler) move(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		FolderID *domain.ID `json:"folder_id"`
-	}
-	h.fileAction(w, r, &in, func(p domain.Principal, id domain.ID) (FileView, error) {
-		var folder domain.ID
-		if in.FolderID != nil {
-			folder = *in.FolderID
-		}
-		return h.Svc.MoveToFolder(r.Context(), p, id, folder)
-	})
-}
-
-func (h *Handler) status(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Status string `json:"status"`
-	}
-	h.fileAction(w, r, &in, func(p domain.Principal, id domain.ID) (FileView, error) {
-		return h.Svc.MarkStatus(r.Context(), p, id, in.Status)
-	})
-}
-
-func (h *Handler) trash(w http.ResponseWriter, r *http.Request) {
-	h.fileAction(w, r, &struct{}{}, func(p domain.Principal, id domain.ID) (FileView, error) {
-		return h.Svc.Trash(r.Context(), p, id)
-	})
-}
-
-func (h *Handler) restore(w http.ResponseWriter, r *http.Request) {
-	h.fileAction(w, r, &struct{}{}, func(p domain.Principal, id domain.ID) (FileView, error) {
-		return h.Svc.Restore(r.Context(), p, id)
-	})
-}
-
-func (h *Handler) purge(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		ConfirmName string `json:"confirm_name"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	if err := h.Svc.Purge(r.Context(), p, pathID(r, "file_id"), in.ConfirmName); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.History(r.Context(), p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) versions(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.Versions(r.Context(), p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) addVersion(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in Publish
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.AddUploadedVersion(r.Context(), p, pathID(r, "file_id"), in.UploadID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
+	return page(rows, next), nil
 }
 
 // serve streams a verified download. A failed check after the headers are out
@@ -418,7 +405,13 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	d, err := h.Svc.OpenVersion(r.Context(), p, pathID(r, "file_id"), pathID(r, "version_id"), confirmed(r))
+	var d *Download
+	var err error
+	if rendition := pathID(r, "rendition_id"); rendition != "" {
+		d, err = h.Svc.OpenRendition(r.Context(), p, pathID(r, "file_id"), rendition, confirmed(r))
+	} else {
+		d, err = h.Svc.OpenVersion(r.Context(), p, pathID(r, "file_id"), pathID(r, "version_id"), confirmed(r))
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -426,159 +419,12 @@ func (h *Handler) download(w http.ResponseWriter, r *http.Request) {
 	serve(w, r, d)
 }
 
-func (h *Handler) restoreVersion(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.RestoreVersion(r.Context(), p, pathID(r, "file_id"), pathID(r, "version_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) quarantine(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		Quarantined *bool `json:"quarantined"`
-	}
-	if err := decode(r, &in); err != nil || in.Quarantined == nil {
-		writeErr(w, domain.Invalid("quarantined", "quarantined is required"))
-		return
-	}
-	v, err := h.Svc.Quarantine(r.Context(), p, pathID(r, "file_id"), pathID(r, "version_id"), *in.Quarantined)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) renditions(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.Renditions(r.Context(), p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) rendition(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	d, err := h.Svc.OpenRendition(r.Context(), p, pathID(r, "file_id"), pathID(r, "rendition_id"), confirmed(r))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	serve(w, r, d)
-}
-
-func (h *Handler) links(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.Links(r.Context(), p, pathID(r, "file_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) link(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		ToFileID     domain.ID `json:"to_file_id"`
-		Relationship string    `json:"relationship"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.Link(r.Context(), p, pathID(r, "file_id"), in.ToFileID, in.Relationship)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) createUpload(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in UploadRequest
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.CreateUpload(r.Context(), p, in)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) getUpload(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.GetUpload(r.Context(), p, pathID(r, "upload_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) putChunk(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
+func (h *Handler) putChunk(r *http.Request, p domain.Principal) (Upload, error) {
 	start, end, total, err := ParseContentRange(r.Header.Get("Content-Range"))
 	if err != nil {
-		writeErr(w, err)
-		return
+		return Upload{}, err
 	}
-	v, err := h.Svc.PutChunk(r.Context(), p, pathID(r, "upload_id"), start, end, total, r.Body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) completeUpload(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.CompleteUpload(r.Context(), p, pathID(r, "upload_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
+	return h.Svc.PutChunk(r.Context(), p, pathID(r, "upload_id"), start, end, total, r.Body)
 }
 
 // archive checks every selected file before the first byte, then streams the zip.
@@ -627,225 +473,14 @@ func (p *pendingWriter) Write(b []byte) (int, error) {
 	return p.w.Write(b)
 }
 
-func (h *Handler) folders(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	matter := domain.ID(r.URL.Query().Get("matter_id"))
-	if matter == "" {
-		writeErr(w, domain.Invalid("matter_id", "matter_id is required"))
-		return
-	}
-	rows, err := h.Svc.Folders(r.Context(), p, matter)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) createFolder(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		MatterID  domain.ID `json:"matter_id"`
-		Name      string    `json:"name"`
-		SortOrder int       `json:"sort_order"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.CreateFolder(r.Context(), p, in.MatterID, in.Name, in.SortOrder)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) getFolder(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.GetFolder(r.Context(), p, pathID(r, "folder_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) updateFolder(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in struct {
-		Name      *string    `json:"name"`
-		SortOrder *int       `json:"sort_order"`
-		MatterID  *domain.ID `json:"matter_id"`
-	}
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.UpdateFolder(r.Context(), p, pathID(r, "folder_id"), in.Name, in.SortOrder)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) deleteFolder(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	if err := h.Svc.DeleteFolder(r.Context(), p, pathID(r, "folder_id")); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *Handler) backends(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.Backends(r.Context(), p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) createBackend(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in BackendWrite
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.CreateBackend(r.Context(), p, in)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) getBackend(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.GetBackend(r.Context(), p, pathID(r, "storage_backend_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) updateBackend(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in BackendWrite
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
-	v, err := h.Svc.UpdateBackend(r.Context(), p, pathID(r, "storage_backend_id"), in)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) testBackend(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.TestBackend(r.Context(), p, pathID(r, "storage_backend_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) moves(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	rows, err := h.Svc.Moves(r.Context(), p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, page(rows, ""))
-}
-
-func (h *Handler) createMove(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	var in MoveRequest
-	if err := decode(r, &in); err != nil {
-		writeErr(w, err)
-		return
-	}
+func (h *Handler) createMove(r *http.Request, p domain.Principal, in MoveRequest) (MoveView, error) {
 	v, err := h.Svc.StartMove(r.Context(), p, in)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return MoveView{}, err
 	}
 	ctx := context.WithoutCancel(r.Context())
 	h.Background(func() { _ = h.Svc.RunMove(ctx, v.ID) })
-	writeJSON(w, http.StatusCreated, v)
-}
-
-func (h *Handler) getMove(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.GetMove(r.Context(), p, pathID(r, "storage_move_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) confirmMove(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.who(w, r)
-	if !ok {
-		return
-	}
-	v, err := h.Svc.ConfirmMove(r.Context(), p, pathID(r, "storage_move_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
+	return v, nil
 }
 
 func humanBytes(n int64) string {
