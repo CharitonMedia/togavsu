@@ -48,6 +48,7 @@ type App struct {
 	Practice *practice.Service
 	Store    *practice.Durable
 
+	ledger   *audit.Postgres
 	tools    []tool
 	practice http.Handler
 	mux      *http.ServeMux
@@ -97,7 +98,8 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if err := db.ApplyReference(ctx, pool, "postgres"); err != nil {
 		return fail(fmt.Errorf("core: reference seed: %w", err))
 	}
-	aud, err := audit.New(audit.NewPostgres(pool), now)
+	ledger := audit.NewPostgres(pool)
+	aud, err := audit.New(ledger, now)
 	if err != nil {
 		return fail(err)
 	}
@@ -121,7 +123,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	}
 	app := &App{
 		Pool: pool, Audit: aud, Settings: reg, Identity: ids, Users: users,
-		Practice: practice.NewWithKey(store, reg, cfg.Key), Store: store,
+		Practice: practice.NewWithKey(store, reg, cfg.Key), Store: store, ledger: ledger,
 	}
 	sub, err := fs.Sub(web.Practice, "templates/practice")
 	if err != nil {

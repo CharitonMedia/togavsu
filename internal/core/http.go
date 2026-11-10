@@ -13,6 +13,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
+	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
@@ -60,11 +61,12 @@ func (a *App) routes() {
 	a.mux = m
 }
 
-// openBeforeSetup are the paths a fresh install serves before the first admin exists.
+// openBeforeSetup are the paths a fresh install serves before setup completes. Sign-in
+// stays open so an admin whose first code was wrong can sign in again and re-enroll.
 func openBeforeSetup(path string) bool {
 	switch path {
 	case "/healthz", "/api/v1/health", "/api/v1/openapi.json", "/api/v1/setup", "/setup", "/setup/confirm",
-		"/api/v1/auth/totp/enroll", "/api/v1/auth/totp/confirm", "/favicon.ico":
+		"/api/v1/auth/login", "/api/v1/auth/totp/enroll", "/api/v1/auth/totp/confirm", "/login", "/favicon.ico":
 		return true
 	}
 	return strings.HasPrefix(path, "/practice/static/")
@@ -102,7 +104,9 @@ func (a *App) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": Version})
 }
 
-func safeMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions }
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
 
 // caller authenticates a cookie session or a bearer token. Cookie writes need the CSRF
 // token from sign-in, in X-CSRF-Token or a csrf form field. A bearer call needs every
@@ -127,18 +131,36 @@ func (a *App) caller(r *http.Request) (identity.Caller, error) {
 	}
 	c, err := a.Identity.Authenticate(r.Context(), in)
 	if err != nil {
-		return identity.Caller{}, err
+		return identity.Caller{}, shared(err)
 	}
 	if in.Bearer != "" {
 		t, ok := a.toolFor(r.Method, r.URL.Path)
 		if !ok {
-			return identity.Caller{}, &domain.APIError{Code: "scope_denied", Message: "this route is not available to tokens"}
+			return identity.Caller{}, domain.Forbidden("this route is not available to tokens")
 		}
 		if err := c.RequireScopes(t.Scopes...); err != nil {
-			return identity.Caller{}, err
+			return identity.Caller{}, shared(err)
 		}
 	}
 	return c, nil
+}
+
+// shared maps identity's specific codes onto the shared error table, so every handler,
+// including practice's, answers 400, 403 or 429 rather than 500.
+func shared(err error) error {
+	var api *domain.APIError
+	if !errors.As(err, &api) {
+		return err
+	}
+	switch api.Code {
+	case "csrf_required", "scope_denied":
+		return domain.Forbidden(api.Message)
+	case "ambiguous_auth":
+		return domain.Invalid("authorization", api.Message)
+	case "locked_out":
+		return &domain.APIError{Code: domain.CodeRateLimited, Message: api.Message}
+	}
+	return err
 }
 
 // principal is the hook practice and every core route use. Services check roles,
@@ -533,11 +555,27 @@ func (a *App) auditJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	q := audit.RowQuery{Entity: r.URL.Query().Get("entity_type"), EntityID: domain.ID(r.URL.Query().Get("entity_id"))}
-	rows, err := a.Audit.Rows(r.Context(), q)
-	if err != nil {
-		writeErr(w, err)
-		return
+	entity, id := r.URL.Query().Get("entity_type"), r.URL.Query().Get("entity_id")
+	var rows []domain.AuditEntry
+	if entity != "" && id != "" {
+		var err error
+		if rows, err = a.Audit.Rows(r.Context(), audit.RowQuery{Entity: entity, EntityID: domain.ID(id)}); err != nil {
+			writeErr(w, err)
+			return
+		}
+	} else {
+		// ponytail: ceiling: without an entity id this reads the whole ledger and returns one page.
+		// Upgrade path: cursor pagination over (created_at, id) in audit.Postgres. Trigger: an install passes 100k audit rows.
+		page, err := a.ledger.List(r.Context(), repository.Filter{})
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		for _, e := range page.Items {
+			if entity == "" || e.Entity == entity {
+				rows = append(rows, e)
+			}
+		}
 	}
 	data := make([]map[string]any, 0, len(rows))
 	for _, e := range rows {

@@ -117,12 +117,21 @@ func actorKind(p domain.Principal) string {
 	return "staff"
 }
 
+// tokenReason keeps the token id on the row the way audit.provenance does for identity,
+// so the shared audit_log has one convention: source api_token, reason "token=<id> ...".
+func tokenReason(p domain.Principal, reason string) string {
+	if p.Source != domain.SourceAPIToken || p.TokenID.IsZero() {
+		return reason
+	}
+	if reason == "" {
+		return "token=" + string(p.TokenID)
+	}
+	return "token=" + string(p.TokenID) + " " + reason
+}
+
 func sourceLabel(p domain.Principal) string {
 	if p.Source == domain.SourceModule && p.ModuleID != "" {
 		return p.ModuleID
-	}
-	if p.Source == domain.SourceAPIToken && !p.TokenID.IsZero() {
-		return string(p.TokenID)
 	}
 	if p.Source == "" {
 		return string(domain.SourceUI)
@@ -283,7 +292,7 @@ func (s *Service) record(ctx context.Context, p domain.Principal, rows []change)
 				Field:    row.Field,
 				OldValue: row.Old,
 				NewValue: row.New,
-				Reason:   row.Reason,
+				Reason:   tokenReason(p, row.Reason),
 			},
 			MatterID:     row.MatterID,
 			ContactID:    row.ContactID,

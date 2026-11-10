@@ -41,8 +41,10 @@ type record struct {
 	del  bool
 }
 
-func put(kind string, id domain.ID, body any) record { return record{kind: kind, id: string(id), body: body} }
-func drop(kind string, id domain.ID) record       { return record{kind: kind, id: string(id), del: true} }
+func put(kind string, id domain.ID, body any) record {
+	return record{kind: kind, id: string(id), body: body}
+}
+func drop(kind string, id domain.ID) record { return record{kind: kind, id: string(id), del: true} }
 
 // OpenDurable loads every practice row. users resolves identity users for display and
 // ownership; it may be nil in tests.
