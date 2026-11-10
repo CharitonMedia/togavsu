@@ -2,6 +2,8 @@ package billing
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -875,6 +877,12 @@ func (s *Service) SendInvoice(ctx context.Context, p domain.Principal, id domain
 			return Invoice{}, mailErr
 		}
 	}
+	// The sent PDF goes to the file store: the attachment's own bytes for an email send.
+	var sentPDF []byte
+	if msg != nil {
+		sentPDF = msg.Attachments[0].Data
+	}
+	out = s.keepPDF(ctx, p, out, sentPDF)
 	// A flat fee applied on the trust page before the invoice went out is credited now, so
 	// the invoice does not ask the client for it or stay open for Apply trust.
 	if out.HasFlatFee() {
@@ -1115,7 +1123,76 @@ func (s *Service) ApplyLateInterest(ctx context.Context, p domain.Principal, id 
 	return out, err
 }
 
+// keepPDF stores a sent invoice's PDF in the file store as the next version of its invoice_pdf
+// file record, when the bytes differ from the newest stored version, and links the file to the
+// invoice (PDFFileID). A draft is not stored. pdf nil renders the invoice as it is now. The
+// send or download that triggered it has already succeeded, so a file store failure is
+// audited on the invoice and retried by the next download, not returned.
+// ponytail: ceiling: the file and the invoice link commit in two transactions, so a crash
+// between them leaves an unlinked invoice_pdf record and the next download adds another; one
+// core process is assumed (pdfMu, like Service.mu). Upgrade trigger: a second core replica, or
+// files.Create gains a way to join billing's transaction with after-commit events.
+func (s *Service) keepPDF(ctx context.Context, p domain.Principal, inv Invoice, pdf []byte) Invoice {
+	if s.d.InvoiceFiles == nil || inv.Status == StatusDraft {
+		return inv
+	}
+	ctx = context.WithoutCancel(ctx)
+	s.pdfMu.Lock()
+	defer s.pdfMu.Unlock()
+	cur, err := s.invoice(ctx, inv.ID)
+	if err != nil || cur.Status == StatusDraft {
+		return inv
+	}
+	if pdf == nil {
+		if pdf, err = s.renderPDF(ctx, cur); err != nil {
+			s.pdfFailed(ctx, p, cur, err)
+			return inv
+		}
+	}
+	sum := sha256.Sum256(pdf)
+	hash := hex.EncodeToString(sum[:])
+	if !cur.PDFFileID.IsZero() && cur.PDFSHA256 == hash {
+		return inv
+	}
+	by := p.UserID
+	if by.IsZero() {
+		by = domain.SystemUserID
+	}
+	fileID, err := s.d.InvoiceFiles.SaveInvoicePDF(ctx, by, cur, cur.PDFFileID, pdf)
+	if err != nil {
+		s.pdfFailed(ctx, p, cur, err)
+		return inv
+	}
+	err = s.write(ctx, p, func(t *txn) error {
+		row, err := s.invoice(t.ctx, cur.ID)
+		if err != nil {
+			return err
+		}
+		before := row
+		row.PDFFileID, row.PDFSHA256 = fileID, hash
+		if err := t.putInvoice(row); err != nil {
+			return err
+		}
+		return t.diff("invoice", row.ID, before, row, "invoice PDF stored in the file store")
+	})
+	if err != nil {
+		s.pdfFailed(ctx, p, cur, err)
+		return inv
+	}
+	inv.PDFFileID, inv.PDFSHA256 = fileID, hash
+	return inv
+}
+
+// pdfFailed audits a PDF the file store did not take.
+func (s *Service) pdfFailed(ctx context.Context, p domain.Principal, inv Invoice, cause error) {
+	_ = s.write(ctx, p, func(t *txn) error {
+		t.audit("invoice", inv.ID, "pdf_file", string(inv.PDFFileID), "failed", "file store: "+cause.Error())
+		return nil
+	})
+}
+
 // InvoicePDF renders the invoice PDF and records the download in the audit log and timeline.
+// A sent invoice's PDF is also kept in the file store (keepPDF).
 // The returned row is narrowed to the client allowlist for a client-only principal.
 func (s *Service) InvoicePDF(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, Invoice, error) {
 	inv, err := s.invoice(ctx, id)
@@ -1137,5 +1214,6 @@ func (s *Service) InvoicePDF(ctx context.Context, p domain.Principal, id domain.
 	if err != nil {
 		return nil, Invoice{}, err
 	}
+	inv = s.keepPDF(ctx, p, inv, pdf)
 	return pdf, forReader(p, inv), nil
 }

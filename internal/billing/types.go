@@ -146,6 +146,10 @@ type Invoice struct {
 	ToDate     string     `json:"to_date,omitempty"`
 	MatterName string     `json:"matter_name"`
 	MatterNum  string     `json:"matter_number"`
+	// PDFFileID is the invoice_pdf file record holding this invoice's stored PDFs, one
+	// immutable version per distinct rendering; PDFSHA256 is the newest stored version's hash.
+	PDFFileID domain.ID `json:"pdf_file_id,omitempty"`
+	PDFSHA256 string    `json:"pdf_sha256,omitempty"`
 }
 
 // Open reports whether the invoice is sent or viewed and still owes money.

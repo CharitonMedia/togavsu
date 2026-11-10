@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"sort"
 	"strconv"
 	"sync"
@@ -127,11 +128,30 @@ type Mailer interface {
 	Send(ctx context.Context, m Message) error
 }
 
-// Receipts checks a file before an expense names it as its receipt. The files lane
-// provides it: CheckReceipt returns nil only when fileID is a receipt file record on
-// matterID that p may read under roles, matter walls and attorney-only rules.
+// Receipts checks a file before an expense names it as its receipt. FileLink provides it over
+// the files service: CheckReceipt returns nil only when fileID is an untrashed receipt file
+// record on matterID that p may read under roles, matter walls and attorney-only rules.
+// ReceiptFiles lists the receipt files on a matter that p may read, for the expense screen.
+// AddReceipt stores an uploaded receipt as a new receipt file record on matterID, written as
+// p so the files service's write rules apply, and returns its id.
 type Receipts interface {
 	CheckReceipt(ctx context.Context, p domain.Principal, matterID, fileID domain.ID) error
+	ReceiptFiles(ctx context.Context, p domain.Principal, matterID domain.ID) ([]ReceiptFile, error)
+	AddReceipt(ctx context.Context, p domain.Principal, matterID domain.ID, name string, r io.Reader, size int64) (domain.ID, error)
+}
+
+// ReceiptFile is one receipt file an expense may name.
+type ReceiptFile struct {
+	ID   domain.ID
+	Name string
+}
+
+// InvoiceFiles keeps invoice PDFs in the one file store (PRD 5) as invoice_pdf file records
+// on the invoice's matter. FileLink provides it over the files service. SaveInvoicePDF adds
+// pdf as the next immutable version of fileID, or creates the file when fileID is zero or
+// gone, and returns the file id. by is the person whose send or download stored it.
+type InvoiceFiles interface {
+	SaveInvoicePDF(ctx context.Context, by domain.ID, inv Invoice, fileID domain.ID, pdf []byte) (domain.ID, error)
 }
 
 // Deps wires a Service. Store, Practice, Walls and Audit are required.
@@ -144,8 +164,12 @@ type Deps struct {
 	Trust    Trust
 	Mail     Mailer
 	Mirror   InvoiceMirror
-	// Receipts is nil until the files lane lands; expenses then refuse receipt_file_id.
+	// Receipts checks expense receipts against the files service (FileLink). While it is
+	// nil, expenses refuse receipt_file_id.
 	Receipts Receipts
+	// InvoiceFiles stores sent invoices' PDFs as invoice_pdf file records (FileLink). While
+	// it is nil, PDFs are rendered on demand only.
+	InvoiceFiles InvoiceFiles
 	// Logo returns the bytes of the firm logo file. A JPEG is drawn on the invoice PDF.
 	Logo  func(ctx context.Context, fileID domain.ID) ([]byte, error)
 	Now   func() time.Time
@@ -158,6 +182,8 @@ type Service struct {
 	d    Deps
 	gate access.Gate
 	mu   sync.Mutex
+	// pdfMu serializes storing invoice PDFs, so two downloads of one invoice add one file.
+	pdfMu sync.Mutex
 }
 
 // New returns a service.

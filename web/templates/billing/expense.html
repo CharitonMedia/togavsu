@@ -19,8 +19,20 @@
   <label>Markup % <input type="number" name="markup_percent" min="0" value="{{$e.MarkupPercent}}" size="4"></label>
   <label class="wide">Description <input name="description" value="{{$e.Description}}" required></label>
   <label><input type="checkbox" name="billable" value="1" {{if $e.Billable}}checked{{end}}> Billable</label>
+  {{if .ReceiptsOn}}<label class="wide">Receipt <select name="receipt_file_id">
+    <option value="">No receipt</option>
+    {{range .Receipts}}<option value="{{.ID}}" {{if eq .ID $e.FileID}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select></label>
+  {{if not .Receipts}}<p class="muted wide">No receipt files on this matter yet. Upload one below.</p>{{end}}{{end}}
   <button type="submit">Save expense</button>
 </form>
+{{if .ReceiptsOn}}
+<form method="post" action="/billing/expenses/{{$e.ID}}/receipt" enctype="multipart/form-data" class="grid">
+  {{template "csrf" .CSRF}}
+  <label class="wide">Upload a receipt <input type="file" name="receipt" required></label>
+  <button type="submit">Upload and attach</button>
+</form>
+{{end}}
 </section>
 {{else if $e.InvoiceID}}<p class="muted">This expense is billed. It can change only after its invoice is voided.</p>
 {{end}}

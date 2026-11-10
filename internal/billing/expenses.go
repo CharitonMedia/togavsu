@@ -3,6 +3,7 @@ package billing
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -252,15 +253,50 @@ func (s *Service) UpdateExpense(ctx context.Context, p domain.Principal, id doma
 	return out, err
 }
 
+// ReceiptFiles lists the receipt files on the matter that p may read, for the expense
+// screen's picker. It is empty while Deps.Receipts is unwired.
+func (s *Service) ReceiptFiles(ctx context.Context, p domain.Principal, matterID domain.ID) ([]ReceiptFile, error) {
+	if s.d.Receipts == nil {
+		return nil, nil
+	}
+	if err := s.allow(ctx, p, domain.ResExpense, domain.ActionWrite, matterID); err != nil {
+		return nil, err
+	}
+	return s.d.Receipts.ReceiptFiles(ctx, p, matterID)
+}
+
+// AttachReceipt stores an uploaded receipt in the file store as a receipt file record on the
+// expense's matter and names it as the expense's receipt. A billed expense is refused before
+// any byte is stored. The upload and the expense change are two writes: when the expense
+// change fails after the file is stored, the receipt stays on the matter's files, where the
+// picker offers it again.
+func (s *Service) AttachReceipt(ctx context.Context, p domain.Principal, id domain.ID, name string, r io.Reader, size int64) (Expense, error) {
+	row, err := s.Expense(ctx, p, id)
+	if err != nil {
+		return Expense{}, err
+	}
+	if err := s.allow(ctx, p, domain.ResExpense, domain.ActionWrite, row.MatterID); err != nil {
+		return Expense{}, err
+	}
+	if !row.InvoiceID.IsZero() {
+		return Expense{}, domain.Conflict("a billed expense changes only after its invoice is voided")
+	}
+	if s.d.Receipts == nil {
+		return Expense{}, domain.Invalid("receipt_file_id", "receipt files are not available: the file store is not connected to billing")
+	}
+	fileID, err := s.d.Receipts.AddReceipt(ctx, p, row.MatterID, name, r, size)
+	if err != nil {
+		return Expense{}, err
+	}
+	return s.UpdateExpense(ctx, p, id, ExpenseInput{ReceiptFileID: &fileID})
+}
+
 // checkReceipt refuses a receipt file the caller cannot read or that is not a receipt on
-// the expense's matter. The files service owns that answer, so walls and attorney-only
-// rules apply there, not in billing.
-// ponytail: ceiling: no files service exists yet, so with Deps.Receipts nil every
-// receipt_file_id is refused and expenses carry no receipt. Upgrade trigger: the files
-// lane lands file records; wire its receipt check into Deps.Receipts.
+// the expense's matter. The files service owns that answer (FileLink), so walls, roles and
+// attorney-only rules apply there, not in billing. With Deps.Receipts unwired it refuses.
 func (s *Service) checkReceipt(ctx context.Context, p domain.Principal, matterID, fileID domain.ID) error {
 	if s.d.Receipts == nil {
-		return domain.Invalid("receipt_file_id", "receipt files are not available until the files service is installed")
+		return domain.Invalid("receipt_file_id", "receipt files are not available: the file store is not connected to billing")
 	}
 	if err := s.d.Receipts.CheckReceipt(ctx, p, matterID, fileID); err != nil {
 		var ae *domain.APIError

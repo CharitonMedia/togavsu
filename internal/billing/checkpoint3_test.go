@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -95,6 +96,31 @@ func (r *fakeReceipts) CheckReceipt(_ context.Context, p domain.Principal, matte
 		return domain.Invalid("file_id", "file is on another matter")
 	}
 	return nil
+}
+
+func (r *fakeReceipts) ReceiptFiles(_ context.Context, p domain.Principal, matterID domain.ID) ([]ReceiptFile, error) {
+	if r.down {
+		return nil, errors.New("files store unavailable")
+	}
+	var out []ReceiptFile
+	for id, f := range r.files {
+		if f.matter == matterID && f.readers[p.UserID] {
+			out = append(out, ReceiptFile{ID: id, Name: string(id) + ".pdf"})
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeReceipts) AddReceipt(_ context.Context, p domain.Principal, matterID domain.ID, name string, _ io.Reader, _ int64) (domain.ID, error) {
+	if r.down {
+		return "", errors.New("files store unavailable")
+	}
+	id := domain.ID("rcpt-up-" + name)
+	r.files[id] = struct {
+		matter  domain.ID
+		readers map[domain.ID]bool
+	}{matterID, map[domain.ID]bool{p.UserID: true}}
+	return id, nil
 }
 
 func receiptInput(f *fx, matter domain.ID, file domain.ID) ExpenseInput {

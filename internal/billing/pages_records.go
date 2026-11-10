@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -169,6 +170,19 @@ func (h *Handler) expensePage(_ http.ResponseWriter, r *http.Request, p domain.P
 	pg.CanWrite = h.Svc.allow(ctx, p, domain.ResExpense, domain.ActionWrite, e.MatterID) == nil
 	if pg.CanWrite {
 		pg.Matters = h.editMatters(ctx, p, domain.ResExpense, e.MatterID)
+		if pg.Receipts, err = h.Svc.ReceiptFiles(ctx, p, e.MatterID); err != nil {
+			return "", err
+		}
+		pg.ReceiptsOn = h.Svc.d.Receipts != nil
+		// A kept receipt the picker does not list (trashed since, or now unreadable) stays
+		// selected, so saving the form never drops it silently.
+		listed := e.FileID.IsZero()
+		for _, rf := range pg.Receipts {
+			listed = listed || rf.ID == e.FileID
+		}
+		if !listed {
+			pg.Receipts = append([]ReceiptFile{{ID: e.FileID, Name: "Current receipt"}}, pg.Receipts...)
+		}
 	}
 	h.names(r, pg, e.MatterID)
 	return "expense.html", nil
@@ -199,6 +213,11 @@ func expenseForm(r *http.Request, prefix string) (ExpenseInput, error) {
 	in := ExpenseInput{MatterID: &matter, IncurredOn: &date, Description: &desc, AmountCents: &amount, ExpenseTypeID: &typ}
 	billable := r.FormValue(prefix+"billable") != ""
 	in.Billable = &billable
+	// The expense screen's receipt picker; forms without it leave the receipt alone.
+	if v, ok := r.PostForm[prefix+"receipt_file_id"]; ok && len(v) > 0 {
+		receipt := domain.ID(strings.TrimSpace(v[0]))
+		in.ReceiptFileID = &receipt
+	}
 	if m := strings.TrimSpace(r.FormValue(prefix + "markup_percent")); m != "" {
 		n, err := strconv.Atoi(m)
 		if err != nil {
@@ -294,6 +313,17 @@ func (h *Handler) recordRoutes(post func(string, func(*http.Request, domain.Prin
 		}
 		_, err = h.Svc.UpdateExpense(r.Context(), p, id, in)
 		return back, "Expense saved.", err
+	})
+	post("POST /billing/expenses/{expense_id}/receipt", func(r *http.Request, p domain.Principal) (string, string, error) {
+		id := domain.ID(r.PathValue("expense_id"))
+		back := "/billing/expenses/" + string(id)
+		file, hdr, err := r.FormFile("receipt")
+		if err != nil {
+			return back, "", domain.Invalid("receipt", "choose the receipt file to upload")
+		}
+		defer file.Close()
+		_, err = h.Svc.AttachReceipt(r.Context(), p, id, path.Base(strings.ReplaceAll(hdr.Filename, `\`, "/")), file, hdr.Size)
+		return back, "Receipt uploaded and attached.", err
 	})
 }
 

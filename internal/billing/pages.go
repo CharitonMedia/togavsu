@@ -3,6 +3,8 @@ package billing
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"mime"
 	"net/http"
 	"net/url"
 	"sort"
@@ -90,6 +92,8 @@ type page struct {
 	ReportTitles map[string]string
 	Entry        TimeEntry
 	Cost         Expense
+	Receipts     []ReceiptFile
+	ReceiptsOn   bool
 	Expenses     []Expense
 	ExpenseTypes []NamedType
 	TypeNames    map[string]string
@@ -140,8 +144,8 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 				writeErr(w, err)
 				return
 			}
-			if err := r.ParseForm(); err != nil {
-				writeErr(w, domain.Invalid("form", "unreadable"))
+			if err := h.parseForm(w, r); err != nil {
+				writeErr(w, err)
 				return
 			}
 			if err := checkCSRF(r); err != nil {
@@ -299,6 +303,31 @@ func csrf(w http.ResponseWriter, r *http.Request) string {
 		Secure: r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")})
 	return token
 }
+
+// parseForm reads a screen form. A multipart form (the expense receipt upload) is capped at
+// files.max_upload_bytes plus a little for the other fields; parts past 1 MiB spool to disk.
+func (h *Handler) parseForm(w http.ResponseWriter, r *http.Request) error {
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+		if max := int64(h.Svc.settingInt(r.Context(), "files.max_upload_bytes")); positive(max) {
+			r.Body = http.MaxBytesReader(w, r.Body, max+multipartSlack)
+		}
+		if err := r.ParseMultipartForm(multipartSlack); err != nil {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				return domain.Invalid("receipt", "the file is larger than the upload limit")
+			}
+			return domain.Invalid("form", "unreadable")
+		}
+		return nil
+	}
+	if err := r.ParseForm(); err != nil {
+		return domain.Invalid("form", "unreadable")
+	}
+	return nil
+}
+
+// multipartSlack is the room a multipart form gets beyond the file itself.
+const multipartSlack = 1 << 20
 
 func checkCSRF(r *http.Request) error {
 	c, err := r.Cookie(practice.CSRFCookie)

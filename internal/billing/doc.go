@@ -14,7 +14,8 @@
 //   - core.Migrate applies Migrations() (version 300, billing_records) with the core files.
 //   - core.Open builds New(Deps{Store: NewPostgres(pool), Practice: <practice.Durable>,
 //     Walls: app.Practice.Policy.Walls, Audit: aud, Settings: reg, Mirror: <practice.Durable>,
-//     Trust: NewTrustLink(<trust service>, pool), Mail: <system mail>}), calls Resync once, and mounts
+//     Trust: NewTrustLink(<trust service>, pool), Mail: <system mail>, Receipts: link,
+//     InvoiceFiles: link}) with link from NewFileLink(<files service>), calls Resync once, and mounts
 //     NewHandler(svc, sub(web.Billing, "templates/billing"), app.principal).Routes() for
 //     /api/v1 billing paths and /billing screens ahead of the practice catch-all.
 //   - web/embed.go embeds templates/billing.
@@ -30,9 +31,11 @@ var Pending = []string{
 	"core wiring: migration 300, the handler mount, web embed and the /billing sign-in redirect are lead-owned",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",
 	"invoices:bulk and payment processor initializations are not implemented",
-	"invoice PDFs are rendered on demand, not stored as file records; the logo is drawn only when it is a JPEG",
+	"invoice PDFs: FileLink stores each sent invoice's PDF (on send and on download, one immutable version per distinct rendering) as an invoice_pdf file record on the matter, tested against the merged files service on Postgres; until core wires Deps.InvoiceFiles, PDFs are rendered on demand only. The logo is drawn only when it is a JPEG",
+	"files wiring: Deps.Receipts and Deps.InvoiceFiles (NewFileLink over the merged files service) are lead-owned core wiring",
 	"billing events are stored in billing_records; merging them into the practice timeline is lead-owned",
 	"late interest is applied from the invoice screen (attorney or admin, only when enabled); there is no API route or nightly job",
-	"expense screens offer no receipt upload until the files lane wires Deps.Receipts; custom-field cards on time entries and expenses wait on custom fields",
-	"expense receipts: no files service exists yet, so receipt_file_id is refused until the files lane wires Deps.Receipts",
+	"expense receipts: FileLink checks receipt_file_id against the merged files service (readable by the caller, untrashed, on the expense's matter, classed receipt), and the expense screen uploads a receipt as a receipt file record; until core wires Deps.Receipts, receipt_file_id is refused",
+	"expense receipts over the API alone: the files contract lets no caller set financial_classification, so a file uploaded through /api/v1/files cannot become a receipt; proposed shared change for the files owner: classify a general file as receipt when an expense names it, or accept a receipt classification on upload",
+	"custom-field cards on time entries and expenses wait on custom fields",
 }
