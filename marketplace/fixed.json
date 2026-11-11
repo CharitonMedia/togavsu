@@ -1,0 +1,12 @@
+{
+  "_comment": "Defaults for the marketplace service's own config file (config.example.json) and its request bounds. The service is deployed separately; none of these are firm settings.",
+  "listen": ":8090",
+  "data_dir": "/var/lib/togavsu-marketplace",
+  "operator_token_file": "/run/secrets/marketplace_operator_token",
+  "secure_cookies": true,
+  "author_session_hours": 12,
+  "operator_session_minutes": 60,
+  "read_header_timeout_seconds": 10,
+  "max_json_bytes": 65536,
+  "min_operator_token_bytes": 32
+}

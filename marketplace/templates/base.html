@@ -1,0 +1,17 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.}} · Togavsu marketplace</title>
+<link rel="stylesheet" href="/static/site.css">
+</head>
+<body>
+<header class="top"><a class="brand" href="/">Togavsu marketplace</a>
+<form class="search" action="/" method="get" role="search"><label for="q" class="visually-hidden">Search modules</label><input id="q" name="q" type="search" placeholder="Search modules"><button type="submit">Search</button></form>
+</header>
+<main>{{end}}
+{{define "foot"}}</main>
+<footer><p>Signing proves who published a module, not that it works. The operator does not review, inspect, test or vouch for modules.</p></footer>
+</body>
+</html>{{end}}
