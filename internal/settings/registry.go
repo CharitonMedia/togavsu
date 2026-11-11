@@ -432,6 +432,10 @@ func validateSpecial(def Definition, value string) error {
 		if err := json.Unmarshal([]byte(value), &ids); err != nil || len(ids) == 0 {
 			return fmt.Errorf("%w: %s", ErrInvalid, def.Key)
 		}
+	case "model_prices":
+		if _, err := domain.ParseModelPrices(value); err != nil {
+			return fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
 	case "zone":
 		if _, err := domain.LoadZone(value); err != nil {
 			return fmt.Errorf("%w: %s", ErrInvalid, def.Key)

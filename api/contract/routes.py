@@ -3293,6 +3293,60 @@ def _doc_tender(api: Contract) -> None:
         writes=False,
         extra_access=FILE_WALL,
     )
+    api.add(
+        "get",
+        "/api/v1/files/{file_id}/doc-tender-status",
+        operation_id="getDocTenderStatus",
+        summary="Read a file's Doc Tender status",
+        description=(
+            "The newest job's status and its label for the Files tab, with the file's open or kept review flags. "
+            "A file in a closed matter reads Not processed (matter closed). "
+            "The file's matter wall and attorney-only flag apply: a file the caller cannot read is not_found."
+        ),
+        tag="Doc Tender",
+        features=["doc-tender"],
+        roles=STAFF,
+        scopes=["doc_tender:read"],
+        response="DocTenderFileStatus",
+        writes=False,
+        extra_access=FILE_WALL,
+    )
+    api.add(
+        "post",
+        "/api/v1/files/{file_id}/doc-tender-reprocess",
+        operation_id="reprocessDocTenderFile",
+        summary="Reprocess a file with Doc Tender",
+        description=(
+            "A person asks Doc Tender to process the file's current version again and gets the queued job; emits doc_tender.retry_scheduled. "
+            "A person-locked name, category, matter, or grouping is left alone. "
+            "A file in a closed matter is stored as not_processed_matter_closed and makes no model call. "
+            "The file's matter wall and attorney-only flag apply: a file the caller cannot read is not_found."
+        ),
+        tag="Doc Tender",
+        features=["doc-tender"],
+        roles=ATTORNEY,
+        scopes=["doc_tender:write"],
+        response="DocTenderJob",
+        success="202",
+        events=["doc_tender.retry_scheduled"],
+        extra_access=FILE_WALL,
+    )
+    api.add(
+        "get",
+        "/api/v1/doc-tender/model-choices",
+        operation_id="getDocTenderModelChoices",
+        summary="Doc Tender model choices",
+        description=(
+            "The models the AI tab offers for each Doc Tender task, keyed by task. "
+            "Labeling and categorizing never offer a local endpoint."
+        ),
+        tag="Doc Tender",
+        features=["doc-tender"],
+        roles=ADMIN,
+        scopes=["doc_tender:read"],
+        response="DocTenderModelChoices",
+        writes=False,
+    )
     api.resource(
         collection="/api/v1/doc-tender/categories",
         schema="DocCategory",

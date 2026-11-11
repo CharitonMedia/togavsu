@@ -25,6 +25,8 @@ var pendingOperations = map[string]string{
 	"runEditor":                 "editor task",
 	"convertFile":               "editor task",
 	"getDocTenderResult":        "doc-tender task",
+	"getDocTenderStatus":        "doc-tender task",
+	"reprocessDocTenderFile":    "doc-tender task",
 }
 
 func filesFamily(path string) bool {

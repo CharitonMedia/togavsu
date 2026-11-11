@@ -1845,6 +1845,26 @@ SCHEMAS = _register(
             ["id", "file_id", "file_version_id", "summary", "name_parts", "fields"],
             "Published Doc Tender labels for one file version. fields are the cited critical values.",
         ),
+        "DocTenderFileStatus": _obj(
+            {
+                "status": {"type": "string", "description": "The newest job's status; empty when no job has run."},
+                "label": {"type": "string"},
+                "flags": _arr(
+                    _obj(
+                        {"kind": {"type": "string"}, "label": {"type": "string"}, "detail": {"type": "string"}},
+                        ["kind", "label", "detail"],
+                        "An open or kept review item on the file.",
+                    )
+                ),
+            },
+            ["status", "label", "flags"],
+            "A file's Doc Tender state as the caller sees the file.",
+        ),
+        "DocTenderModelChoices": {
+            "type": "object",
+            "description": "Model choices keyed by Doc Tender task: ocr, photo_description, photo_grouping, transcription, labeling, categorizing.",
+            "additionalProperties": _arr({"type": "string"}),
+        },
         "DocCategory": _meta(
             {
                 "key": {"type": "string"},

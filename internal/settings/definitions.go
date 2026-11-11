@@ -148,6 +148,7 @@ var definitions = []Definition{
 	{Key: "ai.categorizing_model", Kind: KindString, Default: domain.LabelingModel, Tab: TabAI, Help: "Categorizing model. Default gpt-6.1-sol once an OpenAI key is set; otherwise the primary strong model.", PRD: true},
 	{Key: "ai.labeling_allow_local", Kind: KindBool, Default: "false", Tab: TabAI, Help: "Labeling never runs on a local endpoint.", Locked: true, PRD: true},
 	{Key: "ai.categorizing_allow_local", Kind: KindBool, Default: "false", Tab: TabAI, Help: "Categorizing never runs on a local endpoint.", Locked: true, PRD: true},
+	{Key: "ai.model_prices", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Price per model in cents per million tokens, as {\"model\": {\"input\": cents, \"output\": cents}}. A model with no price costs 0 cents in the AI call log.", Special: "model_prices"},
 	{Key: "ai.task_overrides", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Per-task provider and model overrides."},
 
 	{Key: "modules.marketplace_address", Kind: KindString, Default: domain.MarketplaceAddress, Tab: TabModules, Help: "Marketplace the firm checks. Default is the Togavsu marketplace.", PRD: true},

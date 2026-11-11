@@ -776,8 +776,9 @@ WHERE job_id = ? AND status = 'failed'`, us(s.now()), j.ID); err != nil {
 	return j, err
 }
 
-// Reprocess queues a fresh job for a file's current version. Its Markdown copy is
-// added as a new version; fields a person locked are not changed.
+// Reprocess queues a fresh job for a file's current version and emits
+// doc_tender.retry_scheduled (reprocessDocTenderFile). Its Markdown copy is added as a
+// new version; fields a person locked are not changed.
 func (s *Service) Reprocess(ctx context.Context, p domain.Principal, fileID domain.ID) (domain.ID, error) {
 	if !reviewer(p) {
 		return "", domain.Forbidden("only admins and attorneys reprocess files")
@@ -793,7 +794,16 @@ func (s *Service) Reprocess(ctx context.Context, p domain.Principal, fileID doma
 	if f.MatterID != nil {
 		matter = *f.MatterID
 	}
-	return s.Enqueue(ctx, f.ID, *f.CurrentVersionID, matter, reasonReprocess)
+	var id domain.ID
+	err = s.tx(ctx, func(ctx context.Context) error {
+		var err error
+		if id, err = s.Enqueue(ctx, f.ID, *f.CurrentVersionID, matter, reasonReprocess); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, "doc_tender.retry_scheduled", "doc_tender_job", id, matter, "Doc Tender reprocess requested")
+	})
+	s.signal()
+	return id, err
 }
 
 // firstDelay is the retry schedule's first wait; a job that must wait (a provider that

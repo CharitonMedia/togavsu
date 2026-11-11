@@ -13279,6 +13279,127 @@
       }
     },
     {
+      "name": "getDocTenderStatus",
+      "method": "GET",
+      "path": "/api/v1/files/{file_id}/doc-tender-status",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin",
+        "attorney",
+        "staff"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "reprocessDocTenderFile",
+      "method": "POST",
+      "path": "/api/v1/files/{file_id}/doc-tender-reprocess",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:write"
+      ],
+      "roles": [
+        "admin",
+        "attorney"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "idempotency_key",
+          "context_token"
+        ]
+      }
+    },
+    {
+      "name": "getDocTenderModelChoices",
+      "method": "GET",
+      "path": "/api/v1/doc-tender/model-choices",
+      "features": [
+        "doc-tender"
+      ],
+      "scopes": [
+        "doc_tender:read"
+      ],
+      "roles": [
+        "admin"
+      ],
+      "transfer": {
+        "shape": "path_query_body",
+        "path": "Object of path parameters.",
+        "query": "Object of query parameters.",
+        "credentials": {
+          "context_token": {
+            "header": "X-Togavsu-Context-Token",
+            "argument": "context_token",
+            "roles_from_arguments": false
+          }
+        },
+        "forbidden_header_overrides": [
+          "Authorization",
+          "Host"
+        ],
+        "result": {
+          "encoding": "json",
+          "media_type": "application/json"
+        },
+        "arguments": [
+          "path",
+          "query",
+          "context_token"
+        ]
+      }
+    },
+    {
       "name": "listDocCategory",
       "method": "GET",
       "path": "/api/v1/doc-tender/categories",

@@ -1303,9 +1303,19 @@ func testDocTenderCorpus(t *testing.T) {
 	if st := d.dtStatus(d.atty, scan); st["status"] != "published" {
 		t.Fatalf("scan job %v", st)
 	}
+	// With DOCTENDER_REQUIRE_TESSERACT (the core image's run, scripts/ci/test-core-image-cases.sh)
+	// every page's second read is that Tesseract's, not the check model's.
+	_, tessErr := exec.LookPath("tesseract")
+	requireTess := os.Getenv("DOCTENDER_REQUIRE_TESSERACT") != ""
+	if requireTess && tessErr != nil {
+		t.Fatal("tesseract is required (DOCTENDER_REQUIRE_TESSERACT is set) and is not on PATH")
+	}
 	for k, u := range d.unitRows(scan)[:120] {
 		if u["status"] != "passed" || !strings.Contains(u["text"].(string), fmt.Sprintf("PAGE %d OF 120", k+1)) || u["check_method"] == "" {
 			t.Fatalf("page %d: %v", k+1, u)
+		}
+		if requireTess && u["check_method"] != "tesseract" {
+			t.Fatalf("page %d was cross-checked by %v, want tesseract", k+1, u["check_method"])
 		}
 	}
 	_, scanMD := d.markdown(d.atty, scan)

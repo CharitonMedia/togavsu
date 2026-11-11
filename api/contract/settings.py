@@ -235,6 +235,7 @@ SETTINGS: list[dict] = [
     _s("ai.secondary_fast_model", "string", "ai_and_inference", "", "Fast model on the secondary provider."),
     _s("ai.secondary_strong_model", "string", "ai_and_inference", "", "Strong model on the secondary provider."),
     _s("ai.task_overrides", "json", "ai_and_inference", {}, "Per-task provider and model overrides, keyed by task name."),
+    _s("ai.model_prices", "json", "ai_and_inference", {}, "Price per model in cents per million tokens, as {\"model\": {\"input\": cents, \"output\": cents}}. A model with no price costs 0 cents in the AI call log."),
     _s("ai.openai_compatible_base_url", "string", "ai_and_inference", "", "Base URL for the OpenAI-compatible provider."),
     _s("ai.local_base_url", "string", "ai_and_inference", "", "Base URL for the local provider."),
     _s("ai.speech_to_text_models", "json", "ai_and_inference", {}, "Speech-to-text model name keyed by provider id."),
