@@ -419,6 +419,20 @@ class ControllerTests(unittest.TestCase):
         self.assertNotEqual(self.record.get("stalled", {}).get("kind"), "infrastructure")
         self.assertEqual(self.posts(), [])
 
+    def test_a_code_failure_beside_an_outage_gets_a_fix_pass_for_the_code_failure_only(self):
+        self.remote.check_rows["Core tests"] = check("Core tests", "failure")
+        self.remote.check_rows["QA bootstrap tests"] = check("QA bootstrap tests", "failure")
+        self.remote.infra = {"QA bootstrap tests": ("123", "Temporary failure resolving 'archive.ubuntu.com'")}
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        prompt = self.posts()[0][2]["prompt"]["text"]
+        failures = json.loads(prompt.split("Failures: ", 1)[1].split(" These checks", 1)[0])
+        self.assertEqual([f["name"] for f in failures], ["Core tests"])
+        self.assertIn("not yours to fix and will rerun: QA bootstrap tests.", prompt)
+        self.assertNotIn("stalled", self.record)
+        self.assertNotIn("infra_hold", self.record)
+        self.assertIn(problem_fingerprints({"failed_checks": ["Core tests"]})[0], self.record["repair_problems"])
+
     def test_code_failures_beside_no_infrastructure_still_get_a_fix_pass(self):
         self.remote.check_rows["Core tests"] = check("Core tests", "failure")
         self.process()

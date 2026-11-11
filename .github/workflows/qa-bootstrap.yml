@@ -6,24 +6,14 @@ on:
 permissions:
   contents: read
 jobs:
-  image:
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/qa-image.yml
   harness:
+    # QA runs inside an image that already holds tesseract, its English data and the DejaVu fonts.
+    # The image is built in this run from scripts/ci/qa-image; GitHub's layer cache (scoped per
+    # branch, so a pull request cannot change what main uses) means a normal run downloads nothing
+    # from Ubuntu, and a rebuild draws on the recipe's mirror list rather than one Ubuntu server.
     name: QA bootstrap tests
-    needs: image
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      packages: read
-    container:
-      image: ${{ needs.image.outputs.ref }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -37,20 +27,19 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "QA scaffold pending; this infrastructure check accepts no product criterion."
           fi
-      - name: Confirm OCR and font tools from the QA image
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.scaffold.outputs.ready == 'true'
+      - name: Build the QA image from its recipe, reusing GitHub's layer cache
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          context: scripts/ci/qa-image
+          load: true
+          tags: togavsu-qa:local
+          cache-from: type=gha,scope=togavsu-qa
+          cache-to: type=gha,mode=max,scope=togavsu-qa
+      - name: Run harness unit and OCR regression tests and verify generated maps in the QA image
         if: steps.scaffold.outputs.ready == 'true'
         run: |
-          tesseract --version
-          tesseract --list-langs | grep -x eng
-          test -d /usr/share/fonts/truetype/dejavu
-      - name: Create clean Python environment
-        if: steps.scaffold.outputs.ready == 'true'
-        run: |
-          python3 -m venv /tmp/togavsu-qa-venv
-          /tmp/togavsu-qa-venv/bin/python -m pip install -r tests/requirements-dev.txt
-      - name: Run harness unit and OCR regression tests
-        if: steps.scaffold.outputs.ready == 'true'
-        run: /tmp/togavsu-qa-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-      - name: Verify generated maps and pending acceptance
-        if: steps.scaffold.outputs.ready == 'true'
-        run: /tmp/togavsu-qa-venv/bin/python -m tests.harness
+          docker run --rm -v "$PWD:/src" -w /src togavsu-qa:local sh -c \
+            'tesseract --list-langs | grep -x eng && test -d /usr/share/fonts/truetype/dejavu && sh scripts/ci/test-qa.sh'

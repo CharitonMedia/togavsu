@@ -1222,17 +1222,23 @@ class Controller:
                 problem=review_problem(report["findings"]))
             return False
         failures = self.remote.test_failures(checks)
-        if failures and self.hold_infrastructure(task, record, head, failures):
+        infra = self.remote.infrastructure_failures(failures) if failures else {}
+        if failures and {f["name"] for f in failures} <= set(infra):
+            # Every failure is CI infrastructure: no fix pass can help.
+            self.hold_infrastructure(task, record, head, infra)
             return False
         if record.pop("infra_hold", None) and record.get("stalled", {}).get("kind") == "infrastructure":
             record.pop("stalled")
-            self.event(task, "CI reached its servers again; infrastructure hold cleared")
+            self.event(task, "Infrastructure hold cleared on " + head)
         if failures:
+            code = [f for f in failures if f["name"] not in infra]
+            aside = ("" if not infra else " These checks also failed because CI could not reach a server; they are not "
+                     "yours to fix and will rerun: " + ", ".join(sorted(infra)) + ".")
             self.followup(task, record, snapshot, "tests:" + head,
                 "Codex review passed, but CI failed on your existing PR #" + str(number) + ". Read the failing Actions logs, "
                 "fix the causes with regression tests, rerun all applicable tests and update original PR evidence. "
-                "Do not bypass checks or merge. Failures: " + json.dumps(failures),
-                problem={"failed_checks": sorted(c["name"] for c in failures)})
+                "Do not bypass checks or merge. Failures: " + json.dumps(code) + aside,
+                problem={"failed_checks": sorted(c["name"] for c in code)})
             return False
         if codex.get("conclusion") != "success":
             self.halt(task, record, "Passing review artifact conflicts with failed checkpoint status")
@@ -1329,11 +1335,8 @@ class Controller:
         self.save()
         return self.verify_merge(task, record, self.remote.gh("pulls/" + str(number)))
 
-    def hold_infrastructure(self, task, record, head, failures):
-        # Returns True when the failure is CI infrastructure: rerun the failed jobs once, then hold and email.
-        found = self.remote.infrastructure_failures(failures)
-        if not found:
-            return False
+    def hold_infrastructure(self, task, record, head, found):
+        # Every failed check is CI infrastructure: rerun the failed jobs once, then hold and email.
         hold = record.get("infra_hold")
         if not hold or hold.get("head") != head:
             hold = record["infra_hold"] = {"head": head, "reruns": 0}
@@ -1352,7 +1355,6 @@ class Controller:
                 + ". The code is not the cause, so no fix pass is sent."}
             record.pop("waiting", None)
             self.save()
-        return True
 
     def merge_refused(self, task, record, head, number, reason, fresh):
         # Protections stay in force; a refusal on a second cycle holds retries and alerts.

@@ -184,27 +184,23 @@ jobs:
       - name: API contract tests
         run: sh scripts/ci/test-api.sh
 
-  qa-image:
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/qa-image.yml
   qa:
-    # Runs in the QA image, which already holds tesseract, its English data and the DejaVu fonts.
+    # Runs in the QA image built from scripts/ci/qa-image, which already holds tesseract, its
+    # English data and the DejaVu fonts; see qa-bootstrap.yml for how the image is cached.
     name: QA harness tests
-    needs: qa-image
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: read
-    container:
-      image: ${{ needs.qa-image.outputs.ref }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the QA image from its recipe, reusing GitHub's layer cache
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: scripts/ci/qa-image
+          load: true
+          tags: togavsu-qa:local
+          cache-from: type=gha,scope=togavsu-qa
+          cache-to: type=gha,mode=max,scope=togavsu-qa
       - name: QA harness tests
-        run: sh scripts/ci/test-qa.sh
+        run: docker run --rm -v "$PWD:/src" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh
