@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,4 +231,68 @@ func unzipPart(t *testing.T, b []byte, name string) []byte {
 	}
 	t.Fatalf("no part %s", name)
 	return nil
+}
+
+// Nobody learns who is editing a file they may not edit: behind a wall, without
+// attorney-only access, or as a client or accountant, every lock-reading entry point
+// (Document above all) answers not found or forbidden, never edit_lock_held with the
+// holder's name and times. Codex checkpoint P1 on 87f7709.
+func TestPGLockHolderIsHiddenFromThoseWhoCannotEdit(t *testing.T) {
+	e := newEnv(t)
+	walled := e.create(e.attorney, "Walled.docx", e.walled, e.doc(), false)
+	secret := e.create(e.attorney, "Attorney only.docx", e.matter, e.doc(), true)
+	open := e.create(e.staff, "Open.docx", e.matter, e.doc(), false)
+	for _, l := range []struct {
+		who  domain.Principal
+		file domain.ID
+	}{{e.attorney, walled.ID}, {e.attorney, secret.ID}, {e.staff, open.ID}} {
+		if _, err := e.svc.AcquireLock(e.ctx, l.who, l.file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		name string
+		who  domain.Principal
+		file domain.ID
+		want string
+	}{
+		{"outsider", e.outsider, walled.ID, domain.CodeNotFound},
+		{"staff", e.staff, secret.ID, domain.CodeNotFound},
+		{"client", e.client, open.ID, domain.CodeForbidden},
+		{"accountant", e.accountant, open.ID, domain.CodeForbidden},
+	}
+	srv, _ := e.server(nil)
+	for _, c := range cases {
+		calls := map[string]error{}
+		_, _, calls["Document"] = e.svc.Document(e.ctx, c.who, c.file)
+		_, calls["Context"] = e.svc.Context(e.ctx, c.who, c.file)
+		_, calls["Save"] = e.svc.Save(e.ctx, c.who, c.file, "x.docx", e.doc())
+		_, calls["AcquireLock"] = e.svc.AcquireLock(e.ctx, c.who, c.file)
+		_, calls["RenewLock"] = e.svc.RenewLock(e.ctx, c.who, c.file)
+		calls["ReleaseLock"] = e.svc.ReleaseLock(e.ctx, c.who, c.file)
+		_, calls["Run"] = e.svc.Run(e.ctx, c.who, c.file, RunRequest{SaveAs: "version", Commands: []Command{{ID: "text.insert", Parameters: map[string]any{"text": "x"}}}})
+		for op, err := range calls {
+			if got := code(err); got != c.want {
+				t.Errorf("%s by %s = %v (%s), want %s", op, c.name, err, got, c.want)
+			}
+		}
+		for _, path := range []string{"/files/" + string(c.file) + "/edit/document", "/files/" + string(c.file) + "/edit/context"} {
+			res, body := call(t, srv, c.name, "GET", path, nil)
+			if res.StatusCode != http.StatusNotFound && res.StatusCode != http.StatusForbidden {
+				t.Errorf("GET %s by %s = %d %s", path, c.name, res.StatusCode, body)
+			}
+			for _, leak := range []string{CodeEditLockHeld, "Ada Example", "Sam Staff", string(e.attorney.UserID), string(e.staff.UserID), "renewed_at", "since"} {
+				if strings.Contains(string(body), leak) {
+					t.Errorf("GET %s by %s leaks %q: %s", path, c.name, leak, body)
+				}
+			}
+		}
+	}
+	// The holders' locks are untouched, and someone who may edit still sees the holder.
+	if _, _, err := e.svc.Document(e.ctx, e.other, open.ID); code(err) != CodeEditLockHeld {
+		t.Fatalf("Document by a colleague who may edit = %v, want edit_lock_held", err)
+	}
+	if _, _, err := e.svc.Document(e.ctx, e.staff, open.ID); err != nil {
+		t.Fatalf("Document by the holder = %v", err)
+	}
 }

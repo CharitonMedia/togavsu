@@ -21,7 +21,8 @@ import (
 // session or bearer authentication would.
 func (e *env) server(dist fstest.MapFS) (*httptest.Server, map[string]domain.Principal) {
 	e.t.Helper()
-	who := map[string]domain.Principal{"staff": e.staff, "other": e.other, "admin": e.admin, "client": e.client, "attorney": e.attorney}
+	who := map[string]domain.Principal{"staff": e.staff, "other": e.other, "admin": e.admin, "client": e.client, "attorney": e.attorney,
+		"outsider": e.outsider, "accountant": e.accountant}
 	var d fs.FS
 	if dist != nil {
 		d = dist

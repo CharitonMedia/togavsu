@@ -309,11 +309,13 @@ func (s *Service) Save(ctx context.Context, p domain.Principal, fileID domain.ID
 // Document is the current version for the editor page to send in (wordcraft:open). Only
 // the holder of the live lock gets it.
 func (s *Service) Document(ctx context.Context, p domain.Principal, fileID domain.ID) (string, []byte, error) {
-	if err := s.holdsLock(ctx, p, fileID); err != nil {
-		return "", nil, err
-	}
+	// Role, wall, attorney-only and write access come first: a lock held by someone
+	// else names them, and only a person who may edit the file may learn that.
 	cur, err := s.loadCurrent(ctx, p, fileID)
 	if err != nil {
+		return "", nil, err
+	}
+	if err := s.holdsLock(ctx, p, fileID); err != nil {
 		return "", nil, err
 	}
 	return cur.File.Name, cur.Bytes, nil
