@@ -439,7 +439,7 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 		best         map[string]any
 	}
 	var reviews []pending
-	best := map[string]any{"category": cat.Answer.Category, "what_it_is": l.WhatItIs, "doc_date": l.DocDate}
+	best := map[string]any{"what_it_is": l.WhatItIs, "doc_date": l.DocDate}
 	if match.Best != "" {
 		best["matter_id"], best["matter"], best["match_reason"] = string(match.Best), match.BestLabel, match.Why
 	}
@@ -463,21 +463,33 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 		}
 		if len(low) > zero {
 			applyName = false
-			reviews = append(reviews, pending{"low_confidence", "low confidence on the name: " + strings.Join(low, ", "), best})
+			// Accept on a name item applies the name only. The name is built from the
+			// matter's tokens, so it is offered only once the matter is settled, and
+			// never once Doc Tender has named the file (clash suffix included).
+			nameBest := withField(best, "", nil)
+			if j.MatterID != "" && !match.Review {
+				nameBest = withField(best, "name", proposed)
+			}
+			reviews = append(reviews, pending{"low_confidence", "low confidence on the name: " + strings.Join(low, ", "), nameBest})
 		}
 	}
-	if labelOK && !named && !match.Review && !applyName && j.MatterID != "" {
-		// The name is offered for Accept only when it was held back for review. It is
-		// built from the matter's tokens, so not before the matter is settled, and not
-		// once Doc Tender has named the file or is naming it now (clash suffix included).
-		best["name"] = proposed
-	}
+	// Accept on a category item applies the category only, and no category item opens
+	// once a category is settled, so a later pass never offers a different one.
+	catBest := withField(best, "category", cat.Answer.Category)
 	if catOK && cat.Agree && cat.Answer.Confidence < threshold && !categorized {
 		applyCat = false
-		reviews = append(reviews, pending{"low_confidence", fmt.Sprintf("low confidence on the category %s: %.3f", cat.Answer.Category, cat.Answer.Confidence), best})
+		detail := fmt.Sprintf("low confidence on the category %s: %.3f", cat.Answer.Category, cat.Answer.Confidence)
+		if k := len(reviews) - one; k >= zero && reviews[k].kind == "low_confidence" {
+			// One low-confidence item per version: both held-back decisions share it, and
+			// its Accept applies the two it names.
+			reviews[k].detail += "; " + detail
+			reviews[k].best["category"] = cat.Answer.Category
+		} else {
+			reviews = append(reviews, pending{"low_confidence", detail, catBest})
+		}
 	}
 	if catOK && !cat.Agree && !categorized {
-		reviews = append(reviews, pending{"check_disagreement", catU.CheckResult, best})
+		reviews = append(reviews, pending{"check_disagreement", catU.CheckResult, catBest})
 	}
 	if match.Review {
 		reviews = append(reviews, pending{"unmatched_matter", match.Reason, best})
@@ -620,4 +632,16 @@ func (s *Service) safePlan(ctx context.Context, w *work) (specs []unitSpec, pre 
 		}
 	}()
 	return s.plan(ctx, w)
+}
+
+// withField copies an item's best answer and adds one field to it; an empty key adds none.
+func withField(best map[string]any, key string, value any) map[string]any {
+	out := make(map[string]any, len(best))
+	for k, v := range best {
+		out[k] = v
+	}
+	if key != "" {
+		out[key] = value
+	}
+	return out
 }
