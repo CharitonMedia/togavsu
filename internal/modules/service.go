@@ -738,7 +738,11 @@ func (s *Service) DecidePermissions(ctx context.Context, p domain.Principal, id 
 		return View{}, err
 	}
 	if pendingUpdate {
-		if _, err := s.applyUpdate(ctx, p, r, r.PendingPackageID); err != nil {
+		prior := map[string]string{}
+		for _, c := range changes {
+			prior[c.scope] = c.from
+		}
+		if _, err := s.applyUpdate(ctx, p, r, r.PendingPackageID, prior); err != nil {
 			return View{}, err
 		}
 	} else if err := s.activate(ctx, p, r); err != nil {
@@ -1130,10 +1134,14 @@ func (s *Service) Update(ctx context.Context, p domain.Principal, id string, raw
 		v, err := s.view(ctx, r)
 		return UpdateResult{Module: v, PreviousVersion: prev, Outcome: "awaiting_approval"}, err
 	}
-	return s.applyUpdate(ctx, p, r, pid)
+	return s.applyUpdate(ctx, p, r, pid, nil)
 }
 
-func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow, pid string) (UpdateResult, error) {
+// applyUpdate runs the new version's migrations and switches to it. prior holds the
+// permission decisions the admin just changed for this update (scope to earlier
+// decision); if the update fails, keepPrevious brings the decisions and the running
+// token back in step with the version that keeps running.
+func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow, pid string, prior map[string]string) (UpdateResult, error) {
 	prev := r.Version
 	pkg, err := s.loadPackage(ctx, pid)
 	if err != nil {
@@ -1153,23 +1161,34 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 		r.DataQuietSince = s.now().UnixMicro()
 	}
 	if err != nil {
-		if errors.Is(err, ErrChangedMigration) || errors.Is(err, ErrMissingMigration) {
-			if r.PendingPackageID != "" {
-				r.PendingPackageID = ""
-				if serr := s.commit(ctx, func(ctx context.Context) error { return s.saveRow(ctx, r) }); serr != nil {
-					return UpdateResult{}, serr
-				}
-			}
-			return UpdateResult{}, refuse(CodeMigration, err.Error())
+		refused := errors.Is(err, ErrChangedMigration) || errors.Is(err, ErrMissingMigration)
+		save := len(prior) > 0 || r.PendingPackageID != "" || !refused
+		r.PendingPackageID = ""
+		if !refused {
+			r.LastError = err.Error()
 		}
-		r.LastError, r.PendingPackageID = err.Error(), ""
-		if serr := s.commit(ctx, func(ctx context.Context) error {
-			if err := s.saveRow(ctx, r); err != nil {
-				return err
+		after, kerr := s.keepPrevious(ctx, p, &r, prior, pkg.Version)
+		if kerr != nil {
+			return UpdateResult{}, kerr
+		}
+		if save {
+			if serr := s.commit(ctx, func(ctx context.Context) error {
+				if err := s.saveRow(ctx, r); err != nil {
+					return err
+				}
+				if refused {
+					return nil
+				}
+				return s.audit(ctx, p, r.ID, "version", prev, prev, "update to "+pkg.Version+" kept the previous version: "+err.Error())
+			}); serr != nil {
+				return UpdateResult{}, serr
 			}
-			return s.audit(ctx, p, r.ID, "version", prev, prev, "update to "+pkg.Version+" kept the previous version: "+err.Error())
-		}); serr != nil {
-			return UpdateResult{}, serr
+		}
+		if aerr := after(); aerr != nil {
+			return UpdateResult{}, aerr
+		}
+		if refused {
+			return UpdateResult{}, refuse(CodeMigration, err.Error())
 		}
 		v, verr := s.view(ctx, r)
 		return UpdateResult{Module: v, PreviousVersion: prev, Outcome: "kept_previous"}, verr
@@ -1219,6 +1238,82 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 	}
 	v, err := s.view(ctx, r)
 	return UpdateResult{Module: v, PreviousVersion: prev, Outcome: "updated"}, err
+}
+
+// keepPrevious brings a module whose update failed back in step with the version that
+// keeps running (PRD 9.3). Decisions for scopes only the failed version requested are
+// removed, so a later Enable or event delivery can't grant them. prior holds the
+// decisions the admin changed for this update (scope to earlier decision): each goes
+// back to its earlier value, except an approved scope the running version doesn't
+// require that the admin declined. That decline stands, and the running module gets a
+// token reissued from what stays approved, so the withdrawn scope leaves the running
+// token too. The caller saves r, then calls the returned func to revoke the old token
+// and redeploy with the new one.
+func (s *Service) keepPrevious(ctx context.Context, p domain.Principal, r *modRow, prior map[string]string, failed string) (func() error, error) {
+	none := func() error { return nil }
+	running, err := s.loadPackage(ctx, r.PackageID)
+	if err != nil {
+		return none, err
+	}
+	required := map[string]bool{}
+	for _, perm := range running.Manifest.Permissions {
+		required[perm.Scope] = perm.IsRequired()
+	}
+	narrowed := false
+	err = s.commit(ctx, func(ctx context.Context) error {
+		if err := s.dropUnrequested(ctx, p, r.ID, running.Manifest); err != nil {
+			return err
+		}
+		current, err := s.permissions(ctx, r.ID)
+		if err != nil {
+			return err
+		}
+		for _, pv := range current {
+			was, changed := prior[pv.Scope]
+			if !changed {
+				continue
+			}
+			to := was
+			if was == "approved" && pv.Decision == "declined" && !required[pv.Scope] {
+				to, narrowed = "declined", true
+			}
+			if err := s.putPermission(ctx, p, r.ID, pv.Scope, required[pv.Scope], to); err != nil {
+				return err
+			}
+			if to != pv.Decision {
+				if err := s.audit(ctx, p, r.ID, "permission:"+pv.Scope, pv.Decision, to, "update to "+failed+" failed; version "+r.Version+" keeps its decision"); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil || !narrowed || !r.Enabled {
+		return none, err
+	}
+	scopes, err := s.approvedScopes(ctx, r.ID)
+	if err != nil {
+		return none, err
+	}
+	tid, secret, err := s.d.Tokens.IssueModuleToken(ctx, p, r.ID, scopes)
+	if err != nil {
+		return none, err
+	}
+	sealed, err := s.seal(secret)
+	if err != nil {
+		return none, err
+	}
+	old := r.TokenID
+	r.TokenID, r.TokenSecret = tid, sealed
+	rr := *r
+	return func() error {
+		if old != "" {
+			if err := s.d.Tokens.RevokeModuleToken(ctx, p, old); err != nil && !isNotFound(err) {
+				return err
+			}
+		}
+		return s.bringUp(ctx, p, rr, running.Manifest)
+	}, nil
 }
 
 // dropUnrequested removes the module's permission decisions for scopes the new
