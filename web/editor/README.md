@@ -24,8 +24,12 @@ build; `internal/editor` is everything the core does with it.
   side fields, from `internal/editor` `Context`); each time New Pleading opens, the wrapper
   fills its window through law-ui's public `PleadingForm` and posts `togavsu:pleading`
   with the filled parameters. LawCraft at the pin has no command that seeds that window.
+- `src/profiles.rs`: finds court profiles saved in the editor for `togavsu:profile`. A
+  look at LawCraft's store that fails is ignored rather than taken as an empty baseline,
+  so LawCraft's bundled profiles are never written back as the firm's.
 - `test.sh LAWCRAFT_CHECKOUT`: places the wrapper as `build.sh` does and runs its native
-  tests (`cargo test -p togavsu-editor`) against LawCraft's crates at the pin.
+  tests (`cargo test -p togavsu-editor`: `caption.rs`, `profiles.rs` and LawCraft's reused
+  `prefs.rs`/`save_fallback.rs`) against LawCraft's crates at the pin.
 - `build.sh LAWCRAFT_CHECKOUT OUT_DIR`: checks the checkout is exactly the pinned commit
   and unmodified, builds `wordcraft-cli` against LawCraft's own `Cargo.lock` (`--locked`),
   places the wrapper in the checkout as `apps/togavsu-editor`, builds it with `trunk build

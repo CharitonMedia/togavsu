@@ -21,7 +21,7 @@ app="$lawcraft/apps/togavsu-editor"
 rm -rf "$app"
 mkdir -p "$app/src"
 cp "$here/Cargo.toml" "$here/Trunk.toml" "$here/index.html" "$app/"
-cp "$here/src/main.rs" "$here/src/togavsu.rs" "$here/src/caption.rs" "$app/src/"
+cp "$here/src/main.rs" "$here/src/togavsu.rs" "$here/src/caption.rs" "$here/src/profiles.rs" "$app/src/"
 cp "$lawcraft/apps/wordcraft-web/src/web.rs" "$app/src/web.rs"
 patch --forward --batch --no-backup-if-mismatch -p1 -d "$app/src" < "$here/web.patch"
 status=0

@@ -76,6 +76,11 @@ func TestBrowserEditPageE2E(t *testing.T) {
 		if s, _ := m["type"].(string); s != "" {
 			types[s] = true
 		}
+		// Nobody saves a court profile in this run, so none may come back (LawCraft's
+		// bundled profiles once did, when the store's first look failed).
+		if m["type"] == "togavsu:profile" {
+			t.Fatalf("the editor sent back a profile nobody saved: %v", m["profile"])
+		}
 		if m["type"] == "togavsu:result" && m["error"] != nil {
 			t.Fatalf("the firm's details were refused in the editor: %v", m["error"])
 		}
@@ -104,7 +109,7 @@ func TestBrowserEditPageE2E(t *testing.T) {
 	// The browser asks for /favicon.ico, which the core shell serves; nothing else may fail.
 	for _, m := range out.Missing {
 		if m != "404 /favicon.ico" {
-			t.Fatalf("a request failed: %s (all: %v)", m, out.Missing)
+			t.Fatalf("a request failed: %s (all: %v)\nmessages %v", m, out.Missing, out.Messages)
 		}
 	}
 	// New Pleading opened in the browser editor with the matter's caption (PRD 8.20).

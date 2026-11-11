@@ -13,7 +13,6 @@
 //!   changed in the editor, so Togavsu stores it (unverified until a person approves it).
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 use std::rc::Rc;
 
 use serde_json::{Value, json};
@@ -49,8 +48,8 @@ pub struct Extension {
     parent: web_sys::Window,
     origin: String,
     queue: Rc<RefCell<Vec<Job>>>,
-    /// Each court profile as last seen, by id, without its verified flag.
-    known: Option<BTreeMap<String, String>>,
+    /// Court profiles saved in the editor, found for write-back.
+    profiles: crate::profiles::Watch,
     last_check: f64,
     /// Fills New Pleading from the matter.
     caption: crate::caption::Seeder,
@@ -81,7 +80,7 @@ impl Extension {
         window.add_event_listener_with_callback("message", on_message.as_ref().unchecked_ref()).ok()?;
         // The listener lives as long as the page.
         on_message.forget();
-        Some(Self { parent, origin, queue, known: None, last_check: 0.0, caption: Default::default() })
+        Some(Self { parent, origin, queue, profiles: Default::default(), last_check: 0.0, caption: Default::default() })
     }
 
     /// Fill a New Pleading window that just opened, run queued host commands, then report
@@ -112,7 +111,7 @@ impl Extension {
                 self.post(&json!({ "type": "togavsu:result", "id": job.id, "results": results, "error": error }));
             }
             // What the host loaded is Togavsu's already; only later changes are sent back.
-            self.known = Some(snapshot(app));
+            self.profiles.reset(app);
             return;
         }
         let now = js_sys::Date::now();
@@ -120,17 +119,9 @@ impl Extension {
             return;
         }
         self.last_check = now;
-        let seen = snapshot(app);
-        if let Some(old) = &self.known {
-            for (id, text) in &seen {
-                if old.get(id) != Some(text)
-                    && let Ok(profile) = serde_json::from_str::<Value>(text)
-                {
-                    self.post(&json!({ "type": "togavsu:profile", "profile": profile }));
-                }
-            }
+        for profile in self.profiles.changes(app) {
+            self.post(&json!({ "type": "togavsu:profile", "profile": profile }));
         }
-        self.known = Some(seen);
     }
 
     fn post(&self, message: &Value) {
@@ -160,21 +151,4 @@ fn job(data: &wasm_bindgen::JsValue) -> Option<Job> {
         })
         .collect();
     Some(Job { id, commands })
-}
-
-/// Every court profile in the editor's store, by id, as JSON without its verified flag (only a
-/// person in Togavsu verifies a profile, so approving one in the editor is not sent back).
-fn snapshot(app: &mut WordApp) -> BTreeMap<String, String> {
-    let mut out = BTreeMap::new();
-    let Ok(Value::Array(list)) = app.execute("law.profiles.list", json!({})) else { return out };
-    for summary in list {
-        let Some(id) = summary.get("id").and_then(Value::as_str) else { continue };
-        if let Ok(mut profile) = app.execute("law.profiles.get", json!({ "id": id })) {
-            if let Some(o) = profile.as_object_mut() {
-                o.remove("verified");
-            }
-            out.insert(id.to_string(), profile.to_string());
-        }
-    }
-    out
 }

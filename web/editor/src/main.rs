@@ -21,6 +21,8 @@ mod save_fallback;
 mod host;
 #[cfg(any(target_arch = "wasm32", test))]
 mod caption;
+#[cfg(any(target_arch = "wasm32", test))]
+mod profiles;
 #[cfg(target_arch = "wasm32")]
 mod togavsu;
 #[cfg(target_arch = "wasm32")]

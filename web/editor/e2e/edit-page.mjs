@@ -32,7 +32,7 @@ try {
     window.__seen = [];
     window.addEventListener("message", (e) => {
       const d = e.data || {};
-      window.__seen.push({ type: d.type, error: d.error || null, name: d.name || null, params: d.params || null });
+      window.__seen.push({ type: d.type, error: d.error || null, name: d.name || null, params: d.params || null, profile: d.profile ? { id: d.profile.id, name: d.profile.name } : null });
     });
     document.addEventListener("securitypolicyviolation", (e) => {
       (window.__csp = window.__csp || []).push(e.violatedDirective + " " + e.blockedURI);
