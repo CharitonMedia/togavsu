@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image/color"
 	"io"
 	"io/fs"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/doctender/dtcorpus"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/editor"
+	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/storage/storagetest"
 )
 
@@ -1007,4 +1009,535 @@ func TestDocumentsLawCraftEditor(t *testing.T) {
 	if r := d.acct.do("POST", "/api/v1/files/"+letterID+"/editor-runs", map[string]any{"commands": merge, "save_as": "version"}); r.code != http.StatusForbidden && r.code != http.StatusNotFound {
 		t.Fatalf("accountant run: %d %s", r.code, r.body)
 	}
+}
+
+// waitFor polls cond every 100 ms until it holds or limit passes.
+func waitFor(t *testing.T, limit time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(limit)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s did not happen within %v", what, limit)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// dtStatus is a file's Doc Tender status as c sees it.
+func (d *docs) dtStatus(c *client, file string) map[string]any {
+	d.t.Helper()
+	return c.must(http.StatusOK, "GET", "/api/v1/files/"+file+"/doc-tender-status", nil).json
+}
+
+// markdown is the file's newest Markdown copy (rendition row and body) as c sees it.
+func (d *docs) markdown(c *client, file string) (map[string]any, string) {
+	d.t.Helper()
+	var md map[string]any
+	for _, r := range items(d.t, c.must(http.StatusOK, "GET", "/api/v1/files/"+file+"/renditions", nil)) {
+		if r["kind"] == "markdown" && (md == nil || num(d.t, r, "number") > num(d.t, md, "number")) {
+			md = r
+		}
+	}
+	if md == nil {
+		d.t.Fatalf("file %s has no Markdown copy", file)
+	}
+	return md, c.must(http.StatusOK, "GET", "/api/v1/files/"+file+"/renditions/"+md["id"].(string), nil).body
+}
+
+// folderName is the name of the folder a file is filed in.
+func (d *docs) folderName(c *client, matter, folder string) string {
+	d.t.Helper()
+	for _, f := range items(d.t, c.must(http.StatusOK, "GET", "/api/v1/folders?matter_id="+matter, nil)) {
+		if f["id"] == folder {
+			return f["name"].(string)
+		}
+	}
+	return ""
+}
+
+// token issues a bearer token as the admin and returns a client using it.
+func (d *docs) token(body map[string]any) *client {
+	d.t.Helper()
+	r := d.admin.must(http.StatusCreated, "POST", "/api/v1/api-tokens", body)
+	c := newClient(d.t, d.srv.URL)
+	c.bearer = str(d.t, r.json, "secret")
+	return c
+}
+
+const motionText = "MOTION TO WITHDRAW\nFiled 2026-10-15 in case 23AR-CV00825.\nCounsel for the petitioner asks leave to withdraw.\n"
+
+// TestDocumentsDocTenderCorpus is the doctender-corpus phase case (AC-043 to AC-052)
+// on the running core, with the generated synthetic corpus and a synthetic provider on
+// the OpenAI wire. "arrival" runs the core's own background worker and drop-folder
+// scan; "corpus" steps the worker on a settable clock to exercise retries and grouping.
+func TestDocumentsDocTenderCorpus(t *testing.T) {
+	t.Run("arrival", testDocTenderArrival)
+	t.Run("corpus", testDocTenderCorpus)
+}
+
+// AC-043 (staff and drop-folder arrivals): each is processed by the running worker within
+// 10 minutes of arrival with no nightly run, and each comes out with the pattern name as
+// its only name, a category, a summary, its folder and a saved Markdown copy. The client
+// upload and the module-written file need the module runtime (pending); the core
+// refuses both writes today.
+func testDocTenderArrival(t *testing.T) {
+	prov := dtcorpus.NewProvider()
+	defer prov.Close()
+	d := newDocs(t, func(c *Config) { c.ProviderURLs = map[string]string{"openai": prov.URL()} })
+	d.useProvider()
+	d.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/files.drop_steady_seconds", map[string]any{"value": 1})
+	matter, clientContact := d.matter("Example Dissolution", "", map[string]any{"case_number": "23AR-CV00825"})
+	number := str(t, d.admin.must(http.StatusOK, "GET", "/api/v1/matters/"+matter, nil).json, "number")
+	clientUser, err := d.app.Identity.CreateUser(context.Background(), d.adminCaller(), identity.NewUser{Name: "Cleo Client", Email: "cleo@client.example",
+		Password: "synthetic-password-cleo", Roles: []domain.Role{domain.RoleClient}, ContactID: domain.ID(clientContact)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = clientUser
+	// A client user signs in with a session (two-factor is optional for clients); client
+	// tokens carry no files:write scope.
+	asClient := newClient(t, d.srv.URL)
+	login := asClient.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "cleo@client.example", "password": "synthetic-password-cleo"})
+	if str(t, login.json, "status") != "authenticated" {
+		t.Fatalf("client sign-in: %s", login.body)
+	}
+	asClient.csrf = str(t, login.json, "csrf_token")
+	asModule := d.token(map[string]any{"name": "sample module", "module_id": "sample-module", "scopes": []string{"files:read", "files:write"},
+		"approved_scopes": []string{"files:read", "files:write"}})
+	share := filepath.Join(d.cfg.DataDir, "share")
+	d.admin.must(http.StatusCreated, "POST", "/api/v1/storage-backends", map[string]any{"kind": "network_path", "name": "Office NAS", "drop_folder": true, "settings": map[string]any{"path": share}})
+
+	arrived := time.Now()
+	var got []string
+	body := func(date string) []byte { return []byte(strings.Replace(motionText, "2026-10-15", date, 1)) }
+	got = append(got, str(t, d.upload(d.staff, matter, "Scan_0001 final(2).txt", "text/plain", body("2026-10-15"), nil), "id"))
+	// Client users are read-only in the core (PRD 4); client uploads arrive through the
+	// client portal module (PRD 8.19), a later phase. A direct client write is refused.
+	if r := asClient.do("POST", "/api/v1/file-uploads", map[string]any{"file_name": "from client.txt", "matter_id": matter, "size_bytes": 10, "media_type": "text/plain"}); r.code != http.StatusForbidden {
+		t.Fatalf("a client user's direct upload: %d %s", r.code, r.body)
+	}
+	// A module-bound token has no user and no roles until the module runtime grants a
+	// module its manifest's permissions (PRD 9.3), a later phase; today its write is refused.
+	if r := asModule.do("POST", "/api/v1/file-uploads", map[string]any{"file_name": "module output.txt", "matter_id": matter, "size_bytes": 10, "media_type": "text/plain"}); r.code != http.StatusForbidden {
+		t.Fatalf("a module token's upload: %d %s", r.code, r.body)
+	}
+	dropDir := filepath.Join(share, "drop", number)
+	waitFor(t, time.Minute, "the drop folder's matter subfolder", func() bool { _, err := os.Stat(dropDir); return err == nil })
+	if err := os.WriteFile(filepath.Join(dropDir, "dropped.txt"), body("2026-10-18"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, time.Minute, "the drop folder take", func() bool {
+		for _, f := range items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files?matter_id="+matter, nil)) {
+			if f["source"] == "drop_folder" {
+				got = append(got, f["id"].(string))
+				return true
+			}
+		}
+		return false
+	})
+	wantSource := []string{"upload", "drop_folder"}
+	for k, id := range got {
+		waitFor(t, 10*time.Minute, "processing of the "+wantSource[k]+" file", func() bool { return d.dtStatus(d.atty, id)["status"] == "published" })
+		f := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id, nil).json
+		want := "dissolution-" + number + "-motion-to-withdraw-2026-10-" + []string{"15", "18"}[k] + ".txt"
+		if f["name"] != want || f["source"] != wantSource[k] || f["arrived_as"] == f["name"] {
+			t.Fatalf("%s file: name %v (want %s), source %v, arrived as %v", wantSource[k], f["name"], want, f["source"], f["arrived_as"])
+		}
+		if f["category_id"] != "court_filing" || f["folder_id"] == nil || d.folderName(d.atty, matter, f["folder_id"].(string)) != "Pleadings" {
+			t.Fatalf("%s file: category %v, folder %v", wantSource[k], f["category_id"], f["folder_id"])
+		}
+		res := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id+"/doc-tender-result", nil).json
+		if s, _ := res["summary"].(string); s == "" {
+			t.Fatalf("%s file: no summary in %v", wantSource[k], res)
+		}
+		md, mdBody := d.markdown(d.atty, id)
+		if md["name"] != strings.TrimSuffix(want, ".txt")+".md" || !strings.Contains(mdBody, "Counsel for the petitioner") {
+			t.Fatalf("%s file: Markdown %v:\n%s", wantSource[k], md["name"], mdBody)
+		}
+	}
+	if took := time.Since(arrived); took > 10*time.Minute {
+		t.Fatalf("processing took %v", took)
+	}
+	// No nightly run was involved: the sweep finds nothing left to queue.
+	if n, err := d.app.DocTender.Sweep(context.Background()); err != nil || n != 0 {
+		t.Fatalf("the nightly sweep found %d files unprocessed (%v)", n, err)
+	}
+	// The client sees none of the firm's unshared files.
+	if r := asClient.do("GET", "/api/v1/files?matter_id="+matter, nil); strings.Contains(r.body, got[0]) || strings.Contains(r.body, got[1]) || strings.Contains(r.body, "dissolution-") {
+		t.Fatalf("client file list: %d %s", r.code, r.body)
+	}
+}
+
+func (d *docs) adminCaller() identity.Caller {
+	d.t.Helper()
+	u, _ := url.Parse(d.srv.URL)
+	var session string
+	for _, c := range d.admin.http.Jar.Cookies(u) {
+		if c.Name == sessionCookie {
+			session = c.Value
+		}
+	}
+	caller, err := d.app.Identity.Authenticate(context.Background(), identity.Presented{SessionToken: session})
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	return caller
+}
+
+// unitRows are a job's units (name, status, attempts) in order, read from Postgres.
+func (d *docs) unitRows(file string) []map[string]any {
+	d.t.Helper()
+	rows, err := d.app.Pool.Query(`SELECT u.unit, u.status, u.attempts, u.text, u.check_method, u.check_result FROM doc_tender_units u
+JOIN doc_tender_jobs j ON j.id = u.job_id WHERE j.file_id = $1 AND j.kind = 'file' ORDER BY j.created_at DESC, u.ordinal`, file)
+	if err != nil {
+		d.t.Fatal(err)
+	}
+	defer rows.Close()
+	var out []map[string]any
+	for rows.Next() {
+		var name, status, text, method, result string
+		var attempts int
+		if err := rows.Scan(&name, &status, &attempts, &text, &method, &result); err != nil {
+			d.t.Fatal(err)
+		}
+		out = append(out, map[string]any{"unit": name, "status": status, "attempts": attempts, "text": text, "check_method": method, "check_result": result})
+	}
+	return out
+}
+
+// AC-044 to AC-052 on one install, stepping the worker on a settable clock.
+func testDocTenderCorpus(t *testing.T) {
+	prov := dtcorpus.NewProvider()
+	defer prov.Close()
+	clk := newTestClock()
+	d := newDocs(t, func(c *Config) {
+		c.ProviderURLs = map[string]string{"openai": prov.URL()}
+		c.NoBackground = true
+		c.Now = clk.now
+	})
+	ctx := context.Background()
+	matter, _ := d.matter("Example Dissolution", "", map[string]any{"case_number": "23AR-CV00825"})
+	number := str(t, d.admin.must(http.StatusOK, "GET", "/api/v1/matters/"+matter, nil).json, "number")
+	walled, _ := d.matter("Sealed Guardianship", "", nil)
+	d.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{d.adminID, d.attyID}})
+
+	// Before AI is set up every file is stored, listed and held (PRD 8.21).
+	held := str(t, d.upload(d.staff, matter, "early.txt", "text/plain", []byte(motionText), nil), "id")
+	d.drain()
+	if st := d.dtStatus(d.atty, held); st["status"] != "held_for_ai_setup" || len(prov.Calls()) != 0 {
+		t.Fatalf("before AI setup: %v, %d model calls", st, len(prov.Calls()))
+	}
+	d.useProvider()
+	d.drain()
+	if st := d.dtStatus(d.atty, held); st["status"] != "published" {
+		t.Fatalf("after AI setup: %v", st)
+	}
+
+	// --- AC-052: labeling on gpt-6.1-sol, no local endpoint for labeling or categorizing ---
+	var model string
+	if err := d.app.Pool.QueryRow(`SELECT model FROM ai_call_log WHERE task = 'labeling' ORDER BY created_at LIMIT 1`).Scan(&model); err != nil || model != "gpt-6.1-sol" {
+		t.Fatalf("labeling ran on %q (%v), want gpt-6.1-sol", model, err)
+	}
+	if prov.Count("labeling:gpt-6.1-sol") == 0 {
+		t.Fatalf("the provider saw no labeling call on gpt-6.1-sol: %v", prov.Calls())
+	}
+	choices := d.admin.must(http.StatusOK, "GET", "/api/v1/doc-tender/model-choices", nil).json
+	for _, task := range []string{"labeling", "categorizing"} {
+		list, _ := choices[task].([]any)
+		if len(list) == 0 {
+			t.Fatalf("no %s choices: %v", task, choices)
+		}
+		for _, c := range list {
+			if strings.HasPrefix(c.(string), "local") {
+				t.Fatalf("the AI tab offers %s for %s", c, task)
+			}
+		}
+	}
+	for _, key := range []string{"ai.labeling_allow_local", "ai.categorizing_allow_local"} {
+		if r := d.admin.do("PATCH", "/api/v1/settings/"+key, map[string]any{"value": true}); r.code < 400 {
+			t.Fatalf("%s could be turned on: %d", key, r.code)
+		}
+	}
+
+	// --- AC-044: 120 scanned pages, a failure injected at page 49 resumes at page 49 ---
+	prov.FailOCR("PAGE 49 OF 120", 2)
+	scan := str(t, d.upload(d.staff, matter, "exhibit-scan.pdf", "application/pdf", dtcorpus.ScannedPDF(120), nil), "id")
+	d.drain()
+	units := d.unitRows(scan)
+	var pages []map[string]any
+	for _, u := range units {
+		if strings.HasPrefix(u["unit"].(string), "page ") {
+			pages = append(pages, u)
+		}
+	}
+	if len(pages) != 120 {
+		t.Fatalf("%d page units, want 120", len(pages))
+	}
+	for _, u := range pages[:48] {
+		if u["status"] != "passed" || u["attempts"] != 1 {
+			t.Fatalf("%v before the failure", u)
+		}
+	}
+	if pages[48]["status"] != "pending" || pages[48]["attempts"] != 2 {
+		t.Fatalf("page 49 after the injected failures: %v", pages[48])
+	}
+	for _, u := range pages[49:] {
+		if u["attempts"] != 0 {
+			t.Fatalf("%v started before page 49 passed", u["unit"])
+		}
+	}
+	readsBefore := len(prov.OCRReads())
+	clk.advance(15 * time.Minute)
+	d.drain()
+	after := prov.OCRReads()[readsBefore:]
+	if len(after) == 0 || !strings.Contains(after[0], "PAGE 49 OF 120") {
+		t.Fatalf("the resumed job read %q first, want page 49", after[:min(1, len(after))])
+	}
+	for _, r := range after {
+		for k := 1; k <= 48; k++ {
+			if strings.Contains(r, fmt.Sprintf("PAGE %d OF 120\n", k)) {
+				t.Fatalf("page %d was read again after the resume", k)
+			}
+		}
+	}
+	if st := d.dtStatus(d.atty, scan); st["status"] != "published" {
+		t.Fatalf("scan job %v", st)
+	}
+	for k, u := range d.unitRows(scan)[:120] {
+		if u["status"] != "passed" || !strings.Contains(u["text"].(string), fmt.Sprintf("PAGE %d OF 120", k+1)) || u["check_method"] == "" {
+			t.Fatalf("page %d: %v", k+1, u)
+		}
+	}
+	_, scanMD := d.markdown(d.atty, scan)
+	if !strings.Contains(scanMD, "## Page 49\n\nEXHIBIT SCAN\nPAGE 49 OF 120") || strings.Contains(scanMD, "unresolved") {
+		t.Fatalf("scan Markdown:\n%.600s", scanMD)
+	}
+
+	// --- AC-050: the Markdown copy is what Files search matches; walls; base name ---
+	if hits := ids(items(t, d.staff.must(http.StatusOK, "GET", "/api/v1/files?q=PLAINTIFF+EXHIBIT+FOR+HEARING", nil))); !hits[scan] {
+		t.Fatalf("search for text only the scanned pixels hold: %v", hits)
+	}
+	sealedScan := str(t, d.upload(d.atty, walled, "sealed-scan.pdf", "application/pdf", dtcorpus.ScannedPDF(1), nil), "id")
+	d.drain()
+	smd, _ := d.markdown(d.atty, sealedScan)
+	sname := str(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+sealedScan, nil).json, "name")
+	if smd["name"] != strings.TrimSuffix(sname, ".pdf")+".md" {
+		t.Fatalf("Markdown copy %v of %s", smd["name"], sname)
+	}
+	if r := d.staff.do("GET", "/api/v1/files/"+sealedScan+"/renditions/"+smd["id"].(string), nil); r.code != http.StatusNotFound {
+		t.Fatalf("staff outside the wall read its Markdown copy: %d", r.code)
+	}
+	if r := d.staff.must(http.StatusOK, "GET", "/api/v1/files?q=PLAINTIFF+EXHIBIT+FOR+HEARING", nil); strings.Contains(r.body, sealedScan) {
+		t.Fatal("staff search matched the walled Markdown copy")
+	}
+	if r := d.staff.do("GET", "/api/v1/files/"+sealedScan+"/doc-tender-result", nil); r.code != http.StatusNotFound {
+		t.Fatalf("staff read the walled result: %d", r.code)
+	}
+	var archive bytes.Buffer
+	if _, err := d.app.Files.ExportBytes(ctx, d.adminP(), &archive, nil); err != nil {
+		t.Fatal(err)
+	}
+	inBackup := map[string]bool{}
+	_ = tarEach(archive.Bytes(), func(name string, _ []byte) { inBackup[strings.TrimPrefix(name, "objects/")] = true })
+	if !inBackup[smd["id"].(string)] {
+		t.Fatal("the walled file's Markdown copy is not in the backup")
+	}
+	// Each critical field is cited to the page it was read on.
+	res := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+held+"/doc-tender-result", nil).json
+	fields, _ := res["fields"].([]any)
+	if len(fields) != 1 || num(t, fields[0].(map[string]any), "citation", "page") != 1 || fields[0].(map[string]any)["value"] != "23AR-CV00825" {
+		t.Fatalf("cited fields %v", res["fields"])
+	}
+
+	// --- AC-045: eight photos of a 3-page letter and a 5-page lease ---
+	var photos []string
+	for k, p := range dtcorpus.LetterLeasePhotos() {
+		photos = append(photos, str(t, d.upload(d.staff, matter, fmt.Sprintf("IMG_%04d.png", 100+k), "image/png", p, nil), "id"))
+	}
+	d.drain()
+	clk.advance(11 * time.Minute) // no new photos for 10 minutes: the matter's photos are grouped
+	d.drain()
+	groups := map[string]string{}
+	for _, f := range items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files?matter_id="+matter, nil)) {
+		if f["extension"] != "pdf" {
+			continue
+		}
+		// A grouped PDF's version is saved "how: grouping" (file_versions.how).
+		for _, v := range items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+f["id"].(string)+"/versions", nil)) {
+			if v["how"] == "grouping" {
+				groups[f["id"].(string)] = f["name"].(string)
+			}
+		}
+	}
+	if len(groups) != 2 {
+		t.Fatalf("%d grouped PDFs, want 2: %v", len(groups), groups)
+	}
+	var sawLetter, sawLease bool
+	for id := range groups {
+		_, md := d.markdown(d.atty, id)
+		switch {
+		case strings.Contains(md, "LETTER"):
+			sawLetter = true
+			if !inOrder(md, "LETTER\nPAGE 1 OF 3", "LETTER\nPAGE 2 OF 3", "LETTER\nPAGE 3 OF 3") || strings.Contains(md, "LEASE") {
+				t.Fatalf("letter Markdown out of order:\n%s", md)
+			}
+		case strings.Contains(md, "LEASE"):
+			sawLease = true
+			if !inOrder(md, "PAGE 1 OF 5", "PAGE 2 OF 5", "PAGE 3 OF 5", "PAGE 4 OF 5", "PAGE 5 OF 5") || strings.Contains(md, "LETTER") {
+				t.Fatalf("lease Markdown out of order:\n%s", md)
+			}
+		}
+		links := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id+"/links", nil).body
+		n := 0
+		for _, p := range photos {
+			if strings.Contains(links, p) {
+				n++
+			}
+		}
+		if n != 3 && n != 5 {
+			t.Fatalf("grouped PDF %s links %d photos: %s", id, n, links)
+		}
+	}
+	if !sawLetter || !sawLease {
+		t.Fatalf("groups %v", groups)
+	}
+
+	// --- AC-046: audio and video transcripts with timestamps; the video adds the screen ---
+	audio := str(t, d.upload(d.staff, matter, "voicemail.wav", "audio/wav", dtcorpus.ToneWAV(dtcorpus.On(3)), nil), "id")
+	video := str(t, d.upload(d.staff, matter, "bodycam.avi", "video/x-msvideo",
+		dtcorpus.FramesAVI([]color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}), nil), "id")
+	d.drain()
+	for _, id := range []string{audio, video} {
+		if st := d.dtStatus(d.atty, id); st["status"] != "published" {
+			t.Fatalf("media %s: %v", id, st)
+		}
+	}
+	_, amd := d.markdown(d.atty, audio)
+	_, vmd := d.markdown(d.atty, video)
+	if !strings.Contains(amd, "00:00") || !strings.Contains(amd, "steady tone") {
+		t.Fatalf("audio transcript:\n%s", amd)
+	}
+	if !strings.Contains(vmd, "00:00") || !strings.Contains(vmd, "steady tone") || !strings.Contains(vmd, "On screen") || !strings.Contains(vmd, "red") || !strings.Contains(vmd, "blue") {
+		t.Fatalf("video report:\n%s", vmd)
+	}
+
+	// --- AC-047: a closed matter makes no model call; reopening processes the file ---
+	closing, _ := d.matter("Closed Estate", "", nil)
+	d.admin.must(http.StatusOK, "POST", "/api/v1/matters/"+closing+"/close", map[string]any{"reason": "completed", "confirm_warnings": true})
+	calls := len(prov.Calls())
+	shut := str(t, d.upload(d.staff, closing, "late letter.txt", "text/plain", []byte("LETTER FROM THE COURT\nDated 2026-11-01.\n"), nil), "id")
+	d.drain()
+	if st := d.dtStatus(d.atty, shut); st["status"] != "not_processed_matter_closed" || !strings.Contains(fmt.Sprint(st["label"]), "matter closed") {
+		t.Fatalf("closed matter file: %v", st)
+	}
+	if n := len(prov.Calls()); n != calls {
+		t.Fatalf("a closed matter's file made %d model calls", n-calls)
+	}
+	if code, _ := d.download(d.atty, shut, str(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+shut, nil).json, "current_version_id")); code != http.StatusOK {
+		t.Fatalf("the closed matter's file is not downloadable: %d", code)
+	}
+	d.admin.must(http.StatusOK, "POST", "/api/v1/matters/"+closing+"/reopen", map[string]any{"reason": "new filing arrived"})
+	d.drain()
+	if st := d.dtStatus(d.atty, shut); st["status"] != "published" {
+		t.Fatalf("after reopening: %v", st)
+	}
+
+	// --- AC-048: password-protected, damaged and low-confidence files ---
+	d.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.smtp_from", map[string]any{"value": "doctender@firm.example"})
+	mailBefore := len(d.smtp.to(adminEmail))
+	prov.Label("UNCERTAIN SCRIBBLE", "maybe a note", 0.42, "")
+	bad := map[string]string{
+		"password_protected": str(t, d.upload(d.staff, matter, "settlement.pdf", "application/pdf", dtcorpus.EncryptedPDF("open-sesame"), nil), "id"),
+		"damaged":            str(t, d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", dtcorpus.DamagedPDF(), nil), "id"),
+		"low_confidence":     str(t, d.upload(d.staff, matter, "scribble.txt", "text/plain", []byte("UNCERTAIN SCRIBBLE\nsomething about the case\n"), nil), "id"),
+	}
+	d.drain()
+	clk.advance(16 * time.Minute) // past the 15-minute bundle window
+	d.drain()
+	queue := d.atty.must(http.StatusOK, "GET", "/api/v1/doc-tender/exceptions?status=open", nil)
+	for kind, id := range bad {
+		found := false
+		for _, ex := range items(t, queue) {
+			if ex["file_id"] == id && ex["kind"] == kind {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("no open %s exception for %s in %s", kind, id, queue.body)
+		}
+		st := d.dtStatus(d.atty, id)
+		if flags, _ := st["flags"].([]any); len(flags) == 0 {
+			t.Fatalf("%s file has no flag: %v", kind, st)
+		}
+		f := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id, nil).json
+		if code, _ := d.download(d.atty, id, f["current_version_id"].(string)); code != http.StatusOK {
+			t.Fatalf("%s file is not downloadable: %d", kind, code)
+		}
+		if r := d.atty.must(http.StatusOK, "GET", "/api/v1/files?matter_id="+matter, nil); !strings.Contains(r.body, id) {
+			t.Fatalf("%s file is not listed", kind)
+		}
+	}
+	if len(d.smtp.to(adminEmail)) <= mailBefore {
+		t.Fatal("the admin was not mailed about the new exceptions")
+	}
+	if r := d.staff.do("GET", "/api/v1/doc-tender/exceptions", nil); r.code != http.StatusForbidden {
+		t.Fatalf("staff read the review queue: %d", r.code)
+	}
+	if n := d.count(`SELECT COUNT(*) FROM notifications WHERE kind LIKE 'doc_tender%' AND user_id = $1`, d.attyID); n == 0 {
+		t.Fatal("no review-queue notification for the attorney")
+	}
+
+	// --- AC-049: what a person set is never changed; reprocessing adds a Markdown version ---
+	target := held
+	d.atty.must(http.StatusOK, "POST", "/api/v1/files/"+target+"/rename", map[string]any{"name": "my own name"})
+	other, _ := d.matter("Other Matter", "", nil)
+	d.atty.must(http.StatusOK, "PATCH", "/api/v1/files/"+target, map[string]any{"category_id": "correspondence", "matter_id": matter})
+	_ = other
+	before, beforeBody := d.markdown(d.atty, target)
+	d.atty.must(http.StatusAccepted, "POST", "/api/v1/files/"+target+"/doc-tender-reprocess", map[string]any{})
+	d.drain()
+	f := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+target, nil).json
+	if f["name"] != "my own name.txt" || f["category_id"] != "correspondence" || f["matter_id"] != matter {
+		t.Fatalf("reprocess changed what a person set: %v %v %v", f["name"], f["category_id"], f["matter_id"])
+	}
+	afterMD, _ := d.markdown(d.atty, target)
+	if num(t, afterMD, "number") != num(t, before, "number")+1 {
+		t.Fatalf("reprocess Markdown version %v after %v", afterMD["number"], before["number"])
+	}
+	if old := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+target+"/renditions/"+before["id"].(string), nil).body; old != beforeBody {
+		t.Fatal("reprocessing changed the old Markdown copy")
+	}
+	if afterMD["name"] != "my own name.md" {
+		t.Fatalf("the Markdown copy's name does not follow the rename: %v", afterMD["name"])
+	}
+
+	// --- AC-051: the naming pattern and a new category apply to the next file ---
+	if r := d.admin.do("PUT", "/api/v1/doc-tender/naming", map[string]any{"pattern": "<matter#>-<status>-<what-it-is>.<ext>"}); r.code != http.StatusBadRequest || !strings.Contains(r.body, "status") {
+		t.Fatalf("a status token was accepted: %d %s", r.code, r.body)
+	}
+	if r := d.staff.do("PUT", "/api/v1/doc-tender/naming", map[string]any{"pattern": "<matter#>-<what-it-is>.<ext>"}); r.code != http.StatusForbidden {
+		t.Fatalf("staff changed the pattern: %d", r.code)
+	}
+	d.admin.must(http.StatusOK, "PUT", "/api/v1/doc-tender/naming", map[string]any{"pattern": "<matter#>-<what-it-is>-<doc-date>.<ext>"})
+	d.admin.must(http.StatusCreated, "POST", "/api/v1/doc-tender/categories", map[string]any{"key": "fee_dispute", "description": "Fee dispute papers", "tier": "standard", "folder_name": "Billing"})
+	prov.Category("FEE DISPUTE", "fee_dispute")
+	next := str(t, d.upload(d.staff, matter, "dispute.txt", "text/plain", []byte("FEE DISPUTE NOTICE\nDated 2026-11-02.\n"), nil), "id")
+	d.drain()
+	nf := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+next, nil).json
+	if nf["name"] != number+"-fee-dispute-notice-2026-11-02.txt" || nf["category_id"] != "fee_dispute" {
+		t.Fatalf("next file: name %v, category %v", nf["name"], nf["category_id"])
+	}
+}
+
+// inOrder reports whether every part appears in s, each after the one before.
+func inOrder(s string, parts ...string) bool {
+	at := 0
+	for _, p := range parts {
+		i := strings.Index(s[at:], p)
+		if i < 0 {
+			return false
+		}
+		at += i + len(p)
+	}
+	return true
 }

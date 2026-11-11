@@ -47,11 +47,13 @@ type Provider struct {
 	label map[string]map[string]any
 	// ocrSeen records every OCR read, in order.
 	ocrSeen []string
+	// category overrides the categorizing answer for a body containing the key.
+	category map[string]string
 }
 
 // NewProvider starts the provider; Close stops it.
 func NewProvider() *Provider {
-	p := &Provider{failOCR: map[string]int{}, label: map[string]map[string]any{}}
+	p := &Provider{failOCR: map[string]int{}, label: map[string]map[string]any{}, category: map[string]string{}}
 	p.Server = httptest.NewServer(http.HandlerFunc(p.serve))
 	return p
 }
@@ -75,6 +77,13 @@ func (p *Provider) Label(key, what string, conf float64, date string) {
 	p.mu.Lock()
 	p.label[key] = map[string]any{"what_it_is": what, "what_it_is_confidence": conf, "doc_date": date, "doc_date_confidence": conf,
 		"summary": "A synthetic test document.", "fields": []any{}}
+	p.mu.Unlock()
+}
+
+// Category answers categorizing for any body containing key with category.
+func (p *Provider) Category(key, category string) {
+	p.mu.Lock()
+	p.category[key] = category
 	p.mu.Unlock()
 }
 
@@ -246,7 +255,7 @@ func (p *Provider) chat(w http.ResponseWriter, r *http.Request) {
 	case "labeling":
 		answer = jsonText(p.labelFor(body))
 	case "categorizing":
-		answer = jsonText(categoryFor(body))
+		answer = jsonText(p.categoryFor(body))
 	default:
 		http.Error(w, "unknown prompt", http.StatusBadRequest)
 		return
@@ -383,7 +392,15 @@ func (p *Provider) labelFor(body string) map[string]any {
 		"summary": "A synthetic test document.", "fields": fields}
 }
 
-func categoryFor(body string) map[string]any {
+func (p *Provider) categoryFor(body string) map[string]any {
+	p.mu.Lock()
+	for key, c := range p.category {
+		if strings.Contains(body, key) {
+			p.mu.Unlock()
+			return map[string]any{"category": c, "confidence": 0.95}
+		}
+	}
+	p.mu.Unlock()
 	lower := strings.ToLower(body)
 	cat := "reference"
 	switch {
