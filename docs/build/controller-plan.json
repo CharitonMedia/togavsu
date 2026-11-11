@@ -1097,5 +1097,6 @@
       "full_acceptance": true
     }
   ],
-  "max_repairs": 1
+  "max_repairs": 1,
+  "max_corrections_per_assignment": 3
 }
