@@ -528,3 +528,84 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("example config %v", err)
 	}
 }
+
+// An unverified claim on someone else's public key does not lock out its holder: the key
+// goes to whoever first proves possession, and the proof drops other pending claims
+// (Codex checkpoint finding on PR #37; PRD 10.6 signing-key registration).
+func TestUnverifiedKeyClaimDoesNotBlockHolder(t *testing.T) {
+	e := newEnv(t)
+	login := func(name, email string) string {
+		t.Helper()
+		if r := e.do("POST", "/v1/authors", "", map[string]any{"name": name, "email": email, "password": "synthetic author password"}); r.code != http.StatusCreated {
+			t.Fatalf("register %d %s", r.code, r.body)
+		}
+		var tok struct{ Token string }
+		e.do("POST", "/v1/sessions", "", map[string]any{"email": email, "password": "synthetic author password"}).json(t, &tok)
+		return tok.Token
+	}
+	aTok, bTok := login("A", "a@example.test"), login("B", "b@example.test")
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	pem := shared.PublicKeyPEM(pub)
+
+	// B learns A's public key and claims it first, unverified.
+	r := e.do("POST", "/v1/authors/me/keys", bTok, map[string]any{"public_key_pem": pem})
+	if r.code != http.StatusCreated {
+		t.Fatalf("B's pending claim: %d %s", r.code, r.body)
+	}
+	var bk KeyView
+	r.json(t, &bk)
+	// Without the private key B cannot verify it, and nothing is published.
+	_, other, _ := ed25519.GenerateKey(rand.Reader)
+	if r := e.do("POST", "/v1/authors/me/keys/"+bk.KeyID+"/verify", bTok, map[string]any{"signature": shared.Sign(other, shared.KeyProofMessage(bk.KeyID, bk.Challenge))}); r.code != http.StatusBadRequest {
+		t.Fatalf("B verified a key it does not hold: %d %s", r.code, r.body)
+	}
+	if keys := e.m.SigningKeys(); len(keys) != 0 {
+		t.Fatalf("unverified claim published: %+v", keys)
+	}
+
+	// A, the holder, can still register and verify the key.
+	r = e.do("POST", "/v1/authors/me/keys", aTok, map[string]any{"public_key_pem": pem})
+	if r.code != http.StatusCreated {
+		t.Fatalf("holder blocked by B's unverified claim: %d %s", r.code, r.body)
+	}
+	var ak KeyView
+	r.json(t, &ak)
+	if ak.KeyID != bk.KeyID || ak.Verified || ak.Challenge == "" || ak.Challenge == bk.Challenge {
+		t.Fatalf("A needs its own fresh challenge: A %+v B %+v", ak, bk)
+	}
+	// A proof over B's challenge does not verify A's claim.
+	if r := e.do("POST", "/v1/authors/me/keys/"+ak.KeyID+"/verify", aTok, map[string]any{"signature": shared.Sign(priv, shared.KeyProofMessage(bk.KeyID, bk.Challenge))}); r.code != http.StatusBadRequest {
+		t.Fatalf("proof over another claim's challenge accepted: %d %s", r.code, r.body)
+	}
+	if r := e.do("POST", "/v1/authors/me/keys/"+ak.KeyID+"/verify", aTok, map[string]any{"signature": shared.Sign(priv, shared.KeyProofMessage(ak.KeyID, ak.Challenge))}); r.code != http.StatusOK {
+		t.Fatalf("holder could not verify: %d %s", r.code, r.body)
+	}
+	keys := e.m.SigningKeys()
+	if len(keys) != 1 || keys[0].KeyID != ak.KeyID || keys[0].Author != "A" {
+		t.Fatalf("the verified key must name its holder A: %+v", keys)
+	}
+
+	// B's pending claim is gone; once verified, the key is A's and B is refused.
+	var bList struct{ Data []KeyView }
+	e.do("GET", "/v1/authors/me/keys", bTok, nil).json(t, &bList)
+	if len(bList.Data) != 0 {
+		t.Fatalf("B's pending claim survived A's proof: %+v", bList.Data)
+	}
+	if r := e.do("POST", "/v1/authors/me/keys", bTok, map[string]any{"public_key_pem": pem}); r.code != http.StatusConflict {
+		t.Fatalf("B claimed a verified key: %d %s", r.code, r.body)
+	}
+	if r := e.do("POST", "/v1/authors/me/keys/"+ak.KeyID+"/verify", bTok, map[string]any{"signature": shared.Sign(priv, shared.KeyProofMessage(ak.KeyID, ak.Challenge))}); r.code != http.StatusConflict {
+		t.Fatalf("B verify on A's key: %d %s", r.code, r.body)
+	}
+	// B cannot upload with it.
+	p := pkg(t, "matter-clock", "0.1.0")
+	up := map[string]any{"package_base64": base64.StdEncoding.EncodeToString(p), "signature": shared.Sign(priv, p), "key_id": ak.KeyID}
+	if r := e.do("POST", "/v1/authors/me/packages", bTok, up); r.code != http.StatusBadRequest {
+		t.Fatalf("B uploaded with A's key: %d %s", r.code, r.body)
+	}
+	// The outcome survives a restart.
+	e.open()
+	if keys := e.m.SigningKeys(); len(keys) != 1 || keys[0].Author != "A" {
+		t.Fatalf("after restart: %+v", keys)
+	}
+}

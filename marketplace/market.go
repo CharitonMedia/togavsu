@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/mail"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -235,8 +236,12 @@ func keyView(k Key) KeyView {
 	return v
 }
 
-// AddKey registers a public key for the author, unverified, with a fresh challenge. A key
-// another author registered is refused: one key names one publisher.
+// AddKey registers a public key for the author, unverified, with a fresh challenge. Only a
+// verified registration blocks other authors (one key names one publisher, the one who
+// proved holding it). An unverified claim is per author: anyone may claim a public key they
+// have seen, but the key goes to whoever first proves possession in VerifyKey, and that
+// proof drops every other author's pending claim. Re-adding one's own key returns the
+// existing entry and its challenge.
 func (m *Market) AddKey(a Author, publicKeyPEM string) (KeyView, error) {
 	pub, err := shared.ParsePublicKeyPEM(publicKeyPEM)
 	if err != nil {
@@ -248,14 +253,22 @@ func (m *Market) AddKey(a Author, publicKeyPEM string) (KeyView, error) {
 	}
 	k := Key{KeyID: shared.KeyID(pub), AuthorID: a.ID, PublicKeyPEM: shared.PublicKeyPEM(pub), Challenge: challenge, CreatedAt: m.now()}
 	err = m.commit(func(st *State) error {
-		for _, x := range st.Keys {
-			if x.KeyID == k.KeyID {
-				if x.AuthorID != a.ID {
-					return ErrConflict
-				}
-				k = x
-				return nil
+		var own *Key
+		for i := range st.Keys {
+			x := &st.Keys[i]
+			if x.KeyID != k.KeyID {
+				continue
 			}
+			if x.AuthorID != a.ID && x.Verified {
+				return ErrConflict
+			}
+			if x.AuthorID == a.ID {
+				own = x
+			}
+		}
+		if own != nil {
+			k = *own
+			return nil
 		}
 		st.Keys = append(st.Keys, k)
 		return nil
@@ -281,27 +294,38 @@ func (m *Market) Keys(a Author) []KeyView {
 func (m *Market) VerifyKey(a Author, keyID, signature string) (KeyView, error) {
 	var out Key
 	err := m.commit(func(st *State) error {
+		var k *Key
 		for i := range st.Keys {
-			k := &st.Keys[i]
-			if k.KeyID != keyID || k.AuthorID != a.ID {
+			x := &st.Keys[i]
+			if x.KeyID != keyID {
 				continue
 			}
-			if k.Verified {
-				out = *k
-				return nil
+			if x.AuthorID != a.ID && x.Verified {
+				return ErrConflict
 			}
-			pub, err := shared.ParsePublicKeyPEM(k.PublicKeyPEM)
-			if err != nil {
-				return invalid("key_id", "the stored key is unreadable")
+			if x.AuthorID == a.ID {
+				k = x
 			}
-			if shared.VerifySignature(pub, shared.KeyProofMessage(k.KeyID, k.Challenge), signature) != nil {
-				return invalid("signature", "the signature does not prove this key; sign proof_message with its private key")
-			}
-			k.Verified, k.VerifiedAt, k.Challenge = true, m.now(), ""
+		}
+		if k == nil {
+			return ErrNotFound
+		}
+		if k.Verified {
 			out = *k
 			return nil
 		}
-		return ErrNotFound
+		pub, err := shared.ParsePublicKeyPEM(k.PublicKeyPEM)
+		if err != nil {
+			return invalid("key_id", "the stored key is unreadable")
+		}
+		if shared.VerifySignature(pub, shared.KeyProofMessage(k.KeyID, k.Challenge), signature) != nil {
+			return invalid("signature", "the signature does not prove this key; sign proof_message with its private key")
+		}
+		k.Verified, k.VerifiedAt, k.Challenge = true, m.now(), ""
+		out = *k
+		// The proven holder takes the key; other authors' unproven claims are dropped.
+		st.Keys = slices.DeleteFunc(st.Keys, func(x Key) bool { return x.KeyID == keyID && x.AuthorID != a.ID })
+		return nil
 	})
 	return keyView(out), err
 }
@@ -435,7 +459,7 @@ func viewOf(st *State, l ListingRecord) shared.Listing {
 		}
 	}
 	for _, k := range st.Keys {
-		if k.KeyID == cur.KeyID {
+		if k.KeyID == cur.KeyID && k.Verified {
 			out.SigningKeyPEM = k.PublicKeyPEM
 		}
 	}
