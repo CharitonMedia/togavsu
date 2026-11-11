@@ -364,15 +364,23 @@ func (s *Service) appearance(ctx context.Context) Appearance {
 		ClientHeader: pr.Header, HeadingFont: s.setting(ctx, "appearance.heading_font"), BodyFont: s.setting(ctx, "appearance.body_font"),
 		TextSize: s.setting(ctx, "appearance.text_size"), Mode: s.setting(ctx, "appearance.mode")}
 	if custom {
+		chosen := false
 		pick := func(dst *string, v string) {
 			if hexColor.MatchString(v) {
 				*dst = v
+				chosen = true
 			}
 		}
 		pick(&a.StaffSidebar, c.StaffSidebar)
 		pick(&a.StaffHeader, c.StaffHeader)
 		pick(&a.StaffPage, c.StaffPage)
 		pick(&a.StaffAccent, c.StaffAccent)
+		// Custom colors read back as custom (an empty preset), so the admin page keeps
+		// Custom selected and a resave keeps the colors. With no preset and no custom
+		// colors saved, the first preset stands as the default.
+		if chosen {
+			a.Preset = ""
+		}
 	}
 	if hexColor.MatchString(c.ClientHeader) {
 		a.ClientHeader = c.ClientHeader

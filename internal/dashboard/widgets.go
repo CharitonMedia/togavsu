@@ -111,7 +111,7 @@ func ValidateManifestWidgets(module string, ws []ManifestWidget) error {
 		if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(t, "//") {
 			return domain.Invalid(field+".target", "widget "+w.ID+" target must be a path on this site")
 		}
-		if w.W < fixed.GridOrigin || w.W > GridColumns || w.H < fixed.GridOrigin {
+		if w.W < fixed.GridOrigin || w.W > GridColumns || w.H < fixed.GridOrigin || w.H > fixed.MaxWidgetHeight {
 			return domain.Invalid(field, "widget size is outside the grid")
 		}
 		for _, r := range w.Roles {

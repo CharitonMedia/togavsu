@@ -225,6 +225,13 @@ func TestManifestWidgetsNeedAClickThroughTarget(t *testing.T) {
 	if err := ValidateManifestWidgets("Bad Slug", []ManifestWidget{{ID: "a", Title: "A", Target: "/x"}}); err == nil {
 		t.Fatal("bad module id accepted")
 	}
+	// Review thread on PR 35: a widget taller than a layout allows cannot install.
+	if err := ValidateManifestWidgets("matter-clock", []ManifestWidget{{ID: "tall", Title: "Tall", Target: "/x", W: 4, H: fixed.MaxWidgetHeight + 1}}); err == nil {
+		t.Fatal("a widget taller than the layout limit installed")
+	}
+	if err := ValidateManifestWidgets("matter-clock", []ManifestWidget{{ID: "max", Title: "Max", Target: "/x", W: 4, H: fixed.MaxWidgetHeight}}); err != nil {
+		t.Fatalf("a widget at the layout limit was refused: %v", err)
+	}
 	c := NewCatalog(nil)
 	if err := c.AddModule("matter-clock", []ManifestWidget{{ID: "ok", Title: "OK", Target: "/m/ok"}, {ID: "bad", Title: "Bad"}}, nil); err == nil {
 		t.Fatal("a manifest with one target-less widget installed")
@@ -442,6 +449,18 @@ func TestAppearanceIsAuditedAndLive(t *testing.T) {
 	}
 	if th := svc.ThemeFor(ctx, staffP); th.StaffSidebar != "#123456" || th.StaffAccent != "#abcdef" {
 		t.Fatalf("custom colors: %+v", th)
+	}
+	// Review thread on PR 35: custom colors read back as custom, and saving the form
+	// unchanged keeps them.
+	got, err := svc.GetAppearance(ctx, adminP)
+	if err != nil || got.Preset != "" {
+		t.Fatalf("custom appearance reads back as preset %q: %v", got.Preset, err)
+	}
+	if _, err := svc.SetAppearance(ctx, adminP, got); err != nil {
+		t.Fatal(err)
+	}
+	if th := svc.ThemeFor(ctx, staffP); th.Preset != "" || th.StaffSidebar != "#123456" {
+		t.Fatalf("an unchanged resave dropped the custom colors: %+v", th)
 	}
 	if _, err := svc.SetAppearance(ctx, adminP, Appearance{StaffSidebar: "red;}"}); code(err) != domain.CodeValidation {
 		t.Fatalf("css injection accepted: %v", err)
