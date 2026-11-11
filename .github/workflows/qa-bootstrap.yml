@@ -7,40 +7,10 @@ permissions:
   contents: read
 jobs:
   image:
-    # Builds the QA image only when its recipe changes; every other run reuses the stored image,
-    # so QA never downloads packages from Ubuntu's servers.
-    name: QA image
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
-    outputs:
-      ref: ${{ steps.name.outputs.ref }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Name the image after its recipe
-        id: name
-        run: |
-          sum=$(cat scripts/ci/qa-image/Dockerfile scripts/ci/qa-image/mirrors.txt | sha256sum | cut -c1-16)
-          echo "ref=ghcr.io/charitonmedia/togavsu-qa:$sum" >> "$GITHUB_OUTPUT"
-      - name: Sign in to GitHub's container registry
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ACTOR: ${{ github.actor }}
-        run: echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-      - name: Build and store the image if this recipe has none yet
-        env:
-          REF: ${{ steps.name.outputs.ref }}
-        run: |
-          if docker manifest inspect "$REF" > /dev/null 2>&1; then
-            echo "Reusing $REF"
-            exit 0
-          fi
-          docker build -t "$REF" scripts/ci/qa-image
-          docker push "$REF"
+    uses: ./.github/workflows/qa-image.yml
   harness:
     name: QA bootstrap tests
     needs: image
