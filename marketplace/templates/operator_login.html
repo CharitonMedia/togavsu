@@ -1,0 +1,9 @@
+{{template "head" "Operator sign in"}}
+<h1>Operator sign in</h1>
+{{if .}}{{if .Failed}}<p class="warning" role="alert">That token is not the operator token.</p>{{end}}{{end}}
+<form method="post" action="/operator/login">
+<label for="token">Operator token</label>
+<input id="token" name="token" type="password" autocomplete="off" required>
+<button type="submit">Sign in</button>
+</form>
+{{template "foot"}}
