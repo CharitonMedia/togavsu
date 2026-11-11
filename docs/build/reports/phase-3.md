@@ -1,8 +1,8 @@
 # Phase 3 report: billing and trust on the composed core
 
-Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `88b757c056681381c79247117716be7de461f0cb` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. At that SHA the four phase cases and the cross-domain, Close and aging tests pass locally. The full required jobs at that code (Core tests, API contract tests, QA harness, Supervisor tests, Backup integration, Supervisor image) come only from [Product CI run 42939569108](https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), where all six passed. A local `test-core.sh` and `test-api.sh` at that SHA did not complete (a loaded host and a missing python3-venv) and are recorded as such in the evidence. The full local pass of all six jobs was at `b59f0aa`, before the review changes listed below. AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
+Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `2dc18a11539363b9bf8042de77f3abb2cc52911e` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. At that SHA the four phase cases, the cross-domain and Close tests, the settings contract tests and the smtpsend, settings, trust and billing packages pass locally. The full required jobs at that code (Core tests, API contract tests, QA harness, Supervisor tests, Backup integration, Supervisor image) are [Product CI run 42943577136](https://github.com/CharitonMedia/togavsu/actions/runs/42943577136), where all six passed. Earlier local runs at `88b757c`, including a `test-core.sh` and `test-api.sh` that did not complete (a loaded host and a missing python3-venv), stay in the evidence with their exit codes. The full local pass of all six jobs was at `b59f0aa`, before the review changes listed below. AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
 
-## Phase cases at 88b757c056681381c79247117716be7de461f0cb (each exit 0)
+## Phase cases at 2dc18a11539363b9bf8042de77f3abb2cc52911e (each exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Status: **all four phase cases pass; full product acceptance pending.** Billing 
 | finance-permissions | AC-003, AC-004, AC-018 | `go test -count=1 -v -run '^TestFinancePermissions$' ./internal/core/` |
 | trust-notices | AC-021 | `go test -count=1 -v -run '^TestFinanceTrustNotices$' ./internal/core/` |
 
-Also at that SHA, each exit 0: `TestFinanceCloseDuringSilentMailServer`, `TestARAgingDatesVoidsAndReversalsInTheFirmZone` and `TestFinanceCrossDomainTransfers`. With INSERT on `billing_records` revoked, Apply trust fails after its trust post, and the trust row and its audit rows roll back with it. Trust-funded payments, their reversals, bulk caps and a restart are covered too.
+Also at that SHA, each exit 0: `TestFinanceCloseDuringSilentMailServer`, `TestFinanceCrossDomainTransfers`, `TestSTARTTLSSettingMatchesTheContract`, `TestNewSettingsMatchTheContract`, and the `internal/smtpsend`, `internal/settings`, `internal/trust` and `internal/billing` packages (billing includes `TestARAgingDatesVoidsAndReversalsInTheFirmZone`). With INSERT on `billing_records` revoked, Apply trust fails after its trust post, and the trust row and its audit rows roll back with it. Trust-funded payments, their reversals, bulk caps and a restart are covered too.
 
 The tests drive the running core over HTTP with real Postgres (a fresh non-superuser role set up like `togavsu_app`) and a loopback SMTP server. Synthetic data only.
 
@@ -35,7 +35,7 @@ Pending globally, with what passes now:
 
 ## Visual QC
 
-21 headless Chrome steps at `b59f0aa`, with no console errors and no 4xx or 5xx responses. Step 18, the Settings Mail tab with the new `mail.smtp_timeout_seconds` (shown at 45 with the changed badge, default 60), was captured at `3444dda`; the tested SHA differs from it only in `internal/core/finance_pg_test.go`. No other screen changed after `b59f0aa`. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
+21 headless Chrome steps at `b59f0aa`, with no console errors and no 4xx or 5xx responses. Step 18, the Settings Mail tab with the new `mail.smtp_timeout_seconds` (shown at 45 with the changed badge, default 60), was captured at `3444dda`; `aabe34b` adds one checkbox to that tab, `mail.smtp_starttls`, drawn by the same settings form; it was not captured again. No other screen changed after `b59f0aa`. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
 
 ## Changes after b59f0aa
 
@@ -45,6 +45,7 @@ These answer the review gate's findings. Each is covered by the tests run at the
 - Each billing and trust send is bounded by the new admin setting `mail.smtp_timeout_seconds` (integer, default 60, 1 to 600, Mail tab), registered under the contract's key and type, with the contract files regenerated.
 - AR aging compares void and reversal times by the firm's local day (`TestARAgingDatesVoidsAndReversalsInTheFirmZone`).
 - `TestFinanceTrustInvariants` waits for the outbox row to be marked sent instead of checking once; one local run under load landed between delivery and the update. No product change.
+- System mail requires STARTTLS by default (new admin setting `mail.smtp_starttls`, on by default, Mail tab): without it the message stays queued with an error instead of going in plain text. A message the server accepted counts as sent even when QUIT stalls, and trust notice delivery stops between sends on shutdown (`aabe34b`; `internal/smtpsend` and `internal/trust` tests, `TestFinanceInvoiceWorkflows`). The setting is checked against the contract (`2dc18a1`, `TestSTARTTLSSettingMatchesTheContract`).
 
 ## Simplification and debt
 

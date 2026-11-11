@@ -1,8 +1,8 @@
 {
  "task_id": "integrate-finance",
  "status": "pass",
- "scope": "Phase 3 integration: billing and trust composed into the running core on Postgres with practice, identity, settings and audit; their API, MCP tools and screens; system mail; transactional billing-trust transfers. status pass means the assigned integration behavior and all four phase cases pass at the tested revision. At 88b757c the phase cases and the cross-domain, Close and aging tests ran locally; the full test-core.sh, test-api.sh, supervisor, backup, QA and image results for that code come only from Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c. The full local pass of every required job was at b59f0aa, before the review changes. It is not full product acceptance: 44 of 52 criteria remain pending globally, including AC-003, AC-004, AC-006, AC-018 and AC-021 whose phase cases pass.",
- "tested_revision": "88b757c056681381c79247117716be7de461f0cb",
+ "scope": "Phase 3 integration: billing and trust composed into the running core on Postgres with practice, identity, settings and audit; their API, MCP tools and screens; system mail; transactional billing-trust transfers. status pass means the assigned integration behavior and all four phase cases pass at the tested revision. At 2dc18a1 the phase cases, the cross-domain and Close tests, the settings contract tests and the smtpsend, settings, trust and billing packages ran locally; the full test-core.sh, test-api.sh, supervisor, backup, QA and image results for that code come from Product CI run 42943577136 (https://github.com/CharitonMedia/togavsu/actions/runs/42943577136) on 2dc18a1. The full local pass of every required job was at b59f0aa, before the review changes. It is not full product acceptance: 44 of 52 criteria remain pending globally, including AC-003, AC-004, AC-006, AC-018 and AC-021 whose phase cases pass.",
+ "tested_revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e",
  "phase_cases": [
   {
    "id": "invoice-workflows",
@@ -14,7 +14,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestFinanceInvoiceWorkflows$' ./internal/core/",
    "exit_code": 0,
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "id": "trust-invariants",
@@ -26,7 +26,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestFinanceTrustInvariants$' ./internal/core/",
    "exit_code": 0,
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "id": "finance-permissions",
@@ -38,7 +38,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestFinancePermissions$' ./internal/core/",
    "exit_code": 0,
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "id": "trust-notices",
@@ -48,7 +48,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestFinanceTrustNotices$' ./internal/core/",
    "exit_code": 0,
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   }
  ],
  "passed_acceptance_ids": [
@@ -137,7 +137,7 @@
  },
  "ci": {
   "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
-  "current_revision_ci": "Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c. All six required jobs passed there. The head adds only docs/build/reports files to 88b757c. The Postgres test TestFinanceCloseDuringSilentMailServer also runs there (test-core.sh fails on a skipped Finance test).",
+  "current_revision_ci": "Product CI run 42943577136 (https://github.com/CharitonMedia/togavsu/actions/runs/42943577136) on 2dc18a1, the tested revision. All six required jobs passed there, including TestFinanceCloseDuringSilentMailServer, TestARAgingDatesVoidsAndReversalsInTheFirmZone and the STARTTLS tests (test-core.sh fails on a skipped Finance test). The pull request head adds only docs/build/reports files to 2dc18a1.",
   "required_jobs": [
    "Core tests",
    "API contract tests",
@@ -146,7 +146,7 @@
    "Backup integration",
    "Supervisor image"
   ],
-  "local_environment_note": "Local runs used Docker postgres:17 servers, the Ubuntu PostgreSQL 18 client for the backup test (CI pins the 17 client), Go 1.22.12, and tesseract-ocr, tesseract-ocr-eng and fonts-dejavu-core installed from apt as the QA job does. The first full pass used one shared postgres:17 server (user postgres) for every suite: every command exited 0 except test-backup-integration.sh, which exited 1 (seven restore-recovery tests) because that suite expects fresh servers with the CI user and database togavsu, as its separate CI job provides; the supervisor package is not changed by this branch. Two fresh servers were created as in CI (user and database togavsu) and test-backup-integration.sh, test-core.sh and test-api.sh were rerun on them at the same revision; all exited 0 (16 of 16 restore tests passed). The recorded backup result is that rerun. At 88b757c the phase cases ran one at a time on a shared host beside another lane's suite. A local test-core.sh there hit the 15-minute package timeout in every database package, and the supervisor's timing tests failed, because the host was loaded; it is not counted. test-api.sh could not run there (python3-venv is not installed). Product CI's Core tests and API contract tests jobs are the result for that code."
+  "local_environment_note": "Local runs used Docker postgres:17 servers, the Ubuntu PostgreSQL 18 client for the backup test (CI pins the 17 client), Go 1.22.12, and tesseract-ocr, tesseract-ocr-eng and fonts-dejavu-core installed from apt as the QA job does. The first full pass used one shared postgres:17 server (user postgres) for every suite: every command exited 0 except test-backup-integration.sh, which exited 1 (seven restore-recovery tests) because that suite expects fresh servers with the CI user and database togavsu, as its separate CI job provides; the supervisor package is not changed by this branch. Two fresh servers were created as in CI (user and database togavsu) and test-backup-integration.sh, test-core.sh and test-api.sh were rerun on them at the same revision; all exited 0 (16 of 16 restore tests passed). The recorded backup result is that rerun. At 88b757c the phase cases ran one at a time on a shared host beside another lane's suite. A local test-core.sh there hit the 15-minute package timeout in every database package, and the supervisor's timing tests failed, because the host was loaded; it is not counted. test-api.sh could not run there (python3-venv is not installed). Product CI's Core tests and API contract tests jobs are the result for that code. At 2dc18a1 the phase cases and packages listed in tests ran one at a time on the same shared host, each exit 0; test-core.sh and test-api.sh were not run locally there, so Product CI run 42943577136 is the result for those jobs."
  },
  "visual_qc": {
   "record": "docs/build/reports/screens/integrate-finance/qc.json",
@@ -156,7 +156,8 @@
   "mail_tab": {
    "revision": "3444ddaa7834b61c97c7fa6722db74a525658a70",
    "screenshot": "docs/build/reports/screens/integrate-finance/18-settings-mail-tab.png",
-   "summary": "Settings, Mail tab (/settings?tab=notifications_mail) as the admin in headless Chrome: mail.smtp_timeout_seconds shows 45 with the changed badge (default 60). Pages 200, favicon 204, no console errors. 88b757c differs from 3444dda only in internal/core/finance_pg_test.go."
+   "summary": "Settings, Mail tab (/settings?tab=notifications_mail) as the admin in headless Chrome: mail.smtp_timeout_seconds shows 45 with the changed badge (default 60). Pages 200, favicon 204, no console errors.",
+   "not_recaptured": "aabe34b adds one checkbox, mail.smtp_starttls, to the Mail tab. It renders through the same generic settings form as the other Mail settings (bool kind) and was not captured again; the screenshot above is from 3444dda."
   }
  },
  "simplification": {
@@ -170,9 +171,9 @@
   "debt_entries_after": 52,
   "review": "Composition reuses the packages' own seams (TrustLink, TrustEvents, Durable as Practice, Mirror and balance sink, the handlers' Routes) with no adapter layer; routing tries the three service muxes with ServeMux.Handler instead of a second route table, and MCP mounting reuses the same list. The trust mail loop reuses trust.DeliverMail and trust.SMTP; billing's mailer is the only new mail code (standard library mime/multipart, no new module); after the checkpoint review both mailers send through internal/smtpsend, net/smtp's client on a connection bound to the caller's context, also standard library. The per-request caller memo replaced a second authentication and removed integration ceiling 4; registering api.bulk_batch_max removed two package ponytails. Debt grows by 15 because the billing and trust packages' existing ponytails were not in the ledger; one new entry (the 30-second mail loop) and one routing note were added; one entry was removed."
  },
- "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at 88b757c, as do TestFinanceCrossDomainTransfers, TestFinanceCloseDuringSilentMailServer and TestARAgingDatesVoidsAndReversalsInTheFirmZone. The unit tests for the review changes ran at their commits (checkpoint_followups.local_unit_runs). The full required jobs at this code are Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c; a local test-core.sh and test-api.sh at 88b757c did not complete (see tests). Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes.",
+ "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at 2dc18a1, as do TestFinanceCrossDomainTransfers, TestFinanceCloseDuringSilentMailServer, TestSTARTTLSSettingMatchesTheContract, TestNewSettingsMatchTheContract and the smtpsend, settings, trust and billing packages (billing includes TestARAgingDatesVoidsAndReversalsInTheFirmZone). The full required jobs at this code are Product CI run 42943577136 (https://github.com/CharitonMedia/togavsu/actions/runs/42943577136) on 2dc18a1, where all six passed. Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes.",
  "checkpoint_followups": {
-  "summary": "Commits after b59f0aa answer the review gate's findings. Every phase case and the Close and aging tests were rerun locally at 88b757c (tests above). The six required jobs, including test-core.sh and test-api.sh, are Product CI on the pull request head, whose product code is 88b757c.",
+  "summary": "Commits after b59f0aa answer the review gate's findings. Every phase case, the cross-domain and Close tests, both settings contract tests and the smtpsend, settings, trust and billing packages were rerun locally at 2dc18a1 (tests above). The six required jobs, including test-core.sh and test-api.sh, are Product CI run 42943577136 on 2dc18a1.",
   "changes": [
    {
     "commits": [
@@ -215,6 +216,26 @@
     "tests": [
      "internal/core: TestFinanceTrustInvariants"
     ]
+   },
+   {
+    "commits": [
+     "aabe34b"
+    ],
+    "change": "System mail no longer falls back to plain text when a server does not offer STARTTLS: the new admin setting mail.smtp_starttls (bool, default on, Mail tab) makes smtpsend.Send refuse before MAIL/RCPT with ErrNoSTARTTLS, so the message stays queued with that error. A message the server accepted counts as sent even when QUIT stalls. Trust notice delivery checks for cancellation before each send, so Close does not start another send.",
+    "tests": [
+     "internal/smtpsend: TestSendRequiresSTARTTLSWhenAsked, TestSendSucceedsWhenQuitStalls",
+     "internal/trust: TestPGDeliverMailStopsWhenCancelled",
+     "internal/core: TestFinanceInvoiceWorkflows (with mail.smtp_starttls on, sending an invoice to the plain relay fails and the invoice stays a draft with no message relayed)"
+    ]
+   },
+   {
+    "commits": [
+     "2dc18a1"
+    ],
+    "change": "mail.smtp_starttls is checked against the published settings contract (key, type, default and tab).",
+    "tests": [
+     "internal/core: TestSTARTTLSSettingMatchesTheContract"
+    ]
    }
   ],
   "local_unit_runs": [
@@ -232,66 +253,72 @@
   {
    "command": "go test -count=1 -v -run '^TestFinanceInvoiceWorkflows$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 30,
+   "seconds": 58,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "command": "go test -count=1 -v -run '^TestFinanceTrustInvariants$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 78,
+   "seconds": 24,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "command": "go test -count=1 -v -run '^TestFinancePermissions$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 41,
+   "seconds": 30,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "command": "go test -count=1 -v -run '^TestFinanceTrustNotices$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 53,
+   "seconds": 20,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "command": "go test -count=1 -v -run '^TestFinanceCrossDomainTransfers$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 64,
+   "seconds": 21,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
    "command": "go test -count=1 -v -run '^TestFinanceCloseDuringSilentMailServer$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 104,
+   "seconds": 10,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
-   "command": "go test -count=1 -v -run '^TestARAgingDatesVoidsAndReversalsInTheFirmZone$' ./internal/billing/",
+   "command": "go test -count=1 -run '^(TestSTARTTLSSettingMatchesTheContract|TestNewSettingsMatchTheContract)$' ./internal/core/",
    "exit_code": 0,
    "seconds": 1,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb"
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   },
   {
-   "command": "sh scripts/ci/test-core.sh",
-   "exit_code": 1,
-   "seconds": 960,
-   "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
-   "revision": "88b757c056681381c79247117716be7de461f0cb",
-   "note": "Not counted. Run on a shared, loaded host beside another lane's suite: every database package (billing, core, db, files, identity, practice, trust) hit the 15-minute package timeout with no assertion failure, and internal/supervisor's timing tests failed (copy or path hash did not start in time). Product CI's Core tests and Supervisor tests jobs passed on this code."
-  },
-  {
-   "command": "sh scripts/ci/test-api.sh",
-   "exit_code": 1,
+   "command": "go test -count=1 ./internal/smtpsend/ ./internal/settings/",
+   "exit_code": 0,
    "seconds": 1,
-   "revision": "88b757c056681381c79247117716be7de461f0cb",
-   "note": "Not counted. python3 -m venv failed on the host (python3-venv not installed) before any test ran. Product CI's API contract tests job passed on this code."
+   "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
+  },
+  {
+   "command": "go test -count=1 -timeout 15m ./internal/trust/",
+   "exit_code": 0,
+   "seconds": 232,
+   "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
+  },
+  {
+   "command": "go test -count=1 -timeout 15m ./internal/billing/",
+   "exit_code": 0,
+   "seconds": 187,
+   "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+   "revision": "2dc18a11539363b9bf8042de77f3abb2cc52911e"
   }
  ],
  "earlier_local_runs": {
@@ -435,6 +462,76 @@
     "command": "sh scripts/ci/test-qa.sh",
     "exit_code": 0,
     "seconds": 13
+   }
+  ]
+ },
+ "earlier_local_runs_at_88b757c": {
+  "revision": "88b757c056681381c79247117716be7de461f0cb",
+  "note": "Runs at 88b757c, before aabe34b and 2dc18a1, kept as history with their exit codes.",
+  "tests": [
+   {
+    "command": "go test -count=1 -v -run '^TestFinanceInvoiceWorkflows$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 30,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestFinanceTrustInvariants$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 78,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestFinancePermissions$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 41,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestFinanceTrustNotices$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 53,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestFinanceCrossDomainTransfers$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 64,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestFinanceCloseDuringSilentMailServer$' ./internal/core/",
+    "exit_code": 0,
+    "seconds": 104,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "go test -count=1 -v -run '^TestARAgingDatesVoidsAndReversalsInTheFirmZone$' ./internal/billing/",
+    "exit_code": 0,
+    "seconds": 1,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb"
+   },
+   {
+    "command": "sh scripts/ci/test-core.sh",
+    "exit_code": 1,
+    "seconds": 960,
+    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+    "revision": "88b757c056681381c79247117716be7de461f0cb",
+    "note": "Not counted. Run on a shared, loaded host beside another lane's suite: every database package (billing, core, db, files, identity, practice, trust) hit the 15-minute package timeout with no assertion failure, and internal/supervisor's timing tests failed (copy or path hash did not start in time). Product CI's Core tests and Supervisor tests jobs passed on this code."
+   },
+   {
+    "command": "sh scripts/ci/test-api.sh",
+    "exit_code": 1,
+    "seconds": 1,
+    "revision": "88b757c056681381c79247117716be7de461f0cb",
+    "note": "Not counted. python3 -m venv failed on the host (python3-venv not installed) before any test ran. Product CI's API contract tests job passed on this code."
    }
   ]
  }
