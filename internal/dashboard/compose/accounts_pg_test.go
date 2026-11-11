@@ -12,11 +12,14 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
+	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
@@ -147,9 +150,32 @@ func TestUIUsersAndRoles(t *testing.T) {
 	bad("rate", "-5", "hourly rate")
 	bad("linked_contact_id", "0190a000-0000-7000-8000-000000000001", "a linked contact is for client users")
 	bad("roles", "partner", "unknown role")
+	bad("phone", "call me", "phone number has digits")
 	if n := e.userCount(); n != before {
 		t.Fatalf("a refused add wrote a user: %d -> %d", before, n)
 	}
+	// Codex PR #35 round 6: an unknown linked contact is refused by the database key
+	// after identity inserts the user; the whole add rolls back, so the same email can
+	// be added again once the form is fixed.
+	ghost := url.Values{"name": {"Gus Ghost"}, "email": {"gus@firm.example"}, "phone": {""}, "roles_sent": {"1"},
+		"roles": {"client"}, "password": {"synthetic-password-Gus Ghost"}, "linked_contact_id": {"0190a000-0000-7000-8000-000000000001"}}
+	formErr(t, e.admin, "/admin/users", ghost, "unknown contact")
+	ghost.Set("phone", "call me")
+	ghost.Set("linked_contact_id", "")
+	formErr(t, e.admin, "/admin/users", ghost, "phone number has digits")
+	if n := e.userCount(); n != before {
+		t.Fatalf("a refused add left a user behind: %d -> %d", before, n)
+	}
+	var leftover int
+	if err := e.app.Pool.QueryRow(`SELECT count(*) FROM audit_log WHERE entity = 'user' AND field = 'email' AND new_value = 'gus@firm.example'`).Scan(&leftover); err != nil || leftover != 0 {
+		t.Fatalf("a rolled-back add left %d audit rows (%v)", leftover, err)
+	}
+	ghost.Set("phone", "")
+	gr := formOK(t, e.admin, "/admin/users", ghost)
+	if !strings.HasPrefix(gr.loc, "/admin/users/") || e.userCount() != before+1 {
+		t.Fatalf("the corrected add did not save: %s", gr.loc)
+	}
+	before++
 
 	// Add an attorney from the tab: the extra fields land on the row and are audited.
 	r := formOK(t, e.admin, "/admin/users", add)
@@ -536,5 +562,50 @@ func TestUIProfileAccount(t *testing.T) {
 	}
 	if strings.Contains(e.admin.must(http.StatusOK, "GET", "/me/profile", nil).body, secretRe.FindStringSubmatch(own.body)[1]) {
 		t.Fatal("the token secret shows again")
+	}
+}
+
+// Codex PR #35 round 6: a My profile save that runs alongside an admin's deactivation
+// or role change must not write the stale users row back over it.
+func TestUIProfileSaveKeepsAdminChanges(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	acc := e.ui.Accounts
+	adm := domain.Principal{UserID: domain.ID(e.admin.id), Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceUI}
+	const rounds = 8
+	for i := 0; i < rounds; i++ {
+		email := "pat" + strconv.Itoa(i) + "@firm.example"
+		u := e.createUser("Pat Profile", email, "", domain.RoleStaff, domain.RoleAttorney)
+		self := domain.Principal{UserID: u.ID, Roles: []domain.Role{domain.RoleStaff, domain.RoleAttorney}, Source: domain.SourceUI}
+		staffOnly := []domain.Role{domain.RoleStaff}
+		var wg sync.WaitGroup
+		errs := make([]error, 3)
+		wg.Add(3)
+		go func() {
+			defer wg.Done()
+			_, errs[0] = acc.UpdateUser(ctx, adm, u.ID, dashboard.UserInput{Roles: &staffOnly})
+		}()
+		go func() {
+			defer wg.Done()
+			errs[1] = acc.DeactivateUser(ctx, adm, u.ID)
+		}()
+		go func() {
+			defer wg.Done()
+			name := "Pat Renamed " + strconv.Itoa(i)
+			_, errs[2] = acc.UpdateMe(ctx, self, &name, nil, nil)
+		}()
+		wg.Wait()
+		for _, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: %v", i, err)
+			}
+		}
+		got := e.userRow(string(u.ID))
+		if got.Active || got.Roles != `["staff"]` || got.Name != "Pat Renamed "+strconv.Itoa(i) {
+			t.Fatalf("round %d: a profile save undid an admin change or was lost: active=%v roles=%s name=%q", i, got.Active, got.Roles, got.Name)
+		}
+		if !e.audited(string(u.ID), "active", "true", "false") {
+			t.Fatalf("round %d: deactivation not audited", i)
+		}
 	}
 }

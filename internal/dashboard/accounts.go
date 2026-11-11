@@ -95,8 +95,9 @@ type Accounts struct {
 	Profiles ProfileStore
 	Now      func() time.Time
 
-	// mu serializes this process's role and active changes, so two admins cannot each
-	// remove the other as the last admin at the same moment.
+	// mu serializes this process's users-row writes (admin edits, deactivation and the
+	// My profile name save), so two admins cannot each remove the other as the last
+	// admin at the same moment and a stale row is never written back over a newer one.
 	mu sync.Mutex
 }
 
@@ -231,14 +232,31 @@ func (a *Accounts) CreateUser(ctx context.Context, p domain.Principal, in UserIn
 	if utf8.RuneCountInString(in.Password) < fixed.PasswordMin {
 		return domain.User{}, domain.Invalid("password", "the password needs at least "+strconv.Itoa(fixed.PasswordMin)+" characters")
 	}
+	if in.Phone != nil {
+		if err := checkPhone(strings.TrimSpace(*in.Phone)); err != nil {
+			return domain.User{}, err
+		}
+	}
 	nu := identity.NewUser{Name: strings.TrimSpace(*in.Name), Email: *in.Email, Password: in.Password, Roles: *in.Roles}
-	u, err := a.Identity.CreateUser(ctx, caller(p), nu)
+	if in.ContactID != nil {
+		nu.ContactID = *in.ContactID
+	}
+	// The identity create and the follow-up field update share one transaction: a
+	// refused phone, rate, bar field or an unknown contact leaves no user behind.
+	var u domain.User
+	err := a.Audit.Atomic(ctx, func(ctx context.Context) error {
+		var err error
+		if u, err = a.Identity.CreateUser(ctx, caller(p), nu); err != nil {
+			return userWriteErr(err)
+		}
+		rest := UserInput{RateCents: in.RateCents, BarNumber: in.BarNumber, BarState: in.BarState, Phone: in.Phone}
+		if rest != (UserInput{}) {
+			u, err = a.UpdateUser(ctx, p, u.ID, rest)
+		}
+		return err
+	})
 	if err != nil {
 		return domain.User{}, err
-	}
-	rest := UserInput{RateCents: in.RateCents, BarNumber: in.BarNumber, BarState: in.BarState, ContactID: in.ContactID, Phone: in.Phone}
-	if rest != (UserInput{}) {
-		return a.UpdateUser(ctx, p, u.ID, rest)
 	}
 	return u, nil
 }
@@ -635,6 +653,11 @@ func (a *Accounts) UpdateMe(ctx context.Context, p domain.Principal, name, phone
 	if p.Source != domain.SourceUI {
 		return MyProfile{}, domain.Forbidden(domain.ReasonRole)
 	}
+	// The name write puts the whole users row back, so it takes the same lock as the
+	// admin's role and active changes and reads the row under it: a profile save never
+	// restores a role or active flag an admin changed a moment before.
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	u, err := a.Users.Get(ctx, p.UserID)
 	if err != nil {
 		return MyProfile{}, missingUser(err)

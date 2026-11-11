@@ -5,7 +5,9 @@ import (
 	"context"
 	"image"
 	"image/png"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -179,5 +181,120 @@ func TestMyTokensAreOwnOnly(t *testing.T) {
 	}
 	if err := a.RevokeToken(ctx, pAdmin, "t2", false); err != nil {
 		t.Fatalf("admin revoke: %v", err)
+	}
+}
+
+// gatedUsers is fakeUsers behind a lock, with a hook on the first read of one user.
+type gatedUsers struct {
+	mu    sync.Mutex
+	m     map[domain.ID]domain.User
+	hook  domain.ID
+	onGet func()
+}
+
+func (g *gatedUsers) Get(_ context.Context, id domain.ID) (domain.User, error) {
+	g.mu.Lock()
+	u, ok := g.m[id]
+	fire := g.onGet
+	if id == g.hook && fire != nil {
+		g.onGet = nil
+	} else {
+		fire = nil
+	}
+	g.mu.Unlock()
+	if fire != nil {
+		fire()
+	}
+	if !ok {
+		return domain.User{}, repository.ErrNotFound
+	}
+	return u, nil
+}
+
+func (g *gatedUsers) Update(_ context.Context, u domain.User) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.m[u.ID] = u
+	return nil
+}
+
+func (g *gatedUsers) get(id domain.ID) domain.User {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.m[id]
+}
+
+type nopRecorder struct{}
+
+func (r *nopRecorder) Record(context.Context, domain.Principal, audit.Change) (domain.AuditEntry, error) {
+	return domain.AuditEntry{}, nil
+}
+
+func (r *nopRecorder) Atomic(ctx context.Context, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+
+// Codex PR #35 round 6: UpdateMe read the users row outside the lock the admin writes
+// take, then wrote it back whole, undoing a deactivation that landed in between. The
+// hook starts the deactivation right after UpdateMe's read and gives it time to finish;
+// with the lock it waits, then applies to the row UpdateMe wrote.
+func TestUpdateMeKeepsConcurrentDeactivation(t *testing.T) {
+	ctx := context.Background()
+	g := &gatedUsers{m: map[domain.ID]domain.User{
+		"adm": {Meta: domain.Meta{ID: "adm"}, Name: "adm", Roles: `["admin"]`, Active: true},
+		"att": {Meta: domain.Meta{ID: "att"}, Name: "Ada", Roles: `["attorney"]`, Active: true},
+	}}
+	a := &Accounts{Users: g, Audit: &nopRecorder{}, Profiles: NewMemory(), List: func(context.Context) ([]domain.User, error) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		var out []domain.User
+		for _, u := range g.m {
+			out = append(out, u)
+		}
+		return out, nil
+	}}
+	done := make(chan error, 1)
+	g.hook = "att"
+	g.onGet = func() {
+		go func() { done <- a.DeactivateUser(ctx, pAdmin, "att") }()
+		select {
+		case err := <-done:
+			done <- err
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	self := domain.Principal{UserID: "att", Roles: []domain.Role{domain.RoleAttorney}, Source: domain.SourceUI}
+	name := "Ada Renamed"
+	if _, err := a.UpdateMe(ctx, self, &name, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if u := g.get("att"); u.Active || u.Name != "Ada Renamed" {
+		t.Fatalf("profile save and deactivation: active=%v name=%q", u.Active, u.Name)
+	}
+}
+
+type countingIdentity struct {
+	IdentityAPI
+	calls int
+}
+
+func (c *countingIdentity) CreateUser(context.Context, identity.Caller, identity.NewUser) (domain.User, error) {
+	c.calls++
+	return domain.User{}, nil
+}
+
+// Codex PR #35 round 6: the add form's phone is checked before identity creates the user.
+func TestCreateUserChecksPhoneFirst(t *testing.T) {
+	a, _, _ := accountsFixture(t)
+	id := &countingIdentity{}
+	a.Identity = id
+	name, email, phone := "Olive", "olive@firm.example", "call me"
+	roles := []domain.Role{domain.RoleStaff}
+	_, err := a.CreateUser(context.Background(), pAdmin, UserInput{Name: &name, Email: &email, Roles: &roles, Password: "synthetic-password-1", Phone: &phone})
+	if !isCode(err, domain.CodeValidation) || id.calls != 0 {
+		t.Fatalf("bad phone on add: err=%v identity calls=%d", err, id.calls)
 	}
 }
