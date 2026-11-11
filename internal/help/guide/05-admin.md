@@ -44,7 +44,7 @@ The LawCraft commit (read only), edit lock timeout (default 5 minutes), editor r
 
 ## Doc Tender {#admin-doc_tender}
 <!-- tab: doc_tender | path: /admin?tab=doc_tender | where: Administrative > Doc Tender | keywords: naming pattern, categories, confidence, quiet time, daily summary -->
-On or off (default on), the naming pattern, the review confidence (default 0.90), quiet time before photos group (default 10 minutes), retries, review recipients and the daily summary (default 7:00 a.m.).
+On or off (default on), the naming pattern, the review confidence (default 0.90), quiet time before photos group (default 10 minutes), retries, review recipients and the daily summary (default 7:00 a.m.). The naming pattern and categories are edited on the [Doc Tender settings page](/admin/doc-tender); a pattern with a status token is refused. Its models are on the AI tab. See [Doc Tender](/help/topics/doc-tender) for what it does with each file type, how names are made and how to clear the review queue.
 
 ## Home screen {#admin-home_screen}
 <!-- tab: home_screen | path: /admin?tab=home_screen | where: Administrative > Home screen | keywords: role default layout, saved layouts per user -->

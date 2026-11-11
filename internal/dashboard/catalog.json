@@ -27,6 +27,7 @@
   {"id": "contacts", "section": "top", "label": "Contacts", "icon": "people", "path": "/practice/contacts", "order": 30, "resource": "contact"},
   {"id": "calendar", "section": "top", "label": "Calendar", "icon": "calendar", "path": "/calendar", "order": 40, "resource": "calendar"},
   {"id": "notes", "section": "communications", "label": "Notes", "icon": "note", "path": "/practice/notes", "order": 10, "resource": "note"},
+  {"id": "doc-tender", "section": "documents", "label": "Doc Tender", "icon": "inbox", "path": "/doc-tender/review", "order": 10, "badge": "doc_tender_open", "roles": ["admin", "attorney"]},
   {"id": "time", "section": "money", "label": "Time Entries", "icon": "clock", "path": "/billing/time", "order": 10, "resource": "time"},
   {"id": "billing", "section": "money", "label": "Billing / Generate", "icon": "receipt", "path": "/billing", "order": 20, "resource": "time", "roles": ["admin", "attorney", "staff"]},
   {"id": "invoices", "section": "money", "label": "Invoices", "icon": "invoice", "path": "/billing/invoices", "order": 30, "badge": "invoices_draft", "resource": "invoice"},

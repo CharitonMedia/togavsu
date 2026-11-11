@@ -55,6 +55,9 @@ type Options struct {
 	// Files backs uploaded help images and videos, resolved as the viewer. The core
 	// passes FileVersions{Svc: its files service}; nil refuses file-backed help items.
 	Files help.Files
+	// DocTender is the Doc Tender service (*doctender.Service); it backs the live count
+	// on the sidebar's Documents > Doc Tender entry. nil shows the entry with no count.
+	DocTender dashboard.ReviewQueue
 }
 
 // FileVersions adapts the files service to help.Files: Get runs as the viewer, so a
@@ -146,7 +149,7 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 		return nil, errors.New("compose: calendar handler is not a ServeMux")
 	}
 	u.cal = calMux
-	cs := dashboard.CoreServices{Practice: app.Practice, Trust: app.Trust, Billing: app.Billing, Calendar: cal, Settings: app.Settings, Now: now}
+	cs := dashboard.CoreServices{Practice: app.Practice, Trust: app.Trust, Billing: app.Billing, Calendar: cal, DocTender: opt.DocTender, Settings: app.Settings, Now: now}
 	staff := func(ctx context.Context) ([]domain.User, error) { return listUsers(ctx, app) }
 	ds, err := dashboard.New(dashboard.Deps{
 		Store: dashboard.PG{DB: app.Pool}, Settings: app.Settings, Users: app.Users, Staff: staff,

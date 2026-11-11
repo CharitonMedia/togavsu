@@ -26,7 +26,7 @@ Read-only iCal feeds for you and the firm with revocable secret links.
 
 ## Matter files {#files-matter}
 <!-- template: files/matter_files.html | path: /practice/matters/{matter_id}/files | where: Matter screen > Files | keywords: upload, folders, versions, download, zip, status -->
-Upload by drag and drop (8 MB chunks that resume), move files between folders, mark draft, final, executed or filed, download one file, a version, or a zip, and restore an older version as a new one.
+Upload by drag and drop (8 MB chunks that resume), move files between folders, mark draft, final, executed or filed, download one file, a version, or a zip, and restore an older version as a new one. Each file shows its Doc Tender status: Doc Tender reads, names, categorizes and files every new file as it arrives, and anything it can't settle goes to its review queue with the file still available. See [Doc Tender](/help/topics/doc-tender) for what it does with each file type and how names are made.
 
 ## Storage {#files-storage}
 <!-- template: files/storage.html | path: /files/admin/storage | where: Administrative > Files and storage > Storage backends | keywords: backends, test, move files, encryption -->

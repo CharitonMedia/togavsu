@@ -17,14 +17,22 @@ import (
 // CoreServices adapts the domain services to the dashboard. Every adapter calls the
 // owning service as the viewer, so the service's own role, wall and attorney-only
 // checks decide what the widget, badge, search box or bell shows. Calendar is optional
-// until the core composes it.
+// until the core composes it; so is DocTender, the review queue behind the sidebar's
+// Documents > Doc Tender count (PRD 8.21).
 type CoreServices struct {
-	Practice *practice.Service
-	Trust    *trust.Service
-	Billing  *billing.Service
-	Calendar *calendar.Service
-	Settings *settings.Registry
-	Now      func() time.Time
+	Practice  *practice.Service
+	Trust     *trust.Service
+	Billing   *billing.Service
+	Calendar  *calendar.Service
+	DocTender ReviewQueue
+	Settings  *settings.Registry
+	Now       func() time.Time
+}
+
+// ReviewQueue is the part of the Doc Tender service the sidebar reads: the open review
+// items p can see, counted by the service as p (*doctender.Service satisfies it).
+type ReviewQueue interface {
+	OpenCount(ctx context.Context, p domain.Principal) (int, error)
 }
 
 func (c CoreServices) now() time.Time {
@@ -340,7 +348,8 @@ func (c CoreServices) Timers(ctx context.Context, p domain.Principal) ([]TimerRo
 	return out, nil
 }
 
-// Badges are the sidebar counts: active matters and draft invoices the viewer can read.
+// Badges are the sidebar counts: active matters, draft invoices and open Doc Tender
+// review items the viewer can read.
 func (c CoreServices) Badges() map[string]func(ctx context.Context, p domain.Principal) (int, error) {
 	b := map[string]func(ctx context.Context, p domain.Principal) (int, error){}
 	if c.Practice != nil {
@@ -354,6 +363,9 @@ func (c CoreServices) Badges() map[string]func(ctx context.Context, p domain.Pri
 			rows, err := c.Billing.Invoices(ctx, p, billing.InvoiceFilter{Status: "draft"})
 			return len(rows), err
 		}
+	}
+	if c.DocTender != nil {
+		b["doc_tender_open"] = c.DocTender.OpenCount
 	}
 	return b
 }
