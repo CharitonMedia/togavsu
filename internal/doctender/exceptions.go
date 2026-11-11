@@ -121,13 +121,21 @@ func (s *Service) openException(ctx context.Context, j *Job, kind, detail string
 	if best == nil {
 		best = map[string]any{}
 	}
-	label := Exception{Kind: kind, BestAnswer: best}.Label()
+	item := Exception{Kind: kind, BestAnswer: best}
+	label := item.Label()
+	// A prompt-injection hold shares its kind with ordinary extraction items, so a
+	// hold and an ordinary item are never merged into each other: each keeps its own
+	// row, detail and decision.
+	same := `best_answer NOT LIKE ?`
+	if item.Injection() {
+		same = `best_answer LIKE ?`
+	}
 	at := us(s.now())
 	// The same item already open (a reprocess, a requeue after a matter was set) keeps
 	// its id and takes the newest job, detail and best answer, so Accept never applies
 	// an answer built before the matter changed and Retry acts on the current job.
-	res, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET job_id = ?, detail = ?, best_answer = ?, updated_at = ? WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`,
-		j.ID, detail, jsonText(best), at, j.FileID, j.VersionID, kind)
+	res, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET job_id = ?, detail = ?, best_answer = ?, updated_at = ? WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open' AND `+same,
+		j.ID, detail, jsonText(best), at, j.FileID, j.VersionID, kind, injectionMark)
 	if err != nil {
 		return err
 	}
