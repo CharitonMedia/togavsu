@@ -453,7 +453,7 @@ func (s *Service) runUnit(ctx context.Context, j *Job, u *Unit, spec unitSpec) e
 		if err := s.saveUnit(ctx, *u); err != nil {
 			return err
 		}
-		work, err := safeRun(ctx, spec, checkMethod)
+		work, err := safeRun(withCost(ctx, j.ID, u.ID), spec, checkMethod)
 		if errors.Is(err, ErrNoAI) {
 			u.Attempts--
 			_ = s.saveUnit(ctx, *u)

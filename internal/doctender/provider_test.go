@@ -38,7 +38,10 @@ type fakeAI struct {
 	category map[string]map[string]string
 	// categoryConfidence overrides the confidence reported.
 	categoryConfidence float64
-	calls              []string
+	// splitGroups makes a model's grouping answer put every photo on its own, so it
+	// disagrees with a model that groups by page.
+	splitGroups map[string]bool
+	calls       []string
 }
 
 func newFakeAI(t *testing.T) *fakeAI {
@@ -178,6 +181,17 @@ func (f *fakeAI) chat(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(system, groupPrompt[:30]):
 		task = "grouping"
 		answer = jsonText(groupByPages(texts))
+		if f.splitGroups[req.Model] {
+			var alone groupAnswer
+			for k := range texts {
+				alone.Groups = append(alone.Groups, struct {
+					Title  string `json:"title"`
+					Kind   string `json:"kind"`
+					Photos []int  `json:"photos"`
+				}{Title: "photo", Kind: "photo", Photos: []int{k + 1}})
+			}
+			answer = jsonText(alone)
+		}
 	case strings.HasPrefix(system, labelPrompt[:30]):
 		task = "labeling"
 		answer = jsonText(f.labelFor(body))

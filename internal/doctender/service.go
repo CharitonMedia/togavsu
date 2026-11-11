@@ -313,22 +313,21 @@ func (s *Service) logCall(ctx context.Context, task string, resp Response, fallb
 	if resp.FellBack {
 		fell = one
 	}
-	// Cost comes from the AI tab's model prices (ai.model_prices), read on every call so
-	// a price change applies to the next call.
-	raw, err := s.setting(ctx, "ai.model_prices")
+	// Cost comes from the AI tab's model prices, read on every call so a price change
+	// applies to the next call, and is added to the step that made the call.
+	prices, err := s.prices(ctx)
 	if err != nil {
 		return err
 	}
-	prices, err := domain.ParseModelPrices(raw)
-	if err != nil {
-		return err
-	}
-	cost := prices.CostCents(resp.Model, resp.PromptTokens, resp.CompletionTokens)
+	cost := prices.costCents(resp.Model, resp.PromptTokens, resp.CompletionTokens)
 	_, err = s.d.Pool.ExecContext(ctx, db.Rebind(`INSERT INTO ai_call_log (id, created_at, updated_at, created_by, task, provider, model, prompt_tokens, completion_tokens,
 cost_cents, fell_back, fallback_provider, fallback_model, user_id, module_id, matter_id, file_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,'',?,?)`, s.d.Dialect),
 		id, at, at, string(s.d.System.UserID), task, resp.Provider, resp.Model, resp.PromptTokens, resp.CompletionTokens,
 		cost, fell, fallback.Provider, fallback.Model, nullID(matterID), nullID(fileID))
-	return err
+	if err != nil {
+		return err
+	}
+	return s.addCost(ctx, cost)
 }
 
 // CallLog returns the function a Router logs through.

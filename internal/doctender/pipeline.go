@@ -20,6 +20,7 @@ import (
 // and publish. Every unit is saved as it finishes, so a stopped job resumes at the
 // first unit without a passing check.
 func (s *Service) runFile(ctx context.Context, j Job) error {
+	ctx = withCost(ctx, j.ID, "")
 	f, err := s.d.Files.Get(ctx, s.d.System, j.FileID)
 	if err != nil {
 		return s.failJob(ctx, &j, err)

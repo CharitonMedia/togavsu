@@ -657,7 +657,7 @@ func TestPersonsMatterDecisionStaysSettled(t *testing.T) {
 func TestCallLogCostFromModelPrices(t *testing.T) {
 	e := newEnv(t)
 	// One cent per input token and two per output token, so each row's cost is exact.
-	e.set("ai.model_prices", `{"gpt-test-fast": {"input": 1000000, "output": 2000000}, "gpt-test-strong": {"input": 1000000, "output": 2000000}, "`+domain.LabelingModel+`": {"input": 1000000, "output": 2000000}}`)
+	e.extra[modelPricesKey] = `{"gpt-test-fast": {"input": 1000000, "output": 2000000}, "gpt-test-strong": {"input": 1000000, "output": 2000000}, "` + domain.LabelingModel + `": {"input": 1000000, "output": 2000000}}`
 	f := e.upload(e.staff, e.open, "priced.txt", "text/plain", []byte("NOTICE OF HEARING\nCase 23AR-CV00825 on 2026-12-04 for Jordan Example.\n"))
 	e.drain()
 	rows, err := e.pool.QueryContext(e.ctx, `SELECT model, prompt_tokens, completion_tokens, cost_cents FROM ai_call_log WHERE file_id = $1`, string(f.ID))
@@ -686,7 +686,7 @@ func TestCallLogCostFromModelPrices(t *testing.T) {
 		t.Fatalf("calls %d, total cost %d: want priced calls", n, total)
 	}
 	// A model with no price is logged at 0 cents.
-	e.set("ai.model_prices", `{}`)
+	e.extra[modelPricesKey] = `{}`
 	g := e.upload(e.staff, e.open, "unpriced.txt", "text/plain", []byte("LETTER TO THE COURT\nSigned by Casey Sample on 2026-10-05.\n"))
 	e.drain()
 	var unpriced int64
@@ -696,8 +696,88 @@ func TestCallLogCostFromModelPrices(t *testing.T) {
 	if unpriced != 0 {
 		t.Fatalf("unpriced calls cost %d", unpriced)
 	}
-	// The setting refuses a price table that is not model to input and output cents.
-	if _, err := e.reg.Set(e.ctx, "ai.model_prices", `{"gpt-test-fast": {"input": -1, "output": 1}}`, e.admin); err == nil {
-		t.Fatal("a negative price was accepted")
+	// Each step and job carries the cost of its calls: together they are the call log's
+	// total for the priced file.
+	var jobs, units int64
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT COALESCE(SUM(cost_cents), 0) FROM doc_tender_jobs WHERE file_id = $1`, string(f.ID)).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT COALESCE(SUM(u.cost_cents), 0) FROM doc_tender_units u JOIN doc_tender_jobs j ON j.id = u.job_id WHERE j.file_id = $1`, string(f.ID)).Scan(&units); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != total {
+		t.Fatalf("jobs cost %d, calls cost %d", jobs, total)
+	}
+	if units == 0 || units > total {
+		t.Fatalf("steps cost %d of %d", units, total)
+	}
+	// Until the shared setting is registered, the registry has no price table and
+	// every call costs 0 rather than failing.
+	delete(e.extra, modelPricesKey)
+	h := e.upload(e.staff, e.open, "unregistered.txt", "text/plain", []byte("LETTER TO THE COURT\nSigned by Casey Sample on 2026-10-06.\n"))
+	e.drain()
+	var none, calls int64
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT COUNT(*), COALESCE(SUM(cost_cents), 0) FROM ai_call_log WHERE file_id = $1`, string(h.ID)).Scan(&calls, &none); err != nil {
+		t.Fatal(err)
+	}
+	if calls == 0 || none != 0 {
+		t.Fatalf("unregistered prices: %d calls cost %d", calls, none)
+	}
+}
+
+func TestParseModelPrices(t *testing.T) {
+	p, err := parseModelPrices(`{"m": {"input": 300, "output": 1500}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 1,000 in at $3.00 and 2,000 out at $15.00 per million tokens is 3.3 cents.
+	if got := p.costCents("m", 1000, 2000); got != 3 {
+		t.Fatalf("cost %d, want 3", got)
+	}
+	if got := p.costCents("unpriced", 1000, 2000); got != 0 {
+		t.Fatalf("unpriced cost %d", got)
+	}
+	for _, bad := range []string{`[]`, `{"m": {"input": -1, "output": 1}}`, `{"m": {"input": 1}}`, `{"m": {"input": 1, "output": 1, "cached": 1}}`, `{"": {"input": 1, "output": 1}}`, `{"m": null}`} {
+		if _, err := parseModelPrices(bad); err == nil {
+			t.Fatalf("%s was accepted", bad)
+		}
+	}
+}
+
+// Opus checkpoint P2: when the grouping models disagree, the photos wait for a person.
+// A photo the person sets on its own is then labeled and filed, and photos the person
+// groups are marked grouped, not left in the review queue's exception state.
+func TestPersonGroupingAfterDisagreementFinishesEveryPhoto(t *testing.T) {
+	e := newEnv(t)
+	e.ai.splitGroups = map[string]bool{"gpt-test-fast": true}
+	photos := uploadPhotos(e)
+	e.drain()
+	e.clock.advance(10 * minuteUnit)
+	e.drain()
+	latest := func(file domain.ID) (string, string) {
+		t.Helper()
+		var status, stage string
+		if err := e.pool.QueryRowContext(e.ctx, `SELECT status, stage FROM doc_tender_jobs WHERE file_id = $1 AND kind = 'file' ORDER BY created_at DESC, id DESC LIMIT 1`, string(file)).Scan(&status, &stage); err != nil {
+			t.Fatal(err)
+		}
+		return status, stage
+	}
+	for _, p := range photos[:3] {
+		if status, stage := latest(p.ID); status != StatusException || stage != stageAwaitingGroup {
+			t.Fatalf("%s before a person groups it: %s at %s, want the models' disagreement to wait for a person", p.Name, status, stage)
+		}
+	}
+	spec := string(photos[0].ID) + ";" + string(photos[1].ID) + "," + string(photos[2].ID)
+	if err := e.svc.PersonGrouping(e.ctx, e.attorney, spec); err != nil {
+		t.Fatal(err)
+	}
+	e.drain()
+	if status, stage := latest(photos[0].ID); status != StatusPublished || stage != stageDone {
+		t.Fatalf("photo set on its own: %s at %s, want labeled and published", status, stage)
+	}
+	for _, p := range photos[1:3] {
+		if status, stage := latest(p.ID); status != StatusPublished || stage != stageGrouped {
+			t.Fatalf("%s grouped by a person: %s at %s, want grouped", p.Name, status, stage)
+		}
 	}
 }

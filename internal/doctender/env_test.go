@@ -224,17 +224,20 @@ func (quiet) SettingChanged(context.Context, settings.Change) error { return nil
 // matter, a closed matter, the files store on local disk, the settings registry, a
 // test model provider on the OpenAI wire, and Tesseract as the second reader.
 type env struct {
-	t      *testing.T
-	ctx    context.Context
-	pool   *sql.DB
-	files  *files.Service
-	svc    *Service
-	deps   Deps
-	dir    *directory
-	mail   *mailbox
-	notes  *notices
-	clock  *clock
-	reg    *settings.Registry
+	t     *testing.T
+	ctx   context.Context
+	pool  *sql.DB
+	files *files.Service
+	svc   *Service
+	deps  Deps
+	dir   *directory
+	mail  *mailbox
+	notes *notices
+	clock *clock
+	reg   *settings.Registry
+	// extra holds settings the registry does not define yet (shared settings this lane
+	// proposes); Doc Tender reads them through the overlay.
+	extra  map[string]string
 	ai     *fakeAI
 	router *Router
 
@@ -354,7 +357,8 @@ VALUES (?,?,?,?,?,?,?,?,'',?,'','','','','','','hourly',0,0,?)`, m, at, at, sys,
 	e.set("ai.primary_fast_model", "gpt-test-fast")
 	e.set("ai.speech_to_text_model", "whisper-test")
 	e.router = &Router{Settings: reg, BaseURLs: map[string]string{ProviderOpenAI: e.ai.srv.URL, ProviderAnthropic: e.ai.srv.URL}}
-	e.deps = Deps{Pool: pool, Files: e.files, Settings: reg, Models: e.router, Matters: e.dir, Walls: e.dir, Mail: e.mail, Notify: e.notes, Audit: aud,
+	e.extra = map[string]string{}
+	e.deps = Deps{Pool: pool, Files: e.files, Settings: overlay{reg: reg, extra: e.extra}, Models: e.router, Matters: e.dir, Walls: e.dir, Mail: e.mail, Notify: e.notes, Audit: aud,
 		Second: secondReader(t), System: e.system, Worker: "worker-1", Now: e.clock.now}
 	svc, err = New(e.deps)
 	if err != nil {
@@ -363,6 +367,20 @@ VALUES (?,?,?,?,?,?,?,?,'',?,'','','','','','','hourly',0,0,?)`, m, at, at, sys,
 	e.router.Log = svc.CallLog()
 	e.svc = svc
 	return e
+}
+
+// overlay serves proposed settings the registry does not define yet, and every other
+// key from the registry.
+type overlay struct {
+	reg   *settings.Registry
+	extra map[string]string
+}
+
+func (o overlay) Get(ctx context.Context, key string) (string, error) {
+	if v, ok := o.extra[key]; ok {
+		return v, nil
+	}
+	return o.reg.Get(ctx, key)
 }
 
 func (e *env) set(key, value string) {

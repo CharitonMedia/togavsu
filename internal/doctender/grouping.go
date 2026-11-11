@@ -210,6 +210,7 @@ func sortGroups(gs [][]int) {
 // one PDF (the photos as its pages, in order) with one Markdown copy, linked to the
 // photos as its sources.
 func (s *Service) runGroup(ctx context.Context, j Job) error {
+	ctx = withCost(ctx, j.ID, "")
 	photos, err := s.jobsWhere(ctx, `group_job_id = ? ORDER BY created_at, id`, j.ID)
 	if err != nil {
 		return err
@@ -419,8 +420,8 @@ func (s *Service) makeGroup(ctx context.Context, j Job, how, title string, membe
 			if _, err := s.d.Files.Link(ctx, s.d.System, out.ID, m, "grouped_photo_source"); err != nil {
 				return err
 			}
-			if _, err := s.exec(ctx, `UPDATE doc_tender_jobs SET stage = ?, status = ?, finished_at = ?, updated_at = ? WHERE file_id = ? AND kind = 'file' AND status NOT IN ('published', 'exception')`,
-				stageGrouped, StatusPublished, at, at, m); err != nil {
+			if _, err := s.exec(ctx, `UPDATE doc_tender_jobs SET stage = ?, status = ?, finished_at = ?, updated_at = ? WHERE file_id = ? AND kind = 'file' AND (status NOT IN ('published', 'exception') OR stage = ?)`,
+				stageGrouped, StatusPublished, at, at, m, stageAwaitingGroup); err != nil {
 				return err
 			}
 		}
@@ -571,7 +572,15 @@ func (s *Service) PersonGrouping(ctx context.Context, p domain.Principal, spec s
 				if err != nil {
 					return err
 				}
-				return s.insertGroup(ctx, gid, us(s.now()), j, how, "photo", members, "")
+				at := us(s.now())
+				if err := s.insertGroup(ctx, gid, at, j, how, "photo", members, ""); err != nil {
+					return err
+				}
+				// The photo is its own document: a photo the grouping models could not
+				// settle goes on to be labeled and filed, as singlePhoto does.
+				_, err = s.exec(ctx, `UPDATE doc_tender_jobs SET stage = ?, status = ?, next_attempt_at = ?, finished_at = 0, updated_at = ? WHERE file_id = ? AND kind = 'file' AND stage = ?`,
+					stageLabel, StatusQueued, at, at, members[zero], stageAwaitingGroup)
+				return err
 			}); err != nil {
 				return err
 			}

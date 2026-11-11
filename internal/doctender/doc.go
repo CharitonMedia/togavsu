@@ -66,6 +66,12 @@
 // ponytail: the organization-name cut (20 characters, PRD 8.21) and the PDF word-space
 // kern are fixed facts in wire.json, not registry settings. Trigger: an admin asks to
 // change the cut (add doctender.client_name_chars).
+//
+// ponytail: call cost reads ai.model_prices, a shared setting this lane proposes and
+// does not own (internal/settings, the API contract). Until the integration lead
+// registers it every call, step and job costs 0 cents. Upgrade: register the setting
+// (KindJSON, default "{}", AI tab) with parseModelPrices as its check. Trigger:
+// integrate-documents.
 package doctender
 
 import "time"
