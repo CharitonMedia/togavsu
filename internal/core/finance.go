@@ -59,7 +59,7 @@ type finance struct {
 // flow to the practice store through the balance sink, invoices through the mirror, and
 // committed trust entries sync flat-fee invoices through billing.TrustEvents.
 func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	users trust.Users, walls domain.WallReader, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
+	users trust.Users, walls domain.WallReader, fsvc *files.Service, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
 	if err := trust.InstallPrivileges(ctx, pool); err != nil {
 		return nil, fmt.Errorf("core: trust privileges: %w", err)
 	}
@@ -75,9 +75,14 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	if err != nil {
 		return nil, err
 	}
+	// Receipts and sent invoices' PDFs are file records in the one file store (PRD 5).
+	fileLink, err := billing.NewFileLink(fsvc)
+	if err != nil {
+		return nil, err
+	}
 	bs, err := billing.New(billing.Deps{
 		Store: billing.NewPostgres(pool), Practice: store, Walls: walls, Audit: aud, Settings: reg,
-		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Now: now,
+		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Now: now,
 	})
 	if err != nil {
 		return nil, err

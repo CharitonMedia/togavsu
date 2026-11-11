@@ -46,6 +46,7 @@ type documents struct {
 	DocTender *doctender.Service
 	editorH   *editor.Handler
 	handlers  []http.Handler
+	mail      adminMail
 	// bg is work started by a request that outlives it (a storage move); Close cancels
 	// it and waits.
 	bgCtx  context.Context
@@ -55,7 +56,9 @@ type documents struct {
 
 // close stops request-started background work and waits for it.
 func (d *documents) close() {
-	d.stopBg()
+	if d.stopBg != nil {
+		d.stopBg()
+	}
 	d.bg.Wait()
 }
 
@@ -177,40 +180,30 @@ VALUES ($1,$2,$2,$3,$4,$5,$6,$7,$8,0)`, string(id), at, string(domain.SystemUser
 
 // documentsConfig is what openDocuments needs beyond the shared services.
 type documentsConfig struct {
-	DataDir      string
+	DataDir      string // for editor run folders
 	WordcraftCLI string
 	EditorDist   string
 	ProviderURLs map[string]string
 	Worker       string
 }
 
-// openDocuments wires the calendar, the file store, the editor and Doc Tender on the
-// core pool, with practice's wall reader everywhere, so a matter wall hides a file, its
-// Markdown copy, its Doc Tender result, its deadlines and its events in every surface.
-// Each new file version queues its Doc Tender job through files' OnVersion.
-func openDocuments(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	svc *practice.Service, users calendar.Users, key []byte, domainName string, cfg documentsConfig,
-	p func(*http.Request) (domain.Principal, error), now func() time.Time) (*documents, error) {
+// openFiles wires the one file store on the core pool before finance, so billing keeps
+// receipts and invoice PDFs in it (billing.FileLink). It writes the System user and turns
+// on practice's relational projection first: file rows reference matters, contacts and
+// users by foreign key. Each new file version queues its Doc Tender job through
+// OnVersion once openDocuments has made Doc Tender.
+func openFiles(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
+	walls domain.WallReader, key []byte, dataDir string, now func() time.Time) (*documents, error) {
 	if err := ensureSystemUser(ctx, pool, now()); err != nil {
 		return nil, fmt.Errorf("core: system user: %w", err)
 	}
 	if err := store.EnableProjection(ctx); err != nil {
 		return nil, fmt.Errorf("core: practice projection: %w", err)
 	}
-	mail := adminMail{pool: pool, smtp: smtpMailer{Settings: reg}}
-	walls := svc.Policy.Walls
-	d := &documents{}
-	cal, err := calendar.New(calendar.Deps{
-		Store: calendar.NewPostgres(pool), Policy: svc.Policy, Matters: calendar.PracticeMatters{Svc: svc}, Users: users,
-		Settings: reg, Audit: aud, Mailer: mail, BaseURL: "https://" + domainName, Now: now,
-	})
-	if err != nil {
-		return nil, err
-	}
-	d.Calendar = cal
+	d := &documents{mail: adminMail{pool: pool, smtp: smtpMailer{Settings: reg}}}
 	fsvc, err := files.New(files.Config{
-		Pool: pool, Audit: aud, Settings: reg, Directory: files.PracticeDirectory{Store: store}, Walls: walls, Mail: mail, Key: key,
-		StagingDir: filepath.Join(cfg.DataDir, "staging"), Now: now,
+		Pool: pool, Audit: aud, Settings: reg, Directory: files.PracticeDirectory{Store: store}, Walls: walls, Mail: d.mail, Key: key,
+		StagingDir: filepath.Join(dataDir, "staging"), Now: now,
 		OnVersion: func(ctx context.Context, ev files.VersionCreated) {
 			if d.DocTender != nil {
 				d.DocTender.OnVersion(ctx, ev)
@@ -224,17 +217,35 @@ func openDocuments(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *s
 	// The first local-disk backend is the default until the admin picks another; an
 	// install that already has backends keeps them.
 	if _, err := fsvc.EnsureLocalDisk(ctx, domain.Principal{UserID: domain.SystemUserID, Roles: []domain.Role{domain.RoleAdmin}, Source: domain.SourceSystem},
-		filepath.Join(cfg.DataDir, "files")); err != nil {
+		filepath.Join(dataDir, "files")); err != nil {
 		return nil, fmt.Errorf("core: local disk storage: %w", err)
 	}
+	return d, nil
+}
+
+// openDocuments wires the calendar, the editor and Doc Tender beside the file store d
+// holds, with practice's wall reader everywhere, so a matter wall hides a file, its
+// Markdown copy, its Doc Tender result, its deadlines and its events in every surface.
+func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
+	svc *practice.Service, users calendar.Users, domainName string, cfg documentsConfig,
+	p func(*http.Request) (domain.Principal, error), now func() time.Time) error {
+	fsvc, mail, walls := d.Files, d.mail, svc.Policy.Walls
+	cal, err := calendar.New(calendar.Deps{
+		Store: calendar.NewPostgres(pool), Policy: svc.Policy, Matters: calendar.PracticeMatters{Svc: svc}, Users: users,
+		Settings: reg, Audit: aud, Mailer: mail, BaseURL: "https://" + domainName, Now: now,
+	})
+	if err != nil {
+		return err
+	}
+	d.Calendar = cal
 	cli := &editor.CLI{Path: cfg.WordcraftCLI, TempDir: filepath.Join(cfg.DataDir, "runs")}
 	if err := os.MkdirAll(cli.TempDir, 0o700); err != nil {
-		return nil, err
+		return err
 	}
 	ed, err := editor.New(editor.Config{Files: fsvc, Pool: pool, Audit: aud, Settings: reg, Users: users,
 		Matters: editor.PracticeMatters{Svc: svc, Pool: pool}, CLI: cli, Now: now})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	d.Editor = ed
 	router := &doctender.Router{Settings: reg, BaseURLs: cfg.ProviderURLs}
@@ -251,28 +262,28 @@ func openDocuments(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *s
 	}
 	dt, err := doctender.New(deps)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	router.Log = dt.CallLog()
 	d.DocTender = dt
 
 	sub, err := fs.Sub(web.Calendar, "templates/calendar")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	ch, err := calendar.NewHandler(cal, sub, p)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if d.editorH, err = editor.NewHandler(ed, editorpages.FS, editor.DistDir(cfg.EditorDist), p); err != nil {
-		return nil, err
+		return err
 	}
 	if sub, err = fs.Sub(web.Files, "templates/files"); err != nil {
-		return nil, err
+		return err
 	}
 	fh, err := files.NewHandler(fsvc, sub, p)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	d.bgCtx, d.stopBg = context.WithCancel(context.Background())
 	fh.BackgroundContext = d.bgCtx
@@ -284,16 +295,16 @@ func openDocuments(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *s
 		}()
 	}
 	if sub, err = fs.Sub(web.DocTender, "templates/doctender"); err != nil {
-		return nil, err
+		return err
 	}
 	dh, err := doctender.NewHandler(dt, reg, sub, p)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// The editor's routes go before files': /files/{id}/edit and the Files tab's
 	// /files/static/{name} cannot share one ServeMux (editor.Handler.Owns).
 	d.handlers = []http.Handler{ch.Routes(), d.editorH.Routes(), fh.Routes(), dh.Routes()}
-	return d, nil
+	return nil
 }
 
 // runDocuments is the documents' background work until ctx ends: Doc Tender's worker

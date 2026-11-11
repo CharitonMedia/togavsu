@@ -6,11 +6,7 @@
 // reminders exactly as practice hides the matter itself. Pages and JSON handlers
 // call the same service methods.
 //
-// ponytail: ceiling: rows live in the process-memory Store (Memory); a restart
-// loses calendar data, and lists scan every row. The section 5 tables
-// calendar_events, calendar_event_attendees and deadlines exist in migration 0001,
-// but feeds and sent-reminder markers need a calendar migration (range 500–599)
-// that the integration lead allocates. Upgrade path: a Postgres Store over those
-// tables plus migration 0500 (ical_feeds, calendar_reminders_sent). Trigger: core
-// mounts this package on the shared pool (integrate-calendar).
+// The running core uses the Postgres Store (postgres.go): events, attendees and deadlines
+// in the section 5 tables, and feeds, reminder claims, in-app notices and idempotency in
+// migration 0500. Memory is the in-process Store the package tests use.
 package calendar

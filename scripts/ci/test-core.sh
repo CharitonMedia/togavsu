@@ -23,10 +23,13 @@ if ! go test -count=1 -timeout 15m $pkgs >"$log" 2>&1; then
 fi
 cat "$log"
 # A skipped Postgres test is a failure here: CI must exercise the database paths.
-go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup|Finance|Trust|Billing' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ ./internal/trust/ ./internal/billing/ >"$log" 2>&1 || { cat "$log"; exit 1; }
+# The phase 4 documents cases that need only Postgres are in this strict run; the editor
+# case also needs wordcraft-cli (TOGAVSU_WORDCRAFT_CLI) and runs where it is built.
+go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup|Finance|Trust|Billing|DocumentsCalendar|DocumentsStorage|DocumentsDocTender|PurgedFile|DTCorpus' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ ./internal/trust/ ./internal/billing/ ./internal/calendar/ ./internal/doctender/ >"$log" 2>&1 || { cat "$log"; exit 1; }
 if grep -E -- '--- SKIP' "$log"; then
   echo "a database test was skipped" >&2
   exit 1
 fi
-go test -count=1 -race ./internal/core/ ./internal/practice/
+# -short keeps the race run's resumable upload at 64 MiB; the full run above sends 1 GiB.
+go test -count=1 -race -short ./internal/core/ ./internal/practice/
 echo "core tests passed: $(echo "$pkgs" | wc -l | tr -d ' ') packages"

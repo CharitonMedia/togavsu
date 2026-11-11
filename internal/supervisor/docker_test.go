@@ -441,6 +441,8 @@ func TestTwoComposeProjectsStaySeparate(t *testing.T) {
 				return project + "_default"
 			case "TOGAVSU_APPSECRETS_VOLUME":
 				return project + "_appsecrets"
+			case "TOGAVSU_CORE_DATA_VOLUME":
+				return project + "_core_data"
 			default:
 				return ""
 			}
@@ -451,7 +453,8 @@ func TestTwoComposeProjectsStaySeparate(t *testing.T) {
 		if cfg.DockerNetwork != project+"_default" || cfg.AppSecretsVolume != project+"_appsecrets" {
 			t.Fatalf("config %+v", cfg)
 		}
-		if got := CoreBinds(cfg.AppSecretsVolume); len(got) != 1 || got[0] != project+"_appsecrets:/appsecrets" {
+		if got := CoreBinds(cfg.AppSecretsVolume, cfg.CoreDataVolume); len(got) != 2 || got[0] != project+"_appsecrets:/appsecrets" ||
+			got[1] != project+"_core_data:/var/lib/togavsu-core" {
 			t.Fatalf("binds %v", got)
 		}
 	}

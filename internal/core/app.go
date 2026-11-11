@@ -175,15 +175,20 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.practice = ph.Routes()
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, app.principal, app.scopes, now)
-	if err != nil {
-		return fail(err)
-	}
-	app.Trust, app.Billing = fin.Trust, fin.Billing
 	dataDir, cli, dist := cfg.DataDir, cfg.WordcraftCLI, cfg.EditorDist
 	if dataDir == "" {
 		dataDir = DataDir
 	}
+	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now)
+	if err != nil {
+		return fail(err)
+	}
+	app.docs = docs
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.principal, app.scopes, now)
+	if err != nil {
+		return fail(err)
+	}
+	app.Trust, app.Billing = fin.Trust, fin.Billing
 	if cli == "" {
 		cli = WordcraftCLI
 	}
@@ -193,13 +198,11 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		}
 	}
 	host, _ := os.Hostname()
-	docs, err := openDocuments(ctx, pool, aud, reg, store, app.Practice, users, cfg.Key, cfg.Domain,
+	if err := openDocuments(ctx, docs, pool, aud, reg, store, app.Practice, users, cfg.Domain,
 		documentsConfig{DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
-		app.principal, now)
-	if err != nil {
+		app.principal, now); err != nil {
 		return fail(err)
 	}
-	app.docs = docs
 	app.Calendar, app.Files, app.Editor, app.DocTender = docs.Calendar, docs.Files, docs.Editor, docs.DocTender
 	// First match wins: trust and billing own their reports ahead of practice's mirrored
 	// ones, the editor's pages go before files', and practice answers the rest.

@@ -34,6 +34,7 @@ type Config struct {
 	DockerSocket       string
 	DockerNetwork      string
 	AppSecretsVolume   string
+	CoreDataVolume     string
 	FirmTimezone       string
 	ReleaseIndexURL    string
 	CosignBin          string
@@ -63,6 +64,7 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		DockerSocket:       envDefault(getenv, "DOCKER_SOCKET", "/var/run/docker.sock"),
 		DockerNetwork:      envDefault(getenv, "TOGAVSU_DOCKER_NETWORK", "togavsu_default"),
 		AppSecretsVolume:   envDefault(getenv, "TOGAVSU_APPSECRETS_VOLUME", "togavsu_appsecrets"),
+		CoreDataVolume:     envDefault(getenv, "TOGAVSU_CORE_DATA_VOLUME", "togavsu_core_data"),
 		FirmTimezone:       envDefault(getenv, "FIRM_TIMEZONE", "UTC"),
 		ReleaseIndexURL:    getenv("TOGAVSU_RELEASE_INDEX"),
 		CosignBin:          envDefault(getenv, "COSIGN_BIN", "cosign"),

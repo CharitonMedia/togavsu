@@ -83,6 +83,7 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       TOGAVSU_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-togavsu}_default
       TOGAVSU_APPSECRETS_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_appsecrets
+      TOGAVSU_CORE_DATA_VOLUME: ${COMPOSE_PROJECT_NAME:-togavsu}_core_data
       FIRM_TIMEZONE: UTC
       COSIGN_KEY: /appsecrets/cosign.pub
     volumes:
@@ -121,6 +122,9 @@ services:
       SUPERVISOR_URL: http://supervisor:8081
     volumes:
       - appsecrets:/appsecrets
+      # Upload staging and the default local-disk file store (core.DataDir). The
+      # supervisor mounts the same volume on a replacement core.
+      - core_data:/var/lib/togavsu-core
     depends_on:
       dbinit:
         condition: service_completed_successfully
@@ -141,3 +145,4 @@ volumes:
   runtime:
   backups:
   supervisor_data:
+  core_data:

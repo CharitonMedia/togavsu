@@ -26,6 +26,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/storage/storagetest"
+	"github.com/CharitonMedia/togavsu/internal/supervisor"
 )
 
 // filepathWalk calls f for every entry under root; a missing root has none.
@@ -1540,4 +1541,159 @@ func inOrder(s string, parts ...string) bool {
 		at += i + len(p)
 	}
 	return true
+}
+
+// The supervisor mounts the core's data volume on a replacement core at the path the
+// core keeps its files under; the two constants must agree or an update would start on
+// an empty file store.
+func TestCoreDataDirMatchesTheSupervisorMount(t *testing.T) {
+	if supervisor.CoreDataDir != DataDir {
+		t.Fatalf("supervisor mounts the core data volume at %s, the core uses %s", supervisor.CoreDataDir, DataDir)
+	}
+	binds := supervisor.CoreBinds("p_appsecrets", "p_core_data")
+	if len(binds) != 2 || binds[1] != "p_core_data:"+DataDir {
+		t.Fatalf("replacement core binds %v", binds)
+	}
+}
+
+// TestDocumentsScreens is the phase 4 visual QC: it seeds a running core with a matter's
+// files (one processed by Doc Tender, one in the review queue), a deadline, an event and
+// a DOCX, then drives headless Chromium over every changed screen as the roles that use
+// them (scripts/ci/documents-qc.mjs). Every page must load without a console or page
+// error or a failed request; a walled deadline is a 404 page for staff and a signed-out
+// visitor lands on sign-in. It runs when TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are
+// set, and writes the screenshots and qc.json there.
+func TestDocumentsScreens(t *testing.T) {
+	out := os.Getenv("TOGAVSU_QC_DIR")
+	if out == "" || os.Getenv("CHROME") == "" || os.Getenv("PUPPETEER_CORE") == "" {
+		t.Skip("TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set")
+	}
+	prov := dtcorpus.NewProvider()
+	defer prov.Close()
+	d := newDocs(t, func(c *Config) {
+		c.ProviderURLs = map[string]string{"openai": prov.URL()}
+		c.NoBackground = true
+		c.WordcraftCLI = os.Getenv("TOGAVSU_WORDCRAFT_CLI")
+		c.EditorDist = os.Getenv("TOGAVSU_EDITOR_DIST")
+	})
+	d.useProvider()
+	matter, _ := d.matter("Example Dissolution", "", map[string]any{"case_number": "23AR-CV00825", "court": "Circuit Court"})
+	walled, _ := d.matter("Sealed Guardianship", "", nil)
+	d.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{d.adminID, d.attyID}})
+	today := firmToday(t)
+	deadline := str(t, d.staff.must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"matter_id": matter, "title": "Answer due",
+		"due_on": today.AddDate(0, 0, 3).Format("2006-01-02"), "responsible_user_id": d.attyID}).json, "id")
+	hidden := str(t, d.atty.must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"matter_id": walled, "title": "Sealed report",
+		"due_on": today.AddDate(0, 0, 2).Format("2006-01-02"), "responsible_user_id": d.attyID}).json, "id")
+	event := str(t, d.staff.must(http.StatusCreated, "POST", "/api/v1/calendar-events", map[string]any{"title": "Hearing", "kind": "court_date",
+		"starts_at": today.AddDate(0, 0, 1).Add(9 * time.Hour).Format(time.RFC3339), "ends_at": today.AddDate(0, 0, 1).Add(11 * time.Hour).Format(time.RFC3339),
+		"matter_id": matter, "attendee_user_ids": []string{d.attyID}}).json, "id")
+	d.upload(d.staff, matter, "motion.txt", "text/plain", []byte(motionText), nil)
+	d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", dtcorpus.DamagedPDF(), nil)
+	d.drain()
+	var exception string
+	for _, ex := range items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/doc-tender/exceptions?status=open", nil)) {
+		exception = ex["id"].(string)
+	}
+	docx := []byte("PK")
+	if cli := os.Getenv("TOGAVSU_WORDCRAFT_CLI"); cli != "" {
+		b, err := (&editor.CLI{Path: cli, TempDir: t.TempDir()}).Run(context.Background(), editor.RunInput{Commands: []editor.Command{
+			{ID: "text.insert", Parameters: map[string]any{"text": "Synthetic engagement letter."}}}, Out: "docx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		docx = b
+	}
+	letter := str(t, d.upload(d.staff, matter, "Engagement letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx, nil), "id")
+
+	u, _ := url.Parse(d.srv.URL)
+	cookies := func(c *client) []map[string]any {
+		var out []map[string]any
+		for _, k := range c.http.Jar.Cookies(u) {
+			out = append(out, map[string]any{"name": k.Name, "value": k.Value})
+		}
+		return out
+	}
+	type step struct {
+		Name string `json:"name"`
+		Role string `json:"role"`
+		Path string `json:"path"`
+		Wait int    `json:"wait,omitempty"`
+	}
+	steps := []step{
+		{"01-calendar-week", "staff", "/calendar", 0},
+		{"02-calendar-deadlines", "staff", "/calendar/deadlines", 0},
+		{"03-calendar-deadline", "staff", "/calendar/deadlines/" + deadline, 0},
+		{"04-calendar-event", "staff", "/calendar/events/" + event, 0},
+		{"05-calendar-available-dates", "staff", "/calendar/available-dates", 0},
+		{"06-calendar-feeds", "staff", "/calendar/feeds", 0},
+		{"07-matter-files-tab", "attorney", "/practice/matters/" + matter + "/files", 0},
+		{"08-files-and-storage", "admin", "/files/admin/storage", 0},
+		{"09-edit-page", "staff", "/files/" + letter + "/edit", 3000},
+		{"10-edit-page-locked", "attorney", "/files/" + letter + "/edit", 0},
+		{"11-new-pleading", "staff", "/matters/" + matter + "/pleadings/new", 0},
+		{"12-doc-tender-review", "attorney", "/doc-tender/review", 0},
+		{"13-doc-tender-item", "attorney", "/doc-tender/review/" + exception, 0},
+		{"14-doc-tender-tab", "admin", "/admin/doc-tender", 0},
+		{"15-doc-tender-guide", "staff", "/doc-tender/guide", 0},
+		{"16-walled-deadline-staff", "staff", "/calendar/deadlines/" + hidden, 0},
+		{"17-signed-out-calendar", "anonymous", "/calendar", 0},
+	}
+	plan := map[string]any{"base": d.srv.URL, "pages": steps,
+		"roles": map[string]any{"staff": cookies(d.staff), "attorney": cookies(d.atty), "admin": cookies(d.admin), "anonymous": []any{}}}
+	raw, _ := json.Marshal(plan)
+	planPath := filepath.Join(t.TempDir(), "plan.json")
+	if err := os.WriteFile(planPath, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("node", filepath.Join("..", "..", "scripts", "ci", "documents-qc.mjs"), planPath, out)
+	cmd.Stderr = os.Stderr
+	res, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("documents-qc.mjs: %v", err)
+	}
+	var got struct {
+		Pages []struct {
+			Name    string   `json:"name"`
+			Status  int      `json:"status"`
+			Landed  string   `json:"landed"`
+			Title   string   `json:"title"`
+			Console []string `json:"console"`
+			Failed  []string `json:"failed"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal(res, &got); err != nil || len(got.Pages) != len(steps) {
+		t.Fatalf("QC output %s: %v", res, err)
+	}
+	for _, p := range got.Pages {
+		want := http.StatusOK
+		switch p.Name {
+		case "16-walled-deadline-staff":
+			want = http.StatusNotFound
+		case "17-signed-out-calendar":
+			if p.Landed != "/login" {
+				t.Errorf("%s landed on %s", p.Name, p.Landed)
+			}
+		}
+		if p.Status != want {
+			t.Errorf("%s: status %d, want %d", p.Name, p.Status, want)
+		}
+		console := p.Console
+		if want == http.StatusNotFound && len(console) == 1 && strings.Contains(console[0], "status of 404") {
+			console = nil // the browser logs the page's own 404
+		}
+		if len(console) > 0 || len(p.Failed) > 0 {
+			t.Errorf("%s: console %v, failed requests %v", p.Name, p.Console, p.Failed)
+		}
+		if strings.Contains(p.Title, "Sealed") {
+			t.Errorf("%s shows the walled matter", p.Name)
+		}
+	}
+	summary, _ := json.MarshalIndent(map[string]any{"pages": got.Pages, "editor_dist": os.Getenv("TOGAVSU_EDITOR_DIST") != ""}, "", " ")
+	if err := os.WriteFile(filepath.Join(out, "qc.json"), summary, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

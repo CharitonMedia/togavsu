@@ -47,8 +47,11 @@ type DockerRuntime struct {
 	BaseURL          string
 	Network          string
 	AppSecretsVolume string
-	Env              []string
-	Binds            []string
+	// CoreDataVolume is the core's own volume (upload staging and the default
+	// local-disk file store); a replacement core must mount the same one.
+	CoreDataVolume string
+	Env            []string
+	Binds          []string
 }
 
 // CoreEnv is the environment the Compose core service receives. Replacements
@@ -66,13 +69,21 @@ func CoreEnv() []string {
 	return env
 }
 
-// CoreBinds mounts the installer secret volume. The default name matches the
-// Compose project name togavsu.
-func CoreBinds(volume string) []string {
-	if volume == "" {
-		volume = "togavsu_appsecrets"
+// CoreDataDir is where the core image keeps its data volume (core.DataDir).
+const CoreDataDir = "/var/lib/togavsu-core"
+
+// CoreBinds mounts the installer secret volume and the core's data volume, as the
+// Compose core service does. The default names match the Compose project name togavsu.
+// Without the data volume a replacement core would start on an empty local-disk file
+// store.
+func CoreBinds(secrets, data string) []string {
+	if secrets == "" {
+		secrets = "togavsu_appsecrets"
 	}
-	return []string{volume + ":/appsecrets"}
+	if data == "" {
+		data = "togavsu_core_data"
+	}
+	return []string{secrets + ":/appsecrets", data + ":" + CoreDataDir}
 }
 
 func (d *DockerRuntime) coreEnv() []string {
@@ -84,7 +95,7 @@ func (d *DockerRuntime) coreEnv() []string {
 
 func (d *DockerRuntime) coreBinds() []string {
 	if len(d.Binds) == 0 {
-		return CoreBinds(d.AppSecretsVolume)
+		return CoreBinds(d.AppSecretsVolume, d.CoreDataVolume)
 	}
 	return d.Binds
 }
