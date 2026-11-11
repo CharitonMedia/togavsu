@@ -1,0 +1,7 @@
+{{define "help_topic.html"}}{{template "shell-top" .}}{{with .Page}}
+<article class="card prose">
+  {{if .Topic.Where}}<p class="where"><strong>Where:</strong> {{.Topic.Where}}{{if .Open}} · <a href="{{.Open}}">Open this screen</a>{{end}}</p>{{end}}
+  {{md .Topic.Markdown}}
+</article>
+<p><a href="/help">Back to Help &amp; Training</a> · <a href="/help/guide#{{.Topic.ID}}" target="_blank" rel="noopener">In the full guide</a></p>
+{{end}}{{template "shell-bottom" .}}{{end}}

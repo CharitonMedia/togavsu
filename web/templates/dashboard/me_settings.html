@@ -1,0 +1,31 @@
+{{define "me_settings.html"}}{{template "shell-top" .}}{{with .Page}}
+<form method="post" action="/me/settings" class="card form-grid">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Display</h2>
+  <label for="mode">Light or dark</label>
+  <select id="mode" name="mode">{{$m := .Settings.Mode}}<option value="firm"{{if eq $m "firm"}} selected{{end}}>Firm default</option><option value="light"{{if eq $m "light"}} selected{{end}}>Light</option><option value="dark"{{if eq $m "dark"}} selected{{end}}>Dark</option><option value="device"{{if eq $m "device"}} selected{{end}}>Follow the device</option></select>
+  <label for="text_size">Text size</label>
+  <select id="text_size" name="text_size">{{$t := .Settings.TextSize}}<option value="firm"{{if eq $t "firm"}} selected{{end}}>Firm default</option><option value="sm"{{if eq $t "sm"}} selected{{end}}>Small</option><option value="md"{{if eq $t "md"}} selected{{end}}>Medium</option><option value="lg"{{if eq $t "lg"}} selected{{end}}>Large</option></select>
+  <label for="time_zone">Display time zone</label>
+  <input id="time_zone" name="time_zone" value="{{.Settings.TimeZone}}" placeholder="Firm time zone">
+  <h2>Reminders</h2>
+  <label for="event_reminders">Event reminders (days before)</label>
+  <input id="event_reminders" name="event_reminders" value="{{range $i, $d := .Settings.EventReminderDays}}{{if $i}}, {{end}}{{$d}}{{end}}">
+  <label for="deadline_reminders">Deadline reminders (days before)</label>
+  <input id="deadline_reminders" name="deadline_reminders" value="{{range $i, $d := .Settings.DeadlineReminderDays}}{{if $i}}, {{end}}{{$d}}{{end}}">
+  <h2>Sign-out</h2>
+  <label for="idle_minutes">Sign me out after this many idle minutes (the firm allows at most {{.FirmIdle}})</label>
+  <input id="idle_minutes" name="idle_minutes" type="number" min="1" max="{{.FirmIdle}}" value="{{idleMinutes .Settings.IdleTimeoutSeconds}}">
+  <div><button type="submit">Save settings</button></div>
+</form>
+<form method="post" action="/me/notification-preferences" class="card">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Notifications</h2>
+  <table class="prefs"><thead><tr><th>Kind</th><th>In-app</th><th>Email</th></tr></thead><tbody>
+  {{range .Prefs}}<tr><td>{{index $.Page.Labels .Kind}}</td>
+    <td><input type="checkbox" name="{{.Kind}}.in_app" aria-label="{{index $.Page.Labels .Kind}} in-app"{{if .InApp}} checked{{end}}></td>
+    <td><input type="checkbox" name="{{.Kind}}.email" aria-label="{{index $.Page.Labels .Kind}} email"{{if .Email}} checked{{end}}{{if .EmailRequired}} disabled title="The trust below-zero email can't be turned off."{{end}}>{{if .EmailRequired}} <span class="muted">always on</span>{{end}}</td></tr>{{end}}
+  </tbody></table>
+  <button type="submit">Save notification preferences</button>
+</form>
+{{end}}{{template "shell-bottom" .}}{{end}}

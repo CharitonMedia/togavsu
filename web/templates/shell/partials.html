@@ -1,0 +1,12 @@
+{{define "search_results"}}{{with .Page}}{{if .TooShort}}<p class="hint">Type at least {{.MinChars}} characters.</p>{{else if .NoMatches}}<p class="hint" role="status">{{.NoMatches}}</p>{{else}}{{range .Groups}}{{if .Hits}}<div class="hit-group"><h3>{{.Scope}}</h3><ul>{{range .Hits}}<li><a role="option" href="{{.TargetPath}}"><span class="hit-title">{{.Title}}</span>{{if .Subtitle}}<span class="hit-sub">{{.Subtitle}}</span>{{end}}</a></li>{{end}}</ul></div>{{end}}{{end}}<p class="more"><a href="/search?q={{.Query}}&amp;scope={{.Scope}}">All results</a></p>{{end}}{{end}}{{end}}
+
+{{define "notification_list"}}{{if .Page}}<ul class="notifications">{{range .Page}}<li{{if not .ReadAt}} class="unread"{{end}}><form method="post" action="/notifications/{{.ID}}/open"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="link">{{.Title}}</button></form><span class="when">{{when .At}}</span></li>{{end}}</ul>{{else}}<p class="hint">No notifications.</p>{{end}}
+<form method="post" action="/notifications/read-all"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="/notifications"><button type="submit">Mark all read</button></form>
+<p><a href="/notifications">All notifications</a></p>{{end}}
+
+{{define "timer_list"}}{{if .Page}}<ul class="timers">{{range .Page}}<li><span class="timer-matter">{{.Matter}}</span> <span class="timer-status">{{.Status}}, {{.Minutes}} min</span>
+{{if eq .Status "running"}}<form class="inline" method="post" action="/billing/timers/{{.ID}}/pause"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Pause</button></form>{{else if eq .Status "paused"}}<form class="inline" method="post" action="/billing/timers/{{.ID}}/resume"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Resume</button></form>{{end}}
+{{if ne .Status "stopped"}}<form class="inline" method="post" action="/billing/timers/{{.ID}}/stop"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Stop</button></form>{{end}}</li>{{end}}</ul>{{else}}<p class="hint">No timers running.</p>{{end}}
+<p><a href="/billing/time">Start a timer on Time Entries</a></p>{{end}}
+
+{{define "error.html"}}{{template "shell-top" .}}<p><a href="/">Back to Home</a></p>{{template "shell-bottom" .}}{{end}}

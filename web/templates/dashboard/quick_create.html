@@ -1,0 +1,7 @@
+{{define "quick_create.html"}}{{template "shell-top" .}}
+<ul class="card menu-list">
+  <li><a href="/practice/matters#create">New matter</a></li>
+  <li><a href="/practice/contacts#create">New person</a></li>
+  {{if .CanTime}}<li><a href="/billing/time#log-h">Log time</a></li>{{end}}
+</ul>
+{{template "shell-bottom" .}}{{end}}
