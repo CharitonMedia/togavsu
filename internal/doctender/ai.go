@@ -71,9 +71,12 @@ type wireFacts struct {
 	TJWordSpace        float64 `json:"tj_word_space"`
 	// MaxDecodedBytes caps what one decompressed stream or archive entry may expand to,
 	// and MaxImagePixels caps a photo's width times height, so a small upload cannot
-	// expand into an out-of-memory kill of the core.
+	// expand into an out-of-memory kill of the core. MaxSheetCells caps one sheet's
+	// table, rows times its widest row, counting the empty rows and cells that a cell's
+	// own reference asks for, before any of them is built.
 	MaxDecodedBytes int64 `json:"max_decoded_bytes"`
 	MaxImagePixels  int64 `json:"max_image_pixels"`
+	MaxSheetCells   int64 `json:"max_sheet_cells"`
 }
 
 var wire = sync.OnceValue(func() wireFacts {

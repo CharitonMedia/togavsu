@@ -491,6 +491,9 @@ var errDecodeLimit = errors.New("the file expands past Doc Tender's decode limit
 // decodeCaps are the decode limits; tests lower them to exercise a bomb cheaply.
 var decodeCaps = func() (bytes, pixels int64) { return wire().MaxDecodedBytes, wire().MaxImagePixels }
 
+// sheetCellCap is wire().MaxSheetCells; tests lower it.
+var sheetCellCap = func() int64 { return wire().MaxSheetCells }
+
 // readCapped reads r to the end, refusing more than wire().MaxDecodedBytes.
 func readCapped(r io.Reader) ([]byte, error) {
 	max, _ := decodeCaps()

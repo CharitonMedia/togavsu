@@ -3,6 +3,7 @@ package doctender
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -118,5 +119,44 @@ func TestRaggedCSVIsReadNotDamaged(t *testing.T) {
 	}
 	if rows, cols := csvExtent([]byte("a,\"b\"\"c,d\"\r\n\r\n,\n")); rows != 2 || cols != 2 {
 		t.Fatalf("csv extent %d by %d", rows, cols)
+	}
+}
+
+// Opus checkpoint P1 (on 0a21d08): a cell's own reference cannot make the worker build a
+// huge sheet. A column or row past the sheet cell cap is refused before any padding, as a
+// damaged file under the decode limit.
+func TestHugeSheetReferencesAreRefusedBeforePadding(t *testing.T) {
+	for name, ws := range map[string]string{
+		"column":  `<worksheet><sheetData><row r="1"><c r="ZZZZZZZ1"><v>1</v></c></row></sheetData></worksheet>`,
+		"row":     `<worksheet><sheetData><row r="134217728"><c r="A134217728"><v>1</v></c></row></sheetData></worksheet>`,
+		"letters": `<worksheet><sheetData><row r="1"><c r="ZZZZZZZZZZZZZZZZZZZZ1"><v>1</v></c></row></sheetData></worksheet>`,
+	} {
+		if _, err := readXLSX(xlsxWith(t, ws)); !errors.Is(err, errDecodeLimit) {
+			t.Fatalf("%s: %v, want the decode limit", name, err)
+		}
+	}
+	// Padded empty rows count toward the cap: under a cap of 6 cells, a sheet with one
+	// cell in each of rows 1 and 7 is 7 rows and is refused; rows 1 and 6 fit.
+	old := sheetCellCap
+	sheetCellCap = func() int64 { return 6 }
+	t.Cleanup(func() { sheetCellCap = old })
+	at := func(r string) string {
+		return `<worksheet><sheetData><row r="1"><c r="A1"><v>1</v></c></row><row r="` + r + `"><c r="A` + r + `"><v>2</v></c></row></sheetData></worksheet>`
+	}
+	if _, err := readXLSX(xlsxWith(t, at("7"))); !errors.Is(err, errDecodeLimit) {
+		t.Fatalf("7 rows under a cap of 6: %v", err)
+	}
+	if sheets, err := readXLSX(xlsxWith(t, at("6"))); err != nil || len(sheets[0].Rows) != 6 {
+		t.Fatalf("6 rows under a cap of 6: %v", err)
+	}
+	if _, err := readXLSX(xlsxWith(t, `<worksheet><sheetData><row r="1"><c r="A1"/><c r="G1"/></row></sheetData></worksheet>`)); !errors.Is(err, errDecodeLimit) {
+		t.Fatalf("7 columns under a cap of 6: %v", err)
+	}
+	sheetCellCap = old
+	e := newEnv(t)
+	f := e.upload(e.staff, e.open, "bomb.xlsx", sheetMIME, xlsxWith(t, `<worksheet><sheetData><row r="1"><c r="ZZZZZZZ1"><v>1</v></c></row></sheetData></worksheet>`))
+	e.drain()
+	if ex := e.openExceptions(f.ID); len(ex) != 1 || ex[0].Kind != "damaged" || !strings.Contains(ex[0].Detail, "decode limit") {
+		t.Fatalf("exceptions %+v", ex)
 	}
 }

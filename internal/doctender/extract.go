@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"os"
 	"path"
 	"regexp"
@@ -341,8 +342,10 @@ func readXLSX(data []byte) ([]sheet, error) {
 		if cur.DeclaredRows, cur.DeclaredCols, err = sheetExtent(raw, ws.Dim.Ref); err != nil {
 			return nil, err
 		}
-		maxBytes, _ := decodeCaps()
-		cellBytes := int64(len(" |"))
+		// Every padded row and cell counts toward the sheet's cell cap, checked before
+		// it is built: a cell at ZZZZZZZ1 or a row at r="100000000" is refused at once.
+		budget := sheetCellCap()
+		grid := func(rows, cols int) int64 { return int64(rows) * int64(max(cols, one)) }
 		widest := zero
 		next := one // the sheet's own row number for a row with no r
 		for _, r := range ws.Rows {
@@ -355,7 +358,7 @@ func readXLSX(data []byte) ([]sheet, error) {
 				// A row with only formatting adds nothing to the table.
 				continue
 			}
-			if int64(idx)*cellBytes > maxBytes {
+			if grid(idx, widest) > budget {
 				return nil, fmt.Errorf("%w: sheet %q reaches row %d", errDecodeLimit, sh.Name, idx)
 			}
 			var row []string
@@ -367,6 +370,9 @@ func readXLSX(data []byte) ([]sheet, error) {
 					col = n
 				}
 				pos = col + one
+				if grid(max(idx, len(cur.Rows)+one), max(widest, pos)) > budget {
+					return nil, fmt.Errorf("%w: sheet %q reaches column %d", errDecodeLimit, sh.Name, pos)
+				}
 				for len(row) < col {
 					row = append(row, "")
 				}
@@ -392,7 +398,7 @@ func readXLSX(data []byte) ([]sheet, error) {
 			cur.Rows = append(cur.Rows, row)
 			widest = max(widest, len(row))
 		}
-		if int64(len(cur.Rows))*int64(widest)*cellBytes > maxBytes {
+		if grid(len(cur.Rows), widest) > budget {
 			return nil, fmt.Errorf("%w: sheet %q is %d rows by %d columns", errDecodeLimit, sh.Name, len(cur.Rows), widest)
 		}
 		out = append(out, cur)
@@ -507,13 +513,18 @@ func csvExtent(data []byte) (rows, cols int) {
 }
 
 // columnIndex reads the column of a cell reference such as C7 (from 0).
+// A reference past any real sheet saturates at math.MaxInt32 rather than overflowing,
+// so the sheet's cell cap refuses it.
 func columnIndex(ref string) int {
-	n := zero
+	n, letters := zero, int('Z'-'A'+1)
 	for _, r := range ref {
 		if r < 'A' || r > 'Z' {
 			break
 		}
-		n = n*int('Z'-'A'+1) + int(r-'A'+1)
+		if n > math.MaxInt32/letters {
+			return math.MaxInt32
+		}
+		n = n*letters + int(r-'A'+1)
 	}
 	return n - one
 }
