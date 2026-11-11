@@ -3,6 +3,8 @@ package modules
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -14,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/help"
 )
 
 // Caller is an authenticated request: the principal, the bearer token's scopes (nil for
@@ -35,12 +38,15 @@ type Handler struct {
 	idem   map[string]*idemEntry
 }
 
-// idemEntry is one Idempotency-Key: done closes when the first request finishes, and
-// status and body are its response.
+// idemEntry is one Idempotency-Key: done closes when the first request finishes,
+// fingerprint is the SHA-256 of its content type and body, and status, header and body
+// are its response.
 type idemEntry struct {
-	done   chan struct{}
-	status int
-	body   []byte
+	done        chan struct{}
+	fingerprint string
+	status      int
+	header      http.Header
+	body        []byte
 }
 
 // NewHandler returns the module routes.
@@ -65,10 +71,13 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens", h.write("", h.contextToken))
 	m.HandleFunc("POST /api/v1/modules/{module_id}/context-tokens/verify", h.scoped("", h.verifyContext))
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
-	m.HandleFunc("PUT /api/v1/module-replacements/{domain}", h.write("modules:write", h.switchDomain))
-	m.HandleFunc("GET /api/v1/module-signing-keys", h.scoped("modules:read", h.listKeys))
-	m.HandleFunc("POST /api/v1/module-signing-keys", h.write("modules:write", h.addKey))
-	m.HandleFunc("DELETE /api/v1/module-signing-keys/{key_id}", h.write("modules:write", h.revokeKey))
+	m.HandleFunc("GET /api/v1/domain-handlers", h.scoped("modules:read", h.listDomains))
+	m.HandleFunc("PUT /api/v1/domain-handlers/{domain}", h.write("modules:write", h.switchDomain))
+	m.HandleFunc("GET /api/v1/trusted-signing-keys", h.scoped("modules:read", h.listKeys))
+	m.HandleFunc("POST /api/v1/trusted-signing-keys", h.write("modules:write", h.addKey))
+	m.HandleFunc("GET /api/v1/trusted-signing-keys/{key_id}", h.scoped("modules:read", h.getKey))
+	m.HandleFunc("PATCH /api/v1/trusted-signing-keys/{key_id}", h.write("modules:write", h.patchKey))
+	m.HandleFunc("DELETE /api/v1/trusted-signing-keys/{key_id}", h.write("modules:write", h.revokeKey))
 	m.HandleFunc("GET /api/v1/webhook-deliveries", h.scoped("webhooks:read", h.deliveries))
 	m.HandleFunc("POST /api/v1/ai/calls", h.write("ai:use", h.aiCall))
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
@@ -94,6 +103,8 @@ func statusOf(err error) int {
 	switch api.Code {
 	case CodeUnsigned, CodeTampered, CodeMigration, CodeDeclined:
 		return http.StatusUnprocessableEntity
+	case CodeIdemConflict:
+		return http.StatusConflict
 	case "marketplace_unconfigured":
 		return http.StatusConflict
 	case "ai_unavailable":
@@ -156,8 +167,12 @@ func (h *Handler) scoped(scope string, fn handlerFunc) http.HandlerFunc {
 	}
 }
 
-// write adds Idempotency-Key replay: a repeated key from the same caller gets the first
-// response again without a second effect.
+// IdempotentReplayHeader marks a replayed response, the same header billing sends.
+const IdempotentReplayHeader = "Idempotent-Replay"
+
+// write adds Idempotency-Key replay (contract idempotencyKey): the same caller, route,
+// key and body get the first response again without a second effect; the same key with
+// a different body is idempotency_conflict.
 func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 	return h.scoped(scope, func(w http.ResponseWriter, r *http.Request, c Caller) {
 		key := r.Header.Get("Idempotency-Key")
@@ -165,6 +180,20 @@ func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 			fn(w, r, c)
 			return
 		}
+		if len(key) > limits().IdemKeyChars { // the contract's Idempotency-Key maxLength
+			writeErr(w, invalid("Idempotency-Key", "an Idempotency-Key is at most 200 characters"))
+			return
+		}
+		raw, err := io.ReadAll(io.LimitReader(r.Body, limits().MaxPackageBytes+1))
+		if err != nil {
+			writeErr(w, invalid("body", "the request body is unreadable"))
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+		// The fingerprint covers the content type too, so a multipart upload's boundary
+		// and parts count as its body.
+		sum := sha256.Sum256(append([]byte(r.Header.Get("Content-Type")+"\n"), raw...))
+		fp := hex.EncodeToString(sum[:])
 		id := string(c.Principal.UserID) + "|" + c.Principal.ModuleID + "|" + r.Method + " " + r.URL.Path + "|" + key
 		// A repeat of a key still in flight waits for that request only; other keys and
 		// callers run concurrently (slow AI calls, backups, contract fetches).
@@ -173,12 +202,16 @@ func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 			h.idemMu.Lock()
 			prev, ok := h.idem[id]
 			if !ok {
-				mine = &idemEntry{done: make(chan struct{})}
+				mine = &idemEntry{done: make(chan struct{}), fingerprint: fp}
 				h.idem[id] = mine
 			}
 			h.idemMu.Unlock()
 			if !ok {
 				break
+			}
+			if prev.fingerprint != fp {
+				writeErr(w, &domain.APIError{Code: CodeIdemConflict, Message: "this Idempotency-Key was used with a different body"})
+				return
 			}
 			select {
 			case <-prev.done:
@@ -189,8 +222,10 @@ func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 			kept := h.idem[id] == prev
 			h.idemMu.Unlock()
 			if kept {
-				w.Header().Set("Content-Type", "application/json")
-				w.Header().Set("Idempotent-Replayed", "true")
+				for k, v := range prev.header {
+					w.Header()[k] = v
+				}
+				w.Header().Set(IdempotentReplayHeader, "true")
 				w.WriteHeader(prev.status)
 				_, _ = w.Write(prev.body)
 				return
@@ -205,7 +240,7 @@ func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 				// ponytail: ceiling: replay records live in process memory for its lifetime; a
 				// restart forgets them. Upgrade path: a shared idempotency table once the API
 				// wave lands one. Trigger: the core gains a durable idempotency store.
-				mine.status, mine.body = rec.Code, rec.Body.Bytes()
+				mine.status, mine.body, mine.header = rec.Code, rec.Body.Bytes(), rec.Header().Clone()
 			} else {
 				delete(h.idem, id)
 			}
@@ -459,6 +494,15 @@ func (h *Handler) readView(w http.ResponseWriter, r *http.Request, c Caller) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": rows})
 }
 
+func (h *Handler) listDomains(w http.ResponseWriter, r *http.Request, c Caller) {
+	v, err := h.Svc.DomainHandlers(r.Context(), c.Principal)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	help.ListPage(w, r, h.Svc.d.Settings, v)
+}
+
 func (h *Handler) switchDomain(w http.ResponseWriter, r *http.Request, c Caller) {
 	var body struct {
 		ModuleID *string `json:"module_id"`
@@ -471,41 +515,65 @@ func (h *Handler) switchDomain(w http.ResponseWriter, r *http.Request, c Caller)
 	if body.ModuleID != nil {
 		mod = *body.ModuleID
 	}
-	if err := h.Svc.SwitchDomain(r.Context(), c.Principal, r.PathValue("domain"), mod); err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"domain": r.PathValue("domain"), "module_id": body.ModuleID})
-}
-
-func (h *Handler) listKeys(w http.ResponseWriter, r *http.Request, c Caller) {
-	keys, err := h.Svc.TrustedKeys(r.Context(), c.Principal)
+	v, err := h.Svc.SwitchDomain(r.Context(), c.Principal, r.PathValue("domain"), mod)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": keys})
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (h *Handler) listKeys(w http.ResponseWriter, r *http.Request, c Caller) {
+	keys, err := h.Svc.ListTrustedKeys(r.Context(), c.Principal)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	help.ListPage(w, r, h.Svc.d.Settings, keys)
+}
+
+func (h *Handler) getKey(w http.ResponseWriter, r *http.Request, c Caller) {
+	k, err := h.Svc.GetTrustedKey(r.Context(), c.Principal, r.PathValue("key_id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, k)
 }
 
 func (h *Handler) addKey(w http.ResponseWriter, r *http.Request, c Caller) {
 	var body struct {
-		Name      string `json:"name"`
-		PublicKey string `json:"public_key"`
+		Name         string `json:"name"`
+		PublicKeyPEM string `json:"public_key_pem"`
 	}
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	id, err := h.Svc.AddTrustedKey(r.Context(), c.Principal, body.Name, body.PublicKey)
+	k, err := h.Svc.CreateTrustedKey(r.Context(), c.Principal, body.Name, body.PublicKeyPEM)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]string{"key_id": id, "name": body.Name})
+	writeJSON(w, http.StatusCreated, k)
+}
+
+func (h *Handler) patchKey(w http.ResponseWriter, r *http.Request, c Caller) {
+	var body TrustedKeyPatch
+	if err := decode(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	k, err := h.Svc.UpdateTrustedKey(r.Context(), c.Principal, r.PathValue("key_id"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, k)
 }
 
 func (h *Handler) revokeKey(w http.ResponseWriter, r *http.Request, c Caller) {
-	if err := h.Svc.RevokeTrustedKey(r.Context(), c.Principal, r.PathValue("key_id")); err != nil {
+	if err := h.Svc.DeleteTrustedKey(r.Context(), c.Principal, r.PathValue("key_id")); err != nil {
 		writeErr(w, err)
 		return
 	}

@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base32"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -347,10 +346,11 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.priv = priv
-	e.keyID, err = e.svc.AddTrustedKey(ctx, e.admin, "Sample module key", base64.StdEncoding.EncodeToString(pub))
+	key, err := e.svc.CreateTrustedKey(ctx, e.admin, "Sample module key", modules.PublicKeyPEM(pub))
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.keyID = key.ID
 	return e
 }
 

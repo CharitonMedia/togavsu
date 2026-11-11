@@ -29,7 +29,8 @@ go run ./examples/matter-clock/cmd/matter-clock package -key signing.key -out ma
 docker build -f examples/matter-clock/Dockerfile -t togavsu-matter-clock .
 ```
 
-The admin adds the printed public key as a trusted local key, then installs
+The admin adds the printed PEM public key as a trusted signing key (Modules tab, or
+`POST /api/v1/trusted-signing-keys` with `name` and `public_key_pem`), then installs
 `matter-clock.tar.gz` from a local file on the Modules tab (or `POST /api/v1/modules`
 with the file as `package`) and approves its permissions. The manifest's image digest is
 a placeholder; set it to the digest of the image you built before signing.

@@ -143,28 +143,3 @@ ON CONFLICT (module_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = 
 	}
 	return s.ModuleSettings(ctx, p, nil, false, module)
 }
-
-// KeyView is a trusted signing key for the admin page.
-type KeyView struct {
-	KeyID     string `json:"key_id"`
-	Name      string `json:"name"`
-	PublicKey string `json:"public_key"`
-	Source    string `json:"source"`
-}
-
-// TrustedKeys lists the keys the core accepts: the firm's local keys and the
-// marketplace's published keys.
-func (s *Service) TrustedKeys(ctx context.Context, p domain.Principal) ([]KeyView, error) {
-	if err := requireAdmin(p); err != nil {
-		return nil, err
-	}
-	keys, err := s.trustedKeys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := []KeyView{}
-	for _, k := range keys {
-		out = append(out, KeyView{KeyID: k.KeyID, Name: k.Name, PublicKey: encodeKey(k.PublicKey), Source: k.Source})
-	}
-	return out, nil
-}

@@ -77,6 +77,34 @@ func calendarModule(t *testing.T, complete bool) (http.Handler, *[]http.Header) 
 
 // AC-014: a module switched in for calendar takes over the calendar screens and API;
 // switching back restores the core's.
+// handlers checks GET /api/v1/domain-handlers against the contract and want (domain to
+// module id, "" for the core).
+func handlers(t *testing.T, e *env, want map[string]string) {
+	t.Helper()
+	if r := e.do("GET", "/api/v1/domain-handlers", nil, e.as("staff")...); r.code != http.StatusForbidden {
+		t.Fatalf("staff listed domain handlers: %d", r.code)
+	}
+	r := e.do("GET", "/api/v1/domain-handlers", nil, e.as("admin")...)
+	data, _ := r.json["data"].([]any)
+	if r.code != http.StatusOK || len(data) != len(want) || r.json["page"] == nil {
+		t.Fatalf("domain handlers: %d %s", r.code, r.body)
+	}
+	for _, it := range data {
+		h, _ := it.(map[string]any)
+		if err := shapeOf(t, "DomainHandler", h); err != nil {
+			t.Fatalf("domain handler outside the contract: %v (%s)", err, r.body)
+		}
+		mod, ok := want[h["domain"].(string)]
+		kind := "core"
+		if mod != "" {
+			kind = "module"
+		}
+		if !ok || h["module_id"] != mod || h["handler"] != kind {
+			t.Fatalf("domain handler %v, want module %q", h, mod)
+		}
+	}
+}
+
 func TestPGCalendarReplacement(t *testing.T) {
 	e := newEnv(t)
 	h, seen := calendarModule(t, true)
@@ -89,26 +117,29 @@ func TestPGCalendarReplacement(t *testing.T) {
 		t.Fatalf("core calendar before the switch: %d %s", core.code, core.body)
 	}
 	// Staff can't switch a domain; an incomplete contract is refused.
-	if r := e.do("PUT", "/api/v1/module-replacements/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("staff")...); r.code != http.StatusForbidden {
+	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("staff")...); r.code != http.StatusForbidden {
 		t.Fatalf("staff switch: %d", r.code)
 	}
 	partial, _ := calendarModule(t, false)
 	e.rt.handlers["calendar-plus"] = partial
 	e.rt.Deploy(e.ctx, e.rt.last("calendar-plus"))
-	if r := e.do("PUT", "/api/v1/module-replacements/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("admin")...); r.code != http.StatusBadRequest || !strings.Contains(r.body, "missing") {
+	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("admin")...); r.code != http.StatusBadRequest || !strings.Contains(r.body, "missing") {
 		t.Fatalf("incomplete contract accepted: %d %s", r.code, r.body)
 	}
 	e.rt.handlers["calendar-plus"] = h
 	e.rt.Deploy(e.ctx, e.rt.last("calendar-plus"))
 	// The sample module doesn't declare replaces: calendar.
 	e.installSample()
-	if r := e.do("PUT", "/api/v1/module-replacements/calendar", map[string]any{"module_id": "matter-clock"}, e.as("admin")...); r.code != http.StatusBadRequest {
+	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "matter-clock"}, e.as("admin")...); r.code != http.StatusBadRequest {
 		t.Fatalf("non-replacing module accepted: %d %s", r.code, r.body)
 	}
 
-	if r := e.do("PUT", "/api/v1/module-replacements/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("admin")...); r.code != http.StatusOK {
+	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("admin")...); r.code != http.StatusOK ||
+		r.json["handler"] != "module" || r.json["module_id"] != "calendar-plus" || r.json["domain"] != "calendar" || shapeOf(t, "DomainHandler", r.json) != nil {
 		t.Fatalf("switch: %d %s", r.code, r.body)
 	}
+	// The contract list (listDomainHandlers) reports every replaceable domain.
+	handlers(t, e, map[string]string{"time": "", "trust": "", "calendar": "calendar-plus"})
 	// Next request, no restart: API and screens go to the module.
 	for _, c := range []struct{ method, path string }{
 		{"GET", "/api/v1/calendar-events"}, {"POST", "/api/v1/calendar-events"}, {"GET", "/api/v1/deadlines"}, {"GET", "/calendar"}, {"GET", "/calendar/deadlines"},
@@ -156,8 +187,13 @@ func TestPGCalendarReplacement(t *testing.T) {
 	}
 
 	// Switch back: the core's calendar again, with its data untouched.
-	if r := e.do("PUT", "/api/v1/module-replacements/calendar", map[string]any{"module_id": nil}, e.as("admin")...); r.code != http.StatusOK {
+	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": ""}, e.as("admin")...); r.code != http.StatusOK ||
+		r.json["handler"] != "core" || r.json["module_id"] != "" || shapeOf(t, "DomainHandler", r.json) != nil {
 		t.Fatalf("switch back: %d %s", r.code, r.body)
+	}
+	handlers(t, e, map[string]string{"time": "", "trust": "", "calendar": ""})
+	if e.count(`SELECT COUNT(*) FROM core.events WHERE action = 'domain.switched'`) != 2 {
+		t.Fatal("the switches didn't emit the contract's domain.switched event")
 	}
 	back := e.do("GET", "/api/v1/calendar-events", nil, e.as("staff")...)
 	if back.code != http.StatusOK || back.body != core.body {

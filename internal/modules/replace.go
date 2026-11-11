@@ -108,36 +108,81 @@ func (s *Service) replacing(ctx context.Context, module string) (string, error) 
 // module must be enabled, declare replaces: d and publish an OpenAPI document covering
 // every core path of the domain. The switch is a registry setting, so it applies on the
 // next request and its old and new values go to the audit log.
-func (s *Service) SwitchDomain(ctx context.Context, p domain.Principal, d, module string) error {
+func (s *Service) SwitchDomain(ctx context.Context, p domain.Principal, d, module string) (DomainHandler, error) {
 	if err := requireAdmin(p); err != nil {
-		return err
+		return DomainHandler{}, err
 	}
 	key, ok := domainSetting[d]
 	if !ok {
-		return invalid("domain", "time, trust or calendar")
+		return DomainHandler{}, invalid("domain", "time, trust or calendar")
 	}
 	if module != "" {
 		in, err := s.Installed(ctx, module)
 		if err != nil || !in.Enabled {
-			return invalid("module", "module "+module+" isn't enabled")
+			return DomainHandler{}, invalid("module", "module "+module+" isn't enabled")
 		}
 		if in.Manifest.Replaces != d {
-			return invalid("module", "module "+module+" doesn't declare replaces: "+d)
+			return DomainHandler{}, invalid("module", "module "+module+" doesn't declare replaces: "+d)
 		}
 		if err := s.checkContract(ctx, module, d); err != nil {
-			return err
+			return DomainHandler{}, err
 		}
 	}
 	if _, err := s.d.Settings.Set(ctx, key, module, p); err != nil {
-		return err
+		return DomainHandler{}, err
 	}
-	return s.commit(ctx, func(ctx context.Context) error {
+	err := s.commit(ctx, func(ctx context.Context) error {
 		summary := d + " is served by the core again"
 		if module != "" {
 			summary = d + " is served by module " + module
 		}
-		return s.event(ctx, p, "module.domain_switched", module, summary, "")
+		return s.event(ctx, p, "domain.switched", module, summary, "")
 	})
+	if err != nil {
+		return DomainHandler{}, err
+	}
+	return s.handlerOf(ctx, d)
+}
+
+// DomainHandler is the API contract's DomainHandler: which implementation serves a
+// replaceable domain. module_id is empty when the core serves it.
+type DomainHandler struct {
+	Domain   string `json:"domain"`
+	ModuleID string `json:"module_id"`
+	Handler  string `json:"handler"`
+}
+
+// replaceableDomains in contract order.
+var replaceableDomains = []string{DomainTime, DomainTrust, DomainCalendar}
+
+// handlerOf reports who serves d on the next request: the module the setting names when
+// it is an enabled replacement for d, otherwise the core.
+func (s *Service) handlerOf(ctx context.Context, d string) (DomainHandler, error) {
+	id, err := s.Replacement(ctx, d)
+	if err != nil {
+		return DomainHandler{}, err
+	}
+	if id == "" {
+		return DomainHandler{Domain: d, Handler: "core"}, nil
+	}
+	return DomainHandler{Domain: d, ModuleID: id, Handler: "module"}, nil
+}
+
+// DomainHandlers lists time, trust and calendar with who serves each (contract
+// listDomainHandlers).
+func (s *Service) DomainHandlers(ctx context.Context, p domain.Principal) ([]DomainHandler, error) {
+	if err := requireAdmin(p); err != nil {
+		return nil, err
+	}
+	out := make([]DomainHandler, zero, len(replaceableDomains))
+	for _, d := range replaceableDomains {
+		h, err := s.handlerOf(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, nil
 }
 
 // checkContract reads the module's /api/v1/openapi.json and requires every core path of

@@ -12,5 +12,6 @@
   "role_tag_bytes": 4,
   "max_port": 65535,
   "file_mode": 420,
-  "aes_key_bytes": 32
+  "aes_key_bytes": 32,
+  "idempotency_key_max_chars": 200
 }

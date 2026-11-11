@@ -51,6 +51,7 @@ type limitFacts struct {
 	MaxPort             int   `json:"max_port"`
 	FileMode            int64 `json:"file_mode"`
 	AESKeyBytes         int   `json:"aes_key_bytes"`
+	IdemKeyChars        int   `json:"idempotency_key_max_chars"`
 }
 
 var limits = sync.OnceValue(func() limitFacts {
@@ -84,6 +85,8 @@ const (
 	CodeTampered  = "tampered_module"
 	CodeMigration = "migration_refused"
 	CodeDeclined  = "permission_declined"
+	// CodeIdemConflict is a reused Idempotency-Key with a different body.
+	CodeIdemConflict = "idempotency_conflict"
 )
 
 func refuse(code, msg string) error {

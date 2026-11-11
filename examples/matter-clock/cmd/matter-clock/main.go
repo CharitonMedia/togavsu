@@ -109,5 +109,5 @@ func pack(args []string) {
 		log.Fatal(err)
 	}
 	pub := priv.Public().(ed25519.PublicKey)
-	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted local key): %s\n", *out, modules.KeyID(pub), base64.StdEncoding.EncodeToString(pub))
+	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, modules.KeyID(pub), modules.PublicKeyPEM(pub))
 }

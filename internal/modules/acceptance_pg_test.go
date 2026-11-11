@@ -273,8 +273,16 @@ VALUES ($1,$2,$2,$3,'staff',$3,'matter.created','matter',$4,$4,'synthetic',0)`, 
 		t.Fatalf("wrong confirmation: %d", r.code)
 	}
 	r = e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "keep", "confirmation": "matter-clock"}, e.as("admin")...)
-	if r.code != http.StatusOK || r.json["status"] != modules.StatusRemoved {
+	if r.code != http.StatusOK || r.json["status"] != modules.StatusUninstalling || r.json["enabled"] != false {
 		t.Fatalf("uninstall keep: %d %s", r.code, r.body)
+	}
+	// The response is a contract Module (Codex checkpoint 2 on PR #38: removed is not a
+	// Module.status), and the removed module is gone from Get and List.
+	if err := shapeOf(t, "Module", r.json); err != nil {
+		t.Fatalf("uninstall response outside the contract: %v (%s)", err, r.body)
+	}
+	if g := e.do("GET", "/api/v1/modules/matter-clock", nil, e.as("admin")...); g.code != http.StatusNotFound {
+		t.Fatalf("get after uninstall: %d %s", g.code, g.body)
 	}
 	if catalogHas(e, e.staff, "matter-clock.hours") || hasTopic(t, e, "matter-clock") {
 		t.Fatal("widget or guide still shown after uninstall")
@@ -361,7 +369,7 @@ func TestPGUnsignedTamperedRefused(t *testing.T) {
 		t.Fatalf("tampered: %d %s", r.code, r.body)
 	}
 	// A key the admin revoked no longer verifies.
-	if err := e.svc.RevokeTrustedKey(e.ctx, e.admin, e.keyID); err != nil {
+	if err := e.svc.DeleteTrustedKey(e.ctx, e.admin, e.keyID); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.do("POST", "/api/v1/modules", e.build(nil), e.as("admin")...); r.json["code"] != modules.CodeUnsigned {
@@ -443,9 +451,22 @@ func TestPGUninstallDeleteData(t *testing.T) {
 	if r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, e.as("staff")...); r.code != http.StatusForbidden {
 		t.Fatalf("staff uninstall: %d", r.code)
 	}
-	r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, e.as("admin")...)
+	idem := append(e.as("admin"), "Idempotency-Key", "uninstall-1")
+	r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, idem...)
 	if r.code != http.StatusOK {
 		t.Fatalf("delete data: %d %s", r.code, r.body)
+	}
+	if err := shapeOf(t, "Module", r.json); err != nil || r.json["status"] != modules.StatusUninstalling {
+		t.Fatalf("uninstall response outside the contract: %v (%s)", err, r.body)
+	}
+	// Contract idempotencyKey (Codex checkpoint 2 on PR #38): the same key with a
+	// different body is idempotency_conflict, not the first response; the same key and
+	// body replay it with Idempotent-Replay and no second backup.
+	if c := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "keep", "confirmation": "matter-clock"}, idem...); c.code != http.StatusConflict || c.json["code"] != "idempotency_conflict" {
+		t.Fatalf("same key, different body: %d %s", c.code, c.body)
+	}
+	if rp := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, idem...); rp.code != http.StatusOK || rp.body != r.body {
+		t.Fatalf("same key and body: %d %s", rp.code, rp.body)
 	}
 	if len(e.backups.made) != 1 {
 		t.Fatalf("backups taken: %d", len(e.backups.made))

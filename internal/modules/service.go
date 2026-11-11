@@ -28,7 +28,8 @@ import (
 )
 
 // Module statuses (API contract Module.status, plus the terminal states the runtime
-// keeps for history).
+// keeps for history). removed and cancelled never leave the API: List and Get skip them
+// and Uninstall answers uninstalling.
 const (
 	StatusAwaiting     = "awaiting_approval"
 	StatusInstalled    = "installed"
@@ -369,52 +370,6 @@ func (s *Service) commit(ctx context.Context, fn func(ctx context.Context) error
 
 // --- keys ---
 
-// AddTrustedKey adds a firm-trusted local signing key (PRD 9.3). pub is base64 ed25519.
-func (s *Service) AddTrustedKey(ctx context.Context, p domain.Principal, name, pub string) (string, error) {
-	if err := requireAdmin(p); err != nil {
-		return "", err
-	}
-	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(pub))
-	if err != nil || len(raw) != ed25519.PublicKeySize {
-		return "", invalid("public_key", "a trusted key is a base64 ed25519 public key")
-	}
-	if strings.TrimSpace(name) == "" {
-		return "", invalid("name", "name the key")
-	}
-	kid := KeyID(raw)
-	id, err := domain.NewID()
-	if err != nil {
-		return "", err
-	}
-	at := s.now().UnixMicro()
-	err = s.commit(ctx, func(ctx context.Context) error {
-		if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_signing_keys (id, created_at, updated_at, created_by, key_id, name, public_key, revoked_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,NULL) ON CONFLICT (key_id) DO UPDATE SET revoked_at = NULL, name = EXCLUDED.name, updated_at = EXCLUDED.updated_at`,
-			string(id), at, at, string(p.UserID), kid, name, pub); err != nil {
-			return err
-		}
-		return s.audit(ctx, p, "keys", "trusted_key", "", kid, name)
-	})
-	return kid, err
-}
-
-// RevokeTrustedKey stops accepting a local key for new installs and updates.
-func (s *Service) RevokeTrustedKey(ctx context.Context, p domain.Principal, keyID string) error {
-	if err := requireAdmin(p); err != nil {
-		return err
-	}
-	return s.commit(ctx, func(ctx context.Context) error {
-		res, err := s.q(ctx).ExecContext(ctx, `UPDATE core.module_signing_keys SET revoked_at = $1, updated_at = $1 WHERE key_id = $2 AND revoked_at IS NULL`, s.now().UnixMicro(), keyID)
-		if err != nil {
-			return err
-		}
-		if n, _ := res.RowsAffected(); n == int64(zero) {
-			return domain.NotFound("trusted key")
-		}
-		return s.audit(ctx, p, "keys", "trusted_key", keyID, "", "revoked")
-	})
-}
-
 func (s *Service) trustedKeys(ctx context.Context) ([]TrustedKey, error) {
 	rows, err := s.q(ctx).QueryContext(ctx, `SELECT key_id, name, public_key FROM core.module_signing_keys WHERE revoked_at IS NULL`)
 	if err != nil {
@@ -522,6 +477,10 @@ func (s *Service) Get(ctx context.Context, p domain.Principal, id string) (View,
 	r, err := s.row(ctx, id)
 	if err != nil {
 		return View{}, err
+	}
+	if r.Status == StatusRemoved || r.Status == StatusCancelled {
+		// Removed and cancelled are history, not contract Module states.
+		return View{}, domain.NotFound("module")
 	}
 	return s.view(ctx, r)
 }
@@ -1410,8 +1369,11 @@ func (s *Service) Uninstall(ctx context.Context, p domain.Principal, id string, 
 	}); err != nil {
 		return View{}, err
 	}
+	// The contract's Module.status has no removed value: the response reports the last
+	// contract state, uninstalling, with the module disabled. The record then leaves List
+	// and Get (not_found), and module.removed has gone out with the commit.
 	v, err := s.view(ctx, r)
-	v.Status = StatusRemoved
+	v.Status, v.Enabled = StatusUninstalling, false
 	return v, err
 }
 
