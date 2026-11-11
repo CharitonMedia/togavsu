@@ -111,10 +111,10 @@ func (s *Service) openException(ctx context.Context, j *Job, kind, detail string
 	}
 	at := us(s.now())
 	// The same item already open (a reprocess, a requeue after a matter was set) keeps
-	// its id and takes the newest detail and best answer, so Accept never applies an
-	// answer built before the matter changed.
-	res, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET detail = ?, best_answer = ?, updated_at = ? WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`,
-		detail, jsonText(best), at, j.FileID, j.VersionID, kind)
+	// its id and takes the newest job, detail and best answer, so Accept never applies
+	// an answer built before the matter changed and Retry acts on the current job.
+	res, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET job_id = ?, detail = ?, best_answer = ?, updated_at = ? WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`,
+		j.ID, detail, jsonText(best), at, j.FileID, j.VersionID, kind)
 	if err != nil {
 		return err
 	}
@@ -494,7 +494,7 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		if requeue {
 			return nil
 		}
-		return s.settleIfReviewed(ctx, e.jobID)
+		return s.settleIfReviewed(ctx, f.ID, e.versionID)
 	})
 	if err != nil {
 		return Exception{}, err
@@ -512,37 +512,40 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 	return s.Exception(ctx, p, id)
 }
 
-// settleIfReviewed moves a finished job out of review once a person has settled the
-// last open item of its version, so the file reads as processed (PRD 8.21: a person's
-// decision settles the item). A job stopped at its first check stays as it is, and so
-// does a job with a unit that failed its check: its copy still holds an unresolved
-// part, which is not published as correct whatever is done with the item.
-func (s *Service) settleIfReviewed(ctx context.Context, jobID domain.ID) error {
-	if jobID == "" {
-		return nil
-	}
-	j, err := s.job(ctx, jobID)
-	if err != nil {
-		return err
-	}
-	if j.Status != StatusException || j.Stage != stageDone {
-		return nil
-	}
-	open, err := s.openExceptionCount(ctx, j.FileID, j.VersionID)
+// settleIfReviewed moves the version's finished jobs out of review once a person has
+// settled its last open item, so the file reads as processed (PRD 8.21: a person's
+// decision settles the item). Every job of the version is looked at, since a reprocess
+// adds a job while items opened by an earlier one may still be open. A job stopped at
+// its first check stays as it is, and so does a job with a unit that failed its check:
+// its copy still holds an unresolved part, which is not published as correct whatever
+// is done with the item.
+func (s *Service) settleIfReviewed(ctx context.Context, file, version domain.ID) error {
+	open, err := s.openExceptionCount(ctx, file, version)
 	if err != nil || open > zero {
 		return err
 	}
-	units, err := s.units(ctx, j.ID)
+	jobs, err := s.jobsWhere(ctx, `file_id = ? AND file_version_id = ? AND status = ? AND stage = ?`, file, version, StatusException, stageDone)
 	if err != nil {
 		return err
 	}
-	for _, u := range units {
-		if u.Status != unitPassed {
-			return nil
+	for _, j := range jobs {
+		units, err := s.units(ctx, j.ID)
+		if err != nil {
+			return err
+		}
+		settled := true
+		for _, u := range units {
+			settled = settled && u.Status == unitPassed
+		}
+		if !settled {
+			continue
+		}
+		j.Status = StatusPublished
+		if err := s.saveJob(ctx, j); err != nil {
+			return err
 		}
 	}
-	j.Status = StatusPublished
-	return s.saveJob(ctx, j)
+	return nil
 }
 
 func (s *Service) setCategory(ctx context.Context, p domain.Principal, f files.FileView, key string) error {

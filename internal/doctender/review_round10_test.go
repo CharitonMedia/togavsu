@@ -213,3 +213,38 @@ func TestSettlingAnUnresolvedPartLeavesTheFileInReview(t *testing.T) {
 		t.Fatalf("markdown lost its unresolved page:\n%s", md)
 	}
 }
+
+// Opus checkpoint P2 (on e18706e): after a reprocess, settling the item settles the
+// newest job too, so the file reads as processed.
+func TestSettlingAfterAReprocessMarksTheFileProcessed(t *testing.T) {
+	e := newEnv(t)
+	e.ai.set(func(fa *fakeAI) {
+		lowName(fa)
+		fa.categoryConfidence = 0.3
+	})
+	f := e.upload(e.staff, e.open, "motion.txt", "text/plain", []byte(motion))
+	e.drain()
+	first := e.jobFor(f.ID)
+	if _, err := e.svc.Reprocess(e.ctx, e.attorney, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.drain()
+	newest := e.jobFor(f.ID)
+	if newest.ID == first.ID || newest.Status != StatusException {
+		t.Fatalf("reprocess: newest job %s %q, first %s", newest.ID, newest.Status, first.ID)
+	}
+	items := e.openExceptions(f.ID)
+	if len(items) != 1 || items[0].Kind != "low_confidence" {
+		t.Fatalf("items %+v, want one low-confidence item", items)
+	}
+	if _, err := e.svc.ResolveException(e.ctx, e.attorney, items[0].ID, Resolve{Action: "accept"}); err != nil {
+		t.Fatal(err)
+	}
+	if j := e.jobFor(f.ID); j.Status != StatusPublished {
+		t.Fatalf("newest job %q after the item was settled, want %q", j.Status, StatusPublished)
+	}
+	st, err := e.svc.Status(e.ctx, e.attorney, f.ID)
+	if err != nil || st.Label != "Processed" {
+		t.Fatalf("status %+v %v, want Processed", st, err)
+	}
+}
