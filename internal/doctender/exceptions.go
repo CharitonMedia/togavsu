@@ -514,7 +514,9 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 
 // settleIfReviewed moves a finished job out of review once a person has settled the
 // last open item of its version, so the file reads as processed (PRD 8.21: a person's
-// decision settles the item). A job stopped at its first check stays as it is.
+// decision settles the item). A job stopped at its first check stays as it is, and so
+// does a job with a unit that failed its check: its copy still holds an unresolved
+// part, which is not published as correct whatever is done with the item.
 func (s *Service) settleIfReviewed(ctx context.Context, jobID domain.ID) error {
 	if jobID == "" {
 		return nil
@@ -529,6 +531,15 @@ func (s *Service) settleIfReviewed(ctx context.Context, jobID domain.ID) error {
 	open, err := s.openExceptionCount(ctx, j.FileID, j.VersionID)
 	if err != nil || open > zero {
 		return err
+	}
+	units, err := s.units(ctx, j.ID)
+	if err != nil {
+		return err
+	}
+	for _, u := range units {
+		if u.Status != unitPassed {
+			return nil
+		}
 	}
 	j.Status = StatusPublished
 	return s.saveJob(ctx, j)

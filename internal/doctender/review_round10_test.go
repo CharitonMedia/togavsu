@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/files"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
@@ -173,5 +174,42 @@ func TestSettlingTheLastItemMarksTheFileProcessed(t *testing.T) {
 	st, err = e.svc.Status(e.ctx, e.attorney, f.ID)
 	if err != nil || st.Label != "Processed" {
 		t.Fatalf("status after review %+v %v, want Processed", st, err)
+	}
+}
+
+// Opus checkpoint P2 (on 42e2cbf): settling the item of a part that failed its check,
+// or of a file stopped at its first check, does not make the file read as processed.
+func TestSettlingAnUnresolvedPartLeavesTheFileInReview(t *testing.T) {
+	e := newEnv(t)
+	e.set("doctender.retry_schedule", `["0s","0s","0s","0s","0s","0s"]`)
+	e.set("doctender.max_attempts", "2")
+	e.ai.set(func(f *fakeAI) { f.failOCR["PAGE 2 OF 3"] = 100 })
+	e.set("ai.primary_fast_model", "gpt-test-strong-check")
+	scan := e.upload(e.staff, e.open, "scan.pdf", "application/pdf", scannedPDF(t, 3))
+	broken := e.upload(e.staff, e.open, "damaged.pdf", "application/pdf", damagedPDF())
+	e.drain()
+	for _, c := range []struct {
+		f      files.FileView
+		kind   string
+		action string
+	}{{scan, "extraction_failed", "accept"}, {broken, "damaged", "keep"}} {
+		ex := e.openExceptions(c.f.ID)
+		if len(ex) != 1 || ex[0].Kind != c.kind {
+			t.Fatalf("%s: items %+v, want one %s item", c.f.Name, ex, c.kind)
+		}
+		if _, err := e.svc.ResolveException(e.ctx, e.attorney, ex[0].ID, Resolve{Action: c.action}); err != nil {
+			t.Fatalf("%s: %s: %v", c.f.Name, c.action, err)
+		}
+		if j := e.jobFor(c.f.ID); j.Status != StatusException {
+			t.Fatalf("%s: job status %q after %s, want it left in review", c.f.Name, j.Status, c.action)
+		}
+		st, err := e.svc.Status(e.ctx, e.attorney, c.f.ID)
+		if err != nil || st.Label == "Processed" {
+			t.Fatalf("%s: status %+v %v after %s, want it not to read Processed", c.f.Name, st, err, c.action)
+		}
+	}
+	_, md := e.markdown(e.attorney, scan.ID)
+	if !strings.Contains(md, "[unresolved: page 2]") {
+		t.Fatalf("markdown lost its unresolved page:\n%s", md)
 	}
 }
