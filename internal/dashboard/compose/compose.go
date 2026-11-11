@@ -1,5 +1,5 @@
 // Package compose mounts the ui assignment's packages (internal/dashboard and
-// internal/help) and the calendar on a running core.App, so the shell, home screen,
+// internal/help) on a running core.App, so the shell, home screen,
 // admin page, help center and their APIs run against the real practice, billing, trust
 // and identity services on Postgres.
 //
@@ -8,11 +8,8 @@
 // core. It authenticates exactly as core does (identity sessions with the CSRF token on
 // writes, bearer tokens limited to the contract scopes of the route).
 //
-// ponytail: ceiling: the calendar here runs on calendar.Memory, as the calendar package
-// itself ships (its Postgres store is pending), so calendar rows do not survive a
-// restart; the dashboard and help rows are on Postgres. Upgrade path: integrate-documents
-// mounts calendar on the shared pool and core.App exposes it; Mount then takes it from
-// the App. Trigger: integrate-documents merges.
+// The calendar is the core's (core.App.Calendar on Postgres, integrate-documents); the
+// dashboard's calendar widgets and notifications read that same service.
 package compose
 
 import (
@@ -39,6 +36,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/trust"
+	"github.com/CharitonMedia/togavsu/web"
 	"github.com/CharitonMedia/togavsu/web/static"
 	"github.com/CharitonMedia/togavsu/web/templates/admin"
 	dashtpl "github.com/CharitonMedia/togavsu/web/templates/dashboard"
@@ -49,9 +47,7 @@ import (
 type Options struct {
 	// DatabaseURL is the core's DSN; the ui migrations run on it before mounting.
 	DatabaseURL string
-	// CalendarTemplates holds web/templates/calendar; nil serves the calendar API only.
-	CalendarTemplates fs.FS
-	Now               func() time.Time
+	Now         func() time.Time
 	// Files backs uploaded help images and videos, resolved as the viewer. The core
 	// passes FileVersions{Svc: its files service}; nil refuses file-backed help items.
 	Files help.Files
@@ -132,15 +128,19 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 		now = time.Now
 	}
 	u := &UI{App: app}
-	cal, err := calendar.New(calendar.Deps{
-		Store: calendar.NewMemory(), Policy: app.Practice.Policy, Matters: calendar.PracticeMatters{Svc: app.Practice},
-		Users: calendar.UsersFunc(app.Users.Get), Settings: app.Settings, Audit: app.Audit, Mailer: trust.SMTP{Settings: app.Settings}, Now: now,
-	})
+	// The calendar is the core's own Postgres-backed service. Its routes are served by
+	// the core handler; calMux only tells route() which paths are the calendar's, so a
+	// ui route never shadows them.
+	cal := app.Calendar
+	if cal == nil {
+		return nil, errors.New("compose: core has no calendar")
+	}
+	u.Calendar = cal
+	calTpl, err := fs.Sub(web.Calendar, "templates/calendar")
 	if err != nil {
 		return nil, err
 	}
-	u.Calendar = cal
-	ch, err := calendar.NewHandler(cal, opt.CalendarTemplates, u.principal)
+	ch, err := calendar.NewHandler(cal, calTpl, u.principal)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 	return u, nil
 }
 
-// Handler is the whole site: ui routes first, then calendar, then the core.
+// Handler is the whole site: calendar routes go to the core, then ui routes, then the core.
 func (u *UI) Handler() http.Handler { return u.handler }
 
 // coreWidgets are the widget routes a domain service already serves; the core keeps them.
@@ -226,11 +226,15 @@ func (u *UI) route(coreH http.Handler) http.Handler {
 				return
 			}
 			if _, pat := u.cal.Handler(r); pat != "" {
-				u.cal.ServeHTTP(w, r)
+				coreH.ServeHTTP(w, r)
 				return
 			}
 		}
-		for _, m := range []*http.ServeMux{u.helpMux, u.dash, u.cal} {
+		if _, pat := u.cal.Handler(r); pat != "" && pat != "/" {
+			coreH.ServeHTTP(w, r) // the core's calendar on Postgres
+			return
+		}
+		for _, m := range []*http.ServeMux{u.helpMux, u.dash} {
 			if _, pat := m.Handler(r); pat != "" && pat != "/" {
 				m.ServeHTTP(w, r)
 				return
