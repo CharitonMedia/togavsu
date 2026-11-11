@@ -10,32 +10,25 @@
 // get the same answers; a matter wall answers not_found. Edit history is staff-only, and a
 // client sees only the InvoiceClient fields of its own sent invoices.
 //
-// Integration (owned by the lead, not this package):
-//   - core.Migrate applies Migrations() (version 300, billing_records) with the core files.
-//   - core.Open builds New(Deps{Store: NewPostgres(pool), Practice: <practice.Durable>,
-//     Walls: app.Practice.Policy.Walls, Audit: aud, Settings: reg, Mirror: <practice.Durable>,
-//     Trust: NewTrustLink(<trust service>, pool), Mail: <system mail>, Receipts: link,
-//     InvoiceFiles: link}) with link from NewFileLink(<files service>), calls Resync once, and mounts
-//     NewHandler(svc, sub(web.Billing, "templates/billing"), app.principal).Routes() for
-//     /api/v1 billing paths and /billing screens ahead of the practice catch-all.
-//   - web/embed.go embeds templates/billing.
-//   - Trust and billing share pool: a trust write billing makes joins billing's transaction,
-//     and billing calls Trust.Committed after its commit (balance sink, trust events).
+// Integration: internal/core applies Migrations() (version 300, billing_records) with the
+// core files, builds New over the core pool with practice.Durable as Practice and Mirror,
+// TrustLink over the trust service, and the core SMTP mailer; binds TrustEvents as the
+// trust service's publisher; calls Resync at start; and mounts NewHandler's routes for the
+// /api/v1 billing paths and the /billing screens. Trust and billing share the pool: a trust
+// write billing makes joins billing's transaction, and billing calls Trust.Committed after
+// its commit (balance sink, trust events).
 package billing
 
 // Pending lists what this package does not yet deliver. Reports and the PR body repeat it.
 var Pending = []string{
-	"trust: TrustLink adapts the merged trust service and is tested against it on Postgres; until core wires Deps.Trust, trust deposits, Apply trust, Apply flat fee and trust-linked reversals return conflict",
-	"flat fee from the trust page: trust's own Apply flat fee shares the application record with billing and is credited to an open fee invoice through TrustEvents; until core sets trust.Deps.Events to a bound billing.TrustEvents, the credit waits for the next billing write on the invoice or Resync, and a trust-page apply with no fee invoice creates none",
-	"system mail: no SMTP Mailer exists in core yet; deliver=email returns conflict until one is wired. Mail is sent after the commit, with no outbox",
-	"core wiring: migration 300, the handler mount, web embed and the /billing sign-in redirect are lead-owned",
+	"system mail: sent through the core SMTP mailer after the commit, with no outbox; a failed send is undone and recorded",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",
 	"invoices:bulk and payment processor initializations are not implemented",
-	"invoice PDFs: FileLink stores each sent invoice's PDF (on send and on download, one immutable version per distinct rendering) as an invoice_pdf file record on the matter, tested against the merged files service on Postgres; until core wires Deps.InvoiceFiles, PDFs are rendered on demand only. The logo is drawn only when it is a JPEG",
-	"files wiring: Deps.Receipts and Deps.InvoiceFiles (NewFileLink over the merged files service) are lead-owned core wiring",
-	"billing events are stored in billing_records; merging them into the practice timeline is lead-owned",
+	"invoice PDFs: FileLink stores each sent invoice's PDF as an invoice_pdf file record on the matter and is tested against the merged files service on Postgres; the core does not wire the files service yet (integrate-documents), so Deps.InvoiceFiles is nil and PDFs are rendered on demand only. The logo is drawn only when it is a JPEG",
+	"files wiring: Deps.Receipts and Deps.InvoiceFiles (NewFileLink over the files service) wait for the files service in core (integrate-documents)",
+	"billing events are stored in billing_records; merging them into the practice timeline is not done",
 	"late interest is applied from the invoice screen (attorney or admin, only when enabled); there is no API route or nightly job",
-	"expense receipts: FileLink checks receipt_file_id against the merged files service (readable by the caller, untrashed, on the expense's matter, classed receipt), and the expense screen uploads a receipt as a receipt file record; until core wires Deps.Receipts, receipt_file_id is refused",
+	"expense receipts: FileLink checks receipt_file_id against the files service; until core wires Deps.Receipts, receipt_file_id is refused",
 	"expense receipts over the API alone: the files contract lets no caller set financial_classification, so a file uploaded through /api/v1/files cannot become a receipt; proposed shared change for the files owner: classify a general file as receipt when an expense names it, or accept a receipt classification on upload",
 	"custom-field cards on time entries and expenses wait on custom fields",
 }

@@ -203,8 +203,11 @@ func New(d Deps) (*Service, error) {
 func (s *Service) now() time.Time { return s.d.Now().UTC() }
 
 // today is the firm-local calendar date.
-func (s *Service) today(ctx context.Context) string {
-	t := s.now()
+func (s *Service) today(ctx context.Context) string { return s.firmDate(ctx, s.now()) }
+
+// firmDate is t's calendar date in the firm's time zone, so a timestamp compares with
+// report dates (which are firm dates) on the day the firm saw it happen.
+func (s *Service) firmDate(ctx context.Context, t time.Time) string {
 	if zone := s.setting(ctx, "firm.time_zone"); zone != "" {
 		if in, err := domain.InZone(t, zone); err == nil {
 			t = in

@@ -98,12 +98,12 @@ func (a *App) mounted(t tool) bool {
 	if pattern != "/" {
 		return true
 	}
-	mux, ok := a.practice.(*http.ServeMux)
-	if !ok {
-		return false
+	for _, mux := range a.domains {
+		if _, pattern = mux.Handler(r); pattern != "" {
+			return true
+		}
 	}
-	_, pattern = mux.Handler(r)
-	return pattern != ""
+	return false
 }
 
 type rpcReq struct {

@@ -261,7 +261,7 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 		if inv.Status == StatusDraft || inv.IssuedOn > asOf || s.zeroFee(inv.MatterID) {
 			continue
 		}
-		if inv.Status == StatusVoid && inv.VoidedAt != nil && inv.VoidedAt.Format(dateLayout) <= asOf {
+		if inv.Status == StatusVoid && inv.VoidedAt != nil && s.firmDate(ctx, *inv.VoidedAt) <= asOf {
 			continue
 		}
 		if vis, err := ok(inv.MatterID); err != nil {
@@ -274,7 +274,7 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 			if pay.InvoiceID != inv.ID || pay.ReceivedOn > asOf || pay.Status == PayPending || pay.Status == PayFailed {
 				continue
 			}
-			if pay.Status == PayReversed && pay.ReversedAt != nil && pay.ReversedAt.Format(dateLayout) <= asOf {
+			if pay.Status == PayReversed && pay.ReversedAt != nil && s.firmDate(ctx, *pay.ReversedAt) <= asOf {
 				continue
 			}
 			if owed, err = owed.Sub(pay.AmountCents); err != nil {

@@ -113,8 +113,10 @@ var definitions = []Definition{
 
 	{Key: "mail.smtp_host", Kind: KindString, Tab: TabMail, Help: "SMTP host for system mail."},
 	{Key: "mail.smtp_port", Kind: KindInt, Min: 1, Max: 65535, HasMin: true, HasMax: true, Optional: true, Tab: TabMail, Help: "SMTP port."},
+	{Key: "mail.smtp_timeout_seconds", Kind: KindInt, Default: "60", Min: 1, Max: 600, HasMin: true, HasMax: true, Tab: TabMail, Help: "Seconds one system mail send may take. A send cut off is retried later. Default 60."},
 	{Key: "mail.smtp_username", Kind: KindString, Tab: TabMail, Help: "SMTP username."},
 	{Key: "mail.smtp_password", Kind: KindString, Secret: true, Optional: true, Tab: TabMail, Help: "SMTP password. Stored encrypted and omitted from the audit log."},
+	{Key: "mail.smtp_starttls", Kind: KindBool, Default: "true", Tab: TabMail, Help: "Use STARTTLS for system mail. When on, mail waits in the queue with an error rather than go to a server that does not offer STARTTLS. Default on."},
 	{Key: "mail.smtp_from", Kind: KindString, Tab: TabMail, Help: "From address for system mail.", Optional: true, Special: "email"},
 	{Key: "mail.route_through_email_module", Kind: KindBool, Default: "false", Tab: TabMail, Help: "Send system mail through the email module when one is installed."},
 	{Key: "mail.problem_recipients", Kind: KindString, Default: "admins", Tab: TabMail, Help: "Problem-report recipients. Default the admins.", PRD: true},
@@ -166,6 +168,7 @@ var definitions = []Definition{
 
 	{Key: "api.page_size", Kind: KindInt, Default: "50", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Default rows per API page unless the list has its own page-size setting. The effective size is limited by api.max_page_size. Default 50."},
 	{Key: "api.max_page_size", Kind: KindInt, Default: "200", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Maximum rows per API page for lists using general pagination. Default 200."},
+	{Key: "api.bulk_batch_max", Kind: KindInt, Default: "500", Min: 1, HasMin: true, Tab: TabAPI, Help: "Maximum items in one bulk request; the whole batch is one transaction. Default 500."},
 	{Key: "api.webhook_attempts", Kind: KindInt, Default: "8", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Webhook delivery attempts. Default 8.", PRD: true},
 	{Key: "api.webhook_window_hours", Kind: KindInt, Default: "24", Min: 1, Max: 168, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Hours over which webhook retries are spread. Default 24.", PRD: true},
 	{Key: "llms.show_firm_name", Kind: KindBool, Default: "true", Tab: TabAPI, Help: "Show the firm name on /llms.txt. The admin can hide it.", PRD: true},

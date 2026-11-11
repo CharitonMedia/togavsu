@@ -1,0 +1,6 @@
+# Build with build.sh, which runs `trunk build --release` here inside the LawCraft checkout.
+[build]
+target = "index.html"
+dist = "../../dist/togavsu-editor"
+public_url = "/editor/"
+filehash = true

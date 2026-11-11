@@ -55,6 +55,13 @@ func TestContractRoutesFailClosed(t *testing.T) {
 		"PUT /api/v1/matters/{matter_id}/wall", "GET /api/v1/notes", "POST /api/v1/notes", "GET /api/v1/search",
 		"POST /api/v1/conflict-records", "POST /api/v1/matters/{matter_id}/conflict-checks", "GET /api/v1/widgets/my-open-matters",
 		"POST /api/v1/custom-field-definitions", "PUT /api/v1/matters/{matter_id}/custom-fields",
+		// Phase 3: billing and trust.
+		"GET /api/v1/time-entries", "POST /api/v1/time-entries", "POST /api/v1/invoice-drafts", "POST /api/v1/invoices/{invoice_id}/approve",
+		"POST /api/v1/invoices/{invoice_id}/send", "POST /api/v1/invoices/{invoice_id}/void", "POST /api/v1/invoices/{invoice_id}/apply-trust",
+		"POST /api/v1/payments", "GET /api/v1/billing/worklist", "POST /api/v1/billing/flat-fees/{matter_id}/apply", "GET /api/v1/reports/ar-aging",
+		"GET /api/v1/trust-accounts", "POST /api/v1/trust-ledger", "POST /api/v1/trust-ledger:bulk", "POST /api/v1/trust-ledger/{trust_entry_id}/reversals",
+		"GET /api/v1/trust/balances", "GET /api/v1/trust-flags", "POST /api/v1/trust-reconciliations", "GET /api/v1/reports/trust-balances",
+		"GET /api/v1/notifications", "POST /api/v1/notifications:read-all",
 	} {
 		method, path, _ := strings.Cut(want, " ")
 		found := false

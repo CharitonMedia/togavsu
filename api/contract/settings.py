@@ -184,6 +184,7 @@ SETTINGS: list[dict] = [
     _s("notes.page_size", "integer", "lists_and_search", 25, "Notes page size. Default 25. The size cannot exceed 200.", minimum=1, maximum=200),
     _s("mail.smtp_host", "string", "notifications_and_mail", "", "SMTP host for system mail."),
     _s("mail.smtp_port", "integer", "notifications_and_mail", 587, "SMTP port. Starting value is 587 because the PRD requires SMTP settings and does not name a port.", minimum=1, maximum=65535),
+    _s("mail.smtp_timeout_seconds", "integer", "notifications_and_mail", 60, "Longest one system mail send may take. A send cut off is retried later.", minimum=1, maximum=600),
     _s("mail.smtp_username", "string", "notifications_and_mail", "", "SMTP username."),
     _s("mail.smtp_starttls", "boolean", "notifications_and_mail", True, "Use STARTTLS for system mail."),
     _s("mail.route_through_email_module", "boolean", "notifications_and_mail", False, "When true and an email module is installed, system mail is handed to that module."),

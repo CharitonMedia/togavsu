@@ -32,11 +32,7 @@ type TimeFilter struct {
 	Unbilled  bool
 }
 
-// overBulkMax reports a batch larger than api.bulk_batch_max.
-// ponytail: ceiling: the API contract names api.bulk_batch_max (starting value 500) but the
-// settings registry does not declare it yet, so until it does a batch is bounded only by the
-// 1 MiB request body. Upgrade path: the lead registers api.bulk_batch_max. Trigger: the
-// API bulk endpoints are wired in core.
+// overBulkMax reports a batch larger than api.bulk_batch_max (registry default 500).
 func (s *Service) overBulkMax(ctx context.Context, n int) bool {
 	limit, ok := s.settingIntOK(ctx, "api.bulk_batch_max")
 	return ok && n > limit

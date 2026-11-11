@@ -609,7 +609,8 @@ func TestBearerScopesMCPAndSettings(t *testing.T) {
 	}
 	list := reader.must(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 	listMatters := toolName(t, "GET", "/api/v1/matters")
-	if !strings.Contains(list.body, `"name":"`+listMatters+`"`) || strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/invoices")+`"`) {
+	// Files are a later integration; until it lands the operation is not offered.
+	if !strings.Contains(list.body, `"name":"`+listMatters+`"`) || strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/files")+`"`) {
 		t.Fatal("tools/list does not reflect the mounted routes")
 	}
 	call := mcpCall(reader, listMatters, map[string]any{})

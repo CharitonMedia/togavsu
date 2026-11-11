@@ -58,15 +58,47 @@ func (a *App) routes() {
 	m.HandleFunc("GET /admin/settings", a.settingsPage)
 	m.HandleFunc("POST /admin/settings/{setting_key}", a.settingsPost)
 	m.HandleFunc("POST /admin/settings/{setting_key}/reset", a.settingsResetPost)
-	m.Handle("/", a.screens(a.practice))
+	m.Handle("/", a.screens(http.HandlerFunc(a.dispatch)))
 	a.mux = m
 }
 
-// screens sends a signed-out browser on a practice screen to sign-in. API callers keep
-// their 401; static files and anything else pass through to the practice handler.
+// domain is the service mux that serves r: the first of trust, billing and practice with
+// a route for it. A path no service routes falls to practice for its 404 or 405.
+func (a *App) domain(r *http.Request) *http.ServeMux {
+	for _, mux := range a.domains {
+		if _, pattern := mux.Handler(r); pattern != "" {
+			return mux
+		}
+	}
+	return a.domains[len(a.domains)-1]
+}
+
+func (a *App) dispatch(w http.ResponseWriter, r *http.Request) { a.domain(r).ServeHTTP(w, r) }
+
+// screenPrefixes are the server-rendered areas; staticPrefixes are their public assets.
+var screenPrefixes = []string{"/practice/", "/billing", "/trust"}
+var staticPrefixes = []string{"/practice/static/", "/billing/static/", "/trust/static/"}
+
+func isScreen(path string) bool {
+	for _, p := range staticPrefixes {
+		if strings.HasPrefix(path, p) {
+			return false
+		}
+	}
+	for _, p := range screenPrefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// screens sends a signed-out browser on a practice, billing or trust screen to sign-in.
+// API callers keep their 401; static files and anything else pass through.
 func (a *App) screens(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/practice/") && !strings.HasPrefix(r.URL.Path, "/practice/static/") {
+		r = memoCaller(r)
+		if r.Method == http.MethodGet && isScreen(r.URL.Path) {
 			if _, err := a.principal(r); status(err) == http.StatusUnauthorized {
 				http.Redirect(w, r, "/login", http.StatusSeeOther)
 				return
@@ -84,7 +116,12 @@ func openBeforeSetup(path string) bool {
 		"/api/v1/auth/login", "/api/v1/auth/totp/enroll", "/api/v1/auth/totp/confirm", "/login", "/favicon.ico":
 		return true
 	}
-	return strings.HasPrefix(path, "/practice/static/")
+	for _, p := range staticPrefixes {
+		if strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // setupGate sends every request to first-run setup until firm, admin and two-factor exist.
@@ -123,10 +160,39 @@ func safeMethod(m string) bool {
 	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
 }
 
-// caller authenticates a cookie session or a bearer token. Cookie writes need the CSRF
-// token from sign-in, in X-CSRF-Token or a csrf form field. A bearer call needs every
-// scope the contract lists for that route; a route the contract does not list is denied.
+// callerMemo holds one request's authentication result, so the sign-in redirect gate,
+// the service handler and the trust per-entry scope check authenticate once: one session
+// touch and one api_rate_per_minute hit per request.
+type callerMemo struct {
+	done bool
+	c    identity.Caller
+	err  error
+}
+
+type callerKey struct{}
+
+// memoCaller gives r a fresh callerMemo. A request is served on one goroutine.
+func memoCaller(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), callerKey{}, &callerMemo{}))
+}
+
+// caller authenticates a cookie session or a bearer token, once per memoized request.
+// Cookie writes need the CSRF token from sign-in, in X-CSRF-Token or a csrf form field.
+// A bearer call needs every scope the contract lists for that route; a route the contract
+// does not list is denied.
 func (a *App) caller(r *http.Request) (identity.Caller, error) {
+	m, ok := r.Context().Value(callerKey{}).(*callerMemo)
+	if !ok {
+		return a.authenticate(r)
+	}
+	if !m.done {
+		m.c, m.err = a.authenticate(r)
+		m.done = true
+	}
+	return m.c, m.err
+}
+
+func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 	in := identity.Presented{Write: !safeMethod(r.Method)}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		in.SessionToken = c.Value
@@ -152,6 +218,9 @@ func (a *App) caller(r *http.Request) (identity.Caller, error) {
 		t, ok := a.toolFor(r.Method, r.URL.Path)
 		if !ok {
 			return identity.Caller{}, domain.Forbidden("this route is not available to tokens")
+		}
+		if entryTypeScoped[t.Name] {
+			return c, nil
 		}
 		if err := c.RequireScopes(t.Scopes...); err != nil {
 			return identity.Caller{}, shared(err)
