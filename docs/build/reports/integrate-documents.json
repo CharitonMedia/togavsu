@@ -1,0 +1,318 @@
+{
+ "task_id": "integrate-documents",
+ "status": "pass",
+ "scope": "Phase 4 integration: the calendar, the file store with its storage backends, LawCraft (editor) and Doc Tender composed into the running core on Postgres with practice, identity, settings, audit, billing and trust; their API, /mcp tools, screens, background workers and the core data volume. status pass means every assigned phase case and every required CI job passed locally at the tested revision. It is not full product acceptance: 35 of 52 criteria remain pending globally, including AC-011, AC-040, AC-041, AC-042, AC-043, AC-050 and AC-052 whose phase cases pass with the gaps named in pending_notes. Product CI results for this head come from the pull request run, not this report.",
+ "tested_revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+ "phase_cases": [
+  {
+   "id": "calendar-deadlines",
+   "acceptance_ids": [
+    "AC-011",
+    "AC-027"
+   ],
+   "status": "pass",
+   "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
+   "exit_code": 0,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+  },
+  {
+   "id": "storage-versions-moves",
+   "acceptance_ids": [
+    "AC-039",
+    "AC-040",
+    "AC-050"
+   ],
+   "status": "pass",
+   "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
+   "exit_code": 0,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+  },
+  {
+   "id": "lawcraft-editor",
+   "acceptance_ids": [
+    "AC-041",
+    "AC-042"
+   ],
+   "status": "pass",
+   "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/",
+   "exit_code": 0,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+  },
+  {
+   "id": "doctender-corpus",
+   "acceptance_ids": [
+    "AC-043",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-050",
+    "AC-051",
+    "AC-052"
+   ],
+   "status": "pass",
+   "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
+   "exit_code": 0,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+  }
+ ],
+ "passed_acceptance_ids": [
+  "AC-005",
+  "AC-007",
+  "AC-008",
+  "AC-009",
+  "AC-025",
+  "AC-026",
+  "AC-027",
+  "AC-030",
+  "AC-035",
+  "AC-039",
+  "AC-044",
+  "AC-045",
+  "AC-046",
+  "AC-047",
+  "AC-048",
+  "AC-049",
+  "AC-051"
+ ],
+ "pending_acceptance_ids": [
+  "AC-001",
+  "AC-002",
+  "AC-003",
+  "AC-004",
+  "AC-006",
+  "AC-010",
+  "AC-011",
+  "AC-012",
+  "AC-013",
+  "AC-014",
+  "AC-015",
+  "AC-016",
+  "AC-017",
+  "AC-018",
+  "AC-019",
+  "AC-020",
+  "AC-021",
+  "AC-022",
+  "AC-023",
+  "AC-024",
+  "AC-028",
+  "AC-029",
+  "AC-031",
+  "AC-032",
+  "AC-033",
+  "AC-034",
+  "AC-036",
+  "AC-037",
+  "AC-038",
+  "AC-040",
+  "AC-041",
+  "AC-042",
+  "AC-043",
+  "AC-050",
+  "AC-052"
+ ],
+ "passed_notes": {
+  "AC-005": "Passed in phase 3 (integrate-finance); TestFinanceInvoiceWorkflows, TestFinanceTrustInvariants, TestFinancePermissions and TestFinanceTrustNotices run green again inside test-core.sh at this revision.",
+  "AC-007": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
+  "AC-008": "As AC-005. Billing now also stores sent invoices' PDFs as invoice_pdf file records in the one file store (billing.FileLink), and the finance tests pass with it.",
+  "AC-009": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
+  "AC-025": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
+  "AC-026": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
+  "AC-030": "Phase 3 evidence; internal/settings TestModuleClean (the AC-030 source check) passes over every non-test file at this revision, including the new calendar store, projection and core wiring.",
+  "AC-035": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
+  "AC-027": "TestDocumentsCalendarDeadlines on the running core: with a court date, a block and an all-day event (and a court date on a walled matter) in the attorney's next seven court days, POST /api/v1/calendar/available-dates lists exactly the other days, a client meeting does not make a day busy, the pleading carries the title, case number and certificate of service, the letter carries recipient, address and salutation, the calendar_events and audit_log row counts are unchanged, and a reversed window is a 400. The walled hearing is never named.",
+  "AC-039": "TestDocumentsStorageVersionsMoves over HTTP as signed-in users: a 1 GiB upload in 8 MiB chunks survives a connection cut mid-chunk (resumes at that chunk) and a core restart (resumes from staging on the data volume); the staged, stored and downloaded SHA-256 match. An attorney-only-free file on a walled matter is absent from staff lists and search and is 404 for read, versions, renditions, download, inline preview, Doc Tender result and zip, and over /mcp. Upload, upload-as-version, and restore each add a version; every version downloads its own bytes unchanged.",
+  "AC-044": "TestDocumentsDocTenderCorpus/corpus: a generated 120-page image-only PDF is read page by page (OCR plus an independent second read, Tesseract where installed); two injected OCR failures at page 49 leave pages 1-48 passed once, page 49 pending after 2 attempts and 50-120 untouched; after the 15-minute retry wait the job resumes at page 49, never rereads 1-48, and publishes a Markdown copy with '## Page 49' and no unresolved marks.",
+  "AC-045": "Eight generated photos (a three-page letter and a five-page lease, shuffled into one upload batch) are grouped once the matter has had no new photos for 10 minutes: two PDFs whose versions are saved how=grouping, each linked to its 3 or 5 photos, each with a Markdown copy whose pages are in order.",
+  "AC-046": "A generated WAV and an uncompressed AVI (three colored frames with a tone track) each publish a Markdown transcript with 00:00 timestamps; the video report adds 'On screen' frame descriptions (red, blue).",
+  "AC-047": "A file uploaded to a closed matter is listed as not_processed_matter_closed with no model call (the provider's call count is unchanged) and stays downloadable; reopening the matter over the API processes it.",
+  "AC-048": "A Standard-security encrypted PDF, a truncated PDF and a 0.42-confidence label each open the right exception kind in GET /api/v1/doc-tender/exceptions, carry a flag on their doc-tender-status, stay listed and downloadable, mail the admin over the core's SMTP (fake server) after the 15-minute bundle window, and raise a notification row for the attorney; staff get 403 on the queue.",
+  "AC-049": "After a person renames a file and sets its category and matter, POST doc-tender-reprocess leaves name, category and matter as set, adds Markdown version n+1 named after the new name, and the old Markdown version's bytes are unchanged.",
+  "AC-051": "PUT /api/v1/doc-tender/naming refuses a pattern with <status> (400) and refuses staff (403); a new pattern names the next file; a category added with POST /api/v1/doc-tender/categories is the next file's category."
+ },
+ "pending_notes": {
+  "AC-001": "Not changed by this phase beyond the new core_data volume; test-compose-first-run.sh passes at this revision on Linux Compose. Clean Docker Desktop (Windows/macOS) installation has not run.",
+  "AC-002": "270 of 427 contract operations are mounted on /api/v1 and offered on /mcp (186 before this phase); all fail closed (TestContractRoutesFailClosed). Users, modules, marketplace, AI call log, backups and nav remain unmounted, and three Doc Tender routes the package serves (doc-tender-status, doc-tender-reprocess, model-choices) are not in the contract yet (proposed).",
+  "AC-003": "This phase's surfaces (files, renditions, search, deadlines, events, iCal feeds, available dates, editor runs, New Pleading, Doc Tender results) hide walled matters in the phase cases; other domains' widgets and reports are later phases.",
+  "AC-004": "Unchanged by this phase; phase 3 evidence stands. The accountant is refused editor runs here.",
+  "AC-006": "Unchanged by this phase; phase 3 evidence stands; global release acceptance pending.",
+  "AC-010": "Home-screen layouts are the ui assignment.",
+  "AC-011": "Calendar half passes on the core (widget target range, row click-through, walled deadline never reached over widget, page, API or /mcp). The sample module's widget and the manifest-refusal clauses need the module runtime (phase 5).",
+  "AC-012": "Not in this phase.",
+  "AC-013": "Not in this phase.",
+  "AC-014": "Not in this phase.",
+  "AC-015": "Not in this phase.",
+  "AC-016": "Not in this phase.",
+  "AC-017": "Not in this phase.",
+  "AC-018": "Not changed by this phase.",
+  "AC-019": "Not in this phase.",
+  "AC-020": "Not in this phase.",
+  "AC-021": "Not changed by this phase.",
+  "AC-022": "Not in this phase.",
+  "AC-023": "Not in this phase.",
+  "AC-024": "Not changed by this phase.",
+  "AC-028": "Not in this phase.",
+  "AC-029": "Not in this phase.",
+  "AC-031": "Not in this phase.",
+  "AC-032": "Not in this phase.",
+  "AC-033": "Not in this phase.",
+  "AC-034": "Not in this phase.",
+  "AC-036": "Not in this phase.",
+  "AC-037": "Not in this phase.",
+  "AC-038": "Not in this phase.",
+  "AC-040": "Phase case passes: all files move local disk -> S3-compatible -> Dropbox (in-process fakes speaking the adapters' wire, SigV4 and OAuth refresh) while every version reads correctly, old copies stay until the admin confirms (an attorney's confirm is 403), S3 holds no plaintext, a changed byte on Dropbox fails the download and mails the admin, and files.ExportBytes/RestoreBytes bring every version and Markdown copy back after the backend is wiped. Pending: the supervisor's nightly backup and restore do not yet call the files byte export (the supervisor has no core endpoint for it), so 'a restored backup brings back files' is shown at the files-service level only.",
+  "AC-041": "Phase case passes on the core with wordcraft-cli at the pin: edit page, document bridge, save as version 2 passing editor.CheckDOCX, lock notice for a second user, lock free 5 minutes after the last renewal, New Pleading caption from the matter, commit 770a8fab on GET /api/v1/editor, the edit page and the Document editor tab. The browser e2e (TestBrowserEditPageE2E) passes with the browser build. Pending: the core image does not build or ship wordcraft-cli or the browser editor (needs the Rust/trunk stage, proposed); Word itself was not run (CheckDOCX is a package check); Product CI has no wordcraft-cli, so the editor case skips there.",
+  "AC-042": "Phase case passes on the core with wordcraft-cli: a merge-field run saves version 2 with the values, version 1 unchanged; reading a local file is command_refused (API and /mcp) and audited; a PDF conversion is a new file linked to its source. Pending for the same image and CI reasons as AC-041.",
+  "AC-043": "Phase case passes for a staff upload and a drop-folder file, each processed by the core's own background worker within the run (about 30 s) with no sweep, named by the pattern, categorized, summarized, filed in Pleadings and with a Markdown copy. Pending: the client-upload and module-written arrivals. The core refuses both today (client users are read-only; a module-bound token has no roles) because they arrive through the client portal module and the module runtime (phase 5, PRD 8.19 and 9.3).",
+  "AC-050": "Phase cases pass: the Markdown copy is <base>.md and follows renames, is 404 to staff outside the wall, is in files.ExportBytes, and Files search (GET /api/v1/files?q=) matches text found only in a scan's pixels. Pending: the supervisor backup does not include file bytes yet (see AC-040).",
+  "AC-052": "Phase case passes: ai_call_log records labeling on gpt-6.1-sol and the provider saw it; GET /api/v1/doc-tender/model-choices offers no local endpoint for labeling or categorizing; ai.labeling_allow_local and ai.categorizing_allow_local refuse writes. Pending: the AI call log screen and GET /api/v1/ai/calls are not mounted (AI tab task), and ai.model_prices is not registered, so call costs read 0 cents (proposed)."
+ },
+ "integration_findings_fixed": [
+  "Practice keeps rows in practice_records, but files, deadlines, events and Doc Tender reference matters/contacts/users by foreign key: practice now projects areas, counties, contacts, referral sources and matters into their section 5 tables in the same transaction (internal/practice/project.go).",
+  "Calendar ran on a process-memory store: it now has a Postgres store and migration 0500; deadlines survive a core restart (tested).",
+  "A Doc Tender job whose file an admin purged from the trash failed every pass (Drain returned not_found and the job retried forever); such jobs are no longer claimed or waited on (TestPurgedFileJobIsNeverClaimed fails before the fix).",
+  "The New Pleading form answered 200 for any matter id, walled or missing; it now checks the matter as the caller (regression test fails before the fix).",
+  "POST /api/v1/api-tokens filled owner_user_id with the caller even when module_id was given, so no module token could be issued.",
+  "A storage move started over the API ran on a goroutine that outlived App.Close; the core now cancels it on Close (a stopped move resumes at start).",
+  "A replacement core started by the supervisor during an update mounted only the secrets volume and would have started on an empty local-disk file store; Compose and the supervisor now mount core_data at /var/lib/togavsu-core, which the image creates for the non-root user.",
+  "Billing's receipt and invoice-PDF seams were nil in the core; files now open before finance and billing uses billing.FileLink."
+ ],
+ "proposed_shared_changes": [
+  "Contract (api/contract, regenerated with docs/api/coverage.md, outside this assignment's paths): register ai.model_prices (json, ai_and_inference, default {}), and add GET /api/v1/files/{file_id}/doc-tender-status, POST /api/v1/files/{file_id}/doc-tender-reprocess and GET /api/v1/doc-tender/model-choices so tokens and /mcp reach them.",
+  "Core image: a Rust stage that runs web/editor/build.sh against LawCraft at 770a8fab (public repository) and copies wordcraft-cli to /usr/local/bin and the dist to /usr/share/togavsu/editor (the paths core.WordcraftCLI and core.EditorDist read).",
+  "Product CI (see the PR body): build wordcraft-cli in the Core tests job and set TOGAVSU_WORDCRAFT_CLI and TOGAVSU_REQUIRE_WORDCRAFT_CLI so the editor phase case runs instead of skipping."
+ ],
+ "visual_qc": {
+  "test": "TestDocumentsScreens (scripts/ci/documents-qc.mjs, headless Chromium, real browser editor build)",
+  "record": "docs/build/reports/screens/integrate-documents/qc.json",
+  "summary": "17 pages as staff, attorney, admin and signed out: calendar week, deadlines, a deadline, an event, available dates, feeds, the matter Files tab, Files and storage, the edit page with the LawCraft frame, the edit page locked for a second user, New Pleading, the Doc Tender review queue, an item, the Doc Tender tab and guide, a walled deadline (404 for staff) and the signed-out redirect to /login. The test fails on any console error, page error or failed request. Each domain still draws its own top bar; the shared app shell (PRD 8.9) is the ui assignment."
+ },
+ "simplification": {
+  "basis": "git diff --numstat 8aa7192 (PR base) to the tested revision",
+  "go_lines_added": 3829,
+  "go_lines_removed": 36,
+  "net_go_lines": 3793,
+  "net_non_test_go_lines": 1092,
+  "other_lines": "migration 0500 +49, documents-qc.mjs +50, test-core.sh +8/-4, PONYTAIL-DEBT.md +10/-1, compose.yaml +5, core.Dockerfile +6/-1",
+  "debt_entries_before": 52,
+  "debt_entries_after": 56,
+  "review": "Composition reuses each package's own seams (files.PracticeDirectory, calendar/editor/doctender PracticeMatters, billing.FileLink, the handlers' Routes) and the existing first-match mux dispatch; /mcp needed no change because it is generated from mounted routes. The corpus and synthetic provider live in core test files rather than a new package. Four debt entries were added (projection, calendar list scans, in-process tickers, calendar notices apart from notifications); the calendar Memory-store ceiling was removed."
+ },
+ "ci": {
+  "workflow": ".github/workflows/product-ci.yml (unchanged; a CI change is proposed in the PR body)",
+  "note": "The controller publishes this branch; the Product CI run on the pull request head is the CI evidence. Locally every required job's script passed at the tested revision (tests below). Product CI's Core job has no Tesseract and no wordcraft-cli: Doc Tender uses its check-model second read there and the editor case skips."
+ },
+ "tests": [
+  {
+   "command": "CI=1 sh scripts/ci/test-core.sh",
+   "exit_code": 0,
+   "seconds": 939,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "core",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "sh scripts/ci/test-api.sh",
+   "exit_code": 0,
+   "seconds": 32,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "api",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "sh scripts/ci/test-qa.sh",
+   "exit_code": 0,
+   "seconds": 10,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "qa"
+  },
+  {
+   "command": "sh scripts/ci/test-supervisor.sh",
+   "exit_code": 0,
+   "seconds": 306,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "supervisor"
+  },
+  {
+   "command": "TOGAVSU_TEST_DATABASE_URL=<fresh postgres:17 A> TOGAVSU_TEST_DATABASE_URL_B=<fresh postgres:17 B> sh scripts/ci/test-backup-integration.sh",
+   "exit_code": 0,
+   "seconds": 51,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "backup",
+   "database": "two fresh postgres:17 containers (ports 5434 and 5435)"
+  },
+  {
+   "command": "docker compose -f compose.yaml config >/dev/null && docker build -f Dockerfile -t togavsu-supervisor:local . && docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null' && sh scripts/ci/build-core-image.sh && sh scripts/ci/test-core-smoke.sh",
+   "exit_code": 0,
+   "seconds": 39,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "image"
+  },
+  {
+   "command": "sh scripts/ci/test-compose-first-run.sh",
+   "exit_code": 0,
+   "seconds": 23,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "compose_first_run"
+  },
+  {
+   "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
+   "exit_code": 0,
+   "seconds": 2,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "case_calendar",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
+   "exit_code": 0,
+   "seconds": 16,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "case_storage",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/",
+   "exit_code": 0,
+   "seconds": 3,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "case_editor",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
+   "exit_code": 0,
+   "seconds": 58,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "case_doctender",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> TOGAVSU_BROWSER_E2E=1 CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23> go test -count=1 ./internal/editor/",
+   "exit_code": 0,
+   "seconds": 29,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "editor_pkg",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "DOCTENDER_REQUIRE_TESSERACT=1 go test -count=1 ./internal/doctender/",
+   "exit_code": 0,
+   "seconds": 98,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "doctender_pkg",
+   "database": "local postgres:17 container (user and database togavsu)"
+  },
+  {
+   "command": "rm -rf <qc dir> && TOGAVSU_QC_DIR=<qc dir> CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23> TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> go test -count=1 -v -run '^TestDocumentsScreens$' ./internal/core/",
+   "exit_code": 0,
+   "seconds": 30,
+   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "job": "visual_qc",
+   "database": "local postgres:17 container (user and database togavsu)"
+  }
+ ]
+}
