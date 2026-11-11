@@ -13,13 +13,16 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/doctender/dtcorpus"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/storage/storagetest"
 )
 
@@ -327,9 +330,6 @@ func TestDocumentsCalendarDeadlines(t *testing.T) {
 	if n := d.count(`SELECT COUNT(*) FROM audit_log WHERE entity = 'deadline'`); n < 4 {
 		t.Fatalf("%d deadline audit rows", n)
 	}
-	_ = context.Background
-	_ = os.Getenv
-	_ = domain.SystemUserID
 }
 
 // adminP is the admin as a service principal, for the file-bytes backup calls the
@@ -724,5 +724,287 @@ func TestDocumentsStorageVersionsMoves(t *testing.T) {
 	readAll()
 	if body := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+fileID+"/renditions/"+md["id"].(string), nil).body; body != mdBody {
 		t.Fatal("the restored Markdown copy differs")
+	}
+}
+
+// testClock is a settable clock for the running core; it starts at the real time so
+// sign-in codes made with time.Now stay valid.
+type testClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func newTestClock() *testClock { return &testClock{t: time.Now().UTC()} }
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(time.Microsecond)
+	return c.t
+}
+
+func (c *testClock) advance(d time.Duration) {
+	c.mu.Lock()
+	c.t = c.t.Add(d)
+	c.mu.Unlock()
+}
+
+// wordcraft is LawCraft's headless build at the pin (web/editor/build.sh). Without it the
+// editor case cannot run; TOGAVSU_REQUIRE_WORDCRAFT_CLI makes that a failure.
+func wordcraft(t *testing.T) string {
+	t.Helper()
+	path := os.Getenv("TOGAVSU_WORDCRAFT_CLI")
+	if path == "" {
+		if os.Getenv("TOGAVSU_REQUIRE_WORDCRAFT_CLI") != "" {
+			t.Fatal("TOGAVSU_WORDCRAFT_CLI is required: build it with web/editor/build.sh")
+		}
+		t.Skip("TOGAVSU_WORDCRAFT_CLI is not set (build wordcraft-cli with web/editor/build.sh)")
+	}
+	return path
+}
+
+func docText(t *testing.T, cli, ext string, b []byte) string {
+	t.Helper()
+	in := filepath.Join(t.TempDir(), "doc."+ext)
+	if err := os.WriteFile(in, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(cli, "text", in).Output()
+	if err != nil {
+		t.Fatalf("wordcraft-cli text: %v", err)
+	}
+	return string(out)
+}
+
+// TestDocumentsLawCraftEditor is the lawcraft-editor phase case (AC-041, AC-042) on the
+// running core with wordcraft-cli at the pinned commit: a DOCX opens on the edit page,
+// the page hands the current version to the editor and saves what it returns as a new
+// version that passes the Word package check; a second user sees who holds the edit
+// lock and can only preview or download, until 5 minutes after the last renewal; New
+// Pleading fills its caption from the matter; the Document editor tab and the editor API
+// show commit 770a8fab12392485c0c2789fb254da7d9296df4d; an editor run fills merge fields
+// as a new version, a run that reads a local file is refused, and a conversion to PDF is
+// a new file linked to its source, over the API and /mcp, with walls applied.
+func TestDocumentsLawCraftEditor(t *testing.T) {
+	cliPath := wordcraft(t)
+	clk := newTestClock()
+	d := newDocs(t, func(c *Config) {
+		c.WordcraftCLI = cliPath
+		c.Now = clk.now
+		c.NoBackground = true
+	})
+	ctx := context.Background()
+	cli := &editor.CLI{Path: cliPath, TempDir: t.TempDir()}
+	mk := func(cmds ...editor.Command) []byte {
+		b, err := cli.Run(ctx, editor.RunInput{Commands: cmds, Out: "docx"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	county := str(t, d.admin.must(http.StatusCreated, "POST", "/api/v1/counties", map[string]any{"name": "Adair", "state": "MO"}).json, "id")
+	matter, client := d.matter("Roe Dissolution", "", map[string]any{"case_number": "26AR-DR00123", "court": "Circuit Court", "county_id": county, "client_position": "Petitioner"})
+	_ = client
+	other := str(t, d.admin.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{"kind": "person", "given_name": "John", "family_name": "Roe"}).json, "id")
+	d.admin.must(http.StatusCreated, "POST", "/api/v1/matter-parties", map[string]any{"matter_id": matter, "contact_id": other, "role": "opposing party", "primary": true})
+	walled, _ := d.matter("Sealed Guardianship", "", nil)
+	d.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{d.adminID, d.attyID}})
+
+	// The pinned commit, on the editor API and the Document editor tab.
+	const pin = "770a8fab12392485c0c2789fb254da7d9296df4d"
+	if r := d.staff.must(http.StatusOK, "GET", "/api/v1/editor", nil); !strings.Contains(r.body, pin) {
+		t.Fatalf("editor info: %s", r.body)
+	}
+	if r := d.admin.must(http.StatusOK, "GET", "/admin/settings?tab=document_editor", nil); !strings.Contains(r.body, pin) {
+		t.Fatalf("the Document editor tab does not show the pinned commit")
+	}
+	if r := d.admin.must(http.StatusOK, "GET", "/api/v1/settings/editor.lawcraft_commit", nil); r.json["value"] != pin || r.json["locked"] != true {
+		t.Fatalf("editor.lawcraft_commit: %s", r.body)
+	}
+
+	// --- AC-041: open, edit, save as a new Word-compatible version ---
+	original := mk(editor.Command{ID: "text.insert", Parameters: map[string]any{"text": "Synthetic engagement letter."}})
+	f := d.upload(d.staff, matter, "Engagement letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", original, nil)
+	fileID := str(t, f, "id")
+	page := "/files/" + fileID + "/edit"
+	html := d.staff.must(http.StatusOK, "GET", page, nil).body
+	if !strings.Contains(html, `data-mode="edit"`) || !strings.Contains(html, "/editor/?host=parent") || !strings.Contains(html, pin) {
+		t.Fatalf("edit page:\n%s", html)
+	}
+	sent := d.staff.must(http.StatusOK, "GET", page+"/document", nil)
+	if sent.body != string(original) {
+		t.Fatalf("the edit page sent %d bytes, not the current version", len(sent.body))
+	}
+	if r := d.staff.must(http.StatusOK, "GET", page+"/context", nil); !strings.Contains(r.body, "law.firm.set") || !strings.Contains(r.body, "26AR-DR00123") {
+		t.Fatalf("editor context lacks the firm or matter: %s", r.body)
+	}
+	edited, err := cli.Run(ctx, editor.RunInput{Document: []byte(sent.body), Ext: "docx", Out: "docx", Commands: []editor.Command{
+		{ID: "caret.docEnd"}, {ID: "text.insert", Parameters: map[string]any{"text": " Edited in the editor."}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := d.staff.raw("POST", page+"/save", edited, "X-File-Name", url.PathEscape("Engagement letter.docx"))
+	if saved.code != http.StatusCreated || num(t, saved.json, "number") != 2 || saved.json["how"] != "editor" {
+		t.Fatalf("save: %d %s", saved.code, saved.body)
+	}
+	vs := items(t, d.staff.must(http.StatusOK, "GET", "/api/v1/files/"+fileID+"/versions", nil))
+	if len(vs) != 2 || vs[0]["sha256"] == vs[1]["sha256"] {
+		t.Fatalf("versions %v", vs)
+	}
+	var cur string
+	for _, v := range vs {
+		if num(t, v, "number") == 2 {
+			cur = v["id"].(string)
+		}
+	}
+	_, stored := d.download(d.staff, fileID, cur)
+	if err := editor.CheckDOCX(stored); err != nil {
+		t.Fatalf("the saved version would open with a repair prompt: %v", err)
+	}
+	if txt := docText(t, cliPath, "docx", stored); !strings.Contains(txt, "Synthetic engagement letter. Edited in the editor.") {
+		t.Fatalf("saved text %q", txt)
+	}
+	if _, first := d.download(d.staff, fileID, str(t, f, "current_version_id")); !bytes.Equal(first, original) {
+		t.Fatal("version 1 changed")
+	}
+
+	// A second user sees the lock, can preview and download, and cannot save.
+	locked := d.atty.must(http.StatusOK, "GET", page, nil).body
+	if !strings.Contains(locked, "<strong>Sam Staff</strong> is editing this file, since") || strings.Contains(locked, "<iframe") || !strings.Contains(locked, ">Download</a>") {
+		t.Fatalf("locked page for the second user:\n%s", locked)
+	}
+	if r := d.atty.do("POST", "/api/v1/files/"+fileID+"/lock", nil); r.code != http.StatusConflict || !strings.Contains(r.body, "Sam Staff") {
+		t.Fatalf("second lock: %d %s", r.code, r.body)
+	}
+	if r := d.atty.raw("POST", page+"/save", edited, "X-File-Name", "x.docx"); r.code != http.StatusConflict {
+		t.Fatalf("the second user saved: %d", r.code)
+	}
+	if code, _ := d.download(d.atty, fileID, cur); code != http.StatusOK {
+		t.Fatalf("download while locked: %d", code)
+	}
+	// The editor closes without saving: no renewals. Just under 5 minutes it holds...
+	clk.advance(5*time.Minute - 5*time.Second)
+	if r := d.atty.do("POST", "/api/v1/files/"+fileID+"/lock", nil); r.code != http.StatusConflict {
+		t.Fatalf("lock freed before 5 minutes: %d %s", r.code, r.body)
+	}
+	// ...and 5 minutes after the last renewal it is free.
+	clk.advance(10 * time.Second)
+	if r := d.atty.must(http.StatusOK, "POST", "/api/v1/files/"+fileID+"/lock", nil); r.json["user_id"] != d.attyID {
+		t.Fatalf("after 5 minutes: %s", r.body)
+	}
+	d.atty.must(http.StatusNoContent, "DELETE", "/api/v1/files/"+fileID+"/lock", nil)
+
+	// New Pleading fills its caption from the matter.
+	d.staff.must(http.StatusOK, "GET", "/matters/"+matter+"/pleadings/new", nil)
+	form := url.Values{"type": {"motion"}, "title": {"Motion to Continue"}, "csrf": {d.staff.csrf}}
+	if r := d.staff.do("POST", "/matters/"+matter+"/pleadings", form); r.code != http.StatusBadRequest || !strings.Contains(r.body, "needs the firm address") {
+		t.Fatalf("New Pleading without firm details: %d", r.code)
+	}
+	for k, v := range map[string]string{"firm.address": "1 Main St, Kirksville, MO 63501", "firm.phone": "+16605550100", "firm.email": "office@example.invalid"} {
+		d.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/"+k, map[string]any{"value": v})
+	}
+	// /api/v1/users (where an admin sets a bar number) is a later integration; the
+	// synthetic bar number is written as a fixture.
+	if _, err := d.app.Pool.Exec(`UPDATE users SET bar_number = '12345', bar_state = 'MO' WHERE id = $1`, d.attyID); err != nil {
+		t.Fatal(err)
+	}
+	pr := d.staff.do("POST", "/matters/"+matter+"/pleadings", form)
+	if pr.code != http.StatusSeeOther || !strings.HasPrefix(pr.loc, "/files/") || !strings.HasSuffix(pr.loc, "/edit") {
+		t.Fatalf("new pleading: %d %s %s", pr.code, pr.loc, pr.body)
+	}
+	pleadingID := strings.TrimSuffix(strings.TrimPrefix(pr.loc, "/files/"), "/edit")
+	pf := d.staff.must(http.StatusOK, "GET", "/api/v1/files/"+pleadingID, nil).json
+	pvs := items(t, d.staff.must(http.StatusOK, "GET", "/api/v1/files/"+pleadingID+"/versions", nil))
+	_, pb := d.download(d.staff, pleadingID, pvs[0]["id"].(string))
+	if err := editor.CheckDOCX(pb); err != nil {
+		t.Fatal(err)
+	}
+	ptxt := docText(t, cliPath, "docx", pb)
+	for _, want := range []string{"ADAIR COUNTY", "Case No. 26AR-DR00123", "Motion to Continue", "Petitioner", "JOHN ROE", "Respondent"} {
+		if !strings.Contains(ptxt, want) {
+			t.Errorf("the pleading lacks %q:\n%s", want, ptxt)
+		}
+	}
+	if pf["matter_id"] != matter || pf["name"] != "Motion to Continue.docx" {
+		t.Fatalf("pleading file %v", pf)
+	}
+	if r := d.staff.do("GET", "/matters/"+walled+"/pleadings/new", nil); r.code != http.StatusNotFound {
+		t.Fatalf("staff New Pleading on a walled matter: %d", r.code)
+	}
+
+	// --- AC-042: runs and conversions ---
+	letter := mk(
+		editor.Command{ID: "text.insert", Parameters: map[string]any{"text": "Dear "}},
+		editor.Command{ID: "insert.field", Parameters: map[string]any{"instr": "MERGEFIELD ClientName"}},
+		editor.Command{ID: "text.insert", Parameters: map[string]any{"text": ", your hearing is on "}},
+		editor.Command{ID: "insert.field", Parameters: map[string]any{"instr": "MERGEFIELD HearingDate"}},
+		editor.Command{ID: "text.insert", Parameters: map[string]any{"text": "."}},
+	)
+	lf := d.upload(d.staff, matter, "Hearing letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", letter, nil)
+	letterID := str(t, lf, "id")
+	merge := []map[string]any{
+		{"id": "mailings.start", "parameters": map[string]any{"kind": "letters"}},
+		{"id": "mailings.recipients", "parameters": map[string]any{"csv": "ClientName,HearingDate\nJane Roe,December 3 2026"}},
+		{"id": "mailings.finish"},
+	}
+	run := d.staff.must(http.StatusCreated, "POST", "/api/v1/files/"+letterID+"/editor-runs", map[string]any{"commands": merge, "save_as": "version"}).json
+	if num(t, run, "version", "number") != 2 || run["version"].(map[string]any)["how"] != "editor_run" {
+		t.Fatalf("run %v", run)
+	}
+	_, merged := d.download(d.staff, letterID, str(t, run, "version", "id"))
+	if txt := docText(t, cliPath, "docx", merged); !strings.Contains(txt, "Dear Jane Roe, your hearing is on December 3 2026.") {
+		t.Fatalf("merged text %q", txt)
+	}
+	if _, v1 := d.download(d.staff, letterID, str(t, lf, "current_version_id")); !bytes.Equal(v1, letter) {
+		t.Fatal("the run changed version 1")
+	}
+	for name, cmds := range map[string][]map[string]any{
+		"text from a local file": {{"id": "insert.textFromFile", "parameters": map[string]any{"path": "/etc/hostname"}}},
+		"open a local file":      {{"id": "file.open", "parameters": map[string]any{"path": "/etc/passwd"}}},
+		"recipients from a file": {merge[0], {"id": "mailings.recipients", "parameters": map[string]any{"path": "/etc/passwd"}}, merge[2]},
+	} {
+		r := d.staff.do("POST", "/api/v1/files/"+letterID+"/editor-runs", map[string]any{"commands": cmds, "save_as": "version"})
+		if r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "command_refused") {
+			t.Fatalf("%s: %d %s", name, r.code, r.body)
+		}
+	}
+	if n := len(items(t, d.staff.must(http.StatusOK, "GET", "/api/v1/files/"+letterID+"/versions", nil))); n != 2 {
+		t.Fatalf("a refused run saved: %d versions", n)
+	}
+	if n := d.count(`SELECT COUNT(*) FROM audit_log WHERE entity_id = $1 AND field = 'editor_run'`, letterID); n != 4 {
+		t.Fatalf("%d editor_run audit rows, want 1 run and 3 refusals", n)
+	}
+	// The same refusal over /mcp.
+	call := mcpCall(d.staff, toolName(t, "POST", "/api/v1/files/{file_id}/editor-runs"), map[string]any{"path": map[string]any{"file_id": letterID},
+		"body": map[string]any{"commands": []map[string]any{{"id": "file.open", "parameters": map[string]any{"path": "/etc/passwd"}}}, "save_as": "version"}})
+	if !strings.Contains(call.body, `"isError":true`) || !strings.Contains(call.body, "command_refused") {
+		t.Fatalf("MCP refused run: %s", call.body)
+	}
+	if r := d.staff.must(http.StatusOK, "GET", "/api/v1/editor/commands", nil); strings.Contains(r.body, `"file.open"`) || !strings.Contains(r.body, "mailings.recipients") {
+		t.Fatalf("allowed commands: %s", r.body)
+	}
+	conv := d.staff.must(http.StatusCreated, "POST", "/api/v1/files/"+letterID+"/conversions", map[string]any{"format": "pdf"}).json
+	pdfID := str(t, conv, "file", "id")
+	if pdfID == letterID || !strings.HasSuffix(str(t, conv, "file", "name"), ".pdf") {
+		t.Fatalf("conversion %v", conv)
+	}
+	_, pdf := d.download(d.staff, pdfID, str(t, conv, "file", "current_version_id"))
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Fatalf("the conversion is not a PDF: %q", pdf[:min(16, len(pdf))])
+	}
+	links := d.staff.must(http.StatusOK, "GET", "/api/v1/files/"+pdfID+"/links", nil).body
+	if !strings.Contains(links, letterID) || !strings.Contains(links, "conversion") {
+		t.Fatalf("the PDF is not linked to its source: %s", links)
+	}
+	// Walls and roles apply: staff can't run on a walled file, the accountant has no editor.
+	sealed := d.upload(d.atty, walled, "Sealed letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", letter, nil)
+	if r := d.staff.do("POST", "/api/v1/files/"+str(t, sealed, "id")+"/editor-runs", map[string]any{"commands": merge, "save_as": "version"}); r.code != http.StatusNotFound {
+		t.Fatalf("staff run on a walled file: %d %s", r.code, r.body)
+	}
+	if r := d.staff.do("GET", "/files/"+str(t, sealed, "id")+"/edit", nil); r.code != http.StatusNotFound {
+		t.Fatalf("staff edit page of a walled file: %d", r.code)
+	}
+	if r := d.acct.do("POST", "/api/v1/files/"+letterID+"/editor-runs", map[string]any{"commands": merge, "save_as": "version"}); r.code != http.StatusForbidden && r.code != http.StatusNotFound {
+		t.Fatalf("accountant run: %d %s", r.code, r.body)
 	}
 }

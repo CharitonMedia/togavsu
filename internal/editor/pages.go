@@ -252,7 +252,7 @@ func (h *Handler) pleadingForm(w http.ResponseWriter, r *http.Request) {
 	data := pageData{Title: "New pleading", CSRF: csrfOf(r), MatterID: domain.ID(r.PathValue("matter_id")), Types: []string{"motion", "notice", "answer", "petition"}, Type: "motion", Mode: "pleading"}
 	p, err := h.who(r)
 	if err == nil {
-		err = requireEditor(p)
+		err = h.Svc.CanPlead(r.Context(), p, data.MatterID)
 	}
 	if err != nil {
 		h.pageError(w, r, err, data)
