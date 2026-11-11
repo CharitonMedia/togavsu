@@ -619,8 +619,13 @@ func TestFinanceTrustInvariants(t *testing.T) {
 			t.Fatalf("flag mail to %s does not describe the trust flag:\n%s", addr, m.Data)
 		}
 	}
-	if f.count(`SELECT count(*) FROM mail_outbox WHERE sent_at = 0`) != 0 {
-		t.Fatal("flag mail still queued after delivery")
+	// The loop marks a row sent after the server takes the message, so the row can
+	// trail the delivery by a moment.
+	for f.count(`SELECT count(*) FROM mail_outbox WHERE sent_at = 0`) != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("flag mail still queued after delivery")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	if len(f.smtp.to("sam@firm.example")) != 0 || len(f.smtp.to("ari@firm.example")) != 0 {
 		t.Fatal("flag mail went to staff or the accountant")
