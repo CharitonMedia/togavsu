@@ -423,6 +423,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "ManifestExtension and ManifestView add every section 5 record with a published read: contact addresses, emails, phones and tags, practice areas, counties, referral sources, timers, file renditions and links, court profiles, Doc Tender categories, jobs, results and exceptions, conflict checks and their reviews, trust flags, replenishment requests and reconciliations, plus folders and matter markers, which are matter records outside section 5. Their list and get reads take include, their read schemas carry optional included, and DocTenderResult gains its row id. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
             },
+            {
+                "id": "doctender-prompt-injection-kind",
+                "files": ["api/openapi/v1/openapi.json"],
+                "change": "DocTenderException kind adds prompt_injection: a file held because it carries text written to instruct an AI model. The MCP catalog and coverage do not inline the enum, so their bytes stay the same.",
+            },
         ],
         "intentional_corrections": [
             {
