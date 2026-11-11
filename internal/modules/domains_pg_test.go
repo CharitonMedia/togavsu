@@ -378,7 +378,7 @@ func TestPGWebhookRetries(t *testing.T) {
 	if _, _ = e.svc.Deliver(e.ctx); fails != 1 {
 		t.Fatal("retried before its scheduled time")
 	}
-	later, err := modules.New(modules.Deps{DB: e.app.Pool, Key: testKey, Audit: e.app.Audit, Settings: e.app.Settings, Walls: e.app.Practice.Policy.Walls,
+	later, err := modules.New(modules.Deps{DB: e.app.Pool, Key: testKey, Audit: e.app.Audit, Settings: e.app.Settings, Walls: e.app.Practice.Policy.Walls, Contacts: e.app.Practice,
 		Users: e.app.Users, Tokens: modules.IdentityTokens{Svc: e.app.Identity}, Runtime: e.rt, Now: func() time.Time { return time.Now().Add(25 * time.Hour) }})
 	if err != nil {
 		t.Fatal(err)

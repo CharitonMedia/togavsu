@@ -80,6 +80,7 @@ func TestYAMLSubsetRefusals(t *testing.T) {
 		"flow map":      strings.Replace(base, "    size:\n      w: 4\n      h: 2\n", "    size: {w: 4, h: 2}\n", 1),
 		"unknown key":   base + "\nsurprise: true\n",
 		"two documents": base + "\n---\nid: other\n",
+		"lone {":        strings.Replace(base, "name: Matter Clock", "name: {", 1),
 	}
 	for name, src := range cases {
 		if _, err := modules.ParseManifest([]byte(src)); err == nil {

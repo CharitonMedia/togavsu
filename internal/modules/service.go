@@ -55,8 +55,12 @@ type Deps struct {
 	Backups  Backups
 	// Market is the marketplace client; nil accepts trusted local keys only.
 	Market KeySource
-	HTTP   *http.Client
-	Now    func() time.Time
+	// Contacts applies the core contact rule (*practice.Service satisfies it). Nil means
+	// no contact-keyed module row is readable, so a composition that leaves it out fails
+	// closed.
+	Contacts ContactReader
+	HTTP     *http.Client
+	Now      func() time.Time
 }
 
 // Service is the module runtime (PRD 9).

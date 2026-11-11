@@ -347,12 +347,35 @@ func (s *Server) matter(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "Hours and target", []row{rw}, note)
 }
 
+// hasRole reports whether the viewer holds any of roles.
+func (v viewer) hasRole(roles ...string) bool {
+	for _, have := range v.Roles {
+		for _, want := range roles {
+			if have == want {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // setTarget saves a matter's monthly target in the module's own schema, after the core
-// confirms the viewer can read the matter.
+// confirms the viewer can read the matter. Firm staff, attorneys and admins set targets; a
+// client never does. The note is attorney-only, as include= reads redact it, so only an
+// attorney or admin writes it; anyone else's save keeps the note that is there.
 func (s *Server) setTarget(w http.ResponseWriter, r *http.Request) {
 	v, tok, err := s.viewer(r)
 	if err != nil || v.MatterID == nil {
 		http.Error(w, "open this tab from a matter", http.StatusUnauthorized)
+		return
+	}
+	if v.hasRole("client") || !v.hasRole("admin", "attorney", "staff") {
+		http.Error(w, "only firm staff can set a target", http.StatusForbidden)
+		return
+	}
+	noteAllowed := v.hasRole("admin", "attorney")
+	if !noteAllowed && r.FormValue("note") != "" {
+		http.Error(w, "only an attorney or admin can write the note", http.StatusForbidden)
 		return
 	}
 	tenths, err := strconv.Atoi(r.FormValue("monthly_target_tenths"))
@@ -364,7 +387,13 @@ func (s *Server) setTarget(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err := SetTarget(r.Context(), s.c.DB, *v.MatterID, tenths, r.FormValue("note"), s.c.Now()); err != nil {
+	save := func() error {
+		if noteAllowed {
+			return SetTarget(r.Context(), s.c.DB, *v.MatterID, tenths, r.FormValue("note"), s.c.Now())
+		}
+		return setTargetKeepingNote(r.Context(), s.c.DB, *v.MatterID, tenths, s.c.Now())
+	}
+	if err := save(); err != nil {
 		http.Error(w, "the target could not be saved", http.StatusInternalServerError)
 		return
 	}
@@ -376,6 +405,14 @@ func SetTarget(ctx context.Context, db *sql.DB, matter string, tenths int, note 
 	_, err := db.ExecContext(ctx, `INSERT INTO matter_targets (matter_id, monthly_target_tenths, note, updated_at) VALUES ($1, $2, $3, $4)
 ON CONFLICT (matter_id) DO UPDATE SET monthly_target_tenths = EXCLUDED.monthly_target_tenths, note = EXCLUDED.note, updated_at = EXCLUDED.updated_at`,
 		matter, tenths, note, at.UTC().UnixMicro())
+	return err
+}
+
+// setTargetKeepingNote writes the target and leaves an existing note as it is.
+func setTargetKeepingNote(ctx context.Context, db *sql.DB, matter string, tenths int, at time.Time) error {
+	_, err := db.ExecContext(ctx, `INSERT INTO matter_targets (matter_id, monthly_target_tenths, note, updated_at) VALUES ($1, $2, '', $3)
+ON CONFLICT (matter_id) DO UPDATE SET monthly_target_tenths = EXCLUDED.monthly_target_tenths, updated_at = EXCLUDED.updated_at`,
+		matter, tenths, at.UTC().UnixMicro())
 	return err
 }
 

@@ -360,7 +360,7 @@ func scalar(s string, num int) (any, error) {
 	case '[':
 		return flowSeq(s, num)
 	case '{':
-		if strings.TrimSpace(s[one:len(s)-one]) == "" && strings.HasSuffix(s, "}") {
+		if len(s) > one && strings.HasSuffix(s, "}") && strings.TrimSpace(s[one:len(s)-one]) == "" {
 			return map[string]any{}, nil
 		}
 		return nil, fmt.Errorf("%w: line %d: flow mappings are not supported; use block style", ErrYAML, num)

@@ -359,7 +359,7 @@ func newEnv(t *testing.T) *env {
 func (e *env) service(t *testing.T, now func() time.Time) *modules.Service {
 	t.Helper()
 	app := e.app
-	svc, err := modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls,
+	svc, err := modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls, Contacts: app.Practice,
 		Users: app.Users, Tokens: modules.IdentityTokens{Svc: app.Identity}, Help: e.help, Widgets: e.cat, Runtime: e.rt, Backups: e.backups, Now: now})
 	if err != nil {
 		t.Fatal(err)

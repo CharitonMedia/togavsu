@@ -269,6 +269,35 @@ func (s *Service) allowed(ctx context.Context, p domain.Principal, record string
 			out[id] = dec
 		}
 	}
+	if record == "contact" {
+		return s.contactWalls(ctx, p, out)
+	}
+	return out, nil
+}
+
+// ContactReader is the core contact service: GetContact fails for a contact p may not
+// see, such as one only on matters behind a wall p is outside.
+type ContactReader interface {
+	GetContact(ctx context.Context, p domain.Principal, id domain.ID) (domain.Contact, error)
+}
+
+// contactWalls applies the core contact rule to allowed contacts: a contact on matters is
+// visible only through a matter p can read, as the core contact service decides.
+func (s *Service) contactWalls(ctx context.Context, p domain.Principal, out map[domain.ID]domain.Decision) (map[domain.ID]domain.Decision, error) {
+	for id := range out {
+		if s.d.Contacts == nil {
+			delete(out, id)
+			continue
+		}
+		if _, err := s.d.Contacts.GetContact(ctx, p, id); err != nil {
+			var de *domain.APIError
+			if errors.As(err, &de) && (de.Code == domain.CodeNotFound || de.Code == domain.CodeForbidden) {
+				delete(out, id)
+				continue
+			}
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
