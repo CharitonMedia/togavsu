@@ -1,8 +1,8 @@
 # Phase 3 report: billing and trust on the composed core
 
-Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `b59f0aaeaa0aefafa4acec593f1322d35c33b496` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. Local runs of all six required CI jobs pass there. GitHub Product CI on that SHA is pending (the controller publishes the branch). AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
+Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `88b757c056681381c79247117716be7de461f0cb` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. At that SHA every phase case passes locally; GitHub Product CI on the pull request head (the same product code) runs all six required jobs, and the PR body names that run. The full local pass of all six jobs was at `b59f0aa`, before the review changes listed below. AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
 
-## Phase cases at b59f0aaeaa0aefafa4acec593f1322d35c33b496 (each exit 0)
+## Phase cases at 88b757c056681381c79247117716be7de461f0cb (each exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
@@ -11,7 +11,7 @@ Status: **all four phase cases pass; full product acceptance pending.** Billing 
 | finance-permissions | AC-003, AC-004, AC-018 | `go test -count=1 -v -run '^TestFinancePermissions$' ./internal/core/` |
 | trust-notices | AC-021 | `go test -count=1 -v -run '^TestFinanceTrustNotices$' ./internal/core/` |
 
-Also at that SHA: `TestFinanceCrossDomainTransfers` (exit 0). With INSERT on `billing_records` revoked, Apply trust fails after its trust post, and the trust row and its audit rows roll back with it. Trust-funded payments, their reversals, bulk caps and a restart are covered too.
+Also at that SHA, each exit 0: `TestFinanceCloseDuringSilentMailServer`, `TestARAgingDatesVoidsAndReversalsInTheFirmZone` and `TestFinanceCrossDomainTransfers`. With INSERT on `billing_records` revoked, Apply trust fails after its trust post, and the trust row and its audit rows roll back with it. Trust-funded payments, their reversals, bulk caps and a restart are covered too.
 
 The tests drive the running core over HTTP with real Postgres (a fresh non-superuser role set up like `togavsu_app`) and a loopback SMTP server. Synthetic data only.
 
@@ -35,7 +35,16 @@ Pending globally, with what passes now:
 
 ## Visual QC
 
-21 headless Chrome steps at the tested SHA, with no console errors and no 4xx or 5xx responses. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
+21 headless Chrome steps at `b59f0aa`, with no console errors and no 4xx or 5xx responses. Step 18, the Settings Mail tab with the new `mail.smtp_timeout_seconds` (shown at 45 with the changed badge, default 60), was captured at `3444dda`; the tested SHA differs from it only in `internal/core/finance_pg_test.go`. No other screen changed after `b59f0aa`. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
+
+## Changes after b59f0aa
+
+These answer the review gate's findings. Each is covered by the tests run at the tested SHA.
+
+- System mail sends through the new `internal/smtpsend` on a context-bound connection, so a server that accepts and then stalls no longer holds the trust mail worker or `App.Close`. Close cancels the delivery loop and waits for it, and a cut-off send keeps its error on the outbox row (`TestFinanceCloseDuringSilentMailServer`, `internal/smtpsend` tests).
+- Each billing and trust send is bounded by the new admin setting `mail.smtp_timeout_seconds` (integer, default 60, 1 to 600, Mail tab), registered under the contract's key and type, with the contract files regenerated.
+- AR aging compares void and reversal times by the firm's local day (`TestARAgingDatesVoidsAndReversalsInTheFirmZone`).
+- `TestFinanceTrustInvariants` waits for the outbox row to be marked sent instead of checking once; one local run under load landed between delivery and the update. No product change.
 
 ## Simplification and debt
 

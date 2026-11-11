@@ -145,10 +145,19 @@
    "url": "/trust/ledger",
    "landed": "/login",
    "status": 200
+  },
+  {
+   "name": "18-settings-mail-tab",
+   "role": "admin",
+   "url": "/settings?tab=notifications_mail",
+   "landed": "/settings?tab=notifications_mail",
+   "status": 200,
+   "revision": "3444ddaa7834b61c97c7fa6722db74a525658a70",
+   "checked": "mail.smtp_timeout_seconds is listed with value 45 and the changed badge; default 60"
   }
  ],
  "console_errors": [],
  "error_responses": [],
  "revision": "b59f0aaeaa0aefafa4acec593f1322d35c33b496",
- "note": "Headless Google Chrome through playwright-core against the core at the revision above (git worktree of that commit, served by a local seeding helper over httptest on a fresh synthetic postgres:17 database, core role non-superuser), signed in as the attorney, admin, accountant and signed out. Steps 00 click the new practice -> Billing and billing -> Trust nav links. Step 11 clicks Mark all read on the notifications screen; the badge clears. No console errors, no page errors and no 4xx/5xx responses. The seeding helper and the browser script are local QC tools and are not committed."
+ "note": "Headless Google Chrome through playwright-core against the core at the revision above (git worktree of that commit, served by a local seeding helper over httptest on a fresh synthetic postgres:17 database, core role non-superuser), signed in as the attorney, admin, accountant and signed out. Steps 00 click the new practice -> Billing and billing -> Trust nav links. Step 11 clicks Mark all read on the notifications screen; the badge clears. No console errors, no page errors and no 4xx/5xx responses. The seeding helper and the browser script are local QC tools and are not committed. Step 18 (the Mail tab, after mail.smtp_timeout_seconds was added) was captured later at 3444dda in headless Google Chrome against a local seeding test (not committed) on the same kind of database; its only console line is Chrome's informational autocomplete hint on a password field, not an error."
 }
