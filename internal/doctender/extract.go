@@ -688,6 +688,9 @@ func (s *Service) pageUnit(w *work, k int) unitSpec {
 			return unitWork{Method: method, Model: model}, err
 		}
 		second, secondName, err := s.secondRead(ctx, w, pagePart, hasImage, k)
+		if err == nil {
+			err = selfCompared(model, strings.TrimPrefix(secondName, "ocr_check_model:"))
+		}
 		if err != nil {
 			return unitWork{Method: method, Model: model}, err
 		}
@@ -763,6 +766,9 @@ func (s *Service) readPhoto(ctx context.Context, fileID, matter domain.ID, name,
 		var other photoRead
 		_ = json.Unmarshal([]byte(jsonObject(r.Text)), &other)
 		second, checkName = tidyLines(other.Text), "photo_check_model:"+r.Provider+"/"+r.Model
+		if err == nil {
+			err = selfCompared(model, r.Provider+"/"+r.Model)
+		}
 	}
 	if err != nil {
 		return unitWork{Method: "vision", Model: model}, err
@@ -906,6 +912,9 @@ func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
 		if errors.Is(err, ErrNoCheckModel) {
 			return out, nil
 		}
+		if err == nil {
+			err = selfCompared(model, second.Provider+"/"+second.Model)
+		}
 		if err != nil {
 			return unitWork{Method: "speech_to_text", Model: model}, err
 		}
@@ -1031,6 +1040,9 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 				}
 				check, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, Compared: true, System: photoPrompt + " This is one frame of a video.", JSON: true,
 					Parts: []Part{{MediaType: "image/png", Name: "frame.png", Data: f.PNG}}, FileID: w.file.ID, MatterID: w.job.MatterID})
+				if err == nil {
+					err = selfCompared(model, check.Provider+"/"+check.Model)
+				}
 				if err != nil {
 					return unitWork{Method: "vision_frames", Model: model}, err
 				}

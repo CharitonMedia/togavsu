@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -105,5 +106,42 @@ func TestPhotoGroupWaitsWhileItsMatterIsClosed(t *testing.T) {
 	e.drain()
 	if e.ai.callCount("grouping") == before {
 		t.Fatal("reopening the matter did not run the photo group")
+	}
+}
+
+// Opus checkpoint P2 (on 8d2551b): with a check model set for the task, both sides of
+// a comparison can fail and fall back to the same secondary model. The comparison is
+// refused rather than passed by one model agreeing with itself.
+func TestBothSidesFallingBackToOneModelIsNotACheck(t *testing.T) {
+	e := newEnv(t)
+	e.set("ai.compatible_api_key", "test-openai-key")
+	e.set("ai.compatible_base_url", e.ai.srv.URL)
+	e.set("ai.secondary_provider", "compatible")
+	e.set("ai.secondary_strong_model", "gpt-secondary")
+	e.set("ai.task_overrides", `{"`+TaskGrouping+`": {"check_provider": "openai", "check_model": "gpt-test-check"}}`)
+	e.ai.set(func(f *fakeAI) { f.failGrouping = map[string]bool{"gpt-test-strong": true, "gpt-test-check": true} })
+	uploadPhotos(e)
+	e.drain()
+	e.clock.advance(10 * minuteUnit)
+	e.drain()
+	groups, err := e.svc.jobsWhere(e.ctx, `kind = ?`, kindGroup)
+	if err != nil || len(groups) == 0 {
+		t.Fatalf("no group job: %v", err)
+	}
+	for _, g := range groups {
+		if g.Status == StatusPublished {
+			t.Fatalf("group job %s was published on one model agreeing with itself", g.ID)
+		}
+		for _, u := range e.unitsFor(g.ID) {
+			if u.Name != "grouping" {
+				continue
+			}
+			if u.Status == unitPassed {
+				t.Fatalf("the grouping unit passed with both sides from one model: %+v", u)
+			}
+			if !strings.Contains(u.LastError, "both came from compatible/gpt-secondary") {
+				t.Fatalf("grouping unit error %q, want the self-comparison refusal", u.LastError)
+			}
+		}
 	}
 }

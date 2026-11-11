@@ -359,6 +359,9 @@ func (s *Service) runGroup(ctx context.Context, j Job) error {
 			return unitWork{Method: "grouping", Model: model, CheckResult: err.Error()}, nil
 		}
 		second, checkModel, err := ask(!checkMethod)
+		if err == nil {
+			err = selfCompared(model, checkModel)
+		}
 		if err != nil {
 			return unitWork{Method: "grouping", Model: model}, err
 		}

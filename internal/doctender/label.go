@@ -272,8 +272,8 @@ func (s *Service) categorizeUnit(w *work, c *content) unitSpec {
 			return a, model, nil
 		}
 		// The first answer may fall back as usual: whether it is compared depends on the
-		// tier it picks. A high-tier check is a Compared call, and an agreement between
-		// one model and itself is refused below.
+		// tier it picks. A high-tier check is a Compared call, and a check answered by the
+		// same model as the category is refused below.
 		first, model, err := ask(checkMethod, false)
 		if err != nil {
 			return unitWork{Method: "categorizing", Model: model}, err
@@ -285,8 +285,8 @@ func (s *Service) categorizeUnit(w *work, c *content) unitSpec {
 			if err != nil {
 				return unitWork{Method: "categorizing", Model: model}, err
 			}
-			if checkModel == model {
-				return unitWork{Method: "categorizing", Model: model}, fmt.Errorf("the high-tier category and its check both came from %s, so they are not compared", model)
+			if err := selfCompared(model, checkModel); err != nil {
+				return unitWork{Method: "categorizing", Model: model}, err
 			}
 			out.Check, out.Agree = &second, second.Category == first.Category
 			work.CheckMethod, work.CheckModel = "check_model_agreement", checkModel

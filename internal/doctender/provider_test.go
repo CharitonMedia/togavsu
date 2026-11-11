@@ -41,7 +41,9 @@ type fakeAI struct {
 	// splitGroups makes a model's grouping answer put every photo on its own, so it
 	// disagrees with a model that groups by page.
 	splitGroups map[string]bool
-	calls       []string
+	// failGrouping fails every grouping call to the given models (failure injection).
+	failGrouping map[string]bool
+	calls        []string
 }
 
 func newFakeAI(t *testing.T) *fakeAI {
@@ -180,6 +182,13 @@ func (f *fakeAI) chat(w http.ResponseWriter, r *http.Request) {
 		answer = jsonText(photoRead{Description: desc, Text: read})
 	case strings.HasPrefix(system, groupPrompt[:30]):
 		task = "grouping"
+		f.mu.Lock()
+		failGroup := f.failGrouping[req.Model]
+		f.mu.Unlock()
+		if failGroup {
+			http.Error(w, "injected grouping failure", http.StatusInternalServerError)
+			return
+		}
 		answer = jsonText(groupByPages(texts))
 		if f.splitGroups[req.Model] {
 			var alone groupAnswer

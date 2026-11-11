@@ -109,7 +109,8 @@ type Request struct {
 	JSON bool
 	// Compared marks a call whose answer is compared with the task's other model (the
 	// check model for an answer, the answering model for a check). Its fallback never
-	// lands on that model, so a comparison never checks a model against itself.
+	// lands on that side's configured model, and its caller refuses the comparison when
+	// both answers came from one model (selfCompared), whatever route each side took.
 	Compared bool
 	FileID   domain.ID
 	MatterID domain.ID
@@ -417,6 +418,17 @@ func (r *Router) auth(req *http.Request, provider, key string) {
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
+}
+
+// selfCompared refuses a comparison whose two sides were answered by one model, given
+// as "provider/model" from each Response, since a model agreeing with itself is no
+// independent check (PRD 8.21). Fallbacks can bring both sides to the same model even
+// when their configured routes differ.
+func selfCompared(answer, check string) error {
+	if strings.Trim(answer, "/") != "" && answer == check {
+		return fmt.Errorf("the answer and its check both came from %s, so they were not compared", answer)
+	}
+	return nil
 }
 
 // Call implements Models. A failure or timeout on the route goes to the secondary
