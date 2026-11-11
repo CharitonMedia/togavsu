@@ -35,6 +35,20 @@ var mediaTypes = map[string]string{
 	"pdf":  "application/pdf",
 }
 
+// versionExt is the extension of the format a version's bytes are in, from the media
+// type the file store recorded for that version. A file's extension names its current
+// format only: an older or restored version saved before a DOCX save keeps its own.
+// An unknown media type falls back to the file's extension.
+func versionExt(mediaType, fileExt string) string {
+	mt := strings.ToLower(strings.TrimSpace(strings.SplitN(mediaType, ";", 2)[0]))
+	for _, ext := range []string{"docx", "doc", "odt", "rtf", "html", "md", "txt", "pdf"} {
+		if mediaTypes[ext] == mt {
+			return ext
+		}
+	}
+	return normExt(fileExt)
+}
+
 // docxMedia is the DOCX media type.
 var docxMedia = mediaTypes["docx"]
 

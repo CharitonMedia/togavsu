@@ -62,7 +62,8 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 	if err != nil {
 		return RunResult{}, err
 	}
-	if !Editable(cur.File.Extension) {
+	curExt := versionExt(cur.Version.MediaType, cur.File.Extension)
+	if !Editable(curExt) {
 		return RunResult{}, domain.Invalid("file", "editor runs work on documents the editor opens (DOCX, DOC, ODT, RTF, HTML, Markdown, text)")
 	}
 	summary := map[string]any{"commands": commandIDs(req.Commands), "save_as": req.SaveAs, "from_version": cur.Version.ID}
@@ -83,9 +84,10 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 		return fail("refused", err)
 	}
 	if req.SaveAs == "version" {
-		// A new version under someone's open editor would be lost on their next save.
-		// This early check spares the run; writeUnderLock checks again at the write.
-		if err := s.otherHolds(ctx, p, fileID); err != nil {
+		// A new version under an open editor, the caller's own included, would be lost
+		// on that editor's next save. This early check spares the run; writeUnderLock
+		// checks again at the write, with the source version.
+		if err := s.anyHolds(ctx, p, fileID); err != nil {
 			return fail("refused", err)
 		}
 	}
@@ -101,7 +103,7 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 	if err != nil {
 		return fail("failed", err)
 	}
-	out, err := s.cli.Run(ctx, RunInput{Document: cur.Bytes, Ext: cur.File.Extension, Commands: req.Commands, Profiles: profiles,
+	out, err := s.cli.Run(ctx, RunInput{Document: cur.Bytes, Ext: curExt, Commands: req.Commands, Profiles: profiles,
 		Out: "docx", Author: s.userName(ctx, p.UserID)})
 	if err == nil {
 		err = CheckDOCX(out)
@@ -115,7 +117,7 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 		if !sameFormat(cur.File.Extension, "docx") {
 			opt.Extension = "docx"
 		}
-		err = s.writeUnderLock(ctx, p, fileID, false, func() error {
+		err = s.writeUnderLock(ctx, p, fileID, cur.Version.ID, func() error {
 			r, n := reader(out)
 			v, err := s.files.SaveVersion(ctx, p, fileID, r, n, opt)
 			res.Version = v
@@ -294,7 +296,7 @@ func (s *Service) Save(ctx context.Context, p domain.Principal, fileID domain.ID
 	// The lock is checked again with its row held until the version is in, so it cannot
 	// lapse to someone else between the check and the write.
 	var v files.VersionView
-	err = s.writeUnderLock(ctx, p, fileID, true, func() error {
+	err = s.writeUnderLock(ctx, p, fileID, "", func() error {
 		r, n := reader(data)
 		var err error
 		v, err = s.files.SaveVersion(ctx, p, fileID, r, n, opt)
@@ -332,7 +334,12 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	if err != nil {
 		return false, err
 	}
-	if !Editable(f.Extension) {
+	v, err := s.files.Version(ctx, p, fileID, versionID)
+	if err != nil {
+		return false, err
+	}
+	ext := versionExt(v.MediaType, f.Extension)
+	if !Editable(ext) {
 		return false, nil
 	}
 	d, err := s.files.OpenForProcessing(ctx, p, fileID, versionID)
@@ -345,7 +352,7 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	if err != nil {
 		return false, err
 	}
-	pdf, err := s.cli.Convert(ctx, buf.Bytes(), f.Extension, "pdf")
+	pdf, err := s.cli.Convert(ctx, buf.Bytes(), ext, "pdf")
 	if err == nil {
 		err = checkOutput(pdf, "pdf")
 	}

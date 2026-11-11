@@ -143,3 +143,19 @@ func TestPinnedInfoIsTheVersionedCommit(t *testing.T) {
 		t.Fatalf("editor info = %+v", info)
 	}
 }
+
+// A version keeps its own format: a PDF saved onto a .docx file previews as a PDF.
+func TestVersionExtFollowsTheVersionMediaType(t *testing.T) {
+	cases := []struct{ media, fileExt, want string }{
+		{"application/pdf", "docx", "pdf"},
+		{"application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".PDF", "docx"},
+		{"text/html; charset=utf-8", "docx", "html"},
+		{"", ".DOCX", "docx"},
+		{"application/x-unknown", "odt", "odt"},
+	}
+	for _, c := range cases {
+		if got := versionExt(c.media, c.fileExt); got != c.want {
+			t.Errorf("versionExt(%q, %q) = %q, want %q", c.media, c.fileExt, got, c.want)
+		}
+	}
+}

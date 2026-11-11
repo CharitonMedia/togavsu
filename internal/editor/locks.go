@@ -278,22 +278,26 @@ func (s *Service) checkHolder(ctx context.Context, p domain.Principal, l lockRow
 	return nil
 }
 
-// otherHolds reports a live lock someone other than p holds.
-func (s *Service) otherHolds(ctx context.Context, p domain.Principal, fileID domain.ID) error {
+// anyHolds reports a live lock anyone holds, p included: a run saved as a version
+// under p's own open editor would be lost on that editor's next save.
+func (s *Service) anyHolds(ctx context.Context, p domain.Principal, fileID domain.ID) error {
 	l, ok, err := s.readLock(ctx, fileID, false)
 	if err != nil {
 		return err
 	}
-	return s.checkOther(ctx, p, l, ok)
+	return s.checkFree(ctx, p, l, ok)
 }
 
-func (s *Service) checkOther(ctx context.Context, p domain.Principal, l lockRow, ok bool) error {
-	if !ok || l.UserID == p.UserID {
+func (s *Service) checkFree(ctx context.Context, p domain.Principal, l lockRow, ok bool) error {
+	if !ok {
 		return nil
 	}
 	alive, err := s.live(ctx, l)
 	if err != nil || !alive {
 		return err
+	}
+	if l.UserID == p.UserID {
+		return domain.Conflict("close the file in the editor first: a run saved as a version would be lost on your next save there")
 	}
 	return s.held(ctx, l)
 }
@@ -310,8 +314,11 @@ func serialize(ctx context.Context, db audit.Querier, fileID domain.ID) error {
 }
 
 // writeUnderLock runs write, a new version of the file, inside the file's edit-lock
-// serialization (serialize) and after the lock check passes there: holder (Save) means p
-// must hold the live lock, otherwise (a run saved as a version) nobody else may. No one
+// serialization (serialize) and after the lock check passes there. With no base (Save) p
+// must hold the live lock. With a base (a run saved as a version) nobody may hold a live
+// lock, p included, and base must still be the current version: a save or another run
+// that landed while this run worked would otherwise be buried under output made from
+// the older version. No one
 // can take, renew or release the lock between the check and the write, so the lock
 // cannot lapse into someone else's hands with this version still to come, and a new
 // holder opens the file only after it is in. A save by the holder renews the lock in the
@@ -319,7 +326,8 @@ func serialize(ctx context.Context, db audit.Querier, fileID domain.ID) error {
 //
 // write runs on its own connection (files.SaveVersion opens its own transaction), so
 // ctx must not carry a transaction on s.pool.
-func (s *Service) writeUnderLock(ctx context.Context, p domain.Principal, fileID domain.ID, holder bool, write func() error) error {
+func (s *Service) writeUnderLock(ctx context.Context, p domain.Principal, fileID, base domain.ID, write func() error) error {
+	holder := base == ""
 	if audit.Tx(ctx, s.pool) != nil {
 		return errors.New("editor: a locked write cannot run inside a transaction")
 	}
@@ -338,10 +346,19 @@ func (s *Service) writeUnderLock(ctx context.Context, p domain.Principal, fileID
 	if holder {
 		err = s.checkHolder(ctx, p, l, ok)
 	} else {
-		err = s.checkOther(ctx, p, l, ok)
+		err = s.checkFree(ctx, p, l, ok)
 	}
 	if err != nil {
 		return err
+	}
+	if !holder {
+		f, err := s.files.Get(ctx, p, fileID)
+		if err != nil {
+			return err
+		}
+		if f.CurrentVersionID == nil || *f.CurrentVersionID != base {
+			return domain.Conflict("the document changed while the run was working; run it again on the current version")
+		}
 	}
 	if s.beforeLockedWrite != nil {
 		s.beforeLockedWrite()

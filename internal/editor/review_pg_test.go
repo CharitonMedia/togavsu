@@ -296,3 +296,25 @@ func TestPGLockHolderIsHiddenFromThoseWhoCannotEdit(t *testing.T) {
 		t.Fatalf("Document by the holder = %v", err)
 	}
 }
+
+// A run saved as a version under the caller's own open editor is refused too: the
+// editor's next save would bury it.
+func TestPGRunIntoAVersionUnderYourOwnEditorIsRefused(t *testing.T) {
+	e := newEnv(t)
+	f := e.create(e.staff, "Letter.docx", e.matter, e.letterWithMergeFields(), false)
+	if _, err := e.svc.AcquireLock(e.ctx, e.staff, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Run(e.ctx, e.staff, f.ID, RunRequest{SaveAs: "version", Commands: mergeRun}); code(err) != domain.CodeConflict {
+		t.Fatalf("a run into a version under the caller's own editor = %v", err)
+	}
+	if n := len(e.versions(f.ID)); n != 1 {
+		t.Fatalf("the refused run made a version: %d", n)
+	}
+	if err := e.svc.ReleaseLock(e.ctx, e.staff, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Run(e.ctx, e.staff, f.ID, RunRequest{SaveAs: "version", Commands: mergeRun}); err != nil {
+		t.Fatalf("the run after the editor closed: %v", err)
+	}
+}
