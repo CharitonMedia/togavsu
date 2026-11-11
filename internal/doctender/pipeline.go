@@ -440,11 +440,6 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 	}
 	var reviews []pending
 	best := map[string]any{"category": cat.Answer.Category, "what_it_is": l.WhatItIs, "doc_date": l.DocDate}
-	if !match.Review {
-		// A name is only proposed once the matter is settled: it is built from the
-		// matter's tokens, and Accept would lock it.
-		best["name"] = proposed
-	}
 	if match.Best != "" {
 		best["matter_id"], best["matter"], best["match_reason"] = string(match.Best), match.BestLabel, match.Why
 	}
@@ -470,6 +465,12 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 			applyName = false
 			reviews = append(reviews, pending{"low_confidence", "low confidence on the name: " + strings.Join(low, ", "), best})
 		}
+	}
+	if labelOK && !named && !match.Review && !applyName && j.MatterID != "" {
+		// The name is offered for Accept only when it was held back for review. It is
+		// built from the matter's tokens, so not before the matter is settled, and not
+		// once Doc Tender has named the file or is naming it now (clash suffix included).
+		best["name"] = proposed
 	}
 	if catOK && cat.Agree && cat.Answer.Confidence < threshold && !categorized {
 		applyCat = false
@@ -530,12 +531,9 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 				how = "person"
 			}
 		}
-		nameSet := false
-		for _, set := range applied.Set {
-			if set == "name" {
-				nameSet = true
-			}
-		}
+		// The name counts as published when Doc Tender applied it, including when the file
+		// already carried it; only a person's lock keeps it from being Doc Tender's.
+		nameSet := applyName && !contains(applied.Skipped, "name")
 		if err := s.insertResult(ctx, w, l, labelOK, cat, resultCat, nameSet, how, match, rendition.ID); err != nil {
 			return err
 		}

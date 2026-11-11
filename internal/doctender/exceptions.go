@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/files"
@@ -405,7 +407,7 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 			break
 		}
 		if name, _ := e.BestAnswer["name"].(string); name != "" && name != f.Name {
-			if _, err := s.d.Files.Rename(ctx, p, f.ID, name); err != nil {
+			if err := s.acceptName(ctx, p, f, name); err != nil {
 				return Exception{}, err
 			}
 		}
@@ -526,6 +528,39 @@ func (s *Service) setCategory(ctx context.Context, p domain.Principal, f files.F
 		}
 	}
 	return nil
+}
+
+// acceptName gives the file an accepted proposed name through the matter's clash
+// resolution (PRD 8.21 step 6: -2, -3), then locks it as the person's decision. A file
+// whose name already is that name with a clash suffix keeps it.
+func (s *Service) acceptName(ctx context.Context, p domain.Principal, f files.FileView, name string) error {
+	if f.MatterID != nil {
+		unique, err := s.d.Files.UniqueName(ctx, *f.MatterID, name)
+		if err != nil {
+			return err
+		}
+		if unique != name {
+			ext := path.Ext(name)
+			if n, ok := strings.CutPrefix(strings.TrimSuffix(f.Name, ext), strings.TrimSuffix(name, ext)+"-"); ok && strings.HasSuffix(f.Name, ext) && allDigits(n) {
+				unique = f.Name
+			}
+		}
+		name = unique
+	}
+	_, err := s.d.Files.Rename(ctx, p, f.ID, name)
+	return err
+}
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) setMatter(ctx context.Context, p domain.Principal, f files.FileView, matter domain.ID) error {
