@@ -441,6 +441,11 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 			return Exception{}, err
 		}
 	case "keep":
+		if e.Kind == "unmatched_matter" && f.MatterID != nil {
+			// Keep as is confirms the file's matter: requeue so the file is named and
+			// filed from it, as Accept and Assign matter do (matterSettled).
+			requeue = true
+		}
 	default:
 		return Exception{}, domain.Invalid("action", "action is accept, correct, assign_matter, retry or keep")
 	}

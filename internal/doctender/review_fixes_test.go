@@ -610,3 +610,44 @@ func TestWordFamilyChecksAreIndependent(t *testing.T) {
 		}
 	}
 }
+
+// Opus checkpoint P1: a matter a person set or confirmed stays settled. Assign matter to
+// the file's own matter, Keep as is, or Assign matter on a file with no matter each
+// close the question for good: the requeue names the file from that matter and no new
+// "matter unclear" item opens, though the content still points at another matter.
+func TestPersonsMatterDecisionStaysSettled(t *testing.T) {
+	e := newEnv(t)
+	sameAssign := e.upload(e.staff, e.open, "assign same.txt", "text/plain", []byte("NOTICE OF HEARING\nCase 24JE-DR01234 on 2026-12-02 for Morgan Testperson.\n"))
+	kept := e.upload(e.staff, e.open, "keep as is.txt", "text/plain", []byte("NOTICE OF HEARING\nCase 24JE-DR01234 on 2026-12-03 for Morgan Testperson.\n"))
+	loose := e.noMatterFile(e.staff, "loose assign.txt", "", []byte("LETTER ABOUT CASE 23AR-CV00825\nFrom Jordan Example on 2026-10-04.\n"))
+	e.drain()
+	for _, c := range []struct {
+		f      files.FileView
+		res    Resolve
+		matter domain.ID
+		prefix string
+	}{
+		{sameAssign, Resolve{Action: "assign_matter", MatterID: &e.open}, e.open, "example-2026-0001-notice-of-hearing"},
+		{kept, Resolve{Action: "keep"}, e.open, "example-2026-0001-notice-of-hearing"},
+		{loose, Resolve{Action: "assign_matter", MatterID: &e.other}, e.other, "acme-holding-company-2026-0003-letter-about-case"},
+	} {
+		ex := e.openExceptions(c.f.ID)
+		if len(ex) != 1 || ex[0].Kind != "unmatched_matter" {
+			t.Fatalf("%s: want one matter-unclear item, got %+v", c.f.Name, ex)
+		}
+		if _, err := e.svc.ResolveException(e.ctx, e.attorney, ex[0].ID, c.res); err != nil {
+			t.Fatalf("%s: %v", c.f.Name, err)
+		}
+		e.drain()
+		if open := e.openExceptions(c.f.ID); len(open) != 0 {
+			t.Fatalf("%s (%s): the matter question reopened: %+v", c.f.Name, c.res.Action, open)
+		}
+		got := e.get(e.attorney, c.f.ID)
+		if got.MatterID == nil || *got.MatterID != c.matter {
+			t.Fatalf("%s: matter %v, want %s", c.f.Name, got.MatterID, c.matter)
+		}
+		if !strings.HasPrefix(got.Name, c.prefix) {
+			t.Fatalf("%s (%s): named %q, want the pattern name from the settled matter (%s...)", c.f.Name, c.res.Action, got.Name, c.prefix)
+		}
+	}
+}

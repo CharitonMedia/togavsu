@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/files"
 )
 
 // Citation is where a field was read: a page, a timestamp, or both.
@@ -360,6 +361,15 @@ func (s *Service) matchMatter(ctx context.Context, w *work, c *content, l Label)
 		}
 		return out, nil
 	}
+	// A matter a person set or confirmed stays settled (PRD 8.21: each decision is made
+	// once): content pointing elsewhere no longer reopens the question or holds the name.
+	settled, err := s.matterSettled(ctx, w.file)
+	if err != nil {
+		return out, err
+	}
+	if settled {
+		return out, nil
+	}
 	if len(hits) > zero && hits[zero].m.ID != out.Keep {
 		keepScore := zero
 		for _, h := range hits {
@@ -374,6 +384,29 @@ func (s *Service) matchMatter(ctx context.Context, w *work, c *content, l Label)
 		}
 	}
 	return out, nil
+}
+
+// matterSettled reports a person's decision on the file's matter: the matter field is
+// locked (set through the files service by a person, or by Accept or Assign matter), or a
+// person resolved an earlier "matter unclear" item with Accept, Assign matter or Keep as
+// is. Doc Tender never changes a file's matter on its own, so a later change is a
+// person's and locks the field too.
+func (s *Service) matterSettled(ctx context.Context, f files.FileView) (bool, error) {
+	if contains(f.LockedFields, "matter") {
+		return true, nil
+	}
+	done, err := s.exceptionsWhere(ctx, `file_id = ? AND kind = 'unmatched_matter' AND status = 'resolved'`, f.ID)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range done {
+		for _, a := range []string{"accept", "assign_matter", "keep"} {
+			if e.Resolution == a || strings.HasPrefix(e.Resolution, a+": ") {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func containsAny(values []string, name string) bool {
