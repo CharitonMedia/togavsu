@@ -73,7 +73,9 @@ func ReadManifest(pkg []byte) (Manifest, error) {
 			return Manifest{}, ErrManifest
 		}
 		h, err := tr.Next()
-		if errors.Is(err, io.EOF) && bounded.N > 0 {
+		// A clean end inside the bound is the end of the archive; one at the bound may
+		// hide more entries, so it is refused below.
+		if errors.Is(err, io.EOF) && fixed.MaxExpandedBytes-bounded.N < fixed.MaxExpandedBytes {
 			break
 		}
 		if err != nil {
