@@ -113,6 +113,7 @@ var definitions = []Definition{
 
 	{Key: "mail.smtp_host", Kind: KindString, Tab: TabMail, Help: "SMTP host for system mail."},
 	{Key: "mail.smtp_port", Kind: KindInt, Min: 1, Max: 65535, HasMin: true, HasMax: true, Optional: true, Tab: TabMail, Help: "SMTP port."},
+	{Key: "mail.smtp_timeout", Kind: KindDuration, Default: "1m0s", Min: int64(time.Second), Max: int64(10 * time.Minute), HasMin: true, HasMax: true, Tab: TabMail, Help: "Longest one system mail send may take. A send cut off is retried later. Default 60 seconds."},
 	{Key: "mail.smtp_username", Kind: KindString, Tab: TabMail, Help: "SMTP username."},
 	{Key: "mail.smtp_password", Kind: KindString, Secret: true, Optional: true, Tab: TabMail, Help: "SMTP password. Stored encrypted and omitted from the audit log."},
 	{Key: "mail.smtp_from", Kind: KindString, Tab: TabMail, Help: "From address for system mail.", Optional: true, Special: "email"},

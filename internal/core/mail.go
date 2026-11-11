@@ -14,6 +14,7 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -53,6 +54,12 @@ func (m smtpMailer) Send(ctx context.Context, msg billing.Message) error {
 	if user := get("mail.smtp_username"); user != "" {
 		auth = smtp.PlainAuth("", user, get("mail.smtp_password"), host)
 	}
+	limit, err := time.ParseDuration(get("mail.smtp_timeout"))
+	if err != nil {
+		return errMailNotConfigured
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
 	return smtpsend.Send(ctx, net.JoinHostPort(host, port), auth, from, msg.To, raw)
 }
 
