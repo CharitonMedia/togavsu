@@ -488,7 +488,13 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		if f.MatterID != nil {
 			matter = *f.MatterID
 		}
-		return s.appendEvent(ctx, "doc_tender.exception_resolved", "file", f.ID, matter, KindLabel(e.Kind)+" resolved: "+resolution)
+		if err := s.appendEvent(ctx, "doc_tender.exception_resolved", "file", f.ID, matter, KindLabel(e.Kind)+" resolved: "+resolution); err != nil {
+			return err
+		}
+		if requeue {
+			return nil
+		}
+		return s.settleIfReviewed(ctx, e.jobID)
 	})
 	if err != nil {
 		return Exception{}, err
@@ -504,6 +510,28 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		}
 	}
 	return s.Exception(ctx, p, id)
+}
+
+// settleIfReviewed moves a finished job out of review once a person has settled the
+// last open item of its version, so the file reads as processed (PRD 8.21: a person's
+// decision settles the item). A job stopped at its first check stays as it is.
+func (s *Service) settleIfReviewed(ctx context.Context, jobID domain.ID) error {
+	if jobID == "" {
+		return nil
+	}
+	j, err := s.job(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if j.Status != StatusException || j.Stage != stageDone {
+		return nil
+	}
+	open, err := s.openExceptionCount(ctx, j.FileID, j.VersionID)
+	if err != nil || open > zero {
+		return err
+	}
+	j.Status = StatusPublished
+	return s.saveJob(ctx, j)
 }
 
 func (s *Service) setCategory(ctx context.Context, p domain.Principal, f files.FileView, key string) error {

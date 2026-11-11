@@ -145,3 +145,33 @@ func TestBothSidesFallingBackToOneModelIsNotACheck(t *testing.T) {
 		}
 	}
 }
+
+// Opus checkpoint P2 (on 3d44fd8): settling a version's last open review item moves
+// its job out of review, so the file reads as processed.
+func TestSettlingTheLastItemMarksTheFileProcessed(t *testing.T) {
+	e := newEnv(t)
+	e.ai.set(func(fa *fakeAI) {
+		lowName(fa)
+		fa.categoryConfidence = 0.3
+	})
+	f := e.upload(e.staff, e.open, "motion.txt", "text/plain", []byte(motion))
+	e.drain()
+	items := e.openExceptions(f.ID)
+	if len(items) != 1 || items[0].Kind != "low_confidence" {
+		t.Fatalf("items %+v, want one low-confidence item", items)
+	}
+	st, err := e.svc.Status(e.ctx, e.attorney, f.ID)
+	if err != nil || st.Label != "Needs review" {
+		t.Fatalf("status before review %+v %v, want Needs review", st, err)
+	}
+	if _, err := e.svc.ResolveException(e.ctx, e.attorney, items[0].ID, Resolve{Action: "accept"}); err != nil {
+		t.Fatal(err)
+	}
+	if j := e.jobFor(f.ID); j.Status != StatusPublished {
+		t.Fatalf("job status %q after the last item was settled, want %q", j.Status, StatusPublished)
+	}
+	st, err = e.svc.Status(e.ctx, e.attorney, f.ID)
+	if err != nil || st.Label != "Processed" {
+		t.Fatalf("status after review %+v %v, want Processed", st, err)
+	}
+}
