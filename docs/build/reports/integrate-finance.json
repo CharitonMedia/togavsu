@@ -263,11 +263,12 @@
  },
  "integration_tests": {
   "TestFinanceCrossDomainTransfers": "A payment into trust posts a linked deposit; Apply trust posts a transfer_to_operating entry and pays the invoice; over-apply is refused with no row; with INSERT on billing_records revoked, Apply trust fails after its trust post and the trust row and audit rows roll back with it; reversing the trust-funded payment posts the reversal and reopens the invoice; bulk posts honor api.bulk_batch_max and reject a whole batch with one invalid item; a restart on the same database keeps invoices, balances, close warnings and AR aging.",
-  "token_scopes": "A trust:write token deposits but cannot withdraw, a bulk with one refund is refused whole, a trust:withdraw token withdraws; one bearer post counts once against security.api_rate_per_minute (regression test fails without the per-request caller memo)."
+  "token_scopes": "A trust:write token deposits but cannot withdraw, a bulk with one refund is refused whole, a trust:withdraw token withdraws; one bearer post counts once against security.api_rate_per_minute (regression test fails without the per-request caller memo).",
+  "TestFinanceCloseDuringSilentMailServer": "With the delivery loop connected to a mail server that accepts and never answers, and mail.smtp_timeout_seconds at 600, App.Close returns within 10 seconds, the flag mail stays queued, and its outbox row records attempts and the error."
  },
  "ci": {
   "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
-  "current_revision_ci": "pending: the controller publishes this branch to claude/togavsu-integrate-finance-51e60604 and Product CI runs on its pull request; no GitHub run has been observed for b59f0aaeaa0aefafa4acec593f1322d35c33b496",
+  "current_revision_ci": "Product CI runs on the pull request head; the PR body names the head commit and its run. The Postgres test TestFinanceCloseDuringSilentMailServer runs only there (test-core.sh fails on a skipped Finance test).",
   "required_jobs": [
    "Core tests",
    "API contract tests",
@@ -293,7 +294,55 @@
   "other_lines": "PONYTAIL-DEBT.md +23/-3, scripts/ci +10/-2, templates +6",
   "debt_entries_before": 37,
   "debt_entries_after": 52,
-  "review": "Composition reuses the packages' own seams (TrustLink, TrustEvents, Durable as Practice, Mirror and balance sink, the handlers' Routes) with no adapter layer; routing tries the three service muxes with ServeMux.Handler instead of a second route table, and MCP mounting reuses the same list. The trust mail loop reuses trust.DeliverMail and trust.SMTP; billing's mailer is the only new mail code (standard library net/smtp and mime/multipart, no new module). The per-request caller memo replaced a second authentication and removed integration ceiling 4; registering api.bulk_batch_max removed two package ponytails. Debt grows by 15 because the billing and trust packages' existing ponytails were not in the ledger; one new entry (the 30-second mail loop) and one routing note were added; one entry was removed."
+  "review": "Composition reuses the packages' own seams (TrustLink, TrustEvents, Durable as Practice, Mirror and balance sink, the handlers' Routes) with no adapter layer; routing tries the three service muxes with ServeMux.Handler instead of a second route table, and MCP mounting reuses the same list. The trust mail loop reuses trust.DeliverMail and trust.SMTP; billing's mailer is the only new mail code (standard library mime/multipart, no new module); after the checkpoint review both mailers send through internal/smtpsend, net/smtp's client on a connection bound to the caller's context, also standard library. The per-request caller memo replaced a second authentication and removed integration ceiling 4; registering api.bulk_batch_max removed two package ponytails. Debt grows by 15 because the billing and trust packages' existing ponytails were not in the ledger; one new entry (the 30-second mail loop) and one routing note were added; one entry was removed."
  },
- "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at the tested revision, plus the cross-domain transaction test, and local runs of every required CI job exit 0. Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes."
+ "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at the tested revision, plus the cross-domain transaction test, and local runs of every required CI job exit 0. Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes.",
+ "checkpoint_followups": {
+  "summary": "Commits after the tested revision answer the review gate's findings. They were not part of the local full run at tested_revision; their evidence is the unit tests run locally below and GitHub Product CI on the pull request head, which the PR body names by commit and run.",
+  "changes": [
+   {
+    "commits": [
+     "9332cc0",
+     "b6a814a"
+    ],
+    "change": "net/smtp.SendMail ignores context and sets no deadlines, so a server that accepted and then stalled held the trust mail worker and App.Close. New internal/smtpsend sends through net/smtp's client on a context-bound connection: the ctx deadline becomes the connection deadline and cancellation closes it. App.Close cancels the delivery loop and waits for it; a send cut off by cancellation still records its error on the outbox row (context.WithoutCancel).",
+    "tests": [
+     "internal/smtpsend: TestSendDeliversMessage, TestSendReturnsWhenCanceledOnSilentServer, TestSendHonorsDeadline",
+     "internal/core: TestFinanceCloseDuringSilentMailServer (Postgres; runs in the Core tests job)"
+    ]
+   },
+   {
+    "commits": [
+     "b7d7ace",
+     "a90586f",
+     "e3eec4f"
+    ],
+    "change": "Each system mail send (billing and trust) is bounded by the new admin setting mail.smtp_timeout_seconds (integer, default 60, 1 to 600, Mail tab), registered under the same key and type as the contract. api/contract/settings.py, api/openapi/v1/openapi.json and the stage 1 inventory digest were regenerated. The per-pass deadline in core/finance.go was removed.",
+    "tests": [
+     "internal/core: TestNewSettingsMatchTheContract",
+     "internal/settings: TestModuleClean",
+     "API contract tests job (test_generated_artifacts_match_committed_bytes)"
+    ]
+   },
+   {
+    "commits": [
+     "b7d7ace"
+    ],
+    "change": "billing.firmDate converts a stored instant to the firm's calendar day (firm.time_zone). AR aging compares VoidedAt and ReversedAt through it, so a void or payment reversal late in the firm's evening counts on the firm's date, not the UTC date.",
+    "tests": [
+     "internal/billing: TestARAgingDatesVoidsAndReversalsInTheFirmZone (America/Chicago; void and reversal at 03:00 UTC, checked as of the firm's day of the event and the day before; fails with UTC dates)"
+    ]
+   }
+  ],
+  "local_unit_runs": [
+   {
+    "command": "go test -count=1 ./internal/smtpsend/ ./internal/billing/ ./internal/settings/",
+    "exit_code": 0
+   },
+   {
+    "command": "go test -count=1 -run 'TestNewSettingsMatchTheContract|TestModuleClean' ./internal/core/ ./internal/settings/",
+    "exit_code": 0
+   }
+  ]
+ }
 }
