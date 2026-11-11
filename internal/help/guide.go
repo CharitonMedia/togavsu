@@ -63,8 +63,8 @@ type Guide struct {
 }
 
 var (
-	topicHead = regexp.MustCompile(`^## (.+?)\s*\{#([a-z0-9_-]+)\}\s*$`)
-	metaLine  = regexp.MustCompile(`^<!--\s*(.*?)\s*-->\s*$`)
+	topicHead = regexp.MustCompile(`^## (?P<title>.+?)\s*\{#(?P<id>[a-z0-9_-]+)\}\s*$`)
+	metaLine  = regexp.MustCompile(`^<!--\s*(?P<meta>.*?)\s*-->\s*$`)
 )
 
 // LoadGuide parses the embedded guide.
@@ -119,7 +119,8 @@ func (g *Guide) parse(file, src string) error {
 			if ch != nil {
 				g.Chapters = append(g.Chapters, *ch)
 			}
-			ch = &Chapter{Title: strings.TrimSpace(line[2:])}
+			title, _ := strings.CutPrefix(line, "# ")
+			ch = &Chapter{Title: strings.TrimSpace(title)}
 		case strings.HasPrefix(line, "## "):
 			if ch == nil {
 				return fmt.Errorf("help: %s: topic before a chapter heading", file)
@@ -129,13 +130,14 @@ func (g *Guide) parse(file, src string) error {
 				return fmt.Errorf("help: %s:%d: a topic heading needs an {#id}", file, i+1)
 			}
 			flush()
-			if _, dup := g.byID[m[2]]; dup {
-				return fmt.Errorf("help: %s: duplicate topic id %s", file, m[2])
+			id, title := m[topicHead.SubexpIndex("id")], m[topicHead.SubexpIndex("title")]
+			if _, dup := g.byID[id]; dup {
+				return fmt.Errorf("help: %s: duplicate topic id %s", file, id)
 			}
-			cur = &Topic{ID: m[2], Title: m[1], Chapter: ch.Title}
+			cur = &Topic{ID: id, Title: title, Chapter: ch.Title}
 			if i+1 < len(lines) {
 				if mm := metaLine.FindStringSubmatch(lines[i+1]); mm != nil {
-					applyMeta(cur, mm[1])
+					applyMeta(cur, mm[metaLine.SubexpIndex("meta")])
 					i++
 				}
 			}
@@ -267,7 +269,7 @@ func pathMatches(pattern, path string) bool {
 // path beats a pattern with a {parameter}.
 func (g *Guide) ForPath(path string) (Topic, bool) {
 	var best Topic
-	bestScore := -1
+	bestScore, found := -1, false
 	for _, id := range g.order {
 		t := g.byID[id]
 		if t.Tab != "" {
@@ -279,9 +281,9 @@ func (g *Guide) ForPath(path string) (Topic, bool) {
 			}
 			score := 100 - strings.Count(p, "{")
 			if score > bestScore {
-				best, bestScore = t, score
+				best, bestScore, found = t, score, true
 			}
 		}
 	}
-	return best, bestScore >= 0
+	return best, found
 }

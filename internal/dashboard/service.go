@@ -134,10 +134,12 @@ func (s *Service) setting(ctx context.Context, key string) string {
 	return v
 }
 
-func (s *Service) intSetting(ctx context.Context, key string, fallback int) int {
+// intSetting reads an integer setting; an unreadable value falls back to the
+// registry's default for that key.
+func (s *Service) intSetting(ctx context.Context, key string) int {
 	n, err := strconv.Atoi(s.setting(ctx, key))
 	if err != nil {
-		return fallback
+		return registryInt(key)
 	}
 	return n
 }
@@ -178,21 +180,19 @@ func PrimaryRole(p domain.Principal) domain.Role {
 
 // --- Layouts (PRD 8.6) ---
 
-const maxWidgetsPerLayout = 60
-
 func (s *Service) validateWidgets(viewer domain.Principal, ws []LayoutWidget) error {
-	if len(ws) > maxWidgetsPerLayout {
-		return domain.Invalid("widgets", fmt.Sprintf("a layout holds at most %d widgets", maxWidgetsPerLayout))
+	if len(ws) > fixed.MaxWidgetsPerLayout {
+		return domain.Invalid("widgets", fmt.Sprintf("a layout holds at most %d widgets", fixed.MaxWidgetsPerLayout))
 	}
 	for i, w := range ws {
 		field := fmt.Sprintf("widgets[%d]", i)
 		if !s.d.Catalog.Visible(viewer, w.WidgetID) {
 			return domain.Invalid(field+".widget_id", "unknown widget or not available to this role: "+w.WidgetID)
 		}
-		if w.X < 0 || w.X > GridColumns-1 || w.W < 1 || w.W > GridColumns || w.X+w.W > GridColumns {
+		if w.X < fixed.GridOrigin || w.W < fixed.MinWidgetSize || w.X+w.W > GridColumns {
 			return domain.Invalid(field, "widget is outside the 12-column grid")
 		}
-		if w.Y < 0 || w.H < 1 || w.H > 24 {
+		if w.Y < fixed.GridOrigin || w.H < fixed.MinWidgetSize || w.H > fixed.MaxWidgetHeight {
 			return domain.Invalid(field, "widget height or row is out of range")
 		}
 	}
@@ -213,36 +213,28 @@ func (s *Service) visible(p domain.Principal, ws []LayoutWidget) []LayoutWidget 
 
 // pack places widget ids left to right in rows using each widget's default size.
 func (s *Service) pack(ids []string) []LayoutWidget {
+	type cursor struct{ x, y, rowH int }
 	var out []LayoutWidget
-	x, y, rowH := 0, 0, 0
+	var c cursor
 	for _, id := range ids {
 		d, ok := s.d.Catalog.Def(id)
 		if !ok {
 			continue
 		}
-		if x+d.W > GridColumns {
-			x, y, rowH = 0, y+rowH, 0
+		if c.x+d.W > GridColumns {
+			c = cursor{y: c.y + c.rowH} // next row
 		}
-		out = append(out, LayoutWidget{WidgetID: id, X: x, Y: y, W: d.W, H: d.H})
-		x += d.W
-		if d.H > rowH {
-			rowH = d.H
-		}
+		out = append(out, LayoutWidget{WidgetID: id, X: c.x, Y: c.y, W: d.W, H: d.H})
+		c.x += d.W
+		c.rowH = max(c.rowH, d.H)
 	}
 	return out
 }
 
 // builtinRoleLayout is the layout a role starts with before the admin sets one.
 func (s *Service) builtinRoleLayout(role domain.Role) []LayoutWidget {
-	switch role {
-	case domain.RoleAdmin:
-		return s.pack([]string{"my-open-matters", "upcoming-deadlines", "trust-alerts", "replenishment-requests", "recent-activity", "module-alerts", "ar-aging", "pending-conflict-checks"})
-	case domain.RoleAttorney:
-		return s.pack([]string{"my-time", "running-timer", "unbilled", "my-open-matters", "upcoming-deadlines", "todays-calendar", "trust-alerts", "pending-conflict-checks"})
-	case domain.RoleStaff:
-		return s.pack([]string{"my-time", "running-timer", "unbilled", "my-open-matters", "upcoming-deadlines", "todays-calendar", "pending-conflict-checks", "recent-activity"})
-	case domain.RoleAccountant:
-		return s.pack([]string{"unbilled", "ar-aging", "trust-alerts", "replenishment-requests"})
+	if ids, ok := catalog.RoleLayouts[string(role)]; ok {
+		return s.pack(ids)
 	}
 	return []LayoutWidget{}
 }
@@ -378,15 +370,15 @@ func cleanName(name string) (string, error) {
 	if name == "" {
 		return "", domain.Invalid("name", "a saved layout needs a name")
 	}
-	if utf8.RuneCountInString(name) > 80 {
-		return "", domain.Invalid("name", "a layout name is at most 80 characters")
+	if utf8.RuneCountInString(name) > fixed.LayoutNameMax {
+		return "", domain.Invalid("name", fmt.Sprintf("a layout name is at most %d characters", fixed.LayoutNameMax))
 	}
 	return name, nil
 }
 
 // LayoutLimit is the per-user cap, home.max_saved_layouts (default 10).
 func (s *Service) LayoutLimit(ctx context.Context) int {
-	return s.intSetting(ctx, "home.max_saved_layouts", 10)
+	return s.intSetting(ctx, "home.max_saved_layouts")
 }
 
 // SaveLayout saves widgets under a new name. Past the cap it is refused with
@@ -413,7 +405,7 @@ func (s *Service) SaveLayout(ctx context.Context, p domain.Principal, name strin
 		return Layout{}, err
 	}
 	now := s.d.Now().UTC()
-	for attempt := 0; attempt < 5; attempt++ {
+	for attempt := 0; attempt < fixed.SaveAttempts; attempt++ {
 		existing, err := s.d.Store.Layouts(ctx, p.UserID)
 		if err != nil {
 			return Layout{}, err
@@ -425,14 +417,8 @@ func (s *Service) SaveLayout(ctx context.Context, p domain.Principal, name strin
 			}
 			used[l.Slot] = true
 		}
-		slot := -1
-		for i := 0; i < limit; i++ {
-			if !used[i] {
-				slot = i
-				break
-			}
-		}
-		if slot < 0 || len(existing) >= limit {
+		slot, free := freeSlot(used, limit)
+		if !free || len(existing) >= limit {
 			return Layout{}, &domain.APIError{Code: CodeLayoutLimit, Message: fmt.Sprintf("you can save up to %d layouts; delete or overwrite one first", limit)}
 		}
 		l := Layout{ID: id, CreatedAt: now, UpdatedAt: now, CreatedBy: p.UserID, UserID: p.UserID, Name: name, Slot: slot, Widgets: cloneWidgets(ws)}
@@ -446,6 +432,16 @@ func (s *Service) SaveLayout(ctx context.Context, p domain.Principal, name strin
 		return l, nil
 	}
 	return Layout{}, domain.Conflict("another save took the last free layout place; try again")
+}
+
+// freeSlot is the lowest slot below limit no saved layout holds.
+func freeSlot(used map[int]bool, limit int) (int, bool) {
+	for i := 0; i < limit; i++ {
+		if !used[i] {
+			return i, true
+		}
+	}
+	return limit, false
 }
 
 // UpdateLayout renames and/or overwrites a saved layout.
@@ -550,9 +546,7 @@ func (s *Service) ApplyLayout(ctx context.Context, p domain.Principal, id domain
 }
 
 func (s *Service) roleOption(p domain.Principal, rl RoleLayout) Layout {
-	role := string(rl.Role)
-	label := strings.ToUpper(role[:1]) + role[1:]
-	return Layout{ID: RoleOptionID, Name: "Role default (" + label + ")", CreatedBy: "", UserID: p.UserID, Widgets: cloneWidgets(rl.Widgets), CreatedAt: rl.UpdatedAt, UpdatedAt: rl.UpdatedAt}
+	return Layout{ID: RoleOptionID, Name: "Role default (" + capitalize(string(rl.Role)) + ")", CreatedBy: "", UserID: p.UserID, Widgets: cloneWidgets(rl.Widgets), CreatedAt: rl.UpdatedAt, UpdatedAt: rl.UpdatedAt}
 }
 
 // ResetOptions is the Reset list: the user's default saved layout first, then their

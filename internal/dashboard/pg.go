@@ -44,13 +44,6 @@ func decodeWidgets(s string) ([]LayoutWidget, error) {
 	return w, nil
 }
 
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (s PG) Working(ctx context.Context, user domain.ID) ([]LayoutWidget, bool, error) {
 	var raw string
 	err := s.DB.QueryRowContext(ctx, `SELECT widgets FROM home_working_layouts WHERE user_id = $1`, string(user)).Scan(&raw)
@@ -75,14 +68,14 @@ func (s PG) PutWorking(ctx context.Context, user domain.ID, widgets []LayoutWidg
 	return err
 }
 
-const layoutCols = `id, created_at, updated_at, created_by, user_id, name, is_default, slot, widgets`
+const layoutCols = `id, created_at, updated_at, created_by, user_id, name, (is_default = 1), slot, widgets`
+const layoutInsertCols = `id, created_at, updated_at, created_by, user_id, name, is_default, slot, widgets`
 
 func scanLayout(row interface{ Scan(...any) error }) (Layout, error) {
 	var l Layout
 	var created, updated int64
 	var id, by, user, raw string
-	var def int
-	if err := row.Scan(&id, &created, &updated, &by, &user, &l.Name, &def, &l.Slot, &raw); err != nil {
+	if err := row.Scan(&id, &created, &updated, &by, &user, &l.Name, &l.Default, &l.Slot, &raw); err != nil {
 		return Layout{}, err
 	}
 	w, err := decodeWidgets(raw)
@@ -90,7 +83,7 @@ func scanLayout(row interface{ Scan(...any) error }) (Layout, error) {
 		return Layout{}, err
 	}
 	l.ID, l.CreatedAt, l.UpdatedAt, l.CreatedBy, l.UserID = domain.ID(id), fromMicro(created), fromMicro(updated), domain.ID(by), domain.ID(user)
-	l.Default, l.Widgets = def == 1, w
+	l.Widgets = w
 	return l, nil
 }
 
@@ -121,7 +114,7 @@ func (s PG) InsertLayout(ctx context.Context, l Layout) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO home_layouts (`+layoutCols+`) VALUES ($1, $2, $2, $3, $4, $5, 0, $6, $7)`,
+	_, err = s.DB.ExecContext(ctx, `INSERT INTO home_layouts (`+layoutInsertCols+`) VALUES ($1, $2, $2, $3, $4, $5, 0, $6, $7)`,
 		string(l.ID), micro(l.CreatedAt), string(l.CreatedBy), string(l.UserID), l.Name, l.Slot, raw)
 	switch {
 	case isUnique(err, "home_layouts_user_id_slot_key"):
@@ -137,29 +130,18 @@ func (s PG) UpdateLayout(ctx context.Context, l Layout) error {
 	if err != nil {
 		return err
 	}
-	res, err := s.DB.ExecContext(ctx, `UPDATE home_layouts SET name = $1, widgets = $2, updated_at = $3 WHERE id = $4 AND user_id = $5`,
-		l.Name, raw, micro(l.UpdatedAt), string(l.ID), string(l.UserID))
+	var id string
+	err = s.DB.QueryRowContext(ctx, `UPDATE home_layouts SET name = $1, widgets = $2, updated_at = $3 WHERE id = $4 AND user_id = $5 RETURNING id`,
+		l.Name, raw, micro(l.UpdatedAt), string(l.ID), string(l.UserID)).Scan(&id)
 	if isUnique(err, "home_layouts_user_id_name_key") {
 		return domain.Conflict("a saved layout already has that name")
 	}
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return notFound(err)
 }
 
 func (s PG) DeleteLayout(ctx context.Context, user, id domain.ID) error {
-	res, err := s.DB.ExecContext(ctx, `DELETE FROM home_layouts WHERE id = $1 AND user_id = $2`, string(id), string(user))
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
+	var gone string
+	return notFound(s.DB.QueryRowContext(ctx, `DELETE FROM home_layouts WHERE id = $1 AND user_id = $2 RETURNING id`, string(id), string(user)).Scan(&gone))
 }
 
 func (s PG) SetDefault(ctx context.Context, user, id domain.ID, at time.Time) error {
@@ -172,15 +154,20 @@ func (s PG) SetDefault(ctx context.Context, user, id domain.ID, at time.Time) er
 		return err
 	}
 	if !id.IsZero() {
-		res, err := tx.ExecContext(ctx, `UPDATE home_layouts SET is_default = 1, updated_at = $1 WHERE id = $2 AND user_id = $3`, micro(at), string(id), string(user))
-		if err != nil {
+		var marked string
+		if err := notFound(tx.QueryRowContext(ctx, `UPDATE home_layouts SET is_default = 1, updated_at = $1 WHERE id = $2 AND user_id = $3 RETURNING id`, micro(at), string(id), string(user)).Scan(&marked)); err != nil {
 			return err
-		}
-		if n, _ := res.RowsAffected(); n == 0 {
-			return ErrNotFound
 		}
 	}
 	return tx.Commit()
+}
+
+// notFound maps a RETURNING query that touched no row to ErrNotFound.
+func notFound(err error) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
 }
 
 func (s PG) RoleLayout(ctx context.Context, role domain.Role) (RoleLayout, bool, error) {
@@ -238,7 +225,7 @@ func (s PG) PutPrefs(ctx context.Context, user domain.ID, p Prefs, at time.Time)
 }
 
 func (s PG) NotificationPrefs(ctx context.Context, user domain.ID) ([]NotificationPref, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT kind, in_app, email FROM notification_preferences WHERE user_id = $1 ORDER BY kind`, string(user))
+	rows, err := s.DB.QueryContext(ctx, `SELECT kind, (in_app = 1), (email = 1) FROM notification_preferences WHERE user_id = $1 ORDER BY kind`, string(user))
 	if err != nil {
 		return nil, err
 	}
@@ -246,11 +233,9 @@ func (s PG) NotificationPrefs(ctx context.Context, user domain.ID) ([]Notificati
 	var out []NotificationPref
 	for rows.Next() {
 		var p NotificationPref
-		var inApp, email int
-		if err := rows.Scan(&p.Kind, &inApp, &email); err != nil {
+		if err := rows.Scan(&p.Kind, &p.InApp, &p.Email); err != nil {
 			return nil, err
 		}
-		p.InApp, p.Email = inApp == 1, email == 1
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -266,8 +251,9 @@ func (s PG) PutNotificationPrefs(ctx context.Context, user domain.ID, prefs []No
 		return err
 	}
 	for _, p := range prefs {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO notification_preferences (user_id, kind, updated_at, in_app, email) VALUES ($1, $2, $3, $4, $5)`,
-			string(user), p.Kind, micro(at), boolInt(p.InApp), boolInt(p.Email)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO notification_preferences (user_id, kind, updated_at, in_app, email)
+			VALUES ($1, $2, $3, CASE WHEN $4 THEN 1 ELSE 0 END, CASE WHEN $5 THEN 1 ELSE 0 END)`,
+			string(user), p.Kind, micro(at), p.InApp, p.Email); err != nil {
 			return err
 		}
 	}

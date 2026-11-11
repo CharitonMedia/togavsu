@@ -3,9 +3,9 @@
   <input type="hidden" name="csrf" value="{{$.CSRF}}">
   <h2>Display</h2>
   <label for="mode">Light or dark</label>
-  <select id="mode" name="mode">{{$m := .Settings.Mode}}{{range pairs "firm" "Firm default" "light" "Light" "dark" "Dark" "device" "Follow the device"}}<option value="{{.V}}"{{if eq .V $m}} selected{{end}}>{{.L}}</option>{{end}}</select>
+  <select id="mode" name="mode">{{$m := .Settings.Mode}}<option value="firm"{{if eq $m "firm"}} selected{{end}}>Firm default</option><option value="light"{{if eq $m "light"}} selected{{end}}>Light</option><option value="dark"{{if eq $m "dark"}} selected{{end}}>Dark</option><option value="device"{{if eq $m "device"}} selected{{end}}>Follow the device</option></select>
   <label for="text_size">Text size</label>
-  <select id="text_size" name="text_size">{{$t := .Settings.TextSize}}{{range pairs "firm" "Firm default" "sm" "Small" "md" "Medium" "lg" "Large"}}<option value="{{.V}}"{{if eq .V $t}} selected{{end}}>{{.L}}</option>{{end}}</select>
+  <select id="text_size" name="text_size">{{$t := .Settings.TextSize}}<option value="firm"{{if eq $t "firm"}} selected{{end}}>Firm default</option><option value="sm"{{if eq $t "sm"}} selected{{end}}>Small</option><option value="md"{{if eq $t "md"}} selected{{end}}>Medium</option><option value="lg"{{if eq $t "lg"}} selected{{end}}>Large</option></select>
   <label for="time_zone">Display time zone</label>
   <input id="time_zone" name="time_zone" value="{{.Settings.TimeZone}}" placeholder="Firm time zone">
   <h2>Reminders</h2>

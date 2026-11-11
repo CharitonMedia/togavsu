@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"sort"
 	"sync"
 	"time"
@@ -308,28 +309,22 @@ func (s PG) ReplacePages(ctx context.Context, module string, pages []Page, at ti
 }
 
 func (s PG) DeletePage(ctx context.Context, module, id string) error {
-	res, err := s.DB.ExecContext(ctx, `DELETE FROM help_module_pages WHERE module_id = $1 AND page_id = $2`, module, id)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	var gone string
+	err := s.DB.QueryRowContext(ctx, `DELETE FROM help_module_pages WHERE module_id = $1 AND page_id = $2 RETURNING page_id`, module, id).Scan(&gone)
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
-	return nil
+	return err
 }
 
 func (s PG) SetModuleEnabled(ctx context.Context, module string, enabled bool, at time.Time) error {
-	v := 0
-	if enabled {
-		v = 1
-	}
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO help_modules (module_id, updated_at, enabled) VALUES ($1, $2, $3)
-		ON CONFLICT (module_id) DO UPDATE SET updated_at = excluded.updated_at, enabled = excluded.enabled`, module, micro(at), v)
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO help_modules (module_id, updated_at, enabled) VALUES ($1, $2, CASE WHEN $3 THEN 1 ELSE 0 END)
+		ON CONFLICT (module_id) DO UPDATE SET updated_at = excluded.updated_at, enabled = excluded.enabled`, module, micro(at), enabled)
 	return err
 }
 
 func (s PG) Modules(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT module_id, enabled FROM help_modules`)
+	rows, err := s.DB.QueryContext(ctx, `SELECT module_id, (enabled = 1) FROM help_modules`)
 	if err != nil {
 		return nil, err
 	}
@@ -337,11 +332,11 @@ func (s PG) Modules(ctx context.Context) (map[string]bool, error) {
 	out := map[string]bool{}
 	for rows.Next() {
 		var m string
-		var on int
+		var on bool
 		if err := rows.Scan(&m, &on); err != nil {
 			return nil, err
 		}
-		out[m] = on == 1
+		out[m] = on
 	}
 	return out, rows.Err()
 }

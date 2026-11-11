@@ -6,6 +6,7 @@ import (
 	"errors"
 	"html/template"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -98,37 +99,23 @@ func Decode(r *http.Request, dst any) error {
 // ListPage writes a contract list: data and a cursor page. The cursor is an offset;
 // limit defaults to api.page_size and is capped by api.max_page_size.
 func ListPage[T any](w http.ResponseWriter, r *http.Request, s Settings, rows []T) {
-	get := func(k string, fallback int) int {
-		v, err := s.Get(r.Context(), k)
-		if err != nil {
-			return fallback
-		}
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 {
-			return fallback
-		}
-		return n
-	}
-	limit, max := get("api.page_size", 50), get("api.max_page_size", 200)
+	limit, max := positiveSetting(r, s, "api.page_size"), positiveSetting(r, s, "api.max_page_size")
 	if q := r.URL.Query().Get("limit"); q != "" {
-		n, err := strconv.Atoi(q)
-		if err != nil || n < 1 {
+		if !positiveInt.MatchString(q) {
 			WriteErr(w, domain.Invalid("limit", "limit must be a positive integer"))
 			return
 		}
-		limit = n
+		limit, _ = strconv.Atoi(q)
 	}
-	if limit > max {
-		limit = max
-	}
-	start := 0
+	limit = min(limit, max)
+	var start int
 	if c := r.URL.Query().Get("cursor"); c != "" {
-		n, err := strconv.Atoi(c)
-		if err != nil || n < 0 {
+		n, err := strconv.ParseUint(c, 10, 31)
+		if err != nil {
 			WriteErr(w, domain.Invalid("cursor", "unknown cursor"))
 			return
 		}
-		start = n
+		start = int(n)
 	}
 	if start > len(rows) {
 		start = len(rows)
@@ -146,6 +133,19 @@ func ListPage[T any](w http.ResponseWriter, r *http.Request, s Settings, rows []
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"data": data, "page": map[string]any{"limit": limit, "next_cursor": next}})
 }
+
+// positiveSetting reads a page-size setting, falling back to its registry default.
+func positiveSetting(r *http.Request, s Settings, key string) int {
+	v, err := s.Get(r.Context(), key)
+	if err != nil || !positiveInt.MatchString(v) {
+		v = registryDefault(key)
+	}
+	n, _ := strconv.Atoi(v)
+	return n
+}
+
+// positiveInt is a positive whole number small enough for an int on any platform.
+var positiveInt = regexp.MustCompile(`^[1-9][0-9]{0,8}$`)
 
 func (h *Handler) base(r *http.Request) string {
 	if h.BaseURL != "" {

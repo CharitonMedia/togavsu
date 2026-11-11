@@ -116,7 +116,7 @@ func (c CoreServices) Sources() map[string]Source {
 			w := Widget{Title: "Recent activity", Target: Target{Path: "/practice/activity", Query: map[string]string{}}}
 			for _, g := range groups {
 				for _, r := range g.Rows {
-					if len(w.Rows) == 8 {
+					if len(w.Rows) >= fixed.ActivityRows {
 						break
 					}
 					link := "/practice/activity"
@@ -162,8 +162,8 @@ func (c CoreServices) Sources() map[string]Source {
 func (c CoreServices) myTime(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
 	loc := c.zone(ctx)
 	today := c.now().In(loc)
-	wd := (int(today.Weekday()) + 6) % 7
-	from := today.AddDate(0, 0, -wd).Format("2006-01-02")
+	sinceMonday := (int(today.Weekday()) + 6) % 7
+	from := time.Date(today.Year(), today.Month(), today.Day()-sinceMonday, 0, 0, 0, 0, loc).Format("2006-01-02")
 	to := today.Format("2006-01-02")
 	if f["from_date"] != "" {
 		from = f["from_date"]
@@ -192,7 +192,7 @@ func (c CoreServices) myTime(ctx context.Context, p domain.Principal, f map[stri
 		WidgetRow{ID: "week", Title: "This week: " + hours(week), Subtitle: fmt.Sprintf("%d entries since %s", len(rows), from), TargetPath: Target{Path: "/billing/time", Query: q}.URL()})
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkedOn > rows[j].WorkedOn })
 	for _, t := range rows {
-		if len(w.Rows) == 7 {
+		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}
 		w.Rows = append(w.Rows, WidgetRow{ID: string(t.ID), Title: t.WorkedOn + " · " + hours(t.Minutes()), Subtitle: t.Description, TargetPath: "/billing/time/" + string(t.ID)})
@@ -263,7 +263,7 @@ func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[st
 	}
 	sort.SliceStable(order, func(i, j int) bool { return by[order[i]].cents > by[order[j]].cents })
 	for _, m := range order {
-		if len(w.Rows) == 7 {
+		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}
 		a := by[m]
@@ -272,18 +272,18 @@ func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[st
 	return w, nil
 }
 
-func toInt(v any) int64 {
-	switch n := v.(type) {
+func toInt(v any) (n int64) {
+	switch x := v.(type) {
 	case int64:
-		return n
+		n = x
 	case int:
-		return int64(n)
+		n = int64(x)
 	case float64:
-		return int64(n)
+		n = int64(x)
 	case domain.Cents:
-		return int64(n)
+		n = int64(x)
 	}
-	return 0
+	return n
 }
 
 func (c CoreServices) arAging(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
@@ -307,7 +307,7 @@ func (c CoreServices) arAging(ctx context.Context, p domain.Principal, f map[str
 		w.Rows = append(w.Rows, WidgetRow{ID: b, Title: b + ": " + money(buckets[b]), TargetPath: Target{Path: "/billing/reports/ar-aging", Query: q}.URL()})
 	}
 	for _, r := range rep.Rows {
-		if len(w.Rows) == 8 {
+		if len(w.Rows) >= fixed.ActivityRows {
 			break
 		}
 		w.Rows = append(w.Rows, WidgetRow{ID: fmt.Sprint(r["invoice_id"]), Title: fmt.Sprint(r["number"]) + " · " + money(r["balance_cents"]),
@@ -329,7 +329,7 @@ func (c CoreServices) Timers(ctx context.Context, p domain.Principal) ([]TimerRo
 	for _, t := range rows {
 		secs := t.AccumulatedSeconds
 		if t.RunningSince != nil {
-			secs += int64(c.now().Sub(*t.RunningSince) / time.Second)
+			secs += int64(c.now().Sub(*t.RunningSince).Seconds())
 		}
 		label := c.matterLabel(ctx, p, t.MatterID)
 		if label == "" {

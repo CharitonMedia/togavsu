@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
@@ -67,11 +68,11 @@ var funcs = template.FuncMap{
 		}
 		return false
 	},
-	"deref": func(p *int) int {
-		if p == nil {
-			return 0
+	"deref": func(p *int) (n int) {
+		if p != nil {
+			n = *p
 		}
-		return *p
+		return n
 	},
 	"str": func(id domain.ID) string { return string(id) },
 	"derefID": func(id *domain.ID) domain.ID {
@@ -84,13 +85,6 @@ var funcs = template.FuncMap{
 	"json": func(v any) string {
 		b, _ := json.Marshal(v)
 		return string(b)
-	},
-	"pairs": func(kv ...string) []struct{ V, L string } {
-		var out []struct{ V, L string }
-		for i := 0; i+1 < len(kv); i += 2 {
-			out = append(out, struct{ V, L string }{kv[i], kv[i+1]})
-		}
-		return out
 	},
 	"dict2": func(e NavEntry, active string) map[string]any {
 		return map[string]any{"E": e, "Active": e.ID == active}
@@ -116,9 +110,9 @@ func activeEntry(nav NavContext, path string) string {
 func initials(name string) string {
 	var out []rune
 	for _, f := range strings.Fields(name) {
-		out = append(out, []rune(strings.ToUpper(f))[0])
-		if len(out) == 2 {
-			break
+		if len(out) < fixed.Initials {
+			r, _ := utf8.DecodeRuneInString(strings.ToUpper(f))
+			out = append(out, r)
 		}
 	}
 	if len(out) == 0 {
@@ -131,7 +125,7 @@ func roleLabel(roles []domain.Role) string {
 	var parts []string
 	for _, r := range roles {
 		s := string(r)
-		parts = append(parts, strings.ToUpper(s[:1])+s[1:])
+		parts = append(parts, capitalize(s))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -145,7 +139,7 @@ func (h *Handler) ChromeFor(r *http.Request, p domain.Principal, title string) (
 	}
 	c := Chrome{
 		Title: title, Path: r.URL.Path, Nav: nav, Theme: h.Svc.ThemeFor(ctx, p), Unread: h.Svc.UnreadCount(ctx, p),
-		SearchDelay: h.Svc.SearchDelayMS(ctx), MinChars: h.Svc.intSetting(ctx, "search.min_chars", domain.SearchMinChars),
+		SearchDelay: h.Svc.SearchDelayMS(ctx), MinChars: h.Svc.intSetting(ctx, "search.min_chars"),
 		Scopes: Scopes, RoleLabel: roleLabel(p.Roles), CanTime: roleReads(p, domain.ResTime),
 	}
 	c.Active = activeEntry(nav, r.URL.Path)
@@ -176,12 +170,8 @@ func (h *Handler) ChromeFor(r *http.Request, p domain.Principal, title string) (
 		}
 	}
 	c.Notice, c.Error = r.URL.Query().Get("notice"), r.URL.Query().Get("error")
-	if len(c.Notice) > 300 {
-		c.Notice = ""
-	}
-	if len(c.Error) > 300 {
-		c.Error = ""
-	}
+	c.Notice, _ = truncate(c.Notice, fixed.NoticeMax)
+	c.Error, _ = truncate(c.Error, fixed.NoticeMax)
 	return c, nil
 }
 
@@ -400,6 +390,10 @@ func (h *Handler) appearanceCSS(w http.ResponseWriter, r *http.Request) {
 	if size == "" {
 		size = "16px"
 	}
+	// ponytail: ceiling: the eight PRD fonts are named, not shipped; a browser without
+	// them installed uses the serif or sans fallback. Upgrade path: vendor the WOFF2
+	// files (all SIL OFL) under web/static/fonts with @font-face rules here. Trigger:
+	// the release task's visual sign-off or a firm reporting the fallback.
 	font := func(name string) string {
 		for _, f := range Fonts {
 			if f.Name == name {
@@ -609,15 +603,22 @@ func (h *Handler) addWidgetPost(r *http.Request, p domain.Principal) (string, st
 func (h *Handler) appendWidget(ws []LayoutWidget, id string) []LayoutWidget {
 	d, ok := h.Svc.d.Catalog.Def(id)
 	if !ok {
-		return append(ws, LayoutWidget{WidgetID: id, W: 4, H: 3})
+		d = WidgetDef{W: fixed.DefaultWidgetW, H: fixed.DefaultWidgetH}
 	}
-	bottom := 0
+	var bottom int
 	for _, w := range ws {
-		if w.Y+w.H > bottom {
-			bottom = w.Y + w.H
-		}
+		bottom = max(bottom, w.Y+w.H)
 	}
-	return append(ws, LayoutWidget{WidgetID: id, X: 0, Y: bottom, W: d.W, H: d.H})
+	return append(ws, LayoutWidget{WidgetID: id, Y: bottom, W: d.W, H: d.H})
+}
+
+// listIndex parses a widget's position in a layout.
+func listIndex(s string, n int) (int, error) {
+	i, err := strconv.ParseUint(s, 10, 32)
+	if err != nil || int(i) >= n {
+		return n, domain.Invalid("index", "no such widget")
+	}
+	return int(i), nil
 }
 
 func (h *Handler) removeWidgetPost(r *http.Request, p domain.Principal) (string, string, error) {
@@ -625,9 +626,9 @@ func (h *Handler) removeWidgetPost(r *http.Request, p domain.Principal) (string,
 	if err != nil {
 		return "/?edit=1", "", err
 	}
-	i, err := strconv.Atoi(r.PathValue("index"))
-	if err != nil || i < 0 || i >= len(ws) {
-		return "/?edit=1", "", domain.Invalid("index", "no such widget")
+	i, err := listIndex(r.PathValue("index"), len(ws))
+	if err != nil {
+		return "/?edit=1", "", err
 	}
 	ws = append(ws[:i:i], ws[i+1:]...)
 	if _, err := h.Svc.PutWorking(r.Context(), p, ws); err != nil {
@@ -1035,7 +1036,7 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 				return "", "", nil, err
 			}
 			if h.Audit != nil {
-				if v.Audit, err = h.Audit(r, 50); err != nil {
+				if v.Audit, err = h.Audit(r, fixed.AuditRows); err != nil {
 					return "", "", nil, err
 				}
 			}
@@ -1146,9 +1147,9 @@ func (h *Handler) roleRemoveWidgetPost(r *http.Request, p domain.Principal) (str
 	if err != nil {
 		return back, "", err
 	}
-	i, err := strconv.Atoi(r.PathValue("index"))
-	if err != nil || i < 0 || i >= len(rl.Widgets) {
-		return back, "", domain.Invalid("index", "no such widget")
+	i, err := listIndex(r.PathValue("index"), len(rl.Widgets))
+	if err != nil {
+		return back, "", err
 	}
 	ws := append(rl.Widgets[:i:i], rl.Widgets[i+1:]...)
 	if _, err := h.Svc.SetRoleLayout(r.Context(), p, r.PathValue("role"), ws); err != nil {

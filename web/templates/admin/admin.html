@@ -17,8 +17,8 @@
   <h2>Typography</h2>
   <label for="heading_font">Heading font</label><select id="heading_font" name="heading_font">{{$h := .Appearance.HeadingFont}}{{range .Fonts}}<option{{if eq . $h}} selected{{end}}>{{.}}</option>{{end}}</select>
   <label for="body_font">Body font</label><select id="body_font" name="body_font">{{$b := .Appearance.BodyFont}}{{range .Fonts}}<option{{if eq . $b}} selected{{end}}>{{.}}</option>{{end}}</select>
-  <label for="text_size">Text size</label><select id="text_size" name="text_size">{{$t := .Appearance.TextSize}}{{range pairs "sm" "Small" "md" "Medium" "lg" "Large"}}<option value="{{.V}}"{{if eq .V $t}} selected{{end}}>{{.L}}</option>{{end}}</select>
-  <label for="amode">Firm default mode</label><select id="amode" name="mode">{{$m := .Appearance.Mode}}{{range pairs "device" "Follow the device" "light" "Light" "dark" "Dark"}}<option value="{{.V}}"{{if eq .V $m}} selected{{end}}>{{.L}}</option>{{end}}</select>
+  <label for="text_size">Text size</label><select id="text_size" name="text_size">{{$t := .Appearance.TextSize}}<option value="sm"{{if eq $t "sm"}} selected{{end}}>Small</option><option value="md"{{if eq $t "md"}} selected{{end}}>Medium</option><option value="lg"{{if eq $t "lg"}} selected{{end}}>Large</option></select>
+  <label for="amode">Firm default mode</label><select id="amode" name="mode">{{$m := .Appearance.Mode}}<option value="device"{{if eq $m "device"}} selected{{end}}>Follow the device</option><option value="light"{{if eq $m "light"}} selected{{end}}>Light</option><option value="dark"{{if eq $m "dark"}} selected{{end}}>Dark</option></select>
   <div><button type="submit">Save appearance</button> <span class="muted">Each change is audited and shows on the next page load.</span></div>
 </form>
 {{end}}

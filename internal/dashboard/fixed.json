@@ -1,0 +1,10 @@
+{
+ "_comment": "Fixed shapes and input-safety bounds of the ui, not firm settings: the grid is 12 columns by definition (PRD 8.6), the rest cap request sizes and how many rows a widget or panel shows. Firm tunables (saved layouts per user, search start and delay, page sizes, idle time) are read from the settings registry.",
+ "grid_columns": 12, "grid_origin": 0, "min_widget_size": 1, "max_widget_height": 24, "max_widgets_per_layout": 60,
+ "default_widget_w": 4, "default_widget_h": 3, "layout_name_max": 80, "save_attempts": 5,
+ "max_subgroups": 100, "subgroup_id_max": 100,
+ "max_reminder_offsets": 10, "min_reminder_day": 0, "max_reminder_day": 365, "min_idle_seconds": 60,
+ "problem_message_max": 5000, "problem_page_max": 500, "mail_subject_chars": 60,
+ "recent_notifications": 20, "widget_rows": 7, "activity_rows": 8, "audit_rows": 50,
+ "notice_max": 300, "initials": 2, "user_page": 500, "user_pages_max": 100
+}

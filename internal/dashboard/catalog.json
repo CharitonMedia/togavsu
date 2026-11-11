@@ -1,0 +1,41 @@
+{
+ "_comment": "The PRD 8.6 core widgets (title target page, roles of the widget's API route, default size), each role's starting layout before the admin sets one, and the PRD 8.9 core sidebar.",
+ "widgets": [
+  {"id": "my-time", "title": "My time today and this week", "page_path": "/billing/time", "roles": ["admin", "attorney", "staff"], "w": 4, "h": 3},
+  {"id": "running-timer", "title": "Running timer", "page_path": "/billing/time", "roles": ["admin", "attorney", "staff"], "w": 4, "h": 2},
+  {"id": "unbilled", "title": "Unbilled time", "page_path": "/billing/reports/unbilled-time", "roles": ["admin", "attorney", "staff", "accountant"], "w": 4, "h": 3},
+  {"id": "my-open-matters", "title": "My open matters", "page_path": "/practice/matters", "roles": ["admin", "attorney", "staff"], "w": 6, "h": 4},
+  {"id": "upcoming-deadlines", "title": "Upcoming deadlines", "page_path": "/calendar/deadlines", "roles": ["admin", "attorney", "staff"], "w": 6, "h": 4},
+  {"id": "todays-calendar", "title": "Today's calendar", "page_path": "/calendar", "roles": ["admin", "attorney", "staff"], "w": 6, "h": 3},
+  {"id": "trust-alerts", "title": "Trust alerts", "page_path": "/trust/flags", "roles": ["admin", "attorney", "staff", "accountant"], "w": 6, "h": 3},
+  {"id": "replenishment-requests", "title": "Replenishment requests", "page_path": "/trust/replenishment", "roles": ["admin", "attorney", "staff", "accountant"], "w": 6, "h": 3},
+  {"id": "ar-aging", "title": "AR aging", "page_path": "/billing/reports/ar-aging", "roles": ["admin", "attorney", "staff", "accountant"], "w": 6, "h": 3},
+  {"id": "recent-activity", "title": "Recent activity", "page_path": "/practice/activity", "roles": ["admin", "attorney", "staff"], "w": 6, "h": 4},
+  {"id": "pending-conflict-checks", "title": "Pending conflict checks", "page_path": "/practice/matters", "roles": ["admin", "attorney", "staff"], "w": 6, "h": 3},
+  {"id": "module-alerts", "title": "Module alerts", "page_path": "/admin?tab=modules", "roles": ["admin"], "w": 6, "h": 3}
+ ],
+ "role_layouts": {
+  "admin": ["my-open-matters", "upcoming-deadlines", "trust-alerts", "replenishment-requests", "recent-activity", "module-alerts", "ar-aging", "pending-conflict-checks"],
+  "attorney": ["my-time", "running-timer", "unbilled", "my-open-matters", "upcoming-deadlines", "todays-calendar", "trust-alerts", "pending-conflict-checks"],
+  "staff": ["my-time", "running-timer", "unbilled", "my-open-matters", "upcoming-deadlines", "todays-calendar", "pending-conflict-checks", "recent-activity"],
+  "accountant": ["unbilled", "ar-aging", "trust-alerts", "replenishment-requests"]
+ },
+ "subgroups": {"money.trust": "Trust"},
+ "nav": [
+  {"id": "home", "section": "top", "label": "Home", "icon": "home", "path": "/", "order": 10},
+  {"id": "matters", "section": "top", "label": "Matters", "icon": "briefcase", "path": "/practice/matters", "order": 20, "badge": "matters", "resource": "matter"},
+  {"id": "contacts", "section": "top", "label": "Contacts", "icon": "people", "path": "/practice/contacts", "order": 30, "resource": "contact"},
+  {"id": "calendar", "section": "top", "label": "Calendar", "icon": "calendar", "path": "/calendar", "order": 40, "resource": "calendar"},
+  {"id": "notes", "section": "communications", "label": "Notes", "icon": "note", "path": "/practice/notes", "order": 10, "resource": "note"},
+  {"id": "time", "section": "money", "label": "Time Entries", "icon": "clock", "path": "/billing/time", "order": 10, "resource": "time"},
+  {"id": "billing", "section": "money", "label": "Billing / Generate", "icon": "receipt", "path": "/billing", "order": 20, "resource": "time", "roles": ["admin", "attorney", "staff"]},
+  {"id": "invoices", "section": "money", "label": "Invoices", "icon": "invoice", "path": "/billing/invoices", "order": 30, "badge": "invoices_draft", "resource": "invoice"},
+  {"id": "payments", "section": "money", "label": "Payments", "icon": "payment", "path": "/billing/payments", "order": 40, "resource": "payment"},
+  {"id": "trust-ledger", "section": "money", "subgroup": "money.trust", "label": "Trust Ledger", "icon": "ledger", "path": "/trust/ledger", "order": 50, "resource": "trust"},
+  {"id": "trust-balances", "section": "money", "subgroup": "money.trust", "label": "Trust Balances", "icon": "scale", "path": "/trust/balances", "order": 51, "resource": "trust"},
+  {"id": "trust-replenishment", "section": "money", "subgroup": "money.trust", "label": "Trust Replenishment", "icon": "refill", "path": "/trust/replenishment", "order": 52, "resource": "trust"},
+  {"id": "activity", "section": "activity", "label": "Activities Feed", "icon": "activity", "path": "/practice/activity", "order": 10, "resource": "matter"},
+  {"id": "admin", "section": "system", "label": "Administrative", "icon": "gear", "path": "/admin", "order": 10, "roles": ["admin"]},
+  {"id": "help", "section": "system", "label": "Help & Training", "icon": "help", "path": "/help", "order": 20}
+ ]
+}

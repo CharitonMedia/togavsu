@@ -160,6 +160,15 @@ func TestUIWidgetClickThrough(t *testing.T) {
 	if w := e.atty.must(http.StatusOK, "GET", "/api/v1/widgets/upcoming-deadlines?from_date="+from+"&to_date="+to, nil); !strings.Contains(w.body, d2) {
 		t.Fatalf("attorney inside the wall lacks the deadline: %s", w.body)
 	}
+	// My time counts the viewer's own entries for the firm-local day and week.
+	e.staff.must(http.StatusCreated, "POST", "/api/v1/time-entries", map[string]any{"matter_id": open, "worked_on": firmToday(), "increments": 5,
+		"description": "Inventory review", "activity_type_id": e.activityID, "billable": true, "rate_cents": 200_00})
+	e.atty.must(http.StatusCreated, "POST", "/api/v1/time-entries", map[string]any{"matter_id": open, "worked_on": firmToday(), "increments": 20,
+		"description": "Not staff's", "activity_type_id": e.activityID, "billable": true, "rate_cents": 200_00})
+	mt := e.staff.must(http.StatusOK, "GET", "/api/v1/widgets/my-time", nil)
+	if !strings.Contains(mt.body, "Today: 0.5 h") || !strings.Contains(mt.body, "1 entries since") || str(t, mt.json, "target", "path") != "/billing/time" {
+		t.Fatalf("my time widget: %s", mt.body)
+	}
 	// Other core widgets on the home screen keep walls too.
 	e.staff.must(http.StatusOK, "PUT", "/api/v1/me/layout", map[string]any{"widgets": widgets(
 		dashboard.LayoutWidget{WidgetID: "my-open-matters", X: 0, Y: 0, W: 6, H: 4}, dashboard.LayoutWidget{WidgetID: "pending-conflict-checks", X: 6, Y: 0, W: 6, H: 4},

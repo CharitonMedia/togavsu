@@ -337,8 +337,8 @@ func listUsers(ctx context.Context, app *core.App) ([]domain.User, error) {
 	}
 	var out []domain.User
 	cursor := ""
-	for i := 0; i < 100; i++ {
-		page, err := l.List(ctx, repository.Filter{Cursor: cursor, Limit: 500})
+	for {
+		page, err := l.List(ctx, repository.Filter{Cursor: cursor})
 		if err != nil {
 			return nil, err
 		}

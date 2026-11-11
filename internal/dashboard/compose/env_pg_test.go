@@ -357,7 +357,7 @@ func (e *env) enroll(name, email string, roles ...domain.Role) *client {
 func (e *env) matter(name string, extra map[string]any) (string, string, string) {
 	t := e.t
 	t.Helper()
-	body := map[string]any{"name": name, "practice_area_id": e.area, "billing_type": "hourly", "responsible_attorney_user_id": e.atty.id, "assigned_staff_user_id": e.staff.id}
+	body := map[string]any{"name": name, "practice_area_id": e.area, "billing_type": "hourly", "responsible_attorney_user_id": e.atty.id, "assigned_staff_user_ids": []string{e.staff.id}}
 	for k, v := range extra {
 		body[k] = v
 	}
@@ -382,6 +382,16 @@ func (e *env) invoice(matter string) (id, number string) {
 	id = drafts[0]["id"].(string)
 	inv := e.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+id+"/approve", nil)
 	return id, str(t, inv.json, "number")
+}
+
+// firmToday is today in the firm's zone (America/Chicago in these tests); widgets
+// such as My time read dates in the firm zone.
+func firmToday() string {
+	loc, err := time.LoadLocation("America/Chicago")
+	if err != nil {
+		return time.Now().UTC().Format("2006-01-02")
+	}
+	return time.Now().In(loc).Format("2006-01-02")
 }
 
 func csrfCookie(t *testing.T, c *client) string {

@@ -8,9 +8,9 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// GridColumns is the home screen width in grid columns (PRD 8.6). It is the shape of
-// the grid, not a tunable.
-const GridColumns = 12
+// GridColumns is the home screen width in grid columns (PRD 8.6), from fixed.json. It
+// is the shape of the grid, not a tunable.
+var GridColumns int
 
 // CodeLayoutLimit is the contract error code for a saved layout over the per-user cap.
 const CodeLayoutLimit = "layout_limit"

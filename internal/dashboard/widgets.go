@@ -66,23 +66,10 @@ type WidgetDef struct {
 var staffRoles = []domain.Role{domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff}
 var allStaff = []domain.Role{domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant}
 
-// CoreWidgets is the PRD 8.6 core widget list, each with the page its title opens. The
-// roles are the contract's roles for that widget's API route.
+// CoreWidgets is the PRD 8.6 core widget list (catalog.json), each with the page its
+// title opens. The roles are the contract's roles for that widget's API route.
 func CoreWidgets() []WidgetDef {
-	return []WidgetDef{
-		{ID: "my-time", Title: "My time today and this week", Page: "/billing/time", Roles: staffRoles, W: 4, H: 3},
-		{ID: "running-timer", Title: "Running timer", Page: "/billing/time", Roles: staffRoles, W: 4, H: 2},
-		{ID: "unbilled", Title: "Unbilled time", Page: "/billing/reports/unbilled-time", Roles: allStaff, W: 4, H: 3},
-		{ID: "my-open-matters", Title: "My open matters", Page: "/practice/matters", Roles: staffRoles, W: 6, H: 4},
-		{ID: "upcoming-deadlines", Title: "Upcoming deadlines", Page: "/calendar/deadlines", Roles: staffRoles, W: 6, H: 4},
-		{ID: "todays-calendar", Title: "Today's calendar", Page: "/calendar", Roles: staffRoles, W: 6, H: 3},
-		{ID: "trust-alerts", Title: "Trust alerts", Page: "/trust/flags", Roles: allStaff, W: 6, H: 3},
-		{ID: "replenishment-requests", Title: "Replenishment requests", Page: "/trust/replenishment", Roles: allStaff, W: 6, H: 3},
-		{ID: "ar-aging", Title: "AR aging", Page: "/billing/reports/ar-aging", Roles: allStaff, W: 6, H: 3},
-		{ID: "recent-activity", Title: "Recent activity", Page: "/practice/activity", Roles: staffRoles, W: 6, H: 4},
-		{ID: "pending-conflict-checks", Title: "Pending conflict checks", Page: "/practice/matters", Roles: staffRoles, W: 6, H: 3},
-		{ID: "module-alerts", Title: "Module alerts", Page: "/admin?tab=modules", Roles: []domain.Role{domain.RoleAdmin}, W: 6, H: 3},
-	}
+	return append([]WidgetDef(nil), catalog.Widgets...)
 }
 
 // ManifestWidget is a widget a module manifest declares (PRD 9.2, 9.4). Target is the
@@ -123,7 +110,7 @@ func ValidateManifestWidgets(module string, ws []ManifestWidget) error {
 		if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(t, "//") {
 			return domain.Invalid(field+".target", "widget "+w.ID+" target must be a path on this site")
 		}
-		if w.W < 0 || w.W > GridColumns || w.H < 0 {
+		if w.W < fixed.GridOrigin || w.W > GridColumns || w.H < fixed.GridOrigin {
 			return domain.Invalid(field, "widget size is outside the grid")
 		}
 		for _, r := range w.Roles {
@@ -170,11 +157,11 @@ func (c *Catalog) AddModule(module string, ws []ManifestWidget, src func(widgetI
 			roles = staffRoles
 		}
 		width, height := w.W, w.H
-		if width == 0 {
-			width = 4
+		if width < fixed.MinWidgetSize {
+			width = fixed.DefaultWidgetW
 		}
-		if height == 0 {
-			height = 3
+		if height < fixed.MinWidgetSize {
+			height = fixed.DefaultWidgetH
 		}
 		c.defs[id] = WidgetDef{ID: id, Title: w.Title, Page: w.Target, Roles: roles, Module: module, W: width, H: height}
 		if src != nil {

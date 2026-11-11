@@ -13,7 +13,7 @@ import (
 var (
 	mdBold = regexp.MustCompile(`\*\*(.+?)\*\*`)
 	mdCode = regexp.MustCompile("`([^`]+)`")
-	mdLink = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)\)`)
+	mdLink = regexp.MustCompile(`\[(?P<text>[^\]]+)\]\((?P<href>[^)\s]+)\)`)
 	mdNum  = regexp.MustCompile(`^\d+\.\s+`)
 )
 
@@ -32,8 +32,8 @@ func inline(s string) string {
 	s = mdBold.ReplaceAllString(s, "<strong>$1</strong>")
 	s = mdLink.ReplaceAllStringFunc(s, func(m string) string {
 		p := mdLink.FindStringSubmatch(m)
-		href := safeHref(html.UnescapeString(p[2]))
-		return `<a href="` + html.EscapeString(href) + `">` + p[1] + `</a>`
+		href := safeHref(html.UnescapeString(p[mdLink.SubexpIndex("href")]))
+		return `<a href="` + html.EscapeString(href) + `">` + p[mdLink.SubexpIndex("text")] + `</a>`
 	})
 	return s
 }
@@ -64,7 +64,7 @@ func RenderMarkdown(src string) string {
 		case strings.HasPrefix(t, "### "):
 			flush()
 			closeList()
-			b.WriteString("<h4>" + inline(t[4:]) + "</h4>\n")
+			b.WriteString("<h4>" + inline(strings.TrimPrefix(t, "### ")) + "</h4>\n")
 		case strings.HasPrefix(t, "- ") || strings.HasPrefix(t, "* "):
 			flush()
 			if list != "ul" {
@@ -72,7 +72,8 @@ func RenderMarkdown(src string) string {
 				list = "ul"
 				b.WriteString("<ul>\n")
 			}
-			b.WriteString("<li>" + inline(t[2:]) + "</li>\n")
+			item := strings.TrimPrefix(strings.TrimPrefix(t, "- "), "* ")
+			b.WriteString("<li>" + inline(item) + "</li>\n")
 		case mdNum.MatchString(t):
 			flush()
 			if list != "ol" {

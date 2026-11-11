@@ -47,28 +47,18 @@ type NavEntry struct {
 	Extra    map[string]string `json:"-"`
 }
 
-// Subgroups are the collapsible groups; the Trust group is the core's only one.
-var coreSubgroups = map[string]string{"money.trust": "Trust"}
-
-// CoreNav is the PRD 8.9 core sidebar.
+// CoreNav is the PRD 8.9 core sidebar (catalog.json).
 func CoreNav() []NavEntry {
-	return []NavEntry{
-		{ID: "home", Section: SectionTop, Label: "Home", Icon: "home", Path: "/", Order: 10},
-		{ID: "matters", Section: SectionTop, Label: "Matters", Icon: "briefcase", Path: "/practice/matters", Order: 20, Badge: "matters", Resource: domain.ResMatter},
-		{ID: "contacts", Section: SectionTop, Label: "Contacts", Icon: "people", Path: "/practice/contacts", Order: 30, Resource: domain.ResContact},
-		{ID: "calendar", Section: SectionTop, Label: "Calendar", Icon: "calendar", Path: "/calendar", Order: 40, Resource: domain.ResCalendar},
-		{ID: "notes", Section: SectionCommunications, Label: "Notes", Icon: "note", Path: "/practice/notes", Order: 10, Resource: domain.ResNote},
-		{ID: "time", Section: SectionMoney, Label: "Time Entries", Icon: "clock", Path: "/billing/time", Order: 10, Resource: domain.ResTime},
-		{ID: "billing", Section: SectionMoney, Label: "Billing / Generate", Icon: "receipt", Path: "/billing", Order: 20, Resource: domain.ResTime, Roles: staffRoles},
-		{ID: "invoices", Section: SectionMoney, Label: "Invoices", Icon: "invoice", Path: "/billing/invoices", Order: 30, Badge: "invoices_draft", Resource: domain.ResInvoice},
-		{ID: "payments", Section: SectionMoney, Label: "Payments", Icon: "payment", Path: "/billing/payments", Order: 40, Resource: domain.ResPayment},
-		{ID: "trust-ledger", Section: SectionMoney, Subgroup: "money.trust", Label: "Trust Ledger", Icon: "ledger", Path: "/trust/ledger", Order: 50, Resource: domain.ResTrust},
-		{ID: "trust-balances", Section: SectionMoney, Subgroup: "money.trust", Label: "Trust Balances", Icon: "scale", Path: "/trust/balances", Order: 51, Resource: domain.ResTrust},
-		{ID: "trust-replenishment", Section: SectionMoney, Subgroup: "money.trust", Label: "Trust Replenishment", Icon: "refill", Path: "/trust/replenishment", Order: 52, Resource: domain.ResTrust},
-		{ID: "activity", Section: SectionActivity, Label: "Activities Feed", Icon: "activity", Path: "/practice/activity", Order: 10, Resource: domain.ResMatter},
-		{ID: "admin", Section: SectionSystem, Label: "Administrative", Icon: "gear", Path: "/admin", Order: 10, Roles: []domain.Role{domain.RoleAdmin}},
-		{ID: "help", Section: SectionSystem, Label: "Help & Training", Icon: "help", Path: "/help", Order: 20},
+	out := make([]NavEntry, len(catalog.Nav))
+	for i, n := range catalog.Nav {
+		e := n.NavEntry
+		e.Resource = domain.Resource(n.Resource)
+		for _, r := range n.Roles {
+			e.Roles = append(e.Roles, domain.Role(r))
+		}
+		out[i] = e
 	}
+	return out
 }
 
 // ModuleNavEntry is a sidebar entry from a module manifest (PRD 8.9). Badge is the
@@ -277,10 +267,10 @@ func (s *Service) group(entries []NavEntry, state SidebarState) []NavGroup {
 			}
 			sg, ok := subs[e.Subgroup]
 			if !ok {
-				label := coreSubgroups[e.Subgroup]
+				label := catalog.Subgroups[e.Subgroup]
 				if label == "" {
-					label = e.Subgroup[strings.LastIndex(e.Subgroup, ".")+1:]
-					label = strings.ToUpper(label[:1]) + label[1:]
+					_, after, _ := strings.Cut(e.Subgroup, ".")
+					label = capitalize(after)
 				}
 				sg = &NavGroup{ID: e.Subgroup, Label: label, Collapsed: collapsed[e.Subgroup]}
 				subs[e.Subgroup] = sg
@@ -319,13 +309,13 @@ func (s *Service) PutSidebar(ctx context.Context, p domain.Principal, st Sidebar
 	seen := map[string]bool{}
 	var subs []SubgroupState
 	for _, g := range st.Subgroups {
-		if g.ID == "" || len(g.ID) > 100 || seen[g.ID] {
+		if g.ID == "" || len(g.ID) > fixed.SubgroupIDMax || seen[g.ID] {
 			return SidebarState{}, domain.Invalid("subgroups", "subgroup ids must be unique and non-empty")
 		}
 		seen[g.ID] = true
 		subs = append(subs, g)
 	}
-	if len(subs) > 100 {
+	if len(subs) > fixed.MaxSubgroups {
 		return SidebarState{}, domain.Invalid("subgroups", "too many subgroups")
 	}
 	if subs == nil {

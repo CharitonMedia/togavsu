@@ -19,20 +19,25 @@ import (
 func parseDays(s string) []int {
 	var out []int
 	for _, part := range strings.Split(s, ",") {
-		if n, err := strconv.Atoi(strings.TrimSpace(part)); err == nil && n >= 0 {
-			out = append(out, n)
+		if n, err := strconv.ParseUint(strings.TrimSpace(part), 10, 32); err == nil {
+			out = append(out, int(n))
 		}
 	}
 	return out
 }
 
+// settingDuration reads a duration setting, falling back to its registry default.
+func (s *Service) settingDuration(ctx context.Context, key string) time.Duration {
+	d, err := time.ParseDuration(s.setting(ctx, key))
+	if err != nil {
+		d, _ = time.ParseDuration(registryDefault(key))
+	}
+	return d
+}
+
 // FirmIdleSeconds is security.idle_timeout, the longest idle time the firm allows.
 func (s *Service) FirmIdleSeconds(ctx context.Context) int {
-	d, err := time.ParseDuration(s.setting(ctx, "security.idle_timeout"))
-	if err != nil || d <= 0 {
-		return 12 * 3600
-	}
-	return int(d / time.Second)
+	return int(s.settingDuration(ctx, "security.idle_timeout").Seconds())
 }
 
 // MySettings returns p's settings with firm defaults filled in.
@@ -63,7 +68,7 @@ func (s *Service) MySettings(ctx context.Context, p domain.Principal) (MeSetting
 		if m.TextSize != "" {
 			out.TextSize = m.TextSize
 		}
-		if m.IdleTimeoutSeconds > 0 && m.IdleTimeoutSeconds < out.IdleTimeoutSeconds {
+		if m.IdleTimeoutSeconds >= fixed.MinIdleSeconds && m.IdleTimeoutSeconds < out.IdleTimeoutSeconds {
 			out.IdleTimeoutSeconds = m.IdleTimeoutSeconds
 		}
 	}
@@ -87,12 +92,12 @@ type MeSettingsPatch struct {
 }
 
 func validDays(field string, days []int) error {
-	if len(days) > 10 {
-		return domain.Invalid(field, "at most 10 reminder offsets")
+	if len(days) > fixed.MaxReminderOffsets {
+		return domain.Invalid(field, fmt.Sprintf("at most %d reminder offsets", fixed.MaxReminderOffsets))
 	}
 	for _, d := range days {
-		if d < 0 || d > 365 {
-			return domain.Invalid(field, "reminder offsets are 0 to 365 days")
+		if d < fixed.MinReminderDay || d > fixed.MaxReminderDay {
+			return domain.Invalid(field, fmt.Sprintf("reminder offsets are %d to %d days", fixed.MinReminderDay, fixed.MaxReminderDay))
 		}
 	}
 	return nil
@@ -159,8 +164,8 @@ func (s *Service) patchMySettings(ctx context.Context, p domain.Principal, in Me
 	}
 	if in.IdleTimeoutSeconds != nil {
 		n := *in.IdleTimeoutSeconds
-		if n < 60 {
-			return domain.Invalid("idle_timeout_seconds", "at least 60 seconds")
+		if n < fixed.MinIdleSeconds {
+			return domain.Invalid("idle_timeout_seconds", fmt.Sprintf("at least %d seconds", fixed.MinIdleSeconds))
 		}
 		if firm := s.FirmIdleSeconds(ctx); n > firm {
 			return domain.Invalid("idle_timeout_seconds", fmt.Sprintf("the firm allows at most %d seconds", firm))
@@ -498,12 +503,10 @@ func (s *Service) ReportProblem(ctx context.Context, p domain.Principal, page, m
 	if message == "" {
 		return ProblemReport{}, nil, domain.Invalid("message", "describe the problem")
 	}
-	if utf8.RuneCountInString(message) > 5000 {
-		return ProblemReport{}, nil, domain.Invalid("message", "at most 5000 characters")
+	if utf8.RuneCountInString(message) > fixed.ProblemMessageMax {
+		return ProblemReport{}, nil, domain.Invalid("message", fmt.Sprintf("at most %d characters", fixed.ProblemMessageMax))
 	}
-	if len(page) > 500 {
-		page = page[:500]
-	}
+	page, _ = truncate(page, fixed.ProblemPageMax)
 	id, err := s.d.IDs()
 	if err != nil {
 		return ProblemReport{}, nil, err
@@ -578,9 +581,9 @@ func (s *Service) mailProblem(ctx context.Context, r ProblemReport) error {
 }
 
 func firstLine(s string) string {
-	s = strings.SplitN(s, "\n", 2)[0]
-	if utf8.RuneCountInString(s) > 60 {
-		s = string([]rune(s)[:60]) + "…"
+	s, _, _ = strings.Cut(s, "\n")
+	if short, cut := truncate(s, fixed.MailSubjectChars); cut {
+		return short + "…"
 	}
 	return s
 }
@@ -596,13 +599,11 @@ func (s *Service) Problems(ctx context.Context, p domain.Principal) ([]ProblemRe
 // --- Notifications, search, timers: thin pass-throughs to the owning services ---
 
 // UnreadCount is the bell count; zero when no notifier is wired.
-func (s *Service) UnreadCount(ctx context.Context, p domain.Principal) int {
-	if s.d.Notifier == nil {
-		return 0
-	}
-	n, err := s.d.Notifier.UnreadCount(ctx, p)
-	if err != nil {
-		return 0
+func (s *Service) UnreadCount(ctx context.Context, p domain.Principal) (n int) {
+	if s.d.Notifier != nil {
+		if c, err := s.d.Notifier.UnreadCount(ctx, p); err == nil {
+			n = c
+		}
 	}
 	return n
 }
@@ -612,7 +613,7 @@ func (s *Service) RecentNotifications(ctx context.Context, p domain.Principal) (
 	if s.d.Notifier == nil {
 		return []Notification{}, nil
 	}
-	return s.d.Notifier.Recent(ctx, p, 20)
+	return s.d.Notifier.Recent(ctx, p, fixed.RecentNotifications)
 }
 
 // OpenNotification marks one notification read and returns its link.
@@ -675,7 +676,7 @@ func (s *Service) Search(ctx context.Context, p domain.Principal, q, scope strin
 		return SearchView{}, domain.Invalid("scope", "unknown scope")
 	}
 	q = strings.TrimSpace(q)
-	v := SearchView{Query: q, Scope: scope, MinChars: s.intSetting(ctx, "search.min_chars", domain.SearchMinChars)}
+	v := SearchView{Query: q, Scope: scope, MinChars: s.intSetting(ctx, "search.min_chars")}
 	if utf8.RuneCountInString(q) < v.MinChars {
 		v.TooShort = true
 		return v, nil
@@ -702,11 +703,7 @@ func (s *Service) Search(ctx context.Context, p domain.Principal, q, scope strin
 
 // SearchDelayMS is search.delay in milliseconds for the header box.
 func (s *Service) SearchDelayMS(ctx context.Context) int {
-	d, err := time.ParseDuration(s.setting(ctx, "search.delay"))
-	if err != nil || d < 0 {
-		return 180
-	}
-	return int(d / time.Millisecond)
+	return int(s.settingDuration(ctx, "search.delay").Milliseconds())
 }
 
 // MyTimers is the header timers panel.
@@ -729,7 +726,7 @@ func (s *Service) SeatCount(ctx context.Context, p domain.Principal) (int, error
 	if err != nil {
 		return 0, err
 	}
-	n := 0
+	var n int
 	for _, u := range users {
 		if u.Active {
 			n++

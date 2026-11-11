@@ -179,8 +179,8 @@ func cleanTitle(t string) (string, error) {
 	if t == "" {
 		return "", domain.Invalid("title", "a title is required")
 	}
-	if utf8.RuneCountInString(t) > 200 {
-		return "", domain.Invalid("title", "at most 200 characters")
+	if utf8.RuneCountInString(t) > fixed.TitleMax {
+		return "", domain.Invalid("title", fmt.Sprintf("at most %d characters", fixed.TitleMax))
 	}
 	return t, nil
 }
@@ -332,8 +332,8 @@ func (s *Service) checkItem(ctx context.Context, it Item) error {
 	default:
 		return domain.Invalid("kind", "kind is text, video or image")
 	}
-	if utf8.RuneCountInString(it.Body) > 20000 {
-		return domain.Invalid("body", "at most 20000 characters")
+	if utf8.RuneCountInString(it.Body) > fixed.ItemBodyMax {
+		return domain.Invalid("body", fmt.Sprintf("at most %d characters", fixed.ItemBodyMax))
 	}
 	secs, err := s.d.Store.Sections(ctx)
 	if err != nil {
@@ -483,8 +483,8 @@ func cleanPage(module string, in PageInput, order int, at time.Time) (Page, erro
 	if err != nil {
 		return Page{}, err
 	}
-	if utf8.RuneCountInString(in.Markdown) > 100000 {
-		return Page{}, domain.Invalid("markdown", "a page is at most 100000 characters")
+	if utf8.RuneCountInString(in.Markdown) > fixed.PageMarkdownMax {
+		return Page{}, domain.Invalid("markdown", fmt.Sprintf("a page is at most %d characters", fixed.PageMarkdownMax))
 	}
 	pg := Page{ID: in.ID, ModuleID: module, Title: title, Markdown: in.Markdown, Keywords: in.Keywords, Covers: in.Covers, SortOrder: order, UpdatedAt: at}
 	if pg.Keywords == nil {
@@ -694,12 +694,12 @@ func (s *Service) SearchTopics(ctx context.Context, p domain.Principal, q, scree
 	}
 	if screen != "" {
 		if t, ok := s.d.Guide.ForPath(screen); ok {
-			return []TopicHit{hit(t, 0)}, nil
+			return []TopicHit{hit(t)}, nil
 		}
 		for _, t := range topics {
 			for _, c := range t.Paths {
 				if pathMatches(c, screen) || c == screen {
-					return []TopicHit{hit(t, 0)}, nil
+					return []TopicHit{hit(t)}, nil
 				}
 			}
 		}
@@ -708,28 +708,31 @@ func (s *Service) SearchTopics(ctx context.Context, p domain.Principal, q, scree
 	words := strings.Fields(strings.ToLower(q))
 	var out []TopicHit
 	for _, t := range topics {
-		score := 0
+		var score int
+		matched := true
 		title := strings.ToLower(t.Title)
 		kw := strings.ToLower(strings.Join(t.Keywords, " ") + " " + t.Where)
 		body := strings.ToLower(PlainText(t.Markdown))
 		for _, w := range words {
 			switch {
 			case strings.Contains(title, w):
-				score += 10
+				score += fixed.WeightTitle
 			case strings.Contains(kw, w):
-				score += 5
+				score += fixed.WeightKeyword
 			case strings.Contains(body, w):
-				score++
+				score += fixed.WeightBody
 			default:
-				score = -1000
+				matched = false
 			}
 		}
 		// The whole phrase, as it reads on the screen, outranks scattered words.
-		if phrase := strings.ToLower(strings.TrimSpace(q)); score >= 0 && len(words) > 1 && (strings.Contains(title, phrase) || strings.Contains(kw, phrase)) {
-			score += 20
+		if phrase := strings.ToLower(strings.TrimSpace(q)); matched && strings.Contains(phrase, " ") && (strings.Contains(title, phrase) || strings.Contains(kw, phrase)) {
+			score += fixed.WeightPhrase
 		}
-		if score >= 0 {
-			out = append(out, hit(t, score))
+		if matched {
+			h := hit(t)
+			h.Score = score
+			out = append(out, h)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
@@ -739,8 +742,8 @@ func (s *Service) SearchTopics(ctx context.Context, p domain.Principal, q, scree
 	return out, nil
 }
 
-func hit(t Topic, score int) TopicHit {
-	return TopicHit{ID: t.ID, Title: t.Title, Screen: t.Screen(), Path: t.Path(), Where: t.Where, Module: t.Module, Score: score}
+func hit(t Topic) TopicHit {
+	return TopicHit{ID: t.ID, Title: t.Title, Screen: t.Screen(), Path: t.Path(), Where: t.Where, Module: t.Module}
 }
 
 // --- llms.txt (PRD 8.18) ---
@@ -775,8 +778,8 @@ func (s *Service) LLMsTxt(ctx context.Context, baseURL string) string {
 
 func oneLine(s string) string {
 	s = strings.NewReplacer("\r", " ", "\n", " ").Replace(s)
-	if utf8.RuneCountInString(s) > 1000 {
-		s = string([]rune(s)[:1000])
+	if utf8.RuneCountInString(s) > fixed.LLMsParagraphMax {
+		s = string([]rune(s)[:fixed.LLMsParagraphMax])
 	}
 	return s
 }
