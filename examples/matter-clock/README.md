@@ -25,13 +25,14 @@ and writes only its own schema through its own database login.
 
 ```sh
 # From the repository root. The key file holds a base64 ed25519 seed (synthetic test key).
-go run ./examples/matter-clock/cmd/matter-clock package -key signing.key -out matter-clock.tar.gz
+go run ./examples/matter-clock/cmd/matter-clock package -key signing.key -out matter-clock.signed.json
 docker build -f examples/matter-clock/Dockerfile -t togavsu-matter-clock .
 ```
 
 The admin adds the printed PEM public key as a trusted signing key (Modules tab, or
 `POST /api/v1/trusted-signing-keys` with `name` and `public_key_pem`), then installs
-`matter-clock.tar.gz` from a local file on the Modules tab (or `POST /api/v1/modules`
+`matter-clock.signed.json` (the marketplace's signed package file: the `.tar.gz` package,
+its digest and an Ed25519 signature over its exact bytes) from a local file on the Modules tab (or `POST /api/v1/modules`
 with the file as `package`) and approves its permissions. The manifest's image digest is
 a placeholder; set it to the digest of the image you built before signing.
 

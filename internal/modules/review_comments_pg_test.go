@@ -129,7 +129,7 @@ func TestPGUpdateDropsOmittedPermission(t *testing.T) {
 		man = strings.Replace(man, "  - scope: time:read\n    reason: Add up the hours worked on each matter this month.\n", "", 1)
 		f[modules.ManifestFile] = []byte(man)
 	})
-	res, err := e.svc.Update(e.ctx, e.admin, "matter-clock", next, "local")
+	res, err := e.svc.Update(e.ctx, e.admin, "matter-clock", next)
 	if err != nil || res.Module.Version != "1.0.1" {
 		t.Fatalf("update: %+v %v", res, err)
 	}

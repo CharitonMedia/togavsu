@@ -2,8 +2,6 @@ package modules_test
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,19 +12,9 @@ import (
 	"time"
 
 	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
-	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 )
-
-func newKey(t *testing.T) (ed25519.PrivateKey, modules.TrustedKey) {
-	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return priv, modules.TrustedKey{KeyID: modules.KeyID(pub), PublicKey: pub, Source: "local"}
-}
 
 func code(err error) string {
 	var api *domain.APIError
@@ -120,146 +108,28 @@ func TestManifestRefusals(t *testing.T) {
 	}
 }
 
-func TestSignatureRefusals(t *testing.T) {
-	priv, key := newKey(t)
-	raw, err := matterclock.Build(priv, nil)
+// Signature checks belong to the marketplace component (Deps.Signing); ReadPackage only
+// unpacks bytes it verified and parses the manifest.
+func TestReadPackage(t *testing.T) {
+	raw, err := matterclock.Archive(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	pkg, err := modules.ReadPackage(raw)
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || pkg.Manifest.ID != "matter-clock" || !strings.HasPrefix(pkg.Digest, "sha256:") {
+		t.Fatalf("read %+v %v", pkg, err)
 	}
-	if _, err := pkg.Verify([]modules.TrustedKey{key}); err != nil {
-		t.Fatalf("signed package refused: %v", err)
-	}
-
-	files, _ := matterclock.Files()
-	unsigned, _ := modules.Archive(files)
-	pkg, _ = modules.ReadPackage(unsigned)
-	if _, err := pkg.Verify([]modules.TrustedKey{key}); code(err) != modules.CodeUnsigned {
-		t.Fatalf("unsigned: %v", err)
-	}
-
-	otherPriv, _ := newKey(t)
-	foreign, _ := matterclock.Build(otherPriv, nil)
-	pkg, _ = modules.ReadPackage(foreign)
-	if _, err := pkg.Verify([]modules.TrustedKey{key}); code(err) != modules.CodeUnsigned {
-		t.Fatalf("untrusted signer: %v", err)
-	}
-
-	// Tampered: change a signed file after signing and repack with the old signature.
-	signed, _ := modules.ReadPackage(raw)
-	signed.Files["migrations/0001_matter_targets.sql"] = append(signed.Files["migrations/0001_matter_targets.sql"], []byte("\nDROP TABLE matter_targets;")...)
-	tampered, _ := modules.Archive(signed.Files)
-	pkg, _ = modules.ReadPackage(tampered)
-	if _, err := pkg.Verify([]modules.TrustedKey{key}); code(err) != modules.CodeTampered {
-		t.Fatalf("tampered migration: %v", err)
-	}
-	signed, _ = modules.ReadPackage(raw)
-	signed.Files["extra.txt"] = []byte("smuggled")
-	added, _ := modules.Archive(signed.Files)
-	pkg, _ = modules.ReadPackage(added)
-	if _, err := pkg.Verify([]modules.TrustedKey{key}); code(err) != modules.CodeTampered {
-		t.Fatalf("added file: %v", err)
+	noManifest, _ := matterclock.Archive(func(f map[string][]byte) { delete(f, modules.ManifestFile) })
+	if _, err := modules.ReadPackage(noManifest); err == nil {
+		t.Fatal("package without a manifest accepted")
 	}
 	if _, err := modules.ReadPackage([]byte("not a tarball")); err == nil {
 		t.Fatal("garbage accepted")
 	}
 }
 
-func migrations(t *testing.T, sqls ...string) []db.Migration {
-	t.Helper()
-	var out []db.Migration
-	for i, s := range sqls {
-		out = append(out, db.Migration{Version: i + 1, Name: "m", SQL: s, Checksum: "x"})
-	}
-	return out
-}
-
-func TestMigrationCheck(t *testing.T) {
-	m, err := modules.ParseManifest(sampleManifest(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	files, _ := matterclock.Files()
-	sample := string(files["migrations/0001_matter_targets.sql"])
-	if err := modules.CheckMigrations(m, migrations(t, sample)); err != nil {
-		t.Fatalf("sample refused: %v", err)
-	}
-	ok := []string{
-		"CREATE INDEX received_events_action_idx ON received_events (action);",
-		"ALTER TABLE matter_targets ADD COLUMN reviewed_by TEXT REFERENCES core.users (id) ON DELETE RESTRICT;",
-		"CREATE TABLE mod_matter_clock.notes_cache (id TEXT PRIMARY KEY, body TEXT);",
-		"CREATE TABLE client_contacts (contact_id TEXT NOT NULL REFERENCES core.contacts (id) ON DELETE RESTRICT, full_name TEXT, email TEXT);",
-		"DROP VIEW IF EXISTS monthly_targets; CREATE VIEW monthly_targets AS SELECT matter_id, monthly_target_tenths FROM matter_targets;",
-		"-- a comment; with a semicolon\nCREATE TABLE x1 (id TEXT PRIMARY KEY, label TEXT DEFAULT 'a;b');",
-	}
-	for _, extra := range ok {
-		if err := modules.CheckMigrations(m, migrations(t, sample, extra)); err != nil {
-			t.Errorf("allowed statement refused: %s: %v", extra, err)
-		}
-	}
-	refused := map[string]string{
-		"own contacts table":       "CREATE TABLE contacts (id TEXT PRIMARY KEY, name TEXT);",
-		"quoted contacts table":    `CREATE TABLE "Contacts" (id TEXT PRIMARY KEY);`,
-		"synonym people":           "CREATE TABLE people (id TEXT PRIMARY KEY);",
-		"rename to matters":        "ALTER TABLE received_events RENAME TO matters;",
-		"identifying copy":         "CREATE TABLE leads (id TEXT PRIMARY KEY, full_name TEXT, email TEXT, phone TEXT);",
-		"table in core":            "CREATE TABLE core.module_stuff (id TEXT PRIMARY KEY);",
-		"quoted core schema":       `CREATE TABLE "core"."x" (id TEXT PRIMARY KEY);`,
-		"alter core table":         "ALTER TABLE core.matters ADD COLUMN hours INTEGER;",
-		"other module schema":      "CREATE TABLE mod_other.x (id TEXT PRIMARY KEY);",
-		"insert into core":         "INSERT INTO core.contacts (id) VALUES ('x');",
-		"update own table":         "UPDATE matter_targets SET note = '';",
-		"index on core":            "CREATE INDEX x ON core.contacts (id);",
-		"trigger":                  "CREATE TRIGGER t BEFORE INSERT ON matter_targets FOR EACH ROW EXECUTE FUNCTION f();",
-		"function":                 "CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN RETURN NEW; END $$ LANGUAGE plpgsql;",
-		"function without dollars": "CREATE OR REPLACE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1';",
-		"extension":                "CREATE EXTENSION pg_trgm;",
-		"role":                     "CREATE ROLE sneaky LOGIN;",
-		"grant":                    "GRANT SELECT ON matter_targets TO PUBLIC;",
-		"revoke":                   "REVOKE ALL ON matter_targets FROM PUBLIC;",
-		"do block":                 "DO 'BEGIN END';",
-		"set search_path":          "SET search_path TO core;",
-		"schema":                   "CREATE SCHEMA other;",
-		"view over core":           "CREATE VIEW leak AS SELECT * FROM core.contacts;",
-		"view join core":           "CREATE VIEW leak2 AS SELECT t.matter_id FROM matter_targets t JOIN core.matters m ON m.id = t.matter_id;",
-		"view over function":       "CREATE VIEW leak3 AS SELECT * FROM pg_read_file('/etc/passwd');",
-		"fk cascade":               "CREATE TABLE a1 (matter_id TEXT REFERENCES core.matters (id) ON DELETE CASCADE);",
-		"fk without restrict":      "CREATE TABLE a2 (matter_id TEXT REFERENCES core.matters (id));",
-		"fk to non-id":             "CREATE TABLE a3 (n TEXT REFERENCES core.matters (number) ON DELETE RESTRICT);",
-		"fk to secret table":       "CREATE TABLE a4 (t TEXT REFERENCES core.api_tokens (id) ON DELETE RESTRICT);",
-		"default calls core":       "CREATE TABLE a5 (id TEXT DEFAULT core.secret_fn());",
-		"table as select":          "CREATE TABLE copy AS SELECT * FROM matter_targets;",
-		"drop cascade":             "DROP TABLE received_events CASCADE;",
-		"owner change":             "ALTER TABLE matter_targets OWNER TO postgres;",
-		"set schema":               "ALTER TABLE matter_targets SET SCHEMA public;",
-		"disable trigger":          "ALTER TABLE matter_targets DISABLE TRIGGER ALL;",
-		"comment hides nothing":    "/* harmless */ CREATE TRIGGER t2 AFTER INSERT ON matter_targets EXECUTE FUNCTION f();",
-		"index concurrently":       "CREATE INDEX CONCURRENTLY y ON matter_targets (note);",
-		"copy":                     "COPY matter_targets FROM '/etc/passwd';",
-	}
-	for name, extra := range refused {
-		err := modules.CheckMigrations(m, migrations(t, sample, extra))
-		if code(err) != modules.CodeMigration {
-			t.Errorf("%s: not refused (%v)", name, err)
-		}
-	}
-	// The manifest's extension table must be keyed by the core record's id.
-	bad := strings.Replace(sample, "matter_id TEXT PRIMARY KEY REFERENCES core.matters (id) ON DELETE RESTRICT", "id TEXT PRIMARY KEY, matter_id TEXT REFERENCES core.matters (id) ON DELETE RESTRICT", 1)
-	if err := modules.CheckMigrations(m, migrations(t, bad)); code(err) != modules.CodeMigration {
-		t.Fatalf("extension without the record key: %v", err)
-	}
-	noView := strings.Replace(sample, "CREATE VIEW monthly_targets", "CREATE VIEW other_targets", 1)
-	if err := modules.CheckMigrations(m, migrations(t, noView)); code(err) != modules.CodeMigration {
-		t.Fatalf("published view missing: %v", err)
-	}
-}
-
 func TestPackageMigrations(t *testing.T) {
-	priv, _ := newKey(t)
-	raw, err := matterclock.Build(priv, func(f map[string][]byte) {
+	raw, err := matterclock.Archive(func(f map[string][]byte) {
 		f["migrations/0002_more.sql"] = []byte("CREATE INDEX received_events_action_idx ON received_events (action);")
 	})
 	if err != nil {
@@ -270,7 +140,7 @@ func TestPackageMigrations(t *testing.T) {
 	if err != nil || len(ms) != 2 || ms[0].Version != 1 || ms[1].Version != 2 || ms[0].Checksum == "" {
 		t.Fatalf("migrations %+v %v", ms, err)
 	}
-	raw, _ = matterclock.Build(priv, func(f map[string][]byte) { f["migrations/bad.sql"] = []byte("SELECT 1") })
+	raw, _ = matterclock.Archive(func(f map[string][]byte) { f["migrations/bad.sql"] = []byte("SELECT 1") })
 	pkg, _ = modules.ReadPackage(raw)
 	if _, err := pkg.Migrations(); code(err) != modules.CodeMigration {
 		t.Fatalf("badly named migration: %v", err)

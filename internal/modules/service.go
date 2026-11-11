@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -25,6 +24,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
 
 // Module statuses (API contract Module.status, plus the terminal states the runtime
@@ -53,8 +53,9 @@ type Deps struct {
 	Widgets  Widgets
 	Runtime  Runtime
 	Backups  Backups
-	// Market is the marketplace client; nil accepts trusted local keys only.
-	Market KeySource
+	// Signing checks package signatures (*marketplace.Service). Nil refuses every
+	// install and update, so a composition that leaves it out fails closed.
+	Signing Verifier
 	// Contacts applies the core contact rule (*practice.Service satisfies it). Nil means
 	// no contact-keyed module row is readable, so a composition that leaves it out fails
 	// closed.
@@ -241,7 +242,7 @@ type pkgRow struct {
 	Archive                    []byte
 }
 
-func (s *Service) savePackage(ctx context.Context, p domain.Principal, pkg *Package, key TrustedKey, raw []byte) (string, error) {
+func (s *Service) savePackage(ctx context.Context, p domain.Principal, pkg *Package, key Signer, raw []byte) (string, error) {
 	id, err := domain.NewID()
 	if err != nil {
 		return "", err
@@ -372,45 +373,6 @@ func (s *Service) commit(ctx context.Context, fn func(ctx context.Context) error
 	return audit.WithTx(ctx, s.d.DB, fn)
 }
 
-// --- keys ---
-
-func (s *Service) trustedKeys(ctx context.Context) ([]TrustedKey, error) {
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT key_id, name, public_key FROM core.module_signing_keys WHERE revoked_at IS NULL`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []TrustedKey
-	for rows.Next() {
-		var k TrustedKey
-		var pub string
-		if err := rows.Scan(&k.KeyID, &k.Name, &pub); err != nil {
-			return nil, err
-		}
-		raw, err := base64.StdEncoding.DecodeString(pub)
-		if err != nil || len(raw) != ed25519.PublicKeySize {
-			continue
-		}
-		k.PublicKey, k.Source = raw, "local"
-		out = append(out, k)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	if s.d.Market != nil {
-		more, err := s.d.Market.Keys(ctx)
-		if err != nil {
-			// A marketplace outage leaves local keys working (PRD 10.5: firm control).
-			log.Printf("modules: marketplace keys unavailable: %v", err)
-		}
-		for _, k := range more {
-			k.Source = "marketplace"
-			out = append(out, k)
-		}
-	}
-	return out, nil
-}
-
 // --- view ---
 
 // View is the API contract's Module.
@@ -491,47 +453,84 @@ func (s *Service) Get(ctx context.Context, p domain.Principal, id string) (View,
 
 // --- install ---
 
-// verify reads, verifies and checks a package before anything in it is used.
-func (s *Service) verify(ctx context.Context, raw []byte) (*Package, TrustedKey, []db.Migration, error) {
-	pkg, err := ReadPackage(raw)
-	if err != nil {
-		return nil, TrustedKey{}, nil, err
+// checkFile verifies an uploaded signed package file with the firm's trust root.
+func (s *Service) checkFile(ctx context.Context, p domain.Principal, file []byte) (marketplace.Verified, error) {
+	if s.d.Signing == nil {
+		return marketplace.Verified{}, refuse(CodeUnsigned, "no signature check is configured, so no package can be trusted")
 	}
-	keys, err := s.trustedKeys(ctx)
-	if err != nil {
-		return nil, TrustedKey{}, nil, err
+	// A bare package archive carries no signature at all (AC-013).
+	if !json.Valid(file) {
+		return marketplace.Verified{}, refuse(CodeUnsigned, "this package isn't signed; upload the signed package file (.signed.json) its author made")
 	}
-	key, err := pkg.Verify(keys)
+	return s.d.Signing.VerifyLocalFile(ctx, p, file)
+}
+
+// download fetches and verifies a listing's version from the marketplace.
+func (s *Service) download(ctx context.Context, p domain.Principal, listing, version string) (marketplace.Verified, error) {
+	if s.d.Signing == nil {
+		return marketplace.Verified{}, &domain.APIError{Code: "marketplace_unconfigured", Message: "no marketplace is configured"}
+	}
+	return s.d.Signing.FetchForInstall(ctx, p, listing, version)
+}
+
+// verify reads and checks a package whose signature the marketplace component has
+// verified. Nothing in it is used before this passes.
+func (s *Service) verify(v marketplace.Verified) (*Package, Signer, []db.Migration, error) {
+	pkg, err := ReadPackage(v.Package)
 	if err != nil {
-		return nil, TrustedKey{}, nil, err
+		return nil, Signer{}, nil, err
+	}
+	if pkg.Manifest.ID != v.ModuleID || pkg.Manifest.Version != v.Version {
+		return nil, Signer{}, nil, refuse(CodeTampered, "the package manifest doesn't match the signed manifest")
 	}
 	ms, err := pkg.Migrations()
 	if err != nil {
-		return nil, TrustedKey{}, nil, err
+		return nil, Signer{}, nil, err
 	}
 	if err := CheckMigrations(pkg.Manifest, ms); err != nil {
-		return nil, TrustedKey{}, nil, err
+		return nil, Signer{}, nil, err
 	}
-	return pkg, key, ms, nil
+	return pkg, Signer{KeyID: v.Signer.KeyID, Source: v.Signer.Source, Name: v.Signer.Author}, ms, nil
 }
 
-// Install verifies a module package and records it awaiting the admin's permission
-// decisions (PRD 9.3). Nothing runs and no schema is created until they are approved.
-func (s *Service) Install(ctx context.Context, p domain.Principal, raw []byte, source string) (View, error) {
+// Install verifies an uploaded signed package file and records it awaiting the admin's
+// permission decisions (PRD 9.3). Nothing runs and no schema is created until they are
+// approved.
+func (s *Service) Install(ctx context.Context, p domain.Principal, file []byte) (View, error) {
 	if err := requireAdmin(p); err != nil {
 		return View{}, err
 	}
+	v, err := s.checkFile(ctx, p, file)
+	if err != nil {
+		return View{}, err
+	}
+	return s.install(ctx, p, v)
+}
+
+// InstallFromMarketplace downloads a listing's version and installs it. A pulled module
+// can't be downloaded; the firm can still install it from a local file (PRD 10.4).
+func (s *Service) InstallFromMarketplace(ctx context.Context, p domain.Principal, listing, version string) (View, error) {
+	if err := requireAdmin(p); err != nil {
+		return View{}, err
+	}
+	v, err := s.download(ctx, p, listing, version)
+	if err != nil {
+		return View{}, err
+	}
+	return s.install(ctx, p, v)
+}
+
+// install records a verified package awaiting the admin's permission decisions.
+func (s *Service) install(ctx context.Context, p domain.Principal, v marketplace.Verified) (View, error) {
+	source, raw := v.Source, v.Package
 	if source != "local" && source != "marketplace" {
 		return View{}, invalid("source", "source is local or marketplace")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pkg, key, ms, err := s.verify(ctx, raw)
+	pkg, key, ms, err := s.verify(v)
 	if err != nil {
 		return View{}, err
-	}
-	if source == "marketplace" && key.Source != "marketplace" {
-		return View{}, refuse(CodeUnsigned, "a marketplace install must be signed with a key published through the marketplace")
 	}
 	m := pkg.Manifest
 	existing, err := s.row(ctx, m.ID)
@@ -578,22 +577,6 @@ func (s *Service) Install(ctx context.Context, p domain.Principal, raw []byte, s
 		return err
 	})
 	return out, err
-}
-
-// InstallFromMarketplace downloads a listing's version and installs it. A pulled module
-// can't be downloaded; the firm can still install it from a local file (PRD 10.4).
-func (s *Service) InstallFromMarketplace(ctx context.Context, p domain.Principal, listing, version string) (View, error) {
-	if err := requireAdmin(p); err != nil {
-		return View{}, err
-	}
-	if s.d.Market == nil {
-		return View{}, &domain.APIError{Code: "marketplace_unconfigured", Message: "no marketplace is configured"}
-	}
-	raw, err := s.d.Market.Package(ctx, listing, version)
-	if err != nil {
-		return View{}, err
-	}
-	return s.Install(ctx, p, raw, "marketplace")
 }
 
 func isNotFound(err error) bool {
@@ -1061,13 +1044,35 @@ type UpdateResult struct {
 	Outcome         string `json:"outcome"`
 }
 
-// Update installs a new signed version. New permissions wait for the admin while the old
-// version keeps running; a migration that already ran and changed refuses the update; a
-// failing migration rolls back and the old version keeps running (PRD 9.3, 9.9).
-func (s *Service) Update(ctx context.Context, p domain.Principal, id string, raw []byte, source string) (UpdateResult, error) {
+// Update installs a new signed version from an uploaded signed package file. New
+// permissions wait for the admin while the old version keeps running; a migration that
+// already ran and changed refuses the update; a failing migration rolls back and the old
+// version keeps running (PRD 9.3, 9.9).
+func (s *Service) Update(ctx context.Context, p domain.Principal, id string, file []byte) (UpdateResult, error) {
 	if err := requireAdmin(p); err != nil {
 		return UpdateResult{}, err
 	}
+	v, err := s.checkFile(ctx, p, file)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+	return s.update(ctx, p, id, v)
+}
+
+// UpdateFromMarketplace downloads a listing's version and updates to it, as Update does.
+func (s *Service) UpdateFromMarketplace(ctx context.Context, p domain.Principal, id, version string) (UpdateResult, error) {
+	if err := requireAdmin(p); err != nil {
+		return UpdateResult{}, err
+	}
+	v, err := s.download(ctx, p, id, version)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+	return s.update(ctx, p, id, v)
+}
+
+func (s *Service) update(ctx context.Context, p domain.Principal, id string, v marketplace.Verified) (UpdateResult, error) {
+	raw := v.Package
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	r, err := s.row(ctx, id)
@@ -1077,7 +1082,7 @@ func (s *Service) Update(ctx context.Context, p domain.Principal, id string, raw
 	if r.Status != StatusInstalled && r.Status != StatusDisabled {
 		return UpdateResult{}, domain.Conflict("module " + id + " isn't installed")
 	}
-	pkg, key, ms, err := s.verify(ctx, raw)
+	pkg, key, ms, err := s.verify(v)
 	if err != nil {
 		return UpdateResult{}, err
 	}

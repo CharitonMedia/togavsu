@@ -1,7 +1,7 @@
 // Command matter-clock runs the Matter Clock sample module, or signs its package.
 //
 //	matter-clock serve -core http://core:8080 -secrets /run/secrets -db-host postgres:5432 -db-name togavsu
-//	matter-clock package -key signing.key -out matter-clock.tar.gz
+//	matter-clock package -key signing.key -out matter-clock.signed.json
 //
 // The signing key file holds a base64 ed25519 seed; the firm adds its public key on the
 // admin page as a trusted local key. Secrets come from the Docker secrets the core hands
@@ -24,7 +24,7 @@ import (
 	"time"
 
 	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
-	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -90,7 +90,7 @@ func serve(args []string) {
 func pack(args []string) {
 	fs := flag.NewFlagSet("package", flag.ExitOnError)
 	keyFile := fs.String("key", "", "file holding a base64 ed25519 seed")
-	out := fs.String("out", "matter-clock.tar.gz", "package file to write")
+	out := fs.String("out", "matter-clock.signed.json", "signed package file to write")
 	_ = fs.Parse(args)
 	raw, err := os.ReadFile(*keyFile)
 	if err != nil {
@@ -109,5 +109,5 @@ func pack(args []string) {
 		log.Fatal(err)
 	}
 	pub := priv.Public().(ed25519.PublicKey)
-	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, modules.KeyID(pub), modules.PublicKeyPEM(pub))
+	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, marketplace.KeyID(pub), marketplace.PublicKeyPEM(pub))
 }

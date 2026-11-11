@@ -33,6 +33,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/web"
@@ -247,7 +248,8 @@ type env struct {
 	backups  *fakeBackups
 	srv      *httptest.Server
 	priv     ed25519.PrivateKey
-	keyID    string
+	keyID    domain.ID
+	market   *marketplace.Service
 	users    map[string]domain.Principal
 	admin    domain.Principal
 	staff    domain.Principal
@@ -278,6 +280,13 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	if err := modules.Migrate(ctx, plain); err != nil {
+		t.Fatal(err)
+	}
+	mms, err := marketplace.Migrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: mms}); err != nil {
 		t.Fatal(err)
 	}
 	_ = plain.Close()
@@ -336,6 +345,16 @@ func newEnv(t *testing.T) *env {
 		}
 	})
 	e.backups = &fakeBackups{}
+	// The marketplace component owns the trust root: trusted local keys, published keys
+	// and the package signature check (PRD 9.3).
+	users, ok := app.Users.(marketplace.Users)
+	if !ok {
+		t.Fatal("the core user store doesn't list users")
+	}
+	e.market, err = marketplace.New(marketplace.Deps{DB: app.Pool, Audit: app.Audit, Settings: app.Settings, Users: users})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e.svc = e.service(t, nil)
 	e.h = modules.NewHandler(e.svc, e.auth)
 	e.srv = httptest.NewServer(e.compose())
@@ -346,12 +365,20 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.priv = priv
-	key, err := e.svc.CreateTrustedKey(ctx, e.admin, "Sample module key", modules.PublicKeyPEM(pub))
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.keyID = key.ID
+	e.keyID = e.trustKey("Sample module key", pub)
 	return e
+}
+
+// trustKey adds pub as a trusted local key through the marketplace component and
+// returns the key's id.
+func (e *env) trustKey(name string, pub ed25519.PublicKey) domain.ID {
+	e.t.Helper()
+	pem := marketplace.PublicKeyPEM(pub)
+	key, err := e.market.CreateKey(e.ctx, e.admin, marketplace.KeyInput{Name: &name, PublicKeyPEM: &pem})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return key.ID
 }
 
 // service is a module runtime over the env's database and fakes, with clock now
@@ -359,7 +386,7 @@ func newEnv(t *testing.T) *env {
 func (e *env) service(t *testing.T, now func() time.Time) *modules.Service {
 	t.Helper()
 	app := e.app
-	svc, err := modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls, Contacts: app.Practice,
+	svc, err := modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls, Contacts: app.Practice, Signing: e.market,
 		Users: app.Users, Tokens: modules.IdentityTokens{Svc: app.Identity}, Help: e.help, Widgets: e.cat, Runtime: e.rt, Backups: e.backups, Now: now})
 	if err != nil {
 		t.Fatal(err)
@@ -458,7 +485,8 @@ func (e *env) compose() http.Handler {
 		e.t.Fatal(err)
 	}
 	mods := e.h.Routes().(*http.ServeMux)
-	domains := []*http.ServeMux{mods, ch.Routes().(*http.ServeMux), bh.Routes().(*http.ServeMux), ph.Routes().(*http.ServeMux)}
+	mk := (&marketplace.Handler{Svc: e.market, Principal: e.principal}).Routes().(*http.ServeMux)
+	domains := []*http.ServeMux{mods, mk, ch.Routes().(*http.ServeMux), bh.Routes().(*http.ServeMux), ph.Routes().(*http.ServeMux)}
 	top := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, m := range domains {
 			if _, pattern := m.Handler(r); pattern != "" {

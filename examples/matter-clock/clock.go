@@ -14,6 +14,7 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 )
 
@@ -60,9 +62,9 @@ func Files() (map[string][]byte, error) {
 	return out, err
 }
 
-// Build signs the package with priv. edit, when set, changes the files first (tests use
-// it to make tampered, updated and refused variants).
-func Build(priv ed25519.PrivateKey, edit func(map[string][]byte)) ([]byte, error) {
+// Archive writes the unsigned package. edit, when set, changes the files first (tests
+// use it to make tampered, updated and refused variants).
+func Archive(edit func(map[string][]byte)) ([]byte, error) {
 	files, err := Files()
 	if err != nil {
 		return nil, err
@@ -70,7 +72,30 @@ func Build(priv ed25519.PrivateKey, edit func(map[string][]byte)) ([]byte, error
 	if edit != nil {
 		edit(files)
 	}
-	return modules.Sign(files, priv)
+	return modules.Archive(files)
+}
+
+// Build writes the package signed with priv as the marketplace's signed package file
+// (SignedPackage JSON: the package bytes, their digest, an Ed25519 signature over the
+// exact bytes and the key id). The core installs that file from a local upload, and the
+// marketplace publishes the same signature.
+func Build(priv ed25519.PrivateKey, edit func(map[string][]byte)) ([]byte, error) {
+	pkg, err := Archive(edit)
+	if err != nil {
+		return nil, err
+	}
+	return SignFile(priv, pkg)
+}
+
+// SignFile wraps package bytes in a signed package file.
+func SignFile(priv ed25519.PrivateKey, pkg []byte) ([]byte, error) {
+	m, err := marketplace.ReadManifest(pkg)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(marketplace.SignedPackage{ListingID: m.ID, Version: m.Version, Digest: marketplace.Digest(pkg),
+		Signature: marketplace.Sign(priv, pkg), KeyID: marketplace.KeyID(priv.Public().(ed25519.PublicKey)),
+		PackageBase64: base64.StdEncoding.EncodeToString(pkg)})
 }
 
 // Config is what the container gets: the core's address, its secrets and its own DB.

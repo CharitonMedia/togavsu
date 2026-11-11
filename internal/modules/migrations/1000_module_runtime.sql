@@ -51,17 +51,6 @@ CREATE TABLE module_permissions (
   decided_at BIGINT NOT NULL
 );
 
-CREATE TABLE module_signing_keys (
-  id TEXT PRIMARY KEY,
-  created_at BIGINT NOT NULL,
-  updated_at BIGINT NOT NULL,
-  created_by TEXT NOT NULL,
-  key_id TEXT NOT NULL,
-  name TEXT NOT NULL,
-  public_key TEXT NOT NULL,
-  revoked_at BIGINT
-);
-
 CREATE TABLE module_settings (
   id TEXT PRIMARY KEY,
   created_at BIGINT NOT NULL,
@@ -98,7 +87,6 @@ CREATE TABLE module_event_cursor (
 );
 
 CREATE UNIQUE INDEX module_permissions_scope_uidx ON module_permissions (module_id, scope);
-CREATE UNIQUE INDEX module_signing_keys_key_uidx ON module_signing_keys (key_id);
 CREATE UNIQUE INDEX module_settings_key_uidx ON module_settings (module_id, key);
 CREATE UNIQUE INDEX module_deliveries_event_uidx ON module_deliveries (module_id, event_id);
 CREATE INDEX module_deliveries_due_idx ON module_deliveries (status, next_attempt_at);

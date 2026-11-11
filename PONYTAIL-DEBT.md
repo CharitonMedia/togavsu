@@ -93,7 +93,6 @@ Recorded by the finance integration from the billing and trust packages' own pon
 
 ## Marketplace ceilings
 
-1. `internal/marketplace/manifest.go` — `togavsu-module.yaml` is read with `encoding/json`. Ceiling: a manifest must use YAML's JSON-compatible flow form; block-style YAML is refused as unreadable. Upgrade: read it with the module runtime's manifest parser. Trigger: internal/modules ships a togavsu-module.yaml parser.
-2. `marketplace/store.go` — the marketplace keeps its records in one JSON state file, rewritten whole on each write, plus one file per package. Ceiling: one process, hundreds of listings. Upgrade: a Postgres store behind the same Market methods. Trigger: the state file passes 10 MB, or a second marketplace replica is deployed.
-3. `marketplace/market.go` `Login` — author sign-in has no lockout or rate limit; Argon2id cost is the only brake. Upgrade: the identity package's lockout counters. Trigger: the marketplace is reachable from the internet.
-4. `internal/marketplace/alerts.go` `Start` — the alert check runs on an in-process ticker, not the Postgres job queue. Ceiling: two cores during an update swap may both check; the unique marketplace alert id keeps delivery to once. Upgrade: a marketplace-poll job. Trigger: the core job queue ships (PRD section 6).
+1. `marketplace/store.go` — the marketplace keeps its records in one JSON state file, rewritten whole on each write, plus one file per package. Ceiling: one process, hundreds of listings. Upgrade: a Postgres store behind the same Market methods. Trigger: the state file passes 10 MB, or a second marketplace replica is deployed.
+2. `marketplace/market.go` `Login` — author sign-in has no lockout or rate limit; Argon2id cost is the only brake. Upgrade: the identity package's lockout counters. Trigger: the marketplace is reachable from the internet.
+3. `internal/marketplace/alerts.go` `Start` — the alert check runs on an in-process ticker, not the Postgres job queue. Ceiling: two cores during an update swap may both check; the unique marketplace alert id keeps delivery to once. Upgrade: a marketplace-poll job. Trigger: the core job queue ships (PRD section 6).

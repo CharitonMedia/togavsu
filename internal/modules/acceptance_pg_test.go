@@ -2,6 +2,9 @@ package modules_test
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -13,6 +16,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -355,25 +359,45 @@ func TestPGDeclinedPermissionCancels(t *testing.T) {
 }
 
 // AC-013: an unsigned or tampered module is refused, over the API, with nothing kept.
+// The signature check is the marketplace component's (Deps.Signing).
 func TestPGUnsignedTamperedRefused(t *testing.T) {
 	e := newEnv(t)
-	files, _ := matterclock.Files()
-	unsigned, _ := modules.Archive(files)
+	unsigned, _ := matterclock.Archive(nil)
 	if r := e.do("POST", "/api/v1/modules", unsigned, e.as("admin")...); r.code != http.StatusUnprocessableEntity || r.json["code"] != modules.CodeUnsigned {
 		t.Fatalf("unsigned: %d %s", r.code, r.body)
 	}
-	pkg, _ := modules.ReadPackage(e.build(nil))
-	pkg.Files[modules.ManifestFile] = []byte(strings.Replace(string(pkg.Files[modules.ManifestFile]), "  - scope: events:read", "  - scope: trust:withdraw\n  - scope: events:read", 1))
-	tampered, _ := modules.Archive(pkg.Files)
-	if r := e.do("POST", "/api/v1/modules", tampered, e.as("admin")...); r.code != http.StatusUnprocessableEntity || r.json["code"] != modules.CodeTampered {
-		t.Fatalf("tampered: %d %s", r.code, r.body)
+	_, other, _ := ed25519.GenerateKey(nil)
+	foreign, _ := matterclock.Build(other, nil)
+	if r := e.do("POST", "/api/v1/modules", foreign, e.as("admin")...); r.code != http.StatusUnprocessableEntity || r.json["code"] != modules.CodeUnsigned {
+		t.Fatalf("untrusted signer: %d %s", r.code, r.body)
 	}
-	// A key the admin revoked no longer verifies.
-	if err := e.svc.DeleteTrustedKey(e.ctx, e.admin, e.keyID); err != nil {
+	// Tampered: a scope added after signing, with the old digest, and then with a fresh
+	// digest but the old signature.
+	var sp marketplace.SignedPackage
+	if err := json.Unmarshal(e.build(nil), &sp); err != nil {
+		t.Fatal(err)
+	}
+	inner, _ := base64.StdEncoding.DecodeString(sp.PackageBase64)
+	pkg, err := modules.ReadPackage(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg.Files[modules.ManifestFile] = []byte(strings.Replace(string(pkg.Files[modules.ManifestFile]), "  - scope: events:read", "  - scope: trust:withdraw\n  - scope: events:read", 1))
+	changed, _ := modules.Archive(pkg.Files)
+	sp.PackageBase64 = base64.StdEncoding.EncodeToString(changed)
+	for _, digest := range []string{sp.Digest, marketplace.Digest(changed)} {
+		sp.Digest = digest
+		tampered, _ := json.Marshal(sp)
+		if r := e.do("POST", "/api/v1/modules", tampered, e.as("admin")...); r.code != http.StatusUnprocessableEntity || r.json["code"] != modules.CodeTampered {
+			t.Fatalf("tampered (digest %s): %d %s", digest, r.code, r.body)
+		}
+	}
+	// A key the admin removed no longer verifies.
+	if err := e.market.DeleteKey(e.ctx, e.admin, e.keyID); err != nil {
 		t.Fatal(err)
 	}
 	if r := e.do("POST", "/api/v1/modules", e.build(nil), e.as("admin")...); r.json["code"] != modules.CodeUnsigned {
-		t.Fatalf("revoked key: %d %s", r.code, r.body)
+		t.Fatalf("removed key: %d %s", r.code, r.body)
 	}
 	if e.count(`SELECT COUNT(*) FROM core.modules`) != 0 || e.count(`SELECT COUNT(*) FROM core.module_packages`) != 0 {
 		t.Fatal("a refused package was recorded")
@@ -537,7 +561,7 @@ permissions:
 		t.Fatalf("another module's extension through include=: %d %s", r.code, r.body)
 	}
 	// An update asks for the scope again; the admin approves it.
-	res, err := e.svc.Update(e.ctx, e.admin, "target-reader", reader("1.0.1"), "local")
+	res, err := e.svc.Update(e.ctx, e.admin, "target-reader", reader("1.0.1"))
 	if err != nil || res.Outcome != "awaiting_approval" || res.Module.Version != "1.0.0" {
 		t.Fatalf("update asking for the view: %+v %v", res, err)
 	}

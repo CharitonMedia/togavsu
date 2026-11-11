@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/modules/yamlsubset"
 )
 
 // ManifestName is the signed manifest file at the root of a module package (PRD 9.2).
@@ -50,11 +52,6 @@ func ValidVersion(v string) bool { return versionForm.MatchString(v) }
 // scanned, so a package with two manifest entries (plain or ./) is refused. The scan stops
 // at max_expanded_bytes of archive and max_package_entries entries, so a small compressed
 // package cannot expand without bound.
-//
-// ponytail: ceiling: the manifest must be written in YAML's JSON-compatible flow form
-// and is read with encoding/json; block-style YAML is refused as unreadable. Upgrade
-// path: read it with the module runtime's manifest parser. trigger: internal/modules
-// ships a togavsu-module.yaml parser.
 func ReadManifest(pkg []byte) (Manifest, error) {
 	var r io.Reader = bytes.NewReader(pkg)
 	if bytes.HasPrefix(pkg, []byte(gzipMagic)) {
@@ -103,8 +100,10 @@ func ReadManifest(pkg []byte) (Manifest, error) {
 	return ParseManifest(body)
 }
 
-// ParseManifest reads manifest text. Permissions may be plain scope strings or objects
-// with a scope field (PRD 9.2: strings are the required shorthand).
+// ParseManifest reads manifest text: block YAML in the module runtime's subset (the
+// parser internal/modules installs with), or its JSON-compatible flow form. Permissions
+// may be plain scope strings or objects with a scope field (PRD 9.2: strings are the
+// required shorthand).
 func ParseManifest(body []byte) (Manifest, error) {
 	var raw struct {
 		ID          string            `json:"id"`
@@ -112,10 +111,15 @@ func ParseManifest(body []byte) (Manifest, error) {
 		Version     string            `json:"version"`
 		Permissions []json.RawMessage `json:"permissions"`
 	}
+	doc := body
 	if err := json.Unmarshal(body, &raw); err != nil {
-		return Manifest{}, ErrManifest
+		// Raw stays JSON, so the listing serves the manifest as an object either way.
+		var yerr error
+		if doc, yerr = yamlsubset.ToJSON(body); yerr != nil || json.Unmarshal(doc, &raw) != nil {
+			return Manifest{}, ErrManifest
+		}
 	}
-	m := Manifest{ID: strings.TrimSpace(raw.ID), Name: strings.TrimSpace(raw.Name), Version: strings.TrimSpace(raw.Version), Permissions: []string{}, Raw: json.RawMessage(body)}
+	m := Manifest{ID: strings.TrimSpace(raw.ID), Name: strings.TrimSpace(raw.Name), Version: strings.TrimSpace(raw.Version), Permissions: []string{}, Raw: json.RawMessage(doc)}
 	if !ValidModuleID(m.ID) || m.Name == "" || !ValidVersion(m.Version) {
 		return Manifest{}, ErrManifest
 	}

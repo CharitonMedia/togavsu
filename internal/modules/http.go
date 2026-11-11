@@ -17,6 +17,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
 
 // Caller is an authenticated request: the principal, the bearer token's scopes (nil for
@@ -73,11 +74,6 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /api/v1/modules/{module_id}/views/{view}", h.scoped("", h.readView))
 	m.HandleFunc("GET /api/v1/domain-handlers", h.scoped("modules:read", h.listDomains))
 	m.HandleFunc("PUT /api/v1/domain-handlers/{domain}", h.write("modules:write", h.switchDomain))
-	m.HandleFunc("GET /api/v1/trusted-signing-keys", h.scoped("modules:read", h.listKeys))
-	m.HandleFunc("POST /api/v1/trusted-signing-keys", h.write("modules:write", h.addKey))
-	m.HandleFunc("GET /api/v1/trusted-signing-keys/{key_id}", h.scoped("modules:read", h.getKey))
-	m.HandleFunc("PATCH /api/v1/trusted-signing-keys/{key_id}", h.write("modules:write", h.patchKey))
-	m.HandleFunc("DELETE /api/v1/trusted-signing-keys/{key_id}", h.write("modules:write", h.revokeKey))
 	m.HandleFunc("GET /api/v1/webhook-deliveries", h.scoped("webhooks:read", h.deliveries))
 	m.HandleFunc("POST /api/v1/ai/calls", h.write("ai:use", h.aiCall))
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
@@ -96,6 +92,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func statusOf(err error) int {
+	var me *marketplace.Error
+	if errors.As(err, &me) {
+		return me.HTTPStatus()
+	}
 	var api *domain.APIError
 	if !errors.As(err, &api) {
 		return http.StatusInternalServerError
@@ -115,7 +115,13 @@ func statusOf(err error) int {
 
 func writeErr(w http.ResponseWriter, err error) {
 	var api *domain.APIError
-	if !errors.As(err, &api) {
+	var me *marketplace.Error
+	switch {
+	case errors.As(err, &me):
+		// The marketplace component's verification and download problems keep their
+		// contract code and status.
+		api = &domain.APIError{Code: me.Code, Message: me.Message}
+	case !errors.As(err, &api):
 		api = &domain.APIError{Code: "internal", Message: "internal error"}
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
@@ -321,7 +327,7 @@ func (h *Handler) install(w http.ResponseWriter, r *http.Request, c Caller) {
 	var v View
 	switch {
 	case upload:
-		v, err = h.Svc.Install(r.Context(), c.Principal, raw, "local")
+		v, err = h.Svc.Install(r.Context(), c.Principal, raw)
 	case body.Source == "marketplace":
 		v, err = h.Svc.InstallFromMarketplace(r.Context(), c.Principal, body.ListingID, body.Version)
 	default:
@@ -393,21 +399,15 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request, c Caller) {
 		return
 	}
 	id := r.PathValue("module_id")
-	if !upload {
-		if body.Source != "marketplace" || h.Svc.d.Market == nil {
-			writeErr(w, invalid("package", "upload the new package file"))
-			return
-		}
-		if raw, err = h.Svc.d.Market.Package(r.Context(), id, body.Version); err != nil {
-			writeErr(w, err)
-			return
-		}
+	var res UpdateResult
+	switch {
+	case upload:
+		res, err = h.Svc.Update(r.Context(), c.Principal, id, raw)
+	case body.Source == "marketplace":
+		res, err = h.Svc.UpdateFromMarketplace(r.Context(), c.Principal, id, body.Version)
+	default:
+		err = invalid("package", "upload the new package file, or name a marketplace version")
 	}
-	src := "local"
-	if !upload {
-		src = "marketplace"
-	}
-	res, err := h.Svc.Update(r.Context(), c.Principal, id, raw, src)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -521,63 +521,6 @@ func (h *Handler) switchDomain(w http.ResponseWriter, r *http.Request, c Caller)
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
-}
-
-func (h *Handler) listKeys(w http.ResponseWriter, r *http.Request, c Caller) {
-	keys, err := h.Svc.ListTrustedKeys(r.Context(), c.Principal)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	help.ListPage(w, r, h.Svc.d.Settings, keys)
-}
-
-func (h *Handler) getKey(w http.ResponseWriter, r *http.Request, c Caller) {
-	k, err := h.Svc.GetTrustedKey(r.Context(), c.Principal, r.PathValue("key_id"))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, k)
-}
-
-func (h *Handler) addKey(w http.ResponseWriter, r *http.Request, c Caller) {
-	var body struct {
-		Name         string `json:"name"`
-		PublicKeyPEM string `json:"public_key_pem"`
-	}
-	if err := decode(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	k, err := h.Svc.CreateTrustedKey(r.Context(), c.Principal, body.Name, body.PublicKeyPEM)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, k)
-}
-
-func (h *Handler) patchKey(w http.ResponseWriter, r *http.Request, c Caller) {
-	var body TrustedKeyPatch
-	if err := decode(r, &body); err != nil {
-		writeErr(w, err)
-		return
-	}
-	k, err := h.Svc.UpdateTrustedKey(r.Context(), c.Principal, r.PathValue("key_id"), body)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, k)
-}
-
-func (h *Handler) revokeKey(w http.ResponseWriter, r *http.Request, c Caller) {
-	if err := h.Svc.DeleteTrustedKey(r.Context(), c.Principal, r.PathValue("key_id")); err != nil {
-		writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) deliveries(w http.ResponseWriter, r *http.Request, c Caller) {

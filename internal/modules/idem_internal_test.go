@@ -155,7 +155,7 @@ func TestIdempotencyReplaysNoContent(t *testing.T) {
 	}, idem: map[string]*idemEntry{}}
 	fn := h.write("", func(w http.ResponseWriter, r *http.Request, _ Caller) { w.WriteHeader(http.StatusNoContent) })
 	for i := range 2 {
-		req := httptest.NewRequest(http.MethodDelete, "/api/v1/trusted-signing-keys/a", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/modules/a", nil)
 		req.Header.Set("Idempotency-Key", "d")
 		rec := httptest.NewRecorder()
 		fn(rec, req)

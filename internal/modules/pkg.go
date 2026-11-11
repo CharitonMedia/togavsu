@@ -4,11 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
-	"crypto/ed25519"
-	"crypto/sha256"
 	_ "embed"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,20 +18,14 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
-
-// SignatureFile holds the package signature. Every other file is covered by it.
-const SignatureFile = "togavsu-module.sig"
-
-// signingContext prefixes the signed digest list, so a signature over something else
-// can't be replayed as a module signature.
-const signingContext = "togavsu-module-signature-v1\n"
 
 //go:embed limits.json
 var limitsJSON []byte
 
 // limits are fixed protocol bounds of the package format, not firm settings: they keep
-// a hostile upload from exhausting memory before its signature is checked.
+// a hostile package from exhausting memory while it is unpacked.
 type limitFacts struct {
 	MaxPackageBytes     int64 `json:"max_package_bytes"`
 	MaxFiles            int   `json:"max_files"`
@@ -62,19 +52,19 @@ var limits = sync.OnceValue(func() limitFacts {
 	return l
 })
 
-// Package is a verified-or-not module package: the manifest, its migrations and the
-// rest of its files, by path.
+// Package is a module package: the manifest, its migrations and the rest of its files,
+// by path. Digest is the marketplace digest of the package bytes ("sha256:" and hex).
 type Package struct {
-	Files     map[string][]byte
-	Manifest  Manifest
-	Digest    string
-	Signature Signature
+	Files    map[string][]byte
+	Manifest Manifest
+	Digest   string
 }
 
-// Signature is togavsu-module.sig.
-type Signature struct {
-	KeyID     string `json:"key_id"`
-	Signature string `json:"signature"`
+// Signer is the key a verified package was signed with.
+type Signer struct {
+	KeyID  string
+	Source string // "local" or "marketplace": where the key is published
+	Name   string
 }
 
 var safeName = regexp.MustCompile(`^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$`)
@@ -93,8 +83,9 @@ func refuse(code, msg string) error {
 	return &domain.APIError{Code: code, Message: msg}
 }
 
-// ReadPackage unpacks a gzip tar module package. It reads and bounds the files; it does
-// not verify the signature (Verify does).
+// ReadPackage unpacks a gzip tar module package and parses its manifest. It reads and
+// bounds the files; it does not verify the signature, so the runtime passes it only
+// bytes the marketplace component has verified (or bytes it stored after that check).
 func ReadPackage(raw []byte) (*Package, error) {
 	if int64(len(raw)) > limits().MaxPackageBytes {
 		return nil, invalid("package", "the package is too large")
@@ -141,93 +132,19 @@ func ReadPackage(raw []byte) (*Package, error) {
 		}
 		files[name] = body
 	}
-	p := &Package{Files: files, Digest: digestFiles(files)}
-	if sig, ok := files[SignatureFile]; ok {
-		if err := json.Unmarshal(sig, &p.Signature); err != nil {
-			return nil, refuse(CodeUnsigned, "the module signature file is unreadable")
-		}
-	}
-	return p, nil
-}
-
-// digestFiles is the signed message: one "sha256  path" line per file except the
-// signature, sorted by path.
-func digestFiles(files map[string][]byte) string {
-	names := make([]string, 0, len(files))
-	for n := range files {
-		if n != SignatureFile {
-			names = append(names, n)
-		}
-	}
-	sort.Strings(names)
-	var b strings.Builder
-	b.WriteString(signingContext)
-	for _, n := range names {
-		sum := sha256.Sum256(files[n])
-		b.WriteString(hex.EncodeToString(sum[:]))
-		b.WriteString("  ")
-		b.WriteString(n)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-// PackageDigest is the hex SHA-256 of the signed message, recorded for audit.
-func (p *Package) PackageDigest() string {
-	sum := sha256.Sum256([]byte(p.Digest))
-	return hex.EncodeToString(sum[:])
-}
-
-// KeyID is the id of an ed25519 public key: the first 16 bytes of its SHA-256, in hex.
-func KeyID(pub ed25519.PublicKey) string {
-	sum := sha256.Sum256(pub)
-	return hex.EncodeToString(sum[:limits().KeyIDBytes])
-}
-
-// TrustedKey is a signing key the core accepts.
-type TrustedKey struct {
-	KeyID     string
-	PublicKey ed25519.PublicKey
-	Source    string // "local" or "marketplace"
-	Name      string
-}
-
-// Verify checks the package signature against keys and then parses the manifest. An
-// unsigned package or one signed by an unknown key is unsigned_module; a signature that
-// doesn't match the bytes is tampered_module (AC-013). Nothing in the package is used
-// before this passes.
-func (p *Package) Verify(keys []TrustedKey) (TrustedKey, error) {
-	if p.Signature.KeyID == "" || p.Signature.Signature == "" {
-		return TrustedKey{}, refuse(CodeUnsigned, "the module package is not signed")
-	}
-	var key *TrustedKey
-	for i := range keys {
-		if keys[i].KeyID == p.Signature.KeyID && len(keys[i].PublicKey) == ed25519.PublicKeySize {
-			key = &keys[i]
-			break
-		}
-	}
-	if key == nil {
-		return TrustedKey{}, refuse(CodeUnsigned, "the module is signed by a key this firm doesn't trust")
-	}
-	sig, err := base64.StdEncoding.DecodeString(p.Signature.Signature)
-	if err != nil || len(sig) != ed25519.SignatureSize {
-		return TrustedKey{}, refuse(CodeTampered, "the module signature is malformed")
-	}
-	if !ed25519.Verify(key.PublicKey, []byte(p.Digest), sig) {
-		return TrustedKey{}, refuse(CodeTampered, "the module package doesn't match its signature")
-	}
-	src, ok := p.Files[ManifestFile]
+	src, ok := files[ManifestFile]
 	if !ok {
-		return TrustedKey{}, invalid("package", "the package has no "+ManifestFile)
+		return nil, invalid("package", "the package has no "+ManifestFile)
 	}
 	m, err := ParseManifest(src)
 	if err != nil {
-		return TrustedKey{}, err
+		return nil, err
 	}
-	p.Manifest = m
-	return *key, nil
+	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
 }
+
+// PackageDigest is the digest recorded for audit.
+func (p *Package) PackageDigest() string { return p.Digest }
 
 // Migrations returns the package's numbered SQL migrations (migrations/NNNN_name.sql).
 func (p *Package) Migrations() ([]db.Migration, error) {
@@ -253,24 +170,6 @@ func (p *Package) Migrations() ([]db.Migration, error) {
 		}
 	}
 	return out, nil
-}
-
-// Sign signs files in place with priv and returns the archive. The sample module and
-// tests use it; firms that patch a module sign their build with their own local key.
-func Sign(files map[string][]byte, priv ed25519.PrivateKey) ([]byte, error) {
-	clean := map[string][]byte{}
-	for k, v := range files {
-		if k != SignatureFile {
-			clean[k] = v
-		}
-	}
-	sig := ed25519.Sign(priv, []byte(digestFiles(clean)))
-	raw, err := json.Marshal(Signature{KeyID: KeyID(priv.Public().(ed25519.PublicKey)), Signature: base64.StdEncoding.EncodeToString(sig)})
-	if err != nil {
-		return nil, err
-	}
-	clean[SignatureFile] = raw
-	return Archive(clean)
 }
 
 // Archive writes files as a gzip tar in path order.
@@ -299,5 +198,3 @@ func Archive(files map[string][]byte) ([]byte, error) {
 	}
 	return buf.Bytes(), nil
 }
-
-func encodeKey(pub ed25519.PublicKey) string { return base64.StdEncoding.EncodeToString(pub) }

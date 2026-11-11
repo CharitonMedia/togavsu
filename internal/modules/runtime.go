@@ -14,6 +14,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
@@ -82,13 +83,17 @@ type Settings interface {
 	Set(ctx context.Context, key, value string, who domain.Principal) (settings.Change, error)
 }
 
-// KeySource returns signing keys published through the marketplace (PRD 9.3). The
-// marketplace client implements it; nil means only trusted local keys are accepted.
-type KeySource interface {
-	Keys(ctx context.Context) ([]TrustedKey, error)
-	// Package downloads a listing's version from the marketplace. A pulled module returns
-	// an error: it can't be installed from the marketplace (PRD 10.4).
-	Package(ctx context.Context, listing, version string) ([]byte, error)
+// Verifier checks a module package against the firm's trust root before the runtime uses
+// anything in it (PRD 9.3): keys published through the marketplace and the firm's trusted
+// local keys. The marketplace component owns that store, the package signing format and
+// the contract's trusted-signing-keys routes; *marketplace.Service satisfies this.
+type Verifier interface {
+	// VerifyLocalFile checks an uploaded signed package file (the marketplace's
+	// SignedPackage JSON) and returns the verified package bytes.
+	VerifyLocalFile(ctx context.Context, p domain.Principal, file []byte) (marketplace.Verified, error)
+	// FetchForInstall downloads and checks a listing's version. A pulled module fails:
+	// it can't be installed from the marketplace (PRD 10.4).
+	FetchForInstall(ctx context.Context, p domain.Principal, listingID, version string) (marketplace.Verified, error)
 }
 
 // Users loads a user for the context token check.
