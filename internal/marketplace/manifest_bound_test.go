@@ -69,3 +69,20 @@ func TestReadManifestBoundsEntryCount(t *testing.T) {
 		t.Fatalf("a manifest after max_package_entries entries: %v", err)
 	}
 }
+
+func TestReadManifestRefusesDuplicateManifest(t *testing.T) {
+	for _, second := range []string{ManifestName, "./" + ManifestName} {
+		pkg := gzPackage(t, func(tw *tar.Writer) {
+			man := []byte(`{"id":"matter-clock","name":"Matter Clock","version":"1.0.0","permissions":["matters:read","trust:write"]}`)
+			if err := tw.WriteHeader(&tar.Header{Name: second, Size: int64(len(man)), Typeflag: tar.TypeReg}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tw.Write(man); err != nil {
+				t.Fatal(err)
+			}
+		})
+		if _, err := ReadManifest(pkg); !errors.Is(err, ErrManifest) {
+			t.Fatalf("a package with a second manifest entry %q: %v", second, err)
+		}
+	}
+}

@@ -46,9 +46,10 @@ func ValidModuleID(id string) bool { return moduleID.MatchString(id) }
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
 
 // ReadManifest finds togavsu-module.yaml at the root of a package (a tar archive, gzip
-// compressed or not) and reads it. Call it only after Verify passes. The scan stops at
-// max_expanded_bytes of archive and max_package_entries entries, so a small compressed
-// package cannot expand without bound before its manifest.
+// compressed or not) and reads it. Call it only after Verify passes. The whole archive is
+// scanned, so a package with two manifest entries (plain or ./) is refused. The scan stops
+// at max_expanded_bytes of archive and max_package_entries entries, so a small compressed
+// package cannot expand without bound.
 //
 // ponytail: ceiling: the manifest must be written in YAML's JSON-compatible flow form
 // and is read with encoding/json; block-style YAML is refused as unreadable. Upgrade
@@ -66,26 +67,38 @@ func ReadManifest(pkg []byte) (Manifest, error) {
 	}
 	bounded := &io.LimitedReader{R: r, N: fixed.MaxExpandedBytes}
 	tr := tar.NewReader(bounded)
+	var body []byte
 	for entries := 0; ; entries++ {
 		if entries >= fixed.MaxPackageEntries {
 			return Manifest{}, ErrManifest
 		}
 		h, err := tr.Next()
+		if errors.Is(err, io.EOF) && bounded.N > 0 {
+			break
+		}
 		if err != nil {
 			return Manifest{}, ErrManifest
 		}
-		if h.Typeflag != tar.TypeReg || path.Clean(strings.TrimPrefix(h.Name, "./")) != ManifestName {
+		if path.Clean(strings.TrimPrefix(h.Name, "./")) != ManifestName {
 			continue
 		}
-		if h.Size > fixed.MaxManifestBytes {
+		// A second manifest entry is refused: a listing must show the permissions an
+		// extractor that writes entries in order would leave on disk.
+		if body != nil || h.Typeflag != tar.TypeReg || h.Size > fixed.MaxManifestBytes {
 			return Manifest{}, ErrManifest
 		}
-		body, err := io.ReadAll(io.LimitReader(tr, fixed.MaxManifestBytes+1))
+		body, err = io.ReadAll(io.LimitReader(tr, fixed.MaxManifestBytes+1))
 		if err != nil || int64(len(body)) > fixed.MaxManifestBytes {
 			return Manifest{}, ErrManifest
 		}
-		return ParseManifest(body)
+		if body == nil {
+			body = []byte{}
+		}
 	}
+	if body == nil {
+		return Manifest{}, ErrManifest
+	}
+	return ParseManifest(body)
 }
 
 // ParseManifest reads manifest text. Permissions may be plain scope strings or objects
