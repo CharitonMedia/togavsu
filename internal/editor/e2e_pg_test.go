@@ -18,7 +18,8 @@ import (
 // TestBrowserEditPageE2E drives the edit page in headless Chromium with the real browser
 // editor built at the pin (web/editor/e2e/edit-page.mjs): the LawCraft wrapper starts on
 // WebGL2, receives the document and the firm's details, takes typing, shows unsaved
-// changes in the page header, and its Ctrl+S save becomes version 2. It needs
+// changes in the page header, and its Ctrl+S save becomes version 2; New Pleading, opened
+// from Tell me, opens with the matter's court, county, case number and parties. It needs
 // TOGAVSU_EDITOR_DIST, CHROME and PUPPETEER_CORE, and runs when TOGAVSU_BROWSER_E2E is set.
 func TestBrowserEditPageE2E(t *testing.T) {
 	if os.Getenv("TOGAVSU_BROWSER_E2E") == "" {
@@ -59,6 +60,7 @@ func TestBrowserEditPageE2E(t *testing.T) {
 		Console    []string         `json:"console"`
 		Violations []string         `json:"violations"`
 		Missing    []string         `json:"missing"`
+		Pleading   map[string]any   `json:"pleading"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("e2e output %q: %v (%v)", raw, err, runErr)
@@ -78,7 +80,7 @@ func TestBrowserEditPageE2E(t *testing.T) {
 			t.Fatalf("the firm's details were refused in the editor: %v", m["error"])
 		}
 	}
-	for _, want := range []string{"wordcraft:ready", "wordcraft:dirty", "wordcraft:save", "togavsu:result"} {
+	for _, want := range []string{"wordcraft:ready", "wordcraft:dirty", "wordcraft:save", "togavsu:result", "togavsu:pleading"} {
 		if !types[want] {
 			t.Errorf("the page never saw %s: %v", want, out.Messages)
 		}
@@ -104,6 +106,15 @@ func TestBrowserEditPageE2E(t *testing.T) {
 		if m != "404 /favicon.ico" {
 			t.Fatalf("a request failed: %s (all: %v)", m, out.Missing)
 		}
+	}
+	// New Pleading opened in the browser editor with the matter's caption (PRD 8.20).
+	got, _ := json.Marshal(map[string]any{"courtType": out.Pleading["courtType"], "county": out.Pleading["county"], "caseNumber": out.Pleading["caseNumber"],
+		"firstSide": out.Pleading["firstSide"], "secondSide": out.Pleading["secondSide"]})
+	want := `{"caseNumber":"26AR-DR00123","county":"ADAIR","courtType":"CIRCUIT",` +
+		`"firstSide":{"names":[{"client":true,"name":"Jane Roe"}],"role":"Petitioner"},` +
+		`"secondSide":{"names":[{"client":false,"name":"John Roe"}],"role":"Respondent"}}`
+	if string(got) != want {
+		t.Fatalf("New Pleading in the browser opened with %s\nwant %s", got, want)
 	}
 	t.Logf("browser save: %s; console errors: %v; failed requests: %v", out.State, out.Console, out.Missing)
 }

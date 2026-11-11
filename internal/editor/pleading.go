@@ -153,6 +153,28 @@ var firmRequired = []struct{ key, from string }{
 	{"barNumber", "the responsible attorney's bar number"},
 }
 
+// captionSides are the caption's two sides from the matter, in law.pleadings.new's shape
+// ({"names": [{"name", "client"}], "role"}): the client parties on the firm's side, the
+// opposing parties on the other, in the order the firm's position gives. It also says
+// whether the matter has a client party and an opposing party.
+func captionSides(m MatterInfo) (first, second map[string]any, hasClient, hasOther bool) {
+	ours, theirs, weFirst := sides(m.ClientPosition)
+	us, them := []any{}, []any{}
+	for _, party := range m.Parties {
+		switch strings.ToLower(party.Role) {
+		case "client":
+			us = append(us, map[string]any{"name": party.Name, "client": true})
+		case "opposing party":
+			them = append(them, map[string]any{"name": party.Name, "client": false})
+		}
+	}
+	first, second = map[string]any{"names": us, "role": ours}, map[string]any{"names": them, "role": theirs}
+	if !weFirst {
+		first, second = second, first
+	}
+	return first, second, len(us) > 0, len(them) > 0
+}
+
 // PleadingParams are law.pleadings.new's parameters for the matter: court, county, case
 // number and parties from the matter, the firm block from firm settings. The caller's
 // access to the matter is checked by Matters.
@@ -174,21 +196,11 @@ func (s *Service) PleadingParams(ctx context.Context, p domain.Principal, matter
 	if err != nil {
 		return nil, err
 	}
-	ours, theirs, weFirst := sides(m.ClientPosition)
-	type name = map[string]any
-	var clients, others []any
-	for _, party := range m.Parties {
-		switch strings.ToLower(party.Role) {
-		case "client":
-			clients = append(clients, name{"name": party.Name, "client": true})
-		case "opposing party":
-			others = append(others, party.Name)
-		}
-	}
-	if len(clients) == 0 {
+	first, second, hasClient, hasOther := captionSides(m)
+	if !hasClient {
 		return nil, domain.Invalid("matter", "add the client to the matter's parties first")
 	}
-	if len(others) == 0 {
+	if !hasOther {
 		return nil, domain.Invalid("matter", "add the opposing party to the matter's parties first")
 	}
 	county := countyName(m.County)
@@ -206,12 +218,6 @@ func (s *Service) PleadingParams(ctx context.Context, p domain.Principal, matter
 		if firm[f.key] == nil {
 			return nil, domain.Invalid("firm", "New Pleading needs the "+f.from)
 		}
-	}
-	us := name{"names": clients, "role": ours}
-	them := name{"names": others, "role": theirs}
-	first, second := us, them
-	if !weFirst {
-		first, second = them, us
 	}
 	return map[string]any{
 		"type": req.Type, "title": title, "courtType": courtType(m.Court), "county": county,

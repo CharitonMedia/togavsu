@@ -4,8 +4,11 @@
 //! - `togavsu:run` (from the parent): `{ id, commands: [{ id, parameters }] }`. The edit page
 //!   gives LawCraft the firm's details (`law.firm.set`), the firm's court profiles
 //!   (`law.profiles.create`, and `law.profiles.approve` for the ones a person approved in
-//!   Togavsu) and the matter's court (`law.courts.save`) when the editor opens. No other
-//!   command is accepted here. The answer is `togavsu:result` `{ id, results, error }`.
+//!   Togavsu), the matter's court (`law.courts.save`) and the matter's caption for New
+//!   Pleading (`togavsu.pleadings.defaults`, see `caption.rs`) when the editor opens. No
+//!   other command is accepted here. The answer is `togavsu:result` `{ id, results, error }`.
+//! - `togavsu:pleading` (to the parent): `{ params }` each time a New Pleading window opens
+//!   and is filled from the matter: the window's `law.pleadings.new` parameters as filled.
 //! - `togavsu:profile` (to the parent): `{ profile }` whenever a court profile is created or
 //!   changed in the editor, so Togavsu stores it (unverified until a person approves it).
 
@@ -19,7 +22,7 @@ use wasm_bindgen::closure::Closure;
 use wordcraft_ui_egui::WordApp;
 
 /// The commands the host page may run in the editor.
-const HOST_COMMANDS: &[&str] = &["law.firm.set", "law.profiles.create", "law.profiles.approve", "law.courts.save"];
+const HOST_COMMANDS: &[&str] = &["law.firm.set", "law.profiles.create", "law.profiles.approve", "law.courts.save", crate::caption::COMMAND];
 
 // ponytail: court profiles saved in the editor are found by comparing LawCraft's store once
 // a second. Ceiling: up to a second's delay, and a get per profile per check. Upgrade: a
@@ -49,6 +52,8 @@ pub struct Extension {
     /// Each court profile as last seen, by id, without its verified flag.
     known: Option<BTreeMap<String, String>>,
     last_check: f64,
+    /// Fills New Pleading from the matter.
+    caption: crate::caption::Seeder,
 }
 
 impl Extension {
@@ -76,11 +81,15 @@ impl Extension {
         window.add_event_listener_with_callback("message", on_message.as_ref().unchecked_ref()).ok()?;
         // The listener lives as long as the page.
         on_message.forget();
-        Some(Self { parent, origin, queue, known: None, last_check: 0.0 })
+        Some(Self { parent, origin, queue, known: None, last_check: 0.0, caption: Default::default() })
     }
 
-    /// Run queued host commands, then report court profiles that changed in the editor.
+    /// Fill a New Pleading window that just opened, run queued host commands, then report
+    /// court profiles that changed in the editor.
     pub fn tick(&mut self, app: &mut WordApp) {
+        if let Some(params) = self.caption.tick(app) {
+            self.post(&json!({ "type": "togavsu:pleading", "params": params }));
+        }
         let jobs = std::mem::take(&mut *self.queue.borrow_mut());
         if !jobs.is_empty() {
             for job in jobs {
@@ -91,7 +100,8 @@ impl Extension {
                         error = Some(format!("{id} is not a command the host page may run"));
                         break;
                     }
-                    match app.execute(&id, params) {
+                    let done = if id == crate::caption::COMMAND { self.caption.set(&params) } else { app.execute(&id, params).map_err(|e| e.to_string()) };
+                    match done {
                         Ok(v) => results.push(v),
                         Err(e) => {
                             error = Some(format!("{id}: {e}"));

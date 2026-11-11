@@ -37,7 +37,7 @@ install -m 0755 "$lawcraft/target/release/wordcraft-cli" "$out/wordcraft-cli"
 
 mkdir -p "$app/src"
 cp "$here/Cargo.toml" "$here/Trunk.toml" "$here/index.html" "$app/"
-cp "$here/src/main.rs" "$here/src/togavsu.rs" "$app/src/"
+cp "$here/src/main.rs" "$here/src/togavsu.rs" "$here/src/caption.rs" "$app/src/"
 cp "$lawcraft/apps/wordcraft-web/src/web.rs" "$app/src/web.rs"
 # A patch that no longer applies (the pin moved) stops the build rather than guessing.
 patch --forward --batch --no-backup-if-mismatch -p1 -d "$app/src" < "$here/web.patch"

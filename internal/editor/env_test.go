@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -321,21 +322,38 @@ func (e *env) current(id domain.ID) (files.FileView, files.VersionView, []byte) 
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	d, err := e.files.OpenForProcessing(e.ctx, e.admin, id, v.ID)
+	return f, v, e.versionBytes(id, v.ID)
+}
+
+// versionBytes are one stored version's bytes, as the file store reads them back.
+func (e *env) versionBytes(id, versionID domain.ID) []byte {
+	e.t.Helper()
+	d, err := e.files.OpenForProcessing(e.ctx, e.admin, id, versionID)
 	if err != nil {
 		e.t.Fatal(err)
 	}
 	defer d.Close()
-	var sb strings.Builder
-	buf := make([]byte, 32<<10)
-	for {
-		n, err := d.Body.Read(buf)
-		sb.Write(buf[:n])
-		if err != nil {
-			break
-		}
+	b, err := io.ReadAll(d.Body)
+	if err != nil {
+		e.t.Fatal(err)
 	}
-	return f, v, []byte(sb.String())
+	return b
+}
+
+// versionUnchanged fails unless the file's version 1 still has the bytes it was created
+// with: its stored SHA-256 and the SHA-256 of the bytes read back both equal want's.
+func (e *env) versionUnchanged(id domain.ID, want []byte) {
+	e.t.Helper()
+	sum := sha256.Sum256(want)
+	hash := hex.EncodeToString(sum[:])
+	vs := e.versions(id)
+	if len(vs) == 0 || vs[0].Number != 1 {
+		e.t.Fatalf("versions of %s = %+v", id, vs)
+	}
+	got := sha256.Sum256(e.versionBytes(id, vs[0].ID))
+	if vs[0].SHA256 != hash || hex.EncodeToString(got[:]) != hash {
+		e.t.Fatalf("version 1 changed: stored sha256 %s, bytes %x, created with %s", vs[0].SHA256, got, hash)
+	}
 }
 
 // text is the document's plain text as wordcraft-cli reads it.

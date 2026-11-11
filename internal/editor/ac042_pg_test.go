@@ -28,14 +28,58 @@ var mergeRun = []Command{
 	{ID: "mailings.finish"},
 }
 
-// AC-042, first clause: an editor run fills a document's merge fields and saves a new version.
+// matterLetter is a DOCX letter with MERGEFIELDs for the matter's client, case number
+// and county, made by LawCraft.
+func (e *env) matterLetter() []byte {
+	return e.doc(
+		Command{ID: "text.insert", Parameters: map[string]any{"text": "Dear "}},
+		Command{ID: "insert.field", Parameters: map[string]any{"instr": "MERGEFIELD ClientName"}},
+		Command{ID: "text.insert", Parameters: map[string]any{"text": ", case "}},
+		Command{ID: "insert.field", Parameters: map[string]any{"instr": "MERGEFIELD CaseNumber"}},
+		Command{ID: "text.insert", Parameters: map[string]any{"text": " in "}},
+		Command{ID: "insert.field", Parameters: map[string]any{"instr": "MERGEFIELD County"}},
+		Command{ID: "text.insert", Parameters: map[string]any{"text": " County is set."}},
+	)
+}
+
+// matterMergeRun is an editor run whose merge values are the synthetic matter's own, read
+// through the editor's Matters as the caller (the client party, case number and county).
+func (e *env) matterMergeRun(p domain.Principal, matterID domain.ID) ([]Command, MatterInfo) {
+	e.t.Helper()
+	m, err := e.svc.matters.Matter(e.ctx, p, matterID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	client := ""
+	for _, party := range m.Parties {
+		if party.Role == "client" {
+			client = party.Name
+			break
+		}
+	}
+	if client == "" || m.CaseNumber == "" || m.County == "" {
+		e.t.Fatalf("the synthetic matter lacks merge values: %+v", m)
+	}
+	csv := "ClientName,CaseNumber,County\n" + client + "," + m.CaseNumber + "," + m.County
+	return []Command{
+		{ID: "mailings.start", Parameters: map[string]any{"kind": "letters"}},
+		{ID: "mailings.recipients", Parameters: map[string]any{"csv": csv}},
+		{ID: "mailings.finish"},
+	}, m
+}
+
+// AC-042, first clause (AC-042-P1): an editor run fills a document's merge fields with the
+// matter's values and saves a new version; the prior version is unchanged.
 func TestPGEditorRunFillsMergeFieldsAsANewVersion(t *testing.T) {
 	e := newEnv(t)
-	f := e.create(e.staff, "Hearing letter.docx", e.matter, e.letterWithMergeFields(), false)
-	if txt := e.text(e.letterWithMergeFields(), "docx"); strings.Contains(txt, "Jane Roe") {
+	letter := e.matterLetter()
+	f := e.create(e.staff, "Case letter.docx", e.matter, letter, false)
+	run, m := e.matterMergeRun(e.staff, e.matter)
+	want := "Dear Jane Roe, case " + m.CaseNumber + " in " + m.County + " County is set."
+	if txt := e.text(letter, "docx"); strings.Contains(txt, "Jane Roe") || strings.Contains(txt, m.CaseNumber) {
 		t.Fatalf("the template already holds the values: %q", txt)
 	}
-	res, err := e.svc.Run(e.ctx, e.staff, f.ID, RunRequest{Commands: mergeRun, SaveAs: "version"})
+	res, err := e.svc.Run(e.ctx, e.staff, f.ID, RunRequest{Commands: run, SaveAs: "version"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,12 +89,20 @@ func TestPGEditorRunFillsMergeFieldsAsANewVersion(t *testing.T) {
 	if !strings.Contains(res.Version.Note, "mailings.recipients") {
 		t.Fatalf("version note = %q", res.Version.Note)
 	}
-	_, _, b := e.current(f.ID)
+	_, cur, b := e.current(f.ID)
+	if cur.ID != res.Version.ID {
+		t.Fatalf("current version = %s, run saved %s", cur.ID, res.Version.ID)
+	}
 	if err := CheckDOCX(b); err != nil {
 		t.Fatal(err)
 	}
-	if txt := e.text(b, "docx"); !strings.Contains(txt, "Dear Jane Roe, your hearing is on December 3 2026.") {
-		t.Fatalf("merged text = %q", txt)
+	if txt := e.text(b, "docx"); !strings.Contains(txt, want) {
+		t.Fatalf("merged text = %q, want the matter's values %q", txt, want)
+	}
+	// The prior version keeps its bytes and hash, and still has the unfilled fields.
+	e.versionUnchanged(f.ID, letter)
+	if txt := e.text(e.versionBytes(f.ID, e.versions(f.ID)[0].ID), "docx"); strings.Contains(txt, m.CaseNumber) {
+		t.Fatalf("version 1 holds the merged values: %q", txt)
 	}
 	rows := e.audits("file", f.ID, "editor_run")
 	if len(rows) != 1 || rows[0].ActorID != e.staff.UserID {
@@ -153,7 +205,9 @@ func TestPGEditorRunFailuresAreReportedAndAudited(t *testing.T) {
 // AC-042, last clause: a conversion to PDF makes a new file linked to its source.
 func TestPGConversionToPDFIsANewLinkedFile(t *testing.T) {
 	e := newEnv(t)
-	src := e.create(e.staff, "Petition.docx", e.matter, e.doc(Command{ID: "text.insert", Parameters: map[string]any{"text": "Synthetic petition text."}}), false)
+	petition := e.doc(Command{ID: "text.insert", Parameters: map[string]any{"text": "Synthetic petition text."}})
+	src := e.create(e.staff, "Petition.docx", e.matter, petition, false)
+	e.versionUnchanged(src.ID, petition)
 	res, err := e.svc.Convert(e.ctx, e.staff, src.ID, "pdf")
 	if err != nil {
 		t.Fatal(err)
@@ -175,9 +229,11 @@ func TestPGConversionToPDFIsANewLinkedFile(t *testing.T) {
 	if txt := e.text(pdf, "pdf"); !strings.Contains(txt, "Synthetic petition text.") {
 		t.Fatalf("the PDF text = %q", txt)
 	}
+	// AC-042-F2: the source's hash is the one recorded before the conversion.
 	if n := len(e.versions(src.ID)); n != 1 {
 		t.Fatalf("converting changed the source: %d versions", n)
 	}
+	e.versionUnchanged(src.ID, petition)
 	if rows := e.audits("file", src.ID, "conversion"); len(rows) != 1 {
 		t.Fatalf("conversion audit = %+v", rows)
 	}
@@ -186,6 +242,7 @@ func TestPGConversionToPDFIsANewLinkedFile(t *testing.T) {
 	if err != nil || again.File.Name != "Petition-2.pdf" {
 		t.Fatalf("second conversion = %+v, %v", again.File, err)
 	}
+	e.versionUnchanged(src.ID, petition)
 }
 
 func TestPGConversionsToEveryFormatAndTheirRestrictions(t *testing.T) {

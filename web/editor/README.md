@@ -16,8 +16,16 @@ build; `internal/editor` is everything the core does with it.
   if it no longer applies, the build stops.
 - `src/togavsu.rs`: `togavsu:run` (the edit page gives LawCraft the firm's details, the
   firm's court profiles and the matter's court through `law.firm.set`,
-  `law.profiles.create`/`approve` and `law.courts.save`; nothing else is accepted) and
+  `law.profiles.create`/`approve` and `law.courts.save`, and the matter's caption through
+  `togavsu.pleadings.defaults`; nothing else is accepted) and
   `togavsu:profile` (a court profile saved in the editor goes back to Togavsu, unverified).
+- `src/caption.rs`: New Pleading from the matter. The page sends
+  `togavsu.pleadings.defaults` (`law.pleadings.new`'s own court, county, case number and
+  side fields, from `internal/editor` `Context`); each time New Pleading opens, the wrapper
+  fills its window through law-ui's public `PleadingForm` and posts `togavsu:pleading`
+  with the filled parameters. LawCraft at the pin has no command that seeds that window.
+- `test.sh LAWCRAFT_CHECKOUT`: places the wrapper as `build.sh` does and runs its native
+  tests (`cargo test -p togavsu-editor`) against LawCraft's crates at the pin.
 - `build.sh LAWCRAFT_CHECKOUT OUT_DIR`: checks the checkout is exactly the pinned commit
   and unmodified, builds `wordcraft-cli` against LawCraft's own `Cargo.lock` (`--locked`),
   places the wrapper in the checkout as `apps/togavsu-editor`, builds it with `trunk build
@@ -33,6 +41,7 @@ git clone https://github.com/CharitonMedia/LawCraft /tmp/lawcraft
 git -C /tmp/lawcraft checkout 770a8fab12392485c0c2789fb254da7d9296df4d
 rustup target add wasm32-unknown-unknown    # and trunk 0.21 on PATH
 web/editor/build.sh /tmp/lawcraft /tmp/lawcraft-out
+web/editor/test.sh /tmp/lawcraft
 
 docker run -d --name tgpg -e POSTGRES_PASSWORD=synthetic -e POSTGRES_USER=togavsu -p 55432:5432 postgres:17
 export TOGAVSU_TEST_DATABASE_URL='postgres://togavsu:synthetic@localhost:55432/postgres?sslmode=disable'

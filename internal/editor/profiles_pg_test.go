@@ -147,8 +147,17 @@ func TestPGEditContextGivesLawCraftTheFirmAndTheMatter(t *testing.T) {
 	for _, cmd := range c.Commands {
 		ids = append(ids, cmd.ID)
 	}
-	if strings.Join(ids, ",") != "law.firm.set,law.profiles.create,law.profiles.approve,law.courts.save" {
+	if strings.Join(ids, ",") != "law.firm.set,law.profiles.create,law.profiles.approve,law.courts.save,"+PleadingDefaults {
 		t.Fatalf("open commands = %v", ids)
+	}
+	// New Pleading's caption from the matter: court type, county, case number and both
+	// sides, our client (the petitioner here) on the first side.
+	defaults, _ := json.Marshal(c.Commands[4].Parameters)
+	want := `{"caseNumber":"26AR-DR00123","county":"ADAIR","courtType":"CIRCUIT",` +
+		`"firstSide":{"names":[{"client":true,"name":"Jane Roe"}],"role":"Petitioner"},` +
+		`"secondSide":{"names":[{"client":false,"name":"John Roe"}],"role":"Respondent"},"weRepresent":"first"}`
+	if string(defaults) != want {
+		t.Fatalf("New Pleading defaults = %s\nwant %s", defaults, want)
 	}
 	firm := c.Commands[0].Parameters
 	if firm["firmName"] != "Synthetic Law LLC" || firm["city"] != "Kirksville" || firm["zip"] != "63501" || firm["attorneyName"] != "Ada Example" || firm["barNumber"] != "12345" {
@@ -156,6 +165,27 @@ func TestPGEditContextGivesLawCraftTheFirmAndTheMatter(t *testing.T) {
 	}
 	if c.Matter == nil || c.Matter.CaseNumber != "26AR-DR00123" || c.Matter.County != "ADAIR" || c.Matter.CourtType != "CIRCUIT" || c.Author != "Sam Staff" {
 		t.Fatalf("context = %+v", c)
+	}
+	// The defaults are law.pleadings.new's own fields: with the firm block and a title,
+	// LawCraft writes the matter's caption from them.
+	params := map[string]any{"type": "motion", "title": "Motion to Continue", "firm": firm}
+	for k, v := range c.Commands[4].Parameters {
+		if k != "weRepresent" {
+			params[k] = v
+		}
+	}
+	out, err := e.cli.Run(e.ctx, RunInput{Commands: []Command{{ID: "law.pleadings.new", Parameters: params}}, Out: "txt"})
+	if err != nil {
+		t.Fatalf("LawCraft refused New Pleading from the defaults: %v", err)
+	}
+	for _, s := range []string{"26AR-DR00123", "ADAIR", "JANE ROE", "JOHN ROE"} {
+		if !strings.Contains(strings.ToUpper(string(out)), s) {
+			t.Fatalf("the caption lacks %s: %s", s, out)
+		}
+	}
+	// Togavsu's own command never reaches LawCraft in a run.
+	if _, err := e.svc.Run(e.ctx, e.staff, f.ID, RunRequest{SaveAs: "version", Commands: []Command{c.Commands[4]}}); code(err) != CodeCommandRefused {
+		t.Fatalf("%s in a run = %v", PleadingDefaults, err)
 	}
 	// Run in LawCraft as the browser editor would: the firm block and the court are accepted.
 	if _, err := e.cli.Run(e.ctx, RunInput{Commands: []Command{c.Commands[0], c.Commands[3]}, Out: "txt"}); err != nil {

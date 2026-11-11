@@ -42,8 +42,9 @@ func refused(format string, args ...any) *domain.APIError {
 // deniedFamilies are whole command families that act outside the document: files and
 // windows (file.*), the app's view and options (view.*, tools.*), macros and the control
 // channel (developer.*), speech (readAloud.*), embedded objects read from disk (object.*)
-// and link targets (link.*).
-var deniedFamilies = []string{"file.", "view.", "tools.", "developer.", "readAloud.", "object.", "link."}
+// and link targets (link.*). Togavsu's own editor commands (togavsu.*, PleadingDefaults)
+// are for the browser editor's window, not the document, and never reach LawCraft.
+var deniedFamilies = []string{"file.", "view.", "tools.", "developer.", "readAloud.", "object.", "link.", "togavsu."}
 
 // deniedCommands read or write a file or a folder by path, or change a store outside the
 // document (court profiles, saved courts and firm details are Togavsu records, written

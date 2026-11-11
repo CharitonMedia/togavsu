@@ -1,8 +1,10 @@
 // End-to-end check of the edit page with the real browser editor (PRD 8.20, AC-041):
 // headless Chromium (SwiftShader WebGL2) loads /files/{id}/edit, the LawCraft wrapper
 // reports wordcraft:ready, the page sends the current version in and the firm's
-// details (togavsu:run), a person types and presses Ctrl+S, and the page stores the
-// save as a new version. Run by internal/editor TestBrowserEditPageE2E.
+// details and the matter's caption (togavsu:run), a person types and presses Ctrl+S, and
+// the page stores the save as a new version; then New Pleading, opened from Tell me
+// (Alt+Q), opens filled from the matter (togavsu:pleading). Run by internal/editor
+// TestBrowserEditPageE2E.
 //
 // usage: node edit-page.mjs BASE_URL FILE_ID USER SHOT_DIR
 // env:   CHROME (browser binary), PUPPETEER_CORE (the puppeteer-core package folder)
@@ -13,7 +15,7 @@ const [base, fileId, user, shots] = process.argv.slice(2);
 const require = createRequire(path.join(process.env.PUPPETEER_CORE, "package.json"));
 const puppeteer = require("puppeteer-core");
 
-const out = { messages: [], console: [], violations: [], missing: [], state: "", saved: false };
+const out = { messages: [], console: [], violations: [], missing: [], state: "", saved: false, pleading: null };
 const browser = await puppeteer.launch({
   executablePath: process.env.CHROME,
   headless: true,
@@ -30,7 +32,7 @@ try {
     window.__seen = [];
     window.addEventListener("message", (e) => {
       const d = e.data || {};
-      window.__seen.push({ type: d.type, error: d.error || null, name: d.name || null });
+      window.__seen.push({ type: d.type, error: d.error || null, name: d.name || null, params: d.params || null });
     });
     document.addEventListener("securitypolicyviolation", (e) => {
       (window.__csp = window.__csp || []).push(e.violatedDirective + " " + e.blockedURI);
@@ -62,6 +64,19 @@ try {
   out.state = await page.$eval("#state", (e) => e.textContent);
   out.saved = true;
   if (shots) await page.screenshot({ path: path.join(shots, "edit-saved.png") });
+  // New Pleading from Tell me, as a person opens it: the wrapper fills it from the matter.
+  await page.keyboard.down("Alt");
+  await page.keyboard.press("KeyQ");
+  await page.keyboard.up("Alt");
+  await new Promise((r) => setTimeout(r, 1000));
+  await page.keyboard.type("New Pleading");
+  await new Promise((r) => setTimeout(r, 1000));
+  if (shots) await page.screenshot({ path: path.join(shots, "tell-me.png") });
+  await page.keyboard.press("Enter");
+  await until(() => seen("togavsu:pleading"), 15000, "New Pleading filled from the matter");
+  await new Promise((r) => setTimeout(r, 1500));
+  if (shots) await page.screenshot({ path: path.join(shots, "new-pleading.png") });
+  out.pleading = await page.evaluate(() => (window.__seen.filter((m) => m.type === "togavsu:pleading")[0] || {}).params || null);
   out.messages = await page.evaluate(() => window.__seen);
   out.violations = await page.evaluate(() => window.__csp || []);
 } catch (e) {

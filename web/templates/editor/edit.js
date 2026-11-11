@@ -2,9 +2,10 @@
 // current version in (wordcraft:open), stores each save (wordcraft:save) as a new
 // version, shows unsaved changes (wordcraft:dirty), keeps the edit lock renewed, and
 // says so when the browser cannot run the editor (wordcraft:failed). Togavsu's wrapper
-// adds togavsu:run (LawCraft commands the page asks for on open: the firm's details,
-// court profiles and the matter's court) and togavsu:profile (a court profile saved in
-// the editor, written back to Togavsu unverified).
+// adds togavsu:run (commands the page asks for on open: the firm's details, court
+// profiles, the matter's court, and the matter's caption New Pleading opens with) and
+// togavsu:profile (a court profile saved in the editor, written back to Togavsu
+// unverified).
 (function () {
   "use strict";
   var root = document.getElementById("editor");

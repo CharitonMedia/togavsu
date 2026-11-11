@@ -3,7 +3,7 @@
 //! This is LawCraft's `wordcraft-web` app at the pinned commit with two Togavsu
 //! additions: the LawCraft add-in (`wordcraft-law` and `wordcraft-law-ui`) is installed and
 //! turned on, and, in host mode (`?host=parent`), the edit page can run a few LawCraft
-//! commands (`togavsu:run`) and hears about court profiles saved in the editor
+//! commands (`togavsu:run`), New Pleading opens filled from the matter (`caption.rs`), and the page hears about court profiles saved in the editor
 //! (`togavsu:profile`). The app's own bridge (`wordcraft:ready`, `open`, `save`, `dirty`,
 //! `failed`) is LawCraft's `host.rs`, used unchanged. `web.rs` is made at build time from
 //! LawCraft's and `web.patch` (build.sh).
@@ -19,6 +19,8 @@ mod save_fallback;
 #[cfg(target_arch = "wasm32")]
 #[path = "../../wordcraft-web/src/host.rs"]
 mod host;
+#[cfg(any(target_arch = "wasm32", test))]
+mod caption;
 #[cfg(target_arch = "wasm32")]
 mod togavsu;
 #[cfg(target_arch = "wasm32")]
