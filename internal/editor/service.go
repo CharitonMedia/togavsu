@@ -125,6 +125,18 @@ type current struct {
 	Bytes   []byte
 }
 
+// ext is the format of the current version's bytes. A restored older version keeps its
+// own format, so the file's extension can name another one (versionExt).
+func (c current) ext() string { return versionExt(c.Version.MediaType, c.File.Extension) }
+
+// name is the file's name with the extension of the current version's format.
+func (c current) name() string {
+	if ext := c.ext(); ext != normExt(c.File.Extension) {
+		return baseName(c.File.Name) + "." + ext
+	}
+	return c.File.Name
+}
+
 // maxDocumentBytes bounds what the editor loads into memory for one run.
 const maxDocumentBytes = 256 << 20
 

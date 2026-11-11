@@ -62,7 +62,7 @@ func (s *Service) Run(ctx context.Context, p domain.Principal, fileID domain.ID,
 	if err != nil {
 		return RunResult{}, err
 	}
-	curExt := versionExt(cur.Version.MediaType, cur.File.Extension)
+	curExt := cur.ext()
 	if !Editable(curExt) {
 		return RunResult{}, domain.Invalid("file", "editor runs work on documents the editor opens (DOCX, DOC, ODT, RTF, HTML, Markdown, text)")
 	}
@@ -182,14 +182,15 @@ func (s *Service) Convert(ctx context.Context, p domain.Principal, fileID domain
 	if err != nil {
 		return ConversionResult{}, err
 	}
-	if !Editable(cur.File.Extension) {
+	ext := cur.ext()
+	if !Editable(ext) {
 		return ConversionResult{}, domain.Invalid("file", "only documents the editor opens (DOCX, DOC, ODT, RTF, HTML, Markdown, text) can be converted")
 	}
-	if sameFormat(cur.File.Extension, target) {
+	if sameFormat(ext, target) {
 		return ConversionResult{}, domain.Invalid("format", "the file is already in that format")
 	}
 	summary := map[string]any{"format": format, "from_version": cur.Version.ID}
-	out, err := s.cli.Convert(ctx, cur.Bytes, cur.File.Extension, target)
+	out, err := s.cli.Convert(ctx, cur.Bytes, ext, target)
 	if err == nil {
 		err = checkOutput(out, target)
 	}
@@ -320,7 +321,7 @@ func (s *Service) Document(ctx context.Context, p domain.Principal, fileID domai
 	if err := s.holdsLock(ctx, p, fileID); err != nil {
 		return "", nil, err
 	}
-	return cur.File.Name, cur.Bytes, nil
+	return cur.name(), cur.Bytes, nil
 }
 
 // Preview adds a PDF preview rendition for a version of a file in a format the editor

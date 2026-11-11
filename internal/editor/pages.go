@@ -183,7 +183,14 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if !Editable(f.Extension) {
+	ext := normExt(f.Extension)
+	if f.CurrentVersionID != nil {
+		// A restored older version keeps its own format (versionExt).
+		if v, err := h.Svc.files.Version(ctx, p, id, *f.CurrentVersionID); err == nil {
+			ext = versionExt(v.MediaType, f.Extension)
+		}
+	}
+	if !Editable(ext) {
 		data.Mode, data.Notice = "readonly", "The editor opens DOCX, DOC, ODT, RTF, HTML, Markdown and text files. Preview or download this one."
 		h.render(w, http.StatusOK, "edit.html", data)
 		return

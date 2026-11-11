@@ -97,7 +97,7 @@ func (s *Service) checkEditable(ctx context.Context, p domain.Principal, fileID 
 	if err != nil {
 		return err
 	}
-	if !Editable(c.File.Extension) {
+	if !Editable(c.ext()) {
 		return domain.Invalid("file", "the editor opens DOCX, DOC, ODT, RTF, HTML, Markdown and text files; preview or download this one")
 	}
 	return nil

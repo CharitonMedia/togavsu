@@ -203,7 +203,13 @@ func tid(t *testing.T) domain.ID {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	cli := testCLI(t)
+	return newEnvWith(t, testCLI(t))
+}
+
+// newEnvWith is newEnv with a given wordcraft-cli runner (fakeCLI for tests that need
+// no LawCraft).
+func newEnvWith(t *testing.T, cli *CLI) *env {
+	t.Helper()
 	pool := editorDB(t)
 	ctx := context.Background()
 	e := &env{t: t, ctx: ctx, pool: pool, cli: cli, clock: &clock{t: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)}}
