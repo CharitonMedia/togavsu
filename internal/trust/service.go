@@ -21,11 +21,12 @@ import (
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
-// Migrations returns the trust migrations (range 400-499). The core applies them after
-// db.Embedded() with owner core.
-// ponytail: ceiling: the trust migration ships from this package because internal/db is
-// the integration lead's path. Upgrade path: move the file into internal/db/migrations
-// unchanged (same version and checksum). Trigger: the finance integration.
+// Migrations returns the trust migrations (range 400-499). core.Migrate applies them after
+// db.Embedded() and billing's, with owner core.
+// ponytail: ceiling: the migration ships from this package, so a tool that applies only
+// db.Embedded() gets no trust tables. Upgrade path: move the file into
+// internal/db/migrations unchanged (same version and checksum) and return none here.
+// Trigger: a second program applies the schema without importing internal/core.
 func Migrations() ([]db.Migration, error) {
 	sub, err := fs.Sub(migrationFS, "migrations")
 	if err != nil {

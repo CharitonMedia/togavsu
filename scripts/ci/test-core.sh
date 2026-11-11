@@ -23,7 +23,7 @@ if ! go test -count=1 -timeout 15m $pkgs >"$log" 2>&1; then
 fi
 cat "$log"
 # A skipped Postgres test is a failure here: CI must exercise the database paths.
-go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ >"$log" 2>&1 || { cat "$log"; exit 1; }
+go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup|Finance|Trust|Billing' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ ./internal/trust/ ./internal/billing/ >"$log" 2>&1 || { cat "$log"; exit 1; }
 if grep -E -- '--- SKIP' "$log"; then
   echo "a database test was skipped" >&2
   exit 1

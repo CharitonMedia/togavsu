@@ -104,12 +104,8 @@ func itemErr(i int, err error) error {
 	return err
 }
 
-// checkBulk applies api.bulk_batch_max. The PRD names no cap, so a registry without the
-// key applies none.
-// ponytail: ceiling: the API contract lists api.bulk_batch_max (starting value 500) but
-// internal/settings/definitions.go does not declare it yet, so batches are uncapped.
-// Upgrade path: the integration lead adds the key to the registry; this reads it with no
-// code change. Trigger: the finance integration.
+// checkBulk applies api.bulk_batch_max (registry default 500). A registry without the
+// key, as in package tests, applies none.
 func (s *Service) checkBulk(ctx context.Context, n int) error {
 	max, err := s.intSetting(ctx, "api.bulk_batch_max")
 	if errors.Is(err, settings.ErrUnknown) {

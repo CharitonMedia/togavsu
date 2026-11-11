@@ -71756,6 +71756,7 @@
           "notes.page_size",
           "mail.smtp_host",
           "mail.smtp_port",
+          "mail.smtp_timeout_seconds",
           "mail.smtp_username",
           "mail.smtp_starttls",
           "mail.route_through_email_module",
@@ -81955,6 +81956,17 @@
       "minimum": 1,
       "maximum": 65535,
       "help": "SMTP port. Starting value is 587 because the PRD requires SMTP settings and does not name a port."
+    },
+    {
+      "key": "mail.smtp_timeout_seconds",
+      "type": "integer",
+      "tab": "notifications_and_mail",
+      "default": 60,
+      "secret": false,
+      "locked": false,
+      "minimum": 1,
+      "maximum": 600,
+      "help": "Longest one system mail send may take. A send cut off is retried later."
     },
     {
       "key": "mail.smtp_username",

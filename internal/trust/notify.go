@@ -12,6 +12,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 	"github.com/CharitonMedia/togavsu/internal/settings"
+	"github.com/CharitonMedia/togavsu/internal/smtpsend"
 )
 
 // recipient is one person a trust event tells. sees is false when the matter's wall (or
@@ -417,14 +418,22 @@ func (s *Service) DeliverMail(ctx context.Context, sender Sender) (int, error) {
 		if m.SentAt != nil {
 			continue
 		}
+		if ctx.Err() != nil {
+			// Shutting down: the rows not yet tried stay as they are for the next run.
+			return sent, ctx.Err()
+		}
 		now := micro(s.now())
 		if err := sender.Send(ctx, m.To, m.Subject, m.Body); err != nil {
-			if _, err := s.db.ExecContext(ctx, `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, err.Error(), now, string(m.ID)); err != nil {
+			// A send cut off by ctx's deadline or cancellation is still recorded, so the
+			// admin sees why the row is waiting.
+			if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, err.Error(), now, string(m.ID)); err != nil {
 				return sent, err
 			}
 			continue
 		}
-		if _, err := s.db.ExecContext(ctx, `UPDATE mail_outbox SET attempts = attempts + 1, sent_at = $1, last_error = '', updated_at = $1 WHERE id = $2`, now, string(m.ID)); err != nil {
+		// The server took the message, so it is recorded as sent even when shutdown
+		// cancels ctx now; otherwise the next start would send it a second time.
+		if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, sent_at = $1, last_error = '', updated_at = $1 WHERE id = $2`, now, string(m.ID)); err != nil {
 			return sent, err
 		}
 		sent++
@@ -458,7 +467,13 @@ func (m SMTP) Send(ctx context.Context, to, subject, body string) error {
 	}
 	msg := "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + headerSafe(subject) +
 		"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.ReplaceAll(body, "\n", "\r\n")
-	return smtp.SendMail(net.JoinHostPort(host, port), auth, from, []string{to}, []byte(msg))
+	limit, err := time.ParseDuration(get("mail.smtp_timeout_seconds") + "s")
+	if err != nil {
+		return fmt.Errorf("trust: system mail is not configured (mail.smtp_timeout_seconds)")
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	return smtpsend.Send(ctx, net.JoinHostPort(host, port), get("mail.smtp_starttls") != "false", auth, from, []string{to}, []byte(msg))
 }
 
 func headerSafe(s string) string {
