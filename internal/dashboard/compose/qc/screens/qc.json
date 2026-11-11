@@ -325,7 +325,7 @@
   {
    "name": "admin-09-user-edit",
    "role": "admin",
-   "url": "/admin/users/01a1c944-dc0d-7b4a-9ef2-3035f90fa4d1",
+   "url": "/admin/users/01a1ca91-a3fe-71a0-8113-72f1f876acbb",
    "width": 1366,
    "status": 200,
    "expect": 200,
@@ -516,7 +516,7 @@
   {
    "name": "staff-12-user-edit-refused",
    "role": "staff",
-   "url": "/admin/users/01a1c944-dc0d-7b4a-9ef2-3035f90fa4d1",
+   "url": "/admin/users/01a1ca91-a3fe-71a0-8113-72f1f876acbb",
    "width": 1366,
    "status": 403,
    "expect": 403,
