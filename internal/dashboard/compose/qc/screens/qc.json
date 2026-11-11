@@ -323,6 +323,28 @@
    "ok": true
   },
   {
+   "name": "admin-09-user-edit",
+   "role": "admin",
+   "url": "/admin/users/01a1c944-dc0d-7b4a-9ef2-3035f90fa4d1",
+   "width": 1366,
+   "status": 200,
+   "expect": 200,
+   "title": "Administrative · Ada Attorney · Synthetic Firm",
+   "problems": [],
+   "ok": true
+  },
+  {
+   "name": "admin-10-profile",
+   "role": "admin",
+   "url": "/me/profile",
+   "width": 1366,
+   "status": 200,
+   "expect": 200,
+   "title": "My profile · Synthetic Firm",
+   "problems": [],
+   "ok": true
+  },
+  {
    "name": "attorney-01-home",
    "role": "attorney",
    "url": "/",
@@ -481,6 +503,28 @@
    "ok": true
   },
   {
+   "name": "staff-11-profile",
+   "role": "staff",
+   "url": "/me/profile",
+   "width": 1366,
+   "status": 200,
+   "expect": 200,
+   "title": "My profile · Synthetic Firm",
+   "problems": [],
+   "ok": true
+  },
+  {
+   "name": "staff-12-user-edit-refused",
+   "role": "staff",
+   "url": "/admin/users/01a1c944-dc0d-7b4a-9ef2-3035f90fa4d1",
+   "width": 1366,
+   "status": 403,
+   "expect": 403,
+   "title": "Not available · Synthetic Firm",
+   "problems": [],
+   "ok": true
+  },
+  {
    "name": "staff-08-phone-home",
    "role": "staff",
    "url": "/",
@@ -506,7 +550,7 @@
   {
    "name": "staff-10-deadlines-click-through",
    "role": "staff",
-   "url": "/calendar/deadlines?from_date=2026-11-10&to_date=2026-11-18&status=open&include_overdue=true",
+   "url": "/calendar/deadlines?from_date=2026-11-11&to_date=2026-11-18&status=open&include_overdue=true",
    "width": 1366,
    "status": 200,
    "expect": 200,

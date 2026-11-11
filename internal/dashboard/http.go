@@ -23,8 +23,8 @@ type Handler struct {
 	CSRF func(*http.Request) string
 	// Static serves web/static under /ui/static/.
 	Static fs.FS
-	// Admin panels supplied by other domains, shown on their admin tabs.
-	Users func(r *http.Request) ([]domain.User, error)
+	// Accounts backs Users and roles, the Agents and API token panel and My profile.
+	Accounts *Accounts
 	// Audit returns recent audit rows as p may read them (walls, attorney-only redaction).
 	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
 

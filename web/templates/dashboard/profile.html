@@ -1,11 +1,65 @@
 {{define "profile.html"}}{{template "shell-top" .}}{{with .Page}}
-<section class="card"><dl class="facts">
-  <dt>Name</dt><dd>{{.User.Name}}</dd>
-  <dt>Initials</dt><dd>{{$.Initials}}</dd>
-  <dt>Email</dt><dd>{{.User.Email}}</dd>
-  <dt>Roles</dt><dd>{{.Roles}}</dd>
-</dl></section>
-<section class="card"><h2>Security</h2>
-<p>Password change, two-factor reset with new recovery codes, and your API tokens use the account API (/api/v1/me/password, /api/v1/me/totp/reset, /api/v1/me/recovery-codes, /api/v1/api-tokens).</p>
+{{with .Issued}}<section class="card issued" role="status" id="issued-token"><h2>Token issued: {{.Name}}</h2>
+<p>Copy this token now. It is shown only on this page and can't be shown again.</p>
+<p><code class="secret" id="token-secret">{{.Secret}}</code></p><p class="muted">Scopes: {{join .Scopes ", "}}</p></section>{{end}}
+{{if .Codes}}<section class="card issued" role="status" id="recovery-codes"><h2>Your new recovery codes</h2>
+<p>Save these somewhere safe now; they are shown only once. Each code signs you in once if you lose your authenticator. Your old codes no longer work.</p>
+<ul class="codes">{{range .Codes}}<li><code>{{.}}</code></li>{{end}}</ul></section>{{end}}
+{{with .Enrollment}}<section class="card issued" role="status" id="totp-reset"><h2>Finish the two-factor reset</h2>
+<p>Add this key to your authenticator app, then enter the 6-digit code it shows. Until you do, your current authenticator keeps working.</p>
+<p>Key: <code class="secret" id="totp-secret">{{.Secret}}</code></p>
+<p class="muted">Setup link for apps that take one: <code>{{.OTPAuthURI}}</code></p>
+<form method="post" action="/me/totp/reset/confirm" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="enrollment_token" value="{{.EnrollmentToken}}">
+  <label for="tr-code">Code from the new entry</label><input id="tr-code" name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="6">
+  <div><button type="submit">Confirm</button></div></form></section>{{end}}
+
+<form method="post" action="/me/profile" class="card form-grid" id="profile-form"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Profile</h2>
+  <label for="pf-name">Name</label><input id="pf-name" name="name" value="{{.Me.User.Name}}" required maxlength="200">
+  <label for="pf-initials">Initials</label><input id="pf-initials" name="initials" value="{{.Me.Initials}}" maxlength="3">
+  <label for="pf-email">Email</label><input id="pf-email" value="{{.Me.User.Email}}" disabled>
+  <label for="pf-phone">Phone</label><input id="pf-phone" name="phone" type="tel" value="{{.Me.Phone}}" maxlength="40">
+  <span>Roles</span><span>{{.Roles}}</span>
+  <div><button type="submit">Save profile</button> <span class="muted">Your email and roles are changed by an admin.</span></div>
+</form>
+
+<section class="card" id="picture"><h2>Profile picture</h2>
+{{if .Me.HasPicture}}<p><img class="avatar large" src="{{$.Picture}}" alt="Your profile picture" width="96" height="96"></p>
+<form method="post" action="/me/picture/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Remove picture</button></form>{{else}}<p class="hint">No picture; the header shows your initials.</p>{{end}}
+<form method="post" action="/me/picture" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <label for="pf-pic">PNG, JPEG or WebP, up to 256 KB</label><input id="pf-pic" name="picture" type="file" accept="image/png,image/jpeg,image/webp" required>
+  <div><button type="submit">Upload picture</button></div></form>
+</section>
+
+<form method="post" action="/me/password" class="card form-grid" id="password"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Change password</h2>
+  <label for="pw-cur">Current password</label><input id="pw-cur" name="current_password" type="password" required autocomplete="current-password">
+  <label for="pw-new">New password (at least 12 characters)</label><input id="pw-new" name="new_password" type="password" required minlength="12" autocomplete="new-password">
+  <label for="pw-confirm">New password again</label><input id="pw-confirm" name="confirm_password" type="password" required minlength="12" autocomplete="new-password">
+  <div><button type="submit">Change password</button> <span class="muted">Your other sessions are signed out.</span></div>
+</form>
+
+<section class="card" id="two-factor"><h2>Two-factor</h2>
+<form method="post" action="/me/totp/reset" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h3>Reset two-factor</h3><p class="muted">Use this when you move to a new phone or authenticator app.</p>
+  <label for="tf-pw">Password</label><input id="tf-pw" name="password" type="password" required autocomplete="current-password">
+  <div><button type="submit">Start reset</button></div></form>
+<form method="post" action="/me/recovery-codes" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h3>New recovery codes</h3><p class="muted">Replaces your unused recovery codes.</p>
+  <label for="rc-pw">Password</label><input id="rc-pw" name="password" type="password" required autocomplete="current-password">
+  <div><button type="submit">Make new codes</button></div></form>
+</section>
+
+<section class="card" id="my-tokens"><h2>My API tokens</h2>
+{{if .Tokens}}<table class="tokens"><thead><tr><th>Name</th><th>Scopes</th><th>Created</th><th>Status</th><th></th></tr></thead><tbody>
+{{range .Tokens}}<tr id="t-{{.ID}}"><td>{{.Name}}</td><td class="scopes">{{join .Scopes ", "}}</td><td>{{when .CreatedAt}}</td><td>{{if .Revoked}}Revoked{{else}}Active{{end}}</td>
+<td>{{if not .Revoked}}<form method="post" action="/me/api-tokens/{{.ID}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody></table>
+{{else}}<p class="hint">You own no API tokens.</p>{{end}}
+{{if .CanIssue}}<form method="post" action="/me/api-tokens" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h3>Issue a token for yourself</h3>
+  <label for="mt-name">Name</label><input id="mt-name" name="name" required maxlength="200">
+  <fieldset class="scope-list"><legend>Scopes</legend>{{range .Scopes}}<label class="check"><input type="checkbox" name="scopes" value="{{.Scope}}"> <code>{{.Scope}}</code> <span class="muted">{{.Description}}</span></label>{{end}}</fieldset>
+  <div><button type="submit">Issue token</button></div></form>
+{{else}}<p class="muted">An admin issues tokens on Administrative > Agents and API. You can revoke your own here.</p>{{end}}
 </section>
 {{end}}{{template "shell-bottom" .}}{{end}}

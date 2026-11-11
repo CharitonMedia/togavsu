@@ -8,7 +8,11 @@ Firm name, short name, address, phone, email, website, logo, time zone and the m
 
 ## Users and roles {#admin-users_roles}
 <!-- tab: users_roles | path: /admin?tab=users_roles | where: Administrative > Users and roles | keywords: add user, deactivate, roles, walls, hourly rate -->
-The firm's users with their roles and active flag, and the seat count. Users are added and deactivated through the users API; matter walls are set on each matter.
+The firm's users with their phone, roles and active flag, and the seat count. Add a user with a name, email, roles and a starting password; they set up two-factor at their first sign-in. Open Edit on a user to change them.
+
+## Edit a user {#admin-user}
+<!-- template: admin/admin_user.html | path: /admin/users/{user_id} | where: Administrative > Users and roles > Edit | keywords: roles, hourly rate, bar number, bar state, linked contact, matter wall, deactivate -->
+Change a user's name, email, phone and roles, their default hourly rate, the bar number and state (attorneys only) and the linked contact (client users only). Every changed field is audited with its old and new value. Matter walls lists the walled matters you can see: add the user to a wall or take them off it (put a wall on a matter from the matter itself; the last person can't be removed here). Deactivate ends the user's sessions and stops their API tokens; you can't deactivate yourself or the firm's last admin.
 
 ## Security {#admin-security}
 <!-- tab: security | path: /admin?tab=security | where: Administrative > Security | keywords: two-factor, idle, lockout, rate limit -->
@@ -80,7 +84,7 @@ Nightly backup time (default 1:00 a.m.), local retention (default 30 days), dest
 
 ## Agents and API {#admin-agents_api}
 <!-- tab: agents_api | path: /admin?tab=agents_api | where: Administrative > Agents and API | keywords: api tokens, scopes, webhooks, llms.txt -->
-API tokens and scopes, webhook retries (default 8 over 24 hours), and llms.txt: show or hide the firm name and the firm paragraph.
+API tokens and scopes: the list shows every token with the user it acts as, its scopes and whether it is revoked. Issue a token by naming it, choosing the user it acts as and ticking its scopes; the token is shown once, on the page right after you issue it, and never again. Scopes can't go beyond your role or the user's. Revoke stops a token on its next request. Also here: webhook retries (default 8 over 24 hours) and llms.txt (show or hide the firm name; the firm paragraph).
 
 ## System {#admin-system}
 <!-- tab: system | path: /admin?tab=system | where: Administrative > System | keywords: seat count, audit log, problem reports -->

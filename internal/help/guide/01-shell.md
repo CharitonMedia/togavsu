@@ -29,8 +29,8 @@ Header > Timers lists your running and paused timers. Start a timer on a matter,
 Choose your own light or dark mode and text size (the firm's colors stay), a personal display time zone, your default reminder lead times for events and deadlines, and automatic sign-out after idle time (never longer than the firm allows). The notification grid sets which kinds reach you in-app and by email; the trust below-zero email can't be turned off.
 
 ## My profile {#profile}
-<!-- template: dashboard/profile.html | path: /me/profile | where: Header > User chip > My profile | keywords: name, email, password, two-factor, api tokens -->
-Shows your name, email and roles, and links to change your password, reset two-factor and manage the API tokens you own.
+<!-- template: dashboard/profile.html | path: /me/profile | where: Header > User chip > My profile | keywords: name, initials, phone, picture, password, two-factor, recovery codes, api tokens -->
+Change your name, initials and phone, and upload a profile picture (PNG, JPEG or WebP, up to 256 KB) that the user chip shows instead of your initials. Your email and roles are set by an admin. Change password asks for your current password and signs out your other sessions. Reset two-factor asks for your password, shows a new authenticator key and finishes when you enter a code from it; your old authenticator works until then. New recovery codes replaces your unused codes and shows the new ones once. My API tokens lists the tokens you own; revoke any of them here. Admins can also issue a token for themselves.
 
 ## Quick create {#quick-create}
 <!-- template: dashboard/quick_create.html | path: /quick-create | where: Header > Quick create | keywords: new matter, new person, log time -->

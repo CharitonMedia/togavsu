@@ -63,10 +63,27 @@
 {{if or (eq .Tab "users_roles") (eq .Tab "system")}}
 <section class="card"><h2>Seats</h2><p><strong>{{.Seats.Staff}}</strong> active staff seats (admin, attorney, staff and accountant users).</p>
 <p class="muted">{{.Seats.Clients}} active client-portal users, not counted as seats.</p>
-{{if eq .Tab "users_roles"}}{{if .Users}}<table><thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Active</th></tr></thead><tbody>
-{{range .Users}}<tr><td>{{.Name}}</td><td>{{.Email}}</td><td>{{.Roles}}</td><td>{{if .Active}}Yes{{else}}No{{end}}</td></tr>{{end}}</tbody></table>{{end}}
-<p class="muted">Users are added and deactivated through /api/v1/users; matter walls are set on each matter.</p>{{end}}
 </section>
+{{if eq .Tab "users_roles"}}
+<section class="card"><h2>Users</h2>
+{{if .Users}}<table class="users"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Roles</th><th>Active</th><th></th></tr></thead><tbody>
+{{range .Users}}<tr id="u-{{.User.ID}}"{{if not .User.Active}} class="inactive"{{end}}><td>{{.User.Name}}</td><td>{{.User.Email}}</td><td>{{.Phone}}</td><td>{{range $i, $r := .Roles}}{{if $i}}, {{end}}{{$r}}{{end}}</td><td>{{if .User.Active}}Yes{{else}}No{{end}}</td><td><a href="/admin/users/{{.User.ID}}">Edit</a></td></tr>{{end}}</tbody></table>{{else}}<p class="hint">No users to show.</p>{{end}}
+<p class="muted">Edit a user to change roles, the default hourly rate, bar number and state, the linked contact or matter walls, or to deactivate them.</p>
+</section>
+<form method="post" action="/admin/users" class="card form-grid" id="add-user"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="roles_sent" value="1">
+  <h2>Add a user</h2>
+  <label for="nu-name">Name</label><input id="nu-name" name="name" required maxlength="200" autocomplete="off">
+  <label for="nu-email">Email</label><input id="nu-email" name="email" type="email" required maxlength="200" autocomplete="off">
+  <label for="nu-phone">Phone</label><input id="nu-phone" name="phone" type="tel" maxlength="40">
+  <fieldset><legend>Roles</legend>{{range .Roles5}}<label class="check"><input type="checkbox" name="roles" value="{{.}}"> {{.}}</label>{{end}}</fieldset>
+  <label for="nu-password">Starting password (at least 12 characters)</label><input id="nu-password" name="password" type="password" required minlength="12" autocomplete="new-password">
+  <label for="nu-rate">Default hourly rate, dollars</label><input id="nu-rate" name="rate" inputmode="decimal" placeholder="0">
+  <label for="nu-bar">Bar number (attorneys)</label><input id="nu-bar" name="bar_number" maxlength="200">
+  <label for="nu-state">Bar state (attorneys)</label><input id="nu-state" name="bar_state" maxlength="2" placeholder="MO">
+  <label for="nu-contact">Linked contact id (client users)</label><input id="nu-contact" name="linked_contact_id">
+  <div><button type="submit">Add user</button> <span class="muted">They set up two-factor at their first sign-in. The add is audited.</span></div>
+</form>
+{{end}}
 {{end}}
 
 {{if eq .Tab "system"}}
@@ -77,6 +94,27 @@
 {{if .Audit}}<table class="audit"><thead><tr><th>When</th><th>Who</th><th>Source</th><th>Record</th><th>Field</th><th>Old</th><th>New</th></tr></thead><tbody>{{range .Audit}}<tr><td>{{when .At}}</td><td>{{.Actor}} {{.Role}}</td><td>{{.Source}}</td><td>{{.Entity}}</td><td>{{.Field}}</td><td>{{.Old}}</td><td>{{.New}}</td></tr>{{end}}</tbody></table>{{else}}<p class="hint">No audit rows to show.</p>{{end}}
 <p class="muted">The full log is at /api/v1/audit-log.</p>
 </section>
+{{end}}
+
+{{if eq .Tab "agents_api"}}
+{{with .Issued}}<section class="card issued" role="status" id="issued-token"><h2>Token issued: {{.Name}}</h2>
+<p>Copy this token now. It is shown only on this page and can't be shown again.</p>
+<p><code class="secret" id="token-secret">{{.Secret}}</code></p>
+<p class="muted">Scopes: {{join .Scopes ", "}}</p></section>{{end}}
+<section class="card"><h2>API tokens</h2>
+{{if .Tokens}}<table class="tokens"><thead><tr><th>Name</th><th>Acts as</th><th>Scopes</th><th>Created</th><th>Status</th><th></th></tr></thead><tbody>
+{{range .Tokens}}<tr id="t-{{.ID}}"><td>{{.Name}}</td><td>{{.Owner}}</td><td class="scopes">{{join .Scopes ", "}}</td><td>{{when .CreatedAt}}</td><td>{{if .Revoked}}Revoked{{else}}Active{{end}}</td>
+<td>{{if not .Revoked}}<form method="post" action="/admin/api-tokens/{{.ID}}/revoke" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Revoke</button></form>{{end}}</td></tr>{{end}}</tbody></table>
+{{else}}<p class="hint">No API tokens yet.</p>{{end}}
+<p class="muted">A token acts as its user, inside that user's role and walls, and only with its scopes. Module tokens are issued when a module is installed.</p>
+</section>
+<form method="post" action="/admin/api-tokens" class="card form-grid" id="issue-token"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Issue a token</h2>
+  <label for="tk-name">Name</label><input id="tk-name" name="name" required maxlength="200" placeholder="Research agent">
+  <label for="tk-owner">Acts as</label><select id="tk-owner" name="owner_user_id">{{range .Owners}}<option value="{{.ID}}">{{.Name}} ({{.Email}})</option>{{end}}</select>
+  <fieldset class="scope-list"><legend>Scopes</legend>{{range .Scopes}}<label class="check"><input type="checkbox" name="scopes" value="{{.Scope}}"> <code>{{.Scope}}</code> <span class="muted">{{.Description}}</span></label>{{end}}</fieldset>
+  <div><button type="submit">Issue token</button> <span class="muted">Scopes can't go beyond your role or the user's.</span></div>
+</form>
 {{end}}
 
 {{if .Settings}}

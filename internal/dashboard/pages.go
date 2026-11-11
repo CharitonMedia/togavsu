@@ -28,6 +28,7 @@ type Chrome struct {
 	Theme       Theme
 	UserName    string
 	Initials    string
+	Picture     string
 	RoleLabel   string
 	Unread      int
 	CSRF        string
@@ -146,6 +147,14 @@ func (h *Handler) ChromeFor(r *http.Request, p domain.Principal, title string) (
 		}
 	}
 	c.Initials = initials(c.UserName)
+	if h.Accounts != nil {
+		if me, err := h.Accounts.Me(ctx, p); err == nil {
+			c.Initials = me.Initials
+			if me.HasPicture {
+				c.Picture = "/ui/pictures/" + url.PathEscape(string(p.UserID)) + "?v=" + strconv.Itoa(int(me.PictureAt.UnixMilli()))
+			}
+		}
+	}
 	if m, err := h.Svc.MySettings(ctx, p); err == nil {
 		c.IdleSeconds = m.IdleTimeoutSeconds
 	}
@@ -313,6 +322,7 @@ func (h *Handler) pageRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /me/settings", h.form(h.meSettingsPost))
 	m.HandleFunc("POST /me/notification-preferences", h.form(h.notifyPrefsPost))
 	m.HandleFunc("GET /me/profile", h.screen(h.profilePage))
+	h.accountRoutes(m)
 	m.HandleFunc("POST /ui/sidebar", h.form(h.sidebarPost))
 	m.HandleFunc("POST /problem-reports", h.form(h.problemPost))
 	m.HandleFunc("GET /quick-create", h.screen(h.quickCreatePage))
@@ -782,23 +792,6 @@ func (h *Handler) notifyPrefsPost(r *http.Request, p domain.Principal) (string, 
 	return "/me/settings", "Saved your notification preferences.", nil
 }
 
-type profileView struct {
-	User  domain.User
-	Roles string
-}
-
-func (h *Handler) profilePage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
-	v := profileView{Roles: roleLabel(p.Roles)}
-	if h.Svc.d.Users != nil {
-		u, err := h.Svc.d.Users.Get(r.Context(), p.UserID)
-		if err != nil {
-			return "", "", nil, err
-		}
-		v.User = u
-	}
-	return "profile.html", "My profile", v, nil
-}
-
 func (h *Handler) sidebarPost(r *http.Request, p domain.Principal) (string, string, error) {
 	back := pathOnly(r.FormValue("back"))
 	if id := r.FormValue("subgroup"); id != "" {
@@ -923,7 +916,7 @@ func (h *Handler) topicPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 
 // adminTabs is the PRD 8.7 tab order. Settings tabs match the registry's tab ids.
 var adminTabs = []struct{ ID, Label string }{
-	{settings.TabFirm, "Firm profile"}, {"users_roles", "Users and roles"}, {settings.TabSecurity, "Security"},
+	{settings.TabFirm, "Firm profile"}, {tabUsers, "Users and roles"}, {settings.TabSecurity, "Security"},
 	{settings.TabPractice, "Practice"}, {settings.TabBilling, "Time and billing"}, {settings.TabTrust, "Trust"},
 	{settings.TabCalendar, "Calendar"}, {settings.TabFiles, "Files and storage"}, {settings.TabEditor, "Document editor"},
 	{settings.TabDocTender, "Doc Tender"}, {settings.TabHome, "Home screen"}, {settings.TabSearch, "Lists and search"},
@@ -972,7 +965,12 @@ type adminView struct {
 	Fonts      []string
 	Roles      []roleLayoutView
 	Help       []helpSectionView
-	Users      []domain.User
+	Users      []UserRow
+	Roles5     []domain.Role
+	Tokens     []TokenRow
+	Scopes     []ScopeInfo
+	Issued     *IssuedView
+	Owners     []domain.User
 	Seats      Seats
 	Problems   []ProblemReport
 	Audit      []AuditRow
@@ -1028,11 +1026,28 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 		if v.Help, err = h.helpSections(r, p); err != nil {
 			return "", "", nil, err
 		}
-	case "users_roles", "system":
-		if h.Users != nil {
-			if v.Users, err = h.Users(r); err != nil {
+	case settings.TabAPI:
+		if h.Accounts != nil {
+			if v.Tokens, err = h.Accounts.AllTokens(ctx, p); err != nil {
 				return "", "", nil, err
 			}
+			rows, err := h.Accounts.UsersFor(ctx, p)
+			if err != nil {
+				return "", "", nil, err
+			}
+			for _, row := range rows {
+				if row.User.Active {
+					v.Owners = append(v.Owners, row.User)
+				}
+			}
+			v.Scopes = TokenScopes
+		}
+	case tabUsers, "system":
+		if tab == tabUsers && h.Accounts != nil {
+			if v.Users, err = h.Accounts.UsersFor(ctx, p); err != nil {
+				return "", "", nil, err
+			}
+			v.Roles5 = AllRoles
 		}
 		if v.Seats, err = h.Svc.SeatCount(ctx, p); err != nil {
 			return "", "", nil, err

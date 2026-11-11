@@ -18,6 +18,7 @@ type Memory struct {
 	prefs    map[domain.ID]Prefs
 	notify   map[domain.ID][]NotificationPref
 	problems []ProblemReport
+	profiles map[domain.ID]Profile
 }
 
 // NewMemory returns an empty store.
@@ -25,6 +26,7 @@ func NewMemory() *Memory {
 	return &Memory{
 		working: map[domain.ID][]LayoutWidget{}, layouts: map[domain.ID]Layout{},
 		roles: map[domain.Role]RoleLayout{}, prefs: map[domain.ID]Prefs{}, notify: map[domain.ID][]NotificationPref{},
+		profiles: map[domain.ID]Profile{},
 	}
 }
 
@@ -188,4 +190,22 @@ func cloneWidgets(in []LayoutWidget) []LayoutWidget {
 		}
 	}
 	return out
+}
+
+// Profile is one user's profile row.
+func (m *Memory) Profile(_ context.Context, user domain.ID) (Profile, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pr, ok := m.profiles[user]
+	pr.Picture = append([]byte(nil), pr.Picture...)
+	return pr, ok, nil
+}
+
+// PutProfile stores one profile row.
+func (m *Memory) PutProfile(_ context.Context, pr Profile) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	pr.Picture = append([]byte(nil), pr.Picture...)
+	m.profiles[pr.UserID] = pr
+	return nil
 }

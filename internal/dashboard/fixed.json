@@ -6,5 +6,7 @@
  "max_reminder_offsets": 10, "min_reminder_day": 0, "max_reminder_day": 365, "min_idle_seconds": 60,
  "problem_message_max": 5000, "problem_page_max": 500, "mail_subject_chars": 60,
  "recent_notifications": 20, "widget_rows": 7, "activity_rows": 8, "audit_rows": 50,
- "notice_max": 300, "initials": 2, "user_page": 500, "user_pages_max": 100
+ "notice_max": 300, "initials": 2, "user_page": 500, "user_pages_max": 100,
+ "password_min": 12, "field_max": 200, "phone_max": 40, "initials_max": 3, "bar_state_len": 2,
+ "picture_max_bytes": 262144, "picture_form_bytes": 300000, "token_scopes_max": 80
 }

@@ -123,3 +123,15 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
 }
 @media (prefers-color-scheme:dark){:root[data-mode=device]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}}
 :root[data-mode=dark]{--surface:#1f242b;--text:#e8e6e1;--muted:#a9b0ba;--line:#343b45}
+/* Account screens: user chip picture, role and scope checkboxes, one-time secrets. */
+.chip img.avatar{width:34px;height:34px;border-radius:50%;object-fit:cover;display:block}
+img.avatar.large{width:96px;height:96px;border-radius:50%;object-fit:cover}
+.form-grid fieldset{grid-column:1/-1;border:1px solid var(--line,#ccc);border-radius:6px;padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px 18px}
+.form-grid fieldset.scope-list{flex-direction:column;flex-wrap:nowrap;max-height:320px;overflow:auto}
+label.check{display:inline-flex;gap:6px;align-items:baseline}
+code.secret{word-break:break-all;font-size:1.05em;padding:4px 6px;background:rgba(127,127,127,.15);border-radius:4px}
+.card.issued{border-left:4px solid var(--accent)}
+ul.codes{columns:2;list-style:none;padding:0}
+tr.inactive td{opacity:.6}
+td.scopes{max-width:340px;font-size:.9em}
+.form-grid>p{grid-column:1/-1;margin:0}

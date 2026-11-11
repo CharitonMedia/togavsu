@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -284,4 +286,35 @@ func (s PG) Problems(ctx context.Context) ([]ProblemReport, error) {
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// Profile is one user's profile row (phone, initials, picture).
+func (s PG) Profile(ctx context.Context, user domain.ID) (Profile, bool, error) {
+	var pr Profile
+	var at int64
+	var pic string
+	err := audit.Conn(ctx, s.DB).QueryRowContext(ctx, `SELECT updated_at, phone, initials, picture_type, picture FROM user_profiles WHERE user_id = $1`, string(user)).
+		Scan(&at, &pr.Phone, &pr.Initials, &pr.PictureType, &pic)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Profile{}, false, nil
+	}
+	if err != nil {
+		return Profile{}, false, err
+	}
+	if pic != "" {
+		if pr.Picture, err = base64.StdEncoding.DecodeString(pic); err != nil {
+			return Profile{}, false, err
+		}
+	}
+	pr.UserID, pr.UpdatedAt = user, fromMicro(at)
+	return pr, true, nil
+}
+
+// PutProfile writes one profile row inside the audit transaction in ctx.
+func (s PG) PutProfile(ctx context.Context, pr Profile) error {
+	_, err := audit.Conn(ctx, s.DB).ExecContext(ctx, `INSERT INTO user_profiles (user_id, updated_at, phone, initials, picture_type, picture) VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (user_id) DO UPDATE SET updated_at = excluded.updated_at, phone = excluded.phone, initials = excluded.initials,
+		picture_type = excluded.picture_type, picture = excluded.picture`,
+		string(pr.UserID), micro(pr.UpdatedAt), pr.Phone, pr.Initials, pr.PictureType, base64.StdEncoding.EncodeToString(pr.Picture))
+	return err
 }

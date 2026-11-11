@@ -40,6 +40,14 @@ type bounds struct {
 	Initials            int `json:"initials"`
 	UserPage            int `json:"user_page"`
 	UserPagesMax        int `json:"user_pages_max"`
+	PasswordMin         int `json:"password_min"`
+	FieldMax            int `json:"field_max"`
+	PhoneMax            int `json:"phone_max"`
+	InitialsMax         int `json:"initials_max"`
+	BarStateLen         int `json:"bar_state_len"`
+	PictureMaxBytes     int `json:"picture_max_bytes"`
+	PictureFormBytes    int `json:"picture_form_bytes"`
+	TokenScopesMax      int `json:"token_scopes_max"`
 }
 
 //go:embed fixed.json

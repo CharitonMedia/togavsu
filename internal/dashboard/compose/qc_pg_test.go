@@ -70,6 +70,14 @@ func TestUIVisualQC(t *testing.T) {
 	e.staff.must(http.StatusOK, "PUT", "/api/v1/me/sidebar", map[string]any{"collapsed": false, "subgroups": []map[string]any{{"id": "money.trust", "collapsed": true}}})
 	e.createUser("Cora Client", "cora@client.example", "", domain.RoleClient)
 	cl := e.signIn("Cora Client", "cora@client.example")
+	// Account screens: a phone and picture on the attorney, a walled matter the admin can
+	// manage, and one issued token on each list.
+	e.atty.form("/me/profile", url.Values{"phone": {"+1 (314) 555-0142"}})
+	if r := upload(t, e.atty, pngBytes(t), true); r.code != http.StatusSeeOther {
+		t.Fatalf("seed picture: %d", r.code)
+	}
+	render(t, e.admin, "/admin/api-tokens", url.Values{"name": {"Research agent"}, "owner_user_id": {e.atty.id}, "scopes": {"matters:read", "profile:read"}})
+	render(t, e.admin, "/admin/api-tokens", url.Values{"name": {"Intake agent"}, "owner_user_id": {e.staff.id}, "scopes": {"contacts:read"}})
 
 	cookies := func(c *client) []map[string]string {
 		u, _ := url.Parse(e.srv.URL)
@@ -97,13 +105,15 @@ func TestUIVisualQC(t *testing.T) {
 	add(qcPage{Name: "06-guide-html", Role: "admin", Path: "/help/guide"})
 	add(qcPage{Name: "07-quick-create", Role: "admin", Path: "/quick-create"})
 	add(qcPage{Name: "08-problem-reports", Role: "admin", Path: "/admin?tab=system"})
+	add(qcPage{Name: "09-user-edit", Role: "admin", Path: "/admin/users/" + e.atty.id, Full: true})
+	add(qcPage{Name: "10-profile", Role: "admin", Path: "/me/profile", Full: true})
 	add(qcPage{Name: "01-home", Role: "attorney", Path: "/", Full: true})
 	add(qcPage{Name: "02-home-edit", Role: "attorney", Path: "/?edit=1", Action: "editclick", Full: true})
 	add(qcPage{Name: "03-bell", Role: "attorney", Path: "/", Action: "bell"})
 	add(qcPage{Name: "04-notifications", Role: "attorney", Path: "/notifications"})
 	add(qcPage{Name: "05-search-page", Role: "attorney", Path: "/search?q=Quist&scope=all"})
 	add(qcPage{Name: "06-my-settings", Role: "attorney", Path: "/me/settings", Full: true})
-	add(qcPage{Name: "07-profile", Role: "attorney", Path: "/me/profile"})
+	add(qcPage{Name: "07-profile", Role: "attorney", Path: "/me/profile", Full: true})
 	add(qcPage{Name: "01-home", Role: "staff", Path: "/", Full: true})
 	add(qcPage{Name: "02-search-phone", Role: "staff", Path: "/", Action: "search", Query: "5550187"})
 	add(qcPage{Name: "03-search-walled", Role: "staff", Path: "/search?q=Quist&scope=all"})
@@ -111,6 +121,8 @@ func TestUIVisualQC(t *testing.T) {
 	add(qcPage{Name: "05-timers-page", Role: "staff", Path: "/timers"})
 	add(qcPage{Name: "06-help", Role: "staff", Path: "/help"})
 	add(qcPage{Name: "07-admin-refused", Role: "staff", Path: "/admin", Expect: http.StatusForbidden})
+	add(qcPage{Name: "11-profile", Role: "staff", Path: "/me/profile", Full: true})
+	add(qcPage{Name: "12-user-edit-refused", Role: "staff", Path: "/admin/users/" + e.atty.id, Expect: http.StatusForbidden})
 	add(qcPage{Name: "08-phone-home", Role: "staff", Path: "/", Width: 390, Height: 844, Full: true})
 	add(qcPage{Name: "09-collapsed-sidebar", Role: "staff", Path: "/", Action: "collapse"})
 	add(qcPage{Name: "10-deadlines-click-through", Role: "staff", Path: "/calendar/deadlines?from_date=" + today + "&to_date=" + time.Now().AddDate(0, 0, 7).Format("2006-01-02") + "&status=open&include_overdue=true"})

@@ -79,6 +79,7 @@ type UI struct {
 	Dashboard *dashboard.Service
 	Help      *help.Service
 	Calendar  *calendar.Service
+	Accounts  *dashboard.Accounts
 	handler   http.Handler
 	dash      *http.ServeMux
 	helpMux   *http.ServeMux
@@ -169,7 +170,15 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 	if err != nil {
 		return nil, err
 	}
-	dh.Users = func(r *http.Request) ([]domain.User, error) { return listUsers(r.Context(), app) }
+	writer, ok := app.Users.(dashboard.UserWriter)
+	if !ok {
+		return nil, errors.New("compose: user repository cannot update")
+	}
+	dh.Accounts = &dashboard.Accounts{
+		Identity: app.Identity, Users: writer, List: func(ctx context.Context) ([]domain.User, error) { return listUsers(ctx, app) },
+		Audit: app.Audit, WallSvc: app.Practice, Profiles: dashboard.PG{DB: app.Pool}, Now: now,
+	}
+	u.Accounts = dh.Accounts
 	ledger := audit.NewPostgres(app.Pool)
 	dh.Audit = func(r *http.Request, p domain.Principal, limit int) ([]dashboard.AuditRow, error) {
 		return auditRows(r.Context(), p, ledger, app, limit)
@@ -271,7 +280,12 @@ func (u *UI) authenticate(r *http.Request) (domain.Principal, error) {
 	}
 	if in.Write && in.SessionToken != "" {
 		in.CSRF = r.Header.Get("X-CSRF-Token")
-		if in.CSRF == "" && strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
+		ct := r.Header.Get("Content-Type")
+		// The one multipart form, the profile picture, is read here only on its own route,
+		// whose handler capped the body with http.MaxBytesReader first. Other multipart
+		// writes are not parsed before sign-in.
+		multipart := strings.HasPrefix(ct, "multipart/form-data") && r.URL.Path == dashboard.PicturePath
+		if in.CSRF == "" && (strings.HasPrefix(ct, "application/x-www-form-urlencoded") || multipart) {
 			in.CSRF = r.FormValue("csrf")
 		}
 	}
