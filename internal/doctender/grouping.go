@@ -252,6 +252,18 @@ func sortGroups(gs [][]int) {
 // photos as its sources.
 func (s *Service) runGroup(ctx context.Context, j Job) error {
 	ctx = withCost(ctx, j.ID, "")
+	// As for a single file, the matter's status comes before any model call: a matter
+	// closed during the photos' quiet time holds the group until it reopens.
+	if j.MatterID != "" {
+		m, err := s.d.Matters.Matter(ctx, j.MatterID)
+		if err != nil {
+			return err
+		}
+		if m.Status == "closed" {
+			j.Status, j.Stage, j.LastError = StatusMatterClosed, stageCheck, "Not processed (matter closed)"
+			return s.release(ctx, j)
+		}
+	}
 	photos, err := s.jobsWhere(ctx, `group_job_id = ? ORDER BY created_at, id`, j.ID)
 	if err != nil {
 		return err

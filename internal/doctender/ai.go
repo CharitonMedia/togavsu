@@ -416,7 +416,10 @@ func (r *Router) auth(req *http.Request, provider, key string) {
 }
 
 // Call implements Models. A failure or timeout on the route goes to the secondary
-// provider once; every answered call is logged with whether it fell back.
+// provider once; every answered call is logged with whether it fell back. A fallback
+// never lands on the model the other side of the comparison uses (the check model for
+// an answer, the answering model for a check), since that would check a model against
+// itself; the call fails instead and the unit retries on its schedule.
 func (r *Router) Call(ctx context.Context, req Request) (Response, error) {
 	rt, err := r.Route(ctx, req.Task, req.Check)
 	if err != nil {
@@ -431,6 +434,9 @@ func (r *Router) Call(ctx context.Context, req Request) (Response, error) {
 		fb, ok := r.fallbackRoute(ctx, req.Task, rt)
 		if !ok {
 			return Response{}, err
+		}
+		if other, oerr := r.Route(ctx, req.Task, !req.Check); oerr == nil && other == fb {
+			return Response{}, fmt.Errorf("%w (the fallback, %s/%s, is the model this answer is compared with, so it was not used)", err, fb.Provider, fb.Model)
 		}
 		resp, err = r.callRoute(ctx, fb, req)
 		if err != nil {
