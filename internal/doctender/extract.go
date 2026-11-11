@@ -166,20 +166,14 @@ type sheet struct {
 func (s *Service) sheetUnits(w *work) ([]unitSpec, *precheck, error) {
 	var sheets []sheet
 	if strings.EqualFold(path.Ext(w.file.Name), ".csv") {
-		rows, err := csv.NewReader(bytes.NewReader(w.data)).ReadAll()
+		// Rows of different lengths are common in bank and ledger exports, so they parse.
+		cr := csv.NewReader(bytes.NewReader(w.data))
+		cr.FieldsPerRecord = -one
+		rows, err := cr.ReadAll()
 		if err != nil {
 			return nil, &precheck{"damaged", "the CSV does not parse: " + err.Error()}, nil
 		}
-		cols := zero
-		for _, r := range rows {
-			cols = max(cols, len(r))
-		}
-		lines := zero
-		for _, l := range strings.Split(strings.TrimRight(string(w.data), "\r\n"), "\n") {
-			if strings.TrimSpace(l) != "" {
-				lines++
-			}
-		}
+		lines, cols := csvExtent(w.data)
 		sheets = []sheet{{Name: "Sheet 1", Rows: rows, DeclaredRows: lines, DeclaredCols: cols}}
 	} else {
 		var err error
@@ -331,6 +325,7 @@ func readXLSX(data []byte) ([]sheet, error) {
 				Ref string `xml:"ref,attr"`
 			} `xml:"dimension"`
 			Rows []struct {
+				R     string `xml:"r,attr"`
 				Cells []struct {
 					Ref    string `xml:"r,attr"`
 					Type   string `xml:"t,attr"`
@@ -342,11 +337,36 @@ func readXLSX(data []byte) ([]sheet, error) {
 		if err := xml.Unmarshal(raw, &ws); err != nil {
 			return nil, err
 		}
-		cur := sheet{Name: sh.Name, DeclaredRows: len(ws.Rows)}
+		cur := sheet{Name: sh.Name}
+		if cur.DeclaredRows, cur.DeclaredCols, err = sheetExtent(raw, ws.Dim.Ref); err != nil {
+			return nil, err
+		}
+		maxBytes, _ := decodeCaps()
+		cellBytes := int64(len(" |"))
+		widest := zero
+		next := one // the sheet's own row number for a row with no r
 		for _, r := range ws.Rows {
+			idx := next
+			if n, err := strconv.Atoi(r.R); err == nil && n >= one {
+				idx = n
+			}
+			next = idx + one
+			if len(r.Cells) == zero {
+				// A row with only formatting adds nothing to the table.
+				continue
+			}
+			if int64(idx)*cellBytes > maxBytes {
+				return nil, fmt.Errorf("%w: sheet %q reaches row %d", errDecodeLimit, sh.Name, idx)
+			}
 			var row []string
+			pos := zero
 			for _, c := range r.Cells {
-				col := columnIndex(c.Ref)
+				// A cell may leave out its reference; it then follows the cell before it.
+				col := pos
+				if n := columnIndex(c.Ref); n >= zero {
+					col = n
+				}
+				pos = col + one
 				for len(row) < col {
 					row = append(row, "")
 				}
@@ -364,13 +384,126 @@ func readXLSX(data []byte) ([]sheet, error) {
 				} else {
 					row = append(row, v)
 				}
-				cur.DeclaredCols = max(cur.DeclaredCols, col+one)
+			}
+			// Rows the sheet skips (1, 3, 7) stay as empty rows, so each row keeps its place.
+			for len(cur.Rows) < idx-one {
+				cur.Rows = append(cur.Rows, nil)
 			}
 			cur.Rows = append(cur.Rows, row)
+			widest = max(widest, len(row))
+		}
+		if int64(len(cur.Rows))*int64(widest)*cellBytes > maxBytes {
+			return nil, fmt.Errorf("%w: sheet %q is %d rows by %d columns", errDecodeLimit, sh.Name, len(cur.Rows), widest)
 		}
 		out = append(out, cur)
 	}
 	return out, nil
+}
+
+// sheetExtent is the check's own count of a worksheet's rows and columns. It comes from
+// the sheet's <dimension> ref (A1:C7 is 7 rows by 3 columns), which the writing program
+// records apart from the cells. A sheet with no dimension has no count of its own, so the
+// XML is read a second time token by token, apart from the parse that builds the table.
+// Excel records an empty sheet as A1, which reads as no rows.
+func sheetExtent(raw []byte, dim string) (rows, cols int, err error) {
+	dec := xml.NewDecoder(bytes.NewReader(raw))
+	inData, rowIdx, pos, cells := false, zero, zero, zero
+	attr := func(t xml.StartElement, name string) string {
+		for _, a := range t.Attr {
+			if a.Name.Local == name {
+				return a.Value
+			}
+		}
+		return ""
+	}
+	for {
+		tok, err := dec.Token()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return zero, zero, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			switch {
+			case t.Name.Local == "sheetData":
+				inData = true
+			case inData && t.Name.Local == "row":
+				rowIdx++
+				if n, err := strconv.Atoi(attr(t, "r")); err == nil && n >= one {
+					rowIdx = n
+				}
+				pos = zero
+			case inData && t.Name.Local == "c":
+				col := pos
+				if n := columnIndex(attr(t, "r")); n >= zero {
+					col = n
+				}
+				pos = col + one
+				cells++
+				rows, cols = max(rows, rowIdx), max(cols, pos)
+			}
+		case xml.EndElement:
+			if t.Name.Local == "sheetData" {
+				inData = false
+			}
+		}
+	}
+	end := strings.ReplaceAll(dim, "$", "")
+	if k := strings.LastIndexByte(end, ':'); k >= zero {
+		end = end[k+one:]
+	}
+	r, c := refRow(end), columnIndex(end)+one
+	if r < one || c < one || (cells == zero && !strings.Contains(dim, ":")) {
+		return rows, cols, nil
+	}
+	return r, c, nil
+}
+
+// refRow reads the row of a cell reference such as C7 (from 1), or 0 when it has none.
+func refRow(ref string) int {
+	k := strings.IndexFunc(ref, unicode.IsDigit)
+	if k < zero {
+		return zero
+	}
+	n, err := strconv.Atoi(ref[k:])
+	if err != nil {
+		return zero
+	}
+	return n
+}
+
+// csvExtent is the check's own count of a CSV's records and widest record, read from the
+// bytes apart from the CSV parser. It follows quotes, so a quoted comma or line break is
+// not a new column or row, and skips empty lines as the parser does.
+func csvExtent(data []byte) (rows, cols int) {
+	inQuote, content, fields := false, false, one
+	end := func() {
+		if content {
+			rows++
+			cols = max(cols, fields)
+		}
+		content, fields = false, one
+	}
+	for _, b := range data {
+		switch {
+		case b == '"':
+			inQuote, content = !inQuote, true
+		case inQuote:
+			content = true
+		case b == ',':
+			fields++
+			content = true
+		case b == '\n':
+			end()
+		case b == '\r':
+		default:
+			content = true
+		}
+	}
+	end()
+	return rows, cols
 }
 
 // columnIndex reads the column of a cell reference such as C7 (from 0).
