@@ -119,12 +119,18 @@ func TestReadManifest(t *testing.T) {
 		"bad version":      testPackage(t, "matter-clock", "latest"),
 		"empty permission": testPackage(t, "matter-clock", "1.0.0", ""),
 	}
-	block, _ := BuildPackage([]byte("id: matter-clock\nname: Matter Clock\nversion: 1.0.0\n"), nil)
-	bad["block yaml"] = block
+	bad["unsupported yaml"], _ = BuildPackage([]byte("id: &a matter-clock\nname: Matter Clock\nversion: 1.0.0\n"), nil)
 	for name, p := range bad {
 		if _, err := ReadManifest(p); !errors.Is(err, ErrManifest) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	// Block YAML in the module runtime's subset reads the same as the flow form, and the
+	// listing keeps the manifest as JSON.
+	block, _ := BuildPackage([]byte("id: matter-clock\nname: Matter Clock\nversion: 1.0.0\npermissions:\n  - scope: matters:read\n  - time:read\n"), nil)
+	m, err = ReadManifest(block)
+	if err != nil || m.ID != "matter-clock" || len(m.Permissions) != 2 || !json.Valid(m.Raw) {
+		t.Fatalf("block yaml: %+v %v", m, err)
 	}
 }
 

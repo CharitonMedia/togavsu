@@ -15,7 +15,7 @@ Configuration is a JSON file (`config.example.json`); omitted fields keep the de
 
 Packages are tar archives (gzip optional) with `togavsu-module.yaml` at the root, signed with Ed25519 over the exact package bytes. The signature is standard base64. A key is named by its key id, `ed25519-` plus the first 16 bytes of the SHA-256 of the raw public key, as hex. `internal/marketplace` holds the shared code (`Sign`, `Verify`, `KeyID`, `ReadManifest`, `BuildPackage`) that the service and the core both use.
 
-The manifest is read with `encoding/json`, so it must be written in YAML's JSON-compatible flow form until the module runtime's YAML parser ships (see PONYTAIL-DEBT.md). The listing uses `id`, `name`, `version` and `permissions` (scope strings, or objects with a `scope`).
+The manifest is read with the module runtime's YAML subset parser (`internal/modules/yamlsubset`), so block YAML and YAML's JSON-compatible flow form both work. The listing uses `id`, `name`, `version` and `permissions` (scope strings, or objects with a `scope`).
 
 ## API
 
