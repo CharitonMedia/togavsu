@@ -1,8 +1,8 @@
 # Phase 3 report: billing and trust on the composed core
 
-Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `2dc18a11539363b9bf8042de77f3abb2cc52911e` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. At that SHA the four phase cases, the cross-domain and Close tests, the settings contract tests and the smtpsend, settings, trust and billing packages pass locally. The full required jobs at that code (Core tests, API contract tests, QA harness, Supervisor tests, Backup integration, Supervisor image) are [Product CI run 42943577136](https://github.com/CharitonMedia/togavsu/actions/runs/42943577136), where all six passed. Earlier local runs at `88b757c`, including a `test-core.sh` and `test-api.sh` that did not complete (a loaded host and a missing python3-venv), stay in the evidence with their exit codes. The full local pass of all six jobs was at `b59f0aa`, before the review changes listed below. AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
+Status: **all four phase cases pass; full product acceptance pending.** Billing and trust run inside the core at `c0e929daf4b8cf46d8b241a22ec0311a08fa6ec5` on Postgres as the non-superuser core role, with their API, MCP tools, screens and system mail. At that SHA the four phase cases, the cross-domain and Close tests, the settings contract tests and the smtpsend, settings, trust and billing packages pass locally. The full required jobs at that code (Core tests, API contract tests, QA harness, Supervisor tests, Backup integration, Supervisor image) are [Product CI run 42948308917](https://github.com/CharitonMedia/togavsu/actions/runs/42948308917), where all six passed. Earlier local runs at `88b757c` and `2dc18a1`, including a `test-core.sh` and `test-api.sh` that did not complete (a loaded host and a missing python3-venv), stay in the evidence with their exit codes. The full local pass of all six jobs was at `b59f0aa`, before the review changes listed below. AC-005, AC-007, AC-008, AC-009 and AC-026 pass globally; AC-003, AC-004, AC-006, AC-018 and AC-021 pass their phase cases but stay pending globally, for the reasons below. 44 of 52 criteria remain pending. Machine-readable evidence: [integrate-finance.json](integrate-finance.json).
 
-## Phase cases at 2dc18a11539363b9bf8042de77f3abb2cc52911e (each exit 0)
+## Phase cases at c0e929daf4b8cf46d8b241a22ec0311a08fa6ec5 (each exit 0)
 
 | Case | Criteria | Command |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Pending globally, with what passes now:
 
 ## Visual QC
 
-21 headless Chrome steps at `b59f0aa`, with no console errors and no 4xx or 5xx responses. Step 18, the Settings Mail tab with the new `mail.smtp_timeout_seconds` (shown at 45 with the changed badge, default 60), was captured at `3444dda`; `aabe34b` adds one checkbox to that tab, `mail.smtp_starttls`, drawn by the same settings form; it was not captured again. No other screen changed after `b59f0aa`. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
+21 headless Chrome steps at `b59f0aa`, with no console errors and no 4xx or 5xx responses. Step 18, the Settings Mail tab with the new `mail.smtp_timeout_seconds` (shown at 45 with the changed badge, default 60), was captured at `3444dda`; `aabe34b` adds one checkbox to that tab, `mail.smtp_starttls`, and `c0e929d` removes the upper bound shown for `api.bulk_batch_max` on the API tab; both go through the same settings form and were not captured again. No other screen changed after `b59f0aa`. Screenshots and the record are in [screens/integrate-finance](screens/integrate-finance/qc.json).
 
 ## Changes after b59f0aa
 
@@ -46,6 +46,7 @@ These answer the review gate's findings. Each is covered by the tests run at the
 - AR aging compares void and reversal times by the firm's local day (`TestARAgingDatesVoidsAndReversalsInTheFirmZone`).
 - `TestFinanceTrustInvariants` waits for the outbox row to be marked sent instead of checking once; one local run under load landed between delivery and the update. No product change.
 - System mail requires STARTTLS by default (new admin setting `mail.smtp_starttls`, on by default, Mail tab): without it the message stays queued with an error instead of going in plain text. A message the server accepted counts as sent even when QUIT stalls, and trust notice delivery stops between sends on shutdown (`aabe34b`; `internal/smtpsend` and `internal/trust` tests, `TestFinanceInvoiceWorkflows`). The setting is checked against the contract (`2dc18a1`, `TestSTARTTLSSettingMatchesTheContract`).
+- A message the trust mail loop handed to the server is marked sent even when shutdown cancels the loop right after, so it is not sent again at the next start (`c0e929d`, `TestPGDeliverMailMarksAcceptedMailSentWhenCancelled`). `api.bulk_batch_max` has no upper bound, as in the published contract, and the contract-match test covers it.
 
 ## Simplification and debt
 
