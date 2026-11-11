@@ -1,0 +1,17 @@
+{{template "head" "Modules"}}
+<h1>{{if .Q}}Modules matching “{{.Q}}”{{else}}Modules{{end}}</h1>
+<p class="notice" id="notice">{{.Notice}}</p>
+{{if .Listings}}
+<ul class="listings">
+{{range .Listings}}
+<li class="listing{{if .Flagged}} flagged{{end}}">
+<h2><a href="/listings/{{.ID}}">{{.Name}}</a> <span class="version">{{.Version}}</span></h2>
+<p class="meta">by {{.Author}} · key <code>{{.SigningKey}}</code>{{if .PriceNote}} · {{.PriceNote}}{{else}} · Free{{end}}</p>
+{{if .Flagged}}<p class="warning" role="alert">{{$.FlagWarning}}{{if .FlagNote}} {{.FlagNote}}{{end}}</p>{{end}}
+</li>
+{{end}}
+</ul>
+{{else}}
+<p>No modules match.</p>
+{{end}}
+{{template "foot"}}
