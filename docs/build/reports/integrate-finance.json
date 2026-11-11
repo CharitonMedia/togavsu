@@ -1,7 +1,7 @@
 {
  "task_id": "integrate-finance",
  "status": "pass",
- "scope": "Phase 3 integration: billing and trust composed into the running core on Postgres with practice, identity, settings and audit; their API, MCP tools and screens; system mail; transactional billing-trust transfers. status pass means the assigned integration behavior and all four phase cases pass and local runs of every required CI job pass at the tested revision (GitHub CI on it is pending). It is not full product acceptance: 44 of 52 criteria remain pending globally, including AC-003, AC-004, AC-006, AC-018 and AC-021 whose phase cases pass.",
+ "scope": "Phase 3 integration: billing and trust composed into the running core on Postgres with practice, identity, settings and audit; their API, MCP tools and screens; system mail; transactional billing-trust transfers. status pass means the assigned integration behavior and all four phase cases pass at the tested revision. At 88b757c the phase cases and the cross-domain, Close and aging tests ran locally; the full test-core.sh, test-api.sh, supervisor, backup, QA and image results for that code come only from Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c. The full local pass of every required job was at b59f0aa, before the review changes. It is not full product acceptance: 44 of 52 criteria remain pending globally, including AC-003, AC-004, AC-006, AC-018 and AC-021 whose phase cases pass.",
  "tested_revision": "88b757c056681381c79247117716be7de461f0cb",
  "phase_cases": [
   {
@@ -137,7 +137,7 @@
  },
  "ci": {
   "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
-  "current_revision_ci": "Product CI on the pull request head reruns all six required jobs. The head adds only docs/build/reports files to 88b757c, so its product code is the tested revision's. The PR body names the head and its run. The Postgres test TestFinanceCloseDuringSilentMailServer also runs there (test-core.sh fails on a skipped Finance test).",
+  "current_revision_ci": "Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c. All six required jobs passed there. The head adds only docs/build/reports files to 88b757c. The Postgres test TestFinanceCloseDuringSilentMailServer also runs there (test-core.sh fails on a skipped Finance test).",
   "required_jobs": [
    "Core tests",
    "API contract tests",
@@ -170,7 +170,7 @@
   "debt_entries_after": 52,
   "review": "Composition reuses the packages' own seams (TrustLink, TrustEvents, Durable as Practice, Mirror and balance sink, the handlers' Routes) with no adapter layer; routing tries the three service muxes with ServeMux.Handler instead of a second route table, and MCP mounting reuses the same list. The trust mail loop reuses trust.DeliverMail and trust.SMTP; billing's mailer is the only new mail code (standard library mime/multipart, no new module); after the checkpoint review both mailers send through internal/smtpsend, net/smtp's client on a connection bound to the caller's context, also standard library. The per-request caller memo replaced a second authentication and removed integration ceiling 4; registering api.bulk_batch_max removed two package ponytails. Debt grows by 15 because the billing and trust packages' existing ponytails were not in the ledger; one new entry (the 30-second mail loop) and one routing note were added; one entry was removed."
  },
- "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at the tested revision, plus the cross-domain transaction test, and local runs of every required CI job exit 0. Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes.",
+ "status_reason": "All four phase cases (invoice-workflows, trust-invariants, finance-permissions, trust-notices) pass with exit 0 at 88b757c, as do TestFinanceCrossDomainTransfers, TestFinanceCloseDuringSilentMailServer and TestARAgingDatesVoidsAndReversalsInTheFirmZone. The unit tests for the review changes ran at their commits (checkpoint_followups.local_unit_runs). The full required jobs at this code are Product CI run 42939569108 (https://github.com/CharitonMedia/togavsu/actions/runs/42939569108), on head 4d80a54, whose product code is 88b757c; a local test-core.sh and test-api.sh at 88b757c did not complete (see tests). Global acceptance stays pending for AC-003, AC-004, AC-006, AC-018 and AC-021 for the reasons in pending_notes.",
  "checkpoint_followups": {
   "summary": "Commits after b59f0aa answer the review gate's findings. Every phase case and the Close and aging tests were rerun locally at 88b757c (tests above). The six required jobs, including test-core.sh and test-api.sh, are Product CI on the pull request head, whose product code is 88b757c.",
   "changes": [
@@ -277,12 +277,32 @@
    "seconds": 1,
    "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
    "revision": "88b757c056681381c79247117716be7de461f0cb"
+  },
+  {
+   "command": "sh scripts/ci/test-core.sh",
+   "exit_code": 1,
+   "seconds": 960,
+   "database": "local postgres:17 (user and database togavsu, non-superuser core role)",
+   "revision": "88b757c056681381c79247117716be7de461f0cb",
+   "note": "Not counted. Run on a shared, loaded host beside another lane's suite: every database package (billing, core, db, files, identity, practice, trust) hit the 15-minute package timeout with no assertion failure, and internal/supervisor's timing tests failed (copy or path hash did not start in time). Product CI's Core tests and Supervisor tests jobs passed on this code."
+  },
+  {
+   "command": "sh scripts/ci/test-api.sh",
+   "exit_code": 1,
+   "seconds": 1,
+   "revision": "88b757c056681381c79247117716be7de461f0cb",
+   "note": "Not counted. python3 -m venv failed on the host (python3-venv not installed) before any test ran. Product CI's API contract tests job passed on this code."
   }
  ],
  "earlier_local_runs": {
   "revision": "b59f0aaeaa0aefafa4acec593f1322d35c33b496",
   "note": "The full local pass of every required CI job, kept as history. Product CI on the pull request head reruns all six required jobs at the tested revision's code; the PR body names that run.",
   "tests": [
+   {
+    "command": "TOGAVSU_TEST_DATABASE_URL=<one shared postgres:17 server, user postgres> sh scripts/ci/test-backup-integration.sh",
+    "exit_code": 1,
+    "note": "First pass on one shared server: seven restore-recovery tests failed because this suite expects fresh servers with the CI user and database togavsu. Rerun on two fresh servers as in CI exited 0 (entry below)."
+   },
    {
     "command": "sh scripts/ci/test-core.sh",
     "exit_code": 0,
