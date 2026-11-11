@@ -116,6 +116,7 @@ var definitions = []Definition{
 	{Key: "mail.smtp_timeout_seconds", Kind: KindInt, Default: "60", Min: 1, Max: 600, HasMin: true, HasMax: true, Tab: TabMail, Help: "Seconds one system mail send may take. A send cut off is retried later. Default 60."},
 	{Key: "mail.smtp_username", Kind: KindString, Tab: TabMail, Help: "SMTP username."},
 	{Key: "mail.smtp_password", Kind: KindString, Secret: true, Optional: true, Tab: TabMail, Help: "SMTP password. Stored encrypted and omitted from the audit log."},
+	{Key: "mail.smtp_starttls", Kind: KindBool, Default: "true", Tab: TabMail, Help: "Use STARTTLS for system mail. When on, mail waits in the queue with an error rather than go to a server that does not offer STARTTLS. Default on."},
 	{Key: "mail.smtp_from", Kind: KindString, Tab: TabMail, Help: "From address for system mail.", Optional: true, Special: "email"},
 	{Key: "mail.route_through_email_module", Kind: KindBool, Default: "false", Tab: TabMail, Help: "Send system mail through the email module when one is installed."},
 	{Key: "mail.problem_recipients", Kind: KindString, Default: "admins", Tab: TabMail, Help: "Problem-report recipients. Default the admins.", PRD: true},

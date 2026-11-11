@@ -243,7 +243,9 @@ func newFin(t *testing.T, cfg ...func(*Config)) *fin {
 	f.staff, ignore = enrollUser(t, app, srv.URL, f.admin, "Sam Staff", "sam@firm.example", domain.RoleStaff)
 	f.acct, ignore = enrollUser(t, app, srv.URL, f.admin, "Ari Accountant", "ari@firm.example", domain.RoleAccountant)
 	_ = ignore
-	for k, v := range map[string]any{"mail.smtp_host": "127.0.0.1", "mail.smtp_port": f.smtp.port(), "mail.smtp_from": "billing@firm.example"} {
+	for k, v := range map[string]any{"mail.smtp_host": "127.0.0.1", "mail.smtp_port": f.smtp.port(), "mail.smtp_from": "billing@firm.example",
+		// The fake mail server offers no STARTTLS; TestFinanceInvoiceWorkflows checks the default.
+		"mail.smtp_starttls": false} {
 		f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/"+k, map[string]any{"value": v})
 	}
 	f.area = str(t, f.admin.must(http.StatusCreated, "POST", "/api/v1/practice-areas", map[string]any{"name": "Probate", "stages": []string{"Intake"}}).json, "id")
@@ -419,6 +421,18 @@ func TestFinanceInvoiceWorkflows(t *testing.T) {
 		t.Fatalf("unapproved send: %d %s", r.code, r.body)
 	}
 	f.atty.must(http.StatusOK, "POST", "/api/v1/invoices/"+invID+"/approve", nil)
+
+	// With mail.smtp_starttls on (the default), a relay that offers no STARTTLS gets no
+	// invoice: the send fails and the invoice stays a draft.
+	relayed := len(f.smtp.messages())
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.smtp_starttls", map[string]any{"value": true})
+	if r := f.atty.do("POST", "/api/v1/invoices/"+invID+"/send", map[string]any{"deliver": "email"}); r.code < 400 {
+		t.Fatalf("send to a relay without STARTTLS succeeded: %d %s", r.code, r.body)
+	}
+	if r := f.admin.must(http.StatusOK, "GET", "/api/v1/invoices/"+invID, nil); r.json["status"] != "draft" || len(f.smtp.messages()) != relayed {
+		t.Fatalf("a send without STARTTLS left status %v and %d new messages at the relay", r.json["status"], len(f.smtp.messages())-relayed)
+	}
+	f.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/mail.smtp_starttls", map[string]any{"value": false})
 
 	// A relay that refuses the mail leaves the invoice unsent, with the undo on record.
 	f.smtp.setReject(true)

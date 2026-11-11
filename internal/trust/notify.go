@@ -418,6 +418,10 @@ func (s *Service) DeliverMail(ctx context.Context, sender Sender) (int, error) {
 		if m.SentAt != nil {
 			continue
 		}
+		if ctx.Err() != nil {
+			// Shutting down: the rows not yet tried stay as they are for the next run.
+			return sent, ctx.Err()
+		}
 		now := micro(s.now())
 		if err := sender.Send(ctx, m.To, m.Subject, m.Body); err != nil {
 			// A send cut off by ctx's deadline or cancellation is still recorded, so the
@@ -467,7 +471,7 @@ func (m SMTP) Send(ctx context.Context, to, subject, body string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	return smtpsend.Send(ctx, net.JoinHostPort(host, port), auth, from, []string{to}, []byte(msg))
+	return smtpsend.Send(ctx, net.JoinHostPort(host, port), get("mail.smtp_starttls") != "false", auth, from, []string{to}, []byte(msg))
 }
 
 func headerSafe(s string) string {

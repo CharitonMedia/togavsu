@@ -22,8 +22,9 @@ import (
 )
 
 // smtpMailer is billing's system mail (PRD 8.8): the admin's mail.smtp_* settings, read on
-// every send so a change applies without a restart. net/smtp upgrades to STARTTLS when
-// the server offers it.
+// every send so a change applies without a restart. A send upgrades to STARTTLS when the
+// server offers it, and with mail.smtp_starttls on (the default) refuses a server that
+// does not.
 type smtpMailer struct {
 	Settings *settings.Registry
 }
@@ -60,7 +61,7 @@ func (m smtpMailer) Send(ctx context.Context, msg billing.Message) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
-	return smtpsend.Send(ctx, net.JoinHostPort(host, port), auth, from, msg.To, raw)
+	return smtpsend.Send(ctx, net.JoinHostPort(host, port), get("mail.smtp_starttls") != "false", auth, from, msg.To, raw)
 }
 
 // buildMessage renders msg as text/plain, or multipart/mixed with base64 attachments.

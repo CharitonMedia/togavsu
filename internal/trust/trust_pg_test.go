@@ -3,6 +3,7 @@ package trust
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -711,5 +712,52 @@ func TestPGReconciliationReminder(t *testing.T) {
 	}
 	if c, _ := e.svc.UnreadCount(e.ctx, e.admin); c != 1 {
 		t.Fatalf("admin unread %d", c)
+	}
+}
+
+// cancelSender cancels the delivery's context on its first send, as App.Close does
+// mid-run, and fails that send.
+type cancelSender struct {
+	cancel context.CancelFunc
+	tried  []string
+}
+
+func (c *cancelSender) Send(_ context.Context, to, _, _ string) error {
+	c.tried = append(c.tried, to)
+	c.cancel()
+	return context.Canceled
+}
+
+// Opus checkpoint P2: a delivery cancelled mid-run stops before the next send. Rows it
+// never tried keep no attempt and no error.
+func TestPGDeliverMailStopsWhenCancelled(t *testing.T) {
+	e := newEnv(t)
+	for k, to := range []string{"one@example.test", "two@example.test", "three@example.test"} {
+		if _, err := e.db.ExecContext(e.ctx, `INSERT INTO mail_outbox (id, created_at, updated_at, created_by, kind, record_id, to_address, subject, body)
+VALUES ($1,$2,$2,'system','trust_flag','synthetic',$3,'Synthetic','Synthetic')`, fmt.Sprintf("mail-%d", k), k, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	s := &cancelSender{cancel: cancel}
+	if _, err := e.svc.DeliverMail(ctx, s); !errors.Is(err, context.Canceled) {
+		t.Fatalf("DeliverMail after cancel: %v, want context.Canceled", err)
+	}
+	if len(s.tried) != 1 {
+		t.Fatalf("sends after cancel: %v", s.tried)
+	}
+	mail, err := e.svc.Outbox(e.ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mail {
+		tried := m.To == s.tried[0]
+		if tried && (m.Attempts != 1 || m.Error == "") {
+			t.Fatalf("the tried row %+v lacks its attempt", m)
+		}
+		if !tried && (m.Attempts != 0 || m.Error != "" || m.SentAt != nil) {
+			t.Fatalf("an untried row changed: %+v", m)
+		}
 	}
 }
