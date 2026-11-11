@@ -64,8 +64,11 @@ type Listing struct {
 	// Flagged is true when the listing is flagged or its current version is.
 	Flagged  bool   `json:"flagged"`
 	FlagNote string `json:"flag_note,omitempty"`
-	Pulled   bool   `json:"pulled"`
-	Notice   string `json:"notice"`
+	// ListingFlagged is true when the flag is on the whole listing, not only on its
+	// current version (contract extension); FlagNote is then the listing's note.
+	ListingFlagged bool   `json:"listing_flagged,omitempty"`
+	Pulled         bool   `json:"pulled"`
+	Notice         string `json:"notice"`
 }
 
 // FlagText is the warning a flagged listing shows, or "" when it is not flagged.

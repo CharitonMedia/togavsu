@@ -632,6 +632,12 @@ func TestPGHTTPRoutes(t *testing.T) {
 	if code, _ := get("/api/v1/marketplace/listings?limit=999999"); code != http.StatusBadRequest {
 		t.Fatalf("limit over the cap %d", code)
 	}
+	// A fresh install keeps the sentinel address; browsing answers with the contract code.
+	w.set.set("modules.marketplace_address", "togavsu-marketplace")
+	if code, p := get("/api/v1/marketplace/listings"); code != http.StatusServiceUnavailable || p["code"] != "marketplace_unconfigured" {
+		t.Fatalf("unconfigured marketplace %d %v", code, p)
+	}
+	w.set.set("modules.marketplace_address", w.market.URL)
 	// A browser write without the CSRF echo is refused; a bearer write is not.
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	body, _ := json.Marshal(map[string]any{"name": "k", "public_key_pem": marketplace.PublicKeyPEM(pub)})
@@ -707,4 +713,23 @@ type noWalls struct{}
 
 func (noWalls) View(context.Context, domain.Principal, domain.ID) (domain.WallView, error) {
 	return domain.WallView{}, nil
+}
+
+// TestPGCurrentVersionFlagStaysOnThatVersion: a flag on the current version warns at its
+// install and not at an older version's (PRD 10.3).
+func TestPGCurrentVersionFlagStaysOnThatVersion(t *testing.T) {
+	w := newWorld(t)
+	w.publish("matter-clock", "0.1.0")
+	w.publish("matter-clock", "0.2.0")
+	w.call("POST", "/v1/operator/listings/matter-clock/flag", opToken, map[string]any{"note": "current only", "version": "0.2.0"})
+	if v, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.2.0"); err != nil || v.Warning != "We've been alerted that this item has problems. current only" {
+		t.Fatalf("flagged current version %+v %v", v, err)
+	}
+	if v, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil || v.Warning != "" {
+		t.Fatalf("older version under a current-version flag %+v %v", v, err)
+	}
+	w.call("POST", "/v1/operator/listings/matter-clock/flag", opToken, map[string]any{"note": "whole listing"})
+	if v, err := w.svc.FetchForInstall(w.ctx, w.admin, "matter-clock", "0.1.0"); err != nil || v.Warning != "We've been alerted that this item has problems. whole listing" {
+		t.Fatalf("older version under a listing flag %+v %v", v, err)
+	}
 }

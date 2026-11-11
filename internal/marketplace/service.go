@@ -124,11 +124,11 @@ func apiError(err error) error {
 	case errors.Is(err, ErrYanked):
 		return &Error{Code: "yanked", Message: "this module was pulled from the marketplace or the version was yanked; it can still be installed from a local file", Status: http.StatusGone}
 	case errors.Is(err, ErrNotConfigured):
-		return &Error{Code: "unavailable", Message: "the marketplace address is not configured (modules.marketplace_address)", Status: http.StatusServiceUnavailable}
+		return &Error{Code: "marketplace_unconfigured", Message: "the marketplace address is not configured (modules.marketplace_address)", Status: http.StatusServiceUnavailable}
 	case errors.Is(err, ErrUnavailable):
 		return &Error{Code: "unavailable", Message: "the marketplace could not be reached", Status: http.StatusServiceUnavailable}
 	case errors.Is(err, ErrDigestMismatch), errors.Is(err, ErrSignatureInvalid), errors.Is(err, ErrUntrustedKey):
-		return &Error{Code: verificationCode(err), Message: "the package failed verification (" + verificationCode(err) + "); nothing was installed", Status: http.StatusUnprocessableEntity}
+		return &Error{Code: contractVerificationCode(err), Message: "the package failed verification (" + verificationCode(err) + "); nothing was installed", Status: http.StatusUnprocessableEntity}
 	case errors.Is(err, ErrManifest):
 		return domain.Invalid("package", "the package has no readable "+ManifestName)
 	}
@@ -147,6 +147,16 @@ func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
 // HTTPStatus is the status the API serves.
 func (e *Error) HTTPStatus() int { return e.Status }
+
+// contractVerificationCode is the core API's problem code for a failed check: a package
+// whose signer is not trusted counts as unsigned, and a digest or signature that does not
+// match counts as tampered. The detailed reason stays in the message.
+func contractVerificationCode(err error) string {
+	if errors.Is(err, ErrUntrustedKey) {
+		return "unsigned_module"
+	}
+	return "tampered_module"
+}
 
 func verificationCode(err error) string {
 	for _, e := range []error{ErrDigestMismatch, ErrSignatureInvalid, ErrUntrustedKey} {
@@ -305,7 +315,9 @@ func installWarning(l Listing, version string) string {
 	if l.Pulled {
 		return Warning(KindPull, "")
 	}
-	if l.Flagged {
+	// A flag on the whole listing applies to every version; a flag on one version, the
+	// current one included, applies only to that version (PRD 10.3).
+	if l.ListingFlagged {
 		return l.FlagText()
 	}
 	if ok, note := l.VersionFlag(version); ok {

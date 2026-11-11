@@ -469,7 +469,7 @@ func viewOf(st *State, l ListingRecord) shared.Listing {
 	}
 	switch {
 	case l.Flagged:
-		out.Flagged, out.FlagNote = true, l.FlagNote
+		out.Flagged, out.FlagNote, out.ListingFlagged = true, l.FlagNote, true
 	case cur.Flagged:
 		out.Flagged, out.FlagNote = true, cur.FlagNote
 	}
