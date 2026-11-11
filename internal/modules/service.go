@@ -632,17 +632,19 @@ func (s *Service) DecidePermissions(ctx context.Context, p domain.Principal, id 
 		}
 		byScope[d.Scope] = d.Decision
 	}
-	declinedRequired := ""
+	// During an update the pending manifest says which scopes are required; rows that
+	// were approved earlier still carry the running version's flag.
+	required := map[string]bool{}
 	for _, pv := range perms {
-		if pv.Decision != "pending" {
-			continue
+		required[pv.Scope] = pv.Required
+	}
+	if pendingUpdate {
+		pkg, err := s.loadPackage(ctx, r.PendingPackageID)
+		if err != nil {
+			return View{}, err
 		}
-		d, ok := byScope[pv.Scope]
-		if !ok {
-			return View{}, invalid("decisions", "decide every requested permission: "+pv.Scope+" is missing")
-		}
-		if d == "decline" && pv.Required && declinedRequired == "" {
-			declinedRequired = pv.Scope
+		for _, perm := range pkg.Manifest.Permissions {
+			required[perm.Scope] = perm.IsRequired()
 		}
 	}
 	for scope := range byScope {
@@ -654,51 +656,80 @@ func (s *Service) DecidePermissions(ctx context.Context, p domain.Principal, id 
 			return View{}, invalid("decisions", scope+" isn't requested")
 		}
 	}
+	// changes holds every scope whose decision moves: each pending scope, and any
+	// earlier decision the admin explicitly reverses (an approved scope can be declined
+	// here, PRD 9.3: the reissued token carries only what stays approved).
+	type change struct {
+		scope, from, to string
+		required        bool
+	}
+	var changes []change
+	declinedRequired := ""
+	for _, pv := range perms {
+		d, ok := byScope[pv.Scope]
+		if !ok {
+			if pv.Decision == "pending" {
+				return View{}, invalid("decisions", "decide every requested permission: "+pv.Scope+" is missing")
+			}
+			continue
+		}
+		to := map[string]string{"approve": "approved", "decline": "declined"}[d]
+		if to == pv.Decision {
+			continue
+		}
+		changes = append(changes, change{pv.Scope, pv.Decision, to, required[pv.Scope]})
+		if to == "declined" && required[pv.Scope] && declinedRequired == "" {
+			declinedRequired = pv.Scope
+		}
+	}
 	if declinedRequired != "" {
 		err := s.commit(ctx, func(ctx context.Context) error {
-			for _, pv := range perms {
-				if pv.Decision != "pending" {
-					continue
-				}
+			for _, c := range changes {
 				if pendingUpdate {
-					if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_permissions WHERE module_id = $1 AND scope = $2`, id, pv.Scope); err != nil {
+					// The update is dropped: its new scopes go, and the running version
+					// keeps the decisions it runs under.
+					if c.from != "pending" {
+						continue
+					}
+					if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_permissions WHERE module_id = $1 AND scope = $2`, id, c.scope); err != nil {
 						return err
 					}
 					continue
 				}
-				if err := s.putPermission(ctx, p, id, pv.Scope, pv.Required, map[string]string{"approve": "approved", "decline": "declined"}[byScope[pv.Scope]]); err != nil {
+				if err := s.putPermission(ctx, p, id, c.scope, c.required, c.to); err != nil {
 					return err
 				}
 			}
 			old := r.Status
+			what := "install cancelled"
 			if pendingUpdate {
 				r.PendingPackageID = ""
+				what = "update dropped; version " + r.Version + " keeps running"
 			} else {
 				r.Status = StatusCancelled
 			}
 			if err := s.saveRow(ctx, r); err != nil {
 				return err
 			}
-			if err := s.audit(ctx, p, id, "status", old, r.Status, "required permission "+declinedRequired+" declined"); err != nil {
+			if err := s.audit(ctx, p, id, "status", old, r.Status, "required permission "+declinedRequired+" declined: "+what); err != nil {
 				return err
 			}
-			return s.event(ctx, p, "module.permissions_decided", id, "Install cancelled: "+declinedRequired+" declined", "")
+			return s.event(ctx, p, "module.permissions_decided", id, "Required permission "+declinedRequired+" declined: "+what, "")
 		})
 		if err != nil {
 			return View{}, err
 		}
+		if pendingUpdate {
+			return View{}, refuse(CodeDeclined, "required permission "+declinedRequired+" was declined; the update is dropped and version "+r.Version+" keeps running")
+		}
 		return View{}, refuse(CodeDeclined, "required permission "+declinedRequired+" was declined; the install is cancelled")
 	}
 	if err := s.commit(ctx, func(ctx context.Context) error {
-		for _, pv := range perms {
-			if pv.Decision != "pending" {
-				continue
-			}
-			dec := map[string]string{"approve": "approved", "decline": "declined"}[byScope[pv.Scope]]
-			if err := s.putPermission(ctx, p, id, pv.Scope, pv.Required, dec); err != nil {
+		for _, c := range changes {
+			if err := s.putPermission(ctx, p, id, c.scope, c.required, c.to); err != nil {
 				return err
 			}
-			if err := s.audit(ctx, p, id, "permission:"+pv.Scope, "pending", dec, ""); err != nil {
+			if err := s.audit(ctx, p, id, "permission:"+c.scope, c.from, c.to, ""); err != nil {
 				return err
 			}
 		}
