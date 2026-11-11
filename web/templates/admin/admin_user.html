@@ -1,0 +1,31 @@
+{{define "admin_user.html"}}{{template "shell-top" .}}{{with .Page}}{{$u := .Row.User}}
+<p><a href="/admin?tab=users_roles">← Users and roles</a></p>
+<form method="post" action="/admin/users/{{$u.ID}}" class="card form-grid" id="edit-user"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="roles_sent" value="1">
+  <h2>{{$u.Name}}{{if not $u.Active}} <span class="tag">deactivated</span>{{end}}</h2>
+  <label for="eu-name">Name</label><input id="eu-name" name="name" value="{{$u.Name}}" required maxlength="200">
+  <label for="eu-email">Email</label><input id="eu-email" name="email" type="email" value="{{$u.Email}}" required maxlength="200">
+  <label for="eu-phone">Phone</label><input id="eu-phone" name="phone" type="tel" value="{{.Row.Phone}}" maxlength="40">
+  <fieldset><legend>Roles</legend>{{$have := .Row.Roles}}{{range .Roles}}{{$r := .}}<label class="check"><input type="checkbox" name="roles" value="{{.}}"{{range $have}}{{if eq . $r}} checked{{end}}{{end}}> {{.}}</label>{{end}}</fieldset>
+  <label for="eu-rate">Default hourly rate, dollars</label><input id="eu-rate" name="rate" inputmode="decimal" value="{{.RateText}}">
+  <label for="eu-bar">Bar number (attorneys)</label><input id="eu-bar" name="bar_number" value="{{$u.BarNumber}}" maxlength="200">
+  <label for="eu-state">Bar state (attorneys)</label><input id="eu-state" name="bar_state" value="{{$u.BarState}}" maxlength="2" placeholder="MO">
+  <label for="eu-contact">Linked contact id (client users)</label><input id="eu-contact" name="linked_contact_id" value="{{str $u.ContactID}}">
+  <div><button type="submit">Save</button> <span class="muted">Each changed field is audited with its old and new value.</span></div>
+</form>
+
+<section class="card" id="walls"><h2>Matter walls</h2>
+{{$id := $u.ID}}{{if .Walls}}<table><thead><tr><th>Matter</th><th>People on the wall</th><th>{{$u.Name}}</th><th></th></tr></thead><tbody>
+{{range .Walls}}<tr id="w-{{.MatterID}}"><td>{{.Number}} {{.Name}}</td><td>{{.Members}}</td><td>{{if .OnWall}}On the wall{{else}}Not on the wall{{end}}</td>
+<td>{{if .OnWall}}<form method="post" action="/admin/users/{{$id}}/walls/{{.MatterID}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Remove from wall</button></form>
+{{else}}<form method="post" action="/admin/users/{{$id}}/walls" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="matter_id" value="{{.MatterID}}"><button type="submit">Add to wall</button></form>{{end}}</td></tr>{{end}}</tbody></table>
+{{else}}<p class="hint">No walled matters you can see.</p>{{end}}
+<p class="muted">A wall limits a matter to the people on it. Put a wall on a matter from the matter itself; here you add or remove this user on existing walls. The last person can't be removed here, because an empty wall opens the matter.</p>
+</section>
+
+<section class="card" id="deactivate"><h2>Deactivate</h2>
+{{if not $u.Active}}<p>This user is deactivated. They can't sign in and their API tokens don't work.</p>
+{{else if .Self}}<p class="hint">You can't deactivate yourself.</p>
+{{else}}<p>A deactivated user can't sign in, their sessions end and their API tokens stop working. Their records and audit history stay.</p>
+<form method="post" action="/admin/users/{{$u.ID}}/deactivate"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Deactivate {{$u.Name}}</button></form>{{end}}
+</section>
+{{end}}{{template "shell-bottom" .}}{{end}}

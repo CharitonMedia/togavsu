@@ -1,0 +1,20 @@
+{{define "help.html"}}{{template "shell-top" .}}{{with .Page}}
+<div class="guide-cards">
+  <a class="card guide-card" href="/help/guide" target="_blank" rel="noopener"><h2>User guide</h2><p>The Togavsu user guide for version {{.Version}}, in a new tab.</p></a>
+  <a class="card guide-card" href="/help/guide.pdf"><h2>User guide (PDF)</h2><p>The same guide as a PDF with its own table of contents, for printing or reading offline.</p></a>
+</div>
+<section class="card"><h2>Getting started</h2><ul class="menu-list">{{range .Tutorials}}<li><a href="{{.Path}}">{{.Title}}</a></li>{{end}}</ul></section>
+<section class="card"><h2>Search the guide</h2>
+  <form method="get" action="/help"><label class="visually-hidden" for="help-q">Search the guide</label><input id="help-q" name="q" type="search" value="{{.Query}}" placeholder="A screen name or words on the screen"><button type="submit">Search</button></form>
+  {{if .Query}}{{if .Hits}}<ul class="menu-list">{{range .Hits}}<li><a href="{{.Path}}">{{.Title}}</a>{{if .Where}} <span class="muted">{{.Where}}</span>{{end}}</li>{{end}}</ul>{{else}}<p class="hint">No guide topics match {{.Query}}.</p>{{end}}{{end}}
+</section>
+{{range .Sections}}<section class="card help-section"><h2>{{.Title}}</h2>
+  {{if .Items}}{{range .Items}}<article class="help-item"><h3>{{.Title}}</h3>
+    {{if eq .Kind "text"}}<div class="prose">{{md .Body}}</div>
+    {{else if eq .Kind "image"}}{{if .MediaOK}}<img src="{{.Media}}" alt="{{.Title}}">{{else}}<p class="hint">This image isn't available to you.</p>{{end}}
+    {{else if eq .Kind "video"}}{{if .FileID}}{{if .MediaOK}}<video controls src="{{.Media}}"></video>{{else}}<p class="hint">This video isn't available to you.</p>{{end}}{{else}}<p><a href="{{.Body}}" rel="noopener" target="_blank">Watch {{.Title}}</a></p>{{end}}{{end}}
+  </article>{{end}}{{else}}<p class="hint">No items in this section yet.</p>{{end}}
+</section>{{end}}
+{{range .Modules}}<section class="card"><h2>{{.Title}}</h2><ul class="menu-list">{{range .Topics}}<li><a href="/help/topics/{{.ID}}">{{.Title}}</a></li>{{end}}</ul></section>{{end}}
+<section class="card"><h2>All topics</h2>{{range .Chapters}}<h3>{{.Title}}</h3><ul class="topic-list">{{range .Topics}}<li><a href="{{.Path}}">{{.Title}}</a></li>{{end}}</ul>{{end}}</section>
+{{end}}{{template "shell-bottom" .}}{{end}}

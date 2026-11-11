@@ -1,0 +1,18 @@
+{
+ "_comment": "Fixed geometry of the guide PDF (US Letter, points) and the standard Helvetica advance widths for ASCII 32-126 in 1/1000 em. These are the PDF format and the font's metrics, not firm settings.",
+ "page_width": 612, "page_height": 792, "margin": 64, "line_height": 14, "body_size": 10.5,
+ "chapter_size": 18, "topic_size": 13, "where_size": 9.5, "title_size": 28, "version_size": 13,
+ "title_top": 220, "version_top": 252, "note_top": 274, "topic_gap": 10, "where_gap": 2, "para_gap": 4,
+ "keep_with_next": 80, "toc_per_page": 44, "toc_head_gap": 22, "toc_head_after": 18, "toc_indent": 16,
+ "link_below": 3, "link_above": 11, "dest_above": 14, "footer_size": 9, "footer_y": 36, "footer_offset": 8,
+ "bold_slack": 1.06, "em": 1000, "first_char": 32, "last_char": 126, "fallback_width": 556,
+ "widths": [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584
+ ],
+ "first_object": 6, "objects_per_page": 2, "outlines_object": 5
+}

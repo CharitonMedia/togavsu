@@ -1,0 +1,52 @@
+{{define "home.html"}}{{template "shell-top" .}}{{with .Page}}
+<link rel="stylesheet" href="/ui/static/vendor/gridstack-12.3.3.min.css">
+<script src="/ui/static/vendor/gridstack-12.3.3-all.js" defer></script>
+<script src="/ui/static/home.js" defer></script>
+{{if .ErrorMsg}}{{end}}
+<div class="home-tools" id="home-tools">
+  {{if .Editing}}<a class="button primary" href="/" id="edit-done">Done</a>
+  <form method="post" action="/home/widgets" class="inline add-widget">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label for="add-widget">Add widget</label>
+    <select id="add-widget" name="widget_id">{{range .Picker}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select>
+    <button type="submit">Add</button>
+  </form>
+  {{else}}<a class="button" href="/?edit=1" id="edit-layout">Edit layout</a>{{end}}
+  <details class="menu layouts" id="save-as"><summary class="button">Save as</summary>
+    <div class="panel">{{if .CanSave}}
+      <form method="post" action="/home/layouts" id="save-as-form">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="widgets" value="" id="save-as-widgets">
+        <label for="layout-name">Layout name</label><input id="layout-name" name="name" required maxlength="80">
+        <label class="check"><input type="checkbox" name="default"> Make this my default</label>
+        <button type="submit">Save layout</button>
+      </form>{{else}}<p>You have {{.Limit}} saved layouts, the most allowed. Overwrite or delete one below.</p>{{end}}
+    </div></details>
+  <details class="menu layouts" id="reset"><summary class="button">Reset</summary>
+    <div class="panel"><p>Restore a layout exactly as it was saved:</p>
+      <ul class="menu-list">{{range .Options}}<li><form method="post" action="/home/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="layout_id" value="{{.ID}}"><button type="submit" class="link">{{.Name}}{{if .Default}} (your default){{end}}</button></form></li>{{end}}</ul>
+    </div></details>
+</div>
+<div class="grid-stack{{if .Editing}} editing{{end}}" id="home-grid" data-editing="{{.Editing}}">
+{{range .Widgets}}
+  <div class="grid-stack-item" gs-x="{{.X}}" gs-y="{{.Y}}" gs-w="{{.W}}" gs-h="{{.H}}" data-widget-id="{{.WidgetID}}" data-index="{{.Index}}" data-filters="{{json .Filters}}">
+    <section class="grid-stack-item-content widget" aria-labelledby="w-{{.Index}}">
+      <header><h2 id="w-{{.Index}}"><a href="{{.Target}}" class="widget-title">{{.Title}}</a></h2>
+      {{if $.Page.Editing}}<form method="post" action="/home/widgets/{{.Index}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="icon-btn remove" aria-label="Remove {{.Title}}">×</button></form>{{end}}</header>
+      {{if .Missing}}<p class="hint">{{.Missing}}</p>{{else if .Rows}}<ul class="rows">{{range .Rows}}<li><a href="{{.TargetPath}}"><span class="row-title">{{.Title}}</span>{{if .Subtitle}}<span class="row-sub">{{.Subtitle}}</span>{{end}}</a></li>{{end}}</ul>{{else}}<p class="hint">Nothing here right now.</p>{{end}}
+    </section>
+  </div>
+{{else}}<p class="hint">No widgets on this layout. Choose Edit layout to add some.</p>
+{{end}}
+</div>
+<section class="card saved-layouts" aria-labelledby="saved-h">
+  <h2 id="saved-h">Saved layouts <span class="muted">({{len .Layouts}} of {{.Limit}})</span></h2>
+  {{if .Layouts}}<table><thead><tr><th>Name</th><th>Widgets</th><th></th></tr></thead><tbody>
+  {{range .Layouts}}<tr><td>{{.Name}}{{if .Default}} <span class="tag">Default</span>{{end}}</td><td>{{len .Widgets}}</td><td class="actions">
+    <form method="post" action="/home/layouts/{{.ID}}/apply" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Restore</button></form>
+    {{if not .Default}}<form method="post" action="/home/layouts/{{.ID}}/default" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Make default</button></form>{{end}}
+    <form method="post" action="/home/layouts/{{.ID}}/overwrite" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit">Overwrite</button></form>
+    <form method="post" action="/home/layouts/{{.ID}}/rename" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><label class="visually-hidden" for="rn-{{.ID}}">New name</label><input id="rn-{{.ID}}" name="name" value="{{.Name}}" maxlength="80" size="12"><button type="submit">Rename</button></form>
+    <form method="post" action="/home/layouts/{{.ID}}/delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Delete</button></form>
+  </td></tr>{{end}}</tbody></table>{{else}}<p class="hint">No saved layouts. Save as keeps the current layout by name.</p>{{end}}
+</section>
+{{end}}{{template "shell-bottom" .}}{{end}}

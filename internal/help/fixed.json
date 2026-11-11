@@ -1,0 +1,5 @@
+{
+ "_comment": "Input-safety bounds of the help records and the guide search weights. Fixed, not firm settings.",
+ "title_max": 200, "item_body_max": 20000, "page_markdown_max": 100000, "llms_paragraph_max": 1000,
+ "weight_title": 10, "weight_keyword": 5, "weight_body": 1, "weight_phrase": 20
+}
