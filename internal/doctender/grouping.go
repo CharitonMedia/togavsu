@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/files"
@@ -79,6 +80,25 @@ type groupScope struct {
 // whose read photos have waited out the quiet time with no newer photo arriving. A
 // photo with no matter and no contact is its own document at once: nothing ties it to
 // any other photo, so it is never offered to the grouping model with other clients'.
+// groupDueAt is when groupDue next starts a group: the earliest scope (a matter, or a
+// contact for photos with no matter) holding a photo that waits with no group job, at
+// its newest photo arrival plus doctender.photo_quiet. ok is false when no photo waits.
+func (s *Service) groupDueAt(ctx context.Context) (time.Time, bool, error) {
+	quiet, err := s.duration(ctx, "doctender.photo_quiet")
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	var newest sql.NullInt64
+	err = s.row(ctx, `SELECT MIN(newest) FROM (SELECT MAX(j.created_at) AS newest FROM doc_tender_jobs j JOIN files f ON f.id = j.file_id
+WHERE j.kind = 'file' AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')
+GROUP BY COALESCE(j.matter_id, ''), CASE WHEN COALESCE(j.matter_id, '') = '' THEN COALESCE(f.contact_id, '') ELSE '' END
+HAVING SUM(CASE WHEN j.stage = ? AND j.status = ? AND j.group_job_id = '' THEN 1 ELSE 0 END) > 0) scopes`, stageAwaitingGroup, StatusQueued).Scan(&newest)
+	if err != nil || !newest.Valid {
+		return time.Time{}, false, err
+	}
+	return fromUS(newest.Int64).Add(quiet), true, nil
+}
+
 func (s *Service) groupDue(ctx context.Context) error {
 	quiet, err := s.duration(ctx, "doctender.photo_quiet")
 	if err != nil {
@@ -552,6 +572,21 @@ func groupFileName(title string) string {
 // PersonGrouping records a person's grouping of photos: groups separated by ";", photo
 // file ids in page order separated by ",". It is locked: Doc Tender never regroups
 // these photos.
+// resolveGroupingItems closes the open grouping disagreement items on the photos a
+// person just grouped: the person's grouping is the answer to them, and an item left
+// open would keep each photo in the exception state after it is filed.
+func (s *Service) resolveGroupingItems(ctx context.Context, p domain.Principal, photos []domain.ID) error {
+	at := us(s.now())
+	for _, id := range photos {
+		if _, err := s.exec(ctx, `UPDATE doc_tender_exceptions SET status = 'resolved', resolved_by = ?, resolved_at = ?, resolution = ?, updated_at = ?
+WHERE file_id = ? AND kind = 'check_disagreement' AND status = 'open' AND best_answer LIKE ?`,
+			string(p.UserID), at, "grouped by a person", at, id, `%"grouping":%`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) PersonGrouping(ctx context.Context, p domain.Principal, spec string) error {
 	if !reviewer(p) {
 		return domain.Forbidden("only admins and attorneys group photos")
@@ -617,6 +652,9 @@ func (s *Service) PersonGrouping(ctx context.Context, p domain.Principal, spec s
 				if err := s.insertGroup(ctx, gid, at, j, how, "photo", members, ""); err != nil {
 					return err
 				}
+				if err := s.resolveGroupingItems(ctx, p, members); err != nil {
+					return err
+				}
 				// The photo is its own document: a photo the grouping models could not
 				// settle goes on to be labeled and filed, as singlePhoto does.
 				_, err = s.exec(ctx, `UPDATE doc_tender_jobs SET stage = ?, status = ?, next_attempt_at = ?, finished_at = 0, updated_at = ? WHERE file_id = ? AND kind = 'file' AND stage = ?`,
@@ -628,6 +666,9 @@ func (s *Service) PersonGrouping(ctx context.Context, p domain.Principal, spec s
 			continue
 		}
 		if err := s.makeGroup(ctx, j, how, "grouped photos", members, reads, datas); err != nil {
+			return err
+		}
+		if err := s.resolveGroupingItems(ctx, p, members); err != nil {
 			return err
 		}
 	}

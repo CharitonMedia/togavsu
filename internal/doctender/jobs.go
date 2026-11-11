@@ -266,13 +266,9 @@ func (s *Service) claim(ctx context.Context) (Job, bool, error) {
 		return Job{}, false, err
 	}
 	now := us(s.now())
-	statuses := `'queued', 'running', 'held_for_provider'`
-	if ready {
-		statuses += `, 'held_for_ai_setup'`
-	}
 	var id domain.ID
 	err = s.row(ctx, `UPDATE doc_tender_jobs SET lease_owner = ?, lease_until = ?, updated_at = ?
-WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+statuses+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?
+WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?
             ORDER BY next_attempt_at, created_at, id LIMIT 1)
   AND lease_until < ? RETURNING id`, s.d.Worker, now+int64(lease/microUnit), now, now, now, now).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -283,6 +279,15 @@ WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+statuses+`) AND st
 	}
 	j, err := s.job(ctx, id)
 	return j, err == nil, err
+}
+
+// claimable is the job statuses claim takes: held_for_ai_setup only once AI is set up.
+func claimable(ready bool) string {
+	statuses := `'queued', 'running', 'held_for_provider'`
+	if ready {
+		statuses += `, 'held_for_ai_setup'`
+	}
+	return statuses
 }
 
 // renew extends this worker's lease; false means another worker took the job.
@@ -376,23 +381,36 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 }
 
-// nextWait is the time until the next due job, at most one lease period.
+// nextWait is the time until claim or groupDue next has work, at most one lease period.
+// It counts only what claim would take (no held_for_ai_setup job while no AI is set
+// up, no photo waiting for its group), each at the later of its next attempt and its
+// lease, so a job that cannot run yet never makes the worker spin.
 func (s *Service) nextWait(ctx context.Context) (time.Duration, error) {
 	lease, err := s.duration(ctx, "doctender.lease_timeout")
 	if err != nil {
 		return zeroDuration, err
 	}
+	ready, err := s.d.Models.Ready(ctx)
+	if err != nil {
+		return zeroDuration, err
+	}
+	d := lease
 	var next sql.NullInt64
-	err = s.row(ctx, `SELECT MIN(next_attempt_at) FROM doc_tender_jobs WHERE status IN ('queued', 'running', 'held_for_provider', 'held_for_ai_setup')`).Scan(&next)
-	if err != nil || !next.Valid {
-		return lease, err
+	err = s.row(ctx, `SELECT MIN(CASE WHEN lease_until > next_attempt_at THEN lease_until ELSE next_attempt_at END) FROM doc_tender_jobs
+WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group'`).Scan(&next)
+	if err != nil {
+		return zeroDuration, err
 	}
-	d := fromUS(next.Int64).Sub(s.now())
-	if d < zeroDuration {
-		d = zeroDuration
+	if next.Valid {
+		d = min(d, max(fromUS(next.Int64).Sub(s.now()), zeroDuration))
 	}
-	if d > lease {
-		d = lease
+	due, ok, err := s.groupDueAt(ctx)
+	if err != nil {
+		return zeroDuration, err
+	}
+	if ok {
+		// A due scope is grouped by groupDue on the next pass, so it no longer waits.
+		d = min(d, max(due.Sub(s.now()), zeroDuration))
 	}
 	return d, nil
 }
@@ -477,6 +495,15 @@ func (s *Service) runUnit(ctx context.Context, j *Job, u *Unit, spec unitSpec) e
 			u.Method = methodCheckFallback + ":" + work.Method
 		}
 		u.FinishedAt = s.now()
+		if errors.Is(err, errDecodeLimit) {
+			// A decompression or pixel bomb: the file is damaged, and a retry would only
+			// expand it again.
+			u.Status, u.LastError = unitFailed, err.Error()
+			if err := s.saveUnit(ctx, *u); err != nil {
+				return err
+			}
+			return s.openException(ctx, j, "damaged", u.Name+": "+err.Error(), map[string]any{"unit": u.Name})
+		}
 		if err == nil && work.Passed {
 			u.Text, u.Status = work.Text, unitPassed
 			return s.saveUnit(ctx, *u)
@@ -535,7 +562,7 @@ func (s *Service) providersUp(ctx context.Context, j *Job, tasks []string) error
 				return errDeferred
 			}
 			if err != nil {
-				return err
+				return s.holdForSetup(ctx, j, err)
 			}
 			if seen[rt.Provider] {
 				continue
@@ -558,7 +585,7 @@ func (s *Service) providersUp(ctx context.Context, j *Job, tasks []string) error
 			}
 		}
 	}
-	if j.Status == StatusHeldProvider || !j.HeldSince.IsZero() {
+	if j.Status == StatusHeldProvider || j.Status == StatusHeldAISetup || !j.HeldSince.IsZero() {
 		j.Status, j.HeldSince = StatusRunning, time.Time{}
 		if err := s.saveJob(ctx, *j); err != nil {
 			return err
@@ -601,6 +628,25 @@ func (s *Service) holdForProvider(ctx context.Context, j *Job, down *ProviderDow
 		if err := s.openException(ctx, j, "provider_down", down.Error(), map[string]any{"provider": down.Provider}); err != nil {
 			return err
 		}
+	}
+	if err := s.release(ctx, *j); err != nil {
+		return err
+	}
+	return errDeferred
+}
+
+// holdForSetup holds a job whose AI route can't be built from the AI tab: a model
+// left empty, or labeling sent to a local endpoint (ErrLocalRefused). The job waits
+// on the retry schedule, so a fixed setting picks it up, and the file goes to the
+// review queue with the reason, so the firm sees why it is not processed. The item
+// closes itself once the route works (autoResolve on provider_down).
+func (s *Service) holdForSetup(ctx context.Context, j *Job, cause error) error {
+	if j.HeldSince.IsZero() {
+		j.HeldSince = s.now()
+	}
+	j.Status, j.NextAttempt, j.LastError = StatusHeldAISetup, s.now().Add(s.waitDelay(ctx)), trimErr(cause)
+	if err := s.openException(ctx, j, "provider_down", "the AI tab's setup does not work for this file: "+trimErr(cause), map[string]any{"setup": true}); err != nil {
+		return err
 	}
 	if err := s.release(ctx, *j); err != nil {
 		return err

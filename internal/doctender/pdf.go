@@ -268,7 +268,7 @@ func (d *pdfDoc) decode(s *pdfStream) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("flate: %w", err)
 			}
-			out, err := io.ReadAll(zr)
+			out, err := readCapped(zr)
 			if err != nil && len(out) == 0 {
 				return nil, fmt.Errorf("flate: %w", err)
 			}

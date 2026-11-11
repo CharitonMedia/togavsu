@@ -72,6 +72,11 @@
 // registers it every call, step and job costs 0 cents. Upgrade: register the setting
 // (KindJSON, default "{}", AI tab) with parseModelPrices as its check. Trigger:
 // integrate-documents.
+//
+// ponytail: the decode caps (256 MiB of decoded stream or zip entry, 100 million pixels
+// per image) are fixed facts in wire.json, not registry settings. A file over either is
+// a damaged item, not retried. Upgrade: doctender.max_decoded_bytes and
+// doctender.max_image_pixels on the Doc Tender tab. Trigger: a firm's real file trips one.
 package doctender
 
 import "time"

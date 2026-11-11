@@ -435,8 +435,8 @@ WHERE created_at >= ? AND task IN ('ocr', 'photo_description', 'photo_grouping',
 	fmt.Fprintf(&b, "Open review-queue items: %d\n", len(open))
 	for _, e := range open {
 		age := now.Sub(e.openedAt).Round(minuteUnit)
-		if s.walledItem(ctx, e) {
-			fmt.Fprintf(&b, "  - %s, open %s: a file on a walled matter\n", KindLabel(e.Kind), age)
+		if what := s.restrictedItem(ctx, e); what != "" {
+			fmt.Fprintf(&b, "  - %s, open %s: %s\n", KindLabel(e.Kind), age, what)
 			continue
 		}
 		fmt.Fprintf(&b, "  - %s, open %s: %s\n", KindLabel(e.Kind), age, e.Detail)

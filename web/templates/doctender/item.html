@@ -13,8 +13,10 @@
   <input type="hidden" name="csrf" value="{{.CSRF}}">
   <fieldset>
     <legend>Decide</legend>
+    {{if .Item.Grouping}}<p>The grouping models disagree, so there is no answer to accept. Choose Correct and fill in the photo grouping.</p>
+    <p><label><input type="radio" name="action" value="correct" checked> Correct</label></p>{{else}}
     <p><label><input type="radio" name="action" value="accept" checked> Accept the best answer</label></p>
-    <p><label><input type="radio" name="action" value="correct"> Correct</label></p>
+    <p><label><input type="radio" name="action" value="correct"> Correct</label></p>{{end}}
     <p><label for="name">Name</label> <input id="name" name="name" autocomplete="off"></p>
     <p><label for="category_id">Category</label>
       <select id="category_id" name="category_id"><option value="">(unchanged)</option>{{range .Cats}}{{if .Active}}<option value="{{.ID}}">{{.Key}}</option>{{end}}{{end}}</select></p>

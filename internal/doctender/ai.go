@@ -69,6 +69,11 @@ type wireFacts struct {
 	HoverSummaryChars  int     `json:"hover_summary_chars"`
 	ClientLastChars    int     `json:"client_last_chars"`
 	TJWordSpace        float64 `json:"tj_word_space"`
+	// MaxDecodedBytes caps what one decompressed stream or archive entry may expand to,
+	// and MaxImagePixels caps a photo's width times height, so a small upload cannot
+	// expand into an out-of-memory kill of the core.
+	MaxDecodedBytes int64 `json:"max_decoded_bytes"`
+	MaxImagePixels  int64 `json:"max_image_pixels"`
 }
 
 var wire = sync.OnceValue(func() wireFacts {

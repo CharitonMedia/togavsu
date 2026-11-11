@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"os"
 	"path"
 	"regexp"
@@ -114,6 +113,9 @@ func (s *Service) plan(ctx context.Context, w *work) ([]unitSpec, *precheck, err
 		}
 		return out, nil, nil
 	case typePhoto:
+		if err := checkPixels(w.data); errors.Is(err, errDecodeLimit) {
+			return nil, &precheck{"damaged", err.Error()}, nil
+		}
 		return []unitSpec{s.photoUnit(w)}, nil, nil
 	case typeAudio:
 		return []unitSpec{s.transcriptUnit(w, w.data, w.file.Name)}, nil, nil
@@ -262,7 +264,7 @@ func readXLSX(data []byte) ([]sheet, error) {
 			return nil, err
 		}
 		defer f.Close()
-		return io.ReadAll(f)
+		return readCapped(f)
 	}
 	var shared []string
 	if raw, err := read("xl/sharedStrings.xml"); err == nil {
@@ -444,7 +446,7 @@ func documentCounts(ext string, data []byte) (words, pages int, ok bool) {
 		return zero, zero, false
 	}
 	defer f.Close()
-	raw, err := io.ReadAll(f)
+	raw, err := readCapped(f)
 	if err != nil {
 		return zero, zero, false
 	}

@@ -854,7 +854,7 @@ func TestSavedGroupingOutOfRangeIsAnError(t *testing.T) {
 // no job, so nothing already published is extracted, labeled or named again.
 func TestMatterReopenedDoesNotRedoPublishedFiles(t *testing.T) {
 	e := newEnv(t)
-	f := e.upload(e.staff, e.open, "letter.txt", "text/plain", []byte("LETTER TO THE COURT\nSigned by Casey Sample on 2026-10-07.\n"))
+	f := e.upload(e.staff, e.open, "letter.txt", "text/plain", []byte("LETTER TO THE CLIENT\nSent 2026-10-07.\n"))
 	e.drain()
 	if j := e.jobFor(f.ID); j.Status != StatusPublished {
 		t.Fatalf("job %s, want published", j.Status)

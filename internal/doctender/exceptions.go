@@ -48,6 +48,13 @@ type Exception struct {
 // KindLabel names an exception kind for people.
 func KindLabel(kind string) string { return exceptionKinds[kind] }
 
+// Grouping reports a photo grouping disagreement: it has no single answer to accept,
+// only a person's grouping (Correct with a grouping).
+func (e Exception) Grouping() bool {
+	_, ok := e.BestAnswer["grouping"]
+	return ok
+}
+
 const excCols = `id, created_at, created_by, updated_at, file_id, kind, detail, best_answer, status, COALESCE(resolved_by, ''), resolved_at, resolution,
 COALESCE(job_id, ''), COALESCE(file_version_id, ''), opened_at, emailed_at`
 
@@ -172,8 +179,8 @@ func (s *Service) FlushExceptionMail(ctx context.Context) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Doc Tender put %d item(s) in the review queue. Each file stays listed, viewable and downloadable with its flag.\n\n", len(fresh))
 	for _, e := range fresh {
-		if s.walledItem(ctx, e) {
-			fmt.Fprintf(&b, "- a file on a walled matter: %s (open it in the review queue)\n", KindLabel(e.Kind))
+		if what := s.restrictedItem(ctx, e); what != "" {
+			fmt.Fprintf(&b, "- %s: %s (open it in the review queue)\n", what, KindLabel(e.Kind))
 			continue
 		}
 		name := string(e.FileID)
@@ -217,19 +224,27 @@ func (s *Service) mailReviewers(ctx context.Context, subject, body string) error
 	return errors.Join(errs...)
 }
 
-// walledItem reports whether an item touches a walled matter: the file's own or the
-// suggested one. Mail goes to lists that can't be checked per reader, so such an item
-// is mailed by kind only. A file that can't be read counts as walled.
-func (s *Service) walledItem(ctx context.Context, e Exception) bool {
+// restrictedItem says why an item may not be described in mail, or "" when it may.
+// Mail goes to lists that can't be checked per reader (doctender.review_recipients can
+// name any address), so an item on a walled matter, the file's own or the suggested
+// one, or on an attorney-only file is mailed by kind only. A file that can't be read
+// counts as walled.
+func (s *Service) restrictedItem(ctx context.Context, e Exception) string {
+	const walled = "a file on a walled matter"
 	f, err := s.d.Files.Get(ctx, s.d.System, e.FileID)
 	if err != nil {
-		return true
+		return walled
 	}
 	if f.MatterID != nil && s.matterWalled(ctx, *f.MatterID) {
-		return true
+		return walled
 	}
-	m, _ := e.BestAnswer["matter_id"].(string)
-	return s.matterWalled(ctx, domain.ID(m))
+	if m, _ := e.BestAnswer["matter_id"].(string); s.matterWalled(ctx, domain.ID(m)) {
+		return walled
+	}
+	if f.AttorneyOnly {
+		return "an attorney-only file"
+	}
+	return ""
 }
 
 // forReader is the item as p may see it. A suggested matter p can't read (a wall, a
@@ -371,6 +386,10 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 	var requeue bool
 	switch in.Action {
 	case "accept":
+		if e.Grouping() {
+			// The two grouping models disagree, so there is no one answer to accept.
+			return Exception{}, domain.Invalid("action", "the grouping models disagree: use Correct and say which photos go together")
+		}
 		if e.Kind == "unmatched_matter" {
 			// Accepting the suggested matter sets it and requeues the file: the name and
 			// folder are then built from that matter's tokens. Nothing is renamed or

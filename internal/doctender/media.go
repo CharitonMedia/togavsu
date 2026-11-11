@@ -44,6 +44,9 @@ func imagesToPDF(photos [][]byte) ([]byte, error) {
 				img.Dict["ColorSpace"] = pdfName("DeviceGray")
 			}
 		} else {
+			if err := checkPixels(raw); err != nil {
+				return nil, fmt.Errorf("photo %d: %w", k+one, err)
+			}
 			decoded, _, err := image.Decode(bytes.NewReader(raw))
 			if err != nil {
 				return nil, fmt.Errorf("photo %d: %w", k+one, err)
@@ -85,6 +88,9 @@ func flateRGB(img image.Image) []byte {
 // imageAsPNG re-encodes any decodable photo as PNG (for Tesseract and models that do
 // not take every format).
 func imageAsPNG(raw []byte) ([]byte, error) {
+	if err := checkPixels(raw); err != nil {
+		return nil, err
+	}
 	img, _, err := image.Decode(bytes.NewReader(raw))
 	if err != nil {
 		return nil, err
@@ -476,4 +482,34 @@ func (w WordcraftCLI) ToMarkdown(ctx context.Context, name string, data []byte) 
 		return "", zero, zero, fmt.Errorf("wordcraft-cli stats: %w", err)
 	}
 	return string(md), s.Words, s.Pages, nil
+}
+
+// errDecodeLimit marks an upload that expands past the decode caps in wire.json: a
+// decompression or pixel bomb. Such a file is damaged; it is not retried.
+var errDecodeLimit = errors.New("the file expands past Doc Tender's decode limit")
+
+// decodeCaps are the decode limits; tests lower them to exercise a bomb cheaply.
+var decodeCaps = func() (bytes, pixels int64) { return wire().MaxDecodedBytes, wire().MaxImagePixels }
+
+// readCapped reads r to the end, refusing more than wire().MaxDecodedBytes.
+func readCapped(r io.Reader) ([]byte, error) {
+	max, _ := decodeCaps()
+	out, err := io.ReadAll(io.LimitReader(r, max+int64(one)))
+	if int64(len(out)) > max {
+		return nil, fmt.Errorf("%w: more than %d bytes decoded", errDecodeLimit, max)
+	}
+	return out, err
+}
+
+// checkPixels refuses a photo whose declared size passes wire().MaxImagePixels, before
+// anything decodes it.
+func checkPixels(raw []byte) error {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	if _, max := decodeCaps(); int64(cfg.Width)*int64(cfg.Height) > max {
+		return fmt.Errorf("%w: %d by %d pixels", errDecodeLimit, cfg.Width, cfg.Height)
+	}
+	return nil
 }
