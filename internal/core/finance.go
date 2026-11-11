@@ -117,9 +117,13 @@ func (a *App) deliverTrustMail(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		if _, err := a.DeliverMail(ctx); err != nil && ctx.Err() == nil {
+		// One pass may take no longer than the interval, so a stalled SMTP server holds
+		// a pass at most that long; the next tick retries the rows it left queued.
+		pass, cancel := context.WithTimeout(ctx, every)
+		if _, err := a.DeliverMail(pass); err != nil && ctx.Err() == nil {
 			log.Printf("core: trust mail: %v", err)
 		}
+		cancel()
 		select {
 		case <-ctx.Done():
 			return

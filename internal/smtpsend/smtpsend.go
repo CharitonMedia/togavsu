@@ -1,7 +1,8 @@
-// Package smtpsend is net/smtp.SendMail with a deadline. The standard SendMail ignores
+// Package smtpsend is net/smtp.SendMail bound to a context. The standard SendMail ignores
 // context and sets no I/O deadlines, so a server that accepts the connection and then
 // stops answering holds the caller forever; that blocked graceful shutdown (PRD 6, core
-// updates self-apply overnight).
+// updates self-apply overnight). Callers bound a send with ctx: its deadline becomes the
+// connection's, and cancelling it closes the connection.
 package smtpsend
 
 import (
@@ -10,22 +11,16 @@ import (
 	"errors"
 	"net"
 	"net/smtp"
-	"time"
 )
-
-// Timeout bounds one whole send when ctx carries no earlier deadline.
-const Timeout = 60 * time.Second
 
 // Send delivers raw from from to every address in to through addr ("host:port"),
 // upgrading to STARTTLS when offered and authenticating with auth when non-nil, exactly
-// as net/smtp.SendMail does. It returns once ctx ends or the send passes its deadline.
+// as net/smtp.SendMail does. It returns once ctx is cancelled or passes its deadline.
 func Send(ctx context.Context, addr string, auth smtp.Auth, from string, to []string, raw []byte) error {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, Timeout)
-	defer cancel()
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {

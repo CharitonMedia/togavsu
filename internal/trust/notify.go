@@ -420,7 +420,9 @@ func (s *Service) DeliverMail(ctx context.Context, sender Sender) (int, error) {
 		}
 		now := micro(s.now())
 		if err := sender.Send(ctx, m.To, m.Subject, m.Body); err != nil {
-			if _, err := s.db.ExecContext(ctx, `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, err.Error(), now, string(m.ID)); err != nil {
+			// A send cut off by ctx's deadline or cancellation is still recorded, so the
+			// admin sees why the row is waiting.
+			if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, last_error = $1, updated_at = $2 WHERE id = $3`, err.Error(), now, string(m.ID)); err != nil {
 				return sent, err
 			}
 			continue
