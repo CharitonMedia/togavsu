@@ -496,7 +496,12 @@ func (s *Service) makeGroup(ctx context.Context, j Job, how, title string, membe
 		}
 		for k, r := range reads {
 			preset := r
-			preset.Method, preset.Status = methodGrouped, unitPassed
+			// A page keeps its photo's result: a photo that failed its check is an
+			// unresolved page of the PDF, never published as checked.
+			preset.Method = methodGrouped
+			if r.Status != unitPassed {
+				preset.Status = unitFailed
+			}
 			preset.CheckResult = "photo " + strconv.Itoa(k+one) + ": " + r.CheckResult
 			if err := s.insertUnit(ctx, jid, pageName(k), k, &preset); err != nil {
 				return err

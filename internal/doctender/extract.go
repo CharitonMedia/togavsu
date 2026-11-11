@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"io"
 	"os"
 	"path"
 	"regexp"
@@ -388,16 +389,22 @@ func columnIndex(ref string) int {
 
 func (s *Service) wordUnits(w *work) ([]unitSpec, *precheck, error) {
 	ext := strings.ToLower(path.Ext(w.file.Name))
-	if ext == ".docx" || ext == ".odt" {
-		if _, err := zip.NewReader(bytes.NewReader(w.data), int64(len(w.data))); err != nil {
-			return nil, &precheck{"damaged", "the document does not open: " + err.Error()}, nil
-		}
-		if bytes.Contains(w.data, []byte("EncryptedPackage")) {
-			return nil, &precheck{"password_protected", "the document is password-protected"}, nil
+	locked := &precheck{"password_protected", "the document is password-protected"}
+	// A password-protected DOCX is not a zip: Word wraps it in a compound file with an
+	// EncryptedPackage stream. It is checked first, so it is not flagged as damaged.
+	if ext == ".docx" || ext == ".odt" || ext == ".doc" {
+		if _, ok := cfbStream(w.data, "EncryptedPackage"); ok || (bytes.HasPrefix(w.data, cfbMagic) && bytes.Contains(w.data, []byte("EncryptedPackage"))) {
+			return nil, locked, nil
 		}
 	}
-	if ext == ".doc" && bytes.HasPrefix(w.data, []byte("\xd0\xcf\x11\xe0")) && bytes.Contains(w.data, []byte("EncryptedPackage")) {
-		return nil, &precheck{"password_protected", "the document is password-protected"}, nil
+	if ext == ".docx" || ext == ".odt" {
+		zr, err := zip.NewReader(bytes.NewReader(w.data), int64(len(w.data)))
+		if err != nil {
+			return nil, &precheck{"damaged", "the document does not open: " + err.Error()}, nil
+		}
+		if odfEncrypted(zr, int64(len(w.data))) {
+			return nil, locked, nil
+		}
 	}
 	return []unitSpec{{Name: "document", Run: func(ctx context.Context, _ bool) (unitWork, error) {
 		if s.d.Docs == nil {
@@ -927,4 +934,23 @@ func similarity(a, b string) float64 {
 		prev, cur = cur, prev
 	}
 	return float64(one) - float64(prev[len(wb)])/float64(n)
+}
+
+// odfEncrypted reports an OpenDocument package whose manifest lists encryption data,
+// which is how a password-protected ODT stays a zip. The read is bounded by the size
+// of the file itself.
+func odfEncrypted(zr *zip.Reader, limit int64) bool {
+	for _, f := range zr.File {
+		if f.Name != "META-INF/manifest.xml" {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return false
+		}
+		defer rc.Close()
+		body, err := io.ReadAll(io.LimitReader(rc, limit))
+		return err == nil && bytes.Contains(body, []byte("encryption-data"))
+	}
+	return false
 }

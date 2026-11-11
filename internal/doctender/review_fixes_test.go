@@ -434,6 +434,13 @@ func cfb(t *testing.T, words, pages int, mini bool) []byte {
 	if !mini {
 		stream = append(stream, make([]byte, 4096-len(stream))...)
 	}
+	return cfbNamed(t, "\x05SummaryInformation", stream, mini)
+}
+
+// cfbNamed builds a version 3 compound file holding one stream under the given name.
+func cfbNamed(t *testing.T, name string, stream []byte, mini bool) []byte {
+	t.Helper()
+	le := binary.LittleEndian
 	const ss = 512
 	free, end, fatSect := uint32(0xFFFFFFFF), uint32(0xFFFFFFFE), uint32(0xFFFFFFFD)
 	fat := make([]uint32, ss/4)
@@ -502,7 +509,7 @@ func cfb(t *testing.T, words, pages int, mini bool) []byte {
 		le.PutUint32(e[120:], uint32(size))
 		return e
 	}
-	dir := append(entry("Root Entry", 5, rootStart, rootSize), entry("\x05SummaryInformation", 2, streamStart, len(stream))...)
+	dir := append(entry("Root Entry", 5, rootStart, rootSize), entry(name, 2, streamStart, len(stream))...)
 	dir = pad(dir)
 	h := make([]byte, 512)
 	copy(h, cfbMagic)
