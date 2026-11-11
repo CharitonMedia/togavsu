@@ -1,0 +1,28 @@
+{{template "head" "Operator"}}
+<h1>Flag and pull</h1>
+<p>Flagging shows a warning on the listing and alerts every firm that runs the module; installs stay possible. Pulling takes the module out of search and stops installs from the marketplace; firms keep what they have. Nothing is switched off remotely.</p>
+{{if .Done}}<p class="done" role="status">Saved: {{.Done}}.</p>{{end}}
+<form method="post" action="/operator/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Sign out</button></form>
+{{range .Listings}}
+<section class="op-listing" id="listing-{{.ID}}">
+<h2><a href="/listings/{{.ID}}">{{.Name}}</a> <span class="version">{{.Version}}</span>{{if .Pulled}} <span class="tag">Pulled</span>{{end}}{{if .Flagged}} <span class="tag">Flagged</span>{{end}}</h2>
+<p class="meta">by {{.Author}} · <code>{{.ID}}</code></p>
+<form method="post" action="/operator/listings/{{.ID}}/flag" class="op-form">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="note-{{.ID}}">Flag note</label><input id="note-{{.ID}}" name="note" required maxlength="500">
+<label for="ver-{{.ID}}">Version (leave empty to flag the module)</label>
+<select id="ver-{{.ID}}" name="version"><option value="">Whole module</option>{{range .VersionHistory}}<option value="{{.Version}}">{{.Version}}</option>{{end}}</select>
+<button type="submit">Flag</button>
+</form>
+{{if not .Pulled}}
+<form method="post" action="/operator/listings/{{.ID}}/pull" class="op-form">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="pull-{{.ID}}">Pull note</label><input id="pull-{{.ID}}" name="note" maxlength="500">
+<button type="submit" class="danger">Pull from marketplace</button>
+</form>
+{{end}}
+</section>
+{{else}}
+<p>No listings yet.</p>
+{{end}}
+{{template "foot"}}

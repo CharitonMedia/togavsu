@@ -1,0 +1,21 @@
+{{template "head" .L.Name}}
+<h1>{{.L.Name}} <span class="version">{{.L.Version}}</span></h1>
+{{if .L.Pulled}}<p class="warning pulled" role="alert">This module was pulled from the marketplace. It can't be installed from here. Firms that already have it keep it and can still install it from a local file.</p>{{end}}
+{{if .Warning}}<p class="warning" role="alert" id="flag-warning">{{.Warning}}</p>{{end}}
+<p class="notice" id="notice">{{.Notice}}</p>
+<dl class="facts">
+<dt>Module id</dt><dd><code>{{.L.ID}}</code></dd>
+<dt>Author</dt><dd>{{.L.Author}}</dd>
+<dt>Verified signing key</dt><dd><code>{{.L.SigningKey}}</code>{{if .L.SigningKeyPEM}}<pre class="key">{{.L.SigningKeyPEM}}</pre>{{end}}</dd>
+<dt>Price</dt><dd>{{if .L.PriceNote}}{{.L.PriceNote}}{{else}}Free{{end}}</dd>
+<dt>Permissions requested</dt><dd>{{if .L.Permissions}}<ul class="perms">{{range .L.Permissions}}<li><code>{{.}}</code></li>{{end}}</ul>{{else}}None{{end}}</dd>
+</dl>
+<h2>Version history</h2>
+<table class="history">
+<thead><tr><th scope="col">Version</th><th scope="col">Released</th><th scope="col">Flag</th></tr></thead>
+<tbody>
+{{range .L.VersionHistory}}<tr><td>{{.Version}}</td><td>{{date .ReleasedAt}}</td><td>{{if .Flagged}}<span class="warning-inline">We've been alerted that this item has problems. {{.FlagNote}}</span>{{end}}</td></tr>
+{{end}}
+</tbody>
+</table>
+{{template "foot"}}
