@@ -1,8 +1,8 @@
 {
  "task_id": "integrate-documents",
  "status": "pass",
- "scope": "Phase 4 integration: the calendar, the file store with its storage backends, LawCraft (editor) and Doc Tender composed into the running core on Postgres with practice, identity, settings, audit, billing and trust; their API, /mcp tools, screens, background workers and the core data volume. status pass means every assigned phase case and every required CI job passed locally at the tested revision. It is not full product acceptance: 35 of 52 criteria remain pending globally, including AC-011, AC-040, AC-041, AC-042, AC-043, AC-050 and AC-052 whose phase cases pass with the gaps named in pending_notes. Product CI results for this head come from the pull request run, not this report.",
- "tested_revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+ "scope": "Phase 4 integration: the calendar, the file store with its storage backends, LawCraft (editor) and Doc Tender composed into the running core on Postgres with practice, identity, settings, audit, billing and trust; their API, /mcp tools, screens, background workers and the core data volume. status pass means every assigned phase case and every required CI job passed locally at the tested revision, which contains the ui merge (ad298f5). It is not full product acceptance: 35 of 52 criteria remain pending globally, including AC-011, AC-040, AC-041, AC-042, AC-043, AC-050 and AC-052 whose phase cases pass with the gaps named in pending_notes. Product CI results for this head come from the pull request run, not this report.",
+ "tested_revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad",
  "phase_cases": [
   {
    "id": "calendar-deadlines",
@@ -13,7 +13,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
    "exit_code": 0,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "id": "storage-versions-moves",
@@ -25,7 +25,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
    "exit_code": 0,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "id": "lawcraft-editor",
@@ -36,7 +36,7 @@
    "status": "pass",
    "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/",
    "exit_code": 0,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "id": "doctender-corpus",
@@ -55,7 +55,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
    "exit_code": 0,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd"
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   }
  ],
  "passed_acceptance_ids": [
@@ -123,7 +123,7 @@
   "AC-026": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
   "AC-030": "Phase 3 evidence; internal/settings TestModuleClean (the AC-030 source check) passes over every non-test file at this revision, including the new calendar store, projection and core wiring.",
   "AC-035": "As AC-005: phase 3 evidence, rerun green in test-core.sh at this revision.",
-  "AC-027": "TestDocumentsCalendarDeadlines on the running core: with a court date, a block and an all-day event (and a court date on a walled matter) in the attorney's next seven court days, POST /api/v1/calendar/available-dates lists exactly the other days, a client meeting does not make a day busy, the pleading carries the title, case number and certificate of service, the letter carries recipient, address and salutation, the calendar_events and audit_log row counts are unchanged, and a reversed window is a 400. The walled hearing is never named.",
+  "AC-027": "TestDocumentsCalendarDeadlines on the running core: with a court date, a block and an all-day event (and a court date on a walled matter) in the attorney's next seven court days, POST /api/v1/calendar/available-dates lists exactly the other days, a client meeting does not make a day busy, the pleading carries the title, case number and certificate of service, the letter carries recipient, address and salutation, the calendar_events and audit_log row counts are unchanged, and a reversed window is a 400. The walled hearing is never named. The ui-composed site serves the same Postgres calendar (TestUICalendarIsCoreCalendar).",
   "AC-039": "TestDocumentsStorageVersionsMoves over HTTP as signed-in users: a 1 GiB upload in 8 MiB chunks survives a connection cut mid-chunk (resumes at that chunk) and a core restart (resumes from staging on the data volume); the staged, stored and downloaded SHA-256 match. An attorney-only-free file on a walled matter is absent from staff lists and search and is 404 for read, versions, renditions, download, inline preview, Doc Tender result and zip, and over /mcp. Upload, upload-as-version, and restore each add a version; every version downloads its own bytes unchanged.",
   "AC-044": "TestDocumentsDocTenderCorpus/corpus: a generated 120-page image-only PDF is read page by page (OCR plus an independent second read, Tesseract where installed); two injected OCR failures at page 49 leave pages 1-48 passed once, page 49 pending after 2 attempts and 50-120 untouched; after the 15-minute retry wait the job resumes at page 49, never rereads 1-48, and publishes a Markdown copy with '## Page 49' and no unresolved marks.",
   "AC-045": "Eight generated photos (a three-page letter and a five-page lease, shuffled into one upload batch) are grouped once the matter has had no new photos for 10 minutes: two PDFs whose versions are saved how=grouping, each linked to its 3 or 5 photos, each with a Markdown copy whose pages are in order.",
@@ -140,7 +140,7 @@
   "AC-004": "Unchanged by this phase; phase 3 evidence stands. The accountant is refused editor runs here.",
   "AC-006": "Unchanged by this phase; phase 3 evidence stands; global release acceptance pending.",
   "AC-010": "Home-screen layouts are the ui assignment.",
-  "AC-011": "Calendar half passes on the core (widget target range, row click-through, walled deadline never reached over widget, page, API or /mcp). The sample module's widget and the manifest-refusal clauses need the module runtime (phase 5).",
+  "AC-011": "Calendar half passes on the core and on the ui-composed site (TestUICalendarIsCoreCalendar: the composed site uses the core's Postgres calendar, the widget survives a restart, the walled deadline stays hidden) (widget target range, row click-through, walled deadline never reached over widget, page, API or /mcp). The sample module's widget and the manifest-refusal clauses need the module runtime (phase 5).",
   "AC-012": "Not in this phase.",
   "AC-013": "Not in this phase.",
   "AC-014": "Not in this phase.",
@@ -178,7 +178,9 @@
   "POST /api/v1/api-tokens filled owner_user_id with the caller even when module_id was given, so no module token could be issued.",
   "A storage move started over the API ran on a goroutine that outlived App.Close; the core now cancels it on Close (a stopped move resumes at start).",
   "A replacement core started by the supervisor during an update mounted only the secrets volume and would have started on an empty local-disk file store; Compose and the supervisor now mount core_data at /var/lib/togavsu-core, which the image creates for the non-root user.",
-  "Billing's receipt and invoice-PDF seams were nil in the core; files now open before finance and billing uses billing.FileLink."
+  "Billing's receipt and invoice-PDF seams were nil in the core; files now open before finance and billing uses billing.FileLink.",
+  "Checkpoint (eaa2803): the ui compose layer (merged in ad298f5) built its own calendar on calendar.Memory and served calendar routes ahead of the core, so deadlines made on the composed site were lost on restart. compose.Mount now takes core.App.Calendar and sends every calendar route to the core handler; TestUICalendarIsCoreCalendar checks the Postgres row, the widget, the wall and a core restart, and fails on the old compose.go.",
+  "Checkpoint (eaa2803): the ui Postgres test helper called core.Open without DataDir, so on a non-root runner core.Open tried /var/lib/togavsu-core; it now passes DataDir: t.TempDir() (kept across the restart in the new test). internal/dashboard/compose passes inside test-core.sh as uid 1001."
  ],
  "proposed_shared_changes": [
   "Contract (api/contract, regenerated with docs/api/coverage.md, outside this assignment's paths): register ai.model_prices (json, ai_and_inference, default {}), and add GET /api/v1/files/{file_id}/doc-tender-status, POST /api/v1/files/{file_id}/doc-tender-reprocess and GET /api/v1/doc-tender/model-choices so tokens and /mcp reach them.",
@@ -191,128 +193,163 @@
   "summary": "17 pages as staff, attorney, admin and signed out: calendar week, deadlines, a deadline, an event, available dates, feeds, the matter Files tab, Files and storage, the edit page with the LawCraft frame, the edit page locked for a second user, New Pleading, the Doc Tender review queue, an item, the Doc Tender tab and guide, a walled deadline (404 for staff) and the signed-out redirect to /login. The test fails on any console error, page error or failed request. Each domain still draws its own top bar; the shared app shell (PRD 8.9) is the ui assignment."
  },
  "simplification": {
-  "basis": "git diff --numstat 8aa7192 (PR base) to the tested revision",
-  "go_lines_added": 3829,
-  "go_lines_removed": 36,
-  "net_go_lines": 3793,
-  "net_non_test_go_lines": 1092,
+  "basis": "git diff --numstat ad298f5 (review base, the ui merge #35) to the tested revision 7acef2f",
+  "go_lines_added": 3958,
+  "go_lines_removed": 73,
+  "net_go_lines": 3885,
+  "net_non_test_go_lines": 1096,
+  "checkpoint_fix": "7acef2f vs eaa2803: 3 files, +129/-37 (compose.go +22/-18, env_pg_test.go +46/-19, new calendar_pg_test.go +61)",
   "other_lines": "migration 0500 +49, documents-qc.mjs +50, test-core.sh +8/-4, PONYTAIL-DEBT.md +10/-1, compose.yaml +5, core.Dockerfile +6/-1",
   "debt_entries_before": 52,
   "debt_entries_after": 56,
-  "review": "Composition reuses each package's own seams (files.PracticeDirectory, calendar/editor/doctender PracticeMatters, billing.FileLink, the handlers' Routes) and the existing first-match mux dispatch; /mcp needed no change because it is generated from mounted routes. The corpus and synthetic provider live in core test files rather than a new package. Four debt entries were added (projection, calendar list scans, in-process tickers, calendar notices apart from notifications); the calendar Memory-store ceiling was removed."
+  "review": "Composition reuses each package's own seams (files.PracticeDirectory, calendar/editor/doctender PracticeMatters, billing.FileLink, the handlers' Routes) and the existing first-match mux dispatch; /mcp needed no change because it is generated from mounted routes. Four debt entries were added (projection, calendar list scans, in-process tickers, calendar notices apart from notifications); the calendar Memory-store ceiling was removed in the calendar package and, at this revision, in the ui compose layer too (its in-code ponytail, never listed in PONYTAIL-DEBT.md, is gone: compose takes core.App.Calendar and only matches calendar paths to hand them to the core)."
  },
  "ci": {
   "workflow": ".github/workflows/product-ci.yml (unchanged; a CI change is proposed in the PR body)",
-  "note": "The controller publishes this branch; the Product CI run on the pull request head is the CI evidence. Locally every required job's script passed at the tested revision (tests below). Product CI's Core job has no Tesseract and no wordcraft-cli: Doc Tender uses its check-model second read there and the editor case skips."
+  "note": "The controller publishes this branch; the Product CI run on the pull request head is the CI evidence. Locally every required job's scripts passed at the tested revision (tests below). Product CI's Core job has no Tesseract and no wordcraft-cli: Doc Tender uses its check-model second read there and the editor case skips."
  },
  "tests": [
   {
    "command": "CI=1 sh scripts/ci/test-core.sh",
    "exit_code": 0,
-   "seconds": 939,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 338,
    "job": "core",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "note": "all 32 packages including internal/dashboard/compose (ui, merged from ad298f5) with TestUICalendarIsCoreCalendar; the strict run had no skipped database test",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "sh scripts/ci/test-api.sh",
    "exit_code": 0,
-   "seconds": 32,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 40,
    "job": "api",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "second local postgres:17 container (user and database togavsu)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "sh scripts/ci/test-qa.sh",
    "exit_code": 0,
-   "seconds": 10,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
-   "job": "qa"
+   "seconds": 8,
+   "job": "qa",
+   "tesseract": "tesseract 5.3.0 and its libraries copied out of the togavsu-core:local image (deploy/core.Dockerfile, Debian bookworm) onto PATH; host apt could not reach the Ubuntu mirrors",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "sh scripts/ci/test-supervisor.sh",
    "exit_code": 0,
-   "seconds": 306,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
-   "job": "supervisor"
+   "seconds": 296,
+   "job": "supervisor",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
-   "command": "TOGAVSU_TEST_DATABASE_URL=<fresh postgres:17 A> TOGAVSU_TEST_DATABASE_URL_B=<fresh postgres:17 B> sh scripts/ci/test-backup-integration.sh",
+   "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/ && sh scripts/ci/test-bootstrap.sh && sh scripts/ci/test-core-image-gate.sh && sh scripts/ci/pending-gate.sh && python3 scripts/ci/check-compose.py && sh scripts/ci/ui-qc.sh && sh scripts/ci/update-load.sh",
    "exit_code": 0,
-   "seconds": 51,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 1,
+   "job": "supervisor_job_other_steps",
+   "note": "the remaining steps of the Supervisor tests job; pending-gate, ui-qc and update-load print their own PENDING lines and exit 0",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
+  },
+  {
+   "command": "TOGAVSU_TEST_DATABASE_URL=<fresh postgres:17 A> TOGAVSU_TEST_DATABASE_URL_B=<fresh postgres:17 B> TOGAVSU_PG_DUMP=<pg_dump 17 from the postgres:17 image> TOGAVSU_PSQL=<psql 17 from the postgres:17 image> sh scripts/ci/test-backup-integration.sh",
+   "exit_code": 0,
+   "seconds": 257,
    "job": "backup",
-   "database": "two fresh postgres:17 containers (ports 5434 and 5435)"
+   "database": "two fresh postgres:17 containers (ports 5434 and 5435)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "docker compose -f compose.yaml config >/dev/null && docker build -f Dockerfile -t togavsu-supervisor:local . && docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null' && sh scripts/ci/build-core-image.sh && sh scripts/ci/test-core-smoke.sh",
    "exit_code": 0,
-   "seconds": 39,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
-   "job": "image"
+   "seconds": 69,
+   "job": "image",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "sh scripts/ci/test-compose-first-run.sh",
    "exit_code": 0,
-   "seconds": 23,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
-   "job": "compose_first_run"
+   "seconds": 22,
+   "job": "compose_first_run",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 2,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 3,
    "job": "case_calendar",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 16,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 29,
    "job": "case_storage",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/",
    "exit_code": 0,
    "seconds": 3,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
    "job": "case_editor",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 58,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 61,
    "job": "case_doctender",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "note": "no tesseract on PATH, as in the Product CI Core tests job",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
-   "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> TOGAVSU_BROWSER_E2E=1 CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23> go test -count=1 ./internal/editor/",
+   "command": "PATH=<core image tesseract 5.3.0>:$PATH go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 29,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 113,
+   "job": "case_doctender_tesseract",
+   "database": "local postgres:17 container (user and database togavsu)",
+   "tesseract": "tesseract 5.3.0 and its libraries copied out of the togavsu-core:local image (deploy/core.Dockerfile, Debian bookworm) onto PATH; host apt could not reach the Ubuntu mirrors",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
+  },
+  {
+   "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> TOGAVSU_BROWSER_E2E=1 CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23.11.1> go test -count=1 -v ./internal/editor/",
+   "exit_code": 0,
+   "seconds": 61,
    "job": "editor_pkg",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "note": "TestBrowserEditPageE2E passed",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
    "command": "DOCTENDER_REQUIRE_TESSERACT=1 go test -count=1 ./internal/doctender/",
    "exit_code": 0,
-   "seconds": 98,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 72,
    "job": "doctender_pkg",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "tesseract": "tesseract 5.3.0 and its libraries copied out of the togavsu-core:local image (deploy/core.Dockerfile, Debian bookworm) onto PATH; host apt could not reach the Ubuntu mirrors",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   },
   {
-   "command": "rm -rf <qc dir> && TOGAVSU_QC_DIR=<qc dir> CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23> TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> go test -count=1 -v -run '^TestDocumentsScreens$' ./internal/core/",
+   "command": "rm -rf <qc dir> && TOGAVSU_QC_DIR=<qc dir> CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core 23.11.1> TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli built by web/editor/build.sh at 770a8fab> TOGAVSU_EDITOR_DIST=<browser editor dist built by web/editor/build.sh at 770a8fab> go test -count=1 -v -run '^TestDocumentsScreens$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 30,
-   "revision": "23db32e66392ed300e82af81fc00c1e89c3c28cd",
+   "seconds": 28,
    "job": "visual_qc",
-   "database": "local postgres:17 container (user and database togavsu)"
+   "database": "local postgres:17 container (user and database togavsu)",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
+  },
+  {
+   "command": "go test -count=1 -v -run '^TestUICalendarIsCoreCalendar$' ./internal/dashboard/compose/",
+   "exit_code": 0,
+   "seconds": 1,
+   "job": "finding_compose_calendar",
+   "database": "local postgres:17 container",
+   "note": "regression for checkpoint finding 3; with compose.go reverted to eaa2803 it fails: compose mounted its own calendar service instead of the core's",
+   "revision": "7acef2f6c627bd9ef8387cb14cb1bd71fefcb8ad"
   }
+ ],
+ "observations": [
+  "With Alpine's tesseract 5.3.4 on PATH (a stand-in tried first), TestDocumentsDocTenderCorpus failed at the 120-page scan: page 1's tesseract cross-check scored agreement 0.692, so the page went pending instead of passing. With the core image's tesseract 5.3.0 the case passes (case_doctender_tesseract), and without tesseract (Product CI's Core job) it passes. The synthetic scan's cross-check is therefore sensitive to the Tesseract build; the proposed CI change to add Ubuntu's tesseract-ocr (5.3.4 on ubuntu-latest) to the Core job should be landed only with that case watched, or use the core image's build. Not caused by this change (compose only)."
  ]
 }
