@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CharitonMedia/togavsu/internal/doctender/dtcorpus"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/identity"
@@ -344,7 +343,7 @@ func (d *docs) adminP() domain.Principal {
 // useProvider points the AI tab at the synthetic provider, so Doc Tender runs.
 func (d *docs) useProvider() {
 	d.t.Helper()
-	for k, v := range map[string]string{"ai.openai_api_key": dtcorpus.Key, "ai.primary_provider": "openai", "ai.primary_strong_model": "gpt-test-strong",
+	for k, v := range map[string]string{"ai.openai_api_key": providerKey, "ai.primary_provider": "openai", "ai.primary_strong_model": "gpt-test-strong",
 		"ai.primary_fast_model": "gpt-test-fast", "ai.speech_to_text_model": "whisper-test"} {
 		d.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/"+k, map[string]any{"value": v})
 	}
@@ -426,7 +425,7 @@ func localObjects(t *testing.T, root string) int {
 // matching SHA-256s; the Markdown copy has the original's base name, follows its wall
 // and is what Files search matches.
 func TestDocumentsStorageVersionsMoves(t *testing.T) {
-	prov := dtcorpus.NewProvider()
+	prov := NewProvider()
 	defer prov.Close()
 	d := newDocs(t, func(c *Config) {
 		c.NoBackground = true
@@ -1082,7 +1081,7 @@ func TestDocumentsDocTenderCorpus(t *testing.T) {
 // upload and the module-written file need the module runtime (pending); the core
 // refuses both writes today.
 func testDocTenderArrival(t *testing.T) {
-	prov := dtcorpus.NewProvider()
+	prov := NewProvider()
 	defer prov.Close()
 	d := newDocs(t, func(c *Config) { c.ProviderURLs = map[string]string{"openai": prov.URL()} })
 	d.useProvider()
@@ -1208,7 +1207,7 @@ JOIN doc_tender_jobs j ON j.id = u.job_id WHERE j.file_id = $1 AND j.kind = 'fil
 
 // AC-044 to AC-052 on one install, stepping the worker on a settable clock.
 func testDocTenderCorpus(t *testing.T) {
-	prov := dtcorpus.NewProvider()
+	prov := NewProvider()
 	defer prov.Close()
 	clk := newTestClock()
 	d := newDocs(t, func(c *Config) {
@@ -1262,7 +1261,7 @@ func testDocTenderCorpus(t *testing.T) {
 
 	// --- AC-044: 120 scanned pages, a failure injected at page 49 resumes at page 49 ---
 	prov.FailOCR("PAGE 49 OF 120", 2)
-	scan := str(t, d.upload(d.staff, matter, "exhibit-scan.pdf", "application/pdf", dtcorpus.ScannedPDF(120), nil), "id")
+	scan := str(t, d.upload(d.staff, matter, "exhibit-scan.pdf", "application/pdf", ScannedPDF(120), nil), "id")
 	d.drain()
 	units := d.unitRows(scan)
 	var pages []map[string]any
@@ -1318,7 +1317,7 @@ func testDocTenderCorpus(t *testing.T) {
 	if hits := ids(items(t, d.staff.must(http.StatusOK, "GET", "/api/v1/files?q=PLAINTIFF+EXHIBIT+FOR+HEARING", nil))); !hits[scan] {
 		t.Fatalf("search for text only the scanned pixels hold: %v", hits)
 	}
-	sealedScan := str(t, d.upload(d.atty, walled, "sealed-scan.pdf", "application/pdf", dtcorpus.ScannedPDF(1), nil), "id")
+	sealedScan := str(t, d.upload(d.atty, walled, "sealed-scan.pdf", "application/pdf", ScannedPDF(1), nil), "id")
 	d.drain()
 	smd, _ := d.markdown(d.atty, sealedScan)
 	sname := str(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+sealedScan, nil).json, "name")
@@ -1352,7 +1351,7 @@ func testDocTenderCorpus(t *testing.T) {
 
 	// --- AC-045: eight photos of a 3-page letter and a 5-page lease ---
 	var photos []string
-	for k, p := range dtcorpus.LetterLeasePhotos() {
+	for k, p := range LetterLeasePhotos() {
 		photos = append(photos, str(t, d.upload(d.staff, matter, fmt.Sprintf("IMG_%04d.png", 100+k), "image/png", p, nil), "id"))
 	}
 	d.drain()
@@ -1404,9 +1403,9 @@ func testDocTenderCorpus(t *testing.T) {
 	}
 
 	// --- AC-046: audio and video transcripts with timestamps; the video adds the screen ---
-	audio := str(t, d.upload(d.staff, matter, "voicemail.wav", "audio/wav", dtcorpus.ToneWAV(dtcorpus.On(3)), nil), "id")
+	audio := str(t, d.upload(d.staff, matter, "voicemail.wav", "audio/wav", ToneWAV(On(3)), nil), "id")
 	video := str(t, d.upload(d.staff, matter, "bodycam.avi", "video/x-msvideo",
-		dtcorpus.FramesAVI([]color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}), nil), "id")
+		FramesAVI([]color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}), nil), "id")
 	d.drain()
 	for _, id := range []string{audio, video} {
 		if st := d.dtStatus(d.atty, id); st["status"] != "published" {
@@ -1448,8 +1447,8 @@ func testDocTenderCorpus(t *testing.T) {
 	mailBefore := len(d.smtp.to(adminEmail))
 	prov.Label("UNCERTAIN SCRIBBLE", "maybe a note", 0.42, "")
 	bad := map[string]string{
-		"password_protected": str(t, d.upload(d.staff, matter, "settlement.pdf", "application/pdf", dtcorpus.EncryptedPDF("open-sesame"), nil), "id"),
-		"damaged":            str(t, d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", dtcorpus.DamagedPDF(), nil), "id"),
+		"password_protected": str(t, d.upload(d.staff, matter, "settlement.pdf", "application/pdf", EncryptedPDF("open-sesame"), nil), "id"),
+		"damaged":            str(t, d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", DamagedPDF(), nil), "id"),
 		"low_confidence":     str(t, d.upload(d.staff, matter, "scribble.txt", "text/plain", []byte("UNCERTAIN SCRIBBLE\nsomething about the case\n"), nil), "id"),
 	}
 	d.drain()
@@ -1568,7 +1567,7 @@ func TestDocumentsScreens(t *testing.T) {
 	if out == "" || os.Getenv("CHROME") == "" || os.Getenv("PUPPETEER_CORE") == "" {
 		t.Skip("TOGAVSU_QC_DIR, CHROME and PUPPETEER_CORE are not all set")
 	}
-	prov := dtcorpus.NewProvider()
+	prov := NewProvider()
 	defer prov.Close()
 	d := newDocs(t, func(c *Config) {
 		c.ProviderURLs = map[string]string{"openai": prov.URL()}
@@ -1589,7 +1588,7 @@ func TestDocumentsScreens(t *testing.T) {
 		"starts_at": today.AddDate(0, 0, 1).Add(9 * time.Hour).Format(time.RFC3339), "ends_at": today.AddDate(0, 0, 1).Add(11 * time.Hour).Format(time.RFC3339),
 		"matter_id": matter, "attendee_user_ids": []string{d.attyID}}).json, "id")
 	d.upload(d.staff, matter, "motion.txt", "text/plain", []byte(motionText), nil)
-	d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", dtcorpus.DamagedPDF(), nil)
+	d.upload(d.staff, matter, "cut-off.pdf", "application/pdf", DamagedPDF(), nil)
 	d.drain()
 	var exception string
 	for _, ex := range items(t, d.atty.must(http.StatusOK, "GET", "/api/v1/doc-tender/exceptions?status=open", nil)) {

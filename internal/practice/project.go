@@ -54,7 +54,16 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 }
 
 // projectOrder writes referenced rows before the rows that reference them.
-var projectOrder = map[string]int{"area": 1, "county": 2, "contact": 3, "referral": 4, "matter": 5}
+var projectOrder = func() map[string]int {
+	out := map[string]int{}
+	for i, kind := range []string{"area", "county", "contact", "referral", "matter"} {
+		out[kind] = i + projectFirst
+	}
+	return out
+}()
+
+// projectFirst is the first projected kind's rank; kinds not projected rank zero.
+const projectFirst = int(0) + 1
 
 type execer interface {
 	ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error)
@@ -63,7 +72,7 @@ type execer interface {
 func projectRows(ctx context.Context, tx execer, list []record) error {
 	var rows []record
 	for _, r := range list {
-		if projectOrder[r.kind] > 0 && !r.del {
+		if projectOrder[r.kind] >= projectFirst && !r.del {
 			rows = append(rows, r)
 		}
 	}
@@ -78,9 +87,9 @@ func projectRows(ctx context.Context, tx execer, list []record) error {
 
 func bit(b bool) int {
 	if b {
-		return 1
+		return projectFirst
 	}
-	return 0
+	return projectFirst - projectFirst
 }
 
 func meta(m domain.Meta) []any {

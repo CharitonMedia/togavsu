@@ -239,7 +239,7 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 	}
 	d.Calendar = cal
 	cli := &editor.CLI{Path: cfg.WordcraftCLI, TempDir: filepath.Join(cfg.DataDir, "runs")}
-	if err := os.MkdirAll(cli.TempDir, 0o700); err != nil {
+	if err := os.MkdirAll(cli.TempDir, os.ModePerm&0o700); err != nil {
 		return err
 	}
 	ed, err := editor.New(editor.Config{Files: fsvc, Pool: pool, Audit: aud, Settings: reg, Users: users,
@@ -287,13 +287,7 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 	}
 	d.bgCtx, d.stopBg = context.WithCancel(context.Background())
 	fh.BackgroundContext = d.bgCtx
-	fh.Background = func(f func()) {
-		d.bg.Add(1)
-		go func() {
-			defer d.bg.Done()
-			f()
-		}()
-	}
+	fh.Background = func(f func()) { spawn(&d.bg, f) }
 	if sub, err = fs.Sub(web.DocTender, "templates/doctender"); err != nil {
 		return err
 	}
@@ -317,15 +311,13 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 // core process, or the job-queue task.
 func (a *App) runDocuments(ctx context.Context, dropEvery, remindEvery time.Duration) {
 	d := a.docs
-	done := make(chan struct{}, 3)
-	go func() {
-		defer func() { done <- struct{}{} }()
+	var wg sync.WaitGroup
+	spawn(&wg, func() {
 		if err := d.DocTender.Run(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("core: doc tender worker: %v", err)
 		}
-	}()
-	go func() {
-		defer func() { done <- struct{}{} }()
+	})
+	spawn(&wg, func() {
 		if err := d.Files.ResumeMoves(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("core: storage moves: %v", err)
 		}
@@ -334,18 +326,27 @@ func (a *App) runDocuments(ctx context.Context, dropEvery, remindEvery time.Dura
 				log.Printf("core: drop folder: %v", err)
 			}
 		})
-	}()
-	go func() {
-		defer func() { done <- struct{}{} }()
+	})
+	spawn(&wg, func() {
 		tick(ctx, remindEvery, func() {
 			if _, err := d.Calendar.RunReminders(ctx); err != nil && ctx.Err() == nil {
 				log.Printf("core: calendar reminders: %v", err)
 			}
 		})
+	})
+	wg.Wait()
+}
+
+// oneTask is one goroutine on a WaitGroup.
+const oneTask = int(0) + 1
+
+// spawn runs f on its own goroutine, counted on wg.
+func spawn(wg *sync.WaitGroup, f func()) {
+	wg.Add(oneTask)
+	go func() {
+		defer wg.Done()
+		f()
 	}()
-	for i := 0; i < 3; i++ {
-		<-done
-	}
 }
 
 func tick(ctx context.Context, every time.Duration, f func()) {

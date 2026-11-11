@@ -33,11 +33,17 @@ var _ Store = (*Postgres)(nil)
 // NewPostgres returns the store on pool, whose search_path is schema core.
 func NewPostgres(pool *sql.DB) *Postgres { return &Postgres{DB: pool} }
 
+// pgFalse and pgTrue are the INTEGER 0/1 flags of the section 5 tables.
+const (
+	pgFalse = int(0)
+	pgTrue  = pgFalse + 1
+)
+
 func bit(b bool) int {
 	if b {
-		return 1
+		return pgTrue
 	}
-	return 0
+	return pgFalse
 }
 
 func (p *Postgres) tx(ctx context.Context, f func(*sql.Tx) error) error {
@@ -92,7 +98,7 @@ func (p *Postgres) DeleteEvent(ctx context.Context, id domain.ID) error {
 		if err != nil {
 			return err
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
+		if n, _ := res.RowsAffected(); n == int64(pgFalse) {
 			return repository.ErrNotFound
 		}
 		return nil
@@ -118,7 +124,7 @@ func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Eve
 			&e.Location, &e.TravelMinutes, &e.Notes); err != nil {
 			return nil, err
 		}
-		e.CreatedAt, e.UpdatedAt, e.AllDay, e.MatterID = domain.FromUnixMicro(created), domain.FromUnixMicro(updated), allDay == 1, domain.ID(matter.String)
+		e.CreatedAt, e.UpdatedAt, e.AllDay, e.MatterID = domain.FromUnixMicro(created), domain.FromUnixMicro(updated), allDay == pgTrue, domain.ID(matter.String)
 		idx[e.ID] = len(out)
 		out = append(out, Event{CalendarEvent: e})
 	}
@@ -189,7 +195,7 @@ func (p *Postgres) DeleteDeadline(ctx context.Context, id domain.ID) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if n, _ := res.RowsAffected(); n == int64(pgFalse) {
 		return repository.ErrNotFound
 	}
 	return nil
@@ -257,7 +263,7 @@ func (p *Postgres) DeleteFeed(ctx context.Context, id domain.ID) error {
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if n, _ := res.RowsAffected(); n == int64(pgFalse) {
 		return repository.ErrNotFound
 	}
 	return nil
@@ -280,8 +286,8 @@ FROM ical_feeds `+where+` ORDER BY id`, args...)
 			return nil, err
 		}
 		f.CreatedAt, f.UpdatedAt = domain.FromUnixMicro(created), domain.FromUnixMicro(updated)
-		f.OwnerUserID, f.Revoked, f.RevokedBy = domain.ID(owner.String), revoked == 1, domain.ID(by.String)
-		if revokedAt != 0 {
+		f.OwnerUserID, f.Revoked, f.RevokedBy = domain.ID(owner.String), revoked == pgTrue, domain.ID(by.String)
+		if revokedAt != int64(pgFalse) {
 			f.RevokedAt = domain.FromUnixMicro(revokedAt)
 		}
 		out = append(out, f)
@@ -321,7 +327,7 @@ ON CONFLICT (reminder_key) DO NOTHING`, key, domain.UnixMicroUTC(time.Now()))
 		return false, err
 	}
 	n, err := res.RowsAffected()
-	return n == 1, err
+	return n == int64(pgTrue), err
 }
 
 // ReleaseReminder drops a claim whose delivery failed.
@@ -362,7 +368,7 @@ FROM calendar_notices WHERE user_id = $1 ORDER BY created_at, id`, string(user))
 		if err := rows.Scan(&n.ID, &at, &n.UserID, &n.Kind, &n.Title, &n.Body, &n.Path, &matter, &record, &emailed); err != nil {
 			return nil, err
 		}
-		n.At, n.MatterID, n.RecordID, n.Emailed = domain.FromUnixMicro(at), domain.ID(matter.String), domain.ID(record.String), emailed == 1
+		n.At, n.MatterID, n.RecordID, n.Emailed = domain.FromUnixMicro(at), domain.ID(matter.String), domain.ID(record.String), emailed == pgTrue
 		out = append(out, n)
 	}
 	return out, rows.Err()
