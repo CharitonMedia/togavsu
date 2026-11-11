@@ -298,3 +298,112 @@ func TestCreateUserChecksPhoneFirst(t *testing.T) {
 		t.Fatalf("bad phone on add: err=%v identity calls=%d", err, id.calls)
 	}
 }
+
+// txKey marks a ctx that is inside lockingRecorder's transaction.
+type txKey struct{}
+
+// lockingRecorder models Postgres row locks: a transaction holds rowLock from start
+// to commit, so a second transaction that touches the same row (here the unique email
+// index entry) waits for the first. A nested Atomic joins the open transaction, as
+// audit.WithTx does.
+type lockingRecorder struct {
+	nopRecorder
+	rowLock sync.Mutex
+}
+
+func (r *lockingRecorder) Atomic(ctx context.Context, fn func(context.Context) error) error {
+	if ctx.Value(txKey{}) != nil {
+		return fn(ctx)
+	}
+	r.rowLock.Lock()
+	defer r.rowLock.Unlock()
+	return fn(context.WithValue(ctx, txKey{}, true))
+}
+
+// insertingIdentity inserts the new user into g and runs onCreate inside the create
+// transaction, after the insert.
+type insertingIdentity struct {
+	IdentityAPI
+	g        *gatedUsers
+	onCreate func()
+}
+
+func (c *insertingIdentity) CreateUser(_ context.Context, _ identity.Caller, nu identity.NewUser) (domain.User, error) {
+	enc, _ := domain.MarshalRoles(nu.Roles)
+	u := domain.User{Meta: domain.Meta{ID: "new"}, Name: nu.Name, Email: nu.Email, Roles: enc, Active: true}
+	if err := c.g.Update(context.Background(), u); err != nil {
+		return domain.User{}, err
+	}
+	if c.onCreate != nil {
+		c.onCreate()
+	}
+	return u, nil
+}
+
+// Codex PR #35 round 7: CreateUser opened its transaction and then took mu through the
+// nested UpdateUser, while UpdateUser takes mu and then opens a transaction. An admin
+// edit that took mu while the create's transaction was open then waited on the
+// create's row lock, and the create waited on mu: both hung. The hook starts that edit
+// while the create's transaction is open and lets it run until it reaches the users
+// row read (which comes after mu). With one lock order the edit waits on mu instead.
+func TestCreateUserAndConcurrentEditDoNotDeadlock(t *testing.T) {
+	ctx := context.Background()
+	g := &gatedUsers{m: map[domain.ID]domain.User{
+		"adm": {Meta: domain.Meta{ID: "adm"}, Name: "adm", Roles: `["admin"]`, Active: true},
+		"att": {Meta: domain.Meta{ID: "att"}, Name: "Ada", Email: "ada@firm.example", Roles: `["attorney"]`, Active: true},
+	}}
+	ident := &insertingIdentity{g: g}
+	a := &Accounts{Identity: ident, Users: g, Audit: &lockingRecorder{}, Profiles: NewMemory(), List: func(context.Context) ([]domain.User, error) {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		var out []domain.User
+		for _, u := range g.m {
+			out = append(out, u)
+		}
+		return out, nil
+	}}
+	edited := make(chan error, 1)
+	reached := make(chan struct{})
+	g.hook = "att"
+	g.onGet = func() { close(reached) }
+	ident.onCreate = func() {
+		email := "x@firm.example"
+		go func() {
+			_, err := a.UpdateUser(ctx, pAdmin, "att", UserInput{Email: &email})
+			edited <- err
+		}()
+		select {
+		case <-reached:
+		case <-time.After(150 * time.Millisecond):
+		}
+	}
+	created := make(chan error, 1)
+	go func() {
+		name, email := "Xavier", "x@firm.example"
+		roles := []domain.Role{domain.RoleStaff}
+		rate := int64(20000)
+		_, err := a.CreateUser(ctx, pAdmin, UserInput{Name: &name, Email: &email, Roles: &roles, Password: "synthetic-password-1", RateCents: &rate})
+		created <- err
+	}()
+	deadline := time.After(5 * time.Second)
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-created:
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+		case err := <-edited:
+			if err != nil {
+				t.Fatalf("edit: %v", err)
+			}
+		case <-deadline:
+			t.Fatal("create and a concurrent admin edit deadlocked on mu and the create transaction")
+		}
+	}
+	if u := g.get("new"); u.DefaultHourlyRateCents != 20000 {
+		t.Fatalf("new user's rate: %d", u.DefaultHourlyRateCents)
+	}
+	if u := g.get("att"); u.Email != "x@firm.example" {
+		t.Fatalf("edit not applied: %q", u.Email)
+	}
+}

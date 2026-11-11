@@ -243,6 +243,12 @@ func (a *Accounts) CreateUser(ctx context.Context, p domain.Principal, in UserIn
 	}
 	// The identity create and the follow-up field update share one transaction: a
 	// refused phone, rate, bar field or an unknown contact leaves no user behind.
+	// Lock order is mu, then the transaction, as in UpdateUser, DeactivateUser and
+	// UpdateMe: taking mu inside an open transaction can deadlock against an admin edit
+	// that holds mu and waits on this transaction's uncommitted email (Codex PR #35
+	// round 7).
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	var u domain.User
 	err := a.Audit.Atomic(ctx, func(ctx context.Context) error {
 		var err error
@@ -251,7 +257,7 @@ func (a *Accounts) CreateUser(ctx context.Context, p domain.Principal, in UserIn
 		}
 		rest := UserInput{RateCents: in.RateCents, BarNumber: in.BarNumber, BarState: in.BarState, Phone: in.Phone}
 		if rest != (UserInput{}) {
-			u, err = a.UpdateUser(ctx, p, u.ID, rest)
+			u, err = a.updateUser(ctx, p, u.ID, rest)
 		}
 		return err
 	})
@@ -322,6 +328,11 @@ func (a *Accounts) UpdateUser(ctx context.Context, p domain.Principal, id domain
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	return a.updateUser(ctx, p, id, in)
+}
+
+// updateUser is UpdateUser for a caller that already holds mu and has checked admin.
+func (a *Accounts) updateUser(ctx context.Context, p domain.Principal, id domain.ID, in UserInput) (domain.User, error) {
 	u, err := a.Users.Get(ctx, id)
 	if err != nil {
 		return domain.User{}, missingUser(err)
