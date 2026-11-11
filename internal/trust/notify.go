@@ -431,7 +431,9 @@ func (s *Service) DeliverMail(ctx context.Context, sender Sender) (int, error) {
 			}
 			continue
 		}
-		if _, err := s.db.ExecContext(ctx, `UPDATE mail_outbox SET attempts = attempts + 1, sent_at = $1, last_error = '', updated_at = $1 WHERE id = $2`, now, string(m.ID)); err != nil {
+		// The server took the message, so it is recorded as sent even when shutdown
+		// cancels ctx now; otherwise the next start would send it a second time.
+		if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `UPDATE mail_outbox SET attempts = attempts + 1, sent_at = $1, last_error = '', updated_at = $1 WHERE id = $2`, now, string(m.ID)); err != nil {
 			return sent, err
 		}
 		sent++

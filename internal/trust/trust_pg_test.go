@@ -728,6 +728,50 @@ func (c *cancelSender) Send(_ context.Context, to, _, _ string) error {
 	return context.Canceled
 }
 
+// acceptThenCancelSender has the server take the message, then cancels the delivery's
+// context, as App.Close does when it lands between DATA and the outbox update.
+type acceptThenCancelSender struct {
+	cancel context.CancelFunc
+	tried  []string
+}
+
+func (c *acceptThenCancelSender) Send(_ context.Context, to, _, _ string) error {
+	c.tried = append(c.tried, to)
+	c.cancel()
+	return nil
+}
+
+// Opus checkpoint P2: a message the server took is marked sent even when shutdown
+// cancels the delivery right after, so the next start does not send it again.
+func TestPGDeliverMailMarksAcceptedMailSentWhenCancelled(t *testing.T) {
+	e := newEnv(t)
+	for k, to := range []string{"one@example.test", "two@example.test"} {
+		if _, err := e.db.ExecContext(e.ctx, `INSERT INTO mail_outbox (id, created_at, updated_at, created_by, kind, record_id, to_address, subject, body)
+VALUES ($1,$2,$2,'system','trust_flag','synthetic',$3,'Synthetic','Synthetic')`, fmt.Sprintf("mail-%d", k), k, to); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(e.ctx)
+	defer cancel()
+	s := &acceptThenCancelSender{cancel: cancel}
+	sent, err := e.svc.DeliverMail(ctx, s)
+	if !errors.Is(err, context.Canceled) || sent != 1 || len(s.tried) != 1 {
+		t.Fatalf("DeliverMail: sent %d err %v tried %v, want one sent, then context.Canceled", sent, err, s.tried)
+	}
+	mail, err := e.svc.Outbox(e.ctx, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range mail {
+		if m.To == s.tried[0] && (m.SentAt == nil || m.Attempts != 1 || m.Error != "") {
+			t.Fatalf("the accepted row is not marked sent: %+v", m)
+		}
+		if m.To != s.tried[0] && (m.SentAt != nil || m.Attempts != 0) {
+			t.Fatalf("an untried row changed: %+v", m)
+		}
+	}
+}
+
 // Opus checkpoint P2: a delivery cancelled mid-run stops before the next send. Rows it
 // never tried keep no attempt and no error.
 func TestPGDeliverMailStopsWhenCancelled(t *testing.T) {

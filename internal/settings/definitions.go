@@ -168,7 +168,7 @@ var definitions = []Definition{
 
 	{Key: "api.page_size", Kind: KindInt, Default: "50", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Default rows per API page unless the list has its own page-size setting. The effective size is limited by api.max_page_size. Default 50."},
 	{Key: "api.max_page_size", Kind: KindInt, Default: "200", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Maximum rows per API page for lists using general pagination. Default 200."},
-	{Key: "api.bulk_batch_max", Kind: KindInt, Default: "500", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Maximum items in one bulk request; the whole batch is one transaction. Default 500."},
+	{Key: "api.bulk_batch_max", Kind: KindInt, Default: "500", Min: 1, HasMin: true, Tab: TabAPI, Help: "Maximum items in one bulk request; the whole batch is one transaction. Default 500."},
 	{Key: "api.webhook_attempts", Kind: KindInt, Default: "8", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Webhook delivery attempts. Default 8.", PRD: true},
 	{Key: "api.webhook_window_hours", Kind: KindInt, Default: "24", Min: 1, Max: 168, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Hours over which webhook retries are spread. Default 24.", PRD: true},
 	{Key: "llms.show_firm_name", Kind: KindBool, Default: "true", Tab: TabAPI, Help: "Show the firm name on /llms.txt. The admin can hide it.", PRD: true},

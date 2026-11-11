@@ -54,7 +54,7 @@ func TestNewSettingsMatchTheContract(t *testing.T) {
 	for _, d := range settings.Definitions() {
 		defs[d.Key] = d
 	}
-	for _, key := range []string{"mail.smtp_timeout_seconds"} {
+	for _, key := range []string{"mail.smtp_timeout_seconds", "api.bulk_batch_max"} {
 		d, ok := defs[key]
 		if !ok {
 			t.Fatalf("%s is not in the settings registry", key)
@@ -73,8 +73,10 @@ func TestNewSettingsMatchTheContract(t *testing.T) {
 		if c["default"] != want {
 			t.Fatalf("%s: registry default %s, contract default %v", key, d.Default, c["default"])
 		}
-		if !d.HasMin || !d.HasMax || c["minimum"] != float64(d.Min) || c["maximum"] != float64(d.Max) {
-			t.Fatalf("%s: registry range %d to %d, contract range %v to %v", key, d.Min, d.Max, c["minimum"], c["maximum"])
+		_, cMin := c["minimum"]
+		_, cMax := c["maximum"]
+		if d.HasMin != cMin || (cMin && c["minimum"] != float64(d.Min)) || d.HasMax != cMax || (cMax && c["maximum"] != float64(d.Max)) {
+			t.Fatalf("%s: registry range %d (set %v) to %d (set %v), contract range %v to %v", key, d.Min, d.HasMin, d.Max, d.HasMax, c["minimum"], c["maximum"])
 		}
 	}
 }
