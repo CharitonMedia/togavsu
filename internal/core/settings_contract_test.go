@@ -78,3 +78,22 @@ func TestNewSettingsMatchTheContract(t *testing.T) {
 		}
 	}
 }
+
+// Opus checkpoint P1: mail.smtp_starttls is registered under the contract's key, as a
+// boolean that defaults to on.
+func TestSTARTTLSSettingMatchesTheContract(t *testing.T) {
+	contract := contractSettings(t)
+	var d settings.Definition
+	for _, def := range settings.Definitions() {
+		if def.Key == "mail.smtp_starttls" {
+			d = def
+		}
+	}
+	c, ok := contract["mail.smtp_starttls"]
+	if d.Key == "" || !ok {
+		t.Fatalf("mail.smtp_starttls registered %v, in the contract %v", d.Key != "", ok)
+	}
+	if d.Kind != settings.KindBool || c["type"] != "boolean" || d.Default != "true" || c["default"] != true {
+		t.Fatalf("registry %s default %q, contract %v default %v; want a boolean defaulting to true", d.Kind, d.Default, c["type"], c["default"])
+	}
+}
