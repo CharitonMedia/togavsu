@@ -1,0 +1,73 @@
+--- a/web.rs	2026-11-10 22:51:01.006013820 +0000
++++ b/web.rs	2026-11-10 22:51:01.007136636 +0000
+@@ -1,3 +1,11 @@
++//! Togavsu: this file is LawCraft's `apps/wordcraft-web/src/web.rs` at commit
++//! 770a8fab12392485c0c2789fb254da7d9296df4d (MIT OR Apache-2.0, see LawCraft's LICENSE-MIT,
++//! LICENSE-APACHE and NOTICE), with three changes, each marked `Togavsu:`. The LawCraft
++//! add-in is installed and turned on, as the desktop app does; in host mode the
++//! Togavsu bridge (`crate::togavsu`) is connected; and the shell drives it each frame.
++//! The file is made at build time from upstream and `web.patch` (build.sh), so the rest is
++//! upstream byte for byte; a patch that no longer applies stops the build.
++//!
+ //! The browser shell: web `Services`, drag-and-drop, the unsaved-changes guard and the eframe
+ //! web runner.
+ 
+@@ -12,6 +20,7 @@
+ const DOC_EXTS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "rtf", "txt", "md", "html", "htm", "tex", "json", "xml"];
+ const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "wmf", "emf"];
+ const RECIPIENT_EXTS: &[&str] = wordcraft_engine::cmd::mailings::RECIPIENT_EXTENSIONS;
++#[path = "../../wordcraft-web/src/web/font_store.rs"]
+ mod font_store;
+ const CANVAS_ID: &str = "wordcraft_canvas";
+ const LOADING_ID: &str = "wordcraft_loading";
+@@ -73,6 +82,10 @@
+                         bridge.connect(&mut services, inbox.clone(), cc.egui_ctx.clone());
+                     }
+                     let mut app = WordApp::new(session, services);
++                    // Togavsu: LawCraft's add-in, as the desktop app installs it. The browser has no
++                    // settings folder, so profiles live in memory; the host page loads the firm's.
++                    wordcraft_law::set_profiles_dir(None);
++                    app.add_addin(Box::new(wordcraft_law_ui::LawAddIn::default()));
+                     // Pasted pictures wait apart from dropped files: the app inserts one only when the page is the edit target (#1349).
+                     app.services.pasted = Some(pasted);
+                     app.autosave = false;
+@@ -85,6 +98,8 @@
+                         let doc = app.session.blank_document();
+                         app.session.set_document(doc);
+                     }
++                    // Togavsu: LawCraft's tools are on in Togavsu.
++                    crate::togavsu::enable_law(&mut app);
+                     let mut prefs = crate::prefs::PrefsSync::new(stored);
+                     // No document to show: start on File › Home, as the desktop app does (#766).
+                     if !sample {
+@@ -99,7 +114,9 @@
+                         crate::host::Bridge::set_author(&mut app, &author);
+                         prefs.keep_own_author(&app.session.author, &own);
+                     }
+-                    Ok(Box::new(WebShell { app, inbox, messages, prefs }))
++                    // Togavsu: the host page's LawCraft commands and court profile write-back.
++                    let togavsu = app_bridge.as_ref().and_then(|_| crate::togavsu::Extension::connect(cc.egui_ctx.clone()));
++                    Ok(Box::new(WebShell { app, inbox, messages, prefs, togavsu }))
+                 }),
+             )
+             .await;
+@@ -134,6 +151,8 @@
+     inbox: Inbox,
+     messages: Rc<RefCell<Vec<String>>>,
+     prefs: crate::prefs::PrefsSync,
++    // Togavsu: present in host mode.
++    togavsu: Option<crate::togavsu::Extension>,
+ }
+ 
+ fn local_storage() -> Option<web_sys::Storage> {
+@@ -155,6 +174,10 @@
+             self.app.status(msg);
+         }
+         self.app.logic(ctx);
++        // Togavsu: run the host page's commands and report court profiles saved in the editor.
++        if let Some(ext) = &mut self.togavsu {
++            ext.tick(&mut self.app);
++        }
+         // Store changed preferences straight away: a reload or closed tab runs no exit code (#2132).
+         if let Some(json) = self.prefs.changed(&self.app) {
+             match local_storage() {
