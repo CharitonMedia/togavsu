@@ -30,18 +30,22 @@ type Handler struct {
 	Svc  *Service
 	Auth func(*http.Request) (Caller, error)
 
+	// idemMu guards only the idem map; no handler runs under it.
 	idemMu sync.Mutex
-	idem   map[string]idemResult
+	idem   map[string]*idemEntry
 }
 
-type idemResult struct {
+// idemEntry is one Idempotency-Key: done closes when the first request finishes, and
+// status and body are its response.
+type idemEntry struct {
+	done   chan struct{}
 	status int
 	body   []byte
 }
 
 // NewHandler returns the module routes.
 func NewHandler(svc *Service, auth func(*http.Request) (Caller, error)) *Handler {
-	return &Handler{Svc: svc, Auth: auth, idem: map[string]idemResult{}}
+	return &Handler{Svc: svc, Auth: auth, idem: map[string]*idemEntry{}}
 }
 
 // Routes is the module mux. The core mounts it beside the other domains and wraps its
@@ -162,28 +166,59 @@ func (h *Handler) write(scope string, fn handlerFunc) http.HandlerFunc {
 			return
 		}
 		id := string(c.Principal.UserID) + "|" + c.Principal.ModuleID + "|" + r.Method + " " + r.URL.Path + "|" + key
-		h.idemMu.Lock()
-		defer h.idemMu.Unlock()
-		if prev, ok := h.idem[id]; ok {
-			w.Header().Set("Content-Type", "application/json")
-			w.Header().Set("Idempotent-Replayed", "true")
-			w.WriteHeader(prev.status)
-			_, _ = w.Write(prev.body)
-			return
+		// A repeat of a key still in flight waits for that request only; other keys and
+		// callers run concurrently (slow AI calls, backups, contract fetches).
+		var mine *idemEntry
+		for mine == nil {
+			h.idemMu.Lock()
+			prev, ok := h.idem[id]
+			if !ok {
+				mine = &idemEntry{done: make(chan struct{})}
+				h.idem[id] = mine
+			}
+			h.idemMu.Unlock()
+			if !ok {
+				break
+			}
+			select {
+			case <-prev.done:
+			case <-r.Context().Done():
+				return
+			}
+			h.idemMu.Lock()
+			kept := h.idem[id] == prev
+			h.idemMu.Unlock()
+			if kept {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Idempotent-Replayed", "true")
+				w.WriteHeader(prev.status)
+				_, _ = w.Write(prev.body)
+				return
+			}
+			// The first request failed with a server error and wasn't kept: try again.
 		}
 		rec := httptest.NewRecorder()
+		finished := false
+		defer func() {
+			h.idemMu.Lock()
+			if finished && rec.Code < http.StatusInternalServerError {
+				// ponytail: ceiling: replay records live in process memory for its lifetime; a
+				// restart forgets them. Upgrade path: a shared idempotency table once the API
+				// wave lands one. Trigger: the core gains a durable idempotency store.
+				mine.status, mine.body = rec.Code, rec.Body.Bytes()
+			} else {
+				delete(h.idem, id)
+			}
+			h.idemMu.Unlock()
+			close(mine.done)
+		}()
 		fn(rec, r, c)
+		finished = true
 		for k, v := range rec.Header() {
 			w.Header()[k] = v
 		}
 		w.WriteHeader(rec.Code)
 		_, _ = w.Write(rec.Body.Bytes())
-		if rec.Code < http.StatusInternalServerError {
-			// ponytail: ceiling: replay records live in process memory for its lifetime; a
-			// restart forgets them. Upgrade path: a shared idempotency table once the API
-			// wave lands one. Trigger: the core gains a durable idempotency store.
-			h.idem[id] = idemResult{status: rec.Code, body: rec.Body.Bytes()}
-		}
 	})
 }
 

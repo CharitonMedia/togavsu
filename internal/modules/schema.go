@@ -288,6 +288,17 @@ func (s *Schemas) Lock(ctx context.Context, module string) error {
 	return err
 }
 
+// Unlock turns the module's login back on with its current password, undoing Lock
+// when a Delete data backup fails.
+func (s *Schemas) Unlock(ctx context.Context, module string) error {
+	role, err := s.RoleName(ctx, module)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.ExecContext(ctx, `ALTER ROLE `+quoteIdent(role)+` LOGIN`)
+	return err
+}
+
 // Drop deletes the module's schema, its migration records and its login. The caller has
 // already confirmed and backed up (Service.Uninstall).
 func (s *Schemas) Drop(ctx context.Context, module string) error {

@@ -43,6 +43,10 @@ type Backup struct {
 	CreatedAt time.Time `json:"created_at"`
 	SHA256    string    `json:"sha256"`
 	Bytes     int64     `json:"bytes"`
+	// Deleting and Source mirror the supervisor's BackupMeta: Source is empty for an
+	// archive this installation wrote and "upload" or "destination:<id>" otherwise.
+	Deleting bool   `json:"deleting,omitempty"`
+	Source   string `json:"source,omitempty"`
 }
 
 // Backups makes and finds full backups (database with every module schema).

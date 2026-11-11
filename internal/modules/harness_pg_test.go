@@ -198,9 +198,21 @@ type fakeBackups struct {
 	mu   sync.Mutex
 	made []modules.Backup
 	fail error
+	// during runs inside Create, before the archive is "written".
+	during func()
+}
+
+// add records an archive as if the supervisor held it (an upload, say).
+func (b *fakeBackups) add(bk modules.Backup) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.made = append(b.made, bk)
 }
 
 func (b *fakeBackups) Create(_ context.Context, reason string) (modules.Backup, error) {
+	if b.during != nil {
+		b.during()
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.fail != nil {
@@ -325,11 +337,7 @@ func newEnv(t *testing.T) *env {
 		}
 	})
 	e.backups = &fakeBackups{}
-	e.svc, err = modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls,
-		Users: app.Users, Tokens: modules.IdentityTokens{Svc: app.Identity}, Help: e.help, Widgets: e.cat, Runtime: e.rt, Backups: e.backups})
-	if err != nil {
-		t.Fatal(err)
-	}
+	e.svc = e.service(t, nil)
 	e.h = modules.NewHandler(e.svc, e.auth)
 	e.srv = httptest.NewServer(e.compose())
 	t.Cleanup(e.srv.Close)
@@ -344,6 +352,19 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	return e
+}
+
+// service is a module runtime over the env's database and fakes, with clock now
+// (nil for the wall clock).
+func (e *env) service(t *testing.T, now func() time.Time) *modules.Service {
+	t.Helper()
+	app := e.app
+	svc, err := modules.New(modules.Deps{DB: app.Pool, Key: testKey, Audit: app.Audit, Settings: app.Settings, Walls: app.Practice.Policy.Walls,
+		Users: app.Users, Tokens: modules.IdentityTokens{Svc: app.Identity}, Help: e.help, Widgets: e.cat, Runtime: e.rt, Backups: e.backups, Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return svc
 }
 
 func (e *env) user(name, email string, roles ...domain.Role) domain.Principal {

@@ -50,10 +50,23 @@ func Subscribed(subs []string, action string) bool {
 
 const cursorID = "module-events"
 
-// Pump reads events written since the last pump from core.events and queues one
-// delivery per subscribed, enabled module with events:read approved. Every write in the
-// core adds an event row, so this delivers every subscribed write without each domain
-// calling the module runtime. A module's own lifecycle events are not sent to modules.
+// Pump reads events from core.events and queues one delivery per subscribed, enabled
+// module with events:read approved. Every write in the core adds an event row, so this
+// delivers every subscribed write without each domain calling the module runtime. A
+// module's own lifecycle events are not sent to modules.
+//
+// core.events.created_at is set by the writer before its transaction commits, so an
+// event can become visible after a later one. The cursor is therefore a safe horizon,
+// not the last row seen: each pump rescans every event at or after the horizon, and the
+// (module_id, event_id) unique index keeps a rescanned event from being queued twice.
+// The horizon only moves up to the start of the oldest open transaction in this
+// database, less a lookback margin for writers that stamp created_at just before BEGIN
+// or whose sessions this role can't see.
+//
+// ponytail: ceiling: each pump rescans the events of the lookback window plus the
+// oldest open transaction; a long open transaction (a pg_dump) widens the rescan.
+// Upgrade path: a commit-ordered outbox written in the writer's transaction. Trigger:
+// a pump takes longer than its tick or rescans more than a few thousand events.
 func (s *Service) Pump(ctx context.Context) (int, error) {
 	mods, err := s.Enabled(ctx)
 	if err != nil {
@@ -61,56 +74,97 @@ func (s *Service) Pump(ctx context.Context) (int, error) {
 	}
 	queued := zero
 	err = s.commit(ctx, func(ctx context.Context) error {
-		var lastAt int64
-		var lastID string
-		err := s.q(ctx).QueryRowContext(ctx, `SELECT last_created_at, last_event_id FROM core.module_event_cursor WHERE id = $1 FOR UPDATE`, cursorID).Scan(&lastAt, &lastID)
-		if errors.Is(err, sql.ErrNoRows) {
-			at := s.now().UnixMicro()
-			if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_event_cursor (id, created_at, updated_at, created_by, last_created_at, last_event_id) VALUES ($1,$2,$2,'',0,'') ON CONFLICT (id) DO NOTHING`, cursorID, at); err != nil {
-				return err
-			}
-			if err := s.q(ctx).QueryRowContext(ctx, `SELECT last_created_at, last_event_id FROM core.module_event_cursor WHERE id = $1 FOR UPDATE`, cursorID).Scan(&lastAt, &lastID); err != nil {
-				return err
-			}
-		} else if err != nil {
-			return err
-		}
-		rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, created_at, action, record_type, record_id, COALESCE(matter_id, '') FROM core.events
-WHERE (created_at > $1 OR (created_at = $1 AND id > $2)) ORDER BY created_at, id LIMIT $3`, lastAt, lastID, limits().PumpBatch)
+		horizon, err := s.pumpHorizon(ctx)
 		if err != nil {
 			return err
 		}
-		type ev struct {
-			id, action, rtype, rid, matter string
-			at                             int64
+		safe, err := s.safeHorizon(ctx)
+		if err != nil {
+			return err
 		}
-		var evs []ev
-		for rows.Next() {
-			var e ev
-			if err := rows.Scan(&e.id, &e.at, &e.action, &e.rtype, &e.rid, &e.matter); err != nil {
-				rows.Close()
-				return err
-			}
-			evs = append(evs, e)
-		}
-		rows.Close()
-		if len(evs) == 0 {
-			return nil
-		}
-		for _, e := range evs {
-			n, err := s.enqueue(ctx, mods, domain.Event{Meta: domain.Meta{ID: domain.ID(e.id), CreatedAt: time.UnixMicro(e.at).UTC()}, Action: e.action,
-				RecordType: e.rtype, RecordID: domain.ID(e.rid), MatterID: domain.ID(e.matter)})
+		pageAt, pageID := horizon, "" // id > '' takes every event stamped at the horizon
+		for {
+			rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, created_at, action, record_type, record_id, COALESCE(matter_id, '') FROM core.events
+WHERE created_at > $1 OR (created_at = $1 AND id > $2) ORDER BY created_at, id LIMIT $3`, pageAt, pageID, limits().PumpBatch)
 			if err != nil {
 				return err
 			}
-			queued += n
+			type ev struct {
+				id, action, rtype, rid, matter string
+				at                             int64
+			}
+			var evs []ev
+			for rows.Next() {
+				var e ev
+				if err := rows.Scan(&e.id, &e.at, &e.action, &e.rtype, &e.rid, &e.matter); err != nil {
+					rows.Close()
+					return err
+				}
+				evs = append(evs, e)
+			}
+			rows.Close()
+			if err := rows.Err(); err != nil {
+				return err
+			}
+			for _, e := range evs {
+				n, err := s.enqueue(ctx, mods, domain.Event{Meta: domain.Meta{ID: domain.ID(e.id), CreatedAt: time.UnixMicro(e.at).UTC()}, Action: e.action,
+					RecordType: e.rtype, RecordID: domain.ID(e.rid), MatterID: domain.ID(e.matter)})
+				if err != nil {
+					return err
+				}
+				queued += n
+			}
+			if len(evs) < limits().PumpBatch {
+				break
+			}
+			last := evs[len(evs)-1]
+			pageAt, pageID = last.at, last.id
 		}
-		now := s.now().UnixMicro()
-		last := evs[len(evs)-1]
-		_, err = s.q(ctx).ExecContext(ctx, `UPDATE core.module_event_cursor SET last_created_at = $1, last_event_id = $2, updated_at = $3 WHERE id = $4`, last.at, last.id, now, cursorID)
+		// Every event stamped before safe has committed and was visible to this scan.
+		next := horizon
+		if safe > next {
+			next = safe
+		}
+		_, err = s.q(ctx).ExecContext(ctx, `UPDATE core.module_event_cursor SET last_created_at = $1, last_event_id = '', updated_at = $2 WHERE id = $3`,
+			next, s.now().UnixMicro(), cursorID)
 		return err
 	})
 	return queued, err
+}
+
+// pumpHorizon locks and returns the pump cursor, creating it on the first pump.
+func (s *Service) pumpHorizon(ctx context.Context) (int64, error) {
+	var at int64
+	err := s.q(ctx).QueryRowContext(ctx, `SELECT last_created_at FROM core.module_event_cursor WHERE id = $1 FOR UPDATE`, cursorID).Scan(&at)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return at, err
+	}
+	now := s.now().UnixMicro()
+	if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.module_event_cursor (id, created_at, updated_at, created_by, last_created_at, last_event_id) VALUES ($1,$2,$2,'',0,'') ON CONFLICT (id) DO NOTHING`, cursorID, now); err != nil {
+		return 0, err
+	}
+	err = s.q(ctx).QueryRowContext(ctx, `SELECT last_created_at FROM core.module_event_cursor WHERE id = $1 FOR UPDATE`, cursorID).Scan(&at)
+	return at, err
+}
+
+// safeHorizon is the earliest created_at a not-yet-visible event could still carry:
+// the start of the oldest other open transaction in this database, or now, less the
+// lookback margin.
+func (s *Service) safeHorizon(ctx context.Context) (int64, error) {
+	var oldest sql.NullInt64
+	if err := s.q(ctx).QueryRowContext(ctx, `SELECT (EXTRACT(EPOCH FROM MIN(xact_start)) * 1000000)::BIGINT FROM pg_stat_activity
+WHERE datname = current_database() AND pid <> pg_backend_pid() AND xact_start IS NOT NULL`).Scan(&oldest); err != nil {
+		return 0, err
+	}
+	at := s.now().UnixMicro()
+	if oldest.Valid && oldest.Int64 < at {
+		at = oldest.Int64
+	}
+	lookback, err := time.ParseDuration(strconv.Itoa(int(limits().PumpLookbackSeconds)) + "s")
+	if err != nil {
+		return 0, err
+	}
+	return at - lookback.Microseconds(), nil
 }
 
 // enqueue queues one delivery of ev per subscribed, enabled module with events:read.

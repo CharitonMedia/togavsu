@@ -37,19 +37,20 @@ var limitsJSON []byte
 // limits are fixed protocol bounds of the package format, not firm settings: they keep
 // a hostile upload from exhausting memory before its signature is checked.
 type limitFacts struct {
-	MaxPackageBytes  int64 `json:"max_package_bytes"`
-	MaxFiles         int   `json:"max_files"`
-	ContextTTLSecond int64 `json:"context_token_ttl_seconds"`
-	ProxyBodyBytes   int64 `json:"proxy_error_body_bytes"`
-	WebhookBodyBytes int64 `json:"webhook_response_bytes"`
-	PumpBatch        int   `json:"event_pump_batch"`
-	NonceBytes       int   `json:"nonce_bytes"`
-	SecretBytes      int   `json:"secret_bytes"`
-	KeyIDBytes       int   `json:"key_id_bytes"`
-	RoleTagBytes     int   `json:"role_tag_bytes"`
-	MaxPort          int   `json:"max_port"`
-	FileMode         int64 `json:"file_mode"`
-	AESKeyBytes      int   `json:"aes_key_bytes"`
+	MaxPackageBytes     int64 `json:"max_package_bytes"`
+	MaxFiles            int   `json:"max_files"`
+	ContextTTLSecond    int64 `json:"context_token_ttl_seconds"`
+	ProxyBodyBytes      int64 `json:"proxy_error_body_bytes"`
+	WebhookBodyBytes    int64 `json:"webhook_response_bytes"`
+	PumpBatch           int   `json:"event_pump_batch"`
+	PumpLookbackSeconds int64 `json:"event_pump_lookback_seconds"`
+	NonceBytes          int   `json:"nonce_bytes"`
+	SecretBytes         int   `json:"secret_bytes"`
+	KeyIDBytes          int   `json:"key_id_bytes"`
+	RoleTagBytes        int   `json:"role_tag_bytes"`
+	MaxPort             int   `json:"max_port"`
+	FileMode            int64 `json:"file_mode"`
+	AESKeyBytes         int   `json:"aes_key_bytes"`
 }
 
 var limits = sync.OnceValue(func() limitFacts {

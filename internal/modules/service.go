@@ -185,9 +185,12 @@ type modRow struct {
 	TokenID, TokenSecret, WebhookSecret, DBRole, DBPassword        string
 	SchemaState, LastError, CreatedBy                              string
 	CreatedAt                                                      int64
+	// DataQuietSince is when the schema last stopped changing; 0 while the module can
+	// write to it (see migration 1001).
+	DataQuietSince int64
 }
 
-const modCols = `id, name, version, status, enabled, source, package_id, pending_package_id, token_id, token_secret, webhook_secret, db_role, db_password, schema_state, last_error, created_by, created_at`
+const modCols = `id, name, version, status, enabled, source, package_id, pending_package_id, token_id, token_secret, webhook_secret, db_role, db_password, schema_state, last_error, created_by, created_at, data_quiet_since`
 
 func (s *Service) q(ctx context.Context) audit.Querier { return audit.Conn(ctx, s.d.DB) }
 
@@ -195,7 +198,7 @@ func scanMod(sc interface{ Scan(...any) error }) (modRow, error) {
 	var r modRow
 	var enabled int
 	err := sc.Scan(&r.ID, &r.Name, &r.Version, &r.Status, &enabled, &r.Source, &r.PackageID, &r.PendingPackageID, &r.TokenID,
-		&r.TokenSecret, &r.WebhookSecret, &r.DBRole, &r.DBPassword, &r.SchemaState, &r.LastError, &r.CreatedBy, &r.CreatedAt)
+		&r.TokenSecret, &r.WebhookSecret, &r.DBRole, &r.DBPassword, &r.SchemaState, &r.LastError, &r.CreatedBy, &r.CreatedAt, &r.DataQuietSince)
 	r.Enabled = enabled == one
 	return r, err
 }
@@ -217,13 +220,13 @@ func b2i(b bool) int {
 
 func (s *Service) saveRow(ctx context.Context, r modRow) error {
 	at := s.now().UnixMicro()
-	_, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.modules (`+modCols+`, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+	_, err := s.q(ctx).ExecContext(ctx, `INSERT INTO core.modules (`+modCols+`, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, version = EXCLUDED.version, status = EXCLUDED.status, enabled = EXCLUDED.enabled,
 source = EXCLUDED.source, package_id = EXCLUDED.package_id, pending_package_id = EXCLUDED.pending_package_id, token_id = EXCLUDED.token_id,
 token_secret = EXCLUDED.token_secret, webhook_secret = EXCLUDED.webhook_secret, db_role = EXCLUDED.db_role, db_password = EXCLUDED.db_password,
-schema_state = EXCLUDED.schema_state, last_error = EXCLUDED.last_error, updated_at = EXCLUDED.updated_at`,
+schema_state = EXCLUDED.schema_state, last_error = EXCLUDED.last_error, data_quiet_since = EXCLUDED.data_quiet_since, updated_at = EXCLUDED.updated_at`,
 		r.ID, r.Name, r.Version, r.Status, b2i(r.Enabled), r.Source, r.PackageID, r.PendingPackageID, r.TokenID, r.TokenSecret,
-		r.WebhookSecret, r.DBRole, r.DBPassword, r.SchemaState, r.LastError, r.CreatedBy, r.CreatedAt, at)
+		r.WebhookSecret, r.DBRole, r.DBPassword, r.SchemaState, r.LastError, r.CreatedBy, r.CreatedAt, r.DataQuietSince, at)
 	return err
 }
 
@@ -597,7 +600,7 @@ func (s *Service) Install(ctx context.Context, p domain.Principal, raw []byte, s
 		r := modRow{ID: m.ID, Name: m.Name, Version: m.Version, Status: StatusAwaiting, Source: source, PackageID: pid,
 			SchemaState: "none", CreatedBy: string(p.UserID), CreatedAt: s.now().UnixMicro()}
 		if existing.ID != "" {
-			r.SchemaState, r.DBRole = existing.SchemaState, existing.DBRole
+			r.SchemaState, r.DBRole, r.DataQuietSince = existing.SchemaState, existing.DBRole, existing.DataQuietSince
 		}
 		if err := s.saveRow(ctx, r); err != nil {
 			return err
@@ -803,6 +806,8 @@ func (s *Service) activate(ctx context.Context, p domain.Principal, r modRow) er
 			}
 		} else if lerr := s.schemas.Lock(ctx, r.ID); lerr != nil {
 			log.Printf("modules: lock %s after a failed install: %v", r.ID, lerr)
+		} else {
+			r.DataQuietSince = s.now().UnixMicro()
 		}
 		r.Status, r.LastError = StatusCancelled, err.Error()
 		if serr := s.commit(ctx, func(ctx context.Context) error {
@@ -827,7 +832,7 @@ func (s *Service) activate(ctx context.Context, p domain.Principal, r modRow) er
 	if err != nil {
 		return err
 	}
-	r.TokenID, r.DBRole, r.SchemaState, r.LastError = tokenID, role, "active", ""
+	r.TokenID, r.DBRole, r.SchemaState, r.LastError, r.DataQuietSince = tokenID, role, "active", "", int64(zero)
 	if r.TokenSecret, err = s.seal(tokenSecret); err != nil {
 		return err
 	}
@@ -979,6 +984,7 @@ func (s *Service) Enable(ctx context.Context, p domain.Principal, id string) (Vi
 		} else if r.DBPassword, err = s.seal(password); err != nil {
 			return View{}, err
 		}
+		r.DataQuietSince = int64(zero)
 	}
 	r.Status, r.Enabled, r.LastError = StatusInstalled, true, ""
 	if err := s.commit(ctx, func(ctx context.Context) error {
@@ -1036,6 +1042,16 @@ func (s *Service) Disable(ctx context.Context, p domain.Principal, id string) (V
 	}
 	if errs := s.bringDown(ctx, id, false); len(errs) > 0 {
 		log.Printf("modules: disable %s: %s", id, strings.Join(errs, "; "))
+	}
+	// Lock the login so the stopped module can't write; Enable unlocks it with a new
+	// password. From here a backup holds all of the module's data (Delete data, PRD 9.9).
+	if err := s.schemas.Lock(ctx, id); err != nil {
+		log.Printf("modules: disable %s: lock login: %v", id, err)
+	} else {
+		r.DataQuietSince = s.now().UnixMicro()
+		if err := s.commit(ctx, func(ctx context.Context) error { return s.saveRow(ctx, r) }); err != nil {
+			return View{}, err
+		}
 	}
 	return s.Get(ctx, p, id)
 }
@@ -1141,7 +1157,12 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	if _, err := s.schemas.Migrate(ctx, r.ID, r.DBRole, ms); err != nil {
+	_, err = s.schemas.Migrate(ctx, r.ID, r.DBRole, ms)
+	if !r.Enabled && r.DataQuietSince > int64(zero) {
+		// Migrations change a locked schema too; an earlier backup no longer holds it.
+		r.DataQuietSince = s.now().UnixMicro()
+	}
+	if err != nil {
 		if errors.Is(err, ErrChangedMigration) || errors.Is(err, ErrMissingMigration) {
 			if r.PendingPackageID != "" {
 				r.PendingPackageID = ""
@@ -1163,6 +1184,10 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 		v, verr := s.view(ctx, r)
 		return UpdateResult{Module: v, PreviousVersion: prev, Outcome: "kept_previous"}, verr
 	}
+	if err := s.commit(ctx, func(ctx context.Context) error { return s.dropUnrequested(ctx, p, r.ID, pkg.Manifest) }); err != nil {
+		return UpdateResult{}, err
+	}
+	s.forget(r.ID)
 	scopes, err := s.approvedScopes(ctx, r.ID)
 	if err != nil {
 		return UpdateResult{}, err
@@ -1206,6 +1231,82 @@ func (s *Service) applyUpdate(ctx context.Context, p domain.Principal, r modRow,
 	return UpdateResult{Module: v, PreviousVersion: prev, Outcome: "updated"}, err
 }
 
+// dropUnrequested removes the module's permission decisions for scopes the new
+// manifest no longer requests, so the reissued token carries only what the running
+// version declares (PRD 9.3). Each removal is audited.
+func (s *Service) dropUnrequested(ctx context.Context, p domain.Principal, id string, m Manifest) error {
+	want := map[string]bool{}
+	for _, perm := range m.Permissions {
+		want[perm.Scope] = true
+	}
+	current, err := s.permissions(ctx, id)
+	if err != nil {
+		return err
+	}
+	for _, pv := range current {
+		if want[pv.Scope] {
+			continue
+		}
+		if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM core.module_permissions WHERE module_id = $1 AND scope = $2`, id, pv.Scope); err != nil {
+			return err
+		}
+		if err := s.audit(ctx, p, id, "permission:"+pv.Scope, pv.Decision, "removed", "version "+m.Version+" no longer requests it"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backupHolds reports why b can't stand in for a backup of the module's current data:
+// it must be a complete archive this installation wrote, not one being deleted, taken
+// after the schema last stopped changing (quietSince). A module that can still write
+// (quietSince 0) has no such backup.
+func backupHolds(b Backup, quietSince int64) error {
+	switch {
+	case b.ID == "" || b.SHA256 == "":
+		return errors.New("the backup is incomplete")
+	case b.Source != "":
+		return errors.New("the backup came from " + b.Source + ", not from this installation")
+	case b.Deleting:
+		return errors.New("the backup is being deleted")
+	case quietSince == int64(zero):
+		return errors.New("the module can still write its data, so an earlier backup may miss some of it")
+	case !b.CreatedAt.After(time.UnixMicro(quietSince)):
+		return errors.New("the backup is older than the module's last data change")
+	}
+	return nil
+}
+
+// freshBackup locks the module's login, so nothing writes between the backup and the
+// drop, and takes a full backup. If the backup fails, the login is unlocked again and
+// the module keeps running.
+func (s *Service) freshBackup(ctx context.Context, r modRow) (Backup, error) {
+	exists, err := s.schemas.SchemaExists(ctx, r.ID)
+	if err != nil {
+		return Backup{}, err
+	}
+	locked := false
+	if exists && r.DataQuietSince == int64(zero) {
+		if err := s.schemas.Lock(ctx, r.ID); err != nil {
+			return Backup{}, err
+		}
+		locked = true
+	}
+	b, err := s.d.Backups.Create(ctx, "before deleting module "+r.ID+" data")
+	if err == nil && (b.ID == "" || b.SHA256 == "") {
+		err = errors.New("the backup is incomplete")
+	}
+	if err != nil {
+		if locked && r.Enabled {
+			if uerr := s.schemas.Unlock(ctx, r.ID); uerr != nil {
+				log.Printf("modules: unlock %s after a failed backup: %v", r.ID, uerr)
+			}
+		}
+		return Backup{}, domain.Conflict("backup failed, so the module data was not deleted: " + err.Error())
+	}
+	return b, nil
+}
+
 // UninstallInput is the API contract's ModuleUninstall.
 type UninstallInput struct {
 	Data         string  `json:"data"`
@@ -1245,22 +1346,23 @@ func (s *Service) Uninstall(ctx context.Context, p domain.Principal, id string, 
 		if s.d.Backups == nil {
 			return View{}, domain.Conflict("no backup service is available; data can't be deleted without a backup")
 		}
-		var b Backup
 		if in.BackupID != nil && *in.BackupID != "" {
-			b, err = s.d.Backups.Get(ctx, *in.BackupID)
-			if err == nil && b.CreatedAt.Before(time.UnixMicro(r.CreatedAt)) {
-				err = errors.New("that backup is older than the module install, so it doesn't include the schema")
+			b, err := s.d.Backups.Get(ctx, *in.BackupID)
+			if err == nil {
+				err = backupHolds(b, r.DataQuietSince)
 			}
+			if err != nil {
+				return View{}, domain.Conflict("that backup can't be used, so the module data was not deleted: " + err.Error() +
+					". Leave the backup empty and Togavsu takes a new one")
+			}
+			backup = b.ID
 		} else {
-			b, err = s.d.Backups.Create(ctx, "before deleting module "+id+" data")
+			b, err := s.freshBackup(ctx, r)
+			if err != nil {
+				return View{}, err
+			}
+			backup = b.ID
 		}
-		if err != nil {
-			return View{}, domain.Conflict("backup failed, so the module data was not deleted: " + err.Error())
-		}
-		if b.ID == "" || b.SHA256 == "" {
-			return View{}, domain.Conflict("the backup is incomplete, so the module data was not deleted")
-		}
-		backup = b.ID
 	}
 	old := r.Status
 	r.Status = StatusUninstalling
@@ -1280,10 +1382,10 @@ func (s *Service) Uninstall(ctx context.Context, p domain.Principal, id string, 
 	} else if exists {
 		if in.Data == "delete" {
 			err = s.schemas.Drop(ctx, id)
-			r.SchemaState = "dropped"
+			r.SchemaState, r.DataQuietSince = "dropped", int64(zero)
 		} else {
 			err = s.schemas.Lock(ctx, id)
-			r.SchemaState = "locked"
+			r.SchemaState, r.DataQuietSince = "locked", s.now().UnixMicro()
 		}
 		if err != nil {
 			return View{}, err
