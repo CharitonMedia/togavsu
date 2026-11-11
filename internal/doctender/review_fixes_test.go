@@ -657,7 +657,7 @@ func TestPersonsMatterDecisionStaysSettled(t *testing.T) {
 func TestCallLogCostFromModelPrices(t *testing.T) {
 	e := newEnv(t)
 	// One cent per input token and two per output token, so each row's cost is exact.
-	e.set("ai.model_prices", `{"gpt-test-fast": {"input": 1000000, "output": 2000000}, "gpt-test-strong": {"input": 1000000, "output": 2000000}}`)
+	e.set("ai.model_prices", `{"gpt-test-fast": {"input": 1000000, "output": 2000000}, "gpt-test-strong": {"input": 1000000, "output": 2000000}, "`+domain.LabelingModel+`": {"input": 1000000, "output": 2000000}}`)
 	f := e.upload(e.staff, e.open, "priced.txt", "text/plain", []byte("NOTICE OF HEARING\nCase 23AR-CV00825 on 2026-12-04 for Jordan Example.\n"))
 	e.drain()
 	rows, err := e.pool.QueryContext(e.ctx, `SELECT model, prompt_tokens, completion_tokens, cost_cents FROM ai_call_log WHERE file_id = $1`, string(f.ID))
