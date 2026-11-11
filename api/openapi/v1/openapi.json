@@ -71772,6 +71772,7 @@
           "appearance.text_size",
           "appearance.mode",
           "ai.timeout_seconds",
+          "ai.model_prices",
           "ai.primary_provider",
           "ai.secondary_provider",
           "ai.primary_fast_model",
@@ -82167,6 +82168,15 @@
       "locked": false,
       "minimum": 1,
       "help": "A call with no answer in this many seconds uses the secondary provider."
+    },
+    {
+      "key": "ai.model_prices",
+      "type": "json",
+      "tab": "ai_and_inference",
+      "default": {},
+      "secret": false,
+      "locked": false,
+      "help": "Model prices in cents per million tokens, keyed by model name, for example {\"model\": {\"input\": 300, \"output\": 1500}}. The AI call log and spend use them; a model with no price is logged at 0 cents."
     },
     {
       "key": "ai.primary_provider",

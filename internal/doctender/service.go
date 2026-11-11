@@ -313,10 +313,21 @@ func (s *Service) logCall(ctx context.Context, task string, resp Response, fallb
 	if resp.FellBack {
 		fell = one
 	}
+	// Cost comes from the AI tab's model prices (ai.model_prices), read on every call so
+	// a price change applies to the next call.
+	raw, err := s.setting(ctx, "ai.model_prices")
+	if err != nil {
+		return err
+	}
+	prices, err := domain.ParseModelPrices(raw)
+	if err != nil {
+		return err
+	}
+	cost := prices.CostCents(resp.Model, resp.PromptTokens, resp.CompletionTokens)
 	_, err = s.d.Pool.ExecContext(ctx, db.Rebind(`INSERT INTO ai_call_log (id, created_at, updated_at, created_by, task, provider, model, prompt_tokens, completion_tokens,
-cost_cents, fell_back, fallback_provider, fallback_model, user_id, module_id, matter_id, file_id) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?,NULL,'',?,?)`, s.d.Dialect),
+cost_cents, fell_back, fallback_provider, fallback_model, user_id, module_id, matter_id, file_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,'',?,?)`, s.d.Dialect),
 		id, at, at, string(s.d.System.UserID), task, resp.Provider, resp.Model, resp.PromptTokens, resp.CompletionTokens,
-		fell, fallback.Provider, fallback.Model, nullID(matterID), nullID(fileID))
+		cost, fell, fallback.Provider, fallback.Model, nullID(matterID), nullID(fileID))
 	return err
 }
 

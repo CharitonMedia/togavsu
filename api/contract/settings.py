@@ -227,6 +227,7 @@ SETTINGS: list[dict] = [
     _s("appearance.text_size", "string", "appearance", "md", "Firm default text size.", allowed=["sm", "md", "lg"]),
     _s("appearance.mode", "string", "appearance", "device", "Firm default color mode.", allowed=["light", "dark", "device"]),
     _s("ai.timeout_seconds", "integer", "ai_and_inference", 30, "A call with no answer in this many seconds uses the secondary provider.", minimum=1),
+    _s("ai.model_prices", "json", "ai_and_inference", {}, "Model prices in cents per million tokens, keyed by model name, for example {\"model\": {\"input\": 300, \"output\": 1500}}. The AI call log and spend use them; a model with no price is logged at 0 cents."),
     _s("ai.primary_provider", "string", "ai_and_inference", "", "Primary provider id. Empty until the admin sets one."),
     _s("ai.secondary_provider", "string", "ai_and_inference", "", "Secondary provider id. Empty means there is no secondary."),
     _s("ai.primary_fast_model", "string", "ai_and_inference", "", "Fast model on the primary provider."),

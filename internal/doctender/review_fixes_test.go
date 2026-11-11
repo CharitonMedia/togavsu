@@ -651,3 +651,53 @@ func TestPersonsMatterDecisionStaysSettled(t *testing.T) {
 		}
 	}
 }
+
+// Opus checkpoint P2: every model call is logged with its cost from the AI tab's model
+// prices (PRD 8.21 Cost), so the Spend report and daily summary show spend, not $0.00.
+func TestCallLogCostFromModelPrices(t *testing.T) {
+	e := newEnv(t)
+	// One cent per input token and two per output token, so each row's cost is exact.
+	e.set("ai.model_prices", `{"gpt-test-fast": {"input": 1000000, "output": 2000000}, "gpt-test-strong": {"input": 1000000, "output": 2000000}}`)
+	f := e.upload(e.staff, e.open, "priced.txt", "text/plain", []byte("NOTICE OF HEARING\nCase 23AR-CV00825 on 2026-12-04 for Jordan Example.\n"))
+	e.drain()
+	rows, err := e.pool.QueryContext(e.ctx, `SELECT model, prompt_tokens, completion_tokens, cost_cents FROM ai_call_log WHERE file_id = $1`, string(f.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	n, total := 0, int64(0)
+	for rows.Next() {
+		var model string
+		var prompt, completion int
+		var cost int64
+		if err := rows.Scan(&model, &prompt, &completion, &cost); err != nil {
+			t.Fatal(err)
+		}
+		if want := int64(prompt + 2*completion); cost != want {
+			t.Fatalf("%s: cost %d for %d in and %d out, want %d", model, cost, prompt, completion, want)
+		}
+		n++
+		total += cost
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 || total == 0 {
+		t.Fatalf("calls %d, total cost %d: want priced calls", n, total)
+	}
+	// A model with no price is logged at 0 cents.
+	e.set("ai.model_prices", `{}`)
+	g := e.upload(e.staff, e.open, "unpriced.txt", "text/plain", []byte("LETTER TO THE COURT\nSigned by Casey Sample on 2026-10-05.\n"))
+	e.drain()
+	var unpriced int64
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT COALESCE(SUM(cost_cents), 0) FROM ai_call_log WHERE file_id = $1`, string(g.ID)).Scan(&unpriced); err != nil {
+		t.Fatal(err)
+	}
+	if unpriced != 0 {
+		t.Fatalf("unpriced calls cost %d", unpriced)
+	}
+	// The setting refuses a price table that is not model to input and output cents.
+	if _, err := e.reg.Set(e.ctx, "ai.model_prices", `{"gpt-test-fast": {"input": -1, "output": 1}}`, e.admin); err == nil {
+		t.Fatal("a negative price was accepted")
+	}
+}

@@ -23,11 +23,6 @@
 //
 // Deliberate shortcuts, each with its ceiling, upgrade path and trigger:
 //
-// ponytail: cost: ai_call_log.cost_cents is written as 0 because the registry has no
-// model price setting; spend reports tokens and calls. Upgrade: an ai.model_prices
-// setting on the AI tab and cents computed per call. Trigger: the AI tab gains prices
-// or a provider returns cost in its response.
-//
 // ponytail: Word-family documents go through WordcraftCLI, which needs the editor
 // task's wordcraft-cli in the core image; until then each such file is an
 // extraction_failed review item and stays available. The independent check reads the

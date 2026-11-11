@@ -130,6 +130,7 @@ var definitions = []Definition{
 	{Key: "appearance.colors", Kind: KindJSON, Default: "{}", Tab: TabAppearance, Help: "Custom colors for the sidebar, header, page, and accents."},
 
 	{Key: "ai.timeout", Kind: KindDuration, Default: "30s", Min: int64(time.Second), Max: int64(10 * time.Minute), HasMin: true, HasMax: true, Tab: TabAI, Help: "How long to wait for a model before fallback. Default 30 seconds.", PRD: true},
+	{Key: "ai.model_prices", Kind: KindJSON, Default: "{}", Tab: TabAI, Help: "Model prices in cents per million tokens, keyed by model name, for example {\"model\": {\"input\": 300, \"output\": 1500}}. The AI call log and spend use them; a model with no price is logged at 0 cents.", Special: "model_prices"},
 	{Key: "ai.primary_provider", Kind: KindString, Tab: TabAI, Help: "Primary AI provider."},
 	{Key: "ai.secondary_provider", Kind: KindString, Tab: TabAI, Help: "Secondary AI provider. Empty means no fallback provider is set."},
 	{Key: "ai.primary_fast_model", Kind: KindString, Tab: TabAI, Help: "Fast model on the primary provider."},

@@ -409,6 +409,10 @@ func validateSpecial(def Definition, value string) error {
 				return fmt.Errorf("%w: %s", ErrInvalid, def.Key)
 			}
 		}
+	case "model_prices":
+		if _, err := domain.ParseModelPrices(value); err != nil {
+			return fmt.Errorf("%w: %s", ErrInvalid, err.Error())
+		}
 	case "regexp_list":
 		var patterns []string
 		if err := json.Unmarshal([]byte(value), &patterns); err != nil || len(patterns) == 0 {
