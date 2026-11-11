@@ -1,0 +1,15 @@
+{
+  "max_package_bytes": 67108864,
+  "max_files": 512,
+  "context_token_ttl_seconds": 300,
+  "proxy_error_body_bytes": 65536,
+  "webhook_response_bytes": 65536,
+  "event_pump_batch": 200,
+  "nonce_bytes": 12,
+  "secret_bytes": 24,
+  "key_id_bytes": 16,
+  "role_tag_bytes": 4,
+  "max_port": 65535,
+  "file_mode": 420,
+  "aes_key_bytes": 32
+}

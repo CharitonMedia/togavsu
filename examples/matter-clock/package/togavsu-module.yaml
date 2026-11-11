@@ -1,0 +1,81 @@
+# Matter Clock: the sample module that proves the module interface (PRD 11).
+# It is test scaffolding and does not ship in the release.
+id: matter-clock
+name: Matter Clock
+version: "1.0.0"
+author: Togavsu build (sample)
+homepage: https://github.com/CharitonMedia/togavsu/tree/main/examples/matter-clock
+license: Same as Togavsu
+price: Free sample
+container:
+  image: ghcr.io/charitonmedia/togavsu-matter-clock
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  port: 8080
+  events: /events
+permissions:
+  - scope: matters:read
+    reason: Show each matter's name and its monthly target.
+  - scope: time:read
+    reason: Add up the hours worked on each matter this month.
+  - scope: events:read
+    reason: Hear about new time entries and matters.
+widgets:
+  - id: hours
+    title: Hours this month
+    path: /widget
+    size:
+      w: 4
+      h: 2
+    sizes:
+      - w: 4
+        h: 2
+      - w: 6
+        h: 3
+    target:
+      tab: hours
+      params: [matter_id]
+tabs:
+  - id: hours
+    title: Matter Clock
+    placement: home
+    path: /tab
+  - id: matter
+    title: Hours and target
+    placement: matter
+    path: /matter
+help:
+  heading: Matter Clock
+  pages:
+    - id: overview
+      title: Matter Clock
+      keywords: [hours, target, clock, monthly]
+      covers: [matter-clock.hours, /modules/matter-clock/tabs/hours]
+      body: |
+        Matter Clock shows the hours worked on each matter this month.
+
+        - The **Hours this month** widget lists your matters with their hours.
+        - The matter screen's **Hours and target** tab shows the monthly target.
+events:
+  - time_entry.*
+  - matter.created
+data:
+  extends:
+    - name: targets
+      record: matter
+      table: matter_targets
+      key: matter_id
+      columns:
+        - name: monthly_target_tenths
+        - name: note
+          attorney_only: true
+  views:
+    - name: monthly_targets
+      record: matter
+      key: matter_id
+      columns:
+        - name: monthly_target_tenths
+settings:
+  - key: increment_minutes
+    label: Minutes in one time increment (match Time and billing)
+    type: int
+    default: "6"
