@@ -967,7 +967,7 @@ type adminView struct {
 	Roles      []roleLayoutView
 	Help       []helpSectionView
 	Users      []domain.User
-	Seats      int
+	Seats      Seats
 	Problems   []ProblemReport
 	Audit      []AuditRow
 	HelpPath   string

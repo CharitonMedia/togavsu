@@ -521,3 +521,110 @@ func TestSafeLinksAndTargets(t *testing.T) {
 	}
 	_ = time.Now
 }
+
+// Codex P1 on 8383f19: modules install and uninstall while the core serves requests
+// (AC-012), so the catalog must survive AddModule/RemoveModule racing with home page,
+// picker and widget loads. Run with -race; before the lock this test hit Go's fatal
+// "concurrent map iteration and map write".
+func TestCatalogModuleInstallWhileRequestsLoadWidgets(t *testing.T) {
+	src := map[string]Source{"my-time": func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
+		return Widget{Title: "My time"}, nil
+	}}
+	svc, _, _ := newTestService(t, src)
+	cat := svc.Catalog()
+	ctx := context.Background()
+	if _, err := svc.PutWorking(ctx, staffP, []LayoutWidget{{WidgetID: "my-time", X: 0, Y: 0, W: 4, H: 3}}); err != nil {
+		t.Fatal(err)
+	}
+	// A module source that reads the catalog while it runs must not deadlock: Load
+	// copies the source out and releases the lock before calling it.
+	modSrc := func(id string) Source {
+		return func(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
+			_ = cat.For(p)
+			return Widget{Title: id}, nil
+		}
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make(chan error, 64)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				_ = cat.For(staffP)
+				_ = cat.Visible(staffP, "matter-clock.clock")
+				_, _ = cat.Def("matter-clock.clock")
+				if _, err := cat.Load(ctx, staffP, "my-time", nil); err != nil {
+					errs <- err
+					return
+				}
+				if _, err := cat.Load(ctx, staffP, "matter-clock.clock", nil); err != nil && code(err) != domain.CodeNotFound {
+					errs <- err
+					return
+				}
+				if _, err := svc.Working(ctx, staffP); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}()
+	}
+	for i := 0; i < 300; i++ {
+		if err := cat.AddModule("matter-clock", []ManifestWidget{{ID: "clock", Title: "Matter clock", Target: "/modules/matter-clock/tab"}}, modSrc); err != nil {
+			t.Fatal(err)
+		}
+		cat.RemoveModule("matter-clock")
+	}
+	close(stop)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("load during module install: %v", err)
+	}
+	// After the churn the module installs cleanly and its widget loads.
+	if err := cat.AddModule("matter-clock", []ManifestWidget{{ID: "clock", Title: "Matter clock", Target: "/modules/matter-clock/tab"}}, modSrc); err != nil {
+		t.Fatal(err)
+	}
+	if w, err := cat.Load(ctx, staffP, "matter-clock.clock", nil); err != nil || w.Title != "clock" {
+		t.Fatalf("module widget after install: %v %+v", err, w)
+	}
+}
+
+// Codex P2 on 8383f19: a seat is a firm user who signs in to the staff app (admin,
+// attorney, staff, accountant). Client-portal users and inactive users are not seats;
+// the System tab shows active portal users as a separate count so a host sees both.
+func TestSeatCountCountsActiveStaffNotClientUsers(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := newTestService(t, nil)
+	svc.d.Staff = func(context.Context) ([]domain.User, error) {
+		return []domain.User{
+			{Email: "admin@firm.example", Roles: `["admin"]`, Active: true},
+			{Email: "atty@firm.example", Roles: `["attorney"]`, Active: true},
+			{Email: "acct@firm.example", Roles: `["accountant"]`, Active: true},
+			{Email: "old@firm.example", Roles: `["staff"]`, Active: false},
+			{Email: "cora@client.example", Roles: `["client"]`, Active: true},
+			{Email: "gone@client.example", Roles: `["client"]`, Active: false},
+			{Email: "both@firm.example", Roles: `["staff","client"]`, Active: true},
+		}, nil
+	}
+	got, err := svc.SeatCount(ctx, adminP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != (Seats{Staff: 4, Clients: 1}) {
+		t.Fatalf("seats: %+v, want 4 staff seats and 1 portal user", got)
+	}
+	if _, err := svc.SeatCount(ctx, staffP); code(err) != domain.CodeForbidden {
+		t.Fatalf("non-admin read the seat count: %v", err)
+	}
+	svc.d.Staff = func(context.Context) ([]domain.User, error) { return nil, errors.New("db down") }
+	if _, err := svc.SeatCount(ctx, adminP); err == nil {
+		t.Fatal("seat count hid a user-list failure")
+	}
+}

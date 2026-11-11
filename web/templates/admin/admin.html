@@ -61,7 +61,8 @@
 {{end}}
 
 {{if or (eq .Tab "users_roles") (eq .Tab "system")}}
-<section class="card"><h2>Seats</h2><p><strong>{{.Seats}}</strong> active users.</p>
+<section class="card"><h2>Seats</h2><p><strong>{{.Seats.Staff}}</strong> active staff seats (admin, attorney, staff and accountant users).</p>
+<p class="muted">{{.Seats.Clients}} active client-portal users, not counted as seats.</p>
 {{if eq .Tab "users_roles"}}{{if .Users}}<table><thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Active</th></tr></thead><tbody>
 {{range .Users}}<tr><td>{{.Name}}</td><td>{{.Email}}</td><td>{{.Roles}}</td><td>{{if .Active}}Yes{{else}}No{{end}}</td></tr>{{end}}</tbody></table>{{end}}
 <p class="muted">Users are added and deactivated through /api/v1/users; matter walls are set on each matter.</p>{{end}}

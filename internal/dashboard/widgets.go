@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -122,8 +123,12 @@ func ValidateManifestWidgets(module string, ws []ManifestWidget) error {
 	return nil
 }
 
-// Catalog holds the core widgets and the widgets of approved, enabled modules.
+// Catalog holds the core widgets and the widgets of approved, enabled modules. Modules
+// install and uninstall while the core serves requests (PRD 9, AC-012), so every read
+// takes mu's read lock and AddModule/RemoveModule take the write lock. A source is
+// copied out under the lock and run after it is released.
 type Catalog struct {
+	mu      sync.RWMutex
 	defs    map[string]WidgetDef
 	sources map[string]Source
 }
@@ -150,6 +155,8 @@ func (c *Catalog) AddModule(module string, ws []ManifestWidget, src func(widgetI
 	if err := ValidateManifestWidgets(module, ws); err != nil {
 		return err
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, w := range ws {
 		id := ModuleWidgetID(module, w.ID)
 		roles := w.Roles
@@ -173,6 +180,8 @@ func (c *Catalog) AddModule(module string, ws []ManifestWidget, src func(widgetI
 
 // RemoveModule drops a module's widgets; saved layouts lose them when they next load.
 func (c *Catalog) RemoveModule(module string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for id, d := range c.defs {
 		if d.Module == module {
 			delete(c.defs, id)
@@ -183,6 +192,8 @@ func (c *Catalog) RemoveModule(module string) {
 
 // Def returns one widget definition.
 func (c *Catalog) Def(id string) (WidgetDef, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	d, ok := c.defs[id]
 	return d, ok
 }
@@ -190,10 +201,13 @@ func (c *Catalog) Def(id string) (WidgetDef, bool) {
 // Visible reports whether p may have widget id on a layout: the widget exists and one of
 // p's roles is among the roles its API route serves.
 func (c *Catalog) Visible(p domain.Principal, id string) bool {
+	c.mu.RLock()
 	d, ok := c.defs[id]
-	if !ok {
-		return false
-	}
+	c.mu.RUnlock()
+	return ok && visible(p, d)
+}
+
+func visible(p domain.Principal, d WidgetDef) bool {
 	for _, r := range d.Roles {
 		if p.HasRole(r) {
 			return true
@@ -209,11 +223,13 @@ func (c *Catalog) For(p domain.Principal) []WidgetDef {
 		order[d.ID] = i
 	}
 	var out []WidgetDef
-	for id, d := range c.defs {
-		if c.Visible(p, id) {
+	c.mu.RLock()
+	for _, d := range c.defs {
+		if visible(p, d) {
 			out = append(out, d)
 		}
 	}
+	c.mu.RUnlock()
 	sort.Slice(out, func(i, j int) bool {
 		oi, iok := order[out[i].ID]
 		oj, jok := order[out[j].ID]
@@ -231,15 +247,17 @@ func (c *Catalog) For(p domain.Principal) []WidgetDef {
 // Load runs one widget's source as p. A widget p cannot see is forbidden before the
 // source runs; the source applies record-level access (walls, attorney-only) itself.
 func (c *Catalog) Load(ctx context.Context, p domain.Principal, id string, filters map[string]string) (Widget, error) {
-	if !c.Visible(p, id) {
-		if _, ok := c.defs[id]; !ok {
-			return Widget{}, domain.NotFound("widget")
-		}
+	c.mu.RLock()
+	d, ok := c.defs[id]
+	src := c.sources[id]
+	c.mu.RUnlock()
+	if !ok {
+		return Widget{}, domain.NotFound("widget")
+	}
+	if !visible(p, d) {
 		return Widget{}, domain.Forbidden(domain.ReasonRole)
 	}
-	src := c.sources[id]
 	if src == nil {
-		d := c.defs[id]
 		return Widget{ID: id, Title: d.Title, Target: Target{Path: d.Page, Query: map[string]string{}}, PagePath: d.Page, Rows: []WidgetRow{}}, errUnavailable
 	}
 	w, err := src(ctx, p, filters)
@@ -253,7 +271,7 @@ func (c *Catalog) Load(ctx context.Context, p domain.Principal, id string, filte
 		w.Target.Query = map[string]string{}
 	}
 	if w.Target.Path == "" {
-		w.Target.Path = c.defs[id].Page
+		w.Target.Path = d.Page
 	}
 	if w.PagePath == "" {
 		w.PagePath = w.Target.Path

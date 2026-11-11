@@ -642,8 +642,11 @@ func TestUIAdminSettings(t *testing.T) {
 			t.Fatalf("tab %s has no ? icon", tab)
 		}
 	}
-	if r := e.admin.must(http.StatusOK, "GET", "/admin?tab=system", nil); !strings.Contains(r.body, "<strong>4</strong> active users") || !strings.Contains(r.body, "home.max_saved_layouts") {
-		t.Fatalf("system tab: seat count or audit rows missing")
+	// Seats are active staff-app users (PRD 3); an active client-portal user is shown
+	// separately and is not a seat (Codex P2 on 8383f19).
+	e.createUser("Cora Client", "cora@client.example", "", domain.RoleClient)
+	if r := e.admin.must(http.StatusOK, "GET", "/admin?tab=system", nil); !strings.Contains(r.body, "<strong>4</strong> active staff seats") || !strings.Contains(r.body, "1 active client-portal users, not counted as seats") || !strings.Contains(r.body, "home.max_saved_layouts") {
+		t.Fatalf("system tab: seat count, portal-user count or audit rows missing")
 	}
 	// The secret SMTP password never shows.
 	e.admin.form("/admin/settings/mail.smtp_password", url.Values{"value": {"synthetic-secret-value"}, "tab": {"notifications_mail"}})

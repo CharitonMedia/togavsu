@@ -714,22 +714,48 @@ func (s *Service) MyTimers(ctx context.Context, p domain.Principal) ([]TimerRow,
 	return s.d.Timers.Timers(ctx, p)
 }
 
-// SeatCount is the active staff seats the admin dashboard shows (PRD 3).
-func (s *Service) SeatCount(ctx context.Context, p domain.Principal) (int, error) {
+// Seats is the System tab's seat count (PRD 3: the admin dashboard shows the active seat
+// count so a host can bill from it). Staff is the seat count: active users holding a
+// staff-app role (admin, attorney, staff, accountant). A client-portal user is not a
+// seat; Clients counts active portal users separately so a host whose terms differ
+// still sees the number. A user with a staff role and the client role is one seat.
+type Seats struct {
+	Staff   int
+	Clients int
+}
+
+// SeatCount is the active seats the admin dashboard shows (PRD 3). Admin only.
+func (s *Service) SeatCount(ctx context.Context, p domain.Principal) (Seats, error) {
 	if err := admin(p); err != nil {
-		return 0, err
+		return Seats{}, err
 	}
 	if s.d.Staff == nil {
-		return 0, nil
+		return Seats{}, nil
 	}
 	users, err := s.d.Staff(ctx)
 	if err != nil {
-		return 0, err
+		return Seats{}, err
 	}
-	var n int
+	var n Seats
 	for _, u := range users {
-		if u.Active {
-			n++
+		if !u.Active {
+			continue
+		}
+		roles, _ := domain.ParseRoles(u.Roles)
+		staff, client := false, false
+		for _, r := range roles {
+			switch r {
+			case domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant:
+				staff = true
+			case domain.RoleClient:
+				client = true
+			}
+		}
+		switch {
+		case staff:
+			n.Staff++
+		case client:
+			n.Clients++
 		}
 	}
 	return n, nil
