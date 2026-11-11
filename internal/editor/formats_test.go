@@ -148,24 +148,30 @@ func TestPinnedInfoIsTheVersionedCommit(t *testing.T) {
 func TestFormatOfGoesByExtensionUnlessTheBytesDisagree(t *testing.T) {
 	odt := odtPackage(t)
 	cases := []struct {
-		fileExt string
-		data    []byte
-		want    string
+		fileExt, media string
+		data           []byte
+		want           string
 	}{
-		{"docx", []byte("%PDF-1.7\n%%EOF\n"), "pdf"},
-		{".DOCX", []byte("{\\rtf1 synthetic}"), "rtf"},
-		{"docx", []byte("\xD0\xCF\x11\xE0synthetic"), "doc"},
-		{"md", []byte("# Notes\n\n- one\n"), "md"},
-		{"markdown", []byte("plain"), "md"},
-		{"rtf", []byte("{\\rtf1 synthetic}"), "rtf"},
-		{"txt", []byte("hello"), "txt"},
-		{"html", []byte("<p>hi</p>"), "html"},
-		{"docx", odt, "odt"},
-		{"odt", odt, "odt"},
+		{"docx", "", []byte("%PDF-1.7\n%%EOF\n"), "pdf"},
+		{".DOCX", "", []byte("{\\rtf1 synthetic}"), "rtf"},
+		{"docx", "", []byte("\xD0\xCF\x11\xE0synthetic"), "doc"},
+		{"md", "", []byte("# Notes\n\n- one\n"), "md"},
+		{"markdown", "", []byte("plain"), "md"},
+		{"rtf", "", []byte("{\\rtf1 synthetic}"), "rtf"},
+		{"txt", "", []byte("hello"), "txt"},
+		{"html", "", []byte("<p>hi</p>"), "html"},
+		{"docx", "", odt, "odt"},
+		{"odt", "", odt, "odt"},
+		{"docx", "text/markdown", []byte("# Notes\n"), "md"},
+		{"docx", "text/html; charset=utf-8", []byte("<p>hi</p>"), "html"},
+		{"docx", "text/plain", []byte("hello"), "txt"},
+		{"md", "text/plain", []byte("# Notes\n"), "md"},
+		{"rtf", "application/msword", []byte("{\\rtf1 synthetic}"), "rtf"},
+		{"docx", "application/pdf", []byte("PK synthetic"), "docx"},
 	}
 	for _, c := range cases {
-		if got := formatOf(c.fileExt, c.data); got != c.want {
-			t.Errorf("formatOf(%q, %q) = %q, want %q", c.fileExt, c.data, got, c.want)
+		if got := formatOf(c.fileExt, c.media, c.data); got != c.want {
+			t.Errorf("formatOf(%q, %q, %q) = %q, want %q", c.fileExt, c.media, c.data, got, c.want)
 		}
 	}
 }

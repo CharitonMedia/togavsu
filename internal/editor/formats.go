@@ -36,16 +36,33 @@ var mediaTypes = map[string]string{
 }
 
 // formatOf is the format a version's bytes are in. It is the file's extension unless
-// the bytes are plainly another binary format (DOCX, ODT, RTF, DOC or PDF by their
-// signature), as when a restored version written before a DOCX save keeps its own
-// format under the .docx name. The uploader's declared media type is not used: a browser
-// or client may send text/plain for Markdown or application/msword for RTF.
-func formatOf(fileExt string, data []byte) string {
+// the bytes say otherwise, as when a restored version written before a DOCX save keeps
+// its own format under the .docx name:
+//   - bytes that are plainly another binary format (DOCX, ODT, RTF, DOC or PDF by their
+//     signature) are that format;
+//   - bytes without the signature of the binary format the extension names are the text
+//     format the version's media type records (HTML, Markdown or text).
+//
+// A text extension is never overridden by the declared media type: a browser or client
+// may send text/plain for Markdown or application/msword for RTF.
+func formatOf(fileExt, mediaType string, data []byte) string {
 	ext := canonExt(fileExt)
-	switch got := sniff(data); got {
+	got := sniff(data)
+	switch got {
 	case "docx", "odt", "rtf", "doc", "pdf":
 		if got != ext {
 			return got
+		}
+		return ext
+	}
+	switch ext {
+	case "docx", "odt", "rtf", "doc":
+		base, _, _ := strings.Cut(mediaType, ";")
+		mt := strings.ToLower(strings.TrimSpace(base))
+		for _, text := range []string{"html", "md", "txt"} {
+			if mediaTypes[text] == mt {
+				return text
+			}
 		}
 	}
 	return ext

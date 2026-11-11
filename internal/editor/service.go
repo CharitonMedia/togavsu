@@ -127,7 +127,7 @@ type current struct {
 
 // ext is the format of the current version's bytes. A restored older version keeps its
 // own format, so the file's extension can name another one (formatOf).
-func (c current) ext() string { return formatOf(c.File.Extension, c.Bytes) }
+func (c current) ext() string { return formatOf(c.File.Extension, c.Version.MediaType, c.Bytes) }
 
 // name is the file's name with the extension of the current version's format.
 func (c current) name() string {

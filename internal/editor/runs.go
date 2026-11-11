@@ -335,7 +335,8 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	if err != nil {
 		return false, err
 	}
-	if _, err := s.files.Version(ctx, p, fileID, versionID); err != nil {
+	v, err := s.files.Version(ctx, p, fileID, versionID)
+	if err != nil {
 		return false, err
 	}
 	if !Editable(f.Extension) {
@@ -351,7 +352,7 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	if err != nil {
 		return false, err
 	}
-	ext := formatOf(f.Extension, buf.Bytes())
+	ext := formatOf(f.Extension, v.MediaType, buf.Bytes())
 	if !Editable(ext) {
 		return false, nil
 	}

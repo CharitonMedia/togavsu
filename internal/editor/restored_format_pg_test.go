@@ -115,3 +115,41 @@ func TestPGDeclaredMediaTypeDoesNotOverrideTheFormat(t *testing.T) {
 		t.Fatalf("Convert of Markdown sent as text/plain to text: %v, want it converted", err)
 	}
 }
+
+// Opus checkpoint P2: a restored text version (no binary signature) under the .docx name
+// the first editor save gave it is the text format its version recorded.
+func TestPGRestoredMarkdownUnderDocxIsMarkdown(t *testing.T) {
+	e := newEnvWith(t, fakeCLI(t, `echo "$2" > "$3"`+"\n"))
+	body := []byte("# Notes\n\n- one\n")
+	f, err := e.files.Create(e.ctx, e.staff, files.NewFile{Name: "notes.md", MatterID: e.matter, MediaType: "text/markdown"},
+		bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1 := *f.CurrentVersionID
+	docx := []byte("PK synthetic docx bytes")
+	if _, err := e.files.SaveVersion(e.ctx, e.staff, f.ID, bytes.NewReader(docx), int64(len(docx)),
+		files.SaveOptions{How: "editor", MediaType: docxMedia, Extension: "docx"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.files.RestoreVersion(e.ctx, e.staff, f.ID, v1); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.svc.Convert(e.ctx, e.staff, f.ID, "html")
+	if err != nil {
+		t.Fatalf("Convert to HTML: %v", err)
+	}
+	if _, _, out := e.current(res.File.ID); !strings.HasSuffix(strings.TrimSpace(string(out)), ".md") {
+		t.Fatalf("the runner was handed %q, want an .md input", out)
+	}
+	if _, err := e.svc.Convert(e.ctx, e.staff, f.ID, "docx"); err != nil && strings.Contains(err.Error(), "already in that format") {
+		t.Fatalf("Convert to DOCX of restored Markdown was refused as the same format: %v", err)
+	}
+	if _, err := e.svc.AcquireLock(e.ctx, e.staff, f.ID); err != nil {
+		t.Fatal(err)
+	}
+	name, got, err := e.svc.Document(e.ctx, e.staff, f.ID)
+	if err != nil || name != "notes.md" || !bytes.Equal(got, body) {
+		t.Fatalf("Document gave %q (%d bytes), %v; want notes.md with the restored bytes", name, len(got), err)
+	}
+}
