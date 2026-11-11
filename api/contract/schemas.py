@@ -1770,7 +1770,7 @@ SCHEMAS = _register(
         "DocTenderException": _meta(
             {
                 "file_id": _uuid(),
-                "kind": _enum(["low_confidence", "check_disagreement", "unmatched_matter", "extraction_failed", "password_protected", "damaged", "unsupported_format", "provider_down", "prompt_injection"]),
+                "kind": _enum(["low_confidence", "check_disagreement", "unmatched_matter", "extraction_failed", "password_protected", "damaged", "unsupported_format", "provider_down"]),
                 "detail": {"type": "string"},
                 "best_answer": {"type": "object", "additionalProperties": True},
                 "status": _enum(["open", "resolved"]),

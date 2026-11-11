@@ -9,7 +9,7 @@
   <tbody>
   {{range .Items}}
     <tr>
-      <td><span class="dt-flag" title="{{.Detail}}">{{kind .Kind}}</span> {{.FileName}}</td>
+      <td><span class="dt-flag" title="{{.Detail}}">{{.Label}}</span> {{.FileName}}</td>
       <td>{{.Detail}}</td>
       <td>{{with index .BestAnswer "name"}}{{.}}{{end}}{{with index .BestAnswer "category"}} · {{.}}{{end}}{{with index .BestAnswer "matter"}} · {{.}}{{end}}</td>
       <td>{{.CreatedAt}}</td>

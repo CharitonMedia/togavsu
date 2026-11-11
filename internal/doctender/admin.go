@@ -436,10 +436,10 @@ WHERE created_at >= ? AND task IN ('ocr', 'photo_description', 'photo_grouping',
 	for _, e := range open {
 		age := now.Sub(e.openedAt).Round(minuteUnit)
 		if what := s.restrictedItem(ctx, e); what != "" {
-			fmt.Fprintf(&b, "  - %s, open %s: %s\n", KindLabel(e.Kind), age, what)
+			fmt.Fprintf(&b, "  - %s, open %s: %s\n", e.Label(), age, what)
 			continue
 		}
-		fmt.Fprintf(&b, "  - %s, open %s: %s\n", KindLabel(e.Kind), age, e.Detail)
+		fmt.Fprintf(&b, "  - %s, open %s: %s\n", e.Label(), age, e.Detail)
 	}
 	fmt.Fprintf(&b, "Spend since the last summary: %d model calls, %d tokens, %s\n", calls, tokens, domain.Cents(cost).String())
 	return b.String(), nil

@@ -25,7 +25,6 @@ var exceptionKinds = map[string]string{
 	"damaged":            "Damaged file",
 	"unsupported_format": "Unsupported format",
 	"provider_down":      "AI provider down",
-	kindInjection:        "Possible prompt injection",
 }
 
 // Exception is one review-queue item (DocTenderException).
@@ -46,7 +45,13 @@ type Exception struct {
 	versionID  domain.ID
 	openedAt   time.Time
 	emailedAt  int64
+	evidence   []InjectionHit
 }
+
+// evidenceKey holds a prompt-injection hold's excerpts in the stored best_answer.
+// scanException moves them out of BestAnswer into evidence, so no read that
+// serializes an item carries them.
+const evidenceKey = "evidence"
 
 // KindLabel names an exception kind for people.
 func KindLabel(kind string) string { return exceptionKinds[kind] }
@@ -81,6 +86,12 @@ func scanException(sc interface{ Scan(...any) error }) (Exception, error) {
 	}
 	e.BestAnswer = map[string]any{}
 	_ = json.Unmarshal([]byte(best), &e.BestAnswer)
+	if raw, ok := e.BestAnswer[evidenceKey]; ok {
+		delete(e.BestAnswer, evidenceKey)
+		if b, err := json.Marshal(raw); err == nil {
+			_ = json.Unmarshal(b, &e.evidence)
+		}
+	}
 	return e, nil
 }
 
@@ -110,6 +121,7 @@ func (s *Service) openException(ctx context.Context, j *Job, kind, detail string
 	if best == nil {
 		best = map[string]any{}
 	}
+	label := Exception{Kind: kind, BestAnswer: best}.Label()
 	at := us(s.now())
 	// The same item already open (a reprocess, a requeue after a matter was set) keeps
 	// its id and takes the newest job, detail and best answer, so Accept never applies
@@ -132,11 +144,11 @@ resolved_at, resolution, job_id, file_version_id, best_answer, emailed_at) VALUE
 	if err != nil {
 		return err
 	}
-	if err := s.appendEvent(ctx, "doc_tender.exception_opened", "file", j.FileID, j.MatterID, KindLabel(kind)+": "+detail); err != nil {
+	if err := s.appendEvent(ctx, "doc_tender.exception_opened", "file", j.FileID, j.MatterID, label+": "+detail); err != nil {
 		return err
 	}
 	if s.d.Notify != nil {
-		if err := s.d.Notify.NotifyReviewers(ctx, "doc_tender.exception", "Doc Tender review: "+KindLabel(kind), "/doc-tender/review/"+string(id), j.MatterID); err != nil {
+		if err := s.d.Notify.NotifyReviewers(ctx, "doc_tender.exception", "Doc Tender review: "+label, "/doc-tender/review/"+string(id), j.MatterID); err != nil {
 			return err
 		}
 	}
@@ -183,14 +195,14 @@ func (s *Service) FlushExceptionMail(ctx context.Context) error {
 	fmt.Fprintf(&b, "Doc Tender put %d item(s) in the review queue. Each file stays listed, viewable and downloadable with its flag.\n\n", len(fresh))
 	for _, e := range fresh {
 		if what := s.restrictedItem(ctx, e); what != "" {
-			fmt.Fprintf(&b, "- %s: %s (open it in the review queue)\n", what, KindLabel(e.Kind))
+			fmt.Fprintf(&b, "- %s: %s (open it in the review queue)\n", what, e.Label())
 			continue
 		}
 		name := string(e.FileID)
 		if f, err := s.d.Files.Get(ctx, s.d.System, e.FileID); err == nil {
 			name = f.Name
 		}
-		fmt.Fprintf(&b, "- %s: %s (%s)\n", name, KindLabel(e.Kind), e.Detail)
+		fmt.Fprintf(&b, "- %s: %s (%s)\n", name, e.Label(), e.Detail)
 	}
 	b.WriteString("\nOpen the review queue: /doc-tender/review\n")
 	subject := fmt.Sprintf("Doc Tender: %d item(s) to review", len(fresh))
@@ -390,7 +402,7 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 	requeueStage := stageLabel
 	switch in.Action {
 	case "accept":
-		if e.Kind == kindInjection {
+		if e.Injection() {
 			// A person read the item and says the file may be processed. Its text still
 			// goes to every model as quoted material, never as instructions.
 			requeue, requeueStage = true, stageCheck
@@ -496,7 +508,7 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		if f.MatterID != nil {
 			matter = *f.MatterID
 		}
-		if err := s.appendEvent(ctx, "doc_tender.exception_resolved", "file", f.ID, matter, KindLabel(e.Kind)+" resolved: "+resolution); err != nil {
+		if err := s.appendEvent(ctx, "doc_tender.exception_resolved", "file", f.ID, matter, e.Label()+" resolved: "+resolution); err != nil {
 			return err
 		}
 		if requeue {
@@ -684,7 +696,7 @@ func (s *Service) Status(ctx context.Context, p domain.Principal, fileID domain.
 		if _, ok := s.forReader(ctx, p, e, f); !ok {
 			continue
 		}
-		out.Flags = append(out.Flags, Flag{Kind: e.Kind, Label: KindLabel(e.Kind), Detail: e.Detail})
+		out.Flags = append(out.Flags, Flag{Kind: e.Kind, Label: e.Label(), Detail: e.Detail})
 	}
 	return out, nil
 }

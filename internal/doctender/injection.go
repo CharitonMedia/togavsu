@@ -32,7 +32,36 @@ import (
 // is also told that file content is material, never instructions (dataRule), so a
 // file the screen misses still cannot steer an answer.
 
-const kindInjection = "prompt_injection"
+// The published contract has no review-item kind for a hold of this sort yet (the PR
+// proposes one under Integration proposals), so a hold is an extraction_failed item:
+// Doc Tender did not extract the file. best_answer.hold marks it, and people see it
+// labeled for what it is.
+const (
+	kindInjection  = "extraction_failed"
+	holdInjection  = "prompt_injection"
+	injectionLabel = "Possible prompt injection"
+	// injectionMark finds the marker in best_answer, which is stored as compact JSON.
+	injectionMark = `%"hold":"prompt_injection"%`
+)
+
+// Injection reports whether the item is a prompt-injection hold.
+func (e Exception) Injection() bool {
+	h, _ := e.BestAnswer["hold"].(string)
+	return e.Kind == kindInjection && h == holdInjection
+}
+
+// Label names the item for people.
+func (e Exception) Label() string {
+	if e.Injection() {
+		return injectionLabel
+	}
+	return KindLabel(e.Kind)
+}
+
+// Evidence is what the screen found with the text itself, for the review page only.
+// No API, MCP or mail read carries it: the excerpt is the text written to instruct a
+// model, and those reads are often taken in by one.
+func (e Exception) Evidence() []InjectionHit { return e.evidence }
 
 // When a hold happened, for the review item and the mail.
 const (
@@ -44,7 +73,7 @@ const (
 type InjectionHit struct {
 	Where   string `json:"where"`
 	Why     string `json:"why"`
-	Excerpt string `json:"excerpt"`
+	Excerpt string `json:"excerpt,omitempty"`
 }
 
 // carrier is text a model reading the file would take in, and where it sits. Hidden
@@ -55,9 +84,12 @@ type carrier struct {
 	Hidden bool
 }
 
+// injectionRule holds where re matches, and also matches anywhere in the same text
+// when also is set.
 type injectionRule struct {
-	why string
-	re  *regexp.Regexp
+	why  string
+	re   *regexp.Regexp
+	also *regexp.Regexp
 }
 
 // openRules hold in any text: wording that only makes sense addressed to a model.
@@ -65,20 +97,23 @@ type injectionRule struct {
 // threats all the time ("the jury was told to disregard the prior testimony"), and a
 // hold on those would bury the real ones.
 var openRules = []injectionRule{
-	{"tells the reader to set aside its instructions", regexp.MustCompile(`(?i)(?:^|[.!?:;\n]\s*|\b(?:please|now|first|also|and)\s+)(?:ignore|disregard|forget|override|bypass)\s+(?:all\s+|any\s+|every\s+)?(?:of\s+)?(?:the\s+|your\s+|these\s+|those\s+|my\s+)?(?:previous|prior|above|earlier|preceding|original|initial|system|other)\s+(?:instructions|prompts?|directions|directives|guidelines|rules|messages)\b`)},
-	{"claims to give new instructions", regexp.MustCompile(`(?i)\b(?:new|updated|revised|real|true|hidden|secret|additional)\s+(?:system\s+)?(?:instructions|prompt)\s*[:\-]`)},
-	{"speaks to a model's own settings", regexp.MustCompile(`(?i)\b(?:system|developer)\s+(?:prompt|message)\b`)},
-	{"tries to change what the reader is", regexp.MustCompile(`(?i)\byou\s+are\s+now\s+(?:an?\s+|in\s+)?(?:ai|chatbot|llm|unrestricted|jailbroken|developer\s+mode)\b|\bfrom\s+now\s+on,?\s+you\s+(?:will|must|should|are\s+to)\s+(?:respond|answer|reply|output)\b`)},
-	{"holds chat control tokens", regexp.MustCompile(`(?i)<\|\s*(?:im_start|im_end|endoftext|system|assistant|user)\s*\|>|\[/?inst\]|<<\s*/?sys\s*>>`)},
-	{"is addressed to an AI", regexp.MustCompile(`(?i)\b(?:attention|note\s+to|instructions?\s+for|message\s+to)\s+(?:the\s+|any\s+|all\s+)?(?:ai|a\.i\.|llms?|language\s+models?|ai\s+(?:assistants?|models?|systems?)|chatbots?)\b|\b(?:ai|llms?|language\s+models?|ai\s+(?:assistants?|models?|systems?))\s+(?:reading|processing|reviewing|summari[sz]ing|analy[sz]ing|labell?ing|filing)\s+(?:this|these|the\s+following)\b|\bif\s+you\s+are\s+an?\s+(?:ai|llm|language\s+model|ai\s+(?:assistant|model))\b`)},
+	{why: "tells the reader to set aside its instructions", re: regexp.MustCompile(`(?i)(?:^|[.!?:;\n]\s*|\b(?:please|now|first|also|and)\s+)(?:ignore|disregard|forget|override|bypass)\s+(?:(?:all|any|every)\s+(?:of\s+)?)?(?:(?:previous|prior|above|earlier|preceding|initial|original)\s+(?:instructions|prompts?)|your\s+(?:(?:previous|prior|original|initial|system|current|existing)\s+)?(?:instructions|prompts?|guidelines|rules|programming)|(?:your\s+)?(?:system|developer)\s+prompt)\b`)},
+	{why: "claims to give a model new instructions", re: regexp.MustCompile(`(?i)\b(?:new|updated|revised|real|true|hidden|secret|additional)\s+(?:system\s+)?(?:instructions|prompt)\s+(?:for|to)\s+(?:the\s+|any\s+|all\s+)?(?:ai|a\.i\.|models?|assistants?|llms?|language\s+models?|chatbots?)\b`)},
+	{why: "speaks to a model's own settings", re: regexp.MustCompile(`(?i)\byour\s+(?:system|developer)\s+(?:prompt|message|instructions)\b`)},
+	{why: "tries to change what the reader is", re: regexp.MustCompile(`(?i)\byou\s+are\s+now\s+(?:an?\s+|in\s+)?(?:ai|chatbot|llm|unrestricted|jailbroken|developer\s+mode)\b|\bfrom\s+now\s+on,?\s+you\s+(?:will|must|should|are\s+to)\s+(?:respond|answer|reply|output)\b`)},
+	{why: "holds chat control tokens", re: regexp.MustCompile(`(?i)<\|\s*(?:im_start|im_end|endoftext|system|assistant|user)\s*\|>|\[/?inst\]|<<\s*/?sys\s*>>`)},
+	{why: "is addressed to an AI", re: regexp.MustCompile(`(?i)\b(?:attention|note\s+to|message\s+to)\s+(?:the\s+|any\s+|all\s+)?(?:ai|a\.i\.|llms?|language\s+models?|ai\s+(?:assistants?|models?|systems?)|chatbots?)\s*[:,]|\b(?:ai|llms?|language\s+models?|ai\s+(?:assistants?|models?|systems?))\s+(?:reading|processing|reviewing|summari[sz]ing|analy[sz]ing|labell?ing|filing)\s+(?:this|these)\s+(?:documents?|files?|texts?|pages?|e-?mails?|messages?|letters?|pdfs?)\b|\bif\s+you\s+are\s+an?\s+(?:ai|llm|language\s+model|ai\s+(?:assistant|model))\b`)},
 }
 
 // hiddenRules hold in hidden text only, where someone writing for people has no
-// reason to put them.
+// reason to put them. Hidden text is still ordinary in a firm's files (a hidden
+// drafting note in a template, a white "confidential" line, a letterhead that names
+// an AI company), so each rule needs wording aimed at a model, not a word alone.
 var hiddenRules = []injectionRule{
-	{"is hidden text that speaks of an AI", regexp.MustCompile(`(?i)\b(?:ai|a\.i\.|llms?|language\s+models?|chatbots?|gpt|claude|gemini|copilot)\b`)},
-	{"is hidden text in a chat role", regexp.MustCompile(`(?im)^\s*(?:system|assistant)\s*:`)},
-	{"is hidden text that gives orders", regexp.MustCompile(`(?i)\b(?:ignore|disregard|override|(?:do\s+not|don't|never)\s+(?:tell|mention|reveal|disclose))\b`)},
+	{why: "is hidden text that gives an AI orders", re: regexp.MustCompile(`(?i)\b(?:ai|a\.i\.|llms?|language\s+models?|chatbots?|gpt|claude|gemini|copilot)\b`),
+		also: regexp.MustCompile(`(?i)\b(?:you|your|must|should|shall|do\s+not|don't|never|ignore|disregard|respond|answer|reply|summari[sz]e|describe|label|classify|treat)\b`)},
+	{why: "is hidden text in a chat role", re: regexp.MustCompile(`(?im)^\s*(?:system|assistant)\s*:`)},
+	{why: "is hidden text that gives orders", re: regexp.MustCompile(`(?i)\b(?:do\s+not|don't|never)\s+(?:tell|mention|reveal|disclose)\b[^.\n]{0,80}?\bto\s+(?:the\s+)?(?:users?|readers?|reviewers?|attorneys?|lawyers?|humans?|persons?|people|clients?)\b|\b(?:ignore|disregard|override)\s+(?:(?:all|any)\s+)?(?:your\s+)?(?:(?:previous|prior|above|earlier|other|visible)\s+)?(?:instructions|prompts?)\b`)},
 }
 
 // scanInjection checks every carrier and returns what it found, in order.
@@ -109,7 +144,7 @@ func scanCarrier(c carrier) []InjectionHit {
 	}
 	for _, r := range rules {
 		loc := r.re.FindStringIndex(p)
-		if loc == nil {
+		if loc == nil || (r.also != nil && !r.also.MatchString(p)) {
 			continue
 		}
 		why := r.why
@@ -593,8 +628,8 @@ func (s *Service) screen(ctx context.Context, j *Job, w *work, list func() ([]ca
 // quoted material.
 func (s *Service) injectionCleared(ctx context.Context, file, version domain.ID) (bool, error) {
 	var n int
-	err := s.row(ctx, `SELECT COUNT(*) FROM doc_tender_exceptions WHERE file_id = ? AND file_version_id = ? AND kind = ? AND status = 'resolved' AND resolution LIKE 'accept%'`,
-		file, version, kindInjection).Scan(&n)
+	err := s.row(ctx, `SELECT COUNT(*) FROM doc_tender_exceptions WHERE file_id = ? AND file_version_id = ? AND kind = ? AND best_answer LIKE ? AND status = 'resolved' AND resolution LIKE 'accept%'`,
+		file, version, kindInjection, injectionMark).Scan(&n)
 	return n > zero, err
 }
 
@@ -605,7 +640,13 @@ func (s *Service) holdForInjection(ctx context.Context, j *Job, w *work, hits []
 	places := hitPlaces(hits)
 	detail := fmt.Sprintf("the file holds text that tries to instruct an AI model (%s). It was held %s, and nothing in it was followed. The file is unchanged and kept as evidence.",
 		strings.Join(places, "; "), when)
-	best := map[string]any{"injection": hits, "sha256": w.version.SHA256, "held": when}
+	// The item records where and why; the excerpts go only to the review page
+	// (Evidence), never to an API, MCP or mail read.
+	found := make([]InjectionHit, len(hits))
+	for i, h := range hits {
+		found[i] = InjectionHit{Where: h.Where, Why: h.Why}
+	}
+	best := map[string]any{"hold": holdInjection, "injection": found, evidenceKey: hits, "sha256": w.version.SHA256, "held": when}
 	err := s.tx(ctx, func(ctx context.Context) error {
 		if err := s.openException(ctx, j, kindInjection, detail, best); err != nil {
 			return err
@@ -642,7 +683,7 @@ func (s *Service) mailInjection(ctx context.Context, j *Job, w *work, places []s
 	if s.d.Mail == nil {
 		return nil
 	}
-	items, err := s.exceptionsWhere(ctx, `file_id = ? AND file_version_id = ? AND kind = ? AND status = 'open'`, j.FileID, j.VersionID, kindInjection)
+	items, err := s.exceptionsWhere(ctx, `file_id = ? AND file_version_id = ? AND kind = ? AND best_answer LIKE ? AND status = 'open'`, j.FileID, j.VersionID, kindInjection, injectionMark)
 	if err != nil || len(items) == zero {
 		return err
 	}

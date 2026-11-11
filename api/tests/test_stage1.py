@@ -345,7 +345,6 @@ class Stage1InventoryTest(unittest.TestCase):
                 "file-link-both-unresolved",
                 "extension-trust-entry-file-version",
                 "extension-section5-records",
-                "doctender-prompt-injection-kind",
             },
         )
 

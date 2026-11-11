@@ -1,11 +1,14 @@
 {{template "head" .}}
 {{with .Item}}
 <section class="dt-item" aria-labelledby="what">
-  <h2 id="what"><span class="dt-flag">{{kind .Kind}}</span> {{.FileName}}</h2>
+  <h2 id="what"><span class="dt-flag">{{.Label}}</span> {{.FileName}}</h2>
   <p>{{.Detail}}</p>
   {{if .Flags}}<p>Flags on this file: {{range $i, $f := .Flags}}{{if $i}}, {{end}}<span class="dt-flag">{{$f.Label}}</span>{{end}}</p>{{end}}
   <p>{{if .Download}}<a href="{{.Download}}">Download the file</a>{{end}}</p>
-  <h3>Doc Tender's best answer</h3>
+  {{with .Evidence}}<h3>What the prompt-injection screen found</h3>
+  <p>The text below was written to instruct an AI model. It is shown on this page only, as quoted text; nothing in it was followed.</p>
+  <ul class="dt-evidence">{{range .}}<li>{{.Where}}: {{.Why}}{{if .Excerpt}}<blockquote><code>{{.Excerpt}}</code></blockquote>{{end}}</li>{{end}}</ul>
+  {{end}}<h3>Doc Tender's best answer</h3>
   <pre class="dt-best">{{.BestJSON}}</pre>
 </section>
 {{end}}
