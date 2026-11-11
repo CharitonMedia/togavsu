@@ -137,7 +137,7 @@
  },
  "ci": {
   "workflow": ".github/workflows/product-ci.yml (unchanged in this run)",
-  "current_revision_ci": "Product CI run 42948308917 (https://github.com/CharitonMedia/togavsu/actions/runs/42948308917) on c0e929d, the tested revision. All six required jobs passed there, including TestFinanceCloseDuringSilentMailServer, TestARAgingDatesVoidsAndReversalsInTheFirmZone and the STARTTLS tests (test-core.sh fails on a skipped Finance test). The pull request head adds only docs/build/reports files to c0e929d.",
+  "current_revision_ci": "Product CI run 42948308917 (https://github.com/CharitonMedia/togavsu/actions/runs/42948308917) on c0e929d, the tested revision. All six required jobs passed there, including TestFinanceCloseDuringSilentMailServer, TestARAgingDatesVoidsAndReversalsInTheFirmZone and the STARTTLS tests (test-core.sh fails on a skipped Finance test). The pull request head adds docs/build/reports files to c0e929d and merges main at 2e5e7c4 (the editor, PR 33), which changes only internal/editor and web/ files, none of them in this pull request; Product CI on the head covers that merge.",
   "required_jobs": [
    "Core tests",
    "API contract tests",
