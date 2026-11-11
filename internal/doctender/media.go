@@ -494,6 +494,9 @@ var decodeCaps = func() (bytes, pixels int64) { return wire().MaxDecodedBytes, w
 // sheetCellCap is wire().MaxSheetCells; tests lower it.
 var sheetCellCap = func() int64 { return wire().MaxSheetCells }
 
+// cmapEntryCap is wire().MaxCMapEntries; tests lower it.
+var cmapEntryCap = func() int { return wire().MaxCMapEntries }
+
 // readCapped reads r to the end, refusing more than wire().MaxDecodedBytes.
 func readCapped(r io.Reader) ([]byte, error) {
 	max, _ := decodeCaps()

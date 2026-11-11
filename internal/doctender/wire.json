@@ -9,5 +9,6 @@
   "tj_word_space": -200,
   "max_decoded_bytes": 268435456,
   "max_image_pixels": 100000000,
-  "max_sheet_cells": 4000000
+  "max_sheet_cells": 4000000,
+  "max_cmap_entries": 262144
 }

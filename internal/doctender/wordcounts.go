@@ -69,8 +69,10 @@ func docCounts(data []byte) (words, pages int, ok bool) {
 	return w, p, true
 }
 
-// cfbStream returns one named stream of a compound file. Every read is bounds-checked
-// and every sector chain is bounded, so a hostile file yields not found.
+// cfbStream returns one named stream of a compound file. Every read is bounds-checked.
+// The FAT lists each of its sectors once, and a chain that comes back to a sector it
+// already read is refused, so nothing read can be larger than the file itself; a hostile
+// file yields not found.
 func cfbStream(data []byte, name string) ([]byte, bool) {
 	if len(data) < cfbHeaderSize || !bytes.HasPrefix(data, cfbMagic) {
 		return nil, false
@@ -89,22 +91,29 @@ func cfbStream(data []byte, name string) ([]byte, bool) {
 		}
 		return data[off : off+ss]
 	}
-	// The FAT's sectors: 109 in the header, the rest in a DIFAT chain.
+	// The FAT's sectors: 109 in the header, the rest in a DIFAT chain. A sector listed
+	// twice is counted once, and the DIFAT chain may not revisit a sector.
+	sectors := len(data) / ss
 	var fatSectors []uint32
-	for k := zero; k < cfbDIFATInHead; k++ {
-		if v := le.Uint32(data[cfbOffDIFATHead+k*four:]); v <= cfbMaxRegSect {
+	listed := map[uint32]bool{}
+	addFAT := func(v uint32) {
+		if v <= cfbMaxRegSect && !listed[v] && len(fatSectors) < sectors {
+			listed[v] = true
 			fatSectors = append(fatSectors, v)
 		}
 	}
-	for next, guard := le.Uint32(data[cfbOffDIFAT:]), zero; next <= cfbMaxRegSect && guard < len(data)/ss; guard++ {
+	for k := zero; k < cfbDIFATInHead; k++ {
+		addFAT(le.Uint32(data[cfbOffDIFATHead+k*four:]))
+	}
+	difat := map[uint32]bool{}
+	for next := le.Uint32(data[cfbOffDIFAT:]); next <= cfbMaxRegSect; {
 		sec := sector(next)
-		if sec == nil {
+		if sec == nil || difat[next] {
 			return nil, false
 		}
+		difat[next] = true
 		for k := zero; k < ss/four-one; k++ {
-			if v := le.Uint32(sec[k*four:]); v <= cfbMaxRegSect {
-				fatSectors = append(fatSectors, v)
-			}
+			addFAT(le.Uint32(sec[k*four:]))
 		}
 		next = le.Uint32(sec[ss-four:])
 	}
@@ -120,10 +129,12 @@ func cfbStream(data []byte, name string) ([]byte, bool) {
 	}
 	chain := func(table []uint32, start uint32, read func(uint32) []byte) []byte {
 		var out []byte
-		for n, guard := start, zero; n != cfbEndOfChain; guard++ {
-			if int(n) >= len(table) || guard > len(table) {
+		seen := make([]bool, len(table))
+		for n := start; n != cfbEndOfChain; {
+			if int(n) >= len(table) || seen[n] {
 				return nil
 			}
+			seen[n] = true
 			b := read(n)
 			if b == nil {
 				return nil
@@ -177,7 +188,7 @@ func cfbStream(data []byte, name string) ([]byte, bool) {
 		} else {
 			body = chain(fat, start, sector)
 		}
-		if size < zero || len(body) < size {
+		if size < zero || size > len(data) || len(body) < size {
 			return nil, false
 		}
 		return body[:size], true

@@ -113,7 +113,7 @@ func parsePDF(data []byte) (doc *pdfDoc, err error) {
 		return nil, ErrEncrypted
 	}
 	if err := d.expandObjectStreams(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDamaged, err)
+		return nil, fmt.Errorf("%w: %w", ErrDamaged, err)
 	}
 	root, ok := d.resolve(d.trailer["Root"]).(pdfDict)
 	if !ok {
@@ -147,10 +147,17 @@ func (d *pdfDoc) expandObjectStreams() error {
 			streams = append(streams, s)
 		}
 	}
+	// The parsed objects can keep their stream's bytes alive, so all object streams
+	// together stay under the decode cap.
+	limit, _ := decodeCaps()
+	total := int64(zero)
 	for _, s := range streams {
 		body, err := d.decode(s)
 		if err != nil {
 			return err
+		}
+		if total += int64(len(body)); total > limit {
+			return fmt.Errorf("%w: the object streams pass %d bytes", errDecodeLimit, limit)
 		}
 		n, first := d.int(s.Dict["N"]), d.int(s.Dict["First"])
 		p := &pdfParser{b: body}
@@ -332,6 +339,9 @@ func (d *pdfDoc) contents(page pdfDict) ([]byte, error) {
 	case nil:
 		return nil, nil
 	}
+	// The page's streams together stay under the decode cap, so a Contents array that
+	// repeats one large stream cannot multiply it.
+	limit, _ := decodeCaps()
 	var buf bytes.Buffer
 	for _, p := range parts {
 		s, ok := d.resolve(p).(*pdfStream)
@@ -341,6 +351,9 @@ func (d *pdfDoc) contents(page pdfDict) ([]byte, error) {
 		b, err := d.decode(s)
 		if err != nil {
 			return nil, err
+		}
+		if int64(buf.Len()+len(b)) > limit {
+			return nil, fmt.Errorf("%w: the page's contents pass %d bytes", errDecodeLimit, limit)
 		}
 		buf.Write(b)
 		buf.WriteByte('\n')
@@ -367,9 +380,17 @@ func (d *pdfDoc) pageText(index int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Every font on the page shares one CMap entry budget, and a ToUnicode stream that
+	// several fonts name is read once.
 	fonts := map[pdfName]map[string]string{}
+	read := map[*pdfStream]map[string]string{}
+	budget := cmapEntryCap()
 	for name, ref := range d.resources(page, "Font") {
-		fonts[name] = d.toUnicode(ref)
+		m, err := d.toUnicode(ref, read, &budget)
+		if err != nil {
+			return "", err
+		}
+		fonts[name] = m
 	}
 	p := &pdfParser{b: body}
 	var out strings.Builder
@@ -464,24 +485,44 @@ func usableText(s string) bool {
 }
 
 // toUnicode reads a font's ToUnicode CMap (bfchar and bfrange); nil is a simple font.
-func (d *pdfDoc) toUnicode(ref any) map[string]string {
+// Each entry spends one of budget, shared by the page's fonts; past it the page is a
+// decode-limit error. A stream already in read is not read again.
+func (d *pdfDoc) toUnicode(ref any, read map[*pdfStream]map[string]string, budget *int) (map[string]string, error) {
 	font, ok := d.resolve(ref).(pdfDict)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	s, ok := d.resolve(font["ToUnicode"]).(*pdfStream)
 	if !ok {
-		return nil
+		return nil, nil
+	}
+	if m, done := read[s]; done {
+		return m, nil
 	}
 	body, err := d.decode(s)
+	if errors.Is(err, errDecodeLimit) {
+		return nil, err
+	}
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	m := map[string]string{}
+	read[s] = m
+	spend := func(n uint64) error {
+		if n > uint64(*budget) {
+			*budget = zero
+			return fmt.Errorf("%w: a font map on the page passes %d entries", errDecodeLimit, cmapEntryCap())
+		}
+		*budget -= int(n)
+		return nil
+	}
 	text := string(body)
 	hexes := regexp.MustCompile(`<([0-9A-Fa-f]*)>`)
 	for _, blk := range regexp.MustCompile(`(?s)beginbfchar(.*?)endbfchar`).FindAllStringSubmatch(text, -1) {
 		hs := hexes.FindAllStringSubmatch(blk[one], -1)
+		if err := spend(uint64(len(hs) / two)); err != nil {
+			return nil, err
+		}
 		for k := zero; k+one < len(hs); k += two {
 			src, _ := hex.DecodeString(hs[k][one])
 			m[string(src)] = utf16Hex(hs[k+one][one])
@@ -499,6 +540,9 @@ func (d *pdfDoc) toUnicode(ref any) map[string]string {
 			}
 			if strings.HasPrefix(dst, "[") {
 				items := hexes.FindAllStringSubmatch(dst, -1)
+				if err := spend(min(uint64(len(items)), hi-lo+uint64(one))); err != nil {
+					return nil, err
+				}
 				for k := zero; k < len(items) && lo+uint64(k) <= hi; k++ {
 					m[codeBytes(lo+uint64(k), width)] = utf16Hex(items[k][one])
 				}
@@ -508,6 +552,9 @@ func (d *pdfDoc) toUnicode(ref any) map[string]string {
 			if len(base) == 0 {
 				continue
 			}
+			if err := spend(hi - lo + uint64(one)); err != nil {
+				return nil, err
+			}
 			for c := lo; c <= hi; c++ {
 				out := append([]rune{}, base...)
 				out[len(out)-one] += rune(c - lo)
@@ -515,7 +562,7 @@ func (d *pdfDoc) toUnicode(ref any) map[string]string {
 			}
 		}
 	}
-	return m
+	return m, nil
 }
 
 func codeBytes(c uint64, width int) string {

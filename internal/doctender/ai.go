@@ -77,6 +77,9 @@ type wireFacts struct {
 	MaxDecodedBytes int64 `json:"max_decoded_bytes"`
 	MaxImagePixels  int64 `json:"max_image_pixels"`
 	MaxSheetCells   int64 `json:"max_sheet_cells"`
+	// MaxCMapEntries caps the code-to-text entries all fonts on one PDF page may build
+	// from their ToUnicode CMaps; a page's decoded contents share MaxDecodedBytes.
+	MaxCMapEntries int `json:"max_cmap_entries"`
 }
 
 var wire = sync.OnceValue(func() wireFacts {

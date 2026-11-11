@@ -74,9 +74,10 @@
 // integrate-documents.
 //
 // ponytail: the decode caps (256 MiB of decoded stream or zip entry, 100 million pixels
-// per image, 4 million cells per spreadsheet sheet) are fixed facts in wire.json, not
-// registry settings. A file over any is a damaged item, not retried. Upgrade:
-// doctender.max_decoded_bytes, doctender.max_image_pixels and doctender.max_sheet_cells
+// per image and per PDF page's contents, 4 million cells per spreadsheet sheet, 262,144
+// ToUnicode entries per PDF page) are fixed facts in wire.json, not registry settings.
+// A file over any is a damaged item, not retried. Upgrade: doctender.max_decoded_bytes,
+// doctender.max_image_pixels, doctender.max_sheet_cells and doctender.max_cmap_entries
 // on the Doc Tender tab. Trigger: a firm's real file trips one.
 package doctender
 

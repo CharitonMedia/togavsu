@@ -641,6 +641,9 @@ func (s *Service) pageUnit(w *work, k int) unitSpec {
 			return unitWork{}, err
 		}
 		layer, lerr := w.pdf.pageText(k)
+		if errors.Is(lerr, errDecodeLimit) {
+			return unitWork{}, lerr
+		}
 		img, mediaType, hasImage := w.pdf.pageImage(k)
 		var pagePart Part
 		if hasImage {
