@@ -1,0 +1,7 @@
+body{font-family:Georgia,"Times New Roman",serif;max-width:80ch;margin:0 auto;padding:24px;line-height:1.55;color:#1d232b}
+.guide-head h1{margin-bottom:0}
+.guide-toc ol{padding-left:20px}
+article{border-top:1px solid #d9dce1;padding-top:8px;margin-top:16px}
+.where{color:#5d6672}
+code{font-size:.9em}
+@media print{.guide-toc{page-break-after:always}a{color:inherit;text-decoration:none}}

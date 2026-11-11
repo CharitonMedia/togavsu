@@ -1,0 +1,102 @@
+{{define "admin.html"}}{{template "shell-top" .}}{{with .Page}}
+<nav class="tabs" aria-label="Admin tabs">{{$tab := .Tab}}{{range .Tabs}}<a href="/admin?tab={{.ID}}"{{if eq .ID $tab}} aria-current="page" class="active"{{end}}>{{.Label}}</a>{{end}}</nav>
+
+{{if eq .Tab "appearance"}}
+<form method="post" action="/admin/appearance" class="card form-grid appearance">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h2>Staff portal colors</h2>
+  <label for="preset">Preset</label>
+  <select id="preset" name="preset"><option value="custom"{{if not .Appearance.Preset}} selected{{end}}>Custom colors</option>{{$cur := .Appearance.Preset}}{{range .Presets}}<option value="{{.ID}}"{{if eq .ID $cur}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+  <label for="staff_sidebar">Sidebar</label><input id="staff_sidebar" name="staff_sidebar" type="color" value="{{.Appearance.StaffSidebar}}">
+  <label for="staff_header">Header</label><input id="staff_header" name="staff_header" type="color" value="{{.Appearance.StaffHeader}}">
+  <label for="staff_page">Page</label><input id="staff_page" name="staff_page" type="color" value="{{.Appearance.StaffPage}}">
+  <label for="staff_accent">Accents</label><input id="staff_accent" name="staff_accent" type="color" value="{{.Appearance.StaffAccent}}">
+  <h2>Client portal</h2>
+  <label for="client_header">Client portal header</label><input id="client_header" name="client_header" type="color" value="{{.Appearance.ClientHeader}}">
+  <div class="client-preview" data-color="{{.Appearance.ClientHeader}}" id="client-preview"><span>Client portal header preview</span></div>
+  <h2>Typography</h2>
+  <label for="heading_font">Heading font</label><select id="heading_font" name="heading_font">{{$h := .Appearance.HeadingFont}}{{range .Fonts}}<option{{if eq . $h}} selected{{end}}>{{.}}</option>{{end}}</select>
+  <label for="body_font">Body font</label><select id="body_font" name="body_font">{{$b := .Appearance.BodyFont}}{{range .Fonts}}<option{{if eq . $b}} selected{{end}}>{{.}}</option>{{end}}</select>
+  <label for="text_size">Text size</label><select id="text_size" name="text_size">{{$t := .Appearance.TextSize}}{{range pairs "sm" "Small" "md" "Medium" "lg" "Large"}}<option value="{{.V}}"{{if eq .V $t}} selected{{end}}>{{.L}}</option>{{end}}</select>
+  <label for="amode">Firm default mode</label><select id="amode" name="mode">{{$m := .Appearance.Mode}}{{range pairs "device" "Follow the device" "light" "Light" "dark" "Dark"}}<option value="{{.V}}"{{if eq .V $m}} selected{{end}}>{{.L}}</option>{{end}}</select>
+  <div><button type="submit">Save appearance</button> <span class="muted">Each change is audited and shows on the next page load.</span></div>
+</form>
+{{end}}
+
+{{if eq .Tab "home_screen"}}
+<section class="card"><h2>Role default layouts</h2>
+<p>Users start from their role's layout and can always reset to it. Add or remove widgets here; positions follow the order.</p>
+{{range .Roles}}{{$role := .Role}}{{$titles := .Titles}}
+<details class="role-layout" id="role-{{.Role}}"><summary>{{.Role}} ({{len .Widgets}} widgets)</summary>
+  <ol>{{range $i, $w := .Widgets}}<li>{{index $titles $w.WidgetID}} <span class="muted">x {{$w.X}}, y {{$w.Y}}, {{$w.W}}×{{$w.H}}</span>
+    <form method="post" action="/admin/role-layouts/{{$role}}/widgets/{{$i}}/remove" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Remove</button></form></li>{{end}}</ol>
+  <form method="post" action="/admin/role-layouts/{{.Role}}/widgets" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <label for="add-{{.Role}}">Add widget</label><select id="add-{{.Role}}" name="widget_id">{{range .Picker}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select><button type="submit">Add</button></form>
+</details>{{end}}
+</section>
+{{end}}
+
+{{if eq .Tab "help"}}
+<section class="card"><h2>Firm help sections</h2>
+{{range .Help}}<div class="help-admin-section"><h3>{{.Title}} <span class="muted">order {{.SortOrder}}</span></h3>
+  <form method="post" action="/admin/help/sections/{{.ID}}/delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Remove section</button></form>
+  {{if .Items}}<ul>{{range .Items}}<li>{{.Title}} <span class="tag">{{.Kind}}</span> <span class="muted">order {{.SortOrder}}</span>
+    <form method="post" action="/admin/help/items/{{.ID}}/delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="danger">Remove</button></form></li>{{end}}</ul>{{else}}<p class="hint">No items in this section yet.</p>{{end}}
+</div>{{else}}<p class="hint">No firm help sections yet.</p>{{end}}
+<form method="post" action="/admin/help/sections" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h3>Add a section</h3>
+  <label for="hs-title">Title</label><input id="hs-title" name="title" required maxlength="200">
+  <label for="hs-order">Sort order</label><input id="hs-order" name="sort_order" type="number">
+  <div><button type="submit">Add section</button></div></form>
+{{if .Help}}<form method="post" action="/admin/help/items" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <h3>Add an item</h3>
+  <label for="hi-section">Section</label><select id="hi-section" name="section_id">{{range .Help}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select>
+  <label for="hi-title">Title</label><input id="hi-title" name="title" required maxlength="200">
+  <label for="hi-kind">Kind</label><select id="hi-kind" name="kind"><option value="text">Text</option><option value="video">Video</option><option value="image">Image</option></select>
+  <label for="hi-body">Text, or an https link for a video or image</label><textarea id="hi-body" name="body" rows="4"></textarea>
+  <label for="hi-file">File id (optional, for an uploaded video or image)</label><input id="hi-file" name="file_id">
+  <label for="hi-order">Sort order</label><input id="hi-order" name="sort_order" type="number">
+  <div><button type="submit">Add item</button></div></form>{{end}}
+</section>
+{{end}}
+
+{{if or (eq .Tab "users_roles") (eq .Tab "system")}}
+<section class="card"><h2>Seats</h2><p><strong>{{.Seats}}</strong> active users.</p>
+{{if eq .Tab "users_roles"}}{{if .Users}}<table><thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Active</th></tr></thead><tbody>
+{{range .Users}}<tr><td>{{.Name}}</td><td>{{.Email}}</td><td>{{.Roles}}</td><td>{{if .Active}}Yes{{else}}No{{end}}</td></tr>{{end}}</tbody></table>{{end}}
+<p class="muted">Users are added and deactivated through /api/v1/users; matter walls are set on each matter.</p>{{end}}
+</section>
+{{end}}
+
+{{if eq .Tab "system"}}
+<section class="card"><h2>Problem reports</h2>
+{{if .Problems}}<table><thead><tr><th>When</th><th>Page</th><th>Report</th></tr></thead><tbody>{{range .Problems}}<tr><td>{{when .CreatedAt}}</td><td>{{.Page}}</td><td class="pre">{{.Message}}</td></tr>{{end}}</tbody></table>{{else}}<p class="hint">No problem reports.</p>{{end}}
+</section>
+<section class="card"><h2>Audit log</h2>
+{{if .Audit}}<table class="audit"><thead><tr><th>When</th><th>Who</th><th>Source</th><th>Record</th><th>Field</th><th>Old</th><th>New</th></tr></thead><tbody>{{range .Audit}}<tr><td>{{when .At}}</td><td>{{.Actor}} {{.Role}}</td><td>{{.Source}}</td><td>{{.Entity}}</td><td>{{.Field}}</td><td>{{.Old}}</td><td>{{.New}}</td></tr>{{end}}</tbody></table>{{else}}<p class="hint">No audit rows to show.</p>{{end}}
+<p class="muted">The full log is at /api/v1/audit-log.</p>
+</section>
+{{end}}
+
+{{if .Settings}}
+<section class="card settings"><h2>Settings</h2>
+<table class="settings-table"><thead><tr><th>Setting</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
+{{range .Settings}}<tr id="s-{{.Key}}"{{if .Changed}} class="changed"{{end}}>
+  <td><code>{{.Key}}</code><p class="help-text">{{.Help}}</p></td>
+  <td>{{if .Locked}}<span>{{.Value}}</span> <span class="tag">read only</span>{{else}}
+    <form method="post" action="/admin/settings/{{.Key}}" class="setting-form"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><input type="hidden" name="kind" value="{{.Kind}}">
+    <label class="visually-hidden" for="v-{{.Key}}">{{.Key}}</label>
+    {{if eq .Kind "bool"}}<select id="v-{{.Key}}" name="value"><option value="true"{{if eq .Value "true"}} selected{{end}}>On</option><option value="false"{{if eq .Value "false"}} selected{{end}}>Off</option></select>
+    {{else if .Allowed}}<select id="v-{{.Key}}" name="value">{{if .Optional}}<option value="">(none)</option>{{end}}{{$v := .Value}}{{range .Allowed}}<option{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>
+    {{else if eq .Kind "json"}}<textarea id="v-{{.Key}}" name="value" rows="3">{{.Value}}</textarea>
+    {{else if .Secret}}<input id="v-{{.Key}}" name="value" type="password" autocomplete="new-password" placeholder="{{if .SecretSet}}set; type to replace{{else}}not set{{end}}">
+    {{else}}<input id="v-{{.Key}}" name="value" value="{{.Value}}">{{end}}
+    <button type="submit">Save</button></form>{{end}}
+    {{if .Changed}}<span class="tag changed">changed</span>{{end}}</td>
+  <td><code>{{if .Default}}{{.Default}}{{else}}(none){{end}}</code></td>
+  <td>{{if not .Locked}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><button type="submit">Reset to default</button></form>{{end}}</td>
+</tr>{{end}}</tbody></table>
+</section>
+{{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance"))}}<p class="hint">This tab has no settings in this core yet.</p>
+{{end}}
+{{end}}{{template "shell-bottom" .}}{{end}}

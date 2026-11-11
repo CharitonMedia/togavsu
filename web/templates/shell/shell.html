@@ -1,0 +1,98 @@
+{{define "icon"}}<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{{if eq . "home"}}<path d="M3 11l9-8 9 8v10h-6v-6H9v6H3z"/>{{else if eq . "briefcase"}}<path d="M9 4h6v3h6v13H3V7h6zM11 6v1h2V6z"/>{{else if eq . "people"}}<circle cx="9" cy="8" r="4"/><path d="M1 21c0-4 4-7 8-7s8 3 8 7z"/><circle cx="18" cy="9" r="3"/>{{else if eq . "calendar"}}<path d="M4 5h16v16H4zM4 9h16M8 3v4M16 3v4" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "note"}}<path d="M5 3h10l4 4v14H5z"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v6l4 2" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "receipt"}}<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/>{{else if eq . "invoice"}}<path d="M5 3h14v18H5zM8 8h8M8 12h8M8 16h5" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "payment"}}<path d="M2 6h20v12H2zM2 10h20" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "ledger"}}<path d="M4 4h16v16H4zM4 10h16M10 4v16" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "scale"}}<path d="M12 3v18M5 7h14M5 7l-3 7h6zM19 7l-3 7h6z" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "refill"}}<path d="M4 12a8 8 0 0114-5l2-2v6h-6l2-2a5 5 0 10 1 6" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "activity"}}<path d="M3 12h4l3-8 4 16 3-8h4" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "gear"}}<circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" stroke="currentColor" stroke-width="2"/>{{else if eq . "help"}}<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 115 0c0 2-2.5 2-2.5 4M12 16.5v1" fill="none" stroke="currentColor" stroke-width="2"/>{{else if eq . "bell"}}<path d="M6 16V11a6 6 0 0112 0v5l2 2H4zM10 20a2 2 0 004 0"/>{{else if eq . "plus"}}<path d="M11 4h2v16h-2zM4 11h16v2H4z"/>{{else if eq . "menu"}}<path d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/>{{else if eq . "timer"}}<circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 9v4l3 2M9 2h6" fill="none" stroke="currentColor" stroke-width="2"/>{{else}}<circle cx="12" cy="12" r="5"/>{{end}}</svg>{{end}}
+
+{{define "shell-top"}}<!DOCTYPE html>
+<html lang="en" data-mode="{{.Theme.EffectiveMode}}" data-size="{{.Theme.EffectiveSize}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+<title>{{.Title}} · {{.Nav.FirmShortName}}</title>
+<link rel="stylesheet" href="/ui/static/app.css">
+<link rel="stylesheet" href="/ui/appearance.css">
+<script src="/ui/static/vendor/htmx-2.0.11.min.js" defer></script>
+<script src="/ui/static/app.js" defer></script>
+</head>
+<body class="shell{{if .Nav.SidebarCollapsed}} sidebar-collapsed{{end}}" data-idle-seconds="{{.IdleSeconds}}">
+<a class="skip" href="#main">Skip to content</a>
+<aside class="sidebar" aria-label="Sidebar">
+  <a class="brand" href="/"><span class="firm">{{.Nav.FirmShortName}}</span><span class="portal">{{.Nav.StaffPortalLabel}}</span></a>
+  <nav class="nav" aria-label="Main">
+  {{range .Nav.Groups}}{{$path := $.Active}}
+    <div class="nav-section" data-section="{{.ID}}">
+    {{if .Label}}<h2 class="nav-heading">{{.Label}}</h2>{{end}}
+    <ul>{{range .Entries}}{{template "nav-entry" (dict2 . $path)}}{{end}}</ul>
+    {{range .Subgroups}}
+      <details class="nav-sub" data-subgroup="{{.ID}}"{{if not .Collapsed}} open{{end}}>
+        <summary>{{.Label}}</summary>
+        <ul>{{range .Entries}}{{template "nav-entry" (dict2 . $path)}}{{end}}</ul>
+      </details>
+    {{end}}
+    </div>
+  {{end}}
+  </nav>
+  <details class="report">
+    <summary>Report a problem</summary>
+    <form method="post" action="/problem-reports">
+      <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="page" value="{{.Path}}">
+      <label for="problem-message">What went wrong?</label>
+      <textarea id="problem-message" name="message" rows="4" required maxlength="5000"></textarea>
+      <button type="submit">Send report</button>
+    </form>
+  </details>
+  <footer class="who"><span class="name">{{.UserName}}</span><span class="role">{{.RoleLabel}}, signed in</span></footer>
+</aside>
+<header class="topbar">
+  <form method="post" action="/ui/sidebar" class="inline">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="{{.Path}}">
+    <input type="hidden" name="collapsed" value="{{if .Nav.SidebarCollapsed}}false{{else}}true{{end}}">
+    <button type="submit" class="icon-btn" id="sidebar-toggle" aria-label="Collapse or expand the sidebar" aria-pressed="{{.Nav.SidebarCollapsed}}">{{template "icon" "menu"}}</button>
+  </form>
+  <form class="search" role="search" action="/search" method="get" autocomplete="off">
+    <label class="visually-hidden" for="search-q">Search</label>
+    <input id="search-q" name="q" type="search" placeholder="Search matters, people, invoices, files (Ctrl-K)"
+      hx-get="/ui/search" hx-trigger="input changed delay:{{.SearchDelay}}ms, search" hx-target="#search-results" hx-include="#search-scope"
+      data-min-chars="{{.MinChars}}" aria-controls="search-results" aria-autocomplete="list">
+    <label class="visually-hidden" for="search-scope">Scope</label>
+    <select id="search-scope" name="scope" hx-get="/ui/search" hx-trigger="change" hx-target="#search-results" hx-include="#search-q">
+      {{range .Scopes}}<option value="{{.ID}}">{{.Label}}</option>{{end}}
+    </select>
+    <div id="search-results" class="search-results" role="listbox" aria-label="Search results"></div>
+  </form>
+  {{if .CanTime}}<details class="menu timers"><summary class="icon-btn" aria-label="Timers" hx-get="/ui/timers" hx-target="#timer-panel" hx-trigger="click once">{{template "icon" "timer"}}<span class="label">Timers</span></summary>
+    <div class="panel" id="timer-panel"><a href="/timers">Open timers</a></div></details>{{end}}
+  <details class="menu bell"><summary class="icon-btn" aria-label="Notifications, {{.Unread}} unread" hx-get="/ui/notifications" hx-target="#notify-panel" hx-trigger="click once">{{template "icon" "bell"}}{{if .Unread}}<span class="count" data-unread="{{.Unread}}">{{.Unread}}</span>{{end}}</summary>
+    <div class="panel" id="notify-panel"><a href="/notifications">Open notifications</a></div></details>
+  <a class="icon-btn" href="/help" aria-label="Help">{{template "icon" "help"}}<span class="label">Help</span></a>
+  <details class="menu quick"><summary class="icon-btn" aria-label="Quick create">{{template "icon" "plus"}}<span class="label">New</span></summary>
+    <div class="panel"><ul class="menu-list">
+      <li><a href="/practice/matters#create">New matter</a></li>
+      <li><a href="/practice/contacts#create">New person</a></li>
+      {{if .CanTime}}<li><a href="/billing/time#log-h">Log time</a></li>{{end}}
+    </ul></div></details>
+  <details class="menu user"><summary class="chip" aria-label="Account menu for {{.UserName}}">{{.Initials}}</summary>
+    <div class="panel"><ul class="menu-list">
+      <li><a href="/me/profile">My profile</a></li>
+      <li><a href="/me/settings">My settings</a></li>
+      <li><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="link">Sign out</button></form></li>
+    </ul></div></details>
+</header>
+<main id="main" class="page">
+<div class="titlebar"><h1>{{.Title}}</h1>{{if .HelpPath}}<a class="help-q" href="{{.HelpPath}}" aria-label="Help for this page" title="Help for this page">?</a>{{end}}</div>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{end}}
+
+{{define "nav-entry"}}<li><a href="{{.E.Path}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{template "icon" .E.Icon}}<span class="label">{{.E.Label}}</span>{{if .E.Count}}<span class="badge{{if eq .E.Tone "warning"}} warn{{end}}">{{deref .E.Count}}</span>{{end}}</a></li>{{end}}
+
+{{define "shell-bottom"}}
+</main>
+<nav class="tabbar" aria-label="Phone tabs">
+  <a href="/">{{template "icon" "home"}}<span>Home</span></a>
+  <a href="/search?scope=matters">{{template "icon" "briefcase"}}<span>Matters</span></a>
+  <a href="/calendar">{{template "icon" "calendar"}}<span>Calendar</span></a>
+  <a href="/billing/time">{{template "icon" "clock"}}<span>Time</span></a>
+</nav>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,8 @@
+{{define "search.html"}}{{template "shell-top" .}}{{with .Page}}
+<form method="get" action="/search" class="card search-page">
+  <label for="sp-q">Search</label><input id="sp-q" name="q" value="{{.Query}}" type="search">
+  <label for="sp-scope">Scope</label><select id="sp-scope" name="scope">{{$s := .Scope}}{{range $.Scopes}}<option value="{{.ID}}"{{if eq .ID $s}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+  <button type="submit">Search</button>
+</form>
+{{if .Query}}<div class="card">{{template "search_results" $}}</div>{{end}}
+{{end}}{{template "shell-bottom" .}}{{end}}

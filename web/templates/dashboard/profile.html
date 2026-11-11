@@ -1,0 +1,11 @@
+{{define "profile.html"}}{{template "shell-top" .}}{{with .Page}}
+<section class="card"><dl class="facts">
+  <dt>Name</dt><dd>{{.User.Name}}</dd>
+  <dt>Initials</dt><dd>{{$.Initials}}</dd>
+  <dt>Email</dt><dd>{{.User.Email}}</dd>
+  <dt>Roles</dt><dd>{{.Roles}}</dd>
+</dl></section>
+<section class="card"><h2>Security</h2>
+<p>Password change, two-factor reset with new recovery codes, and your API tokens use the account API (/api/v1/me/password, /api/v1/me/totp/reset, /api/v1/me/recovery-codes, /api/v1/api-tokens).</p>
+</section>
+{{end}}{{template "shell-bottom" .}}{{end}}
