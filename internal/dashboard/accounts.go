@@ -761,6 +761,11 @@ func (a *Accounts) SetPicture(ctx context.Context, p domain.Principal, data []by
 			return domain.Invalid("picture", "the picture must be a PNG, JPEG or WebP image")
 		}
 	}
+	// PutProfile writes the whole user_profiles row, so the read and write run under the
+	// lock UpdateMe and the admin's phone edit hold for theirs: a picture change never
+	// restores an old phone or initials, and a phone save never restores a removed picture.
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	pr, ok, err := a.Profiles.Profile(ctx, p.UserID)
 	if err != nil {
 		return err

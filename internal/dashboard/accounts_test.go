@@ -407,3 +407,127 @@ func TestCreateUserAndConcurrentEditDoNotDeadlock(t *testing.T) {
 		t.Fatalf("edit not applied: %q", u.Email)
 	}
 }
+
+// gatedProfiles runs onRead once, right after the first Profile read of hook, so a test
+// can start a second writer between a caller's read and its write.
+type gatedProfiles struct {
+	*Memory
+	mu     sync.Mutex
+	hook   domain.ID
+	onRead func()
+}
+
+func (g *gatedProfiles) Profile(ctx context.Context, user domain.ID) (Profile, bool, error) {
+	pr, ok, err := g.Memory.Profile(ctx, user)
+	g.mu.Lock()
+	fire := g.onRead
+	if user == g.hook {
+		g.onRead = nil
+	} else {
+		fire = nil
+	}
+	g.mu.Unlock()
+	if fire != nil {
+		fire()
+	}
+	return pr, ok, err
+}
+
+// startAndWait runs fn in the background and gives it time to finish; with the lock the
+// fix takes it blocks instead, and the result is still delivered on done.
+func startAndWait(done chan error, fn func() error) {
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		done <- err
+	case <-time.After(150 * time.Millisecond):
+	}
+}
+
+func profileRaceFixture(t *testing.T) (*Accounts, *gatedProfiles, []byte) {
+	t.Helper()
+	g := &gatedUsers{m: map[domain.ID]domain.User{
+		"adm": {Meta: domain.Meta{ID: "adm"}, Name: "adm", Roles: `["admin"]`, Active: true},
+		"stf": {Meta: domain.Meta{ID: "stf"}, Name: "Sam", Roles: `["staff"]`, Active: true},
+	}}
+	prof := &gatedProfiles{Memory: NewMemory()}
+	a := &Accounts{Users: g, Audit: &nopRecorder{}, Profiles: prof}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	return a, prof, buf.Bytes()
+}
+
+// Codex PR #35 round 8: SetPicture read the user_profiles row without the lock and
+// wrote it back whole, undoing a phone or initials save that landed in between.
+func TestSetPictureKeepsConcurrentProfileSave(t *testing.T) {
+	ctx := context.Background()
+	a, prof, pic := profileRaceFixture(t)
+	phone, inits := "+1 314 555 0101", "SM"
+	done := make(chan error, 1)
+	prof.hook = "stf"
+	prof.onRead = func() {
+		startAndWait(done, func() error { _, err := a.UpdateMe(ctx, pStaff, nil, &phone, &inits); return err })
+	}
+	if err := a.SetPicture(ctx, pStaff, pic); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	pr, _, _ := prof.Memory.Profile(ctx, "stf")
+	if pr.Phone != phone || pr.Initials != inits || pr.PictureType != "image/png" {
+		t.Fatalf("picture upload and profile save: phone=%q initials=%q picture=%q", pr.Phone, pr.Initials, pr.PictureType)
+	}
+
+	// The admin's phone edit, racing the user's upload, survives too.
+	adminPhone := "+1 314 555 0199"
+	prof.onRead = func() {
+		startAndWait(done, func() error {
+			_, err := a.UpdateUser(ctx, pAdmin, "stf", UserInput{Phone: &adminPhone})
+			return err
+		})
+	}
+	if err := a.SetPicture(ctx, pStaff, pic); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if pr, _, _ := prof.Memory.Profile(ctx, "stf"); pr.Phone != adminPhone || pr.PictureType != "image/png" {
+		t.Fatalf("picture upload and admin phone edit: phone=%q picture=%q", pr.Phone, pr.PictureType)
+	}
+}
+
+// Codex PR #35 round 8: a Remove picture that lands while UpdateMe or the admin's phone
+// edit holds its earlier read of the row stays removed.
+func TestRemovedPictureSurvivesConcurrentPhoneSaves(t *testing.T) {
+	ctx := context.Background()
+	a, prof, pic := profileRaceFixture(t)
+	remove := func() error { return a.SetPicture(ctx, pStaff, nil) }
+	for _, tc := range []struct {
+		name string
+		save func(phone string) error
+	}{
+		{"my profile", func(ph string) error { _, err := a.UpdateMe(ctx, pStaff, nil, &ph, nil); return err }},
+		{"admin phone", func(ph string) error { _, err := a.UpdateUser(ctx, pAdmin, "stf", UserInput{Phone: &ph}); return err }},
+	} {
+		if err := a.SetPicture(ctx, pStaff, pic); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan error, 1)
+		prof.hook = "stf"
+		prof.onRead = func() { startAndWait(done, remove) }
+		phone := "+1 314 555 01" + map[string]string{"my profile": "11", "admin phone": "22"}[tc.name]
+		if err := tc.save(phone); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+		if pr, _, _ := prof.Memory.Profile(ctx, "stf"); pr.Phone != phone || pr.PictureType != "" || len(pr.Picture) != 0 {
+			t.Fatalf("%s: phone=%q picture=%q (%d bytes)", tc.name, pr.Phone, pr.PictureType, len(pr.Picture))
+		}
+	}
+}
