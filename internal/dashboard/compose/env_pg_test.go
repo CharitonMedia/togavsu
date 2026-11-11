@@ -134,6 +134,7 @@ type resp struct {
 	json  map[string]any
 	loc   string
 	ctype string
+	csp   string
 }
 
 func (c *client) do(method, path string, body any, hdr ...string) resp {
@@ -173,7 +174,7 @@ func (c *client) do(method, path string, body any, hdr ...string) resp {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	out := resp{code: res.StatusCode, body: string(raw), loc: res.Header.Get("Location"), ctype: res.Header.Get("Content-Type")}
+	out := resp{code: res.StatusCode, body: string(raw), loc: res.Header.Get("Location"), ctype: res.Header.Get("Content-Type"), csp: res.Header.Get("Content-Security-Policy")}
 	_ = json.Unmarshal(raw, &out.json)
 	return out
 }
@@ -249,6 +250,12 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
+	return newEnvWith(t, Options{})
+}
+
+// newEnvWith mounts the ui with opt; DatabaseURL and CalendarTemplates are filled in.
+func newEnvWith(t *testing.T, opt Options) *env {
+	t.Helper()
 	dsn := appRoleDSN(t)
 	ctx := context.Background()
 	app, err := core.Open(ctx, core.Config{DatabaseURL: dsn, Key: testKey, Domain: "firm.example", MailEvery: -1})
@@ -256,7 +263,8 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	cal := os.DirFS("../../../web/templates/calendar")
-	ui, err := Mount(ctx, app, Options{DatabaseURL: dsn, CalendarTemplates: cal})
+	opt.DatabaseURL, opt.CalendarTemplates = dsn, cal
+	ui, err := Mount(ctx, app, opt)
 	if err != nil {
 		t.Fatal(err)
 	}

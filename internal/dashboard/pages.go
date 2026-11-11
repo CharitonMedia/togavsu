@@ -74,13 +74,7 @@ var funcs = template.FuncMap{
 		}
 		return n
 	},
-	"str": func(id domain.ID) string { return string(id) },
-	"derefID": func(id *domain.ID) domain.ID {
-		if id == nil {
-			return ""
-		}
-		return *id
-	},
+	"str":         func(id domain.ID) string { return string(id) },
 	"idleMinutes": func(secs int) int { return secs / 60 },
 	"json": func(v any) string {
 		b, _ := json.Marshal(v)
@@ -840,7 +834,15 @@ func (h *Handler) quickCreatePage(w http.ResponseWriter, r *http.Request, p doma
 
 type helpSectionView struct {
 	help.Section
-	Items []help.Item
+	Items []helpItemView
+}
+
+// helpItemView is an item with its media resolved for the viewer: Media is the files
+// service's versioned download route, set only when the viewer may read the file.
+type helpItemView struct {
+	help.Item
+	Media   string
+	MediaOK bool
 }
 
 type helpView struct {
@@ -867,7 +869,11 @@ func (h *Handler) helpSections(r *http.Request, p domain.Principal) ([]helpSecti
 		v := helpSectionView{Section: s}
 		for _, it := range items {
 			if it.SectionID == s.ID {
-				v.Items = append(v.Items, it)
+				iv := helpItemView{Item: it}
+				if iv.Media, iv.MediaOK, err = h.Help.MediaURL(r.Context(), p, it); err != nil {
+					return nil, err
+				}
+				v.Items = append(v.Items, iv)
 			}
 		}
 		out = append(out, v)

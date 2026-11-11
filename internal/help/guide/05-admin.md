@@ -64,7 +64,7 @@ The one place every AI call gets its provider, model and key: keys per provider,
 
 ## Help {#admin-help}
 <!-- tab: help | path: /admin?tab=help | where: Administrative > Help | keywords: help sections, help items, video, image -->
-The firm's help sections and items shown under the guides on Help & Training. Add a section, then add text, video or image items with a title and sort order.
+The firm's help sections and items shown under the guides on Help & Training. Add a section, then add text, video or image items with a title and sort order. An image is an uploaded file, given by its file id; a video is an uploaded file or an https link, which opens in a new tab.
 
 ## Modules and marketplace {#admin-modules}
 <!-- tab: modules | path: /admin?tab=modules | where: Administrative > Modules and marketplace | keywords: install, enable, disable, signing keys, marketplace -->

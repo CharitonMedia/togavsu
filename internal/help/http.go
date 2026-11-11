@@ -236,7 +236,7 @@ func (h *Handler) guideHTML(w http.ResponseWriter, r *http.Request) {
 }
 
 // CSP is the shell's Content Security Policy: no inline script or style.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' https:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
 
 func isUnauthenticated(err error) bool {
 	var api *domain.APIError

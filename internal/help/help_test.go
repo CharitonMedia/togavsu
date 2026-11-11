@@ -209,3 +209,67 @@ func TestLLMsTxt(t *testing.T) {
 		t.Fatal("hidden firm name shown")
 	}
 }
+
+type fakeFiles map[domain.ID]domain.ID
+
+func (f fakeFiles) CurrentVersion(_ context.Context, p domain.Principal, file domain.ID) (domain.ID, error) {
+	if p.HasRole(domain.RoleAccountant) {
+		return "", domain.Forbidden("files")
+	}
+	v, ok := f[file]
+	if !ok {
+		return "", domain.NotFound("file")
+	}
+	return v, nil
+}
+
+// PRD 8.11 image and video items: images are uploaded files only (the CSP allows
+// same-origin images), file-backed items need a readable file with a version, and
+// MediaURL is the versioned download route resolved as the viewer.
+func TestMediaItems(t *testing.T) {
+	ctx := context.Background()
+	title := "Screens"
+	pic, noVer := domain.ID("0190c000-0000-7000-8000-0000000000f1"), domain.ID("0190c000-0000-7000-8000-0000000000f2")
+	ptr := func(id domain.ID) **domain.ID { p := &id; return &p }
+	image, video, name, link := "image", "video", "Matter screen", "https://cdn.example/logo.png"
+
+	bare := newSvc(t, fakeSettings{})
+	sec, err := bare.CreateSection(ctx, admin, SectionInput{Title: &title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bare.CreateItem(ctx, admin, ItemInput{SectionID: &sec.ID, Title: &name, Kind: &image, FileID: ptr(pic)}); codeOf(err) != domain.CodeValidation {
+		t.Fatalf("file item without a files service: %v", err)
+	}
+
+	svc := newSvc(t, fakeSettings{})
+	svc.d.Files = fakeFiles{pic: "0190c000-0000-7000-8000-0000000000v1", noVer: ""}
+	sec, err = svc.CreateSection(ctx, admin, SectionInput{Title: &title})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for what, in := range map[string]ItemInput{
+		"image link":   {SectionID: &sec.ID, Title: &name, Kind: &image, Body: &link},
+		"unknown file": {SectionID: &sec.ID, Title: &name, Kind: &image, FileID: ptr("0190c000-0000-7000-8000-0000000000ff")},
+		"no version":   {SectionID: &sec.ID, Title: &name, Kind: &video, FileID: ptr(noVer)},
+	} {
+		if _, err := svc.CreateItem(ctx, admin, in); codeOf(err) != domain.CodeValidation {
+			t.Fatalf("%s: %v", what, err)
+		}
+	}
+	it, err := svc.CreateItem(ctx, admin, ItemInput{SectionID: &sec.ID, Title: &name, Kind: &image, FileID: ptr(pic)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, ok, err := svc.MediaURL(ctx, staff, it)
+	if err != nil || !ok || src != "/api/v1/files/"+string(pic)+"/versions/0190c000-0000-7000-8000-0000000000v1/download" {
+		t.Fatalf("media url: %q %v %v", src, ok, err)
+	}
+	acct := domain.Principal{UserID: "c", Roles: []domain.Role{domain.RoleAccountant}}
+	if src, ok, err := svc.MediaURL(ctx, acct, it); err != nil || ok || src != "" {
+		t.Fatalf("viewer without file access: %q %v %v", src, ok, err)
+	}
+	if !strings.Contains(CSP, "img-src 'self' data:;") {
+		t.Fatalf("CSP and image sources disagree: %s", CSP)
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -85,14 +86,24 @@ type Settings interface {
 	Get(ctx context.Context, key string) (string, error)
 }
 
+// Files resolves an uploaded file's current version as the viewer, through the files
+// service, so walls, roles and attorney-only checks apply to help media too. The core
+// adapts *files.Service to it (compose.FileVersions).
+type Files interface {
+	CurrentVersion(ctx context.Context, p domain.Principal, file domain.ID) (domain.ID, error)
+}
+
 // Deps wires the service.
 type Deps struct {
 	Store    Store
 	Settings Settings
-	Guide    *Guide
-	Version  string
-	Now      func() time.Time
-	IDs      func() (domain.ID, error)
+	// Files backs image items and uploaded video items. Without it the service refuses
+	// file-backed items rather than storing ones that cannot be shown.
+	Files   Files
+	Guide   *Guide
+	Version string
+	Now     func() time.Time
+	IDs     func() (domain.ID, error)
 }
 
 // Service is the help application service.
@@ -318,7 +329,7 @@ type ItemInput struct {
 
 var videoURL = regexp.MustCompile(`^https://[^\s"'<>]+$`)
 
-func (s *Service) checkItem(ctx context.Context, it Item) error {
+func (s *Service) checkItem(ctx context.Context, p domain.Principal, it Item) error {
 	switch it.Kind {
 	case "text":
 		if strings.TrimSpace(it.Body) == "" {
@@ -326,8 +337,17 @@ func (s *Service) checkItem(ctx context.Context, it Item) error {
 		}
 	case "video", "image":
 		hasFile := it.FileID != nil && !it.FileID.IsZero()
-		if !hasFile && !videoURL.MatchString(strings.TrimSpace(it.Body)) {
-			return domain.Invalid("file_id", "a "+it.Kind+" item needs a file or an https link in the body")
+		switch {
+		case hasFile:
+			if err := s.checkFile(ctx, p, *it.FileID); err != nil {
+				return err
+			}
+		case it.Kind == "image":
+			// The shell CSP is img-src 'self' data:, so an image must be an uploaded file;
+			// an outside image link would be blocked by every browser.
+			return domain.Invalid("file_id", "an image item needs an uploaded image file")
+		case !videoURL.MatchString(strings.TrimSpace(it.Body)):
+			return domain.Invalid("file_id", "a video item needs an uploaded file or an https link in the body")
 		}
 	default:
 		return domain.Invalid("kind", "kind is text, video or image")
@@ -345,6 +365,47 @@ func (s *Service) checkItem(ctx context.Context, it Item) error {
 		}
 	}
 	return domain.Invalid("section_id", "unknown help section")
+}
+
+// checkFile requires a file the writing admin can read and that has a current version.
+// ponytail: ceiling: the file's media type is not checked, so an image item pointing at
+// a PDF shows a broken image (files serves non-preview types as sandboxed downloads).
+// Upgrade path: add the current version's media type to Files.CurrentVersion and refuse
+// non-image/non-video files. Trigger: the admin Help tab gains a file picker or upload.
+func (s *Service) checkFile(ctx context.Context, p domain.Principal, file domain.ID) error {
+	if s.d.Files == nil {
+		return domain.Invalid("file_id", "uploaded help media needs the files service, which is not connected")
+	}
+	v, err := s.d.Files.CurrentVersion(ctx, p, file)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || codeIs(err, domain.CodeNotFound) || codeIs(err, domain.CodeForbidden) {
+			return domain.Invalid("file_id", "unknown file")
+		}
+		return err
+	}
+	if v.IsZero() {
+		return domain.Invalid("file_id", "the file has no saved version")
+	}
+	return nil
+}
+
+// MediaURL is where a file-backed item's image or video downloads for p: the files
+// service's versioned download route for the file's current version. ok is false when
+// the item has no file, no files service is connected, or p may not read the file;
+// the page then shows a note instead of a broken element.
+func (s *Service) MediaURL(ctx context.Context, p domain.Principal, it Item) (string, bool, error) {
+	if it.FileID == nil || it.FileID.IsZero() || s.d.Files == nil {
+		return "", false, nil
+	}
+	v, err := s.d.Files.CurrentVersion(ctx, p, *it.FileID)
+	switch {
+	case err == nil && !v.IsZero():
+		return "/api/v1/files/" + url.PathEscape(string(*it.FileID)) + "/versions/" + url.PathEscape(string(v)) + "/download", true, nil
+	case err == nil, codeIs(err, domain.CodeNotFound), codeIs(err, domain.CodeForbidden), errors.Is(err, ErrNotFound):
+		return "", false, nil
+	default:
+		return "", false, err
+	}
 }
 
 // CreateItem adds an item to a section (admin).
@@ -380,7 +441,7 @@ func (s *Service) CreateItem(ctx context.Context, p domain.Principal, in ItemInp
 		}
 		it.SortOrder = (len(existing) + 1) * 10
 	}
-	if err := s.checkItem(ctx, it); err != nil {
+	if err := s.checkItem(ctx, p, it); err != nil {
 		return Item{}, err
 	}
 	return it, s.d.Store.PutItem(ctx, it)
@@ -415,7 +476,7 @@ func (s *Service) UpdateItem(ctx context.Context, p domain.Principal, id domain.
 	if in.SortOrder != nil {
 		it.SortOrder = *in.SortOrder
 	}
-	if err := s.checkItem(ctx, it); err != nil {
+	if err := s.checkItem(ctx, p, it); err != nil {
 		return Item{}, err
 	}
 	it.UpdatedAt = s.d.Now().UTC()
@@ -782,4 +843,9 @@ func oneLine(s string) string {
 		s = string([]rune(s)[:fixed.LLMsParagraphMax])
 	}
 	return s
+}
+
+func codeIs(err error, code string) bool {
+	var api *domain.APIError
+	return errors.As(err, &api) && api.Code == code
 }

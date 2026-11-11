@@ -11,8 +11,8 @@
 {{range .Sections}}<section class="card help-section"><h2>{{.Title}}</h2>
   {{if .Items}}{{range .Items}}<article class="help-item"><h3>{{.Title}}</h3>
     {{if eq .Kind "text"}}<div class="prose">{{md .Body}}</div>
-    {{else if eq .Kind "image"}}{{if .FileID}}<img src="/api/v1/files/{{str (derefID .FileID)}}/download" alt="{{.Title}}">{{else}}<img src="{{.Body}}" alt="{{.Title}}">{{end}}
-    {{else if eq .Kind "video"}}{{if .FileID}}<video controls src="/api/v1/files/{{str (derefID .FileID)}}/download"></video>{{else}}<p><a href="{{.Body}}" rel="noopener" target="_blank">Watch {{.Title}}</a></p>{{end}}{{end}}
+    {{else if eq .Kind "image"}}{{if .MediaOK}}<img src="{{.Media}}" alt="{{.Title}}">{{else}}<p class="hint">This image isn't available to you.</p>{{end}}
+    {{else if eq .Kind "video"}}{{if .FileID}}{{if .MediaOK}}<video controls src="{{.Media}}"></video>{{else}}<p class="hint">This video isn't available to you.</p>{{end}}{{else}}<p><a href="{{.Body}}" rel="noopener" target="_blank">Watch {{.Title}}</a></p>{{end}}{{end}}
   </article>{{end}}{{else}}<p class="hint">No items in this section yet.</p>{{end}}
 </section>{{end}}
 {{range .Modules}}<section class="card"><h2>{{.Title}}</h2><ul class="menu-list">{{range .Topics}}<li><a href="/help/topics/{{.ID}}">{{.Title}}</a></li>{{end}}</ul></section>{{end}}

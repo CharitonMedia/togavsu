@@ -33,6 +33,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/files"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
@@ -51,6 +52,25 @@ type Options struct {
 	// CalendarTemplates holds web/templates/calendar; nil serves the calendar API only.
 	CalendarTemplates fs.FS
 	Now               func() time.Time
+	// Files backs uploaded help images and videos, resolved as the viewer. The core
+	// passes FileVersions{Svc: its files service}; nil refuses file-backed help items.
+	Files help.Files
+}
+
+// FileVersions adapts the files service to help.Files: Get runs as the viewer, so a
+// wall, role or attorney-only rule that hides the file hides the help media too.
+type FileVersions struct{ Svc *files.Service }
+
+// CurrentVersion is the file's current version id, or the files service's error.
+func (f FileVersions) CurrentVersion(ctx context.Context, p domain.Principal, file domain.ID) (domain.ID, error) {
+	v, err := f.Svc.Get(ctx, p, file)
+	if err != nil {
+		return "", err
+	}
+	if v.CurrentVersionID == nil {
+		return "", nil
+	}
+	return *v.CurrentVersionID, nil
 }
 
 // UI is the mounted ui: its services and the combined handler.
@@ -136,7 +156,7 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 		return nil, err
 	}
 	u.Dashboard = ds
-	hs, err := help.New(help.Deps{Store: help.PG{DB: app.Pool}, Settings: app.Settings, Version: core.Version, Now: now})
+	hs, err := help.New(help.Deps{Store: help.PG{DB: app.Pool}, Settings: app.Settings, Files: opt.Files, Version: core.Version, Now: now})
 	if err != nil {
 		return nil, err
 	}

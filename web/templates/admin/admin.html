@@ -53,8 +53,8 @@
   <label for="hi-section">Section</label><select id="hi-section" name="section_id">{{range .Help}}<option value="{{.ID}}">{{.Title}}</option>{{end}}</select>
   <label for="hi-title">Title</label><input id="hi-title" name="title" required maxlength="200">
   <label for="hi-kind">Kind</label><select id="hi-kind" name="kind"><option value="text">Text</option><option value="video">Video</option><option value="image">Image</option></select>
-  <label for="hi-body">Text, or an https link for a video or image</label><textarea id="hi-body" name="body" rows="4"></textarea>
-  <label for="hi-file">File id (optional, for an uploaded video or image)</label><input id="hi-file" name="file_id">
+  <label for="hi-body">Text, or an https link for a video</label><textarea id="hi-body" name="body" rows="4"></textarea>
+  <label for="hi-file">File id of an uploaded image or video</label><input id="hi-file" name="file_id">
   <label for="hi-order">Sort order</label><input id="hi-order" name="sort_order" type="number">
   <div><button type="submit">Add item</button></div></form>{{end}}
 </section>
