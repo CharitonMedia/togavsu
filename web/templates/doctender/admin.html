@@ -1,0 +1,39 @@
+{{template "head" .}}
+<p>Doc Tender is <strong>{{if .Enabled}}on{{else}}off{{end}}</strong>. Its models are on the <a href="/admin/settings?tab=ai">AI tab</a>; labeling and categorizing offer {{join (index .Choices "labeling") ", "}}, never a local endpoint.</p>
+<section aria-labelledby="naming-h">
+  <h2 id="naming-h">Naming pattern</h2>
+  <form method="post" action="/admin/doc-tender/naming">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p><label for="pattern">Pattern</label> <input id="pattern" name="pattern" size="60" value="{{.Naming.Pattern}}" required></p>
+    <p class="hint">Tokens: {{range $i, $t := .Naming.AllowedTokens}}{{if $i}}, {{end}}&lt;{{$t}}&gt;{{end}}. A status token is refused: status never goes in a name.</p>
+    <button type="submit">Save pattern</button>
+  </form>
+</section>
+<section aria-labelledby="cats-h">
+  <h2 id="cats-h">Categories</h2>
+  <table class="dt-table">
+    <thead><tr><th scope="col">Key</th><th scope="col">Covers</th><th scope="col">Tier</th><th scope="col">Folder</th><th scope="col">Active</th></tr></thead>
+    <tbody>{{range .Cats}}<tr><td><code>{{.Key}}</code></td><td>{{.Description}}</td><td>{{.Tier}}</td><td>{{.Folder}}</td><td>{{if .Active}}yes{{else}}retired{{end}}</td></tr>{{end}}</tbody>
+  </table>
+  <form method="post" action="/admin/doc-tender/categories">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <fieldset><legend>Add a category</legend>
+      <p><label for="key">Key</label> <input id="key" name="key" required pattern="[a-z0-9_]+"></p>
+      <p><label for="description">Covers</label> <input id="description" name="description" size="60" required></p>
+      <p><label for="tier">Tier</label> <select id="tier" name="tier"><option value="standard">standard</option><option value="high">high (two models must agree)</option></select></p>
+      <p><label for="folder_name">Folder</label> <input id="folder_name" name="folder_name" required></p>
+    </fieldset>
+    <button type="submit">Add category</button>
+  </form>
+</section>
+<section aria-labelledby="spend-h">
+  <h2 id="spend-h">Spend by day, matter and file type</h2>
+  {{if .Spend}}
+  <table class="dt-table">
+    <thead><tr><th scope="col">Day</th><th scope="col">Matter</th><th scope="col">File type</th><th scope="col">Calls</th><th scope="col">Tokens in</th><th scope="col">Tokens out</th><th scope="col">Cost (cents)</th></tr></thead>
+    <tbody>{{range .Spend}}<tr><td>{{.Day}}</td><td>{{.MatterID}}</td><td>{{.FileType}}</td><td>{{.Calls}}</td><td>{{.PromptTokens}}</td><td>{{.CompletionTokens}}</td><td>{{.CostCents}}</td></tr>{{end}}</tbody>
+  </table>
+  {{else}}<p class="empty">No model calls yet.</p>{{end}}
+  <p><a href="/api/v1/reports/doc-tender-spend?format=csv">Download CSV</a></p>
+</section>
+{{template "foot" .}}
