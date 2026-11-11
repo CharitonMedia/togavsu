@@ -919,9 +919,6 @@ func TestStalledPathPutReleasesTheGateAndKeepsPendingOwnership(t *testing.T) {
 }
 
 func TestStalledPathReadStaysTrackedUntilTheSyscallReturns(t *testing.T) {
-	old := destinationIOTimeout
-	destinationIOTimeout = 150 * time.Millisecond
-	t.Cleanup(func() { destinationIOTimeout = old })
 	root := t.TempDir()
 	dest := &PathDestination{Spec: DestinationSpec{ID: "share", Kind: "path", Path: root, Namespace: "nsowned01"}}
 	body := []byte("synthetic-archive")
@@ -932,6 +929,11 @@ func TestStalledPathReadStaysTrackedUntilTheSyscallReturns(t *testing.T) {
 	if err := dest.Put(context.Background(), "owned.tgbk", bytes.NewReader(body), sum); err != nil {
 		t.Fatal(err)
 	}
+	// Shorten the wait only for the stalled read. Setting it before the setup write let a slow
+	// CI machine fail that ordinary write before the test reached the stall it checks.
+	old := destinationIOTimeout
+	destinationIOTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { destinationIOTimeout = old })
 	releaseCh := make(chan struct{})
 	started := make(chan struct{})
 	var startOnce sync.Once
