@@ -70,9 +70,24 @@ func testDSN(t *testing.T) string {
 
 var testKey = bytes.Repeat([]byte{7}, 32)
 
+// dataDirs keeps one data folder per test database, so a core restarted on the same
+// database finds the file bytes its first process stored.
+var dataDirs = map[string]string{}
+
+func dataDir(t *testing.T, dsn string) string {
+	t.Helper()
+	if d, ok := dataDirs[dsn]; ok {
+		return d
+	}
+	d := t.TempDir()
+	dataDirs[dsn] = d
+	t.Cleanup(func() { delete(dataDirs, dsn) })
+	return d
+}
+
 func start(t *testing.T, dsn string) (*App, *httptest.Server) {
 	t.Helper()
-	app, err := Open(context.Background(), Config{DatabaseURL: dsn, Key: testKey, Domain: "firm.example"})
+	app, err := Open(context.Background(), Config{DatabaseURL: dsn, Key: testKey, Domain: "firm.example", DataDir: dataDir(t, dsn)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,8 +624,9 @@ func TestBearerScopesMCPAndSettings(t *testing.T) {
 	}
 	list := reader.must(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 	listMatters := toolName(t, "GET", "/api/v1/matters")
-	// Files are a later integration; until it lands the operation is not offered.
-	if !strings.Contains(list.body, `"name":"`+listMatters+`"`) || strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/files")+`"`) {
+	// Files are mounted since phase 4; module alerts are a later integration and are not offered.
+	if !strings.Contains(list.body, `"name":"`+listMatters+`"`) || !strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/files")+`"`) ||
+		strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/widgets/module-alerts")+`"`) {
 		t.Fatal("tools/list does not reflect the mounted routes")
 	}
 	call := mcpCall(reader, listMatters, map[string]any{})

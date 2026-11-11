@@ -11,8 +11,12 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/billing"
+	"github.com/CharitonMedia/togavsu/internal/calendar"
 	"github.com/CharitonMedia/togavsu/internal/db"
+	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/editor"
+	"github.com/CharitonMedia/togavsu/internal/files"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -21,13 +25,15 @@ import (
 )
 
 // migrations is every migration the core applies: internal/db's core files, billing
-// (300-399) and trust (400-499), in version order.
+// (300-399), trust (400-499), calendar (500-599), files (600-699), editor (700-799) and
+// Doc Tender (800-899), in version order.
 func migrations() ([]db.Migration, error) {
 	ms, err := db.Embedded()
 	if err != nil {
 		return nil, err
 	}
-	for _, more := range []func() ([]db.Migration, error){billing.Migrations, trust.Migrations} {
+	for _, more := range []func() ([]db.Migration, error){billing.Migrations, trust.Migrations,
+		calendar.Migrations, files.Migrations, editor.Migrations, doctender.Migrations} {
 		add, err := more()
 		if err != nil {
 			return nil, err

@@ -268,7 +268,7 @@ func (s *Service) claim(ctx context.Context) (Job, bool, error) {
 	now := us(s.now())
 	var id domain.ID
 	err = s.row(ctx, `UPDATE doc_tender_jobs SET lease_owner = ?, lease_until = ?, updated_at = ?
-WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?
+WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?`+notPurged+`
             ORDER BY next_attempt_at, created_at, id LIMIT 1)
   AND lease_until < ? RETURNING id`, s.d.Worker, now+int64(lease/microUnit), now, now, now, now).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -280,6 +280,11 @@ WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`
 	j, err := s.job(ctx, id)
 	return j, err == nil, err
 }
+
+// notPurged leaves out jobs whose file an admin emptied from the trash: there is nothing
+// left to process, so such a job is never claimed and never wakes the worker. The
+// nightly sweep already skips purged files.
+const notPurged = ` AND NOT EXISTS (SELECT 1 FROM files pf WHERE pf.id = doc_tender_jobs.file_id AND pf.purged_at <> 0)`
 
 // claimable is the job statuses claim takes: held_for_ai_setup only once AI is set up.
 func claimable(ready bool) string {
@@ -397,7 +402,7 @@ func (s *Service) nextWait(ctx context.Context) (time.Duration, error) {
 	d := lease
 	var next sql.NullInt64
 	err = s.row(ctx, `SELECT MIN(CASE WHEN lease_until > next_attempt_at THEN lease_until ELSE next_attempt_at END) FROM doc_tender_jobs
-WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group'`).Scan(&next)
+WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group'`+notPurged).Scan(&next)
 	if err != nil {
 		return zeroDuration, err
 	}

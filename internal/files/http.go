@@ -28,6 +28,10 @@ type Handler struct {
 	FS        fs.FS
 	// Background runs long work, such as a storage move, after the response.
 	Background func(func())
+	// BackgroundContext, when set, is the context that work runs under, so the core can
+	// stop a move on shutdown (a stopped move resumes where it stopped). Nil detaches
+	// the work from the request instead.
+	BackgroundContext context.Context
 }
 
 // NewHandler parses the Files tab templates from fsys (web/templates/files). A nil
@@ -478,7 +482,10 @@ func (h *Handler) createMove(r *http.Request, p domain.Principal, in MoveRequest
 	if err != nil {
 		return MoveView{}, err
 	}
-	ctx := context.WithoutCancel(r.Context())
+	ctx := h.BackgroundContext
+	if ctx == nil {
+		ctx = context.WithoutCancel(r.Context())
+	}
 	h.Background(func() { _ = h.Svc.RunMove(ctx, v.ID) })
 	return v, nil
 }

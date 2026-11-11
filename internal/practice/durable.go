@@ -34,6 +34,8 @@ type Durable struct {
 
 	wmu sync.Mutex
 	seq int64
+	// project mirrors referenced rows into their section 5 tables (project.go).
+	project bool
 }
 
 var _ Store = (*Durable)(nil)
@@ -313,6 +315,11 @@ func (d *Durable) commit(ctx context.Context, list []record, audits []domain.Aud
 			d.seq++
 			if _, err := tx.ExecContext(ctx, `INSERT INTO practice_records (kind, id, seq, body) VALUES ($1, $2, $3, $4)
 				ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body`, r.kind, r.id, d.seq, string(body)); err != nil {
+				return err
+			}
+		}
+		if d.project {
+			if err := projectRows(ctx, tx, list); err != nil {
 				return err
 			}
 		}
