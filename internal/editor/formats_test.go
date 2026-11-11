@@ -145,17 +145,27 @@ func TestPinnedInfoIsTheVersionedCommit(t *testing.T) {
 }
 
 // A version keeps its own format: a PDF saved onto a .docx file previews as a PDF.
-func TestVersionExtFollowsTheVersionMediaType(t *testing.T) {
-	cases := []struct{ media, fileExt, want string }{
-		{"application/pdf", "docx", "pdf"},
-		{"application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".PDF", "docx"},
-		{"text/html; charset=utf-8", "docx", "html"},
-		{"", ".DOCX", "docx"},
-		{"application/x-unknown", "odt", "odt"},
+func TestFormatOfGoesByExtensionUnlessTheBytesDisagree(t *testing.T) {
+	odt := odtPackage(t)
+	cases := []struct {
+		fileExt string
+		data    []byte
+		want    string
+	}{
+		{"docx", []byte("%PDF-1.7\n%%EOF\n"), "pdf"},
+		{".DOCX", []byte("{\\rtf1 synthetic}"), "rtf"},
+		{"docx", []byte("\xD0\xCF\x11\xE0synthetic"), "doc"},
+		{"md", []byte("# Notes\n\n- one\n"), "md"},
+		{"markdown", []byte("plain"), "md"},
+		{"rtf", []byte("{\\rtf1 synthetic}"), "rtf"},
+		{"txt", []byte("hello"), "txt"},
+		{"html", []byte("<p>hi</p>"), "html"},
+		{"docx", odt, "odt"},
+		{"odt", odt, "odt"},
 	}
 	for _, c := range cases {
-		if got := versionExt(c.media, c.fileExt); got != c.want {
-			t.Errorf("versionExt(%q, %q) = %q, want %q", c.media, c.fileExt, got, c.want)
+		if got := formatOf(c.fileExt, c.data); got != c.want {
+			t.Errorf("formatOf(%q, %q) = %q, want %q", c.fileExt, c.data, got, c.want)
 		}
 	}
 }

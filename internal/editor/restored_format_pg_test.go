@@ -74,3 +74,44 @@ func TestPGRestoredOlderFormatIsConvertedAndOpenedAsItself(t *testing.T) {
 		t.Fatalf("Document gave %q (%d bytes), want Letter.odt with the restored ODT bytes", name, len(got))
 	}
 }
+
+// Opus checkpoint P2: the declared media type does not decide the format. Markdown sent
+// as text/plain and RTF sent as application/msword (as Windows browsers do) keep the
+// format their extension and bytes say.
+func TestPGDeclaredMediaTypeDoesNotOverrideTheFormat(t *testing.T) {
+	e := newEnvWith(t, fakeCLI(t, `echo "$2" > "$3"`+"\n"))
+	for _, c := range []struct {
+		name, media, ext string
+		body             []byte
+	}{
+		{"notes.md", "text/plain", ".md", []byte("# Notes\n\n- one\n")},
+		{"Brief.rtf", "application/msword", ".rtf", []byte(`{\rtf1\ansi Synthetic brief.}`)},
+	} {
+		f, err := e.files.Create(e.ctx, e.staff, files.NewFile{Name: c.name, MatterID: e.matter, MediaType: c.media},
+			bytes.NewReader(c.body), int64(len(c.body)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := e.svc.Convert(e.ctx, e.staff, f.ID, "html")
+		if err != nil {
+			t.Fatalf("%s: Convert to HTML: %v", c.name, err)
+		}
+		if _, _, out := e.current(res.File.ID); !strings.HasSuffix(strings.TrimSpace(string(out)), c.ext) {
+			t.Fatalf("%s: the runner was handed %q, want a %s input", c.name, out, c.ext)
+		}
+		if _, err := e.svc.AcquireLock(e.ctx, e.staff, f.ID); err != nil {
+			t.Fatal(err)
+		}
+		if name, _, err := e.svc.Document(e.ctx, e.staff, f.ID); err != nil || name != c.name {
+			t.Fatalf("Document gave %q, %v; want %s", name, err, c.name)
+		}
+	}
+	md, err := e.files.Create(e.ctx, e.staff, files.NewFile{Name: "more.md", MatterID: e.matter, MediaType: "text/plain"},
+		strings.NewReader("# More\n"), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.Convert(e.ctx, e.staff, md.ID, "text"); err != nil {
+		t.Fatalf("Convert of Markdown sent as text/plain to text: %v, want it converted", err)
+	}
+}

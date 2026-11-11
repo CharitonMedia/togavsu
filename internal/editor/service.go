@@ -126,12 +126,12 @@ type current struct {
 }
 
 // ext is the format of the current version's bytes. A restored older version keeps its
-// own format, so the file's extension can name another one (versionExt).
-func (c current) ext() string { return versionExt(c.Version.MediaType, c.File.Extension) }
+// own format, so the file's extension can name another one (formatOf).
+func (c current) ext() string { return formatOf(c.File.Extension, c.Bytes) }
 
 // name is the file's name with the extension of the current version's format.
 func (c current) name() string {
-	if ext := c.ext(); ext != normExt(c.File.Extension) {
+	if ext := c.ext(); ext != canonExt(c.File.Extension) {
 		return baseName(c.File.Name) + "." + ext
 	}
 	return c.File.Name

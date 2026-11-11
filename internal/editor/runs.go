@@ -335,12 +335,10 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	if err != nil {
 		return false, err
 	}
-	v, err := s.files.Version(ctx, p, fileID, versionID)
-	if err != nil {
+	if _, err := s.files.Version(ctx, p, fileID, versionID); err != nil {
 		return false, err
 	}
-	ext := versionExt(v.MediaType, f.Extension)
-	if !Editable(ext) {
+	if !Editable(f.Extension) {
 		return false, nil
 	}
 	d, err := s.files.OpenForProcessing(ctx, p, fileID, versionID)
@@ -352,6 +350,10 @@ func (s *Service) Preview(ctx context.Context, p domain.Principal, fileID, versi
 	_ = d.Close()
 	if err != nil {
 		return false, err
+	}
+	ext := formatOf(f.Extension, buf.Bytes())
+	if !Editable(ext) {
+		return false, nil
 	}
 	pdf, err := s.cli.Convert(ctx, buf.Bytes(), ext, "pdf")
 	if err == nil {
