@@ -749,11 +749,15 @@ func TestParseModelPrices(t *testing.T) {
 // groups are marked grouped, not left in the review queue's exception state.
 func TestPersonGroupingAfterDisagreementFinishesEveryPhoto(t *testing.T) {
 	e := newEnv(t)
-	e.ai.splitGroups = map[string]bool{"gpt-test-fast": true}
+	e.ai.set(func(f *fakeAI) { f.splitGroups = map[string]bool{"gpt-test-fast": true} })
 	photos := uploadPhotos(e)
 	e.drain()
-	e.clock.advance(10 * minuteUnit)
-	e.drain()
+	// The grouping unit retries on disagreement, then tries the check method, then
+	// sends the photos to the review queue.
+	for k := 0; k < 12; k++ {
+		e.clock.advance(24 * 60 * minuteUnit)
+		e.drain()
+	}
 	latest := func(file domain.ID) (string, string) {
 		t.Helper()
 		var status, stage string
@@ -779,5 +783,95 @@ func TestPersonGroupingAfterDisagreementFinishesEveryPhoto(t *testing.T) {
 		if status, stage := latest(p.ID); status != StatusPublished || stage != stageGrouped {
 			t.Fatalf("%s grouped by a person: %s at %s, want grouped", p.Name, status, stage)
 		}
+	}
+}
+
+// Opus checkpoint P2: a group job that stopped after its first group applies the saved
+// answer to the photos it names on retry, never by position over the photos left.
+func TestGroupRetryAppliesTheSavedAnswerByPhoto(t *testing.T) {
+	e := newEnv(t)
+	photos := uploadPhotos(e)
+	e.drain()
+	e.clock.advance(10 * minuteUnit)
+	e.drain()
+	lease, err := e.svc.groupOf(e.ctx, photos[7].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	letter, err := e.svc.groupOf(e.ctx, photos[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lease.Members) < 2 || lease.ID == letter.ID {
+		t.Fatalf("want two groups, got %+v and %+v", letter, lease)
+	}
+	var groupJob string
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT group_job_id FROM doc_tender_jobs WHERE file_id = $1 AND kind = 'file'`, string(photos[7].ID)).Scan(&groupJob); err != nil {
+		t.Fatal(err)
+	}
+	// As if the job stopped after the letter's group: the lease group is not recorded,
+	// and the job is claimed again.
+	for _, q := range []string{
+		`DELETE FROM doc_tender_group_members WHERE group_id = $1`,
+		`DELETE FROM doc_tender_groups WHERE id = $1`,
+	} {
+		if _, err := e.pool.ExecContext(e.ctx, q, string(lease.ID)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := e.pool.ExecContext(e.ctx, `UPDATE doc_tender_jobs SET status = 'queued', next_attempt_at = 0, lease_until = 0, finished_at = 0 WHERE id = $1`, groupJob); err != nil {
+		t.Fatal(err)
+	}
+	e.drain()
+	again, err := e.svc.groupOf(e.ctx, photos[7].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(idStrings(again.Members), ",") != strings.Join(idStrings(lease.Members), ",") {
+		t.Fatalf("lease regrouped as %v, want %v", again.Members, lease.Members)
+	}
+	if kept, err := e.svc.groupOf(e.ctx, photos[0].ID); err != nil || kept.ID != letter.ID {
+		t.Fatalf("letter group %+v, %v; want it unchanged", kept, err)
+	}
+}
+
+func TestSavedGroupingOutOfRangeIsAnError(t *testing.T) {
+	var g groupAnswer
+	if err := json.Unmarshal([]byte(`{"groups": [{"title": "t", "kind": "document", "photos": [1, 3]}], "files": ["a", "b"]}`), &g); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.fileGroups(); err == nil {
+		t.Fatal("photo 3 of 2 was accepted")
+	}
+	g.Files = append(g.Files, "c")
+	got, err := g.fileGroups()
+	if err != nil || len(got) != 1 || strings.Join(idStrings(got[0]), ",") != "a,c" {
+		t.Fatalf("groups %v, %v", got, err)
+	}
+}
+
+// Opus checkpoint P1: reopening a matter queues only files whose current version has
+// no job, so nothing already published is extracted, labeled or named again.
+func TestMatterReopenedDoesNotRedoPublishedFiles(t *testing.T) {
+	e := newEnv(t)
+	f := e.upload(e.staff, e.open, "letter.txt", "text/plain", []byte("LETTER TO THE COURT\nSigned by Casey Sample on 2026-10-07.\n"))
+	e.drain()
+	if j := e.jobFor(f.ID); j.Status != StatusPublished {
+		t.Fatalf("job %s, want published", j.Status)
+	}
+	before := e.ai.callCount("")
+	if err := e.svc.MatterReopened(e.ctx, e.open); err != nil {
+		t.Fatal(err)
+	}
+	e.drain()
+	var jobs int
+	if err := e.pool.QueryRowContext(e.ctx, `SELECT COUNT(*) FROM doc_tender_jobs WHERE file_id = $1`, string(f.ID)).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("%d jobs after the reopen, want the one published job", jobs)
+	}
+	if after := e.ai.callCount(""); after != before {
+		t.Fatalf("the reopen made %d model calls", after-before)
 	}
 }

@@ -172,6 +172,27 @@ type groupAnswer struct {
 		Kind   string `json:"kind"`
 		Photos []int  `json:"photos"`
 	} `json:"groups"`
+	// Files are the photos the numbers name, in the order they were asked about. The
+	// model does not write it; the saved answer records it so a retry that finds some
+	// photos already grouped still applies each number to the right photo.
+	Files []domain.ID `json:"files,omitempty"`
+}
+
+// fileGroups is the saved answer's groups as file ids in page order. A number outside
+// the recorded photos is an error, never a panic.
+func (g groupAnswer) fileGroups() ([][]domain.ID, error) {
+	var out [][]domain.ID
+	for _, gr := range g.Groups {
+		var ids []domain.ID
+		for _, n := range gr.Photos {
+			if n < one || n > len(g.Files) {
+				return nil, fmt.Errorf("the saved grouping names photo %d of %d", n, len(g.Files))
+			}
+			ids = append(ids, g.Files[n-one])
+		}
+		out = append(out, ids)
+	}
+	return out, nil
 }
 
 // partition is a grouping in comparable form: each group's photo numbers in order.
@@ -315,6 +336,9 @@ func (s *Service) runGroup(ctx context.Context, j Job) error {
 		}
 		agree := reflect.DeepEqual(a, b)
 		result := fmt.Sprintf("model %v check %v", a, b)
+		for _, m := range ms {
+			first.Files = append(first.Files, m.file.ID)
+		}
 		return unitWork{Text: jsonText(first), Method: "grouping", Model: model, CheckMethod: "check_model_agreement", CheckModel: checkModel,
 			CheckResult: result, Passed: agree}, nil
 	}}
@@ -341,14 +365,31 @@ func (s *Service) runGroup(ctx context.Context, j Job) error {
 	if err := json.Unmarshal([]byte(u.Text), &answer); err != nil {
 		return err
 	}
-	for _, gr := range answer.Groups {
+	groups, err := answer.fileGroups()
+	if err != nil {
+		return err
+	}
+	byFile := map[domain.ID]member{}
+	for _, m := range ms {
+		byFile[m.file.ID] = m
+	}
+	for k, gr := range answer.Groups {
 		var members []domain.ID
 		var reads []Unit
 		var datas [][]byte
-		for _, n := range gr.Photos {
-			members = append(members, ms[n-one].file.ID)
-			reads = append(reads, ms[n-one].unit)
-			datas = append(datas, ms[n-one].data)
+		for _, id := range groups[k] {
+			m, ok := byFile[id]
+			if !ok {
+				// Grouped by an earlier pass of this job that stopped part way.
+				members = nil
+				break
+			}
+			members = append(members, id)
+			reads = append(reads, m.unit)
+			datas = append(datas, m.data)
+		}
+		if len(members) == 0 {
+			continue
 		}
 		how := "model_agreement"
 		if gr.Kind == "photo" && len(members) == one {

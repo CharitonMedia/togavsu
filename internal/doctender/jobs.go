@@ -636,7 +636,7 @@ func (s *Service) requeueIfOpen(ctx context.Context, j Job) error {
 }
 
 // MatterReopened queues a reopened matter's files at once: held jobs return to the
-// queue, and live files with no job get one. Practice calls it on a status change; the
+// queue, and live files whose current version has no job get one. Practice calls it on a status change; the
 // worker also notices on its own.
 func (s *Service) MatterReopened(ctx context.Context, matter domain.ID) error {
 	held, err := s.jobsWhere(ctx, `status = ? AND matter_id = ?`, StatusMatterClosed, matter)
@@ -654,6 +654,16 @@ func (s *Service) MatterReopened(ctx context.Context, matter domain.ID) error {
 	}
 	for _, f := range fs {
 		if f.CurrentVersionID == nil {
+			continue
+		}
+		// Settled stays settled: a version that already has a job (published, in the
+		// review queue, or grouped) is not processed again, as Sweep also checks.
+		var has bool
+		if err := s.row(ctx, `SELECT EXISTS (SELECT 1 FROM doc_tender_jobs WHERE file_version_id = ?)
+  OR EXISTS (SELECT 1 FROM doc_tender_group_members WHERE file_id = ?)`, *f.CurrentVersionID, f.ID).Scan(&has); err != nil {
+			return err
+		}
+		if has {
 			continue
 		}
 		if _, err := s.Enqueue(ctx, f.ID, *f.CurrentVersionID, matter, reasonReopen); err != nil {
