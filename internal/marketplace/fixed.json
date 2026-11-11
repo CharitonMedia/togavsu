@@ -3,6 +3,8 @@
   "client_timeout_seconds": 20,
   "max_package_bytes": 268435456,
   "max_manifest_bytes": 1048576,
+  "max_expanded_bytes": 1073741824,
+  "max_package_entries": 10000,
   "max_response_bytes": 8388608,
   "max_note_runes": 500,
   "max_query_module_ids": 200,

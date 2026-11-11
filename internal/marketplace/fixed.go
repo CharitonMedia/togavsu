@@ -14,6 +14,8 @@ type limits struct {
 	ClientTimeoutSeconds int            `json:"client_timeout_seconds"`
 	MaxPackageBytes      int64          `json:"max_package_bytes"`
 	MaxManifestBytes     int64          `json:"max_manifest_bytes"`
+	MaxExpandedBytes     int64          `json:"max_expanded_bytes"`
+	MaxPackageEntries    int            `json:"max_package_entries"`
 	MaxResponseBytes     int64          `json:"max_response_bytes"`
 	MaxNoteRunes         int            `json:"max_note_runes"`
 	MaxQueryModuleIDs    int            `json:"max_query_module_ids"`

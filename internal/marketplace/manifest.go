@@ -46,7 +46,9 @@ func ValidModuleID(id string) bool { return moduleID.MatchString(id) }
 func ValidVersion(v string) bool { return versionForm.MatchString(v) }
 
 // ReadManifest finds togavsu-module.yaml at the root of a package (a tar archive, gzip
-// compressed or not) and reads it. Call it only after Verify passes.
+// compressed or not) and reads it. Call it only after Verify passes. The scan stops at
+// max_expanded_bytes of archive and max_package_entries entries, so a small compressed
+// package cannot expand without bound before its manifest.
 //
 // ponytail: ceiling: the manifest must be written in YAML's JSON-compatible flow form
 // and is read with encoding/json; block-style YAML is refused as unreadable. Upgrade
@@ -62,8 +64,12 @@ func ReadManifest(pkg []byte) (Manifest, error) {
 		defer gz.Close()
 		r = gz
 	}
-	tr := tar.NewReader(r)
-	for {
+	bounded := &io.LimitedReader{R: r, N: fixed.MaxExpandedBytes}
+	tr := tar.NewReader(bounded)
+	for entries := 0; ; entries++ {
+		if entries >= fixed.MaxPackageEntries {
+			return Manifest{}, ErrManifest
+		}
 		h, err := tr.Next()
 		if err != nil {
 			return Manifest{}, ErrManifest

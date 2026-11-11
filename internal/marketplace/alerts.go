@@ -90,7 +90,6 @@ func (s *Service) check(ctx context.Context) (CheckResult, error) {
 	if len(installed) == 0 {
 		return res, nil
 	}
-	_ = s.refreshMarketplaceKeys(ctx)
 	ids := make([]string, 0, len(installed))
 	byID := map[string]InstalledModule{}
 	for _, m := range installed {
