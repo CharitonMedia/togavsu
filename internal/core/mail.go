@@ -54,7 +54,7 @@ func (m smtpMailer) Send(ctx context.Context, msg billing.Message) error {
 	if user := get("mail.smtp_username"); user != "" {
 		auth = smtp.PlainAuth("", user, get("mail.smtp_password"), host)
 	}
-	limit, err := time.ParseDuration(get("mail.smtp_timeout"))
+	limit, err := time.ParseDuration(get("mail.smtp_timeout_seconds") + "s")
 	if err != nil {
 		return errMailNotConfigured
 	}

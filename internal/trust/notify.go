@@ -461,9 +461,9 @@ func (m SMTP) Send(ctx context.Context, to, subject, body string) error {
 	}
 	msg := "From: " + from + "\r\nTo: " + to + "\r\nSubject: " + headerSafe(subject) +
 		"\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + strings.ReplaceAll(body, "\n", "\r\n")
-	limit, err := time.ParseDuration(get("mail.smtp_timeout"))
+	limit, err := time.ParseDuration(get("mail.smtp_timeout_seconds") + "s")
 	if err != nil {
-		return fmt.Errorf("trust: system mail is not configured (mail.smtp_timeout)")
+		return fmt.Errorf("trust: system mail is not configured (mail.smtp_timeout_seconds)")
 	}
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()

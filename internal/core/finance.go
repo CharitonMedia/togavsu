@@ -117,7 +117,7 @@ func (a *App) deliverTrustMail(ctx context.Context, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
-		// Each send is bounded by mail.smtp_timeout and closed when ctx is cancelled.
+		// Each send is bounded by mail.smtp_timeout_seconds and closed when ctx is cancelled.
 		if _, err := a.DeliverMail(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("core: trust mail: %v", err)
 		}
