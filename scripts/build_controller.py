@@ -126,6 +126,12 @@ def review_problem(findings):
 FIXED_PROBLEMS = ("interrupted", "missing-pr", "draft")
 DEFAULT_CORRECTION_ATTENTION = 10
 DEFAULT_MAX_CORRECTIONS = 30
+# CI that cannot reach a server it needs (Ubuntu's package servers, a lost runner) is not a code
+# problem. Such a failure gets one rerun and then an emailed hold, never an agent correction.
+INFRA_FAILURE = re.compile(r"Temporary failure resolving|Could not resolve host|Unable to fetch some archives"
+                           r"|^(?:\S+\s+)?[EW]: Failed to fetch |lost communication with the server"
+                           r"|The runner has received a shutdown signal", re.M)
+JOB_URL = re.compile(r"/actions/runs/(\d+)/job/(\d+)")
 # Stall alerts: a stopped, held or repeating step emails the plan's alert_email instead of
 # retrying silently. Each condition is emailed once; it can alert again only after it clears.
 MERGE_REFUSED = re.compile(r"HTTP (405|409|422)")  # GitHub refused the merge; nothing was merged.
@@ -414,6 +420,26 @@ class Remote:
     def test_failures(self, checks):
         return [{"name": c["name"], "conclusion": c.get("conclusion"), "url": c.get("details_url")}
                 for c in checks.values() if c["status"] == "completed" and c.get("conclusion") != "success"]
+
+    def infrastructure_failures(self, failures):
+        # {check name: (run id, first matching log line)} for failures whose job log shows CI could not
+        # reach a server. An unreadable log counts as an ordinary failure.
+        found = {}
+        for failure in failures:
+            match = JOB_URL.search(failure.get("url") or "")
+            if not match:
+                continue
+            try:
+                log = self.gh("actions/jobs/" + match.group(2) + "/logs", binary=True)
+            except (RuntimeError, OSError, subprocess.SubprocessError):
+                continue
+            text = log.decode(errors="replace") if isinstance(log, bytes) else ""
+            hit = INFRA_FAILURE.search(text)
+            if hit:
+                end = text.find("\n", hit.end())
+                line = text[text.rfind("\n", 0, hit.start()) + 1:end if end >= 0 else len(text)]
+                found[failure["name"]] = (match.group(1), line.strip()[-300:])
+        return found
 
 
 LANE_WORKFLOW = ".github/workflows/lane-agent.yml"
@@ -771,9 +797,9 @@ class Controller:
             if record.get("stalled", {}).get("kind") == "no_progress":
                 record.pop("stalled")
             ceiling = self.plan.get("max_corrections_per_assignment", DEFAULT_MAX_CORRECTIONS)
-            if record.get("correction_volume", 0) >= ceiling:
+            if record.get("correction_volume", 0) - record.get("correction_base", 0) >= ceiling:
                 record["stalled"] = {"kind": "correction_ceiling", "reason":
-                    "Assignment reached " + str(ceiling) + " corrections; further corrections are held. Integration lead must "
+                    "Assignment reached " + str(ceiling) + " fix passes; further corrections are held. Integration lead must "
                     "inspect the existing agent, PR and review findings for a reworded repeat; observation and merge gates continue"}
                 record.pop("waiting", None)
                 self.save()
@@ -1196,12 +1222,23 @@ class Controller:
                 problem=review_problem(report["findings"]))
             return False
         failures = self.remote.test_failures(checks)
+        infra = self.remote.infrastructure_failures(failures) if failures else {}
+        if failures and {f["name"] for f in failures} <= set(infra):
+            # Every failure is CI infrastructure: no fix pass can help.
+            self.hold_infrastructure(task, record, head, infra)
+            return False
+        if record.pop("infra_hold", None) and record.get("stalled", {}).get("kind") == "infrastructure":
+            record.pop("stalled")
+            self.event(task, "Infrastructure hold cleared on " + head)
         if failures:
+            code = [f for f in failures if f["name"] not in infra]
+            aside = ("" if not infra else " These checks also failed because CI could not reach a server; they are not "
+                     "yours to fix and will rerun: " + ", ".join(sorted(infra)) + ".")
             self.followup(task, record, snapshot, "tests:" + head,
                 "Codex review passed, but CI failed on your existing PR #" + str(number) + ". Read the failing Actions logs, "
                 "fix the causes with regression tests, rerun all applicable tests and update original PR evidence. "
-                "Do not bypass checks or merge. Failures: " + json.dumps(failures),
-                problem={"failed_checks": sorted(c["name"] for c in failures)})
+                "Do not bypass checks or merge. Failures: " + json.dumps(code) + aside,
+                problem={"failed_checks": sorted(c["name"] for c in code)})
             return False
         if codex.get("conclusion") != "success":
             self.halt(task, record, "Passing review artifact conflicts with failed checkpoint status")
@@ -1297,6 +1334,27 @@ class Controller:
         record["merge_intent"]["result_sha"] = result["sha"]
         self.save()
         return self.verify_merge(task, record, self.remote.gh("pulls/" + str(number)))
+
+    def hold_infrastructure(self, task, record, head, found):
+        # Every failed check is CI infrastructure: rerun the failed jobs once, then hold and email.
+        hold = record.get("infra_hold")
+        if not hold or hold.get("head") != head:
+            hold = record["infra_hold"] = {"head": head, "reruns": 0}
+        names = ", ".join(sorted(found))
+        if hold["reruns"] < 1:
+            hold["reruns"] += 1
+            self.save()
+            for run_id in sorted({run for run, _ in found.values()}):
+                self.effect("rerun failed jobs " + run_id, lambda run_id=run_id: self.remote.gh(
+                    "actions/runs/" + run_id + "/rerun-failed-jobs", "POST"))
+            self.event(task, "CI could not reach a server it needs (" + names + "); reran once, no correction sent")
+        else:
+            line = next(iter(found.values()))[1]
+            record["stalled"] = {"kind": "infrastructure", "head": head, "reason":
+                "CI could not reach a server it needs, twice on the same revision (" + names + "): " + line
+                + ". The code is not the cause, so no fix pass is sent."}
+            record.pop("waiting", None)
+            self.save()
 
     def merge_refused(self, task, record, head, number, reason, fresh):
         # Protections stay in force; a refusal on a second cycle holds retries and alerts.
@@ -1599,7 +1657,9 @@ class Controller:
                 action = {"merge_blocked": "Merge retries are held until the pull request changes, for example when its "
                               "review threads are resolved or a new commit lands.",
                           "no_progress": "No more agent runs for this problem until the integration lead resumes it.",
-                          "correction_ceiling": "No more corrections until the integration lead inspects it."}.get(
+                          "correction_ceiling": "No more corrections until the integration lead inspects it.",
+                          "infrastructure": "No fix passes are sent while CI cannot reach its servers; the "
+                              "controller clears this when the checks pass."}.get(
                               stalled["kind"], "Flagged for inspection; the controller keeps watching.")
                 found["stalled:" + task + ":" + stalled["kind"] + ":" + marker] = (
                     task, "Stalled (" + stalled["kind"] + ")", stalled["reason"], action)
@@ -1674,8 +1734,9 @@ class Controller:
         if not record or record.get("completed"):
             raise ValueError("Task " + str(task) + " has no unfinished record")
         stalled = record.get("stalled") or {}
-        if stalled.get("kind") not in {"no_progress", "merge_blocked"}:
-            raise ValueError("Task " + task + " is not stalled on a repeated problem or a held merge")
+        if stalled.get("kind") not in {"no_progress", "merge_blocked", "correction_ceiling", "infrastructure"}:
+            raise ValueError("Task " + task + " is not stalled on a repeated problem, a fix-pass limit, CI "
+                             "infrastructure or a held merge")
         if self.dry:
             print("WOULD resume " + task + " from " + stalled["kind"], flush=True)
             return
@@ -1686,6 +1747,11 @@ class Controller:
                     window["attempts"] = 0
             if record.get("repair_window", {}).get("attempts", 0) >= self.plan["max_repairs"]:
                 record["repair_window"]["attempts"] = 0
+        elif stalled["kind"] == "correction_ceiling":
+            # A fresh allowance of fix passes; the lifetime count stays in correction_volume.
+            record["correction_base"] = record.get("correction_volume", 0)
+        elif stalled["kind"] == "infrastructure":
+            record.pop("infra_hold", None)
         else:
             record.pop("merge_blocked", None)
         record.pop("stalled")
@@ -1754,7 +1820,7 @@ def main():
     parser.add_argument("--rehome", metavar="TASK",
         help="retire TASK's stopped Cursor record so the next tick launches it as a lane; runs no tick")
     parser.add_argument("--resume", metavar="TASK",
-        help="give TASK's repeated-problem or held-merge stall one fresh attempt after a fix; runs no tick")
+        help="give TASK's repeated-problem, fix-pass-limit, CI-infrastructure or held-merge stall a fresh attempt; runs no tick")
     parser.add_argument("--test-alert", action="store_true", help="email a test alert to the plan's alert_email; runs no tick")
     parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome or --resume")
     args = parser.parse_args()

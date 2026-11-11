@@ -44,6 +44,7 @@ class FakeRemote:
         self.runs = {}
         self.fail_post = False
         self.fail_merge = False
+        self.infra = {}
         self.check_rows = {name: check(name) for name in ["Setup checks", "Codex checkpoint"]}
         self.protection = {"required_status_checks": {"strict": True, "contexts": ["Setup checks", "Codex checkpoint"]},
                            "enforce_admins": {"enabled": True}, "required_pull_request_reviews": {}}
@@ -103,6 +104,9 @@ class FakeRemote:
 
     def test_failures(self, checks):
         return [{"name": c["name"]} for c in checks.values() if c["conclusion"] != "success"]
+
+    def infrastructure_failures(self, failures):
+        return {f["name"]: self.infra[f["name"]] for f in failures if f["name"] in self.infra}
 
 
 class ControllerTests(unittest.TestCase):
@@ -392,6 +396,85 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(set(c[2]["prompt"]["text"] for c in self.posts())), 2)
         self.assertEqual(len(set(self.record["delivered"])), 3)
         self.assertNotIn("completed", self.record)
+
+    def test_unreachable_ci_server_reruns_once_then_holds_without_a_fix_pass(self):
+        self.remote.check_rows["QA bootstrap tests"] = check("QA bootstrap tests", "failure")
+        self.remote.infra = {"QA bootstrap tests": ("123", "Temporary failure resolving 'archive.ubuntu.com'")}
+        reruns = lambda: [c for c in self.remote.calls if c[1] == "actions/runs/123/rerun-failed-jobs"]
+        self.process()
+        self.assertEqual(self.posts(), [])
+        self.assertEqual(len(reruns()), 1)
+        self.assertNotIn("stalled", self.record)
+        self.restart()
+        self.process()
+        self.assertEqual(self.posts(), [])
+        self.assertEqual(len(reruns()), 1)
+        self.assertEqual(self.record["stalled"]["kind"], "infrastructure")
+        self.assertIn("archive.ubuntu.com", self.record["stalled"]["reason"])
+        self.assertTrue(any(k.startswith("stalled:one:infrastructure") for k in self.controller.alert_conditions()))
+        self.remote.check_rows["QA bootstrap tests"]["conclusion"] = "success"
+        self.remote.infra = {}
+        self.process()
+        self.assertNotIn("infra_hold", self.record)
+        self.assertNotEqual(self.record.get("stalled", {}).get("kind"), "infrastructure")
+        self.assertEqual(self.posts(), [])
+
+    def test_a_code_failure_beside_an_outage_gets_a_fix_pass_for_the_code_failure_only(self):
+        self.remote.check_rows["Core tests"] = check("Core tests", "failure")
+        self.remote.check_rows["QA bootstrap tests"] = check("QA bootstrap tests", "failure")
+        self.remote.infra = {"QA bootstrap tests": ("123", "Temporary failure resolving 'archive.ubuntu.com'")}
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        prompt = self.posts()[0][2]["prompt"]["text"]
+        failures = json.loads(prompt.split("Failures: ", 1)[1].split(" These checks", 1)[0])
+        self.assertEqual([f["name"] for f in failures], ["Core tests"])
+        self.assertIn("not yours to fix and will rerun: QA bootstrap tests.", prompt)
+        self.assertNotIn("stalled", self.record)
+        self.assertNotIn("infra_hold", self.record)
+        self.assertIn(problem_fingerprints({"failed_checks": ["Core tests"]})[0], self.record["repair_problems"])
+
+    def test_code_failures_beside_no_infrastructure_still_get_a_fix_pass(self):
+        self.remote.check_rows["Core tests"] = check("Core tests", "failure")
+        self.process()
+        self.assertEqual(len(self.posts()), 1)
+        self.assertNotIn("infra_hold", self.record)
+
+    def test_infrastructure_failures_read_each_failed_job_log(self):
+        logs = {"actions/jobs/456/logs": b"x\n2026-11-11T13:50:43Z   Temporary failure resolving 'archive.ubuntu.com'\ny\n",
+                "actions/jobs/789/logs": b"--- FAIL: TestStall\n    context deadline exceeded\n",
+                "actions/jobs/790/logs": b"2026-11-11T13:51:30Z W: Failed to fetch http://x/InRelease"}
+        remote = Remote()
+        remote.gh = lambda path, method="GET", payload=None, binary=False: logs[path]
+        url = "https://github.com/CharitonMedia/togavsu/actions/runs/{}/job/{}"
+        found = remote.infrastructure_failures([{"name": "QA", "url": url.format(123, 456)},
+            {"name": "Core", "url": url.format(124, 789)}, {"name": "Apt", "url": url.format(125, 790)},
+            {"name": "Unlinked", "url": None}])
+        self.assertEqual(sorted(found), ["Apt", "QA"])
+        self.assertEqual(found["QA"], ("123", "2026-11-11T13:50:43Z   Temporary failure resolving 'archive.ubuntu.com'"))
+        self.assertEqual(found["Apt"][0], "125")
+
+    def test_fix_pass_limit_holds_after_three_then_resume_grants_three_more(self):
+        self.controller.plan["max_corrections_per_assignment"] = 3
+        self.failed_review()
+        self.remote.cursor = self.unique_run_post
+        for i in range(5):
+            self.remote.report["findings"] = [{"file": "internal/a.go", "detail": "defect " + str(i)}]
+            if i:
+                self.finish_correction(format(i, "040x"))
+            with self.advance(i * 30):
+                self.process()
+            self.restart()
+        self.assertEqual(len(self.posts()), 3)
+        self.assertEqual(self.record["stalled"]["kind"], "correction_ceiling")
+        self.assertIn("3 fix passes", self.record["stalled"]["reason"])
+        self.controller.resume("one", "Patrick")
+        self.assertEqual(self.record["correction_base"], 3)
+        self.remote.report["findings"] = [{"file": "internal/a.go", "detail": "defect 9"}]
+        self.finish_correction(format(9, "040x"))
+        with self.advance(300):
+            self.process()
+        self.assertEqual(len(self.posts()), 4)
+        self.assertNotIn("stalled", self.record)
 
     def test_new_sha_and_run_ids_do_not_reset_identical_findings_budget(self):
         self.failed_review()
