@@ -545,7 +545,7 @@ permissions:
 	token = e.rt.last("target-reader").Secrets["togavsu_api_token"]
 	ctxTok = e.contextFor("staff", "target-reader", "")
 	r = e.do("GET", path, nil, "Authorization", "Bearer "+token, modules.ContextHeader, ctxTok)
-	if r.code != http.StatusOK || !strings.Contains(r.body, `"monthly_target_tenths":30`) || strings.Contains(r.body, "40") {
+	if r.code != http.StatusOK || !strings.Contains(r.body, `"monthly_target_tenths":30`) || strings.Contains(r.body, `"monthly_target_tenths":40`) {
 		t.Fatalf("staff view read after approval: %d %s", r.code, r.body)
 	}
 	r = e.do("GET", path, nil, "Authorization", "Bearer "+token, modules.ContextHeader, e.contextFor("attorney", "target-reader", ""))
