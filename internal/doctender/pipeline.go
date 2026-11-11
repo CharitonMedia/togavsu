@@ -3,6 +3,7 @@ package doctender
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -447,9 +448,17 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 	if match.Best != "" {
 		best["matter_id"], best["matter"], best["match_reason"] = string(match.Best), match.BestLabel, match.Why
 	}
-	applyName := labelOK && j.MatterID != "" && !match.Review
-	applyCat := catOK && cat.Agree && category != nil
-	if labelOK {
+	// Doc Tender sets the name, category and folder once (PRD 8.21); after that only a
+	// person changes them. A later version or a reprocess still gets its own result and
+	// Markdown copy, but leaves a decision an earlier result already published alone.
+	named, earlierCat, earlierHow, err := s.decidedBefore(ctx, w.file.ID)
+	if err != nil {
+		return err
+	}
+	categorized := earlierCat != ""
+	applyName := labelOK && j.MatterID != "" && !match.Review && !named
+	applyCat := catOK && cat.Agree && category != nil && !categorized
+	if labelOK && !named {
 		var low []string
 		if l.WhatItIsConfidence < threshold {
 			low = append(low, fmt.Sprintf("what it is %.3f", l.WhatItIsConfidence))
@@ -462,11 +471,11 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 			reviews = append(reviews, pending{"low_confidence", "low confidence on the name: " + strings.Join(low, ", "), best})
 		}
 	}
-	if catOK && cat.Agree && cat.Answer.Confidence < threshold {
+	if catOK && cat.Agree && cat.Answer.Confidence < threshold && !categorized {
 		applyCat = false
 		reviews = append(reviews, pending{"low_confidence", fmt.Sprintf("low confidence on the category %s: %.3f", cat.Answer.Category, cat.Answer.Confidence), best})
 	}
-	if catOK && !cat.Agree {
+	if catOK && !cat.Agree && !categorized {
 		reviews = append(reviews, pending{"check_disagreement", catU.CheckResult, best})
 	}
 	if match.Review {
@@ -489,8 +498,25 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 		if applyName {
 			upd.Name = proposed
 		}
+		resultCat, how := "", ""
 		if applyCat {
 			upd.Category, upd.Folder = category.Key, category.Folder
+			resultCat, how = category.Key, cat.How
+		} else if categorized {
+			// The category stays as it was decided; a file that had no matter then is
+			// filed now into that category's folder (files keeps a settled folder).
+			resultCat, how = earlierCat, earlierHow
+			if w.file.CategoryID != nil {
+				resultCat = *w.file.CategoryID
+			}
+			if contains(w.file.LockedFields, "category") {
+				how = "person"
+			}
+			for k := range cats {
+				if cats[k].Key == resultCat {
+					upd.Folder = cats[k].Folder
+				}
+			}
 		}
 		var applied files.TenderResult
 		if upd != (files.TenderUpdate{}) {
@@ -499,16 +525,18 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 				return err
 			}
 		}
-		how := ""
-		if applyCat {
-			how = cat.How
-		}
 		for _, skipped := range applied.Skipped {
 			if skipped == "category" {
 				how = "person"
 			}
 		}
-		if err := s.insertResult(ctx, w, l, labelOK, cat, applyCat, how, match, rendition.ID); err != nil {
+		nameSet := false
+		for _, set := range applied.Set {
+			if set == "name" {
+				nameSet = true
+			}
+		}
+		if err := s.insertResult(ctx, w, l, labelOK, cat, resultCat, nameSet, how, match, rendition.ID); err != nil {
 			return err
 		}
 		for _, r := range reviews {
@@ -540,7 +568,23 @@ func (s *Service) publish(ctx context.Context, w *work, c *content, labelU, catU
 	return s.autoResolve(ctx, j.FileID, "provider_down", "the file was published")
 }
 
-func (s *Service) insertResult(ctx context.Context, w *work, l Label, labelOK bool, cat categoryOutcome, applyCat bool, how string, m matchOutcome, rendition domain.ID) error {
+// decidedBefore says whether an earlier result for the file already published its
+// name, and the category (with how it was decided) the first result published, if any.
+func (s *Service) decidedBefore(ctx context.Context, fileID domain.ID) (named bool, category, how string, err error) {
+	var names int
+	if err = s.row(ctx, `SELECT COALESCE(SUM(CASE WHEN name_set THEN 1 ELSE 0 END), 0) FROM doc_tender_results WHERE file_id = ?`,
+		string(fileID)).Scan(&names); err != nil {
+		return false, "", "", err
+	}
+	err = s.row(ctx, `SELECT category, category_how FROM doc_tender_results WHERE file_id = ? AND category IS NOT NULL
+ORDER BY created_at, id LIMIT 1`, string(fileID)).Scan(&category, &how)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
+	}
+	return names > zero, category, how, err
+}
+
+func (s *Service) insertResult(ctx context.Context, w *work, l Label, labelOK bool, cat categoryOutcome, resultCat string, nameSet bool, how string, m matchOutcome, rendition domain.ID) error {
 	id, err := s.id()
 	if err != nil {
 		return err
@@ -556,17 +600,17 @@ func (s *Service) insertResult(ctx context.Context, w *work, l Label, labelOK bo
 		conf["category_check"] = cat.Check.Category
 	}
 	var category any
-	if applyCat {
-		category = cat.Answer.Category
+	if resultCat != "" {
+		category = resultCat
 	}
 	fields := l.Fields
 	if fields == nil {
 		fields = []CitedField{}
 	}
 	_, err = s.exec(ctx, `INSERT INTO doc_tender_results (id, created_at, updated_at, created_by, file_version_id, name_parts, summary, category, category_how,
-critical_fields, matter_id, file_id, job_id, confidences, markdown_rendition_id, suggested_matter_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+critical_fields, matter_id, file_id, job_id, confidences, markdown_rendition_id, suggested_matter_id, name_set) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, at, at, string(s.d.System.UserID), w.version.ID, jsonText(parts), l.Summary, category, how, jsonText(fields), nullID(m.Keep),
-		w.file.ID, w.job.ID, jsonText(conf), nullID(rendition), nullID(m.Best))
+		w.file.ID, w.job.ID, jsonText(conf), nullID(rendition), nullID(m.Best), nameSet)
 	return err
 }
 

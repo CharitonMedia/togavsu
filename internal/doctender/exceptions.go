@@ -452,6 +452,11 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		}
 		requeue = true
 	case "retry":
+		if e.Grouping() {
+			// The photo's job waits on its group; a retry would requeue it with nothing
+			// left to run and leave the photo unpublished. Correct settles the grouping.
+			return Exception{}, domain.Invalid("action", "the grouping models disagree: use Correct and say which photos go together")
+		}
 		j, err := s.job(ctx, e.jobID)
 		if err != nil {
 			return Exception{}, err

@@ -23,7 +23,7 @@
     <p><label><input type="radio" name="action" value="assign_matter"> Assign matter</label>
       <label for="matter_id">Matter id</label> <input id="matter_id" name="matter_id" autocomplete="off"></p>
     <p><label for="grouping">Photo grouping (file ids in page order; groups separated by ;)</label> <input id="grouping" name="grouping" autocomplete="off"></p>
-    <p><label><input type="radio" name="action" value="retry"> Retry</label></p>
+    {{if not .Item.Grouping}}<p><label><input type="radio" name="action" value="retry"> Retry</label></p>{{end}}
     <p><label><input type="radio" name="action" value="keep"> Keep as is (the file stays available with its flag)</label></p>
     <p><label for="note">Note</label> <input id="note" name="note"></p>
   </fieldset>

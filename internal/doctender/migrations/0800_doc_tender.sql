@@ -43,6 +43,8 @@ ALTER TABLE doc_tender_results ADD COLUMN suggested_matter_id TEXT REFERENCES ma
 -- A category the check models disagreed on is not published: category stays null.
 ALTER TABLE doc_tender_results ALTER COLUMN category DROP NOT NULL;
 CREATE INDEX doc_tender_results_file_idx ON doc_tender_results (file_id, created_at);
+-- name_set records that this result published the file's name; Doc Tender names a file once.
+ALTER TABLE doc_tender_results ADD COLUMN name_set BOOLEAN NOT NULL DEFAULT false;
 
 -- best_answer is what Doc Tender would have published. emailed_at 0 is not yet mailed.
 ALTER TABLE doc_tender_exceptions ADD COLUMN job_id TEXT REFERENCES doc_tender_jobs (id) ON DELETE RESTRICT;
@@ -106,6 +108,7 @@ ALTER TABLE doc_tender_exceptions DROP COLUMN emailed_at;
 ALTER TABLE doc_tender_exceptions DROP COLUMN best_answer;
 ALTER TABLE doc_tender_exceptions DROP COLUMN file_version_id;
 ALTER TABLE doc_tender_exceptions DROP COLUMN job_id;
+ALTER TABLE doc_tender_results DROP COLUMN name_set;
 ALTER TABLE doc_tender_results DROP COLUMN suggested_matter_id;
 ALTER TABLE doc_tender_results DROP COLUMN markdown_rendition_id;
 ALTER TABLE doc_tender_results DROP COLUMN confidences;
