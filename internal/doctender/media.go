@@ -210,26 +210,29 @@ type bitmapInfo struct {
 	ClrImportant  uint32
 }
 
-// Frame is one video frame at a time offset.
+// Frame is one still from a video: when it is, and the image (PNG from the native
+// reader, JPEG from ffmpeg).
 type Frame struct {
-	At  time.Duration
-	PNG []byte
+	At        time.Duration
+	Data      []byte
+	MediaType string
 }
 
-// aviFrames decodes an uncompressed (BI_RGB, 24-bit) AVI's frames, one every interval.
-// Other codecs return an error; the ffmpeg tool reads those.
-func aviFrames(data []byte, interval time.Duration) ([]Frame, time.Duration, error) {
-	frames, _, total, err := readAVI(data, interval)
-	return frames, total, err
+// aviVideo is an uncompressed (BI_RGB, 24-bit) AVI read in place: its frames stay
+// slices of the file and are decoded one at a time, so a long recording is never
+// held decoded.
+type aviVideo struct {
+	hdr   aviHeader
+	info  bitmapInfo
+	raw   [][]byte
+	audio []byte // the PCM track as WAV, nil when there is none
+	total time.Duration
 }
 
-// readAVI decodes an uncompressed AVI's frames and its PCM audio track as WAV bytes
-// (nil when it has none).
-func readAVI(data []byte, interval time.Duration) ([]Frame, []byte, time.Duration, error) {
-	var hdr aviHeader
-	var info bitmapInfo
+// readAVI opens an uncompressed AVI. Other codecs return an error; ffmpeg reads those.
+func readAVI(data []byte) (*aviVideo, error) {
+	v := &aviVideo{}
 	var audioFmt wavFormat
-	var frames [][]byte
 	var pcm []byte
 	var streamType string
 	var visit func(id string, body []byte) error
@@ -238,29 +241,71 @@ func readAVI(data []byte, interval time.Duration) ([]Frame, []byte, time.Duratio
 		case id == "LIST" && len(body) >= four:
 			return walkChunks(bytes.NewReader(body[four:]), visit)
 		case id == "avih":
-			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &hdr)
+			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &v.hdr)
 		case id == "strh" && len(body) >= four:
 			streamType = string(body[:four])
 		case id == "strf" && streamType == "vids":
-			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &info)
+			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &v.info)
 		case id == "strf" && streamType == "auds":
 			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &audioFmt)
 		case strings.HasSuffix(id, "db") || strings.HasSuffix(id, "dc"):
-			frames = append(frames, body)
+			v.raw = append(v.raw, body)
 		case strings.HasSuffix(id, "wb"):
 			pcm = append(pcm, body...)
 		}
 		return nil
 	}
 	if err := riffChunks(data, "AVI ", visit); err != nil {
-		return nil, nil, zeroDuration, err
+		return nil, err
 	}
-	var audio []byte
+	if v.info.Compression != uint32(zero) || v.info.BitCount != uint16(three*eight) {
+		return nil, errors.New("AVI codec is not uncompressed RGB")
+	}
 	if len(pcm) > zero && audioFmt.ByteRate != uint32(zero) {
-		audio = wavBytes(audioFmt, pcm)
+		v.audio = wavBytes(audioFmt, pcm)
 	}
-	out, total, err := decodeFrames(hdr, info, frames, interval)
-	return out, audio, total, err
+	v.total = v.per() * time.Duration(len(v.raw))
+	return v, nil
+}
+
+func (v *aviVideo) per() time.Duration { return time.Duration(v.hdr.MicroSecPerFrame) * microUnit }
+
+// frames decodes one frame every interval in [from, to) and hands each to each
+// before it decodes the next.
+func (v *aviVideo) frames(from, to, interval time.Duration, each func(Frame) error) error {
+	w, h := int(v.info.Width), int(v.info.Height)
+	bottomUp := h > zero
+	if !bottomUp {
+		h = -h
+	}
+	stride := (w*three + three) &^ three
+	next := from
+	for k, raw := range v.raw {
+		at := v.per() * time.Duration(k)
+		if at < next || at >= to || len(raw) < stride*h {
+			continue
+		}
+		img := image.NewRGBA(image.Rect(zero, zero, w, h))
+		for y := zero; y < h; y++ {
+			row := y
+			if bottomUp {
+				row = h - one - y
+			}
+			for x := zero; x < w; x++ {
+				o := row*stride + x*three
+				img.Set(x, y, color.RGBA{raw[o+two], raw[o+one], raw[o], math.MaxUint8})
+			}
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return err
+		}
+		if err := each(Frame{At: at, Data: buf.Bytes(), MediaType: "image/png"}); err != nil {
+			return err
+		}
+		next = at + interval
+	}
+	return nil
 }
 
 // wavBytes wraps PCM samples in a WAV file.
@@ -280,52 +325,14 @@ func wavBytes(f wavFormat, pcm []byte) []byte {
 	return b.Bytes()
 }
 
-func decodeFrames(hdr aviHeader, info bitmapInfo, frames [][]byte, interval time.Duration) ([]Frame, time.Duration, error) {
-	if info.Compression != uint32(zero) || info.BitCount != uint16(three*eight) {
-		return nil, zeroDuration, errors.New("AVI codec is not uncompressed RGB")
-	}
-	per := time.Duration(hdr.MicroSecPerFrame) * microUnit
-	total := per * time.Duration(len(frames))
-	w, h := int(info.Width), int(info.Height)
-	bottomUp := h > zero
-	if !bottomUp {
-		h = -h
-	}
-	stride := (w*three + three) &^ three
-	var out []Frame
-	next := zeroDuration
-	for k, raw := range frames {
-		at := per * time.Duration(k)
-		if at < next || len(raw) < stride*h {
-			continue
-		}
-		img := image.NewRGBA(image.Rect(zero, zero, w, h))
-		for y := zero; y < h; y++ {
-			row := y
-			if bottomUp {
-				row = h - one - y
-			}
-			for x := zero; x < w; x++ {
-				o := row*stride + x*three
-				img.Set(x, y, color.RGBA{raw[o+two], raw[o+one], raw[o], math.MaxUint8})
-			}
-		}
-		var buf bytes.Buffer
-		if err := png.Encode(&buf, img); err != nil {
-			return nil, zeroDuration, err
-		}
-		out = append(out, Frame{At: at, PNG: buf.Bytes()})
-		next = at + interval
-	}
-	return out, total, nil
-}
-
-// MediaTool reads audio and video the native readers don't: duration, the audio
-// track and frames. FFmpeg implements it.
+// MediaTool reads the audio and video the native readers don't: the length, whether
+// there is a sound track, a stretch of the sound as 16 kHz mono WAV, and a stretch's
+// frames one at a time. FFmpeg implements it.
 type MediaTool interface {
 	Duration(ctx context.Context, path string) (time.Duration, error)
-	Audio(ctx context.Context, path string) ([]byte, error)
-	Frames(ctx context.Context, path string, interval time.Duration) ([]Frame, error)
+	HasAudio(ctx context.Context, path string) (bool, error)
+	Audio(ctx context.Context, path string, from, length time.Duration) ([]byte, error)
+	Frames(ctx context.Context, path string, from, length, interval time.Duration, each func(Frame) error) error
 }
 
 // FFmpeg runs ffprobe and ffmpeg from the core image.
@@ -354,53 +361,61 @@ func (f FFmpeg) Duration(ctx context.Context, path string) (time.Duration, error
 	return time.Duration(secs * float64(secondUnit)), nil
 }
 
-// Audio implements MediaTool: the first audio track as 16 kHz mono WAV, or nil when
-// there is none.
-func (f FFmpeg) Audio(ctx context.Context, path string) ([]byte, error) {
+// HasAudio implements MediaTool.
+func (f FFmpeg) HasAudio(ctx context.Context, path string) (bool, error) {
 	probe, err := exec.CommandContext(ctx, f.bin("ffprobe", f.FFprobe), "-v", "error", "-select_streams", "a",
 		"-show_entries", "stream=index", "-of", "csv=p=0", path).Output()
 	if err != nil {
-		return nil, fmt.Errorf("ffprobe: %w", err)
+		return false, fmt.Errorf("ffprobe: %w", err)
 	}
-	if strings.TrimSpace(string(probe)) == "" {
-		return nil, nil
-	}
-	out, err := exec.CommandContext(ctx, f.bin("ffmpeg", f.FFmpeg), "-v", "error", "-i", path, "-vn", "-ac", "1",
-		"-ar", "16000", "-f", "wav", "pipe:1").Output()
+	return strings.TrimSpace(string(probe)) != "", nil
+}
+
+// Audio implements MediaTool: length of the first sound track from from, as mono
+// WAV at wire().SpeechSampleRate.
+func (f FFmpeg) Audio(ctx context.Context, path string, from, length time.Duration) ([]byte, error) {
+	out, err := exec.CommandContext(ctx, f.bin("ffmpeg", f.FFmpeg), "-v", "error", "-ss", seconds(from), "-t", seconds(length),
+		"-i", path, "-vn", "-ac", "1", "-ar", strconv.Itoa(wire().SpeechSampleRate), "-f", "wav", "pipe:1").Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffmpeg audio: %w", err)
 	}
 	return out, nil
 }
 
-// Frames implements MediaTool: one PNG frame per interval.
-func (f FFmpeg) Frames(ctx context.Context, path string, interval time.Duration) ([]Frame, error) {
+// Frames implements MediaTool, as the earlier Doc Tender read video: one frame per
+// interval over length from from, at most wire().FrameMaxWidth wide, as JPEG,
+// written to a temporary folder and handed to each one at a time.
+func (f FFmpeg) Frames(ctx context.Context, path string, from, length, interval time.Duration, each func(Frame) error) error {
 	dir, err := os.MkdirTemp("", "doctender-frames-")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer os.RemoveAll(dir)
-	rate := fmt.Sprintf("%g", float64(secondUnit)/float64(interval))
-	cmd := exec.CommandContext(ctx, f.bin("ffmpeg", f.FFmpeg), "-v", "error", "-i", path, "-vf", "fps="+rate,
-		filepath.Join(dir, "frame-%06d.png"))
+	filter := fmt.Sprintf("fps=%g,scale='min(%d,iw)':-2", float64(secondUnit)/float64(interval), wire().FrameMaxWidth)
+	cmd := exec.CommandContext(ctx, f.bin("ffmpeg", f.FFmpeg), "-v", "error", "-ss", seconds(from), "-t", seconds(length), "-i", path,
+		"-vf", filter, "-q:v", strconv.Itoa(wire().FrameJPEGQuality), filepath.Join(dir, "frame-%06d.jpg"))
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("ffmpeg frames: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("ffmpeg frames: %w: %s", err, strings.TrimSpace(string(out)))
 	}
-	names, err := filepath.Glob(filepath.Join(dir, "frame-*.png"))
+	names, err := filepath.Glob(filepath.Join(dir, "frame-*.jpg"))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	sort.Strings(names)
-	var frames []Frame
 	for k, n := range names {
 		raw, err := os.ReadFile(n)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		frames = append(frames, Frame{At: interval * time.Duration(k), PNG: raw})
+		_ = os.Remove(n)
+		if err := each(Frame{At: from + interval*time.Duration(k), Data: raw, MediaType: "image/jpeg"}); err != nil {
+			return err
+		}
 	}
-	return frames, nil
+	return nil
 }
+
+func seconds(d time.Duration) string { return fmt.Sprintf("%g", d.Seconds()) }
 
 // SecondReader is the independent OCR read of a scanned page. Tesseract implements it.
 type SecondReader interface {

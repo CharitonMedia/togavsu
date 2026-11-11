@@ -70690,7 +70690,8 @@
               "password_protected",
               "damaged",
               "unsupported_format",
-              "provider_down"
+              "provider_down",
+              "prompt_injection"
             ]
           },
           "detail": {

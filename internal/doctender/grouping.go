@@ -88,15 +88,60 @@ func (s *Service) groupDueAt(ctx context.Context) (time.Time, bool, error) {
 	if err != nil {
 		return time.Time{}, false, err
 	}
-	var newest sql.NullInt64
-	err = s.row(ctx, `SELECT MIN(newest) FROM (SELECT MAX(j.created_at) AS newest FROM doc_tender_jobs j JOIN files f ON f.id = j.file_id
-WHERE j.kind = 'file' AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')
-GROUP BY COALESCE(j.matter_id, ''), CASE WHEN COALESCE(j.matter_id, '') = '' THEN COALESCE(f.contact_id, '') ELSE '' END
-HAVING SUM(CASE WHEN j.stage = ? AND j.status = ? AND j.group_job_id = '' THEN 1 ELSE 0 END) > 0) scopes`, stageAwaitingGroup, StatusQueued).Scan(&newest)
-	if err != nil || !newest.Valid {
+	newest, waiting, err := s.photoArrivals(ctx)
+	if err != nil {
 		return time.Time{}, false, err
 	}
-	return fromUS(newest.Int64).Add(quiet), true, nil
+	var due int64
+	found := false
+	for sc := range waiting {
+		if n := newest[sc]; !found || n < due {
+			due, found = n, true
+		}
+	}
+	if !found {
+		return time.Time{}, false, nil
+	}
+	return fromUS(due).Add(quiet), true, nil
+}
+
+// photoArrivals is, per scope, the newest arrival among photos still being read or
+// waiting on a group, and which scopes hold a photo that waits with no group job.
+// Only photos count toward the quiet time: a PDF or a recording arriving on the
+// matter does not hold its photos back. A job's kind is decided as runFile decides
+// it, from the name the file arrived as, then its name, and the version's type.
+func (s *Service) photoArrivals(ctx context.Context) (map[groupScope]int64, map[groupScope]bool, error) {
+	rows, err := s.query(ctx, `SELECT COALESCE(j.matter_id, ''), COALESCE(f.contact_id, ''), j.created_at, j.stage, j.status, j.group_job_id, f.arrived_name, f.name, v.media_type
+FROM doc_tender_jobs j JOIN files f ON f.id = j.file_id JOIN file_versions v ON v.id = j.file_version_id
+WHERE j.kind = 'file' AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')`)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	newest, waiting := map[groupScope]int64{}, map[groupScope]bool{}
+	for rows.Next() {
+		var matter, contact, stage, status, group, arrived, name, media string
+		var at int64
+		if err := rows.Scan(&matter, &contact, &at, &stage, &status, &group, &arrived, &name, &media); err != nil {
+			return nil, nil, err
+		}
+		kind := fileKind(arrived, media)
+		if kind == typeUnsupported {
+			kind = fileKind(name, media)
+		}
+		if kind != typePhoto && stage != stageAwaitingGroup {
+			continue
+		}
+		sc := groupScope{Matter: domain.ID(matter)}
+		if matter == "" {
+			sc.Contact = domain.ID(contact)
+		}
+		newest[sc] = max(newest[sc], at)
+		if stage == stageAwaitingGroup && status == string(StatusQueued) && group == "" {
+			waiting[sc] = true
+		}
+	}
+	return newest, waiting, rows.Err()
 }
 
 func (s *Service) groupDue(ctx context.Context) error {
@@ -128,17 +173,13 @@ func (s *Service) groupDue(ctx context.Context) error {
 		}
 		byScope[sc] = append(byScope[sc], j)
 	}
+	// The newest photo arrival in each scope, including photos still being read.
+	newest, _, err := s.photoArrivals(ctx)
+	if err != nil {
+		return err
+	}
 	for _, sc := range order {
-		// The newest photo arrival in the scope, including photos still being read.
-		var newest sql.NullInt64
-		err := s.row(ctx, `SELECT MAX(j.created_at) FROM doc_tender_jobs j JOIN files f ON f.id = j.file_id
-WHERE j.kind = 'file' AND COALESCE(j.matter_id, '') = ? AND (? = '' OR COALESCE(f.contact_id, '') = ?)
-AND j.status NOT IN ('published', 'exception') AND j.stage IN ('check', 'extract', 'awaiting_group')`,
-			string(sc.Matter), string(sc.Contact), string(sc.Contact)).Scan(&newest)
-		if err != nil {
-			return err
-		}
-		if newest.Valid && s.now().Sub(fromUS(newest.Int64)) < quiet {
+		if n, ok := newest[sc]; ok && s.now().Sub(fromUS(n)) < quiet {
 			continue
 		}
 		if err := s.startGroup(ctx, sc.Matter, byScope[sc]); err != nil {
@@ -336,7 +377,7 @@ func (s *Service) runGroup(ctx context.Context, j Job) error {
 		ask := func(check bool) (groupAnswer, string, error) {
 			parts := []Part{}
 			for k, m := range ms {
-				parts = append(parts, Part{Text: fmt.Sprintf("Photo %d. Text read from it: %s", k+one, strings.ReplaceAll(m.read.Text, "\n", " / "))})
+				parts = append(parts, Part{Text: fmt.Sprintf("Photo %d. Text read from it:\n%s", k+one, quoted(strings.ReplaceAll(m.read.Text, "\n", " / ")))})
 				parts = append(parts, Part{MediaType: imageType(m.file.ArrivedAs), Name: m.file.ArrivedAs, Data: m.data})
 			}
 			resp, err := s.d.Models.Call(ctx, Request{Task: TaskGrouping, Check: check, Compared: true, System: groupPrompt, JSON: true, Parts: parts, MatterID: j.MatterID})

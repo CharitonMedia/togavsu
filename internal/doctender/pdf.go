@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"math"
 	"regexp"
 	"sort"
 	"strconv"
@@ -375,10 +376,19 @@ func (d *pdfDoc) resources(page pdfDict, kind pdfName) pdfDict {
 
 // pageText reads a page's text layer (index from 0).
 func (d *pdfDoc) pageText(index int) (string, error) {
+	text, _, err := d.pageLayers(index)
+	return text, err
+}
+
+// pageLayers reads a page's text layer and sorts it: what a reader sees, and text
+// drawn so that no reader sees it, by why: render mode 3 or 7 ("invisible text"),
+// filled white ("white text"), or set smaller than wire().TinyTextPoints ("tiny
+// text"). A model reading the text layer takes in both.
+func (d *pdfDoc) pageLayers(index int) (string, map[string]string, error) {
 	page := d.pages[index]
 	body, err := d.contents(page)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	// Every font on the page shares one CMap entry budget, and a ToUnicode stream that
 	// several fonts name is read once.
@@ -388,7 +398,7 @@ func (d *pdfDoc) pageText(index int) (string, error) {
 	for name, ref := range d.resources(page, "Font") {
 		m, err := d.toUnicode(ref, read, &budget)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 		fonts[name] = m
 	}
@@ -396,8 +406,47 @@ func (d *pdfDoc) pageText(index int) (string, error) {
 	var out strings.Builder
 	var operands []any
 	var cmap map[string]string
+	type look struct {
+		invisible, white bool
+		size, scale      float64
+	}
+	st := look{scale: float64(one)}
+	var saved []look
+	hidden := map[string]*strings.Builder{}
 	show := func(s pdfString) {
-		out.WriteString(decodeText(s, cmap))
+		t := decodeText(s, cmap)
+		why := ""
+		switch {
+		case st.invisible:
+			why = "invisible text"
+		case st.white:
+			why = "white text"
+		case st.size > float64(zero) && st.size*st.scale < wire().TinyTextPoints:
+			why = "tiny text"
+		}
+		if why == "" {
+			out.WriteString(t)
+			return
+		}
+		if hidden[why] == nil {
+			hidden[why] = &strings.Builder{}
+		}
+		hidden[why].WriteString(t + " ")
+	}
+	nums := func() []float64 {
+		var v []float64
+		for _, o := range operands {
+			v = append(v, d.num(o))
+		}
+		return v
+	}
+	white := func(v []float64, full float64) bool {
+		for _, x := range v {
+			if x != full {
+				return false
+			}
+		}
+		return len(v) > zero
 	}
 	for {
 		v, err := p.value()
@@ -421,6 +470,7 @@ func (d *pdfDoc) pageText(index int) (string, error) {
 				if n, ok := operands[len(operands)-two].(pdfName); ok {
 					cmap = fonts[n]
 				}
+				st.size = d.num(operands[len(operands)-one])
 			}
 		case "Tj", "'", "\"":
 			if len(operands) > zero {
@@ -455,12 +505,37 @@ func (d *pdfDoc) pageText(index int) (string, error) {
 			} else {
 				out.WriteByte(' ')
 			}
+		case "BT":
+			st.scale = float64(one)
+		case "Tm":
+			if v := nums(); len(v) == three+three {
+				st.scale = math.Sqrt(math.Abs(v[zero]*v[three] - v[one]*v[two]))
+			}
+		case "Tr":
+			if len(operands) > zero {
+				mode := d.int(operands[len(operands)-one])
+				st.invisible = mode == three || mode == three+four
+			}
+		case "q":
+			saved = append(saved, st)
+		case "Q":
+			if len(saved) > zero {
+				st, saved = saved[len(saved)-one], saved[:len(saved)-one]
+			}
+		case "rg", "g", "sc", "scn":
+			st.white = white(nums(), float64(one))
+		case "k":
+			st.white = len(operands) == four && white(nums(), float64(zero))
 		case "BI":
 			p.skipInlineImage()
 		}
 		operands = nil
 	}
-	return tidyLines(out.String()), nil
+	layers := map[string]string{}
+	for why, b := range hidden {
+		layers[why] = tidyLines(b.String())
+	}
+	return tidyLines(out.String()), layers, nil
 }
 
 func tidyLines(s string) string {

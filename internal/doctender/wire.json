@@ -10,5 +10,12 @@
   "max_decoded_bytes": 268435456,
   "max_image_pixels": 100000000,
   "max_sheet_cells": 4000000,
-  "max_cmap_entries": 262144
+  "max_cmap_entries": 262144,
+  "transcription_request_bytes": 24000000,
+  "speech_sample_rate": 16000,
+  "frame_max_width": 1280,
+  "frame_jpeg_quality": 3,
+  "tiny_text_points": 2,
+  "invisible_run": 8,
+  "injection_excerpt_chars": 200
 }

@@ -25,6 +25,7 @@ var exceptionKinds = map[string]string{
 	"damaged":            "Damaged file",
 	"unsupported_format": "Unsupported format",
 	"provider_down":      "AI provider down",
+	kindInjection:        "Possible prompt injection",
 }
 
 // Exception is one review-queue item (DocTenderException).
@@ -386,8 +387,15 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		return Exception{}, err
 	}
 	var requeue bool
+	requeueStage := stageLabel
 	switch in.Action {
 	case "accept":
+		if e.Kind == kindInjection {
+			// A person read the item and says the file may be processed. Its text still
+			// goes to every model as quoted material, never as instructions.
+			requeue, requeueStage = true, stageCheck
+			break
+		}
 		if e.Grouping() {
 			// The two grouping models disagree, so there is no one answer to accept.
 			return Exception{}, domain.Invalid("action", "the grouping models disagree: use Correct and say which photos go together")
@@ -500,9 +508,10 @@ func (s *Service) ResolveException(ctx context.Context, p domain.Principal, id d
 		return Exception{}, err
 	}
 	if requeue {
-		// The matter is now set: name and file it from the passed steps.
+		// The matter is now set: name and file it from the passed steps. A file cleared
+		// after an injection hold starts again from its first step.
 		if j, err := s.job(ctx, e.jobID); err == nil {
-			j.Status, j.Stage, j.NextAttempt, j.FinishedAt = StatusQueued, stageLabel, s.now(), time.Time{}
+			j.Status, j.Stage, j.NextAttempt, j.FinishedAt = StatusQueued, requeueStage, s.now(), time.Time{}
 			if err := s.saveJob(ctx, j); err != nil {
 				return Exception{}, err
 			}

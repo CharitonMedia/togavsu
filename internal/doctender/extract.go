@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/csv"
 	"encoding/json"
 	"encoding/xml"
@@ -11,10 +12,13 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"math"
 	"os"
+	"os/exec"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,6 +83,29 @@ type work struct {
 	kind    string
 	pdf     *pdfDoc
 	matter  MatterInfo
+	// tmp is a copy of the file on disk for ffmpeg, made once per run (mediaPath)
+	// and removed when the run ends (cleanup).
+	tmp  string
+	done func()
+}
+
+// mediaPath is the file on disk for ffmpeg, copied the first time it is asked for.
+func (w *work) mediaPath() (string, error) {
+	if w.tmp == "" {
+		p, done, err := tempCopy(w.file.Name, w.data)
+		if err != nil {
+			return "", err
+		}
+		w.tmp, w.done = p, done
+	}
+	return w.tmp, nil
+}
+
+func (w *work) cleanup() {
+	if w.done != nil {
+		w.done()
+		w.tmp, w.done = "", nil
+	}
 }
 
 // precheck is a step-1 finding that stops the file before any model call.
@@ -120,7 +147,11 @@ func (s *Service) plan(ctx context.Context, w *work) ([]unitSpec, *precheck, err
 		}
 		return []unitSpec{s.photoUnit(w)}, nil, nil
 	case typeAudio:
-		return []unitSpec{s.transcriptUnit(w, w.data, w.file.Name)}, nil, nil
+		audio, pre, err := s.recordingAudio(ctx, w)
+		if pre != nil || err != nil {
+			return nil, pre, err
+		}
+		return []unitSpec{s.transcriptUnit(w, audio)}, nil, nil
 	case typeVideo:
 		return s.videoUnits(ctx, w)
 	}
@@ -835,8 +866,8 @@ func (s *Service) mediaDuration(ctx context.Context, name string, data []byte) (
 		return d, nil
 	}
 	if strings.EqualFold(path.Ext(name), ".avi") {
-		if _, total, err := aviFrames(data, hourUnit); err == nil {
-			return total, nil
+		if v, err := readAVI(data); err == nil {
+			return v.total, nil
 		}
 	}
 	if s.d.Media == nil {
@@ -864,9 +895,184 @@ func tempCopy(name string, data []byte) (string, func(), error) {
 	return f.Name(), func() { _ = os.Remove(f.Name()) }, nil
 }
 
+// audioChunks hands a recording to transcription in pieces that each fit one request
+// (wire().TranscriptionRequestBytes, under the providers' upload limit), one piece at
+// a time, so a long recording is never sent or held whole.
+type audioChunks struct {
+	none   bool          // the recording has no sound track
+	name   string        // the file name sent with each piece
+	media  string        // the pieces' media type
+	length time.Duration // the recording's length, when known
+	step   time.Duration // each piece's length; zero sends the recording as one piece
+	read   func(ctx context.Context, from time.Duration) ([]byte, error)
+}
+
+func wholeAudio(name, media string, data []byte, length time.Duration) audioChunks {
+	return audioChunks{name: name, media: media, length: length, read: func(context.Context, time.Duration) ([]byte, error) { return data, nil }}
+}
+
+// wavChunks cuts a WAV held in memory into pieces of at most window, each small enough
+// for one request. A WAV that fits one request is sent whole.
+func wavChunks(name string, wav []byte, window time.Duration) (audioChunks, error) {
+	var f wavFormat
+	var pcm []byte
+	err := riffChunks(wav, "WAVE", func(id string, body []byte) error {
+		switch id {
+		case "fmt ":
+			return binary.Read(bytes.NewReader(body), binary.LittleEndian, &f)
+		case "data":
+			pcm = body
+		}
+		return nil
+	})
+	if err != nil || f.ByteRate == uint32(zero) || f.BlockAlign == uint16(zero) {
+		return audioChunks{}, errors.New("not a PCM WAV")
+	}
+	rate := float64(f.ByteRate)
+	length := time.Duration(float64(len(pcm)) / rate * float64(secondUnit))
+	limit := wire().TranscriptionRequestBytes
+	if int64(len(wav)) <= limit {
+		return wholeAudio(name, "audio/wav", wav, length), nil
+	}
+	// Each piece is a WAV of its own: its header counts against the request size too.
+	room := limit - int64(len(wavBytes(f, nil)))
+	step := min(window, time.Duration(float64(room)/rate*float64(secondUnit)))
+	if step <= zeroDuration {
+		return audioChunks{}, errors.New("the transcription request size is too small for this recording's sound")
+	}
+	align := int(f.BlockAlign)
+	at := func(d time.Duration) int { return min(len(pcm), int(d.Seconds()*rate)/align*align) }
+	return audioChunks{name: name, media: "audio/wav", length: length, step: step, read: func(_ context.Context, from time.Duration) ([]byte, error) {
+		return wavBytes(f, pcm[at(from):at(from+step)]), nil
+	}}, nil
+}
+
+// recordingAudio is how an audio file goes to transcription: a WAV cut in memory, any
+// other recording that fits one request as it is, and a longer one in pieces that
+// ffmpeg cuts from the file one at a time.
+func (s *Service) recordingAudio(ctx context.Context, w *work) (audioChunks, *precheck, error) {
+	window, err := s.duration(ctx, "doctender.audio_check_window")
+	if err != nil {
+		return audioChunks{}, nil, err
+	}
+	if audio, err := wavChunks(w.file.Name, w.data, window); err == nil {
+		return audio, nil, nil
+	}
+	if int64(len(w.data)) <= wire().TranscriptionRequestBytes {
+		return wholeAudio(w.file.Name, w.version.MediaType, w.data, zeroDuration), nil, nil
+	}
+	if s.d.Media == nil {
+		return audioChunks{}, &precheck{"unsupported_format", "the recording is larger than one transcription request takes, and this core has no ffmpeg to cut it into pieces"}, nil
+	}
+	return s.ffmpegAudio(ctx, w, window, strings.TrimSuffix(w.file.Name, path.Ext(w.file.Name))+".wav")
+}
+
+// ffmpegAudio reads the file's length and sound track with ffmpeg and cuts the sound
+// one piece per request, each when it is sent.
+func (s *Service) ffmpegAudio(ctx context.Context, w *work, window time.Duration, name string) (audioChunks, *precheck, error) {
+	p, err := w.mediaPath()
+	if err != nil {
+		return audioChunks{}, nil, err
+	}
+	length, err := s.d.Media.Duration(ctx, p)
+	if pre, err := mediaTrouble(ctx, err, w.file.Name); pre != nil || err != nil {
+		return audioChunks{}, pre, err
+	}
+	has, err := s.d.Media.HasAudio(ctx, p)
+	if pre, err := mediaTrouble(ctx, err, w.file.Name); pre != nil || err != nil {
+		return audioChunks{}, pre, err
+	}
+	if !has {
+		return audioChunks{none: true, length: length}, nil, nil
+	}
+	// ffmpeg writes mono 16-bit PCM at the speech rate, plus a header of its own.
+	rate := float64(wire().SpeechSampleRate * two)
+	room := wire().TranscriptionRequestBytes - int64(len(wavBytes(wavFormat{}, nil)))
+	step := min(window, time.Duration(float64(room)/rate*float64(secondUnit)))
+	return audioChunks{name: name, media: "audio/wav", length: length, step: step, read: func(ctx context.Context, from time.Duration) ([]byte, error) {
+		p, err := w.mediaPath()
+		if err != nil {
+			return nil, err
+		}
+		return s.d.Media.Audio(ctx, p, from, step)
+	}}, nil, nil
+}
+
+// mediaTrouble sorts a media tool's error. A missing or unrunnable ffmpeg is not the
+// file's fault: the file is held as unsupported, saying so, until ffmpeg is installed
+// and the item retried. A stopped run is retried. Only ffmpeg's own refusal of the
+// file marks it damaged.
+func mediaTrouble(ctx context.Context, err error, name string) (*precheck, error) {
+	var exit *exec.ExitError
+	switch {
+	case err == nil:
+		return nil, nil
+	case errors.Is(err, exec.ErrNotFound), errors.Is(err, fs.ErrNotExist), errors.Is(err, fs.ErrPermission):
+		return &precheck{"unsupported_format", name + " was not read: this core's ffmpeg is missing or cannot run (" + err.Error() + "). The file is not damaged; install ffmpeg, then use Retry."}, nil
+	case ctx.Err() != nil:
+		return nil, err
+	case errors.As(err, &exit):
+		return &precheck{"damaged", name + " does not open: " + err.Error()}, nil
+	}
+	return nil, err
+}
+
+// heard is one transcription pass over every piece: the segments on the recording's
+// own clock, and the model that heard each piece.
+type heard struct {
+	segments []Segment
+	models   []string
+}
+
+func (h heard) model() string {
+	var out []string
+	for _, m := range h.models {
+		if !slices.Contains(out, m) {
+			out = append(out, m)
+		}
+	}
+	return strings.Join(out, "+")
+}
+
+// selfCompared refuses a comparison in which one model heard a piece twice.
+func (h heard) selfCompared(other heard) error {
+	for k := range min(len(h.models), len(other.models)) {
+		if err := selfCompared(h.models[k], other.models[k]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// transcribe runs one pass, a piece at a time, putting each piece's segments on the
+// recording's clock.
+func (s *Service) transcribe(ctx context.Context, w *work, audio audioChunks, check, compared bool) (heard, error) {
+	var h heard
+	for from := zeroDuration; ; from += audio.step {
+		data, err := audio.read(ctx, from)
+		if err != nil {
+			return h, err
+		}
+		resp, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: check, Compared: compared, Parts: []Part{{MediaType: audio.media, Name: audio.name, Data: data}},
+			FileID: w.file.ID, MatterID: w.job.MatterID})
+		if err != nil {
+			return h, err
+		}
+		h.models = append(h.models, resp.Provider+"/"+resp.Model)
+		for _, sg := range resp.Segments {
+			sg.Start += from.Seconds()
+			sg.End += from.Seconds()
+			h.segments = append(h.segments, sg)
+		}
+		if audio.step <= zeroDuration || from+audio.step >= audio.length {
+			return h, nil
+		}
+	}
+}
+
 // transcriptUnit transcribes audio, checks coverage, and where a check model is set
 // compares a second transcription in doctender.audio_check_window windows.
-func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
+func (s *Service) transcriptUnit(w *work, audio audioChunks) unitSpec {
 	return unitSpec{Name: "transcript", Tasks: []string{TaskTranscription}, Run: func(ctx context.Context, checkMethod bool) (unitWork, error) {
 		maxGap, err := s.duration(ctx, "doctender.audio_max_gap")
 		if err != nil {
@@ -880,46 +1086,45 @@ func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
 		if err != nil {
 			return unitWork{}, err
 		}
-		length, err := s.mediaDuration(ctx, w.file.Name, w.data)
-		if err != nil {
-			return unitWork{Method: "speech_to_text"}, err
+		length := audio.length
+		if length <= zeroDuration {
+			if length, err = s.mediaDuration(ctx, w.file.Name, w.data); err != nil {
+				return unitWork{Method: "speech_to_text"}, err
+			}
 		}
-		if audio == nil {
+		if audio.none {
 			t := transcript{Duration: length.Seconds(), Note: "The recording has no audio track."}
 			return unitWork{Text: jsonText(t), Method: "speech_to_text", CheckMethod: "no_audio_track", CheckResult: "no audio track", Passed: true}, nil
 		}
-		resp, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: checkMethod, Compared: true, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
-			FileID: w.file.ID, MatterID: w.job.MatterID})
+		first, err := s.transcribe(ctx, w, audio, checkMethod, true)
 		if checkMethod && errors.Is(err, ErrNoCheckModel) {
 			// No second transcription model is set: the last attempt uses the model again,
 			// still under the coverage check.
 			checkMethod = false
-			resp, err = s.d.Models.Call(ctx, Request{Task: TaskTranscription, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
-				FileID: w.file.ID, MatterID: w.job.MatterID})
+			first, err = s.transcribe(ctx, w, audio, false, false)
 		}
-		model := resp.Provider + "/" + resp.Model
+		model := first.model()
 		if err != nil {
 			return unitWork{Method: "speech_to_text", Model: model}, err
 		}
-		t := transcript{Duration: length.Seconds(), Segments: resp.Segments}
+		t := transcript{Duration: length.Seconds(), Segments: first.segments}
 		ok, result := coverage(t, maxGap)
 		out := unitWork{Text: jsonText(t), Method: "speech_to_text", Model: model, CheckMethod: "coverage", CheckResult: result, Passed: ok}
 		if !ok {
 			return out, nil
 		}
-		second, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: !checkMethod, Compared: true, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
-			FileID: w.file.ID, MatterID: w.job.MatterID})
+		second, err := s.transcribe(ctx, w, audio, !checkMethod, true)
 		if errors.Is(err, ErrNoCheckModel) {
 			return out, nil
 		}
 		if err == nil {
-			err = selfCompared(model, second.Provider+"/"+second.Model)
+			err = first.selfCompared(second)
 		}
 		if err != nil {
 			return unitWork{Method: "speech_to_text", Model: model}, err
 		}
-		worst, at := windowAgreement(resp.Segments, second.Segments, window, t.Duration)
-		out.CheckMethod = "coverage+second_transcription:" + second.Provider + "/" + second.Model
+		worst, at := windowAgreement(first.segments, second.segments, window, t.Duration)
+		out.CheckMethod = "coverage+second_transcription:" + second.model()
 		out.CheckResult = result + "; lowest window " + hms(at) + " " + scoreText(worst)
 		out.Passed = worst >= threshold
 		return out, nil
@@ -966,6 +1171,10 @@ type screenFrame struct {
 	Text        string  `json:"text"`
 }
 
+// videoUnits reads a video the way the earlier Doc Tender did, a stretch at a time:
+// the sound in pieces for transcription, and one unit per doctender.audio_check_window
+// of frames, each window's frames read when its unit runs and described one at a
+// time, so an hour-long recording never holds more than one frame decoded.
 func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *precheck, error) {
 	interval, err := s.duration(ctx, "doctender.video_frame_interval")
 	if err != nil {
@@ -975,51 +1184,50 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 	if err != nil {
 		return nil, nil, err
 	}
-	var frames []Frame
-	var audio []byte
+	wavName := strings.TrimSuffix(w.file.Name, path.Ext(w.file.Name)) + ".wav"
+	var audio audioChunks
 	var total time.Duration
+	var frames func(ctx context.Context, from, to time.Duration, each func(Frame) error) error
+	var avi *aviVideo
 	if strings.EqualFold(path.Ext(w.file.Name), ".avi") {
-		frames, audio, total, err = readAVI(w.data, interval)
-	} else {
-		err = errors.New("not a native format")
+		avi, _ = readAVI(w.data)
 	}
-	if err != nil {
-		if s.d.Media == nil {
-			return nil, &precheck{"unsupported_format", "this core has no video reader for " + w.file.Name}, nil
+	switch {
+	case avi != nil:
+		total = avi.total
+		audio = audioChunks{none: true, length: total}
+		if avi.audio != nil {
+			if audio, err = wavChunks(wavName, avi.audio, window); err != nil {
+				return nil, &precheck{"damaged", "the video's sound track does not open: " + err.Error()}, nil
+			}
 		}
-		p, cleanup, terr := tempCopy(w.file.Name, w.data)
-		if terr != nil {
-			return nil, nil, terr
+		frames = func(_ context.Context, from, to time.Duration, each func(Frame) error) error {
+			return avi.frames(from, to, interval, each)
 		}
-		defer cleanup()
-		if frames, err = s.d.Media.Frames(ctx, p, interval); err != nil {
-			return nil, &precheck{"damaged", "the video does not open: " + err.Error()}, nil
+	case s.d.Media == nil:
+		return nil, &precheck{"unsupported_format", "this core has no video reader for " + w.file.Name}, nil
+	default:
+		var pre *precheck
+		if audio, pre, err = s.ffmpegAudio(ctx, w, window, wavName); pre != nil || err != nil {
+			return nil, pre, err
 		}
-		if audio, err = s.d.Media.Audio(ctx, p); err != nil {
-			return nil, &precheck{"damaged", "the video's audio does not open: " + err.Error()}, nil
+		total = audio.length
+		frames = func(ctx context.Context, from, to time.Duration, each func(Frame) error) error {
+			p, err := w.mediaPath()
+			if err != nil {
+				return err
+			}
+			return s.d.Media.Frames(ctx, p, from, to-from, interval, each)
 		}
 	}
-	_ = total
-	specs := []unitSpec{s.transcriptUnit(w, audio, strings.TrimSuffix(w.file.Name, path.Ext(w.file.Name))+".wav")}
+	specs := []unitSpec{s.transcriptUnit(w, audio)}
 	if w.file.Source == "zoom" {
 		// Zoom recordings get the transcript only.
 		return specs, nil, nil
 	}
-	// One unit per media window of frames.
-	var groups [][]Frame
-	for _, f := range frames {
-		k := int(f.At / window)
-		for len(groups) <= k {
-			groups = append(groups, nil)
-		}
-		groups[k] = append(groups[k], f)
-	}
-	for k := range groups {
-		fs := groups[k]
-		if len(fs) == 0 {
-			continue
-		}
-		specs = append(specs, unitSpec{Name: "frames " + hms(fs[zero].At.Seconds()), Tasks: []string{TaskPhoto}, Run: func(ctx context.Context, checkMethod bool) (unitWork, error) {
+	for from := zeroDuration; from < total; from += window {
+		to := min(from+window, total)
+		specs = append(specs, unitSpec{Name: "frames " + hms(from.Seconds()), Tasks: []string{TaskPhoto}, Run: func(ctx context.Context, checkMethod bool) (unitWork, error) {
 			threshold, err := s.threshold(ctx)
 			if err != nil {
 				return unitWork{}, err
@@ -1027,24 +1235,31 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 			var out []screenFrame
 			worst := float64(one)
 			var model, checkModel string
-			for _, f := range fs {
+			var unread *unitWork
+			err = frames(ctx, from, to, func(f Frame) error {
+				name := "frame.png"
+				if f.MediaType == "image/jpeg" {
+					name = "frame.jpg"
+				}
+				part := Part{MediaType: f.MediaType, Name: name, Data: f.Data}
 				resp, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: checkMethod, Compared: true, System: photoPrompt + " This is one frame of a video.", JSON: true,
-					Parts: []Part{{MediaType: "image/png", Name: "frame.png", Data: f.PNG}}, FileID: w.file.ID, MatterID: w.job.MatterID})
+					Parts: []Part{part}, FileID: w.file.ID, MatterID: w.job.MatterID})
 				if err != nil {
-					return unitWork{Method: "vision_frames"}, err
+					return err
 				}
 				model = resp.Provider + "/" + resp.Model
 				var read photoRead
 				if err := json.Unmarshal([]byte(jsonObject(resp.Text)), &read); err != nil || strings.TrimSpace(read.Description) == "" {
-					return unitWork{Method: "vision_frames", Model: model, CheckResult: "no description at " + hms(f.At.Seconds())}, nil
+					unread = &unitWork{Method: "vision_frames", Model: model, CheckResult: "no description at " + hms(f.At.Seconds())}
+					return errFramesDone
 				}
 				check, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, Compared: true, System: photoPrompt + " This is one frame of a video.", JSON: true,
-					Parts: []Part{{MediaType: "image/png", Name: "frame.png", Data: f.PNG}}, FileID: w.file.ID, MatterID: w.job.MatterID})
+					Parts: []Part{part}, FileID: w.file.ID, MatterID: w.job.MatterID})
 				if err == nil {
 					err = selfCompared(model, check.Provider+"/"+check.Model)
 				}
 				if err != nil {
-					return unitWork{Method: "vision_frames", Model: model}, err
+					return err
 				}
 				checkModel = check.Provider + "/" + check.Model
 				var other photoRead
@@ -1055,6 +1270,13 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 				}
 				worst = min(worst, score)
 				out = append(out, screenFrame{At: f.At.Seconds(), Description: strings.TrimSpace(read.Description), Text: tidyLines(read.Text)})
+				return nil
+			})
+			if unread != nil {
+				return *unread, nil
+			}
+			if err != nil {
+				return unitWork{Method: "vision_frames", Model: model}, err
 			}
 			return unitWork{Text: jsonText(out), Method: "vision_frames", Model: model, CheckMethod: "on_screen_text_check_model", CheckModel: checkModel,
 				CheckResult: scoreText(worst), Passed: worst >= threshold}, nil
@@ -1062,6 +1284,9 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 	}
 	return specs, nil, nil
 }
+
+// errFramesDone stops a window's frames early once one has no description.
+var errFramesDone = errors.New("doctender: frames stopped")
 
 // ---- agreement ----
 

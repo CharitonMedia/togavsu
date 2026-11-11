@@ -308,7 +308,7 @@ func (f *fakeAI) labelFor(body string) Label {
 			fmt.Sscan(m[1], &page)
 			continue
 		}
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "_") || strings.HasPrefix(line, "[") {
+		if line == "" || line == "<document>" || line == "</document>" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "_") || strings.HasPrefix(line, "[") {
 			continue
 		}
 		if l.WhatItIs == "" {

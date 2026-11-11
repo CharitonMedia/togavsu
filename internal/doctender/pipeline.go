@@ -73,6 +73,7 @@ func (s *Service) runFile(ctx context.Context, j Job) error {
 	if w.kind == typeUnsupported {
 		w.kind = fileKind(f.Name, v.MediaType)
 	}
+	defer w.cleanup()
 	units, err := s.units(ctx, j.ID)
 	if err != nil {
 		return err
@@ -95,6 +96,10 @@ func (s *Service) runFile(ctx context.Context, j Job) error {
 		}
 		if pre != nil {
 			return s.precheckException(ctx, &j, *pre)
+		}
+		// The injection screen, before any model reads the file.
+		if held, err := s.screen(ctx, &j, w, func() ([]carrier, error) { return s.carriers(w) }, heldBeforeModels); held || err != nil {
+			return err
 		}
 	}
 	if len(units) == 0 {
@@ -119,6 +124,11 @@ func (s *Service) runFile(ctx context.Context, j Job) error {
 		if err := s.runUnit(ctx, &j, u, sp); err != nil {
 			return err
 		}
+	}
+	// What a model read out of a scan, a photo or a recording is screened before any
+	// other model sees it.
+	if held, err := s.screen(ctx, &j, w, func() ([]carrier, error) { return unitCarriers(units), nil }, heldAfterReading); held || err != nil {
+		return err
 	}
 	// Photos wait for the matter's quiet time and are grouped before labeling.
 	if w.kind == typePhoto && j.Stage == stageExtract {

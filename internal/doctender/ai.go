@@ -80,6 +80,21 @@ type wireFacts struct {
 	// MaxCMapEntries caps the code-to-text entries all fonts on one PDF page may build
 	// from their ToUnicode CMaps; a page's decoded contents share MaxDecodedBytes.
 	MaxCMapEntries int `json:"max_cmap_entries"`
+	// TranscriptionRequestBytes caps the sound sent in one transcription request, under
+	// the providers' 25 MB upload limit; SpeechSampleRate is the rate of the mono WAV
+	// ffmpeg cuts for it.
+	TranscriptionRequestBytes int64 `json:"transcription_request_bytes"`
+	SpeechSampleRate          int   `json:"speech_sample_rate"`
+	// FrameMaxWidth and FrameJPEGQuality are how ffmpeg writes a video frame for the
+	// vision model (-q:v is ffmpeg's JPEG scale, lower is better).
+	FrameMaxWidth    int `json:"frame_max_width"`
+	FrameJPEGQuality int `json:"frame_jpeg_quality"`
+	// The injection screen: type smaller than TinyTextPoints is tiny, InvisibleRun
+	// invisible characters in a row is a hit, and a hit quotes at most
+	// InjectionExcerptChars characters.
+	TinyTextPoints        float64 `json:"tiny_text_points"`
+	InvisibleRun          int     `json:"invisible_run"`
+	InjectionExcerptChars int     `json:"injection_excerpt_chars"`
 }
 
 var wire = sync.OnceValue(func() wireFacts {
@@ -437,6 +452,10 @@ func selfCompared(answer, check string) error {
 // is not taken, since that would check a model against itself; the call fails instead
 // and the unit retries on its schedule. Every other call falls back as usual.
 func (r *Router) Call(ctx context.Context, req Request) (Response, error) {
+	if req.System != "" {
+		// File content is material, never instructions (injection.go).
+		req.System += "\n\n" + dataRule
+	}
 	rt, err := r.Route(ctx, req.Task, req.Check)
 	if err != nil {
 		return Response{}, err

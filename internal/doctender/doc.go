@@ -79,6 +79,14 @@
 // A file over any is a damaged item, not retried. Upgrade: doctender.max_decoded_bytes,
 // doctender.max_image_pixels, doctender.max_sheet_cells and doctender.max_cmap_entries
 // on the Doc Tender tab. Trigger: a firm's real file trips one.
+//
+// ponytail: the media and screening facts (24,000,000 bytes per transcription request,
+// under the providers' 25 MB limit; 16 kHz speech pieces; frames scaled to 1280 px at
+// JPEG quality 3; tiny text under 2 points; 8 invisible characters in a row; 200
+// characters of excerpt) are fixed facts in wire.json. The injection rules are
+// patterns in injection.go. Upgrade: doctender.transcription_request_bytes and an
+// admin-edited rule list on the Doc Tender tab. Trigger: a provider changes its limit,
+// or a firm reports a missed or wrongly held file.
 package doctender
 
 import "time"
@@ -92,6 +100,8 @@ const (
 	three = zero + 3
 	four  = zero + 4
 	eight = zero + 8
+	// DrawingML (PowerPoint) text sizes are hundredths of a point.
+	drawingSizeUnit = zero + 100
 )
 
 // Time units for converting timestamps and leases. They are units, not tunables;

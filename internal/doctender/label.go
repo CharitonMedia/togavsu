@@ -92,7 +92,7 @@ Cite every field to the page it is on ("## Page N" headings), or to its timestam
 func (s *Service) labelUnit(w *work, c *content) unitSpec {
 	return unitSpec{Name: "label", Tasks: []string{TaskLabeling}, Exception: "check_disagreement", Run: func(ctx context.Context, checkMethod bool) (unitWork, error) {
 		resp, err := s.d.Models.Call(ctx, Request{Task: TaskLabeling, Check: checkMethod, System: labelPrompt, JSON: true,
-			Parts: []Part{{Text: c.Body}}, FileID: w.file.ID, MatterID: w.job.MatterID})
+			Parts: []Part{{Text: quoted(c.Body)}}, FileID: w.file.ID, MatterID: w.job.MatterID})
 		model := resp.Provider + "/" + resp.Model
 		if err != nil {
 			return unitWork{Method: "labeling", Model: model}, err
@@ -256,7 +256,7 @@ func (s *Service) categorizeUnit(w *work, c *content) unitSpec {
 		}
 		ask := func(check, compared bool) (CategoryAnswer, string, error) {
 			resp, err := s.d.Models.Call(ctx, Request{Task: TaskCategorizing, Check: check, Compared: compared, System: categoryPrompt(cats), JSON: true,
-				Parts: []Part{{Text: c.Body}}, FileID: w.file.ID, MatterID: w.job.MatterID})
+				Parts: []Part{{Text: quoted(c.Body)}}, FileID: w.file.ID, MatterID: w.job.MatterID})
 			model := resp.Provider + "/" + resp.Model
 			if err != nil {
 				return CategoryAnswer{}, model, err

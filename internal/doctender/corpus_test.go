@@ -408,9 +408,13 @@ func TestCorpusIsWhatItSays(t *testing.T) {
 	if err != nil || d != secondUnit {
 		t.Fatalf("tone.wav = %v %v", d, err)
 	}
-	frames, audio, total, err := readAVI(framesAVI([]color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}), secondUnit)
-	if err != nil || len(frames) != 3 || audio == nil || total != 3*secondUnit {
-		t.Fatalf("frames.avi: %d frames, audio %v, %v, %v", len(frames), audio != nil, total, err)
+	v, err := readAVI(framesAVI([]color.RGBA{{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}}))
+	if err != nil {
+		t.Fatalf("frames.avi: %v", err)
+	}
+	frames := 0
+	if err := v.frames(0, v.total, secondUnit, func(Frame) error { frames++; return nil }); err != nil || frames != 3 || v.audio == nil || v.total != 3*secondUnit {
+		t.Fatalf("frames.avi: %d frames, audio %v, %v, %v", frames, v.audio != nil, v.total, err)
 	}
 	tp, err := parsePDF(textPDF("NOTICE OF HEARING", "Case 23AR-CV00825"))
 	if err != nil {
