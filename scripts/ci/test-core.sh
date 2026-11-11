@@ -14,9 +14,10 @@ go vet ./...
 pkgs=$(go list ./...)
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
-# -count=1 so a cached pass never stands in for a run against this database. The
+# -count=1 so a cached pass never stands in for a run against this database. 25m covers
+# the phase 4 cases (a 1 GiB upload, a 120-page scan). The
 # output goes to a file first: a pipe into tee would report tee's status, not go test's.
-if ! go test -count=1 -timeout 15m $pkgs >"$log" 2>&1; then
+if ! go test -count=1 -timeout 25m $pkgs >"$log" 2>&1; then
   cat "$log"
   echo "core tests failed" >&2
   exit 1
