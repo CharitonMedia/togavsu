@@ -151,8 +151,8 @@ func Mount(ctx context.Context, app *core.App, opt Options) (*UI, error) {
 	}
 	dh.Users = func(r *http.Request) ([]domain.User, error) { return listUsers(r.Context(), app) }
 	ledger := audit.NewPostgres(app.Pool)
-	dh.Audit = func(r *http.Request, limit int) ([]dashboard.AuditRow, error) {
-		return auditRows(r.Context(), ledger, app, limit)
+	dh.Audit = func(r *http.Request, p domain.Principal, limit int) ([]dashboard.AuditRow, error) {
+		return auditRows(r.Context(), p, ledger, app, limit)
 	}
 	u.dash = dh.Routes()
 	u.helpMux = (&help.Handler{Svc: hs, Principal: u.principal}).Routes()
@@ -352,19 +352,27 @@ func listUsers(ctx context.Context, app *core.App) ([]domain.User, error) {
 	return out, nil
 }
 
-func auditRows(ctx context.Context, ledger *audit.Postgres, app *core.App, limit int) ([]dashboard.AuditRow, error) {
+// auditRows is the System tab's recent audit log as the requesting admin may read it.
+// The rows pass through practice's audit scope exactly as GET /api/v1/audit-log does:
+// a row about a matter behind a wall p is not on, or about a contact only on such
+// matters, is dropped, and attorney-only values are redacted for p. The limit applies
+// after that filter, so hidden rows never take a visible row's place.
+func auditRows(ctx context.Context, p domain.Principal, ledger *audit.Postgres, app *core.App, limit int) ([]dashboard.AuditRow, error) {
+	// ponytail: ceiling: reads the whole ledger page per System tab view, like core's unfiltered audit-log.
+	// Upgrade path: newest-first cursor reads in audit.Postgres. Trigger: an install passes 100k audit rows.
 	page, err := ledger.List(ctx, repository.Filter{})
 	if err != nil {
 		return nil, err
 	}
 	rows := page.Items
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].CreatedAt.After(rows[j].CreatedAt) })
-	if len(rows) > limit {
-		rows = rows[:limit]
+	shown := app.Practice.AuditLog(ctx, p, rows)
+	if len(shown) > limit {
+		shown = shown[:limit]
 	}
 	names := map[domain.ID]string{}
-	var out []dashboard.AuditRow
-	for _, e := range rows {
+	out := make([]dashboard.AuditRow, 0, len(shown))
+	for _, e := range shown {
 		name, ok := names[e.ActorID]
 		if !ok {
 			name = "System"
@@ -375,7 +383,7 @@ func auditRows(ctx context.Context, ledger *audit.Postgres, app *core.App, limit
 			}
 			names[e.ActorID] = name
 		}
-		out = append(out, dashboard.AuditRow{At: e.CreatedAt, Actor: name, Role: e.Role, Source: e.Source, Entity: e.Entity, Field: e.Field, Old: e.OldValue, New: e.NewValue})
+		out = append(out, dashboard.AuditRow{At: e.At, Actor: name, Role: e.Role, Source: e.Source, Entity: e.Entity, Field: e.Field, Old: e.Old, New: e.New, Redacted: e.Redacted})
 	}
 	return out, nil
 }

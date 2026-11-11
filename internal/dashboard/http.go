@@ -25,7 +25,8 @@ type Handler struct {
 	Static fs.FS
 	// Admin panels supplied by other domains, shown on their admin tabs.
 	Users func(r *http.Request) ([]domain.User, error)
-	Audit func(r *http.Request, limit int) ([]AuditRow, error)
+	// Audit returns recent audit rows as p may read them (walls, attorney-only redaction).
+	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
 
 	tpl *template.Template
 }
@@ -40,6 +41,9 @@ type AuditRow struct {
 	Field  string
 	Old    string
 	New    string
+	// Redacted marks attorney-only values the viewer may not read; Old and New are then
+	// the redaction marker, never the stored values.
+	Redacted bool
 }
 
 // NewHandler parses the shell, dashboard and admin templates (web/templates/shell,

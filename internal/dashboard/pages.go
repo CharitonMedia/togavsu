@@ -1036,7 +1036,7 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 				return "", "", nil, err
 			}
 			if h.Audit != nil {
-				if v.Audit, err = h.Audit(r, fixed.AuditRows); err != nil {
+				if v.Audit, err = h.Audit(r, p, fixed.AuditRows); err != nil {
 					return "", "", nil, err
 				}
 			}
