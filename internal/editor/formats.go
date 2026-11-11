@@ -40,7 +40,8 @@ var mediaTypes = map[string]string{
 // format only: an older or restored version saved before a DOCX save keeps its own.
 // An unknown media type falls back to the file's extension.
 func versionExt(mediaType, fileExt string) string {
-	mt := strings.ToLower(strings.TrimSpace(strings.SplitN(mediaType, ";", 2)[0]))
+	base, _, _ := strings.Cut(mediaType, ";")
+	mt := strings.ToLower(strings.TrimSpace(base))
 	for _, ext := range []string{"docx", "doc", "odt", "rtf", "html", "md", "txt", "pdf"} {
 		if mediaTypes[ext] == mt {
 			return ext

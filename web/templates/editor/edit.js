@@ -49,7 +49,9 @@
     }).then(function (res) {
       if (!res.ok) return;
       return res.json().then(function (c) {
-        if (c.commands && c.commands.length) post({ type: "togavsu:run", id: ++runId, commands: c.commands });
+        // One job per command: the editor stops a job at its first failing command, so a
+        // court profile it refuses must not drop the matter's court or the caption.
+        (c.commands || []).forEach(function (cmd) { post({ type: "togavsu:run", id: ++runId, commands: [cmd] }); });
       });
     }).catch(function (e) { show("The document could not be opened: " + e.message); });
   }
@@ -121,7 +123,7 @@
         break;
       case "togavsu:profile": if (m.profile && m.profile.id) saveProfile(m.profile); break;
       case "togavsu:result":
-        if (m.error) show("The editor could not load the firm's details: " + m.error);
+        if (m.error) show("The editor could not load part of the firm's details: " + m.error);
         break;
     }
   });
