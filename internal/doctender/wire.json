@@ -1,0 +1,21 @@
+{
+  "openai_base_url": "https://api.openai.com/v1",
+  "anthropic_base_url": "https://api.anthropic.com/v1",
+  "anthropic_version": "2023-06-01",
+  "anthropic_max_tokens": 8192,
+  "error_body_bytes": 512,
+  "hover_summary_chars": 240,
+  "client_last_chars": 20,
+  "tj_word_space": -200,
+  "max_decoded_bytes": 268435456,
+  "max_image_pixels": 100000000,
+  "max_sheet_cells": 4000000,
+  "max_cmap_entries": 262144,
+  "transcription_request_bytes": 24000000,
+  "speech_sample_rate": 16000,
+  "frame_max_width": 1280,
+  "frame_jpeg_quality": 3,
+  "tiny_text_points": 2,
+  "invisible_run": 8,
+  "injection_excerpt_chars": 200
+}

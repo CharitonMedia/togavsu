@@ -1,0 +1,30 @@
+{{define "head"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<title>{{.Title}} · Togavsu</title>
+<link rel="stylesheet" href="/practice/static/practice.css">
+<link rel="stylesheet" href="/doc-tender/static/doctender.css">
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="/practice/matters">Togavsu</a>
+  <nav aria-label="Main">
+    <a href="/practice/matters">Matters</a>
+    <a href="/practice/contacts">Contacts</a>
+    {{if .Reviewer}}<a href="/doc-tender/review" class="dt-queue">Doc Tender <span class="dt-count" aria-label="{{.OpenCount}} open review items">{{.OpenCount}}</span></a>{{end}}
+    {{if .Admin}}<a href="/admin/doc-tender">Doc Tender settings</a>{{end}}
+    <a href="/logout">Sign out</a>
+  </nav>
+</header>
+<main>
+<h1>{{.Title}} <a class="help" href="/doc-tender/guide" aria-label="Help for this screen">?</a></h1>
+{{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{end}}
+{{define "foot"}}
+</main>
+</body>
+</html>{{end}}
