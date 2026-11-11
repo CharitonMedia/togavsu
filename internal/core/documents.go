@@ -288,6 +288,17 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 	d.bgCtx, d.stopBg = context.WithCancel(context.Background())
 	fh.BackgroundContext = d.bgCtx
 	fh.Background = func(f func()) { spawn(&d.bg, f) }
+	fh.DocStatus = func(ctx context.Context, p domain.Principal, id domain.ID) (files.DocStatus, error) {
+		st, err := dt.Status(ctx, p, id)
+		if err != nil {
+			return files.DocStatus{}, err
+		}
+		out := files.DocStatus{Label: st.Label}
+		for _, f := range st.Flags {
+			out.Flags = append(out.Flags, files.DocFlag{Kind: f.Kind, Label: f.Label, Detail: f.Detail})
+		}
+		return out, nil
+	}
 	if sub, err = fs.Sub(web.DocTender, "templates/doctender"); err != nil {
 		return err
 	}

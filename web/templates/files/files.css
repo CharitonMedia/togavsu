@@ -12,3 +12,5 @@ table.files .name{overflow-wrap:anywhere}
 table.files .acts{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
 #progress li.failed{color:#9b1c1c}
 .help{font-size:.9rem;text-decoration:none;border:1px solid currentColor;border-radius:50%;padding:0 .4rem}
+.doc-tender{margin-top:.25rem;font-size:.85rem}
+.doc-tender .flag-detail{color:#4a5160}

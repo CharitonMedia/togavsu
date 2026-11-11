@@ -32,6 +32,22 @@ type Handler struct {
 	// stop a move on shutdown (a stopped move resumes where it stopped). Nil detaches
 	// the work from the request instead.
 	BackgroundContext context.Context
+	// DocStatus, when set, is a file's Doc Tender label and flags as p sees the file
+	// (PRD 8.21: a failed file carries a flag naming what failed; a closed matter's file
+	// is Not processed (matter closed)). The core sets it to Doc Tender's Status; files
+	// cannot import Doc Tender, which builds on files.
+	DocStatus func(ctx context.Context, p domain.Principal, fileID domain.ID) (DocStatus, error)
+}
+
+// DocStatus is what the Files tab shows beside a file for Doc Tender.
+type DocStatus struct {
+	Label string
+	Flags []DocFlag
+}
+
+// DocFlag is one open or kept review item on the file, named for people.
+type DocFlag struct {
+	Kind, Label, Detail string
 }
 
 // NewHandler parses the Files tab templates from fsys (web/templates/files). A nil

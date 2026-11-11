@@ -1023,6 +1023,19 @@ func waitFor(t *testing.T, limit time.Duration, what string, cond func() bool) {
 	}
 }
 
+// filesTabRow is the file's row on the matter's Files tab as c sees the page.
+func (d *docs) filesTabRow(c *client, matter, file string) string {
+	d.t.Helper()
+	body := c.must(http.StatusOK, "GET", "/practice/matters/"+matter+"/files", nil).body
+	for _, row := range strings.Split(body, "<tr>") {
+		if strings.Contains(row, "/api/v1/files/"+file+"/") {
+			return row
+		}
+	}
+	d.t.Fatalf("file %s is not on the Files tab:\n%s", file, body)
+	return ""
+}
+
 // dtStatus is a file's Doc Tender status as c sees it.
 func (d *docs) dtStatus(c *client, file string) map[string]any {
 	d.t.Helper()
@@ -1443,6 +1456,9 @@ func testDocTenderCorpus(t *testing.T) {
 	if n := len(prov.Calls()); n != calls {
 		t.Fatalf("a closed matter's file made %d model calls", n-calls)
 	}
+	if row := d.filesTabRow(d.atty, closing, shut); !strings.Contains(row, "Not processed (matter closed)") {
+		t.Fatalf("the closed matter's Files tab does not say Not processed (matter closed):\n%s", row)
+	}
 	if code, _ := d.download(d.atty, shut, str(t, d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+shut, nil).json, "current_version_id")); code != http.StatusOK {
 		t.Fatalf("the closed matter's file is not downloadable: %d", code)
 	}
@@ -1478,6 +1494,17 @@ func testDocTenderCorpus(t *testing.T) {
 		st := d.dtStatus(d.atty, id)
 		if flags, _ := st["flags"].([]any); len(flags) == 0 {
 			t.Fatalf("%s file has no flag: %v", kind, st)
+		}
+		// The flag is on the screen too: the matter's Files tab names what failed beside
+		// the file, for the attorney and for staff, and the row keeps Open and Download.
+		label := map[string]string{"password_protected": "Password-protected", "damaged": "Damaged file", "low_confidence": "Low confidence"}[kind]
+		for _, c := range []*client{d.atty, d.staff} {
+			row := d.filesTabRow(c, matter, id)
+			for _, want := range []string{"Needs review", `flag-` + kind + `">` + label + `<`, "disposition=inline", "/download"} {
+				if !strings.Contains(row, want) {
+					t.Fatalf("%s file's Files tab row lacks %q:\n%s", kind, want, row)
+				}
+			}
 		}
 		f := d.atty.must(http.StatusOK, "GET", "/api/v1/files/"+id, nil).json
 		if code, _ := d.download(d.atty, id, f["current_version_id"].(string)); code != http.StatusOK {
@@ -1612,6 +1639,10 @@ func TestDocumentsScreens(t *testing.T) {
 			t.Fatal(err)
 		}
 		docx = b
+	}
+	// The Files tab screenshot must show the damaged file's flag (AC-048).
+	if body := d.atty.must(http.StatusOK, "GET", "/practice/matters/"+matter+"/files", nil).body; !strings.Contains(body, `flag-damaged">Damaged file<`) {
+		t.Fatalf("the Files tab shows no flag on cut-off.pdf:\n%s", body)
 	}
 	letter := str(t, d.upload(d.staff, matter, "Engagement letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", docx, nil), "id")
 
