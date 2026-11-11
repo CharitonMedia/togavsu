@@ -254,8 +254,8 @@ func (s *Service) categorizeUnit(w *work, c *content) unitSpec {
 		for _, cat := range cats {
 			byKey[cat.Key] = cat
 		}
-		ask := func(check bool) (CategoryAnswer, string, error) {
-			resp, err := s.d.Models.Call(ctx, Request{Task: TaskCategorizing, Check: check, System: categoryPrompt(cats), JSON: true,
+		ask := func(check, compared bool) (CategoryAnswer, string, error) {
+			resp, err := s.d.Models.Call(ctx, Request{Task: TaskCategorizing, Check: check, Compared: compared, System: categoryPrompt(cats), JSON: true,
 				Parts: []Part{{Text: c.Body}}, FileID: w.file.ID, MatterID: w.job.MatterID})
 			model := resp.Provider + "/" + resp.Model
 			if err != nil {
@@ -271,16 +271,22 @@ func (s *Service) categorizeUnit(w *work, c *content) unitSpec {
 			}
 			return a, model, nil
 		}
-		first, model, err := ask(checkMethod)
+		// The first answer may fall back as usual: whether it is compared depends on the
+		// tier it picks. A high-tier check is a Compared call, and an agreement between
+		// one model and itself is refused below.
+		first, model, err := ask(checkMethod, false)
 		if err != nil {
 			return unitWork{Method: "categorizing", Model: model}, err
 		}
 		out := categoryOutcome{Answer: first, How: "model", Agree: true}
 		work := unitWork{Method: "categorizing", Model: model, Passed: true, CheckMethod: "standard_tier", CheckResult: "standard tier: one model"}
 		if byKey[first.Category].Tier == "high" {
-			second, checkModel, err := ask(!checkMethod)
+			second, checkModel, err := ask(!checkMethod, true)
 			if err != nil {
 				return unitWork{Method: "categorizing", Model: model}, err
+			}
+			if checkModel == model {
+				return unitWork{Method: "categorizing", Model: model}, fmt.Errorf("the high-tier category and its check both came from %s, so they are not compared", model)
 			}
 			out.Check, out.Agree = &second, second.Category == first.Category
 			work.CheckMethod, work.CheckModel = "check_model_agreement", checkModel

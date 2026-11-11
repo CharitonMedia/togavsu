@@ -339,7 +339,7 @@ func (s *Service) runGroup(ctx context.Context, j Job) error {
 				parts = append(parts, Part{Text: fmt.Sprintf("Photo %d. Text read from it: %s", k+one, strings.ReplaceAll(m.read.Text, "\n", " / "))})
 				parts = append(parts, Part{MediaType: imageType(m.file.ArrivedAs), Name: m.file.ArrivedAs, Data: m.data})
 			}
-			resp, err := s.d.Models.Call(ctx, Request{Task: TaskGrouping, Check: check, System: groupPrompt, JSON: true, Parts: parts, MatterID: j.MatterID})
+			resp, err := s.d.Models.Call(ctx, Request{Task: TaskGrouping, Check: check, Compared: true, System: groupPrompt, JSON: true, Parts: parts, MatterID: j.MatterID})
 			model := resp.Provider + "/" + resp.Model
 			if err != nil {
 				return groupAnswer{}, model, err

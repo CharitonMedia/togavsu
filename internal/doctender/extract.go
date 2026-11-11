@@ -655,30 +655,31 @@ func (s *Service) pageUnit(w *work, k int) unitSpec {
 			}
 			pagePart = Part{MediaType: "application/pdf", Name: fmt.Sprintf("page-%d.pdf", k+one), Data: onePage}
 		}
-		ocr := func(check bool) (string, string, error) {
-			resp, err := s.d.Models.Call(ctx, Request{Task: TaskOCR, Check: check, System: ocrPrompt,
+		ocr := func(check, compared bool) (string, string, error) {
+			resp, err := s.d.Models.Call(ctx, Request{Task: TaskOCR, Check: check, Compared: compared, System: ocrPrompt,
 				Parts: []Part{{Text: fmt.Sprintf("Page %d of %d.", k+one, w.pdf.pageCount())}, pagePart}, FileID: w.file.ID, MatterID: w.job.MatterID})
 			return tidyLines(resp.Text), resp.Provider + "/" + resp.Model, err
 		}
 		if lerr == nil && usableText(layer) {
 			if checkMethod {
 				// The retries are spent: the check model reads the page, compared with the layer.
-				text, model, err := ocr(true)
+				text, model, err := ocr(true, false)
 				if err != nil {
 					return unitWork{Method: "ocr_check_model"}, err
 				}
 				score := similarity(layer, text)
 				return unitWork{Text: text, Method: "ocr_check_model", Model: model, CheckMethod: "text_layer", CheckResult: scoreText(score), Passed: score >= threshold}, nil
 			}
-			text, model, err := ocr(false)
+			text, model, err := ocr(false, false)
 			if err != nil {
 				return unitWork{Method: "text_layer"}, err
 			}
 			score := similarity(layer, text)
 			return unitWork{Text: layer, Method: "text_layer", CheckMethod: "ocr", CheckModel: model, CheckResult: scoreText(score), Passed: score >= threshold}, nil
 		}
-		// A scanned page: OCR model, checked by Tesseract on the same pixels.
-		text, model, err := ocr(checkMethod)
+		// A scanned page: OCR model, checked by Tesseract on the same pixels, or by the
+		// other model when the page can't be given to Tesseract.
+		text, model, err := ocr(checkMethod, !(hasImage && s.d.Second != nil))
 		method := "ocr"
 		if checkMethod {
 			method = "ocr_check_model"
@@ -705,7 +706,7 @@ func (s *Service) secondRead(ctx context.Context, w *work, part Part, image bool
 		text, err := s.d.Second.Read(ctx, part.Data)
 		return text, s.d.Second.Name(), err
 	}
-	resp, err := s.d.Models.Call(ctx, Request{Task: TaskOCR, Check: true, System: ocrPrompt,
+	resp, err := s.d.Models.Call(ctx, Request{Task: TaskOCR, Check: true, Compared: true, System: ocrPrompt,
 		Parts: []Part{{Text: fmt.Sprintf("Page %d.", k+one)}, part}, FileID: w.file.ID, MatterID: w.job.MatterID})
 	return tidyLines(resp.Text), "ocr_check_model:" + resp.Provider + "/" + resp.Model, err
 }
@@ -735,7 +736,7 @@ func (s *Service) readPhoto(ctx context.Context, fileID, matter domain.ID, name,
 	if mediaType == "" || !strings.HasPrefix(mediaType, "image/") {
 		mediaType = "image/" + strings.TrimPrefix(strings.ToLower(path.Ext(name)), ".")
 	}
-	resp, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: checkMethod, System: photoPrompt, JSON: true,
+	resp, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: checkMethod, Compared: s.d.Second == nil, System: photoPrompt, JSON: true,
 		Parts: []Part{{MediaType: mediaType, Name: name, Data: data}}, FileID: fileID, MatterID: matter})
 	model := resp.Provider + "/" + resp.Model
 	if err != nil {
@@ -757,7 +758,7 @@ func (s *Service) readPhoto(ctx context.Context, fileID, matter domain.ID, name,
 		checkName = s.d.Second.Name()
 	} else {
 		var r Response
-		r, err = s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, System: photoPrompt, JSON: true,
+		r, err = s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, Compared: true, System: photoPrompt, JSON: true,
 			Parts: []Part{{MediaType: mediaType, Name: name, Data: data}}, FileID: fileID, MatterID: matter})
 		var other photoRead
 		_ = json.Unmarshal([]byte(jsonObject(r.Text)), &other)
@@ -881,7 +882,7 @@ func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
 			t := transcript{Duration: length.Seconds(), Note: "The recording has no audio track."}
 			return unitWork{Text: jsonText(t), Method: "speech_to_text", CheckMethod: "no_audio_track", CheckResult: "no audio track", Passed: true}, nil
 		}
-		resp, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: checkMethod, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
+		resp, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: checkMethod, Compared: true, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
 			FileID: w.file.ID, MatterID: w.job.MatterID})
 		if checkMethod && errors.Is(err, ErrNoCheckModel) {
 			// No second transcription model is set: the last attempt uses the model again,
@@ -900,7 +901,7 @@ func (s *Service) transcriptUnit(w *work, audio []byte, name string) unitSpec {
 		if !ok {
 			return out, nil
 		}
-		second, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: !checkMethod, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
+		second, err := s.d.Models.Call(ctx, Request{Task: TaskTranscription, Check: !checkMethod, Compared: true, Parts: []Part{{MediaType: "audio/wav", Name: name, Data: audio}},
 			FileID: w.file.ID, MatterID: w.job.MatterID})
 		if errors.Is(err, ErrNoCheckModel) {
 			return out, nil
@@ -1018,7 +1019,7 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 			worst := float64(one)
 			var model, checkModel string
 			for _, f := range fs {
-				resp, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: checkMethod, System: photoPrompt + " This is one frame of a video.", JSON: true,
+				resp, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: checkMethod, Compared: true, System: photoPrompt + " This is one frame of a video.", JSON: true,
 					Parts: []Part{{MediaType: "image/png", Name: "frame.png", Data: f.PNG}}, FileID: w.file.ID, MatterID: w.job.MatterID})
 				if err != nil {
 					return unitWork{Method: "vision_frames"}, err
@@ -1028,7 +1029,7 @@ func (s *Service) videoUnits(ctx context.Context, w *work) ([]unitSpec, *prechec
 				if err := json.Unmarshal([]byte(jsonObject(resp.Text)), &read); err != nil || strings.TrimSpace(read.Description) == "" {
 					return unitWork{Method: "vision_frames", Model: model, CheckResult: "no description at " + hms(f.At.Seconds())}, nil
 				}
-				check, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, System: photoPrompt + " This is one frame of a video.", JSON: true,
+				check, err := s.d.Models.Call(ctx, Request{Task: TaskPhoto, Check: !checkMethod, Compared: true, System: photoPrompt + " This is one frame of a video.", JSON: true,
 					Parts: []Part{{MediaType: "image/png", Name: "frame.png", Data: f.PNG}}, FileID: w.file.ID, MatterID: w.job.MatterID})
 				if err != nil {
 					return unitWork{Method: "vision_frames", Model: model}, err

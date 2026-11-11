@@ -9,11 +9,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
-// Opus checkpoint P2 (on 4c632e5): when the answering model fails, the fallback is
-// not taken if it is the check model, so a check never compares a model with itself.
+// Opus checkpoint P2 (on 4c632e5): when the answer of a compared call fails, the
+// fallback is not taken if it is the check model, so a check never compares a model
+// with itself. Opus checkpoint P2 (on 0918dca): every other call keeps the PRD 8.7
+// fallback to the secondary provider.
 func TestFallbackNeverLandsOnTheCheckModel(t *testing.T) {
 	var mu sync.Mutex
 	var asked []string
@@ -25,7 +28,7 @@ func TestFallbackNeverLandsOnTheCheckModel(t *testing.T) {
 		mu.Lock()
 		asked = append(asked, body.Model)
 		mu.Unlock()
-		if body.Model == "gpt-primary" {
+		if body.Model == "gpt-primary" || body.Model == domain.LabelingModel {
 			http.Error(w, "injected primary failure", http.StatusInternalServerError)
 			return
 		}
@@ -55,16 +58,24 @@ func TestFallbackNeverLandsOnTheCheckModel(t *testing.T) {
 	r := &Router{Settings: reg, BaseURLs: map[string]string{ProviderOpenAI: srv.URL, ProviderCompatible: srv.URL}}
 
 	// The default check model is the secondary's strong model, which is also the
-	// fallback: the answer fails rather than coming from the check model.
-	if resp, err := r.Call(ctx, Request{Task: TaskOCR, System: "read"}); err == nil {
-		t.Fatalf("the answer fell back onto the check model: %+v", resp)
+	// fallback: a compared answer fails rather than coming from the check model.
+	if resp, err := r.Call(ctx, Request{Task: TaskOCR, Compared: true, System: "read"}); err == nil {
+		t.Fatalf("the compared answer fell back onto the check model: %+v", resp)
 	}
-	if resp, err := r.Call(ctx, Request{Task: TaskOCR, Check: true, System: "read"}); err != nil || resp.Model != "gpt-secondary" {
+	if resp, err := r.Call(ctx, Request{Task: TaskOCR, Check: true, Compared: true, System: "read"}); err != nil || resp.Model != "gpt-secondary" {
 		t.Fatalf("check call: %+v %v", resp, err)
 	}
-	// With a separate check model, the fallback is taken as before.
+	// A read that Tesseract checks, and labeling (checked by its citations), are not
+	// compared with the check model: they fall back to the secondary provider.
+	for _, req := range []Request{{Task: TaskOCR, System: "read"}, {Task: TaskLabeling, System: "label"}} {
+		resp, err := r.Call(ctx, req)
+		if err != nil || resp.Model != "gpt-secondary" || !resp.FellBack {
+			t.Fatalf("%s did not fall back to the secondary provider: %+v %v", req.Task, resp, err)
+		}
+	}
+	// With a separate check model, a compared answer falls back as before.
 	set("ai.task_overrides", `{"`+TaskOCR+`":{"check_provider":"openai","check_model":"gpt-fast"}}`)
-	resp, err := r.Call(ctx, Request{Task: TaskOCR, System: "read"})
+	resp, err := r.Call(ctx, Request{Task: TaskOCR, Compared: true, System: "read"})
 	if err != nil || resp.Model != "gpt-secondary" || !resp.FellBack {
 		t.Fatalf("fallback with a separate check model: %+v %v", resp, err)
 	}
