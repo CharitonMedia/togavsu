@@ -2431,6 +2431,15 @@ class StallAlertTests(unittest.TestCase):
         with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
             build_controller.main()
 
+    def test_operator_note_cli_passes_task_operator_and_text_in_order(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps(self.plan))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--note", "one", "Fix the ledger exposure", "--operator", "Integration lead"]
+        with patch.object(sys, "argv", argv), patch.object(build_controller.Controller, "note") as note:
+            build_controller.main()
+        note.assert_called_once_with("one", "Integration lead", "Fix the ledger exposure")
+
     def test_resume_never_clears_a_halt(self):
         self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
         with self.assertRaises(ValueError):

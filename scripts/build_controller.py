@@ -1960,7 +1960,8 @@ def main():
         elif args.resume:
             controller.resume(args.resume, args.operator)
         elif args.note:
-            controller.note(*args.note, args.operator)
+            task, text = args.note
+            controller.note(task, args.operator, text)
         elif args.clear_notes:
             controller.clear_notes(args.clear_notes, args.operator)
         else:
