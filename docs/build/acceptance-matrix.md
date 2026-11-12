@@ -1317,9 +1317,9 @@ An overnight update swaps the core with no failed requests during a load test; a
 Phases in scope: 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: platform, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
-Implementing domains: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
-Pending dependencies: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
+Responsible domains: platform, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release, release-module-api.
+Implementing domains: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release-module-api.
+Pending dependencies: platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release-module-api.
 Legacy Doc Tender failures: none.
 Status: pending.
 
