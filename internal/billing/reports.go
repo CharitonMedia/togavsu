@@ -117,7 +117,7 @@ func (s *Service) UnbilledReport(ctx context.Context, p domain.Principal, f Repo
 		return Report{}, err
 	}
 	r := Report{Report: "unbilled-time", Columns: []string{"kind", "id", "date", "matter_id", "matter_number", "user_id", "user", "description", "hours", "rate_cents", "amount_cents"}, Rows: []map[string]any{}}
-	times, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
+	times, _, err := findOf[TimeEntry](ctx, s.d.Store, kindTime, Where{Unbilled: true, UserID: f.UserID, FromDate: f.FromDate, ToDate: f.ToDate})
 	if err != nil {
 		return Report{}, err
 	}
@@ -139,7 +139,7 @@ func (s *Service) UnbilledReport(ctx context.Context, p domain.Principal, f Repo
 			"description": e.Description, "hours": hours(e.Minutes()), "rate_cents": int64(e.RateCents), "amount_cents": int64(amount)})
 	}
 	if f.UserID.IsZero() {
-		costs, err := listOf[Expense](ctx, s.d.Store, kindExpense)
+		costs, _, err := findOf[Expense](ctx, s.d.Store, kindExpense, Where{Unbilled: true, FromDate: f.FromDate, ToDate: f.ToDate})
 		if err != nil {
 			return Report{}, err
 		}
@@ -176,7 +176,7 @@ func (s *Service) TimeByUserReport(ctx context.Context, p domain.Principal, f Re
 		billable, billedAmt domain.Cents
 	}
 	by := map[domain.ID]*tot{}
-	times, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
+	times, _, err := findOf[TimeEntry](ctx, s.d.Store, kindTime, Where{UserID: f.UserID, FromDate: f.FromDate, ToDate: f.ToDate})
 	if err != nil {
 		return Report{}, err
 	}
@@ -248,13 +248,17 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 	if asOf == "" {
 		asOf = s.today(ctx)
 	}
-	invs, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	invs, err := invoiceHeads(ctx, s.d.Store, Where{ToDate: asOf})
 	if err != nil {
 		return Report{}, err
 	}
 	pays, err := listOf[Payment](ctx, s.d.Store, kindPayment)
 	if err != nil {
 		return Report{}, err
+	}
+	paidOn := map[domain.ID][]Payment{}
+	for _, pay := range pays {
+		paidOn[pay.InvoiceID] = append(paidOn[pay.InvoiceID], pay)
 	}
 	r := Report{Report: "ar-aging", Columns: []string{"invoice_id", "number", "matter_id", "matter_number", "issued_on", "due_on", "days_past_due", "bucket", "balance_cents"}, Rows: []map[string]any{}}
 	for _, inv := range invs {
@@ -270,7 +274,7 @@ func (s *Service) ARAgingReport(ctx context.Context, p domain.Principal, f Repor
 			continue
 		}
 		owed := inv.TotalCents
-		for _, pay := range pays {
+		for _, pay := range paidOn[inv.ID] {
 			if pay.InvoiceID != inv.ID || pay.ReceivedOn > asOf || pay.Status == PayPending || pay.Status == PayFailed {
 				continue
 			}

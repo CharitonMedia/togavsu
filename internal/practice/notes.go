@@ -3,6 +3,7 @@ package practice
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -105,6 +106,7 @@ func (s *Service) GetNote(ctx context.Context, p domain.Principal, id domain.ID)
 
 // ListNotes returns notes the caller can see. Pinned notes come first.
 func (s *Service) ListNotes(ctx context.Context, p domain.Principal, filter NoteFilter) ([]domain.Note, string, error) {
+	ctx = withSettingsMemo(ctx)
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResNote, Action: domain.ActionRead}); err != nil {
 		return nil, "", err
 	}
@@ -263,16 +265,9 @@ func sanitizeNote(body string, source domain.ActorSource) string {
 	return strings.TrimSpace(b.String())
 }
 
+// sortNotes is a stable sort, like the quadratic insertion sort it replaced.
 func sortNotes(rows []domain.Note) {
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		j := i
-		for j > 0 && noteLess(row, rows[j-1]) {
-			rows[j] = rows[j-1]
-			j--
-		}
-		rows[j] = row
-	}
+	sort.SliceStable(rows, func(i, j int) bool { return noteLess(rows[i], rows[j]) })
 }
 
 func noteLess(a, b domain.Note) bool {

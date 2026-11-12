@@ -3,6 +3,7 @@ package practice
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -91,6 +92,7 @@ func (s *Service) GetMatter(ctx context.Context, p domain.Principal, id domain.I
 
 // ListMatters returns matters the caller can see. Walled matters are absent.
 func (s *Service) ListMatters(ctx context.Context, p domain.Principal, status string, area domain.ID) ([]MatterView, error) {
+	ctx = withSettingsMemo(ctx)
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return nil, err
 	}
@@ -113,6 +115,21 @@ func (s *Service) ListMatters(ctx context.Context, p domain.Principal, status st
 	}
 	sortMatters(out)
 	return out, nil
+}
+
+// CountMatters counts the matters ListMatters would return, without building their views.
+func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status string, area domain.ID) (int, error) {
+	ctx = withSettingsMemo(ctx)
+	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, row := range s.db.Matters() {
+		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && s.visibleMatter(ctx, p, row.ID) {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // PreviewClose returns warnings and writes nothing. It is a staff close screen, not a shared client item.
@@ -625,7 +642,7 @@ func (s *Service) matterView(ctx context.Context, p domain.Principal, row domain
 	if closeRow, ok := s.db.LatestClose(row.ID); ok {
 		view.Close = &closeRow
 	}
-	view.Glance = s.glance(row)
+	view.Glance = s.glance(ctx, row)
 	for _, party := range view.Parties {
 		name := string(party.ContactID)
 		if contact, err := s.db.Contact(ctx, party.ContactID); err == nil && contact.FullName != "" {
@@ -639,30 +656,42 @@ func (s *Service) matterView(ctx context.Context, p domain.Principal, row domain
 	return view, nil
 }
 
-func (s *Service) glance(row domain.Matter) Glance {
+func (s *Service) glance(ctx context.Context, row domain.Matter) Glance {
 	g := Glance{Stage: row.Stage, Files: 0, OpenExceptions: 0}
-	for _, invoice := range s.db.Invoices() {
-		if invoice.MatterID == row.ID {
-			g.Invoices++
-		}
-	}
-	for _, bal := range s.db.TrustBalances() {
-		if bal.MatterID != row.ID {
-			continue
-		}
-		sum, err := g.TrustCents.Add(bal.BalanceCents)
-		if err == nil {
-			g.TrustCents = sum
-		}
-	}
-	minutes := s.intSetting(context.Background(), "billing.time_increment_minutes", domain.BillingTimeIncrementMinutes)
+	minutes := s.intSetting(ctx, "billing.time_increment_minutes", domain.BillingTimeIncrementMinutes)
 	increments := 0
-	for _, entry := range s.db.TimeEntries() {
-		if entry.MatterID != row.ID {
-			continue
+	if gl, ok := s.db.(interface {
+		MatterGlance(domain.ID) (int, []domain.Cents, int, int)
+	}); ok {
+		var balances []domain.Cents
+		g.Invoices, balances, g.TimeEntries, increments = gl.MatterGlance(row.ID)
+		for _, b := range balances {
+			if sum, err := g.TrustCents.Add(b); err == nil {
+				g.TrustCents = sum
+			}
 		}
-		g.TimeEntries++
-		increments += entry.Increments
+	} else {
+		for _, invoice := range s.db.Invoices() {
+			if invoice.MatterID == row.ID {
+				g.Invoices++
+			}
+		}
+		for _, bal := range s.db.TrustBalances() {
+			if bal.MatterID != row.ID {
+				continue
+			}
+			sum, err := g.TrustCents.Add(bal.BalanceCents)
+			if err == nil {
+				g.TrustCents = sum
+			}
+		}
+		for _, entry := range s.db.TimeEntries() {
+			if entry.MatterID != row.ID {
+				continue
+			}
+			g.TimeEntries++
+			increments += entry.Increments
+		}
 	}
 	hours := float64(increments*minutes) / 60
 	g.TimeHours = strconv.FormatFloat(hours, 'f', 1, 64)
@@ -764,16 +793,10 @@ func matterChanges(prev, next domain.Matter, reason, action, summary string) []c
 	return out
 }
 
+// sortMatters is a stable sort, as the insertion sort it replaced was; that one was
+// quadratic and took over a minute on 20,000 matters.
 func sortMatters(rows []MatterView) {
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		j := i
-		for j > 0 && matterLess(row, rows[j-1]) {
-			rows[j] = rows[j-1]
-			j--
-		}
-		rows[j] = row
-	}
+	sort.SliceStable(rows, func(i, j int) bool { return matterLess(rows[i], rows[j]) })
 }
 
 func matterLess(a, b MatterView) bool {

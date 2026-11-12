@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"io"
 	"io/fs"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -453,8 +454,18 @@ func (h *Handler) listTime(w http.ResponseWriter, r *http.Request, p domain.Prin
 		writeErr(w, err)
 		return
 	}
-	rows, err := h.Svc.TimeEntries(r.Context(), p, TimeFilter{MatterID: domain.ID(q(r, "matter_id")), UserID: domain.ID(q(r, "user_id")),
-		FromDate: q(r, "from_date"), ToDate: q(r, "to_date"), Billable: billable, InvoiceID: domain.ID(q(r, "invoice_id"))})
+	f := TimeFilter{MatterID: domain.ID(q(r, "matter_id")), UserID: domain.ID(q(r, "user_id")),
+		FromDate: q(r, "from_date"), ToDate: q(r, "to_date"), Billable: billable, InvoiceID: domain.ID(q(r, "invoice_id"))}
+	if q(r, "format") != "csv" {
+		// A JSON page needs the rows up to its end and one more to know a next page exists.
+		from, _, _, limit, err := h.pageOf(r, math.MaxInt)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		f.Max = from + limit + 1
+	}
+	rows, err := h.Svc.TimeEntries(r.Context(), p, f)
 	h.list(w, r, "time-entries", anys(rows, timeView), err)
 }
 
@@ -672,8 +683,16 @@ func (h *Handler) patchExpense(w http.ResponseWriter, r *http.Request, p domain.
 // Invoices.
 
 func (h *Handler) listInvoices(w http.ResponseWriter, r *http.Request, p domain.Principal) {
-	rows, err := h.Svc.Invoices(r.Context(), p, InvoiceFilter{MatterID: domain.ID(q(r, "matter_id")), Status: q(r, "status"),
-		FromDate: q(r, "from_date"), ToDate: q(r, "to_date")})
+	f := InvoiceFilter{MatterID: domain.ID(q(r, "matter_id")), Status: q(r, "status"), FromDate: q(r, "from_date"), ToDate: q(r, "to_date")}
+	if q(r, "format") != "csv" {
+		from, _, _, limit, err := h.pageOf(r, math.MaxInt)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		f.Max = from + limit + 1
+	}
+	rows, err := h.Svc.Invoices(r.Context(), p, f)
 	client := ClientOnly(p)
 	h.list(w, r, "invoices", anys(rows, func(i Invoice) any { return invoiceView(i, client) }), err)
 }
