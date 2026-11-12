@@ -9,6 +9,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
@@ -46,7 +47,18 @@ func bit(b bool) int {
 	return pgFalse
 }
 
+// q is the open audit transaction on the pool, or the pool, so a write made inside
+// audit.Service.Atomic commits or rolls back with its audit and activity rows.
+func (p *Postgres) q(ctx context.Context) audit.Querier { return audit.Conn(ctx, p.DB) }
+
+// joinsAuditTx marks a Store whose writes join the audit transaction (see commit).
+func (*Postgres) joinsAuditTx() {}
+
+// tx runs f in the open audit transaction, or in its own when there is none.
 func (p *Postgres) tx(ctx context.Context, f func(*sql.Tx) error) error {
+	if tx := audit.Tx(ctx, p.DB); tx != nil {
+		return f(tx)
+	}
 	tx, err := p.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -108,7 +120,7 @@ func (p *Postgres) DeleteEvent(ctx context.Context, id domain.ID) error {
 const eventCols = `id, created_at, updated_at, created_by, title, kind, starts_at, ends_at, all_day, matter_id, location, travel_minutes, notes`
 
 func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Event, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT `+eventCols+` FROM calendar_events `+where+` ORDER BY starts_at, id`, args...)
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT `+eventCols+` FROM calendar_events `+where+` ORDER BY starts_at, id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +146,7 @@ func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Eve
 	if len(out) == 0 {
 		return out, nil
 	}
-	att, err := p.DB.QueryContext(ctx, `SELECT event_id, user_id FROM calendar_event_attendees ORDER BY created_at, id`)
+	att, err := p.q(ctx).QueryContext(ctx, `SELECT event_id, user_id FROM calendar_event_attendees ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +191,7 @@ func (p *Postgres) PutDeadline(ctx context.Context, row Deadline) error {
 	if row.Offsets == nil {
 		offsets = []byte("[]")
 	}
-	_, err = p.DB.ExecContext(ctx, `INSERT INTO deadlines (id, created_at, updated_at, created_by, matter_id, title, due_on,
+	_, err = p.q(ctx).ExecContext(ctx, `INSERT INTO deadlines (id, created_at, updated_at, created_by, matter_id, title, due_on,
 responsible_user_id, status, reminder_offsets, done_by, done_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, matter_id = EXCLUDED.matter_id, title = EXCLUDED.title,
 due_on = EXCLUDED.due_on, responsible_user_id = EXCLUDED.responsible_user_id, status = EXCLUDED.status,
@@ -191,7 +203,7 @@ reminder_offsets = EXCLUDED.reminder_offsets, done_by = EXCLUDED.done_by, done_a
 
 // DeleteDeadline removes a deadline; it only undoes a create whose audit failed.
 func (p *Postgres) DeleteDeadline(ctx context.Context, id domain.ID) error {
-	res, err := p.DB.ExecContext(ctx, `DELETE FROM deadlines WHERE id = $1`, string(id))
+	res, err := p.q(ctx).ExecContext(ctx, `DELETE FROM deadlines WHERE id = $1`, string(id))
 	if err != nil {
 		return err
 	}
@@ -202,7 +214,7 @@ func (p *Postgres) DeleteDeadline(ctx context.Context, id domain.ID) error {
 }
 
 func (p *Postgres) deadlines(ctx context.Context, where string, args ...any) ([]Deadline, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, matter_id, title, due_on, responsible_user_id, status,
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, matter_id, title, due_on, responsible_user_id, status,
 reminder_offsets, done_by, done_at FROM deadlines `+where+` ORDER BY due_on, id`, args...)
 	if err != nil {
 		return nil, err
@@ -248,7 +260,7 @@ func (p *Postgres) PutFeed(ctx context.Context, row Feed) error {
 	if !row.RevokedAt.IsZero() {
 		revokedAt = domain.UnixMicroUTC(row.RevokedAt)
 	}
-	_, err := p.DB.ExecContext(ctx, `INSERT INTO ical_feeds (id, created_at, updated_at, created_by, owner_user_id, secret_hash, revoked,
+	_, err := p.q(ctx).ExecContext(ctx, `INSERT INTO ical_feeds (id, created_at, updated_at, created_by, owner_user_id, secret_hash, revoked,
 revoked_at, revoked_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at,
 owner_user_id = EXCLUDED.owner_user_id, secret_hash = EXCLUDED.secret_hash, revoked = EXCLUDED.revoked,
 revoked_at = EXCLUDED.revoked_at, revoked_by = EXCLUDED.revoked_by`,
@@ -259,7 +271,7 @@ revoked_at = EXCLUDED.revoked_at, revoked_by = EXCLUDED.revoked_by`,
 
 // DeleteFeed removes a feed; it only undoes a create whose audit failed.
 func (p *Postgres) DeleteFeed(ctx context.Context, id domain.ID) error {
-	res, err := p.DB.ExecContext(ctx, `DELETE FROM ical_feeds WHERE id = $1`, string(id))
+	res, err := p.q(ctx).ExecContext(ctx, `DELETE FROM ical_feeds WHERE id = $1`, string(id))
 	if err != nil {
 		return err
 	}
@@ -270,7 +282,7 @@ func (p *Postgres) DeleteFeed(ctx context.Context, id domain.ID) error {
 }
 
 func (p *Postgres) feeds(ctx context.Context, where string, args ...any) ([]Feed, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, owner_user_id, secret_hash, revoked, revoked_at, revoked_by
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT id, created_at, updated_at, created_by, owner_user_id, secret_hash, revoked, revoked_at, revoked_by
 FROM ical_feeds `+where+` ORDER BY id`, args...)
 	if err != nil {
 		return nil, err
@@ -321,7 +333,7 @@ func (p *Postgres) Feeds(ctx context.Context) ([]Feed, error) { return p.feeds(c
 
 // ClaimReminder records that key was sent; false when another run already claimed it.
 func (p *Postgres) ClaimReminder(ctx context.Context, key string) (bool, error) {
-	res, err := p.DB.ExecContext(ctx, `INSERT INTO calendar_reminders_sent (reminder_key, created_at) VALUES ($1, $2)
+	res, err := p.q(ctx).ExecContext(ctx, `INSERT INTO calendar_reminders_sent (reminder_key, created_at) VALUES ($1, $2)
 ON CONFLICT (reminder_key) DO NOTHING`, key, domain.UnixMicroUTC(time.Now()))
 	if err != nil {
 		return false, err
@@ -332,7 +344,7 @@ ON CONFLICT (reminder_key) DO NOTHING`, key, domain.UnixMicroUTC(time.Now()))
 
 // ReleaseReminder drops a claim whose delivery failed.
 func (p *Postgres) ReleaseReminder(ctx context.Context, key string) error {
-	_, err := p.DB.ExecContext(ctx, `DELETE FROM calendar_reminders_sent WHERE reminder_key = $1`, key)
+	_, err := p.q(ctx).ExecContext(ctx, `DELETE FROM calendar_reminders_sent WHERE reminder_key = $1`, key)
 	return err
 }
 
@@ -345,7 +357,7 @@ func (p *Postgres) PutNotice(ctx context.Context, n Notice) error {
 		}
 		n.ID = id
 	}
-	_, err := p.DB.ExecContext(ctx, `INSERT INTO calendar_notices (id, created_at, user_id, kind, title, body, path, matter_id, record_id, emailed)
+	_, err := p.q(ctx).ExecContext(ctx, `INSERT INTO calendar_notices (id, created_at, user_id, kind, title, body, path, matter_id, record_id, emailed)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, string(n.ID), domain.UnixMicroUTC(n.At), string(n.UserID), n.Kind, n.Title, n.Body, n.Path,
 		nullID(n.MatterID), nullID(n.RecordID), bit(n.Emailed))
 	return err
@@ -353,7 +365,7 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, string(n.ID), domain.UnixMicroUTC(n.At
 
 // Notices lists a user's reminders in the order they were made.
 func (p *Postgres) Notices(ctx context.Context, user domain.ID) ([]Notice, error) {
-	rows, err := p.DB.QueryContext(ctx, `SELECT id, created_at, user_id, kind, title, body, path, matter_id, record_id, emailed
+	rows, err := p.q(ctx).QueryContext(ctx, `SELECT id, created_at, user_id, kind, title, body, path, matter_id, record_id, emailed
 FROM calendar_notices WHERE user_id = $1 ORDER BY created_at, id`, string(user))
 	if err != nil {
 		return nil, err
@@ -382,7 +394,7 @@ func (p *Postgres) AppendEvent(ctx context.Context, row domain.Event) error {
 	default:
 		kind = "staff"
 	}
-	_, err := p.DB.ExecContext(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type,
+	_, err := p.q(ctx).ExecContext(ctx, `INSERT INTO events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type,
 record_id, matter_id, summary, client_visible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,(SELECT id FROM matters WHERE id = $10),$11,$12)`,
 		string(row.ID), domain.UnixMicroUTC(row.CreatedAt), domain.UnixMicroUTC(row.UpdatedAt), string(row.CreatedBy), kind, string(row.ActorID),
 		row.Action, row.RecordType, string(row.RecordID), nullID(row.MatterID), row.Summary, bit(row.ClientVisible))
