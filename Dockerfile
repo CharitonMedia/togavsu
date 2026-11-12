@@ -13,7 +13,9 @@ RUN printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > go.mod \
 # engine calls this process makes, trigger: phase 7 release hardening.
 FROM postgres:17
 USER root
-RUN apt-get update \
+# apt.postgresql.org (in the postgres base image) sometimes serves an index mid-sync;
+# both apt-get update calls retry the index fetch before giving up.
+RUN for i in 1 2 3 4 5; do apt-get update && break; [ "$i" -lt 5 ] || exit 1; sleep $((i * 10)); done \
     && apt-get install -y --no-install-recommends openssh-client \
     && rm -rf /var/lib/apt/lists/* \
     && command -v sftp
@@ -29,7 +31,7 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
          arm64) sum="$COSIGN_SHA256_ARM64" ;; \
          *) echo "no pinned cosign for $arch" >&2; exit 1 ;; \
        esac \
-    && apt-get update \
+    && for i in 1 2 3 4 5; do apt-get update && break; [ "$i" -lt 5 ] || exit 1; sleep $((i * 10)); done \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && curl -fsSL -o /usr/local/bin/cosign "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-${arch}" \
     && echo "$sum  /usr/local/bin/cosign" | sha256sum -c - \

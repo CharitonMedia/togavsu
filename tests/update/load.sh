@@ -132,6 +132,8 @@ services:
       - "127.0.0.1:$https_port:443"
   core:
     image: upd-core:1.0.0
+  migrate:
+    image: upd-core:1.0.0
   supervisor:
     image: upd-supervisor:local
     ports:

@@ -40,6 +40,8 @@ services:
       - "127.0.0.1:${https_port}:443"
   core:
     image: ${core_image}
+  migrate:
+    image: ${core_image}
   supervisor:
     image: ${supervisor_image}
     volumes:
