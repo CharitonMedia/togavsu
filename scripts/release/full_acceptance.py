@@ -134,6 +134,8 @@ def main():
     ap.add_argument("--phase", action="append", default=[])
     ap.add_argument("--check", action="append", default=[])
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--reuse", help="decide from the check results in this results.json instead of running them again; "
+                    "it must have been recorded at this same revision with a clean working tree")
     args = ap.parse_args()
     ev, ids, problems = load()
     if args.list:
@@ -163,7 +165,14 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     head, dirty = revision()
     results = {}
-    for cid in checks:
+    if args.reuse:
+        with open(args.reuse) as f:
+            prior = json.load(f)
+        if prior.get("tested_revision") != head or prior.get("working_tree_dirty") or dirty:
+            print("--reuse results were not recorded at this clean revision", file=sys.stderr)
+            return 2
+        results = {c: prior["checks"][c] for c in checks if c in prior.get("checks", {})}
+    for cid in [c for c in checks if c not in results]:
         print("== " + cid + ": " + ev["checks"][cid]["command"], flush=True)
         results[cid] = run_check(cid, ev["checks"][cid], args.out)
         r = results[cid]
