@@ -1254,6 +1254,72 @@ func testDocTenderCorpus(t *testing.T) {
 	if prov.Count("labeling:gpt-6.1-sol") == 0 {
 		t.Fatalf("the provider saw no labeling call on gpt-6.1-sol: %v", prov.Calls())
 	}
+	// The AI call log shows it: over the API, filtered by task and provider and paged by
+	// cursor, over the admin's MCP, and on the AI and inference tab. Staff and the
+	// accountant are refused.
+	logged := d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls?task=labeling&provider=openai", nil)
+	labeled := items(t, logged)
+	if len(labeled) == 0 {
+		t.Fatalf("no labeling call in the log: %s", logged.body)
+	}
+	for _, c := range labeled {
+		if c["task"] != "labeling" || c["provider"] != "openai" || c["model"] != "gpt-6.1-sol" || c["requester"] != "system" {
+			t.Fatalf("labeling log row: %v", c)
+		}
+	}
+	if none := items(t, d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls?task=labeling&provider=anthropic", nil)); len(none) != 0 {
+		t.Fatalf("provider filter: %v", none)
+	}
+	all := items(t, d.admin.must(http.StatusOK, "GET", "/api/v1/ai/calls", nil))
+	if len(all) < 2 {
+		t.Fatalf("want at least two logged calls to page: %d", len(all))
+	}
+	var paged []any
+	cursor := ""
+	for i := 0; i <= len(all); i++ {
+		path := "/api/v1/ai/calls?limit=1"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		pg := d.admin.must(http.StatusOK, "GET", path, nil)
+		for _, c := range items(t, pg) {
+			paged = append(paged, c["id"])
+		}
+		next, _ := pg.json["page"].(map[string]any)["next_cursor"].(string)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	if len(paged) != len(all) || paged[0] != all[0]["id"] || paged[len(paged)-1] != all[len(all)-1]["id"] {
+		t.Fatalf("cursor pages %v differ from the full list of %d", paged, len(all))
+	}
+	for _, bad := range []string{"cursor=not-a-cursor", "limit=0", "limit=100000", "from_time=yesterday"} {
+		if r := d.admin.do("GET", "/api/v1/ai/calls?"+bad, nil); r.code != http.StatusBadRequest {
+			t.Fatalf("GET /api/v1/ai/calls?%s answered %d", bad, r.code)
+		}
+	}
+	for _, c := range []*client{d.staff, d.acct, d.atty} {
+		if r := c.do("GET", "/api/v1/ai/calls", nil); r.code != http.StatusForbidden {
+			t.Fatalf("a non-admin read the AI call log: %d", r.code)
+		}
+		if r := c.do("GET", "/admin?tab=ai", nil); r.code != http.StatusForbidden {
+			t.Fatalf("a non-admin opened the AI tab: %d", r.code)
+		}
+	}
+	if mcp := mcpCall(d.admin, toolName(t, "GET", "/api/v1/ai/calls"), map[string]any{"query": map[string]any{"task": "labeling"}}); !strings.Contains(mcp.body, "gpt-6.1-sol") || strings.Contains(mcp.body, `"isError":true`) {
+		t.Fatalf("call log over MCP: %s", mcp.body)
+	}
+	if mcp := mcpCall(d.staff, toolName(t, "GET", "/api/v1/ai/calls"), map[string]any{}); strings.Contains(mcp.body, "gpt-6.1-sol") {
+		t.Fatalf("staff read the call log over MCP: %s", mcp.body)
+	}
+	tab := d.admin.must(http.StatusOK, "GET", "/admin?tab=ai&task=labeling", nil)
+	if !strings.Contains(tab.body, `id="ai-call-log"`) || !strings.Contains(tab.body, `<td>labeling</td><td>openai</td><td><code>gpt-6.1-sol</code></td>`) {
+		t.Fatalf("the AI tab does not show the labeling call:\n%s", tab.body)
+	}
+	if tab := d.admin.must(http.StatusOK, "GET", "/admin?tab=ai&task=ocr&provider=anthropic", nil); strings.Contains(tab.body, `id="call-`) || !strings.Contains(tab.body, "No AI calls match.") {
+		t.Fatal("the AI tab's filter still lists calls")
+	}
 	choices := d.admin.must(http.StatusOK, "GET", "/api/v1/doc-tender/model-choices", nil).json
 	for _, task := range []string{"labeling", "categorizing"} {
 		list, _ := choices[task].([]any)

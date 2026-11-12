@@ -155,6 +155,12 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 	u.Accounts = dh.Accounts
 	if app.ext != nil {
 		dh.Modules = modulesAdmin{x: app.ext}
+		dh.AICalls = func(r *http.Request, p domain.Principal) (any, error) {
+			if app.ext.Modules == nil {
+				return nil, nil
+			}
+			return aiCallPanel(r, p, app.ext.Modules, app.Settings)
+		}
 	}
 	ledger := audit.NewPostgres(app.Pool)
 	dh.Audit = func(r *http.Request, p domain.Principal, limit int) ([]dashboard.AuditRow, error) {
