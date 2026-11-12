@@ -64,7 +64,7 @@ digest=$("$docker" image inspect "$repo:stack" --format '{{range .RepoDigests}}{
 go run ./tests/e2e/modpack -image "$repo" -digest "$digest" -out "$work/matter-clock.signed.json" -pub "$work/key.pem"
 
 compose down -v --remove-orphans >/dev/null 2>&1 || true
-TOGAVSU_DOMAIN=localhost compose up -d --wait --wait-timeout 300
+TOGAVSU_DOMAIN=localhost compose up -d --build --wait --wait-timeout 300
 i=0
 until curl -skf "$base/api/v1/health" >/dev/null; do
   i=$((i + 1)); [ "$i" -lt 90 ] || { echo "core did not answer $base" >&2; exit 1; }; sleep 1

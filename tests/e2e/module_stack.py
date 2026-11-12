@@ -10,6 +10,7 @@ the module container and the core container's start time with docker. Synthetic 
 import json
 import sys
 import time
+import urllib.parse
 import uuid
 
 from tests.e2e.first_run import Client
@@ -79,11 +80,20 @@ def main(base, state_file, pkg, pub):
     if "matter-clock" not in nav:
         raise SystemExit("the module is not in the sidebar context: %s" % nav[:400])
 
+    last = {}
+
     def framed(page):
-        status, _, raw, _ = c.call("GET", "/m/matter-clock" + page)
+        # The shell frames a module page with a short-lived context token for the viewer.
+        tok = c.must(201, "POST", "/api/v1/modules/matter-clock/context-tokens", {})["token"]
+        status, _, raw, _ = c.call("GET", "/m/matter-clock" + page + "?context=" + urllib.parse.quote(tok))
+        last[page] = "%d %s" % (status, raw[:200])
         return raw if status == 200 and "<" in raw else None
-    widget = wait("the module container to serve its widget through the core", lambda: framed("/widget"))
-    tab = wait("the module container to serve its tab through the core", lambda: framed("/tab"))
+    try:
+        widget = wait("the module container to serve its widget through the core", lambda: framed("/widget"))
+        tab = wait("the module container to serve its tab through the core", lambda: framed("/tab"))
+    except SystemExit:
+        print("last frame answers: %s" % last)
+        raise
     print("widget and tab served by the container (%d and %d bytes)" % (len(widget), len(tab)))
 
     activity = c.must(201, "POST", "/api/v1/activity-types", {"name": "Compose drafting"})
