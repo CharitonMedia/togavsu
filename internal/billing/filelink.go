@@ -28,7 +28,21 @@ func NewFileLink(svc *files.Service) (*FileLink, error) {
 var (
 	_ Receipts     = (*FileLink)(nil)
 	_ InvoiceFiles = (*FileLink)(nil)
+	_ SignedCopies = (*FileLink)(nil)
 )
+
+// CheckMatterFile implements SignedCopies: fileID is an untrashed file on matter that p
+// may read. Anything else answers not found.
+func (l *FileLink) CheckMatterFile(ctx context.Context, p domain.Principal, matter, fileID domain.ID) error {
+	f, err := l.Svc.Get(ctx, p, fileID)
+	if err != nil {
+		return err
+	}
+	if f.TrashedAt != nil || f.MatterID == nil || *f.MatterID != matter {
+		return domain.NotFound("file")
+	}
+	return nil
+}
 
 func isReceipt(f files.FileView, matter domain.ID) bool {
 	return f.TrashedAt == nil && f.MatterID != nil && *f.MatterID == matter &&

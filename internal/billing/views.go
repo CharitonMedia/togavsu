@@ -287,3 +287,28 @@ func worklistView(w Worklist) map[string]any {
 	}
 	return map[string]any{"flat_fee": flat, "hourly": hourly}
 }
+
+type feeAgreementJSON struct {
+	metaJSON
+	MatterID     domain.ID  `json:"matter_id"`
+	FeeType      string     `json:"fee_type"`
+	AmountCents  *int64     `json:"amount_cents"`
+	Services     string     `json:"services_description"`
+	Status       string     `json:"status"`
+	SignedOn     *string    `json:"signed_on"`
+	VoidReason   string     `json:"void_reason"`
+	SignedFileID *domain.ID `json:"signed_file_id"`
+}
+
+func feeAgreementView(f FeeAgreement) feeAgreementJSON {
+	out := feeAgreementJSON{metaJSON: metaOf(f.Meta), MatterID: f.MatterID, FeeType: f.FeeType, Services: f.Services,
+		Status: f.Status, VoidReason: f.VoidReason, SignedFileID: idOrNil(f.SignedFileID)}
+	if f.AmountCents != nil {
+		v := int64(*f.AmountCents)
+		out.AmountCents = &v
+	}
+	if f.SignedOn != "" {
+		out.SignedOn = &f.SignedOn
+	}
+	return out
+}

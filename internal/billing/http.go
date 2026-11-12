@@ -56,6 +56,12 @@ func (h *Handler) Routes() http.Handler {
 			fn(w, r, p)
 		})
 	}
+	api("GET /api/v1/fee-agreements", h.listFeeAgreements)
+	api("POST /api/v1/fee-agreements", h.createFeeAgreement)
+	api("POST /api/v1/fee-agreements:bulk", h.bulkFeeAgreements)
+	api("GET /api/v1/fee-agreements/{fee_agreement_id}", h.getFeeAgreement)
+	api("PATCH /api/v1/fee-agreements/{fee_agreement_id}", h.patchFeeAgreement)
+	api("GET /api/v1/fee-agreements/{fee_agreement_id}/history", h.feeAgreementHistory)
 	api("GET /api/v1/fee-items", h.listFeeItems)
 	api("POST /api/v1/fee-items", h.createFeeItem)
 	api("GET /api/v1/fee-items/{fee_item_id}", h.getFeeItem)
@@ -980,4 +986,98 @@ func (h *Handler) report(w http.ResponseWriter, r *http.Request, p domain.Princi
 		return
 	}
 	writeJSON(w, http.StatusOK, rep)
+}
+
+// Fee agreements.
+
+type feeAgreementBody struct {
+	MatterID     *domain.ID             `json:"matter_id"`
+	FeeType      *string                `json:"fee_type"`
+	AmountCents  nullable[domain.Cents] `json:"amount_cents"`
+	Services     *string                `json:"services_description"`
+	Status       *string                `json:"status"`
+	SignedOn     nullable[string]       `json:"signed_on"`
+	VoidReason   *string                `json:"void_reason"`
+	SignedFileID nullable[domain.ID]    `json:"signed_file_id"`
+}
+
+// nullable tells a JSON null (set to nothing) from an absent field (leave as is).
+type nullable[T any] struct {
+	set bool
+	v   *T
+}
+
+func (n *nullable[T]) UnmarshalJSON(b []byte) error {
+	n.set = true
+	if string(b) == "null" {
+		n.v = nil
+		return nil
+	}
+	var v T
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	n.v = &v
+	return nil
+}
+
+func (n nullable[T]) ptr() **T {
+	if !n.set {
+		return nil
+	}
+	return &n.v
+}
+
+func (b feeAgreementBody) input() FeeAgreementInput {
+	return FeeAgreementInput{MatterID: b.MatterID, FeeType: b.FeeType, AmountCents: b.AmountCents.ptr(), Services: b.Services,
+		Status: b.Status, SignedOn: b.SignedOn.ptr(), VoidReason: b.VoidReason, SignedFileID: b.SignedFileID.ptr()}
+}
+
+func (h *Handler) listFeeAgreements(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	q := r.URL.Query()
+	rows, err := h.Svc.FeeAgreements(r.Context(), p, domain.ID(q.Get("matter_id")), q.Get("status"))
+	h.list(w, r, "fee-agreements", anys(rows, feeAgreementView), err)
+}
+
+func (h *Handler) createFeeAgreement(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	var body feeAgreementBody
+	h.write(w, r, p, &body, func() (int, any, error) {
+		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, []FeeAgreementInput{body.input()})
+		if err != nil {
+			return 0, nil, err
+		}
+		return http.StatusCreated, feeAgreementView(rows[0]), nil
+	})
+}
+
+func (h *Handler) bulkFeeAgreements(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	var body struct {
+		Items []feeAgreementBody `json:"items"`
+	}
+	h.write(w, r, p, &body, func() (int, any, error) {
+		in := make([]FeeAgreementInput, 0, len(body.Items))
+		for _, b := range body.Items {
+			in = append(in, b.input())
+		}
+		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, in)
+		return http.StatusCreated, map[string]any{"data": anys(rows, feeAgreementView)}, err
+	})
+}
+
+func (h *Handler) getFeeAgreement(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	row, err := h.Svc.FeeAgreement(r.Context(), p, domain.ID(r.PathValue("fee_agreement_id")))
+	respond(w, http.StatusOK, feeAgreementView(row), err)
+}
+
+func (h *Handler) patchFeeAgreement(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	var body feeAgreementBody
+	h.write(w, r, p, &body, func() (int, any, error) {
+		row, err := h.Svc.UpdateFeeAgreement(r.Context(), p, domain.ID(r.PathValue("fee_agreement_id")), body.input())
+		return http.StatusOK, feeAgreementView(row), err
+	})
+}
+
+func (h *Handler) feeAgreementHistory(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	rows, err := h.Svc.FeeAgreementHistory(r.Context(), p, domain.ID(r.PathValue("fee_agreement_id")))
+	h.list(w, r, "fee-agreement-history", anys(rows, auditView), err)
 }
