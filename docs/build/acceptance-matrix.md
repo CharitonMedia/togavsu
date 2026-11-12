@@ -11,8 +11,8 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | ID | Full phase | Recheck | Implementing domains | Cases | Status |
 | --- | --- | --- | --- | --- | --- |
 | AC-001 | 1 | 7 | contracts, platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
-| AC-002 | 7 | none | api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
-| AC-003 | 6 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 8 | pending |
+| AC-002 | 7 | none | api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules | 5 | pending |
+| AC-003 | 6 | 7 | identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules | 8 | pending |
 | AC-004 | 7 | none | identity, integrate-practice, billing, trust, integrate-finance, integrate-documents, integrate-extensions | 9 | pending |
 | AC-005 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
 | AC-006 | 3 | 7 | integrate-practice, trust, integrate-finance, integrate-documents, integrate-extensions | 7 | pending |
@@ -21,8 +21,8 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-009 | 3 | 7 | practice, integrate-practice, billing, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-010 | 5 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
 | AC-011 | 6 | 7 | integrate-practice, calendar, integrate-finance, integrate-documents, ui, integrate-extensions | 5 | pending |
-| AC-012 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
-| AC-013 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 3 | pending |
+| AC-012 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules | 4 | pending |
+| AC-013 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules | 3 | pending |
 | AC-014 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
 | AC-015 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions | 5 | pending |
 | AC-016 | 7 | none | platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
@@ -45,9 +45,9 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-033 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 5 | pending |
 | AC-034 | 7 | none | integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
 | AC-035 | 1 | 7 | contracts, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
-| AC-036 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
-| AC-037 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 6 | pending |
-| AC-038 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
+| AC-036 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules | 6 | pending |
+| AC-037 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules | 6 | pending |
+| AC-038 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules | 4 | pending |
 | AC-039 | 4 | 7 | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 5 | pending |
 | AC-040 | 7 | none | integrate-practice, files, integrate-finance, integrate-documents, integrate-extensions | 4 | pending |
 | AC-041 | 4 | 7 | integrate-practice, integrate-finance, editor, integrate-documents, integrate-extensions | 7 | pending |
@@ -127,9 +127,9 @@ Every core feature is reachable through /api/v1 and through /mcp, and the OpenAP
 Phases in scope: 1, 7.
 Full behavior phase: 7.
 Recheck phases: none.
-Responsible domains: api, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
-Implementing domains: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
-Pending dependencies: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, contracts, platform, identity, practice, billing, trust, calendar, files, editor, doc-tender, ui, modules, marketplace.
+Responsible domains: api, qa, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release, module-core, integrate-modules.
+Implementing domains: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules.
+Pending dependencies: api, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules, contracts, platform, identity, practice, billing, trust, calendar, files, editor, doc-tender, ui, modules, marketplace.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -206,9 +206,9 @@ A staff user can't see a walled matter anywhere: list, search, widget, report or
 Phases in scope: 1, 2, 3, 5, 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release.
-Implementing domains: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions.
-Pending dependencies: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, billing, trust, ui, files, modules.
+Responsible domains: qa, identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release, module-core, integrate-modules.
+Implementing domains: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules.
+Pending dependencies: identity, practice, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, module-core, integrate-modules, billing, trust, ui, files, modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1049,9 +1049,9 @@ The sample module installs from a local file, asks for its permissions, shows it
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
-Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
-Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -1116,9 +1116,9 @@ An unsigned or tampered module is refused.
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
-Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
-Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7193,9 +7193,9 @@ The sample module's migration creates matter\_targets in its own schema, linked 
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
-Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
-Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7284,9 +7284,9 @@ A module package whose migration creates its own contacts table, writes outside 
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
-Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
-Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
@@ -7375,9 +7375,9 @@ Uninstall with Delete data drops the schema only after a backup and the typed co
 Phases in scope: 6, 7.
 Full behavior phase: 6.
 Recheck phases: 7.
-Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release.
-Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
-Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions.
+Responsible domains: qa, integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, release, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Implementing domains: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
+Pending dependencies: integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules.
 Legacy Doc Tender failures: none.
 Status: pending.
 
