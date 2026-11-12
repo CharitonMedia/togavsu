@@ -87,7 +87,7 @@ def main(base, state_file, pkg, pub):
         tok = c.must(201, "POST", "/api/v1/modules/matter-clock/context-tokens", {})["token"]
         status, _, raw, _ = c.call("GET", "/m/matter-clock" + page + "?context=" + urllib.parse.quote(tok))
         last[page] = "%d %s" % (status, raw[:200])
-        return raw if status == 200 and "<" in raw else None
+        return raw if status == 200 and "Hours this month" in raw else None
     try:
         widget = wait("the module container to serve its widget through the core", lambda: framed("/widget"))
         tab = wait("the module container to serve its tab through the core", lambda: framed("/tab"))
@@ -106,6 +106,9 @@ def main(base, state_file, pkg, pub):
         return [r for r in rows if str(r.get("action", r.get("event", ""))).startswith("time_entry.") and r.get("status") in ("delivered", "succeeded", "ok")] or None
     rows = wait("the module container to receive the time entry event", delivered, 180)
     print("events delivered to the container: %d" % len(rows))
+    number = c.must(200, "GET", "/api/v1/matters/" + state["matter"])["number"]
+    wait("the widget to list the matter's hours", lambda: (framed("/widget") or "").find(number) >= 0)
+    print("the container's widget lists matter %s with its hours" % number)
 
     c.must(200, "POST", "/api/v1/modules/matter-clock/uninstall", {"data": "keep", "confirmation": "matter-clock"})
     status, _, _, _ = c.call("GET", "/api/v1/modules/matter-clock")
