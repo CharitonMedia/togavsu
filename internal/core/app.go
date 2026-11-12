@@ -153,10 +153,9 @@ func MigrateCount(ctx context.Context, dsn string) (int, error) {
 // ALTER them, and seals them again even when a migration fails. ran reports whether a
 // migration was applied. An empty adminDSN migrates only.
 func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err error) {
-	count := func(q *sql.DB) int {
-		var n int
-		_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM core.schema_migrations`).Scan(&n)
-		return n
+	if adminDSN == "" {
+		n, err := MigrateCount(ctx, dsn)
+		return n > int(0), err
 	}
 	plain, err := db.OpenPostgres(dsn, "")
 	if err != nil {
@@ -166,11 +165,6 @@ func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err err
 	var app string
 	if err := plain.QueryRowContext(ctx, `SELECT current_user`).Scan(&app); err != nil {
 		return false, err
-	}
-	before := count(plain)
-	if adminDSN == "" {
-		err = Migrate(ctx, dsn)
-		return count(plain) != before, err
 	}
 	target, err := url.Parse(dsn)
 	if err != nil {
@@ -189,8 +183,8 @@ func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err err
 	if err := db.UnsealLedgers(ctx, admin, app); err != nil {
 		return false, fmt.Errorf("core: unseal ledgers: %w", err)
 	}
-	merr := Migrate(ctx, dsn)
-	ran = count(plain) != before
+	n, merr := MigrateCount(ctx, dsn)
+	ran = n > int(0)
 	if serr := db.SealLedgers(ctx, admin, app); serr != nil {
 		return ran, errors.Join(merr, fmt.Errorf("core: seal ledgers: %w", serr))
 	}

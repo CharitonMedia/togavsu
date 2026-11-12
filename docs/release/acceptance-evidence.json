@@ -301,11 +301,11 @@
     },
     "AC-014": {
       "checks": [
-        "go-modules"
+        "go-modules",
+        "module-container",
+        "module-stack"
       ],
-      "gaps": [
-        "No Compose-stack run with a supervisor-run replacing calendar module container."
-      ]
+      "gaps": []
     },
     "AC-015": {
       "checks": [
