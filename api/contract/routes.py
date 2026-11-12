@@ -4238,6 +4238,15 @@ def _admin(api: Contract) -> None:
         "upload_token is how an archive the admin downloaded is restored. A body with neither source is validation_failed."
     )
     api.spec["paths"]["/api/v1/restores"]["post"]["x-togavsu-error-codes"] = ["validation_failed"]
+    # Backup and restore ids are the supervisor's names, not UUIDs.
+    for path, item in api.spec["paths"].items():
+        for name, pattern in (("backup_id", "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$"), ("restore_id", "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$")):
+            if "{" + name + "}" not in path:
+                continue
+            for op in item.values():
+                for param in op.get("parameters", []) if isinstance(op, dict) else []:
+                    if param.get("name") == name and param.get("in") == "path":
+                        param["schema"] = {"type": "string", "pattern": pattern}
     api.add(
         "post",
         "/api/v1/backup-uploads",

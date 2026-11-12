@@ -45,6 +45,7 @@ func (a *App) routes() {
 	m.HandleFunc("POST /api/v1/api-tokens", a.issueTokenJSON)
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
 	m.HandleFunc("POST /mcp", a.mcp)
+	a.backups.mount(m)
 
 	m.HandleFunc("GET /{$}", a.home)
 	m.HandleFunc("GET /setup", a.setupPage)
@@ -114,7 +115,8 @@ func (a *App) screens(next http.Handler) http.Handler {
 func openBeforeSetup(path string) bool {
 	switch path {
 	case "/healthz", "/api/v1/health", "/api/v1/openapi.json", "/api/v1/setup", "/setup", "/setup/confirm",
-		"/api/v1/auth/login", "/api/v1/auth/totp/enroll", "/api/v1/auth/totp/confirm", "/login", "/favicon.ico":
+		"/api/v1/auth/login", "/api/v1/auth/totp/enroll", "/api/v1/auth/totp/confirm", "/login", "/favicon.ico",
+		fileBytesPath:
 		return true
 	}
 	for _, p := range staticPrefixes {

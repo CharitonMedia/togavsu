@@ -125,9 +125,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 	journal := supervisor.OpenJournal(filepath.Join(cfg.DataDir, "restore-journal.jsonl"))
 	updateJournal := supervisor.OpenUpdateJournal(filepath.Join(cfg.DataDir, "update-journal.jsonl"))
 	outbox := supervisor.OpenOutbox(filepath.Join(cfg.DataDir, "mail-outbox.jsonl"))
+	coreFiles := supervisor.CoreFiles{Upstream: supervisor.UpstreamFrom(cfg.UpstreamFile), Token: cfg.Token}
 	store := &supervisor.Store{
 		Dir:            cfg.BackupDir,
 		Dump:           supervisor.DumpCommand("pg_dump", cfg.DatabaseURL),
+		FileBytes:      coreFiles.Export,
 		Book:           &supervisor.DestinationBook{Path: filepath.Join(cfg.DataDir, "destinations.json"), Key: cfg.FieldKey},
 		Outbox:         outbox,
 		MaxImportBytes: cfg.RestoreMaxBytes,
@@ -185,6 +187,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Catalog:       supervisor.PostgresCatalog{Bin: "psql", AdminURL: cfg.AdminDatabaseURL},
 		Outbox:        outbox,
 		Passphrase:    cfg.ReloadPassphrase,
+		RestoreFiles:  coreFiles.Import,
 		ApplyRestore: func(ctx context.Context, payload supervisor.RestorePayload) error {
 			return supervisor.ApplyProductRestore(ctx, "psql", cfg.AdminDatabaseURL, cfg.DatabaseURL, payload)
 		},

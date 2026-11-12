@@ -30,6 +30,21 @@ type Manifest struct {
 	RecordCounts map[string]int64 `json:"record_counts"`
 	DumpSHA256   string           `json:"dump_sha256,omitempty"`
 	Files        []ManifestFile   `json:"files"`
+	// FileBytes is the core's export of every file version and rendition
+	// (Markdown copies included) from every backed-up storage backend, stored
+	// once as files/bytes.tar. Nil for an archive taken while the core was
+	// stopped (the safety backup a restore takes) or by an older supervisor.
+	FileBytes *ManifestFileBytes `json:"file_bytes,omitempty"`
+}
+
+// fileBytesName is the archive entry that holds the core's file export.
+const fileBytesName = "files/bytes.tar"
+
+// ManifestFileBytes describes the core's file export inside an archive.
+type ManifestFileBytes struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Bytes  int64  `json:"bytes"`
 }
 
 func writeTar(dst io.Writer, root string) error {
