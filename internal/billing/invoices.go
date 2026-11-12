@@ -171,7 +171,7 @@ func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFil
 				}
 			}
 			out = append(out, forReader(p, r))
-			if f.Max > 0 && len(out) >= f.Max {
+			if positive(int64(f.Max)) && len(out) >= f.Max {
 				break
 			}
 			continue

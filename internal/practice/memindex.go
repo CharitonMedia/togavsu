@@ -73,7 +73,7 @@ func indexed[T any](src map[domain.ID]T, ids []domain.ID) map[domain.ID]T {
 type glanceIndex struct {
 	invoices map[domain.ID]int
 	trust    map[domain.ID][]domain.Cents
-	times    map[domain.ID][2]int // entries, increments
+	times    map[domain.ID]timeTotal
 }
 
 // MatterGlance returns the matter's invoice count, trust balances and time totals.
@@ -81,7 +81,7 @@ func (m *Memory) MatterGlance(matter domain.ID) (invoices int, trust []domain.Ce
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.gidx == nil {
-		g := &glanceIndex{invoices: map[domain.ID]int{}, trust: map[domain.ID][]domain.Cents{}, times: map[domain.ID][2]int{}}
+		g := &glanceIndex{invoices: map[domain.ID]int{}, trust: map[domain.ID][]domain.Cents{}, times: map[domain.ID]timeTotal{}}
 		for _, r := range m.invoices {
 			g.invoices[r.MatterID]++
 		}
@@ -90,10 +90,15 @@ func (m *Memory) MatterGlance(matter domain.ID) (invoices int, trust []domain.Ce
 		}
 		for _, r := range m.times {
 			t := g.times[r.MatterID]
-			g.times[r.MatterID] = [2]int{t[0] + 1, t[1] + r.Increments}
+			t.entries++
+			t.increments += r.Increments
+			g.times[r.MatterID] = t
 		}
 		m.gidx = g
 	}
 	t := m.gidx.times[matter]
-	return m.gidx.invoices[matter], m.gidx.trust[matter], t[0], t[1]
+	return m.gidx.invoices[matter], m.gidx.trust[matter], t.entries, t.increments
 }
+
+// timeTotal is one matter's time entry count and increments.
+type timeTotal struct{ entries, increments int }

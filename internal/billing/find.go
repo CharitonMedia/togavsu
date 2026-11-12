@@ -180,7 +180,7 @@ func (m *Memory) Find(_ context.Context, kind string, w Where) ([][]byte, []stri
 		if w.After != "" && (w.Newest && (r.c.date > afterDate || r.c.date == afterDate && r.id <= afterID) || !w.Newest && r.id <= w.After) {
 			continue
 		}
-		if w.Limit > 0 && len(out) == w.Limit {
+		if positive(int64(w.Limit)) && len(out) == w.Limit {
 			break
 		}
 		out, cursors = append(out, r.b), append(cursors, cur)
@@ -234,7 +234,7 @@ func (p *Postgres) Find(ctx context.Context, kind string, w Where) ([][]byte, []
 	} else {
 		q.WriteString(` ORDER BY id`)
 	}
-	if w.Limit > 0 {
+	if positive(int64(w.Limit)) {
 		q.WriteString(` LIMIT ` + arg(w.Limit))
 	}
 	rows, err := audit.Conn(ctx, p.pool).QueryContext(ctx, q.String(), args...)
@@ -299,27 +299,19 @@ func (p *Postgres) IndexRows(ctx context.Context) error {
 			}
 			err = audit.WithTx(ctx, p.pool, func(ctx context.Context) error {
 				tx := audit.Conn(ctx, p.pool)
-				// One UPDATE ... FROM (VALUES ...) per 400 rows; SQLite 3.33 has the same form.
-				for start := 0; start < len(batch); start += 400 {
-					part := batch[start:min(start+400, len(batch))]
-					var vals strings.Builder
-					args := []any{kind}
-					for i, f := range part {
-						if i > 0 {
-							vals.WriteString(",")
-						}
-						n := len(args)
-						fmt.Fprintf(&vals, "($%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6)
-						args = append(args, f.id, f.c.matter, f.c.user, f.c.date, f.c.invoice, f.head)
-					}
-					if _, err := tx.ExecContext(ctx, `UPDATE billing_records SET matter_id = v.matter_id, user_id = v.user_id, on_date = v.on_date,
-						invoice_id = v.invoice_id, head = v.head, indexed = 1
-						FROM (VALUES `+vals.String()+`) AS v (id, matter_id, user_id, on_date, invoice_id, head)
-						WHERE billing_records.kind = $1 AND billing_records.id = v.id`, args...); err != nil {
-						return err
-					}
+				// One UPDATE ... FROM (VALUES ...) per batch; SQLite 3.33 has the same form.
+				vals := make([]string, len(batch))
+				args := []any{kind}
+				for i, f := range batch {
+					n := len(args)
+					vals[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)", n+1, n+2, n+3, n+4, n+5, n+6)
+					args = append(args, f.id, f.c.matter, f.c.user, f.c.date, f.c.invoice, f.head)
 				}
-				return nil
+				_, err := tx.ExecContext(ctx, `UPDATE billing_records SET matter_id = v.matter_id, user_id = v.user_id, on_date = v.on_date,
+					invoice_id = v.invoice_id, head = v.head, indexed = 1
+					FROM (VALUES `+strings.Join(vals, ",")+`) AS v (id, matter_id, user_id, on_date, invoice_id, head)
+					WHERE billing_records.kind = $1 AND billing_records.id = v.id`, args...)
+				return err
 			})
 			if err != nil {
 				return err
@@ -346,17 +338,21 @@ func findOf[T any](ctx context.Context, st Store, kind string, w Where) ([]T, []
 	return out, cursors, nil
 }
 
-// findBatch is how many rows scanFind reads per query when it stops early.
-var findBatch = 500
+// findBatch, when set (tests), is how many rows scanFind reads per query; otherwise a
+// stopping scan reads max rows per query, the page it is filling.
+var findBatch int
 
 // scanFind walks Find's rows in batches until keep has accepted max rows (zero is every
 // row). keep returns whether it took the row.
 func scanFind[T any](ctx context.Context, st Store, kind string, w Where, max int, keep func(T) (bool, error)) error {
 	batch := w
-	if max > 0 {
-		batch.Limit = findBatch
+	if positive(int64(max)) {
+		batch.Limit = max
+		if positive(int64(findBatch)) {
+			batch.Limit = findBatch
+		}
 	}
-	taken := 0
+	var taken int
 	for {
 		rows, cursors, err := findOf[T](ctx, st, kind, batch)
 		if err != nil {
@@ -369,12 +365,12 @@ func scanFind[T any](ctx context.Context, st Store, kind string, w Where, max in
 			}
 			if ok {
 				taken++
-				if max > 0 && taken >= max {
+				if positive(int64(max)) && taken >= max {
 					return nil
 				}
 			}
 		}
-		if batch.Limit == 0 || len(rows) < batch.Limit {
+		if !positive(int64(batch.Limit)) || len(rows) < batch.Limit {
 			return nil
 		}
 		batch.After = cursors[len(cursors)-1]
