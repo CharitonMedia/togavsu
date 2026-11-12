@@ -165,16 +165,63 @@ func (a *App) delegate(r *http.Request, p domain.Principal) (domain.Principal, e
 
 // extend wraps h in the module runtime's domain-replacement router and include= reader,
 // so a module switched in for calendar, time or trust takes those screens and APIs and
-// an include= read adds module rows the caller may see.
+// an include= read adds module rows the caller may see. A replaced domain's request
+// clears the core's own gates before it reaches the module (gateReplaced).
 func (a *App) extend(h http.Handler) http.Handler {
 	if a.ext == nil {
 		return h
 	}
-	return a.ext.Modules.Router(a.principal, a.ext.modH.Include(h))
+	routed := a.ext.Modules.Router(a.principal, a.ext.modH.Include(h))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d := modules.DomainOf(r.URL.Path); d != "" {
+			if module, err := a.ext.Modules.Replacement(r.Context(), d); err == nil && module != "" {
+				r = memoCaller(r)
+				if !a.gateReplaced(w, r) {
+					return
+				}
+			}
+		}
+		routed.ServeHTTP(w, r)
+	})
+}
+
+// gateReplaced holds a request for a module-replaced domain to the gates every core route
+// has: first-run setup, sign-in (a signed-out browser screen goes to /login, an API call
+// gets 401), CSRF on cookie writes and a bearer token's contract scopes. It writes the
+// core's answer and reports false when the request may not go on. The iCal feed keeps
+// its own credential, the secret in its path, as the core's feed route does.
+func (a *App) gateReplaced(w http.ResponseWriter, r *http.Request) bool {
+	ok, err := a.Ready(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return false
+	}
+	api := strings.HasPrefix(r.URL.Path, "/api/")
+	if !ok {
+		if api {
+			writeErr(w, &domain.APIError{Code: "setup_required", Message: "first-run setup is not complete"})
+		} else {
+			http.Redirect(w, r, "/setup", http.StatusSeeOther)
+		}
+		return false
+	}
+	if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/ical/") {
+		return true
+	}
+	if _, err := a.principal(r); err != nil {
+		if !api && safeMethod(r.Method) && status(err) == http.StatusUnauthorized {
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			return false
+		}
+		writeErr(w, err)
+		return false
+	}
+	return true
 }
 
 // matterPanels is what the matter screen shows from enabled modules: each matter tab as a
-// sandboxed frame page, and each extension's rows for this matter through the same
+// sandboxed frame page, each declared matter item (panel or action) through the same
+// framed page, and each extension's rows for this matter through the same
 // include= read the API serves, as the viewer.
 func (a *App) matterPanels(r *http.Request, p domain.Principal, matter domain.ID) ([]practice.ModulePanel, error) {
 	if a.ext == nil {
@@ -211,10 +258,15 @@ func (a *App) matterPanels(r *http.Request, p domain.Principal, matter domain.ID
 					Path: "/modules/" + url.PathEscape(in.ID) + "/tabs/" + url.PathEscape(t.ID) + "?matter_id=" + url.QueryEscape(string(matter))})
 			}
 		}
-		if len(rows) == 0 && len(tabs) == 0 {
+		var items []practice.ModuleItem
+		for _, it := range in.Manifest.MatterItems {
+			items = append(items, practice.ModuleItem{ID: it.ID, Kind: it.Kind, Title: it.Title,
+				Path: modules.MatterItemPage(url.PathEscape(in.ID), url.PathEscape(it.ID)) + "?matter_id=" + url.QueryEscape(string(matter))})
+		}
+		if len(rows) == 0 && len(tabs) == 0 && len(items) == 0 {
 			continue
 		}
-		out = append(out, practice.ModulePanel{Module: in.ID, Name: in.Manifest.Name, Tabs: tabs, Rows: rows})
+		out = append(out, practice.ModulePanel{Module: in.ID, Name: in.Manifest.Name, Tabs: tabs, Items: items, Rows: rows})
 	}
 	return out, nil
 }

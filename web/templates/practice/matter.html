@@ -145,6 +145,12 @@
 <section class="card" id="module-{{.Module}}" data-module="{{.Module}}">
   <h2>{{.Name}}</h2>
   {{range .Tabs}}<p><a href="{{.Path}}">{{.Title}}</a></p>{{end}}
+  {{range .Items}}{{if eq .Kind "panel"}}
+  <figure class="module-panel" data-item="{{.ID}}">
+    <figcaption>{{.Title}}</figcaption>
+    <iframe src="{{.Path}}" title="{{.Title}}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" loading="lazy"></iframe>
+  </figure>
+  {{else}}<p class="module-action" data-item="{{.ID}}"><a class="button" href="{{.Path}}">{{.Title}}</a></p>{{end}}{{end}}
   {{range .Rows}}
   <dl class="module-row" data-extension="{{.Extension}}">
     {{range .Fields}}<dt>{{.Name}}</dt><dd>{{if .Value}}{{.Value}}{{else}}—{{end}}</dd>{{end}}

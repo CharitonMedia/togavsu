@@ -583,6 +583,32 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if r := x.staff.must(http.StatusOK, "GET", "/api/v1/time-entries", nil); strings.Contains(r.body, "calendar-plus") {
 		t.Fatal("time went to the calendar module")
 	}
+	// A replaced domain keeps the core's gates: signed out, a browser screen goes to
+	// sign-in and an API call gets 401; a cookie write without CSRF gets 403; a token
+	// without the route's scope gets 403. None of them reaches the module.
+	seen := len(x.rt.paths("calendar-plus"))
+	anon := newClient(t, x.srv.URL)
+	if r := anon.do("GET", "/api/v1/calendar-events", nil); r.code != http.StatusUnauthorized {
+		t.Fatalf("signed-out API call to the replaced calendar: %d %s", r.code, r.body)
+	}
+	if r := anon.do("GET", "/calendar", nil); r.code != http.StatusSeeOther || r.loc != "/login" {
+		t.Fatalf("signed-out calendar screen: %d %q", r.code, r.loc)
+	}
+	if r := anon.do("POST", "/api/v1/calendar-events", map[string]any{"title": "Hearing"}); r.code != http.StatusUnauthorized {
+		t.Fatalf("signed-out write to the replaced calendar: %d %s", r.code, r.body)
+	}
+	if r := x.staff.do("POST", "/api/v1/calendar-events", map[string]any{"title": "Hearing"}, "X-CSRF-Token", ""); r.code != http.StatusForbidden {
+		t.Fatalf("cookie write without CSRF to the replaced calendar: %d %s", r.code, r.body)
+	}
+	scoped := x.admin.must(http.StatusCreated, "POST", "/api/v1/api-tokens", map[string]any{"name": "matters only", "scopes": []string{"matters:read"}})
+	reader := newClient(t, x.srv.URL)
+	reader.bearer = str(t, scoped.json, "secret")
+	if r := reader.do("GET", "/api/v1/calendar-events", nil); r.code != http.StatusForbidden {
+		t.Fatalf("token without the calendar scope: %d %s", r.code, r.body)
+	}
+	if got := x.rt.paths("calendar-plus"); len(got) != seen {
+		t.Fatalf("a refused request reached the replacement module: %v", got[seen:])
+	}
 	if _, problem := x.tabForm(x.admin, "domain", url.Values{"domain": {"calendar"}, "module_id": {""}}, nil); problem != "" {
 		t.Fatalf("switch back: %s", problem)
 	}
@@ -629,6 +655,72 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestExtensionsMatterItems: a module that declares only matter_items, with no matter
+// tab and no extension rows, shows its panel framed inline and its action as a button on
+// the matter screen, and each opens the module's page through the sandboxed frame with a
+// context token for that matter.
+func TestExtensionsMatterItems(t *testing.T) {
+	x := newExt(t)
+	open, _ := x.matter("Estate of Pell", "", nil)
+	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
+	x.rt.handlers["matter-notes"] = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<p>notes</p>"))
+	})
+	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extNotesManifest))); problem != "" {
+		t.Fatalf("install matter-notes: %s", problem)
+	}
+	x.approveOnTab("matter-notes")
+
+	panel := "/modules/matter-notes/matter-items/notes?matter_id=" + open
+	action := "/modules/matter-notes/matter-items/letter?matter_id=" + open
+	screen := x.staff.must(http.StatusOK, "GET", "/practice/matters/"+open, nil)
+	for _, want := range []string{`id="module-matter-notes"`, `<iframe src="` + panel + `"`, `sandbox="allow-scripts allow-forms"`,
+		`<a class="button" href="` + action + `">Draft a letter</a>`, "Matter notes"} {
+		if !strings.Contains(screen.body, want) {
+			t.Fatalf("matter screen lacks %q:\n%s", want, screen.body)
+		}
+	}
+	for path, page := range map[string]string{panel: "/m/matter-notes/notes?", action: "/m/matter-notes/letter?"} {
+		r := x.staff.must(http.StatusOK, "GET", path, nil)
+		for _, want := range []string{page, "context=", "matter_id=" + open} {
+			if !strings.Contains(r.body, want) {
+				t.Fatalf("%s frame lacks %q: %s", path, want, r.body)
+			}
+		}
+	}
+	if r := x.staff.do("GET", "/modules/matter-notes/matter-items/notes", nil); r.code == http.StatusOK {
+		t.Fatal("a matter item framed without its matter")
+	}
+	if r := x.staff.do("GET", "/modules/matter-notes/matter-items/nope?matter_id="+open, nil); r.code != http.StatusNotFound {
+		t.Fatalf("undeclared matter item: %d", r.code)
+	}
+	if r := newClient(t, x.srv.URL).do("GET", panel, nil); r.code == http.StatusOK {
+		t.Fatal("a signed-out caller got a matter item frame")
+	}
+}
+
+const extNotesManifest = `id: matter-notes
+name: Matter Notes
+version: "1.0.0"
+author: Synthetic author
+container:
+  image: ghcr.io/example/matter-notes
+  digest: sha256:3333333333333333333333333333333333333333333333333333333333333333
+  port: 8080
+permissions:
+  - scope: matters:read
+matter_items:
+  - id: notes
+    kind: panel
+    title: Matter notes
+    path: /notes
+  - id: letter
+    kind: action
+    title: Draft a letter
+    path: /letter
+`
 
 const extCalendarManifest = `id: calendar-plus
 name: Calendar Plus

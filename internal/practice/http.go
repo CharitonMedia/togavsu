@@ -31,7 +31,18 @@ type ModulePanel struct {
 	Module string
 	Name   string
 	Tabs   []ModuleTab
+	Items  []ModuleItem
 	Rows   []ModuleRow
+}
+
+// ModuleItem is a matter-screen panel or action a module declares (manifest
+// matter_items). Kind is "panel" (shown inline in a sandboxed frame) or "action" (a
+// button that opens the framed page); Path is the core page that frames it.
+type ModuleItem struct {
+	ID    string
+	Kind  string
+	Title string
+	Path  string
 }
 
 // ModuleTab is a matter tab a module serves; Path is the core page that frames it.

@@ -79,6 +79,7 @@ func (h *Handler) Routes() http.Handler {
 	m.HandleFunc("GET /api/v1/ai/calls", h.scoped("ai:admin", h.aiCalls))
 	m.HandleFunc("GET /modules/{module_id}/tabs/{tab}", h.scoped("", h.tabPage))
 	m.HandleFunc("GET /modules/{module_id}/widgets/{widget}", h.scoped("", h.widgetPage))
+	m.HandleFunc("GET /modules/{module_id}/matter-items/{item}", h.scoped("", h.matterItemPage))
 	m.HandleFunc("/m/{module_id}/", h.frame)
 	return m
 }
@@ -605,6 +606,32 @@ func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 		q[k] = v
 	}
 	writeFrame(w, tab.Title, FramePath(in.ID, tab.Path, t.Token, q))
+}
+
+// matterItemPage frames a module's matter-screen panel or action for one matter, with a
+// context token for the viewer scoped to that matter, the same way a matter tab is framed.
+func (h *Handler) matterItemPage(w http.ResponseWriter, r *http.Request, c Caller) {
+	in, err := h.Svc.Installed(r.Context(), r.PathValue("module_id"))
+	if err != nil || !in.Enabled {
+		writeErr(w, domain.NotFound("module"))
+		return
+	}
+	item, ok := in.Manifest.MatterItem(r.PathValue("item"))
+	if !ok {
+		writeErr(w, domain.NotFound("matter item"))
+		return
+	}
+	matter := domain.ID(r.URL.Query().Get("matter_id"))
+	if matter.IsZero() {
+		writeErr(w, invalid("matter_id", "a matter item needs the matter"))
+		return
+	}
+	t, err := h.Svc.IssueContext(r.Context(), c.Principal, in.ID, matter)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeFrame(w, item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}))
 }
 
 func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
