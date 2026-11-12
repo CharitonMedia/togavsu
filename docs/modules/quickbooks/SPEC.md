@@ -133,6 +133,8 @@ Rendered by the core as the module's settings form (admin only). A mapping value
 | `item_interest` | string | Late Interest | yes | no | Item for interest |
 | `item_write_off` | string | Write-Off | yes | no | Item for write-off credit memos |
 | `reconcile_hour_utc` | int | 8 | yes | no | Hour (UTC) the nightly reconcile starts; 8 is 2 or 3 a.m. Central |
+| `retry_schedule` | string | 1m,5m,30m,2h,6h | yes | no | Waits between retries of a retryable fault, comma separated; the row fails after the last |
+| `alert_interval_minutes` | int | 15 | yes | no | How often new exceptions are gathered into one sync_problem alert |
 
 The Intuit app's client secret is not a setting. The admin enters it in the Client secret field on the setup tab, which stores it through the core secret store as `qbo/client_secret` (section 8, item 8) and afterwards shows only whether it is set. Connect stays disabled until `qbo_client_id` and the client secret are both set.
 
@@ -290,7 +292,7 @@ The core today runs a module token with no context token as a principal with no 
 - An event is verified (HMAC of the raw body, timestamp within 5 minutes), recorded once in `received_events`, and turned into an upsert of the record's sync row to pending with `next_attempt_at` now. A new event on a failed row resets its attempts.
 - One worker pushes due rows every 5 seconds in dependency order: customers, invoices, write-offs, payments, trust entries, expenses, then voids. A row waiting on another (a payment on an unsynced invoice, an invoice void with an unvoided payment) stays pending with `waiting_on` set and does not count an attempt. A payment on an invoice dated before the start date pushes unapplied.
 - The module builds the QBO payload, hashes it, and pushes only when the hash differs from `pushed_hash`. It creates when there is no `qbo_id`; otherwise it sends a full update with the stored SyncToken. On 5010 it reads the current SyncToken; a SyncToken it did not write is drift.
-- Retry schedule for retryable faults: 1 minute, 5 minutes, 30 minutes, 2 hours, 6 hours. After the fifth failure, or at once for a non-retryable fault, the row is failed. The nightly reconcile tries each failed row once more.
+- Retry schedule for retryable faults: the `retry_schedule` setting, by default 1 minute, 5 minutes, 30 minutes, 2 hours, 6 hours. After the schedule's last retry fails (the fifth failure by default), or at once for a non-retryable fault, the row is failed. A changed schedule applies from the next retry, with no restart. The nightly reconcile tries each failed row once more.
 - Before a create the module stores `request_id`; a retry reuses it, so a timeout after QBO accepted the write never makes a second entity.
 - Every push and retry reads its record through the books reader first. A record that read returns as not_found is on a walled matter (core money records are never deleted), and its row moves to state `hidden`: the module makes no QBO call for it and clears `waiting_on`, `attempts`, `last_error_code` and `last_error`. A row synced before its matter was walled stays as it is in QBO, and the module makes no further call for it while the wall stands. A customer row whose contact the books reader returns as not_found is hidden the same way.
 
@@ -303,7 +305,7 @@ The core today runs a module token with no context token as a principal with no 
 
 ### Alerts
 
-- Failed and drift rows are exceptions; a hidden row never is. Every 15 minutes, if new exceptions exist, the module sends one `quickbooks.sync_problem` notification to admins and accountants (`recipient_roles`), linked to `/modules/quickbooks/tabs/books?status=exceptions`; each recipient whose preference keeps email on, which is the default, also gets it by email. Connection loss alerts at once. Each send is recorded in `alerts_sent`.
+- Failed and drift rows are exceptions; a hidden row never is. Every `alert_interval_minutes` (15 by default), if new exceptions exist, the module sends one `quickbooks.sync_problem` notification to admins and accountants (`recipient_roles`), linked to `/modules/quickbooks/tabs/books?status=exceptions`; each recipient whose preference keeps email on, which is the default, also gets it by email. Connection loss alerts at once. Each send is recorded in `alerts_sent`.
 
 ### Screens
 
@@ -350,6 +352,7 @@ All run against the fake QBO and synthetic records (firm Sample Law Co, client J
 - **MOD-QBO-31** A realm switch is refused until Reset sync with RESET; Reset clears the sync tables and keeps the log.
 - **MOD-QBO-32** GET /api/v1/invoices/{id}?include=quickbooks.invoice_sync returns the sync state for an accountant, and not_found for a walled matter the viewer is off.
 - **MOD-QBO-33** Totals check: a JournalEntry altered in the fake to a different amount raises a totals exception naming the trust account and the difference.
+- **MOD-QBO-34** Tunable settings: `retry_schedule` and `alert_interval_minutes` show on the admin settings page with the defaults above; changing `retry_schedule` changes the next retry's time with no restart, and changing `alert_interval_minutes` changes when the next alert can go out.
 
 ## 10. Tests
 
@@ -365,7 +368,7 @@ Unit tests live under modules/quickbooks and the acceptance suite lives in inter
 modules/quickbooks/
   README.md                 what it does, build, sign, install
   Dockerfile                as examples/matter-clock/Dockerfile, building ./modules/quickbooks/cmd/quickbooks
-  limits.json               tunables: retry schedule, limiter, alert interval, worker tick, state lifetime
+  limits.json               tunables: limiter, worker tick, state lifetime
   package.go                embeds package/; Files, Archive, Build, SignFile (matter-clock's signing path)
   server.go                 routes: /widget /books /setup /matter /events /oauth/start /oauth/callback
                             /retry /acknowledge /sync-now /reset /disconnect /create-missing /trust-bank-map /healthz
