@@ -189,7 +189,7 @@
       ]
     },
     "go-release-api": {
-      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP)$' ./internal/core/",
+      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestReleaseEveryDomainWriteIsAudited)$' ./internal/core/",
       "needs": [
         "db"
       ]
@@ -331,11 +331,10 @@
         "backup-e2e",
         "backup-integration",
         "go-identity-access",
-        "go-finance"
+        "go-finance",
+        "go-release-api"
       ],
-      "gaps": [
-        "No product-wide check that every write adds an audit row with actor and source: per-domain tests cover identity, settings, practice, billing, trust, files and backups; calendar, Doc Tender and module writes are not each asserted on the composed core."
-      ]
+      "gaps": []
     },
     "AC-019": {
       "checks": [
