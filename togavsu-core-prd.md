@@ -618,7 +618,7 @@ On Nov 12, 2026 Patrick decided that Togavsu is not ready for release until the 
 - **Core additions:** the core changes these modules need are listed in docs/modules/CORE-CHANGES.md (CORE-01 to CORE-29) and are core scope for this build. They follow every core rule: walls, roles and attorney-only redaction applied in services across UI, API, MCP and module extensions; the append-only trust ledger with reversals; audit entries; and API and MCP parity. A module never sees a walled matter's records unless the wall lets that user see them; no service principal crosses a wall.
 - **Acceptance:** each module's acceptance is the MOD criteria in its spec. They add to section 12 and replace none of it.
 - **Release:** release waits until these five modules and their integration are merged.
-- **Outside services:** LawPay, DocuSeal and QuickBooks run against fake adapters in every test. Keys are entered by the firm admin at runtime; the build creates no credentials and never uses client data.
+- **Outside services:** LawPay, DocuSeal, QuickBooks and the mail providers (Gmail, Outlook and IMAP/SMTP servers) run against fake adapters or local test servers in every test; no test reaches a real outside service. Keys and mail sign-ins are entered by the firm admin at runtime; the build creates no credentials and never uses client data.
 - **Shipping:** the core still installs with no module. Firms install these five the way they install any signed module.
 
 ## 10. Marketplace
@@ -703,13 +703,13 @@ Sub-agents run in parallel wherever their work doesn't depend on each other, so 
 4. Calendar and deadlines, reminders, iCal feeds, available dates; in parallel, files and storage, the LawCraft editor and Doc Tender (Files and Doc Tender agents).
 5. UI: matter screen, home-screen grid with all core widgets and role defaults, admin page and all its tabs, appearance, profile, my settings, notification preferences. (Runs in parallel with phase 4 once phase 3's APIs exist.)
 6. Modules and marketplace: manifest, install flow, permissions, iframe bridge, domain replacement, module schemas and migrations, sample module, marketplace service, flag and pull alerts, AI settings.
-7. Updates and release: zero-downtime updater, backups, restore, user guide rebuilt in HTML and PDF, fresh-install test on a clean Docker Desktop, release tag.
+7. Updates and release: zero-downtime updater, backups, restore, user guide rebuilt in HTML and PDF, fresh-install test on a clean Docker Desktop, release tag. The release tag waits until the five section 9.10 modules and their integration are merged and their MOD criteria pass.
 
 **Sample module:** "Matter Clock," a small module that adds a home-screen widget, a matter-screen tab and a help guide page; the widget and tab show hours worked per matter this month. It also keeps a monthly target of hours per matter in its own schema: its migration creates matter\_targets linked to matters, its manifest declares that it extends matters and publishes a read view, and the matter screen shows the target through an include read. It exercises signing, install, permission approval, the iframe bridge, events, module data and uninstall. It's test scaffolding and doesn't ship in the release.
 
 ## 12. Acceptance criteria
 
-The build is done when a tagged release with signed images installs on a clean Docker Desktop and every item below passes in automated tests.
+The build is done when a tagged release with signed images installs on a clean Docker Desktop and every item below passes in automated tests, and every MOD criterion of the five section 9.10 modules passes in automated tests too.
 
 - A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits.
 - Every core feature is reachable through /api/v1 and through /mcp, and the OpenAPI spec validates.
