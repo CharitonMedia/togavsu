@@ -242,7 +242,14 @@ WHERE c.contype = 'f' AND c.confdeltype = 'r' AND n.nspname = 'core' AND t.relna
 	if again, _ := e.svc.Publish(e.ctx, evs...); again != 0 {
 		t.Fatalf("a republished event was queued twice: %d", again)
 	}
-	// Files and Doc Tender write core.events; the pump picks those rows up.
+	// Every domain writes core.events (practice and billing since integrate-extensions);
+	// the pump picks those rows up. Drain what the setup wrote: the matters opened before
+	// install are delivered as matter.created; the billing events published above are
+	// already queued and the unique index keeps them once.
+	drained, err := e.svc.Pump(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	at := time.Now().UnixMicro()
 	evID, _ := domain.NewID()
 	if _, err := e.app.Pool.ExecContext(e.ctx, `INSERT INTO core.events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible)
@@ -255,8 +262,8 @@ VALUES ($1,$2,$2,$3,'staff',$3,'matter.created','matter',$4,$4,'synthetic',0)`, 
 	if n, err := e.svc.Pump(e.ctx); err != nil || n != 0 {
 		t.Fatalf("second pump re-queued: %d %v", n, err)
 	}
-	if n, err := e.svc.Deliver(e.ctx); err != nil || n != queued+1 {
-		t.Fatalf("deliver: %d of %d, %v", n, queued+1, err)
+	if n, err := e.svc.Deliver(e.ctx); err != nil || n != queued+drained+1 {
+		t.Fatalf("deliver: %d of %d, %v", n, queued+drained+1, err)
 	}
 	var n int
 	if err := mdb.QueryRowContext(e.ctx, `SELECT COUNT(*) FROM received_events WHERE action LIKE 'time_entry.%'`).Scan(&n); err != nil || n < 1 {
@@ -412,6 +419,11 @@ func TestPGHardDeleteBlockedAndRelink(t *testing.T) {
 	dep := e.rt.last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	if err := matterclock.SetTarget(e.ctx, mdb, string(e.open.ID), 50, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The matter's own history (core.events) also blocks a hard delete; take it away here
+	// so the module's row is what stops it.
+	if _, err := e.app.Pool.ExecContext(e.ctx, `DELETE FROM core.events WHERE matter_id = $1`, string(e.open.ID)); err != nil {
 		t.Fatal(err)
 	}
 	_, err := e.app.Pool.ExecContext(e.ctx, `DELETE FROM core.matters WHERE id = $1`, string(e.open.ID))

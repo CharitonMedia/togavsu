@@ -1,0 +1,74 @@
+{
+ "pages": [
+  {
+   "name": "01-admin-modules-tab",
+   "status": 200,
+   "landed": "/admin",
+   "title": "Administrative · Modules and marketplace · Synthetic Firm LLP",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "02-admin-home-module-alerts",
+   "status": 200,
+   "landed": "/",
+   "title": "Home · Synthetic Firm LLP",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "03-matter-screen-module-panel",
+   "status": 200,
+   "landed": "/practice/matters/01a1ceb2-d78b-7506-93a6-c18775577ed5",
+   "title": "2026-0001 Estate of Harlow · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "04-module-home-tab",
+   "status": 200,
+   "landed": "/modules/matter-clock/tabs/hours",
+   "title": "Matter Clock",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "05-module-matter-tab",
+   "status": 200,
+   "landed": "/modules/matter-clock/tabs/matter",
+   "title": "Hours and target",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "06-help-module-guide",
+   "status": 200,
+   "landed": "/help",
+   "title": "Help \u0026 Training · Synthetic Firm LLP",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "07-walled-matter-staff",
+   "status": 404,
+   "landed": "/practice/matters/01a1ceb2-d79a-7e15-987e-d1086a7b620a",
+   "title": "",
+   "console": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ],
+   "failed": []
+  },
+  {
+   "name": "08-modules-tab-staff",
+   "status": 403,
+   "landed": "/admin",
+   "title": "Not available · Synthetic Firm LLP",
+   "console": [
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+   ],
+   "failed": [
+    "403 /admin"
+   ]
+  }
+ ]
+}

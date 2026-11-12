@@ -1,0 +1,209 @@
+{
+  "task_id": "integrate-extensions",
+  "status": "pass",
+  "scope": "Phase 5/6 integration: core.Open now mounts the shell, home screen, admin page and help center, the marketplace client side and the module runtime on one pool and one handler, with the admin Modules and marketplace tab, module panels on the matter screen, module sidebar entries, module-facing routes and core.events from billing and practice. status pass means every assigned phase case passed at the tested revision, plus the local scripts listed in tests. It is not full product acceptance: 21 of 52 criteria remain pending globally, including AC-012, AC-014, AC-033, AC-036 and AC-037 whose phase case passes with the gaps named in pending_notes. Checkpoint fixes: d80d354 gates replaced calendar/time/trust domains like core routes (setup, sign-in, CSRF, bearer scopes) and renders each module's declared matter_items on the matter screen; b1b02a0 made the supervisor serve PUT and DELETE /v1/modules/{name}, so an installed module gets its container in the Compose stack's Docker engine (tested on a real engine with the Matter Clock image pulled by registry digest). Product CI run 43170751572 on d80d354 passed every required job, including scripts/ci/test-core.sh. Not run locally: scripts/ci/test-core.sh end to end (needs the LawCraft core image build), the QA harness, Backup integration and the Supervisor image jobs; their results come from the pull request's Product CI run.",
+  "tested_revision": "d80d354ca5a521b75073586479032451c6296798",
+  "phase_cases": [
+    {
+      "id": "ui-admin-guide",
+      "acceptance_ids": [
+        "AC-010",
+        "AC-011",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-028",
+        "AC-029",
+        "AC-032"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -v -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -v -run '^TestExtensionsUIModules$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "d80d354ca5a521b75073586479032451c6296798",
+      "evidence": "Local run at d80d354 on postgres:17 (Docker), TOGAVSU_TEST_DATABASE_URL set to the container's admin role; each test makes its own database owned by a fresh non-superuser app role, as Compose does; the ui end-to-end suite now drives the handler core.Open builds (app.UI behind app.Handler(), no second composition); all 8 TestUI* cases, both guide-coverage checks and TestExtensionsUIModules (module widget opens its manifest tab, sidebar entry only while installed, widget without target refused) PASS."
+    },
+    {
+      "id": "module-lifecycle",
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-033",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsModuleLifecycle$' ./internal/core/ && go test -count=1 -v -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/ && sh scripts/ci/test-module-container.sh",
+      "exit_code": 0,
+      "revision": "d80d354ca5a521b75073586479032451c6296798",
+      "evidence": "Local run at d80d354 on postgres:17 (Docker), TOGAVSU_TEST_DATABASE_URL set to the container's admin role; each test makes its own database owned by a fresh non-superuser app role, as Compose does; untrusted, unsigned and tampered packages refused; contacts-table, out-of-schema and trigger migrations refused; install and permission decisions on the admin Modules tab; widget, framed tab, sidebar entry and guide live with no restart; include= on API and matter screen inside walls with attorney-only redaction; module login denied core.contacts; billing time entry delivered as a signed webhook; changed migration refused on update; linked matter hard delete blocked; calendar switched to a module and back; disable/enable; Delete data needs the typed id and a fresh backup. The core case runs module servers in process through Config.ModuleRuntime; TestSupervisorClientMatchesSupervisorAPI drives the core's real supervisor client (modules.Supervisor) against the real supervisor routes (deploy, start, stop, remove, unpinned image refused, wrong secret refused); TestModuleContainerOnDocker (scripts/ci/test-module-container.sh) builds the Matter Clock image, publishes it to a throwaway registry, drops the local copy, and through modules.Supervisor -> supervisor.NewMux -> DockerRuntime on the real engine: an unknown digest is refused with no container left, the image is pulled by digest, togavsu-mod-matter-clock runs as 65532:65532 with no secret in its spec, the module (which exits if it cannot read its secret files) answers /healthz over the network alias from another container, a redeploy replaces it with the rotated token, stop and second stop succeed, remove and second remove leave no container. New at d80d354: in the same case a replaced calendar keeps the core's gates (signed-out screen to /login, signed-out API 401, cookie write without CSRF refused, missing scope refused) and none of those refused requests reach the module."
+    },
+    {
+      "id": "marketplace-alerts",
+      "acceptance_ids": [
+        "AC-015"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "d80d354ca5a521b75073586479032451c6296798",
+      "evidence": "Local run at d80d354 on postgres:17 (Docker), TOGAVSU_TEST_DATABASE_URL set to the container's admin role; each test makes its own database owned by a fresh non-superuser app role, as Compose does; against the real marketplace service (package marketplace) in process: listing and notice on the admin tab, staff refused, install from the marketplace, operator flag shows the warning on the listing, opening the Modules tab checks and delivers one alert to the module-alerts widget and an email to the admin (sent through the fake SMTP server), module not switched off; after a pull a marketplace install is refused and a local file still installs."
+    },
+    {
+      "id": "ai-mediation",
+      "acceptance_ids": [
+        "AC-028",
+        "AC-031"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsAIMediation$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "d80d354ca5a521b75073586479032451c6296798",
+      "evidence": "Local run at d80d354 on postgres:17 (Docker), TOGAVSU_TEST_DATABASE_URL set to the container's admin role; each test makes its own database owned by a fresh non-superuser app role, as Compose does; module token plus viewer context token calls POST /api/v1/ai/calls on the running core; primary unreachable, falls back to the secondary with the AI tab's key, which never reaches the module or the response; call log over API and MCP shows both attempts; staff refused the log; walled matter not found before any provider call; token without ai:use refused."
+    }
+  ],
+  "tests": [
+    {
+      "command": "go test -count=1 -timeout 25m $(go list ./...)",
+      "exit_code": 0,
+      "note": "all test packages ok at d80d354 (no LawCraft CLI locally, so TestDocumentsLawCraftEditor skips here; CI's test-core.sh runs it with the image's wordcraft-cli and passed on d80d354)"
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestModuleDeploy|TestModuleRoutes)' ./internal/supervisor/",
+      "exit_code": 0,
+      "note": "PUT/DELETE /v1/modules/{name} on a fake engine: pinned image, alias, uid, CapDrop, secret files 0400 owned by 65532, no secret in spec/log/response, redeploy rotates, idempotent start/stop/delete; refusals (name mismatch, tag, short digest, digest in image, port, path or slash secret names, oversize secret, unknown field, bad name, unauthenticated) reach no Docker call; a failed secret upload leaves no container"
+    },
+    {
+      "command": "sh scripts/ci/test-module-container.sh",
+      "exit_code": 0,
+      "note": "real Docker engine 29.4.2"
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -v -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -v -run '^TestExtensionsUIModules$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsMatterItems$' ./internal/core/",
+      "exit_code": 0,
+      "note": "new at d80d354: a module with only matter_items shows its panel and action on the matter screen and frames both through /modules/{id}/matter-items/{item}?matter_id= with a matter-scoped context token"
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsModuleLifecycle$' ./internal/core/ && go test -count=1 -v -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/ && sh scripts/ci/test-module-container.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsAIMediation$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "TOGAVSU_QC_DIR=$PWD/docs/build/reports/screens/integrate-extensions CHROME=/usr/bin/chromium PUPPETEER_CORE=<absolute path to puppeteer-core@23> go test -count=1 -v -run '^TestExtensionsScreens$' ./internal/core/",
+      "exit_code": 0,
+      "note": "visual QC, 8 screens rerun at d80d354, no console errors or failed requests; screenshots and qc.json in docs/build/reports/screens/integrate-extensions"
+    },
+    {
+      "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/",
+      "exit_code": 0
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "note": "includes the new fake-engine module API tests under -race, and (Docker available) scripts/ci/test-module-container.sh"
+    },
+    {
+      "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go vet ./... && test -z \"$(gofmt -l cmd internal api web)\" && git diff --check HEAD~1 HEAD",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-005",
+    "AC-007",
+    "AC-008",
+    "AC-009",
+    "AC-010",
+    "AC-011",
+    "AC-013",
+    "AC-015",
+    "AC-019",
+    "AC-020",
+    "AC-021",
+    "AC-022",
+    "AC-025",
+    "AC-026",
+    "AC-027",
+    "AC-028",
+    "AC-029",
+    "AC-030",
+    "AC-031",
+    "AC-032",
+    "AC-035",
+    "AC-038",
+    "AC-039",
+    "AC-042",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-051"
+  ],
+  "pending_acceptance_ids": [
+    "AC-001",
+    "AC-002",
+    "AC-003",
+    "AC-004",
+    "AC-006",
+    "AC-012",
+    "AC-014",
+    "AC-016",
+    "AC-017",
+    "AC-018",
+    "AC-023",
+    "AC-024",
+    "AC-033",
+    "AC-034",
+    "AC-036",
+    "AC-037",
+    "AC-040",
+    "AC-041",
+    "AC-043",
+    "AC-050",
+    "AC-052"
+  ],
+  "pending_notes": {
+    "AC-012": "Install, permissions, widget, tab, sidebar, guide, events and uninstall pass on the running core with the module server in process. The supervisor now creates, starts, stops, replaces and removes the module container (tested on a real Docker engine with the Matter Clock image). Still unrun: one Compose-stack run where the core installs a signed module through the Modules tab and the framed tab, widget and webhooks reach the container; the shipped sample manifest carries a placeholder image digest (examples/, outside this task's paths), so that run needs a package re-signed with a published image digest.",
+    "AC-014": "Calendar replacement routing passes on the running core; the replacing module's container can now be created and started by the supervisor, but no Compose-stack run with a replacing module container was made.",
+    "AC-033": "Guide appears under its heading, in search, opens from the widget's ? topic and leaves on uninstall in the core case; refresh on update is covered only by internal/modules tests, and no Compose-stack run with a module container was made.",
+    "AC-036": "Schema, include= on API and matter screen, walls, redaction and the module login's denied core access pass in the core case; a second module reading a published view only after approval is covered only by internal/modules tests.",
+    "AC-037": "Install refusals and the changed-migration update refusal pass in the core case; a failing migration rolling back with the old version running is covered only by internal/modules tests."
+  },
+  "visual_qc": {
+    "command": "TOGAVSU_QC_DIR=$PWD/docs/build/reports/screens/integrate-extensions CHROME=/usr/bin/chromium PUPPETEER_CORE=<absolute path to puppeteer-core@23> go test -count=1 -v -run '^TestExtensionsScreens$' ./internal/core/",
+    "exit_code": 0,
+    "screens": "docs/build/reports/screens/integrate-extensions",
+    "note": "Rerun at d80d354: 8 screens, every page 200, no console errors or failed requests. Observation: the matter screen shows the matter title twice (shell page title and the matter heading); cosmetic, not a functional failure."
+  },
+  "simplification": {
+    "net_lines_non_test": 928,
+    "diff": "30 files, +2576 -451 (non-test +1362 -434) against f225daa",
+    "review": "Folded internal/dashboard/compose into internal/core instead of duplicating auth and routing; reused the modules harness pattern, the existing documents-qc.mjs and test helpers; one shared db.PublishEvent for billing and practice events; no new dependency.",
+    "ponytail_debt_entries": 64,
+    "new_debt_entries": 4,
+    "checkpoint_fix": "b1b02a0 against 3c7a814 (b827a75 adds a one-line test URL fix): non-test +325 -8 across 7 files (internal/supervisor/modules.go new, server.go, docker.go, runtime.go comment, two CI scripts, PONYTAIL-DEBT.md); PONYTAIL-DEBT Extensions 1 replaced (debt count unchanged at 64): the gap is closed, the new ceiling is secret files in the container writable layer. No new dependency.",
+    "checkpoint_fix_d80d354": "d80d354 against b380fb2: non-test +116 -5 across 5 files (internal/core/extensions.go, internal/modules/http.go, internal/modules/manifest.go, internal/practice/http.go, web/templates/practice/matter.html), test +92; no new dependency; PONYTAIL-DEBT.md unchanged (64 entries)."
+  }
+}

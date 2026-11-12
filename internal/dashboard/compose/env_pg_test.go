@@ -255,7 +255,7 @@ func newEnv(t *testing.T) *env {
 	return newEnvWith(t, Options{})
 }
 
-// newEnvWith mounts the ui with opt; DatabaseURL is filled in.
+// newEnvWith mounts the ui with opt over a running core.
 func newEnvWith(t *testing.T, opt Options) *env {
 	t.Helper()
 	e := &env{t: t, dsn: appRoleDSN(t), dataDir: t.TempDir(), opt: opt, recovery: map[string][]string{}}
@@ -280,14 +280,19 @@ func (e *env) open() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opt := e.opt
-	opt.DatabaseURL = e.dsn
-	ui, err := Mount(ctx, app, opt)
-	if err != nil {
-		_ = app.Close()
-		t.Fatal(err)
+	// The ui core.Open mounted, behind the core's own handler: these tests drive the
+	// integrated product. Only a test with its own options (fake help media) builds a
+	// second ui over the same core.
+	ui, h := app.UI, app.Handler()
+	if e.opt.Files != nil || e.opt.DocTender != nil || e.opt.Now != nil || e.opt.Sources != nil {
+		var err error
+		if ui, err = Mount(ctx, app, e.opt); err != nil {
+			_ = app.Close()
+			t.Fatal(err)
+		}
+		h = ui.Handler()
 	}
-	e.app, e.ui, e.srv = app, ui, httptest.NewServer(ui.Handler())
+	e.app, e.ui, e.srv = app, ui, httptest.NewServer(h)
 }
 
 func (e *env) shut() {

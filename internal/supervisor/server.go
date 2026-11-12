@@ -23,6 +23,8 @@ func NewMux(token string, ops *Operations, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("POST /v1/updates", h.postUpdate)
 	mux.HandleFunc("GET /v1/updates", h.listUpdates)
+	mux.HandleFunc("PUT /v1/modules/{name}", h.putModule)
+	mux.HandleFunc("DELETE /v1/modules/{name}", h.deleteModule)
 	mux.HandleFunc("POST /v1/modules/{name}/start", h.module("start"))
 	mux.HandleFunc("POST /v1/modules/{name}/stop", h.module("stop"))
 	mux.HandleFunc("POST /v1/backups", h.postBackup)
@@ -96,6 +98,49 @@ func (h *handlers) module(action string) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"module": name, "status": action})
 	}
+}
+
+func (h *handlers) moduleRuntime() (ModuleRuntime, bool) {
+	rt, ok := h.ops.Runtime.(ModuleRuntime)
+	return rt, ok
+}
+
+// putModule creates (or replaces) the module container from the manifest image and
+// digest with the secrets mounted as files. Secrets never reach the log or response.
+func (h *handlers) putModule(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	rt, ok := h.moduleRuntime()
+	if !ok {
+		writeErr(w, ErrNotFound)
+		return
+	}
+	var dep ModuleDeployment
+	if err := decode(r, &dep); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := dep.Validate(name); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if err := rt.DeployModule(r.Context(), dep); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"module": name, "version": dep.Version, "status": "created"})
+}
+
+func (h *handlers) deleteModule(w http.ResponseWriter, r *http.Request) {
+	rt, ok := h.moduleRuntime()
+	if !ok {
+		writeErr(w, ErrNotFound)
+		return
+	}
+	if err := rt.RemoveModule(r.Context(), r.PathValue("name")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handlers) postBackup(w http.ResponseWriter, r *http.Request) {

@@ -386,8 +386,13 @@ func TestBrowserSetupAndSignIn(t *testing.T) {
 	if ok.code != http.StatusSeeOther || ok.loc != "/practice/matters" {
 		t.Fatalf("totp sign-in: %d %q %s", ok.code, ok.loc, ok.body)
 	}
-	if r := b.must(http.StatusOK, "GET", "/admin/settings", nil); !strings.Contains(r.body, "Reset to default") && !strings.Contains(r.body, "<table>") {
-		t.Fatal("settings page did not render")
+	// Since integrate-extensions the admin page (internal/dashboard) owns settings: the
+	// old /admin/settings address sends the browser there.
+	if r := b.do("GET", "/admin/settings", nil); r.code != http.StatusSeeOther || !strings.HasPrefix(r.loc, "/admin?tab=") {
+		t.Fatalf("GET /admin/settings: %d %q", r.code, r.loc)
+	}
+	if r := b.must(http.StatusOK, "GET", "/admin?tab=firm", nil); !strings.Contains(r.body, "Reset to default") {
+		t.Fatal("settings tab did not render")
 	}
 }
 
@@ -624,9 +629,11 @@ func TestBearerScopesMCPAndSettings(t *testing.T) {
 	}
 	list := reader.must(http.StatusOK, "POST", "/mcp", map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 	listMatters := toolName(t, "GET", "/api/v1/matters")
-	// Files are mounted since phase 4; module alerts are a later integration and are not offered.
+	// Files are mounted since phase 4; the ui's widgets and the module routes since
+	// integrate-extensions.
 	if !strings.Contains(list.body, `"name":"`+listMatters+`"`) || !strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/files")+`"`) ||
-		strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/widgets/module-alerts")+`"`) {
+		!strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/widgets/module-alerts")+`"`) ||
+		!strings.Contains(list.body, `"name":"`+toolName(t, "GET", "/api/v1/modules")+`"`) {
 		t.Fatal("tools/list does not reflect the mounted routes")
 	}
 	call := mcpCall(reader, listMatters, map[string]any{})

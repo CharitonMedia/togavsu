@@ -103,6 +103,11 @@ func (a *App) mounted(t tool) bool {
 			return true
 		}
 	}
+	for _, mux := range a.uiMuxes {
+		if _, pattern = mux.Handler(r); pattern != "" && pattern != "/" {
+			return true
+		}
+	}
 	return false
 }
 

@@ -117,6 +117,82 @@
 </form>
 {{end}}
 
+{{if eq .Tab "modules"}}{{with .Modules}}
+<section class="card" id="module-alerts"><h2>Marketplace alerts</h2>
+{{if .CheckError}}<p class="error" role="alert">The marketplace check failed: {{.CheckError}}</p>{{end}}
+<p class="muted">Last check {{if .Check.AttemptedAt.IsZero}}not run yet{{else}}{{when .Check.AttemptedAt}}{{if .Check.LastError}} (failed: {{.Check.LastError}}){{end}}{{end}}. Nothing is switched off remotely: you decide whether to keep, disable, update or remove a module.</p>
+{{if .Alerts}}<ul class="alerts">{{range .Alerts}}<li id="alert-{{.ID}}" class="warning"><strong>{{.ModuleID}}</strong> {{if .InstalledVersion}}{{.InstalledVersion}}{{end}} · {{.Kind}} · {{.Warning}} <span class="muted">{{when .RaisedAt}}</span></li>{{end}}</ul>
+{{else}}<p class="hint">No alerts for the installed modules.</p>{{end}}
+</section>
+
+<section class="card" id="installed-modules"><h2>Installed modules</h2>
+{{if .Modules}}{{range .Modules}}<article class="module" id="module-{{.ID}}">
+<h3>{{.Name}} <span class="muted">{{.ID}} {{.Version}}</span> <span class="tag">{{.Status}}</span>{{if .Replaces}} <span class="tag">replaces {{.Replaces}}</span>{{end}}</h3>
+{{if .LastError}}<p class="error" role="alert">{{.LastError}}</p>{{end}}
+{{if .Undecided}}<form method="post" action="/admin/modules/permissions" class="form-grid permissions"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}">
+<p>This module asks for these permissions. Declining a required one cancels the install.</p>
+{{range .Permissions}}{{if eq .Decision "pending"}}<fieldset><legend><code>{{.Scope}}</code>{{if .Required}} (required){{end}}</legend>
+<label class="check"><input type="radio" name="scope:{{.Scope}}" value="approve" required> Approve</label> <label class="check"><input type="radio" name="scope:{{.Scope}}" value="decline"> Decline</label></fieldset>{{end}}{{end}}
+<div><button type="submit">Save decisions</button></div></form>
+{{else}}<p class="muted">Permissions: {{range $i, $p := .Permissions}}{{if $i}}, {{end}}<code>{{$p.Scope}}</code>{{if not $p.Approved}} (declined){{end}}{{end}}</p>{{end}}
+{{if or (eq .Status "installed") (eq .Status "disabled")}}
+<div class="actions">
+{{if .Enabled}}<form method="post" action="/admin/modules/disable" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><button type="submit">Disable</button></form>
+{{else}}<form method="post" action="/admin/modules/enable" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><button type="submit">Enable</button></form>{{end}}
+</div>
+{{if .Settings}}<form method="post" action="/admin/modules/settings" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><h4>Settings</h4>
+{{$mod := .ID}}{{range .Settings}}<label for="ms-{{$mod}}-{{.Key}}">{{.Label}}</label>{{if .Options}}<select id="ms-{{$mod}}-{{.Key}}" name="setting:{{.Key}}">{{$v := .Value}}{{range .Options}}<option{{if eq . $v}} selected{{end}}>{{.}}</option>{{end}}</select>{{else}}<input id="ms-{{$mod}}-{{.Key}}" name="setting:{{.Key}}"{{if .Secret}} type="password" autocomplete="new-password" placeholder="set; type to replace"{{else}} value="{{.Value}}"{{end}}>{{end}}{{end}}
+<div><button type="submit">Save settings</button></div></form>{{end}}
+<form method="post" action="/admin/modules/update" enctype="multipart/form-data" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><h4>Update</h4>
+<label for="up-{{.ID}}">Signed package file</label><input id="up-{{.ID}}" type="file" name="package">
+<label for="upv-{{.ID}}">or marketplace version</label><input id="upv-{{.ID}}" name="version" placeholder="1.1.0">
+<div><button type="submit">Update</button> <span class="muted">A failed update keeps the running version.</span></div></form>
+<form method="post" action="/admin/modules/uninstall" class="form-grid uninstall"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="module_id" value="{{.ID}}"><h4>Remove</h4>
+<label class="check"><input type="radio" name="data" value="keep" checked> Keep data (the schema stays, locked, for a reinstall)</label>
+<label class="check"><input type="radio" name="data" value="delete"> Delete data (after a fresh backup)</label>
+<label for="un-{{.ID}}">To delete data, type the module id</label><input id="un-{{.ID}}" name="confirmation" autocomplete="off">
+<div><button type="submit" class="danger">Remove</button></div></form>
+{{end}}
+</article>{{end}}
+{{else}}<p class="hint">No modules installed.</p>{{end}}
+</section>
+
+<form method="post" action="/admin/modules/install" enctype="multipart/form-data" class="card form-grid" id="install-module"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<h2>Install from a file</h2>
+<label for="pkg">Signed package file</label><input id="pkg" type="file" name="package" required>
+<div><button type="submit">Install</button> <span class="muted">The signature is checked against the marketplace keys and your trusted local keys before anything runs.</span></div>
+</form>
+
+<section class="card" id="replacements"><h2>Replaced domains</h2>
+<table><thead><tr><th>Domain</th><th>Handled by</th><th></th></tr></thead><tbody>
+{{$cands := .Candidates}}{{range .Domains}}<tr id="domain-{{.Domain}}"><td>{{.Domain}}</td><td>{{if .ModuleID}}{{.ModuleID}}{{else}}Core{{end}}</td>
+<td><form method="post" action="/admin/modules/domain" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="domain" value="{{.Domain}}">
+<label class="visually-hidden" for="dh-{{.Domain}}">Handler for {{.Domain}}</label><select id="dh-{{.Domain}}" name="module_id"><option value="">Core</option>{{$cur := .ModuleID}}{{range index $cands .Domain}}<option{{if eq . $cur}} selected{{end}}>{{.}}</option>{{end}}</select>
+<button type="submit">Switch</button></form></td></tr>{{end}}
+</tbody></table>
+</section>
+
+<section class="card" id="trusted-keys"><h2>Trusted local signing keys</h2>
+{{if .Keys}}<table><thead><tr><th>Name</th><th>Key id</th><th></th></tr></thead><tbody>{{range .Keys}}<tr id="key-{{.ID}}"><td>{{.Name}}</td><td><code>{{.KeyID}}</code></td>
+<td><form method="post" action="/admin/modules/key-delete" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="key_id" value="{{.ID}}"><button type="submit" class="danger">Remove</button></form></td></tr>{{end}}</tbody></table>
+{{else}}<p class="hint">No trusted local keys. Keys published through the marketplace are trusted without being listed here.</p>{{end}}
+<form method="post" action="/admin/modules/key-add" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label for="key-name">Name</label><input id="key-name" name="name" required maxlength="200" placeholder="Our patched builds">
+<label for="key-pem">Ed25519 public key (PEM)</label><textarea id="key-pem" name="public_key_pem" rows="4" required></textarea>
+<div><button type="submit">Add key</button></div></form>
+</section>
+
+<section class="card" id="marketplace"><h2>Marketplace</h2>
+<form method="get" action="/admin" class="inline"><input type="hidden" name="tab" value="modules"><label for="mq">Search the marketplace</label> <input id="mq" name="q" value="{{.Query}}"> <button type="submit">Search</button></form>
+{{if .BrowseError}}<p class="error" role="alert">{{.BrowseError}}</p>{{end}}
+{{range .Listings}}<article class="listing" id="listing-{{.ID}}"><h3>{{.Name}} <span class="muted">{{.Version}} by {{.Author}}</span></h3>
+{{if .Flagged}}<p class="warning" role="alert">{{.FlagText}}</p>{{end}}
+<p class="muted">{{.Notice}}</p><p>Permissions: {{range $i, $s := .Permissions}}{{if $i}}, {{end}}<code>{{$s}}</code>{{end}} · {{.PriceNote}} · signed by <code>{{.SigningKey}}</code></p>
+<form method="post" action="/admin/modules/install-listing" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="listing_id" value="{{.ID}}"><input type="hidden" name="version" value="{{.Version}}"><button type="submit">Install {{.Version}}</button></form>
+</article>{{end}}
+</section>
+{{end}}{{end}}
+
 {{if .Settings}}
 <section class="card settings"><h2>Settings</h2>
 <table class="settings-table"><thead><tr><th>Setting</th><th>Current value</th><th>Default</th><th></th></tr></thead><tbody>
@@ -136,6 +212,6 @@
   <td>{{if not .Locked}}<form method="post" action="/admin/settings/{{.Key}}/reset"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="tab" value="{{$.Page.Tab}}"><button type="submit">Reset to default</button></form>{{end}}</td>
 </tr>{{end}}</tbody></table>
 </section>
-{{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance"))}}<p class="hint">This tab has no settings in this core yet.</p>
+{{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance") (eq .Tab "modules"))}}<p class="hint">This tab has no settings in this core yet.</p>
 {{end}}
 {{end}}{{template "shell-bottom" .}}{{end}}

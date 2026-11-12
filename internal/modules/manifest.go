@@ -392,6 +392,21 @@ func (m Manifest) Tab(id string) (Tab, bool) {
 // TabPage is the core page that frames a module tab.
 func TabPage(module, tab string) string { return "/modules/" + module + "/tabs/" + tab }
 
+// MatterItem returns the matter-screen panel or action with id.
+func (m Manifest) MatterItem(id string) (MatterItem, bool) {
+	for _, it := range m.MatterItems {
+		if it.ID == id {
+			return it, true
+		}
+	}
+	return MatterItem{}, false
+}
+
+// MatterItemPage is the core page that frames a module's matter-screen panel or action.
+func MatterItemPage(module, item string) string {
+	return "/modules/" + module + "/matter-items/" + item
+}
+
 // DashboardWidgets converts the manifest's widgets for the dashboard catalog. A widget
 // with no click-through target, or a target tab the manifest doesn't declare, refuses the
 // install (PRD 8.6, AC-011).

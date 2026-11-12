@@ -11,6 +11,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/db"
+	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
 //go:embed migrations/*.sql
@@ -122,10 +123,21 @@ func (m *Memory) List(_ context.Context, kind string) ([][]byte, error) {
 // ponytail: ceiling: List reads every row of a kind and filters in Go; one core process
 // serializes billing writes with Service.mu. Upgrade path: typed tables with indexed filters and
 // SELECT ... FOR UPDATE. Trigger: a second core replica or more than 200k billing rows.
-type Postgres struct{ pool *sql.DB }
+type Postgres struct {
+	pool    *sql.DB
+	publish bool
+}
 
 // NewPostgres returns a store on pool. pool must be the pool the audit ledger uses.
 func NewPostgres(pool *sql.DB) *Postgres { return &Postgres{pool: pool} }
+
+// PublishEvents makes p also write each billing event to core.events in the same
+// transaction, for the module runtime. The core composes billing this way; a billing-only
+// database has no core matters for those rows to point to.
+func (p *Postgres) PublishEvents() *Postgres {
+	p.publish = true
+	return p
+}
 
 func (p *Postgres) Atomic(ctx context.Context, fn func(ctx context.Context) error) error {
 	return audit.WithTx(ctx, p.pool, fn)
@@ -150,7 +162,15 @@ func (p *Postgres) Put(ctx context.Context, kind, id string, v any) error {
 	}
 	_, err = audit.Conn(ctx, p.pool).ExecContext(ctx, `INSERT INTO billing_records (kind, id, body) VALUES ($1, $2, $3)
 		ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body`, kind, id, string(b))
-	return err
+	if err != nil {
+		return err
+	}
+	// Billing's events also go to core.events in the same transaction, so the module
+	// runtime delivers time, expense, invoice and payment writes to subscribers.
+	if ev, ok := v.(domain.Event); ok && kind == kindEvent && p.publish {
+		return db.PublishEvent(ctx, audit.Conn(ctx, p.pool), ev)
+	}
+	return nil
 }
 
 func (p *Postgres) Delete(ctx context.Context, kind, id string) error {

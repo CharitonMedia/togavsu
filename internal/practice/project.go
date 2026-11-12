@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
+	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
@@ -56,7 +57,7 @@ func (d *Durable) EnableProjection(ctx context.Context) error {
 // projectOrder writes referenced rows before the rows that reference them.
 var projectOrder = func() map[string]int {
 	out := map[string]int{}
-	for i, kind := range []string{"area", "county", "contact", "referral", "matter"} {
+	for i, kind := range []string{"area", "county", "contact", "referral", "matter", "event"} {
 		out[kind] = i + projectFirst
 	}
 	return out
@@ -109,6 +110,10 @@ func optional(id domain.ID) any {
 
 func projectOne(ctx context.Context, tx execer, body any) error {
 	switch r := body.(type) {
+	case domain.Event:
+		// Practice's events go to core.events too, so the module runtime delivers contact,
+		// matter, note and conflict writes to the modules that subscribe.
+		return db.PublishEvent(ctx, tx, r)
 	case domain.PracticeArea:
 		_, err := tx.ExecContext(ctx, `INSERT INTO practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET updated_at = EXCLUDED.updated_at, name = EXCLUDED.name,

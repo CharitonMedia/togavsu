@@ -216,6 +216,9 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 		return identity.Caller{}, shared(err)
 	}
 	if in.Bearer != "" {
+		if moduleRuntimeRoute(r, c.Principal) {
+			return c, nil
+		}
 		t, ok := a.toolFor(r.Method, r.URL.Path)
 		if !ok {
 			return identity.Caller{}, domain.Forbidden("this route is not available to tokens")
@@ -228,6 +231,45 @@ func (a *App) authenticate(r *http.Request) (identity.Caller, error) {
 		}
 	}
 	return c, nil
+}
+
+// moduleRuntimeRoute reports a module token calling the runtime's module-facing routes,
+// which the contract does not list as operations: verifying its frame's context token,
+// reading its own settings, and reading a published view. The module handler enforces
+// their rules itself (its own id only; a view only after the admin approved its scope),
+// so the contract scope gate does not apply.
+// ponytail: ceiling: three routes held outside the published contract. Upgrade path: the
+// API owner adds them to api/openapi/v1 with module-only access. Trigger: the next
+// contract revision.
+func moduleRuntimeRoute(r *http.Request, p domain.Principal) bool {
+	if p.ModuleID == "" || p.Source != domain.SourceModule {
+		return false
+	}
+	_, pattern := moduleRuntimeRoutes.Handler(r)
+	switch pattern {
+	case "POST /api/v1/modules/{module_id}/context-tokens/verify", "GET /api/v1/modules/{module_id}/settings":
+		return moduleIDOf(r.URL.Path) == p.ModuleID
+	case "GET /api/v1/modules/{module_id}/views/{view}":
+		return true
+	}
+	return false
+}
+
+// moduleRuntimeRoutes matches moduleRuntimeRoute's patterns.
+var moduleRuntimeRoutes = func() *http.ServeMux {
+	m := http.NewServeMux()
+	for _, p := range []string{"POST /api/v1/modules/{module_id}/context-tokens/verify", "GET /api/v1/modules/{module_id}/settings",
+		"GET /api/v1/modules/{module_id}/views/{view}"} {
+		m.Handle(p, http.NotFoundHandler())
+	}
+	return m
+}()
+
+// moduleIDOf is the {module_id} segment of a /api/v1/modules/ path.
+func moduleIDOf(path string) string {
+	rest, _ := strings.CutPrefix(path, "/api/v1/modules/")
+	id, _, _ := strings.Cut(rest, "/")
+	return id
 }
 
 // shared maps identity's specific codes onto the shared error table, so every handler,
@@ -250,9 +292,13 @@ func shared(err error) error {
 
 // principal is the hook practice and every core route use. Services check roles,
 // walls and attorney-only redaction against it.
+// A module's call carrying a context token runs as the viewer (delegate).
 func (a *App) principal(r *http.Request) (domain.Principal, error) {
 	c, err := a.caller(r)
-	return c.Principal, err
+	if err != nil {
+		return c.Principal, err
+	}
+	return a.delegate(r, c.Principal)
 }
 
 // status is the HTTP status for err: identity's own codes go through shared, and the
