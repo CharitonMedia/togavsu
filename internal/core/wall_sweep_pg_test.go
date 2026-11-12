@@ -19,7 +19,9 @@ func TestReleaseWallHidesMatterEverywhere(t *testing.T) {
 	open, openClient := f.matter("Openly Visible", "open@client.example", nil)
 	f.admin.must(http.StatusOK, "PUT", "/api/v1/matters/"+walled+"/wall", map[string]any{"user_ids": []string{f.adminID, f.attyID}})
 
-	day := func(d int) string { return time.Now().Add(time.Duration(d) * 24 * time.Hour).UTC().Format("2006-01-02") }
+	day := func(d int) string {
+		return time.Now().Add(time.Duration(d) * 24 * time.Hour).UTC().Format("2006-01-02")
+	}
 	at := func(h int) string { return time.Now().Add(time.Duration(h) * time.Hour).UTC().Format(time.RFC3339) }
 	seed := func(matter, clientID, tag string) map[string]string {
 		ids := map[string]string{"matter_id": matter, "client_id": clientID, "contact_id": clientID}
