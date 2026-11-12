@@ -1,7 +1,7 @@
 {
   "task_id": "release",
   "status": "pending",
-  "tested_revision": "66a63b46f9c84e3b59ff0cf6480c453551d5830c",
+  "tested_revision": "9413dcba36f9e0ffb11ebdf9bab82296f158e4a4",
   "exit_code": 1,
   "tests": [
     {
@@ -9,14 +9,14 @@
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 45.9
+      "seconds": 35.5
     },
     {
       "id": "desktop-install",
       "command": "sh scripts/release/desktop-install.sh",
       "exit_code": 3,
       "status": "fail",
-      "seconds": 0.0,
+      "seconds": 0.1,
       "problems": [
         "the check reported PENDING"
       ]
@@ -26,21 +26,21 @@
       "command": "sh scripts/ci/test-api.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 19.4
+      "seconds": 32.8
     },
     {
       "id": "go-release-api",
       "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestReleaseEveryDomainWriteIsAudited|TestReleaseUpdatesRoutes)$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 8.4
+      "seconds": 14.8
     },
     {
       "id": "all-operations-mounted",
       "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
       "exit_code": 1,
       "status": "fail",
-      "seconds": 0.8,
+      "seconds": 1.2,
       "problems": [
         "TestReleaseAllOperationsMounted did not pass"
       ]
@@ -50,112 +50,112 @@
       "command": "go test -count=1 -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestAC004AccountantReadOnly|TestLedgersSealedForApplicationRole)$' ./internal/core/ ./internal/practice/ ./internal/audit/ ./internal/billing/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 3.4
+      "seconds": 5.2
     },
     {
       "id": "go-practice-records",
       "command": "go test -count=1 -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI|TestEveryMatterFieldIsAuditedBeforeWrite)$' ./internal/core/ ./internal/practice/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.8
+      "seconds": 2.6
     },
     {
       "id": "go-finance",
       "command": "go test -count=1 -run '^(TestFinanceInvoiceWorkflows|TestFinanceTrustInvariants|TestFinancePermissions|TestFinanceTrustNotices|TestFinanceCrossDomainTransfers|TestAC008InvoiceLifecycle|TestAC009UnpaidInvoiceWarnsOnClose|TestAC026FlatFeeReadyToApply|TestReleaseZeroFeeStaysOutOfARAging)$' ./internal/core/ ./internal/billing/ ./internal/trust/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 5.4
+      "seconds": 8.9
     },
     {
       "id": "go-documents",
       "command": "go test -count=1 -run '^(TestDocumentsCalendarDeadlines|TestDocumentsStorageVersionsMoves|TestDocumentsDocTenderCorpus|TestDocumentsDocTenderTokensAndMCP|TestAC027AvailableDates|TestAC011UpcomingDeadlinesClickThrough)$' ./internal/core/ ./internal/calendar/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 55.2
+      "seconds": 56.4
     },
     {
       "id": "go-ui",
       "command": "go test -count=1 -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -run '^TestExtensionsUIModules$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 11.6
+      "seconds": 21.5
     },
     {
       "id": "go-modules",
       "command": "go test -count=1 -run '^(TestExtensionsModuleLifecycle|TestReleaseModuleUpdatesViewsAndRollback)$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 2.7
+      "seconds": 4.1
     },
     {
       "id": "module-container",
       "command": "sh scripts/ci/test-module-container.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 18.9
+      "seconds": 3.9
     },
     {
       "id": "module-stack",
       "command": "sh scripts/ci/test-module-stack.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 20.9
+      "seconds": 21.6
     },
     {
       "id": "go-marketplace",
       "command": "go test -count=1 -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.5
+      "seconds": 2.3
     },
     {
       "id": "update-load",
       "command": "sh scripts/ci/update-load.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 82.4
+      "seconds": 98.7
     },
     {
       "id": "supervisor-suite",
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 7.8
+      "seconds": 8.8
     },
     {
       "id": "perf-p95",
       "command": "sh scripts/ci/test-perf.sh",
       "exit_code": 1,
       "status": "fail",
-      "seconds": 359.6
+      "seconds": 483.8
     },
     {
       "id": "backup-e2e",
       "command": "sh scripts/ci/test-backup-e2e.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 63.0
+      "seconds": 56.9
     },
     {
       "id": "backup-integration",
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 19.6
+      "seconds": 25.6
     },
     {
       "id": "go-ai",
       "command": "go test -count=1 -run '^(TestExtensionsAIMediation|TestAC052LabelingModelAndNoLocalEndpoint)$' ./internal/core/ ./internal/doctender/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.7
+      "seconds": 2.7
     },
     {
       "id": "go-settings-seed",
       "command": "go test -count=1 -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.6
+      "seconds": 2.3
     },
     {
       "id": "ui-qc",
@@ -179,21 +179,21 @@
       "command": "go test -count=1 -run '^(TestDocumentsLawCraftEditor)$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.5
+      "seconds": 2.5
     },
     {
       "id": "core-image-cases",
       "command": "sh scripts/ci/test-core-image-cases.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 191.5
+      "seconds": 261.8
     },
     {
       "id": "go-doctender",
       "command": "go test -count=1 -run '^TestAC0(4[3-9]|5[0-2])' ./internal/doctender/ ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 8.2
+      "seconds": 12.5
     },
     {
       "id": "release-signature",
@@ -210,14 +210,14 @@
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 538.0
+      "seconds": 692.7
     },
     {
       "id": "qa-harness",
       "command": "docker build -q -t togavsu-qa:local scripts/ci/qa-image >/dev/null && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 7.4
+      "seconds": 11.4
     }
   ],
   "phase_cases": [
@@ -280,7 +280,7 @@
       "status": "fail",
       "command": "sh scripts/ci/full-acceptance.sh",
       "exit_code": 1,
-      "revision": "66a63b46f9c84e3b59ff0cf6480c453551d5830c",
+      "revision": "9413dcba36f9e0ffb11ebdf9bab82296f158e4a4",
       "passed_acceptance_ids": [
         "AC-003",
         "AC-004",
@@ -351,7 +351,7 @@
       "status": "fail",
       "command": "python3 scripts/release/full_acceptance.py --phase desktop-install --reuse <full results.json>",
       "exit_code": 1,
-      "revision": "66a63b46f9c84e3b59ff0cf6480c453551d5830c",
+      "revision": "9413dcba36f9e0ffb11ebdf9bab82296f158e4a4",
       "passed_acceptance_ids": [],
       "pending_acceptance_ids": [
         "AC-001"
@@ -369,7 +369,7 @@
       "status": "fail",
       "command": "python3 scripts/release/full_acceptance.py --phase signed-images-updater-load --reuse <full results.json>",
       "exit_code": 1,
-      "revision": "66a63b46f9c84e3b59ff0cf6480c453551d5830c",
+      "revision": "9413dcba36f9e0ffb11ebdf9bab82296f158e4a4",
       "passed_acceptance_ids": [
         "AC-013",
         "AC-016"
@@ -388,7 +388,7 @@
       "status": "pass",
       "command": "python3 scripts/release/full_acceptance.py --phase backup-restore --reuse <full results.json>",
       "exit_code": 0,
-      "revision": "66a63b46f9c84e3b59ff0cf6480c453551d5830c",
+      "revision": "9413dcba36f9e0ffb11ebdf9bab82296f158e4a4",
       "passed_acceptance_ids": [
         "AC-018",
         "AC-040"
@@ -479,7 +479,7 @@
   "pending_notes": {
     "AC-001": "Linux Compose first run passes (compose-first-run). The criterion's release check is a clean Docker Desktop install; scripts/release/desktop-install.sh refuses any other engine and exits 3 here (Docker Engine 29 on a GitHub-hosted Linux runner). External: needs a clean Windows or macOS machine with Docker Desktop.",
     "AC-002": "OpenAPI validates and api-contract passes; 399 of 430 contract operations are mounted and offered on /mcp, all fail closed. TestReleaseAllOperationsMounted (build tag acceptance) lists the 31 that are not: ai/providers list, key and check; events list, create and bulk; party-roles (4); marker-definitions (4); matter-markers PATCH; module markers (3); contacts and matters merge; matter archive (needs an archived column); custom-field-values:bulk; time-entry and expense custom fields; invoices:bulk and files:bulk; files/unassigned and publication-grants; payments processor-initializations; me/email-change and confirm.",
-    "AC-017": "Executable and failing. scripts/ci/test-perf.sh seeds 50 users, 20,000 matters and 1,000,000 time entries and times staff and admin pages and API calls. The worker's full run had an overall p95 of 4565 ms, with the unbilled report (about 160,000 rows unpaged), the home page, the unpaged matters list, AR aging, nav context and search over 300 ms, and /calendar answering 500 on that seed. Indexed billing reads (migrations 1200 and 1201), removed quadratic scans and per-request settings memoization are merged; paging the unbilled report and the matters list is next. At tested_revision the run used TOGAVSU_PERF_N=20 (20 requests per endpoint, concurrency 4) to fit the lane's time: overall p95 4407.8 ms, exit 1.",
+    "AC-017": "Executable and failing. scripts/ci/test-perf.sh seeds 50 users, 20,000 matters and 1,000,000 time entries and times staff and admin pages and API calls. At tested_revision (TOGAVSU_PERF_N=20): overall p95 6002.4 ms over 1356 requests; home page p95 9158 ms and the unpaged unbilled report 12658 ms are the worst. An earlier run at the default TOGAVSU_PERF_N=200 (6059055, same code paths) was stopped after 51 minutes so the other checks could finish; before it was stopped it showed home p95 9067 ms and unbilled 12540 ms. Upgrade: page the unbilled report and matters list, and cache home widgets, AR aging and nav context.",
     "AC-029": "Every screen and admin tab has a guide topic and the guide-topic tests pass (go-ui, go-settings-seed). scripts/ci/ui-qc.sh is still the platform placeholder that prints PENDING because tests/ui/run.sh does not exist; the real visual QC runs inside the core image (core-image-cases, passing). The runner refuses a placeholder, so the criterion stays pending until ui-qc.sh runs that QC.",
     "AC-041": "The editor case passes with the image's wordcraft-cli and browser editor (go-lawcraft, core-image-cases): open, save as a new version passing editor.CheckDOCX, the edit lock and its 5-minute lapse, New Pleading from the matter, commit 770a8fab on the Document editor tab. External: 'opens in Word with no repair prompt' needs Microsoft Word."
   },
@@ -492,7 +492,7 @@
     "A release workflow that builds, pushes to ghcr.io/charitonmedia, signs and tags; lanes have a read-only token and cannot change .github/.",
     "A clean Docker Desktop install on Windows and macOS (scripts/release/desktop-install.sh).",
     "Microsoft Word for AC-041's no-repair-prompt check.",
-    "The Full acceptance CI job: proposed in docs/release/README.md for the integration lead to land."
+    "The Full acceptance CI job: lanes cannot change .github/. The exact patch is docs/release/proposed-ci/product-ci-full-acceptance.patch (applies to .github/workflows/product-ci.yml at tested_revision and passes actionlint 1.7.7); the integration lead lands it through a control PR."
   ],
   "proposed_shared_changes": [
     "Place docs/release/license/LICENSE and LICENSE-SUMMARY.md at the repository root (PRD 3); the root is outside the release paths.",
@@ -500,6 +500,16 @@
     "docs/api/stage1-inventory.json (outside the release paths) carries the regenerated openapi.json digest that api/check.sh requires after the merged contract changes.",
     "Collapse the twelve per-package writeJSON/writeErr helpers (docs/release/simplification-audit.md)."
   ],
+  "simplification": {
+    "diff_vs_release_base": "130 files changed, 11913 insertions(+), 351 deletions(-) against 47e73ee1616933ac18707cc9c30912edc313f3ac",
+    "non_test_diff": "98 files changed, 6671 insertions(+), 322 deletions(-) (excluding *_test.go, tests/ and docs/build/reports/)",
+    "this_correction_vs_66a63b4": "8 files changed, 308 insertions(+), 15 deletions(-) (excluding docs/build/reports/)",
+    "ponytail_debt_entries": 63,
+    "ponytail_markers": 102,
+    "review": "docs/release/simplification-audit.md: removed logMailer and the duplicate passphrase writer, kept one core migrate/healthcheck, counted migrations once, one generic practice bulk handler; check_debt.py passes (every marker names a trigger, count matches). The gate fix keeps one gate (no queue, no dependency, no new debt); see docs/release/simplification-audit.md."
+  },
+  "environment": "GitHub-hosted Linux runner, Docker Engine 29, Go 1.22.12, two postgres:17 containers, postgresql-client-17; synthetic data only. Run from a clean clone at tested_revision (working_tree_dirty false).",
+  "full_run_command": "TOGAVSU_PERF_N=20 sh scripts/ci/full-acceptance.sh (with TOGAVSU_TEST_DATABASE_URL, TOGAVSU_TEST_DATABASE_URL_B, TOGAVSU_PG_DUMP, TOGAVSU_PSQL and TOGAVSU_ACCEPTANCE_OUT set)",
   "ci": {
     "required_checks": [
       "Core tests",
@@ -510,18 +520,18 @@
       "Supervisor image",
       "Full acceptance"
     ],
-    "note": "Product CI for the published head runs on the pull request after the controller publishes it; this lane cannot watch it. Full acceptance is not a job yet (proposed CI change), so that required check is missing. Supervisor tests now runs update-load.sh, which builds the core image twice and runs a Compose stack; it may need a longer timeout."
+    "full_acceptance_job": "Not in .github/workflows/product-ci.yml: lanes cannot change .github/. The proposed job runs the same scripts/ci/full-acceptance.sh at the default perf size and fails while any criterion or gate is pending; it is not a placeholder. Exact patch: docs/release/proposed-ci/product-ci-full-acceptance.patch.",
+    "note": "Product CI for the published head runs after the controller publishes this branch; this lane cannot watch it, so CI results are pending."
   },
-  "simplification": {
-    "diff_vs_release_base": "126 files changed, 11080 insertions(+), 339 deletions(-) against 47e73ee1616933ac18707cc9c30912edc313f3ac",
-    "non_test_diff": "96 files changed, 6491 insertions(+), 310 deletions(-)",
-    "ponytail_debt_entries": 63,
-    "ponytail_markers": 102,
-    "review": "docs/release/simplification-audit.md: removed logMailer and the duplicate passphrase writer, kept one core migrate/healthcheck, counted migrations once, one generic practice bulk handler; check_debt.py passes (every marker names a trigger, count matches)."
-  },
-  "environment": "GitHub-hosted Linux runner, Docker Engine 29, Go 1.22.12, two postgres:17 containers, postgresql-client-17; synthetic data only. Run from a clean clone at tested_revision (working_tree_dirty false).",
-  "full_run_command": "TOGAVSU_PERF_N=20 sh scripts/ci/full-acceptance.sh (with TOGAVSU_TEST_DATABASE_URL, TOGAVSU_TEST_DATABASE_URL_B, TOGAVSU_PG_DUMP, TOGAVSU_PSQL set)",
+  "fixes_in_this_run": [
+    "Supervisor operation gate: scheduled work (the 30-second tick) no longer makes an admin backup or restore fail with 409 operation_in_progress. backup-e2e failed 4 of 5 times at 6059055 (AC-018, AC-040, AC-050 pending) because its restore landed on the first tick; it passed 3 of 3 alone and in the full run after the fix. Tests: internal/supervisor/gate_test.go.",
+    "scripts/ci/test-module-stack.sh: default host ports moved below the ephemeral range after 38080 was held by an outbound socket and caddy's bind failed.",
+    "Proposed Full acceptance job: runner.temp moved from job-level env (rejected by actionlint) to the step."
+  ],
   "earlier_runs": [
+    "6059055 (docs-only change on 66a63b4), default TOGAVSU_PERF_N=200: 44 passed, 8 pending. backup-e2e failed on the gate race (AC-018, AC-040, AC-050); perf-p95 was stopped after 51 minutes.",
+    "68b414c (gate fix): stopped after module-stack failed on the 38080 port bind; fixed in 9413dcb.",
+    "66a63b4: 47 passed, 5 pending (previous report).",
     "834cb34: same result (47 passed) except qa-harness failed on a ledger header token, fixed in 66a63b4; perf-p95 was stopped at the 120-minute default sample size.",
     "63511d7: stopped after the run caught go-identity-access naming TestAC004AccountantReadOnly without its package (fixed in 834cb34)."
   ]
