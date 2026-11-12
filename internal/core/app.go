@@ -351,7 +351,12 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	last := len(app.domains) - 1
 	app.domains = append(app.domains[:last:last], modMux, mkMux, app.domains[last])
 	app.uiMuxes = []*http.ServeMux{ui.helpMux, ui.dash}
-	app.handler = ui.Handler()
+	// Each request reads a setting or an identity user once however many rows ask
+	// (AC-017); the memo ends with the request, so changes apply from the next one.
+	inner := ui.Handler()
+	app.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
+	})
 	// Module events are pumped and their webhooks sent every five seconds.
 	if err := ext.start(ctx, !cfg.NoBackground, 5*time.Second); err != nil {
 		return fail(err)

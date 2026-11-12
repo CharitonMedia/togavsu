@@ -358,7 +358,7 @@ func (h *Handler) worklistPage(_ http.ResponseWriter, r *http.Request, p domain.
 }
 
 func (h *Handler) invoicesPage(_ http.ResponseWriter, r *http.Request, p domain.Principal, pg *page) (string, error) {
-	invs, err := h.Svc.Invoices(r.Context(), p, InvoiceFilter{Status: q(r, "status"), MatterID: domain.ID(q(r, "matter_id"))})
+	invs, err := h.Svc.Invoices(r.Context(), p, InvoiceFilter{Status: q(r, "status"), MatterID: domain.ID(q(r, "matter_id")), Heads: true})
 	if err != nil {
 		return "", err
 	}
@@ -366,6 +366,14 @@ func (h *Handler) invoicesPage(_ http.ResponseWriter, r *http.Request, p domain.
 	over, err := h.Svc.Overdue(r.Context(), p)
 	if err != nil {
 		return "", err
+	}
+	// The screen shows the newest invoices and the oldest overdue ones, a page each, as
+	// the time screen does; the API and CSV export page through all of them.
+	if n := h.Svc.settingInt(r.Context(), "api.page_size"); len(invs) > n {
+		invs = invs[:n]
+	}
+	if n := h.Svc.settingInt(r.Context(), "api.page_size"); len(over) > n {
+		over = over[:n]
 	}
 	pg.Title, pg.Invoices, pg.Overdue = "Invoices", invs, over
 	return "invoices.html", nil
@@ -406,13 +414,10 @@ func (h *Handler) invoicePage(_ http.ResponseWriter, r *http.Request, p domain.P
 
 func (h *Handler) timePage(_ http.ResponseWriter, r *http.Request, p domain.Principal, pg *page) (string, error) {
 	ctx := r.Context()
-	rows, err := h.Svc.TimeEntries(ctx, p, TimeFilter{MatterID: domain.ID(q(r, "matter_id"))})
+	n := h.Svc.settingInt(ctx, "api.page_size")
+	rows, err := h.Svc.TimeEntries(ctx, p, TimeFilter{MatterID: domain.ID(q(r, "matter_id")), Newest: true, Max: n})
 	if err != nil {
 		return "", err
-	}
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].WorkedOn > rows[j].WorkedOn })
-	if n := h.Svc.settingInt(ctx, "api.page_size"); len(rows) > n {
-		rows = rows[:n]
 	}
 	pg.Title, pg.Time = "Time Entries", rows
 	if timers, err := h.Svc.Timers(ctx, p); err == nil {

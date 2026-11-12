@@ -23,6 +23,10 @@ type InvoiceFilter struct {
 	Status   string
 	FromDate string
 	ToDate   string
+	// Heads leaves Lines empty, for lists that show only the invoice header.
+	Heads bool
+	// Max stops the list after that many readable invoices; zero lists every one.
+	Max int
 }
 
 // DraftRequest selects what to draft: one matter, several, or a date range across matters.
@@ -145,7 +149,7 @@ func (s *Service) markViewed(ctx context.Context, p domain.Principal, id domain.
 // Invoices lists invoices the caller can see. A client sees only shared invoices on its matters,
 // each narrowed to the client allowlist.
 func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFilter) ([]Invoice, error) {
-	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	rows, err := invoiceHeads(ctx, s.d.Store, Where{MatterID: f.MatterID, FromDate: f.FromDate, ToDate: f.ToDate})
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +164,16 @@ func (s *Service) Invoices(ctx context.Context, p domain.Principal, f InvoiceFil
 		}
 		err := s.readInvoice(ctx, p, r)
 		if err == nil {
+			if !f.Heads {
+				// The header decode skipped the lines; read the whole invoice back.
+				if r, err = s.invoice(ctx, r.ID); err != nil {
+					return nil, err
+				}
+			}
 			out = append(out, forReader(p, r))
+			if positive(int64(f.Max)) && len(out) >= f.Max {
+				break
+			}
 			continue
 		}
 		var api *domain.APIError
@@ -238,7 +251,7 @@ func (s *Service) nextNumber(ctx context.Context, issuedOn string) (string, erro
 	prefix := strings.ReplaceAll(format[:lo], "YYYY", year)
 	suffix := strings.ReplaceAll(format[hi:], "YYYY", year)
 	width := hi - lo
-	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	rows, err := invoiceHeads(ctx, s.d.Store, Where{})
 	if err != nil {
 		return "", err
 	}
@@ -288,7 +301,7 @@ func expenseLine(e Expense) (Line, error) {
 
 // flatFeeBilled reports a non-void invoice on the matter that already bills the flat fee.
 func (s *Service) flatFeeInvoice(ctx context.Context, matter domain.ID) (Invoice, bool, error) {
-	rows, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	rows, _, err := findOf[Invoice](ctx, s.d.Store, kindInvoice, Where{MatterID: matter})
 	if err != nil {
 		return Invoice{}, false, err
 	}
@@ -331,11 +344,11 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 		}
 	}
 	if m.BillingType != billingFlat {
-		rows, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
+		f := TimeFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
+		rows, _, err := findOf[TimeEntry](ctx, s.d.Store, kindTime, f.where())
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		f := TimeFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
 		for _, e := range rows {
 			if !f.match(e) || !e.Billable || !e.Reviewed() {
 				continue
@@ -348,11 +361,11 @@ func (s *Service) pending(ctx context.Context, m domain.Matter, from, to string)
 			times = append(times, e)
 		}
 	}
-	rows, err := listOf[Expense](ctx, s.d.Store, kindExpense)
+	f := ExpenseFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
+	rows, _, err := findOf[Expense](ctx, s.d.Store, kindExpense, Where{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true})
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	f := ExpenseFilter{MatterID: m.ID, FromDate: from, ToDate: to, Unbilled: true}
 	for _, e := range rows {
 		if !f.match(e) || !e.Billable {
 			continue

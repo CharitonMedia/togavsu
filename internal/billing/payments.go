@@ -65,7 +65,8 @@ func (s *Service) Payments(ctx context.Context, p domain.Principal, f PaymentFil
 	if err := s.allow(ctx, p, domain.ResPayment, domain.ActionRead, ""); err != nil {
 		return nil, err
 	}
-	rows, err := listOf[Payment](ctx, s.d.Store, kindPayment)
+	rows, _, err := findOf[Payment](ctx, s.d.Store, kindPayment, Where{MatterID: f.MatterID, InvoiceID: f.InvoiceID,
+		FromDate: f.FromDate, ToDate: f.ToDate})
 	if err != nil {
 		return nil, err
 	}

@@ -408,7 +408,7 @@ func (s *Service) flatInvoice(t *txn, m domain.Matter) (Invoice, error) {
 
 // Overdue lists open invoices past their due date, oldest first. Zero-fee matters are omitted.
 func (s *Service) Overdue(ctx context.Context, p domain.Principal) ([]Invoice, error) {
-	rows, err := s.Invoices(ctx, p, InvoiceFilter{})
+	rows, err := s.Invoices(ctx, p, InvoiceFilter{Heads: true})
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +480,7 @@ func (s *Service) MatterSummary(ctx context.Context, p domain.Principal, matter 
 		return Summary{}, err
 	}
 	var out Summary
-	times, err := listOf[TimeEntry](ctx, s.d.Store, kindTime)
+	times, _, err := findOf[TimeEntry](ctx, s.d.Store, kindTime, Where{MatterID: matter})
 	if err != nil {
 		return Summary{}, err
 	}
@@ -499,7 +499,7 @@ func (s *Service) MatterSummary(ctx context.Context, p domain.Principal, matter 
 			return Summary{}, err
 		}
 	}
-	invs, err := listOf[Invoice](ctx, s.d.Store, kindInvoice)
+	invs, err := invoiceHeads(ctx, s.d.Store, Where{MatterID: matter})
 	if err != nil {
 		return Summary{}, err
 	}

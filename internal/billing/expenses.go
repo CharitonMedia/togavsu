@@ -73,7 +73,8 @@ func (s *Service) Expenses(ctx context.Context, p domain.Principal, f ExpenseFil
 	if err := s.readBilling(ctx, p, ""); err != nil {
 		return nil, err
 	}
-	rows, err := listOf[Expense](ctx, s.d.Store, kindExpense)
+	rows, _, err := findOf[Expense](ctx, s.d.Store, kindExpense, Where{MatterID: f.MatterID, InvoiceID: f.InvoiceID,
+		FromDate: f.FromDate, ToDate: f.ToDate, Unbilled: f.Unbilled})
 	if err != nil {
 		return nil, err
 	}

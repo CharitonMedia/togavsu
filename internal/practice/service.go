@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -167,7 +168,7 @@ func (s *Service) gate(ctx context.Context, p domain.Principal, ref domain.Resou
 // gateMatter authorizes a matter. A read of the matter record is shared with the client party.
 // Notes, history, conflict checks and close preview pass shared=false so a client does not receive them.
 func (s *Service) gateMatter(ctx context.Context, p domain.Principal, id domain.ID, action domain.Action) error {
-	shared := action == domain.ActionRead && s.clientMatter(p, id)
+	shared := action == domain.ActionRead && s.clientMatter(ctx, p, id)
 	return s.gateMatterShared(ctx, p, id, action, shared)
 }
 
@@ -183,7 +184,7 @@ func (s *Service) gateMatterShared(ctx context.Context, p domain.Principal, id d
 
 func (s *Service) viewWall(ctx context.Context, p domain.Principal, matterID domain.ID) (domain.WallView, error) {
 	walls := s.db.Walls(matterID)
-	view := domain.WallView{ClientMatter: s.clientMatter(p, matterID)}
+	view := domain.WallView{ClientMatter: s.clientMatter(ctx, p, matterID)}
 	if len(walls) == 0 {
 		return view, nil
 	}
@@ -198,8 +199,8 @@ func (s *Service) viewWall(ctx context.Context, p domain.Principal, matterID dom
 	return view, nil
 }
 
-func (s *Service) clientMatter(p domain.Principal, matterID domain.ID) bool {
-	user, err := s.db.User(context.Background(), p.UserID)
+func (s *Service) clientMatter(ctx context.Context, p domain.Principal, matterID domain.ID) bool {
+	user, err := s.db.User(ctx, p.UserID)
 	if err != nil || user.ContactID.IsZero() {
 		return false
 	}
@@ -219,9 +220,60 @@ func (s *Service) setting(ctx context.Context, key, fallback string) string {
 	if s.settings == nil {
 		return fallback
 	}
+	if memo, ok := ctx.Value(settingsMemoKey{}).(*settingsMemo); ok {
+		memo.mu.Lock()
+		v, hit := memo.values[key]
+		memo.mu.Unlock()
+		if !hit {
+			v = s.settingNow(ctx, key)
+			memo.mu.Lock()
+			memo.values[key] = v
+			memo.mu.Unlock()
+		}
+		if v == "" {
+			return fallback
+		}
+		return v
+	}
+	if v := s.settingNow(ctx, key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+type memoRow struct {
+	row domain.User
+	err error
+}
+
+// settingsMemoKey marks a context whose setting reads are remembered for its lifetime.
+type settingsMemoKey struct{}
+
+type settingsMemo struct {
+	mu     sync.Mutex
+	values map[string]string
+	users  map[domain.ID]memoRow
+}
+
+// WithRequestMemo makes one request read each setting and each identity user once,
+// not once per row: both are database reads, and a list of 20,000 matters asked for the
+// same few per row. The core wraps every request with it; the memo dies with the
+// request, so a settings or user change applies from the next request on.
+func WithRequestMemo(ctx context.Context) context.Context { return withSettingsMemo(ctx) }
+
+// withSettingsMemo installs the request memo unless ctx already has one.
+func withSettingsMemo(ctx context.Context) context.Context {
+	if _, ok := ctx.Value(settingsMemoKey{}).(*settingsMemo); ok {
+		return ctx
+	}
+	return context.WithValue(ctx, settingsMemoKey{}, &settingsMemo{values: map[string]string{}, users: map[domain.ID]memoRow{}})
+}
+
+// settingNow reads key from the registry; a read error is the empty value.
+func (s *Service) settingNow(ctx context.Context, key string) string {
 	v, err := s.settings.Get(ctx, key)
-	if err != nil || v == "" {
-		return fallback
+	if err != nil {
+		return ""
 	}
 	return v
 }

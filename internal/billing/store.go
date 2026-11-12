@@ -32,16 +32,21 @@ type Store interface {
 	Put(ctx context.Context, kind, id string, v any) error
 	Delete(ctx context.Context, kind, id string) error
 	List(ctx context.Context, kind string) ([][]byte, error)
+	// Find reads the rows of kind matching w's indexed columns, with a cursor per row.
+	Find(ctx context.Context, kind string, w Where) ([][]byte, []string, error)
 }
 
 // Memory is the in-process store used by tests and by a core without a database.
 type Memory struct {
 	mu   sync.Mutex
 	rows map[string]map[string][]byte
+	cols map[string]map[string]cols
 }
 
 // NewMemory returns an empty store.
-func NewMemory() *Memory { return &Memory{rows: map[string]map[string][]byte{}} }
+func NewMemory() *Memory {
+	return &Memory{rows: map[string]map[string][]byte{}, cols: map[string]map[string]cols{}}
+}
 
 type memTx struct{ m *Memory }
 
@@ -59,6 +64,14 @@ func (m *Memory) Atomic(ctx context.Context, fn func(ctx context.Context) error)
 		}
 		snap[k] = c
 	}
+	csnap := make(map[string]map[string]cols, len(m.cols))
+	for k, rows := range m.cols {
+		c := make(map[string]cols, len(rows))
+		for id, v := range rows {
+			c[id] = v
+		}
+		csnap[k] = c
+	}
 	m.mu.Unlock()
 	err := fn(context.WithValue(ctx, memTx{}, m))
 	if err == nil {
@@ -66,7 +79,7 @@ func (m *Memory) Atomic(ctx context.Context, fn func(ctx context.Context) error)
 	}
 	if err != nil {
 		m.mu.Lock()
-		m.rows = snap
+		m.rows, m.cols = snap, csnap
 		m.mu.Unlock()
 	}
 	return err
@@ -93,6 +106,10 @@ func (m *Memory) Put(_ context.Context, kind, id string, v any) error {
 		m.rows[kind] = map[string][]byte{}
 	}
 	m.rows[kind][id] = b
+	if m.cols[kind] == nil {
+		m.cols[kind] = map[string]cols{}
+	}
+	m.cols[kind][id] = indexOf(v)
 	return nil
 }
 
@@ -100,6 +117,7 @@ func (m *Memory) Delete(_ context.Context, kind, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.rows[kind], id)
+	delete(m.cols[kind], id)
 	return nil
 }
 
@@ -120,9 +138,11 @@ func (m *Memory) List(_ context.Context, kind string) ([][]byte, error) {
 
 // Postgres stores documents in billing_records (migration 300). Atomic is audit.WithTx on the
 // same pool, so billing rows and their audit_log rows commit in one transaction.
-// ponytail: ceiling: List reads every row of a kind and filters in Go; one core process
-// serializes billing writes with Service.mu. Upgrade path: typed tables with indexed filters and
-// SELECT ... FOR UPDATE. Trigger: a second core replica or more than 200k billing rows.
+// ponytail: ceiling: Find narrows by indexed matter, user, date and invoice columns (migration
+// 1200), but the remaining filters, report totals and List callers (payments, catalog, events)
+// still decode rows in Go; one core process serializes billing writes with Service.mu. Upgrade
+// path: typed tables with indexed filters, SQL aggregates and SELECT ... FOR UPDATE. Trigger: a
+// second core replica, or a billing list or report over 300 ms p95 in TestReleasePerfP95.
 type Postgres struct {
 	pool    *sql.DB
 	publish bool
@@ -160,8 +180,15 @@ func (p *Postgres) Put(ctx context.Context, kind, id string, v any) error {
 	if err != nil {
 		return err
 	}
-	_, err = audit.Conn(ctx, p.pool).ExecContext(ctx, `INSERT INTO billing_records (kind, id, body) VALUES ($1, $2, $3)
-		ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body`, kind, id, string(b))
+	c := indexOf(v)
+	head, err := headOf(v)
+	if err != nil {
+		return err
+	}
+	_, err = audit.Conn(ctx, p.pool).ExecContext(ctx, `INSERT INTO billing_records (kind, id, body, matter_id, user_id, on_date, invoice_id, indexed, head)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8)
+		ON CONFLICT (kind, id) DO UPDATE SET body = EXCLUDED.body, matter_id = EXCLUDED.matter_id, user_id = EXCLUDED.user_id,
+		on_date = EXCLUDED.on_date, invoice_id = EXCLUDED.invoice_id, indexed = 1, head = EXCLUDED.head`, kind, id, string(b), c.matter, c.user, c.date, c.invoice, head)
 	if err != nil {
 		return err
 	}

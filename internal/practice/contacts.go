@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -524,16 +525,9 @@ func kindOf(old, neu string) string {
 	return "update"
 }
 
+// sortContacts is a stable sort, like the quadratic insertion sort it replaced.
 func sortContacts(rows []domain.Contact) {
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		j := i
-		for j > 0 && contactLess(row, rows[j-1]) {
-			rows[j] = rows[j-1]
-			j--
-		}
-		rows[j] = row
-	}
+	sort.SliceStable(rows, func(i, j int) bool { return contactLess(rows[i], rows[j]) })
 }
 
 func contactLess(a, b domain.Contact) bool {
