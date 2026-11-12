@@ -4,6 +4,8 @@ Nov 6, 2026 · @Patrick
 
 Status: approved scope, ready to build. Every decision below is final for this build. Nothing in this document waits on Patrick.
 
+Amended Nov 12, 2026: Patrick held release so the first five modules are built first (section 9.10).
+
 ## 1. What we're building
 
 Togavsu is a ground-up practice management system for solo and small law firms. This PRD covers the core only: the minimum usable practice management, plus the module interface everything else plugs into.
@@ -12,7 +14,7 @@ The core ships as signed Docker images that a firm installs with Docker Desktop.
 
 Core scope, in one line: contacts, matters, time with invoicing, trust balances, calendar and deadlines, files and storage, the document editor, Doc Tender, the database, the starting dashboards, the admin dashboard, and the module runtime.
 
-Out of core scope (modules, interface only): document templates and assembly, discovery/RFP, intake and questionnaires, email, Zoom, LawPay, client portal, QuickBooks sync, record importers, the matter wiki, and a self-hosted mail server later.
+Out of core scope (modules, interface only): document templates and assembly, discovery/RFP, intake and questionnaires, email, Zoom, LawPay, client portal, QuickBooks sync, record importers, the matter wiki, and a self-hosted mail server later. Five of them are built as modules before release (section 9.10).
 
 ## 2. Fixed decisions
 
@@ -565,11 +567,11 @@ One module runs the firm's whole mail system, sending and receiving, and files m
 
 ### 9.7 Modules named for later
 
-Document templates and assembly, discovery/RFP, intake and questionnaires, email, Zoom, LawPay, client portal, QuickBooks sync, record importers (MyCase, Clio and others), the matter wiki, self-hosted mail server. The core ships with none of them; this build proves the interface with one sample module (section 11).
+Document templates and assembly, discovery/RFP, intake and questionnaires, email, Zoom, LawPay, client portal, QuickBooks sync, record importers (MyCase, Clio and others), the matter wiki, self-hosted mail server. The core ships with none of them; this build proves the interface with one sample module (section 11). Section 9.10 adds the first five as modules built before release.
 
 ### 9.8 Planned modules
 
-These come from Nolan PMS Unified and Doc Tender and are built later as modules, each on the core's records, files and editor. This build doesn't spec or build them.
+These come from Nolan PMS Unified and Doc Tender and are built later as modules, each on the core's records, files and editor. This build doesn't spec or build them, except items 1, 5, 6 and 8 and QuickBooks sync, which section 9.10 adds.
 
 1. Documents and templates: templates, document assembly and generation, bulk download and extra versioning tools. It builds on the core's file records, editor and Doc Tender labels, and keeps no file store or editor of its own.
 2. Discovery: discovery sets, received RFPs and interrogatories, objections, exhibits.
@@ -601,6 +603,23 @@ There's one database. Core records live in the Postgres schema core and each mod
 - **Backups** include every module schema with the database.
 - **Core migrations** follow the same process (section 6), so the base grows over time during overnight updates, with no restart.
 - **Files** are never stored in a module schema (section 8.19).
+
+### 9.10 Initial modules
+
+On Nov 12, 2026 Patrick decided that Togavsu is not ready for release until the first five modules exist. They are built now, before release, as signed modules under every rule in sections 9 and 9.9:
+
+1. Documents and templates (9.8 item 1).
+2. Email filing (9.8 item 5), connecting to the firm's existing Gmail, Outlook or IMAP mail. The self-hosted mail server stays a later module.
+3. Client portal and messages (9.8 item 6).
+4. LawPay refunds and DocuSeal signing for fee agreements (9.8 item 8).
+5. QuickBooks sync for the read-only accountant role (9.7).
+
+- **Specs:** each module is specified in docs/modules/<id>/SPEC.md, written from Nolan PMS Unified's working code and reusing its working approach, built clean. QuickBooks sync has no Unified code; its spec follows this PRD and the QuickBooks Online API.
+- **Core additions:** the core changes these modules need are listed in docs/modules/CORE-CHANGES.md (CORE-01 to CORE-29) and are core scope for this build. They follow every core rule: walls, roles and attorney-only redaction applied in services across UI, API, MCP and module extensions; the append-only trust ledger with reversals; audit entries; and API and MCP parity. A module never sees a walled matter's records unless the wall lets that user see them; no service principal crosses a wall.
+- **Acceptance:** each module's acceptance is the MOD criteria in its spec. They add to section 12 and replace none of it.
+- **Release:** release waits until these five modules and their integration are merged.
+- **Outside services:** LawPay, DocuSeal and QuickBooks run against fake adapters in every test. Keys are entered by the firm admin at runtime; the build creates no credentials and never uses client data.
+- **Shipping:** the core still installs with no module. Firms install these five the way they install any signed module.
 
 ## 10. Marketplace
 
