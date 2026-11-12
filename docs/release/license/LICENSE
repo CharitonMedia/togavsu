@@ -1,0 +1,46 @@
+Togavsu Source-Available License 1.0
+
+Licensor: Chariton Media
+Licensed Work: Togavsu, the source code in the repository CharitonMedia/togavsu and the
+Docker images built from it. Copyright (c) Chariton Media.
+
+1. Grant. The Licensor grants you a non-exclusive, worldwide, royalty-free license to copy,
+   modify, create derivative works of, redistribute and make non-production use of the
+   Licensed Work, subject to the limits below.
+
+2. Additional Use Grant. Any law firm may download, install, run and modify the Licensed
+   Work, and use it in production, for its own practice at no charge. "For its own
+   practice" means the firm's own staff and the firm's own clients use the install; one
+   install serves one firm.
+
+3. Commercial hosting. Hosting the Licensed Work commercially, or serving it to firms
+   other than your own, is not covered by sections 1 or 2. It needs a commercial license
+   from the Licensor at USD 500 per year plus USD 2 per seat per month for every seat the
+   host serves. A seat is an active user holding the admin, attorney, staff or accountant
+   role; the admin dashboard shows the active seat count.
+
+4. No change date. These terms do not convert to an open-source license on any date. The
+   source stays under these terms.
+
+5. Modules. Modules that plug into the Licensed Work through its module interface may
+   carry their own license and price, set by their authors. Listing, flagging or pulling a
+   module on the Togavsu marketplace is a marketplace term set by its operator and does
+   not change anyone's rights under this license to code they already have.
+
+6. No license enforcement in code. The Licensed Work contains no license keys and does not
+   contact the Licensor for licensing. Compliance with section 3 is the host's duty.
+
+7. Notices. You must keep this license and the copyright notice with every copy or
+   derivative of the Licensed Work you distribute, and mark modified files as modified.
+
+8. Termination. Use outside sections 1 to 3 ends your rights under this license for the
+   Licensed Work in question. Rights end only for the person who breached them.
+
+9. No warranty. THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF MERCHANTABILITY, FITNESS
+   FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT AND TITLE. IN NO EVENT WILL THE LICENSOR BE
+   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE LICENSED WORK OR ITS
+   USE.
+
+This license is modeled on the structure of the Business Source License 1.1 but is not
+that license: it has no Change Date and no Change License.
