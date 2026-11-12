@@ -9,6 +9,7 @@ jobs:
   supervisor:
     name: Supervisor tests
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -204,3 +205,94 @@ jobs:
           cache-to: type=gha,mode=max,scope=togavsu-qa
       - name: QA harness tests
         run: docker run --rm -v "$PWD:/src" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh
+
+  full-acceptance:
+    name: Full acceptance
+    runs-on: ubuntu-latest
+    # The controller halts a task whose checks are still running after 90 minutes. The release
+    # lane's last full run took about 48 minutes (docs/build/reports/release.json), so 80 minutes
+    # ends the job first: a slow run fails as CI and gets a fix pass instead of a halt.
+    timeout-minutes: 80
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: togavsu
+          POSTGRES_PASSWORD: synthetic-postgres-password
+          POSTGRES_DB: togavsu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U togavsu -d togavsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      postgres_b:
+        image: postgres:17
+        env:
+          POSTGRES_USER: togavsu
+          POSTGRES_PASSWORD: synthetic-postgres-password
+          POSTGRES_DB: togavsu
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U togavsu -d togavsu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TOGAVSU_TEST_DATABASE_URL: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable
+      TOGAVSU_TEST_DATABASE_URL_B: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5433/togavsu?sslmode=disable
+      TOGAVSU_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
+      TOGAVSU_PSQL: /usr/lib/postgresql/17/bin/psql
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Scope
+        id: scope
+        # Full acceptance is evidence only for the core release assignment (claude/togavsu-release-<id>)
+        # and main. There it always runs and fails closed, a missing script included. On other PRs,
+        # the module release lanes included, it is not evidence, and the controller counts a skipped
+        # check as failed, so it reports not applicable.
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$EVENT:$HEAD_REF" in
+            pull_request:claude/togavsu-release-module-api-*|pull_request:claude/togavsu-release-modules-*)
+               echo "applies=false" >> "$GITHUB_OUTPUT"
+               echo "::notice::Full acceptance runs on the core release assignment and main only; not applicable to $HEAD_REF." ;;
+            push:*|pull_request:claude/togavsu-release-*) echo "applies=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "applies=false" >> "$GITHUB_OUTPUT"
+               echo "::notice::Full acceptance runs on the core release assignment and main only; not applicable to $HEAD_REF." ;;
+          esac
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        if: steps.scope.outputs.applies == 'true'
+        with:
+          go-version: "1.22"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        if: steps.scope.outputs.applies == 'true'
+        with:
+          python-version: "3.12"
+      - name: Install Postgres 17 client
+        if: steps.scope.outputs.applies == 'true'
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+      - name: Full acceptance (all 52 criteria and every release gate)
+        if: steps.scope.outputs.applies == 'true'
+        # runner.temp is only available at step level, not in job-level env.
+        env:
+          TOGAVSU_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
+        run: sh scripts/ci/full-acceptance.sh
+      - name: Acceptance results
+        if: always() && steps.scope.outputs.applies == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: full-acceptance
+          path: ${{ runner.temp }}/acceptance
