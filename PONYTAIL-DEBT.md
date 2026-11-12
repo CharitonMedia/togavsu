@@ -1,6 +1,6 @@
 # Simplification debt
 
-Product acceptance is pending. Each entry names the file, the deliberate ceiling, the upgrade path, and the concrete upgrade trigger. The debt count is every numbered entry plus every standalone `ponytail:` entry in this file; `python3 scripts/release/check_debt.py` checks it and that every marker in the repository names a trigger.
+Product acceptance is pending. Each entry names the file, the deliberate ceiling, the upgrade path, and the concrete upgrade trigger. The debt count is every numbered entry plus every standalone ponytail entry in this file; `python3 scripts/release/check_debt.py` checks it and that every marker in the repository names a trigger.
 
 The first two entries are harness stand-ins. They are not product-ready behavior. `product_ready` stays false and their file hashes are refused as acceptance evidence.
 
