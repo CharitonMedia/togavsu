@@ -171,7 +171,7 @@
       ]
     },
     "go-modules": {
-      "command": "go test -count=1 -run '^TestExtensionsModuleLifecycle$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
+      "command": "go test -count=1 -run '^(TestExtensionsModuleLifecycle|TestReleaseModuleUpdatesViewsAndRollback)$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
       "needs": [
         "db"
       ]
@@ -424,17 +424,13 @@
       "checks": [
         "go-modules"
       ],
-      "gaps": [
-        "Refresh on module update is covered only by internal/modules tests; no Compose-stack run with a module container."
-      ]
+      "gaps": []
     },
     "AC-034": {
       "checks": [
         "go-settings-seed"
       ],
-      "gaps": [
-        "fee_agreements has no service, API or seed rows; the seed does not fill every section 5 record."
-      ]
+      "gaps": []
     },
     "AC-035": {
       "checks": [
@@ -446,17 +442,13 @@
       "checks": [
         "go-modules"
       ],
-      "gaps": [
-        "A second module reading a published view only after the admin approves the scope is covered only by internal/modules tests."
-      ]
+      "gaps": []
     },
     "AC-037": {
       "checks": [
         "go-modules"
       ],
-      "gaps": [
-        "A failing module migration rolling back with the old version running is covered only by internal/modules tests."
-      ]
+      "gaps": []
     },
     "AC-038": {
       "checks": [
