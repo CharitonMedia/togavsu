@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -69,6 +70,9 @@ type Config struct {
 	// SupervisorURL (the Compose service).
 	SupervisorURL    string
 	SupervisorSecret string
+	// BackupPassphraseFile is where the core writes the backup passphrase for the
+	// supervisor. Empty is PassphraseFile when that file exists, else none.
+	BackupPassphraseFile string
 	// ModuleRuntime and ModuleBackups replace the supervisor for tests that run a module
 	// in process. Production leaves them nil.
 	ModuleRuntime modules.Runtime
@@ -102,6 +106,7 @@ type App struct {
 	Market  *marketplace.Service
 
 	ext      *extensions
+	backups  *backups
 	handler  http.Handler
 	ledger   *audit.Postgres
 	tools    []tool
@@ -318,6 +323,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
+	app.backups = newBackups(app, cfg, dataDir, now)
 	app.routes()
 	files := cfg.HelpFiles
 	if files == nil {
@@ -407,6 +413,11 @@ func (a *App) Ready(ctx context.Context) (bool, error) {
 	}
 	if ok {
 		a.ready.Store(true)
+		// The supervisor reads the passphrase setup stored from a file; a failure
+		// here is retried before each backup and restore the core asks for.
+		if err := a.backups.syncPassphrase(ctx); err != nil {
+			log.Printf("core: backup passphrase file: %v", err)
+		}
 	}
 	return ok, nil
 }

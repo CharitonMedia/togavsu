@@ -43,6 +43,10 @@ type BackupMeta struct {
 	Bytes             int64     `json:"bytes"`
 	DestinationErrors []string  `json:"destination_errors,omitempty"`
 	Deleting          bool      `json:"deleting,omitempty"`
+	// CreatedBy is the core user who asked for the backup; empty is System.
+	CreatedBy string `json:"created_by,omitempty"`
+	// Files reports whether the archive carries the core's file bytes.
+	Files bool `json:"files,omitempty"`
 	// Source is empty for an archive this installation wrote. An archive
 	// brought in for a restore is "upload" or "destination:<id>".
 	Source string `json:"source,omitempty"`
@@ -54,9 +58,13 @@ type Store struct {
 	Passphrase string
 	Dump       func(ctx context.Context, w io.Writer) error
 	Files      func(ctx context.Context) ([]FileBlob, error)
-	Now        func() time.Time
-	Book       *DestinationBook
-	Outbox     *Outbox
+	// FileBytes, when set, streams the core's export of every file version and
+	// rendition into the archive (see CoreFiles). A failure fails the backup.
+	// The safety backup a restore takes runs with the core stopped and skips it.
+	FileBytes func(ctx context.Context, w io.Writer) error
+	Now       func() time.Time
+	Book      *DestinationBook
+	Outbox    *Outbox
 	// MaxImportBytes bounds an uploaded or destination-fetched archive. Zero
 	// uses DefaultMaxImportBytes.
 	MaxImportBytes int64
@@ -195,6 +203,14 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 		}
 	}
 
+	var fileBytes *ManifestFileBytes
+	if s.FileBytes != nil && reason != reasonSafety {
+		fileBytes, err = s.storeFileBytes(ctx, work)
+		if err != nil {
+			return BackupMeta{}, fmt.Errorf("file bytes: %w", err)
+		}
+	}
+
 	dumpForCounts, err := os.Open(dumpPath)
 	if err != nil {
 		return BackupMeta{}, err
@@ -212,6 +228,7 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 		RecordCounts: counts,
 		DumpSHA256:   dumpHash,
 		Files:        files,
+		FileBytes:    fileBytes,
 	}
 	raw, err := json.MarshalIndent(man, "", "  ")
 	if err != nil {
@@ -256,7 +273,8 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 	if err := s.publishStep("checksum"); err != nil {
 		return BackupMeta{}, err
 	}
-	meta := BackupMeta{ID: id, CreatedAt: now, Reason: reason, SHA256: sum, Bytes: info.Size()}
+	meta := BackupMeta{ID: id, CreatedAt: now, Reason: reason, SHA256: sum, Bytes: info.Size(),
+		CreatedBy: actorFrom(ctx), Files: fileBytes != nil}
 	if err := s.publishStep("metadata"); err != nil {
 		return BackupMeta{}, err
 	}
@@ -278,6 +296,55 @@ func (s *Store) createLocked(ctx context.Context, reason string) (BackupMeta, er
 		}
 	}
 	return meta, nil
+}
+
+// storeFileBytes writes the core's file export to files/bytes.tar in the
+// plaintext workspace and returns its size and SHA-256 for the manifest.
+func (s *Store) storeFileBytes(ctx context.Context, work string) (*ManifestFileBytes, error) {
+	dest := filepath.Join(work, filepath.FromSlash(fileBytesName))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	cw := &countWriter{w: io.MultiWriter(f, h)}
+	if err := s.FileBytes(ctx, cw); err != nil {
+		f.Close()
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+	if cw.n == 0 {
+		return nil, errors.New("the core returned an empty file export")
+	}
+	return &ManifestFileBytes{Name: fileBytesName, SHA256: hex.EncodeToString(h.Sum(nil)), Bytes: cw.n}, nil
+}
+
+type countWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *countWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+type actorKey struct{}
+
+// WithActor records the core user who asked for a backup on its metadata.
+func WithActor(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, actorKey{}, userID)
+}
+
+func actorFrom(ctx context.Context) string {
+	id, _ := ctx.Value(actorKey{}).(string)
+	return id
 }
 
 func (s *Store) storeBlob(work, sum string, blob FileBlob) error {
@@ -410,6 +477,19 @@ func (s *Store) PutDestination(spec DestinationSpec) (DestinationSpec, error) {
 		if specs[i].ID == spec.ID {
 			previous = &specs[i]
 			break
+		}
+	}
+	// An edit that leaves the S3 credentials out (the API shows the access key
+	// as "configured" and never returns the secret) keeps the stored ones.
+	if previous != nil && previous.Kind == spec.Kind {
+		if spec.AccessKey == "" || spec.AccessKey == "configured" {
+			spec.AccessKey = previous.AccessKey
+		}
+		if spec.SecretKey == "" {
+			spec.SecretKey = previous.SecretKey
+		}
+		if spec.CreatedAt == "" {
+			spec.CreatedAt, spec.CreatedBy = previous.CreatedAt, previous.CreatedBy
 		}
 	}
 	prepared, err := prepareSpec(spec, "")
@@ -1822,6 +1902,9 @@ type RestorePayload struct {
 	Dump     io.Reader
 	Manifest Manifest
 	Files    []RestoredFile
+	// FileBytes is the path of the checked core file export, or empty when
+	// the archive has none.
+	FileBytes string
 }
 
 // RestoredFile is one logical file version recovered from the archive.
@@ -1982,12 +2065,30 @@ func (s *Store) decryptLocked(rc io.Reader, id, passphrase string) (RestorePaylo
 		}
 		files = append(files, RestoredFile{Name: file.Name, SHA256: file.SHA256, Path: blob})
 	}
+	var fileBytes string
+	if fb := man.FileBytes; fb != nil {
+		if fb.Name != fileBytesName {
+			cleanupWork()
+			return fail(ErrArchive)
+		}
+		fileBytes = filepath.Join(work, filepath.FromSlash(fileBytesName))
+		info, err := os.Lstat(fileBytes)
+		if err != nil || !info.Mode().IsRegular() || info.Size() != fb.Bytes {
+			cleanupWork()
+			return fail(ErrChecksum)
+		}
+		got, err := hashFile(fileBytes)
+		if err != nil || got != fb.SHA256 {
+			cleanupWork()
+			return fail(ErrChecksum)
+		}
+	}
 	f, err := os.Open(dumpPath)
 	if err != nil {
 		cleanupWork()
 		return fail(err)
 	}
-	payload := RestorePayload{Dump: f, Manifest: man, Files: files}
+	payload := RestorePayload{Dump: f, Manifest: man, Files: files, FileBytes: fileBytes}
 	return payload, func() {
 		f.Close()
 		cleanupWork()

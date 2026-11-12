@@ -1,6 +1,6 @@
 # Simplification debt
 
-Product acceptance is pending. Each entry names the file, the deliberate ceiling, the upgrade path, and the concrete upgrade trigger.
+Product acceptance is pending. Each entry names the file, the deliberate ceiling, the upgrade path, and the concrete upgrade trigger. The debt count is every numbered entry plus every standalone `ponytail:` entry in this file; `python3 scripts/release/check_debt.py` checks it and that every marker in the repository names a trigger.
 
 The first two entries are harness stand-ins. They are not product-ready behavior. `product_ready` stays false and their file hashes are refused as acceptance evidence.
 
@@ -22,7 +22,7 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 2. `internal/supervisor/ledger.go` — each schedule tick rereads the ledger. Ceiling: linear scan. Upgrade: keep a rebuilt tail offset beside the ledger. Trigger: a tick's scan exceeds 50ms or the file passes 50k events.
 3. `internal/supervisor/mail.go` — admin notices append to an outbox file. Ceiling: no message leaves the host. Upgrade: core system mail drains the file. Trigger: SMTP settings or the email module can send.
 4. `internal/supervisor/registry.go` — updates read one JSON release index. Ceiling: no OCI registry protocol. Upgrade: OCI tags plus cosign referrers. Trigger: phase 7 publishes a signed core image.
-5. `internal/supervisor/destinations.go` — destination records live in a supervisor JSON file. Ceiling: not the core settings table. Upgrade: core backup-destination records push here. Trigger: `/api/v1/backup-destinations` is served by core.
+5. `internal/supervisor/destinations.go` — destination records live in a supervisor JSON file that the core's `/api/v1/backup-destinations` fronts. Ceiling: not the core settings table, so a database restore leaves them as they are and the core lists them by reading this file. Upgrade: core backup-destination records push here. Trigger: a second core process or a settings export needs to read them.
 6. `internal/supervisor/s3.go` — S3 copies use path-style SigV4 and buffer a put when the checksum is not already known. Ceiling: no virtual-hosted buckets and archive-sized buffers. Upgrade: virtual-hosted addressing and aws-chunked streaming. Trigger: a destination test returns PermanentRedirect or a backup copy exceeds 512 MiB.
 7. `internal/supervisor/sftp.go` — SFTP shells out to OpenSSH. Ceiling: requires the `sftp` binary, a key, and `known_hosts`. Upgrade: an in-process client. Trigger: contracts permit `golang.org/x/crypto` or CI needs an in-process server.
 8. `internal/supervisor/update.go` — automatic migration rollback returns `ErrPreserveWrites` and does not undo schema changes. Ceiling: later commits are kept and a failed migration's schema changes stay. Upgrade: a quiesced rollback that reverses only the migration. Trigger: a tested rollback preserves rows committed after the pre-update snapshot.
@@ -33,6 +33,7 @@ ponytail: ceiling: problem identity is the exact normalized finding text, so a r
 13. `internal/supervisor/postgres.go` — `ApplyProductRestore` refuses an archive that lists file versions. Ceiling: database-only restore. Upgrade: a storage-backend adapter that writes each verified file and is covered by a restore test that reads the bytes back. Trigger: the files task registers that adapter with the supervisor.
 14. `internal/supervisor/destinations.go`: `putFile` writes its receipt only after the temporary inode exists. Ceiling: a crash in that gap leaves at most one inode and two directory entries (the temp and, when linkat worked, its .own anchor) of 0 bytes or exactly the token prefix, and the later no-xattr clean file can add one more 0-byte name before its own journal, all with no receipt. Upgrade: journal an inode that is not yet linked. Trigger: the filesystem interface returns an inode before the directory entry exists.
 15. `internal/supervisor/import.go`: a destination restore reads S3 and SFTP objects through their existing `Get`, which runs the whole transfer under the 2 minute destination I/O timeout, and SFTP lands the encrypted copy in the system temp directory before it is streamed to the backup volume. Ceiling: an archive that cannot transfer in 2 minutes fails with a destination error before writers stop. Path destinations time each read instead. Upgrade: a per-read idle deadline for S3 bodies and a progress-based SFTP timeout. Trigger: a destination restore or copy check of a real archive times out.
+16. `internal/core/backups.go` — `/api/v1/backups`, `/api/v1/backup-destinations` and `/api/v1/restores` return every row in one page (`next_cursor` null). Ceiling: the supervisor lists its whole backup volume, destination file and restore ledger on each call. Upgrade: cursor pages in the supervisor's list routes. Trigger: a list passes 500 rows or takes over 200ms.
 
 ## Contracts ceilings
 
@@ -60,7 +61,7 @@ ponytail: ceiling: lane jobs and the review gate share the CLAUDE_CODE_OAUTH_TOK
 1. `internal/practice/durable.go` — the core's practice store keeps every practice row in the embedded `Memory`, loads all of `practice_records` (migration 200, `internal/db/migrations/0200_practice_records.sql`) at start, and runs each exported practice service mutation as one serialized unit (`Durable.Begin`): its records and `audit_log` rows commit in one transaction or, on any error, are discarded by reloading from Postgres. Ceiling: one core process per database, a full load at start, rows stored as JSON documents rather than in the section 5 relational tables (so rows seeded into `contacts` or `matters` do not appear on practice screens), and concurrent readers can see a unit's Memory changes before it commits, and until the reload if the commit fails. If that reload fails, the core exits rather than serve unstored rows, and Compose restarts it. Upgrade path: typed Postgres repositories over contacts, matters, matter_parties and notes with SQL filters, migrating `practice_records` into them. Trigger: a second core replica, a firm above 100k practice rows, a criterion that reads practice data from the relational tables, or a reader that must never see an uncommitted write.
 2. `internal/practice/service.go` — `New` without a key seals SSN and EIN with a process-local AES-256-GCM key. Ceiling: only tests and `NewWithSettings` use it; the core calls `NewWithKey` with the installer field key, so sealed values survive restarts there. Upgrade path: remove the keyless constructors. Trigger: a production caller other than the core constructs `practice.Service`.
 
-Debt count: 55.
+Debt count: 63.
 
 ## Integration ceilings
 

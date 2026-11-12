@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -50,19 +52,23 @@ type Catalog interface {
 // Operations ties the archive store to the runtime. Restores stop the core
 // first and bring it back only when the live catalog says that is safe.
 type Operations struct {
-	Store           *Store
-	Updater         *Updater
-	Runtime         Runtime
-	Catalog         Catalog
-	Gate            *Gate
-	Ledger          *Ledger
-	Journal         *Journal
-	UpdateJournal   *UpdateJournal
-	Outbox          *Outbox
-	ApplyDump       func(ctx context.Context, r io.Reader) error
-	ApplyRestore    func(ctx context.Context, payload RestorePayload) error
-	Measure         func(ctx context.Context, r io.Reader) (map[string]int64, error)
-	Passphrase      func() (string, error)
+	Store         *Store
+	Updater       *Updater
+	Runtime       Runtime
+	Catalog       Catalog
+	Gate          *Gate
+	Ledger        *Ledger
+	Journal       *Journal
+	UpdateJournal *UpdateJournal
+	Outbox        *Outbox
+	ApplyDump     func(ctx context.Context, r io.Reader) error
+	ApplyRestore  func(ctx context.Context, payload RestorePayload) error
+	Measure       func(ctx context.Context, r io.Reader) (map[string]int64, error)
+	Passphrase    func() (string, error)
+	// RestoreFiles hands an archive's file export (Manifest.FileBytes) to the
+	// restarted core once the database is restored (CoreFiles.Import). Nil
+	// rejects an archive that carries file bytes before writers stop.
+	RestoreFiles    func(ctx context.Context, path string) error
 	Now             func() time.Time
 	RestoreTimeout  time.Duration
 	RecoveryTimeout time.Duration
@@ -70,7 +76,10 @@ type Operations struct {
 	jobsMu          sync.Mutex
 	// held lists restores whose terminal record is not published yet; the
 	// value is that record once it exists.
-	held     map[string]*RestoreRecord
+	held map[string]*RestoreRecord
+	// files holds each running restore's kept file export until the core is
+	// back to take it.
+	files    map[string]keptFiles
 	active   sync.WaitGroup
 	shutting atomic.Bool
 }
@@ -502,7 +511,7 @@ func (o *Operations) admitRestoreFrom(ctx context.Context, backupID string, src 
 		rec, ferr := o.failedRestore(backupID, source, err)
 		return rec, nil, ferr
 	}
-	if len(man.Files) > 0 {
+	if len(man.Files) > 0 || (man.FileBytes != nil && o.RestoreFiles == nil) {
 		release()
 		rec, ferr := o.failedRestore(backupID, source, ErrFileRestoreUnsupported)
 		return rec, nil, ferr
@@ -642,10 +651,16 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, nil); perr != nil {
 			return perr
 		}
+		var aerr error
 		if o.ApplyRestore != nil {
-			return o.ApplyRestore(ctx, payload)
+			aerr = o.ApplyRestore(ctx, payload)
+		} else {
+			aerr = o.ApplyDump(ctx, payload.Dump)
 		}
-		return o.ApplyDump(ctx, payload.Dump)
+		if aerr == nil && payload.FileBytes != "" {
+			aerr = o.keepFiles(rec.ID, payload.FileBytes)
+		}
+		return aerr
 	}
 	err = o.Store.Restore(opCtx, rec.BackupID, "", apply)
 	rec = o.current(rec.ID, rec)
@@ -680,6 +695,23 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 			_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The data was restored and the core did not come back healthy. "+Scrub(startErr.Error()))
 		}
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), errors.Join(persistErr, startErr))
+	}
+	if kept, ok := o.takeFiles(rec.ID); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
+		ferr := o.RestoreFiles(ctx, kept.path)
+		cancel()
+		kept.cleanup()
+		if ferr != nil {
+			if o.Outbox != nil {
+				_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The database was restored and the core is running. The file bytes were not restored. "+Scrub(ferr.Error()))
+			}
+			rec.Error = "files_not_restored"
+			saved, perr := o.markFailed(rec, ferr)
+			if perr != nil {
+				return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(ferr, perr))
+			}
+			return saved, ferr
+		}
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -1976,4 +2008,42 @@ func (o *Operations) recordRestore(rec RestoreRecord) {
 		fields["finished"] = rec.Finished.UTC().Format(time.RFC3339Nano)
 	}
 	_, _ = o.Ledger.Append("restore", "supervisor", fields)
+}
+
+type keptFiles struct {
+	path    string
+	cleanup func()
+}
+
+// keepFiles moves a restore's file export out of the decrypted workspace,
+// which is removed when apply returns, into a scratch workspace of its own.
+// Startup recovery removes it if this process dies before the core takes it.
+func (o *Operations) keepFiles(id, path string) error {
+	if o.RestoreFiles == nil {
+		return ErrFileRestoreUnsupported
+	}
+	dir, cleanup, err := o.Store.plaintextWorkspace("restore-files-")
+	if err != nil {
+		return err
+	}
+	kept := filepath.Join(dir, "bytes.tar")
+	if err := os.Rename(path, kept); err != nil {
+		cleanup()
+		return err
+	}
+	o.jobsMu.Lock()
+	if o.files == nil {
+		o.files = map[string]keptFiles{}
+	}
+	o.files[id] = keptFiles{path: kept, cleanup: cleanup}
+	o.jobsMu.Unlock()
+	return nil
+}
+
+func (o *Operations) takeFiles(id string) (keptFiles, bool) {
+	o.jobsMu.Lock()
+	defer o.jobsMu.Unlock()
+	k, ok := o.files[id]
+	delete(o.files, id)
+	return k, ok && o.RestoreFiles != nil
 }

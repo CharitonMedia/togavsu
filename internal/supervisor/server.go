@@ -39,6 +39,7 @@ func NewMux(token string, ops *Operations, log *slog.Logger) http.Handler {
 	mux.HandleFunc("DELETE /v1/backup-destinations/{id}", h.deleteDestination)
 	mux.HandleFunc("POST /v1/restores", h.postRestore)
 	mux.HandleFunc("POST /v1/restores/upload", h.postRestoreUpload)
+	mux.HandleFunc("GET /v1/restores", h.listRestores)
 	mux.HandleFunc("GET /v1/restores/{id}", h.getRestore)
 	mux.HandleFunc("POST /v1/test-restores", h.postTestRestore)
 	return logging(log, authenticate(token, mux))
@@ -145,7 +146,8 @@ func (h *handlers) deleteModule(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) postBackup(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Reason string `json:"reason"`
+		Reason    string `json:"reason"`
+		CreatedBy string `json:"created_by"`
 	}
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
@@ -154,7 +156,7 @@ func (h *handlers) postBackup(w http.ResponseWriter, r *http.Request) {
 	if body.Reason == "" {
 		body.Reason = reasonManual
 	}
-	meta, err := h.ops.CreateBackup(r.Context(), body.Reason)
+	meta, err := h.ops.CreateBackup(WithActor(r.Context(), body.CreatedBy), body.Reason)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -364,6 +366,35 @@ func (h *handlers) getRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
+}
+
+// listRestores is the latest record of every restore in the ledger, newest
+// first.
+func (h *handlers) listRestores(w http.ResponseWriter, _ *http.Request) {
+	events, err := h.events("restore")
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	seen := map[string]bool{}
+	out := []RestoreRecord{}
+	for i := len(events) - 1; i >= 0; i-- {
+		id := events[i].Fields["id"]
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		rec, ok, err := h.ops.LookupRestore(id)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		if !ok {
+			rec = recordFromEvent(events[i])
+		}
+		out = append(out, rec)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"restores": out})
 }
 
 func (h *handlers) postTestRestore(w http.ResponseWriter, r *http.Request) {
