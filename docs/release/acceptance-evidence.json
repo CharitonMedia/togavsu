@@ -2,12 +2,28 @@
   "about": "Full acceptance map for the release (PRD 12). scripts/release/full_acceptance.py runs every check below once and marks a criterion passed only when every one of its checks exits 0 and it lists no gap. A gap is a part of the criterion no executed check proves; external gaps need something this repository and its CI cannot supply. Editing this file to drop a gap or a check is a change to acceptance and needs review like code.",
   "release_gates": {
     "signed-release": {
-      "check": "release-signature",
-      "requirement": "PRD 12: a tagged release with signed images. The core and supervisor images for the release tag are on ghcr.io/charitonmedia and verify against the Togavsu release public key that ships in the image."
+      "requirement": "PRD 12: a tagged release with signed images. The core and supervisor images for the release tag are on ghcr.io/charitonmedia and verify against the Togavsu release public key that ships in the image.",
+      "checks": [
+        "release-signature"
+      ]
     },
     "docker-desktop": {
-      "check": "desktop-install",
-      "requirement": "PRD 12 and WORKFLOW.md: the tagged release installs on a clean Docker Desktop (Windows or macOS) and the full suite passes there. Linux Compose CI does not meet it."
+      "requirement": "PRD 12 and WORKFLOW.md: the tagged release installs on a clean Docker Desktop (Windows or macOS) and the full suite passes there. Linux Compose CI does not meet it.",
+      "checks": [
+        "desktop-install"
+      ]
+    },
+    "product-suites": {
+      "checks": [
+        "core-suite",
+        "api-contract",
+        "qa-harness",
+        "supervisor-suite",
+        "backup-integration",
+        "ui-qc",
+        "compose-first-run"
+      ],
+      "requirement": "Every product CI suite passes at the tested revision: Core tests, API contract tests, QA harness tests, Supervisor tests, Backup integration and the core image build with its cases, plus the UI QC and the Linux Compose first run."
     }
   },
   "checks": {
@@ -403,8 +419,9 @@
     },
     "AC-029": {
       "checks": [
+        "go-settings-seed",
         "go-ui",
-        "go-settings-seed"
+        "ui-qc"
       ],
       "gaps": []
     },

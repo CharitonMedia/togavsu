@@ -59,8 +59,11 @@ def load():
             if ch not in ev["checks"]:
                 problems.append(cid + " names unknown check " + ch)
     for gid, g in ev["release_gates"].items():
-        if g["check"] not in ev["checks"]:
-            problems.append("gate " + gid + " names unknown check " + g["check"])
+        if not g.get("checks"):
+            problems.append("gate " + gid + " has no check")
+        for ch in g.get("checks", []):
+            if ch not in ev["checks"]:
+                problems.append("gate " + gid + " names unknown check " + ch)
     return ev, ids, problems
 
 
@@ -154,9 +157,7 @@ def main():
     for cid in want_ids:
         checks += [c for c in ev["criteria"][cid]["checks"] if c not in checks]
     for g in want_gates:
-        c = ev["release_gates"][g]["check"]
-        if c not in checks:
-            checks.append(c)
+        checks += [c for c in ev["release_gates"][g]["checks"] if c not in checks]
     if args.check:
         checks = [c for c in checks if c in args.check]
     os.makedirs(args.out, exist_ok=True)
@@ -182,8 +183,8 @@ def main():
         (passed if not why else pending).append(cid)
     gates = {}
     for g in want_gates:
-        r = results.get(ev["release_gates"][g]["check"])
-        gates[g] = "pass" if r and r["status"] == "pass" else "pending"
+        rs = [results.get(c) for c in ev["release_gates"][g]["checks"]]
+        gates[g] = "pass" if all(r and r["status"] == "pass" for r in rs) else "pending"
     ok = not pending and all(v == "pass" for v in gates.values()) and not dirty
     summary = {
         "tested_revision": head, "working_tree_dirty": dirty,

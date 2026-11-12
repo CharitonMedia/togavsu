@@ -15,18 +15,22 @@ This folder is the release assignment's working record: how full acceptance is d
 - A criterion passes only when it has at least one check, every check exits 0, and it lists no gap.
 - A `go test` check passes only when every test its `-run` pattern names printed `--- PASS`, and none was skipped. A pattern that matches nothing fails.
 - A check that prints `PENDING`, or whose prerequisites (Docker, the two Postgres databases, the Postgres 17 client, the core image's wordcraft-cli) are missing, is not a pass.
-- The release passes only when all 52 criteria pass, both gates pass, and the working tree is clean. Otherwise the script exits 1.
+- The release passes only when all 52 criteria pass, every gate passes, and the working tree is clean. Otherwise the script exits 1.
 
 `--phase desktop-install`, `--phase signed-images-updater-load` and `--phase backup-restore` run one phase case's checks and decide only its criteria. `--check ID` runs single checks; `--list` prints them.
 
 ## Release gates
 
+The first two can't pass from a lane runner (below); the third is the product CI suites.
+
+
 | Gate | Check | Passes when |
 | --- | --- | --- |
 | signed-release | `scripts/release/verify-release.sh` | `deploy/release/cosign.pub` (the Togavsu release public key) is in the repository, HEAD carries a release tag, and `cosign verify` accepts `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>` with that key. |
 | docker-desktop | `scripts/release/desktop-install.sh` | It runs on Docker Desktop (Windows or macOS) and a clean install of the tested revision passes the first-run checks. It refuses any other engine. |
+| product-suites | the Core, API contract, QA harness, Supervisor, Backup integration, UI QC and Compose first-run scripts | Every product CI suite passes at the tested revision, not only the checks a criterion names. |
 
-Neither can pass from a lane runner: the release private key is not provisioned, nothing here can push images or tags, and GitHub's Linux runners have Docker Engine, not Docker Desktop.
+The signed-release and docker-desktop gates can't pass from a lane runner: the release private key is not provisioned, nothing here can push images or tags, and GitHub's Linux runners have Docker Engine, not Docker Desktop.
 
 ## Cutting the release
 
