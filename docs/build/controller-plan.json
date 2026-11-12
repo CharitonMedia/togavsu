@@ -1095,6 +1095,440 @@
         ]
       },
       "full_acceptance": true
+    },
+    {
+      "id": "module-core",
+      "wave": "module-api",
+      "phase": 8,
+      "depends_on": [
+        "release"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/api/"
+      ],
+      "excluded_paths": [
+        "internal/modules/module_*_pg_test.go"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "8",
+        "9"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "4",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-002",
+        "AC-003",
+        "AC-012",
+        "AC-013"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from the released core (the release assignment is merged). Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five module lanes start from your merge, so keep every name exactly as the specs give it. Never edit modules/, internal/modules/module_*_pg_test.go, docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
+      "stage_report": true
+    },
+    {
+      "id": "release-module-api",
+      "wave": "module-api-release",
+      "phase": 8,
+      "depends_on": [
+        "module-core"
+      ],
+      "owned_paths": [
+        "docs/release/",
+        "scripts/release/",
+        "deploy/",
+        "docs/build/reports/release-module-api.json"
+      ],
+      "prd_sections": [
+        "11"
+      ],
+      "module_prd_sections": [
+        "4",
+        "12.1",
+        "13"
+      ],
+      "acceptance_ids": [
+        "AC-016"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/release-module-api.json",
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count, and the released core version. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Release the module API update (merged by module-core) as a signed core update, per togavsu-initial-modules-prd.md 12.1 step 2 and section 4: give the core the next version, build its image and sign it through the release path the core release landed (scripts/release/ and docs/release/), and prove that the supervisor verifies that signature and that the overnight updater swaps the released core to this version with no failed requests under the update load test, refuses a candidate with a bad signature and restores the pre-update backup when the health check fails. Record the new core version in docs/release/ as the core version the five module listings need. Tests use generated test keys and synthetic data only; never create a key or secret. This assignment is full acceptance: status pass only after the signed core image of this version is published and tagged through the core's release workflow, so the module lanes start from a released core. If that workflow needs a change, write it under docs/release/proposed-ci/ and in your PR body under \"Proposed CI change\"; the integration lead lands it through a control PR and runs it. Until then, or while the release key secret is missing, keep the tests passing, report AC-016 pending with the blocker named, and do not claim a release. Lanes cannot change .github/; propose any CI change in your PR body under \"Proposed CI change\". Never edit internal/, modules/, cmd/, web/, api/, go.mod, go.sum, controller files, review gates, the PRDs, the specs or the task plan. If the same problem survives three fix passes, stop and report it plainly instead of trying again. Add docs/build/reports/release-module-api.json with task_id release-module-api, status pass once the signed update proof above passes, tests (actual command and exit_code), tested_revision, and passed_acceptance_ids and pending_acceptance_ids that exhaustively and disjointly partition the assigned acceptance_ids. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it.",
+      "phase_acceptance": {
+        "signed-core-update": [
+          "AC-016"
+        ]
+      },
+      "stage_report": true,
+      "full_acceptance": true
+    },
+    {
+      "id": "module-documents",
+      "wave": "initial-modules",
+      "phase": 8,
+      "depends_on": [
+        "release-module-api"
+      ],
+      "owned_paths": [
+        "modules/documents/",
+        "docs/modules/documents/",
+        "internal/modules/module_documents_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "5",
+        "6",
+        "12.3"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the Documents and templates module (templates, document assembly and generation, bulk download and extra versioning tools) exactly as togavsu-initial-modules-prd.md section 6 and docs/modules/documents/SPEC.md specify, in modules/documents/. The spec records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Follow the shared module rules in section 5 and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module API update (module-core, CORE-01 to CORE-29) is already merged on main and released as a signed core update (release-module-api); build against it as named. The module is self-contained: its own container, its own schema, core records reached only through the core API with its approved scopes, core records linked by id, no table that duplicates a core record, files stored as core file records. Every outside service sits behind an adapter; tests use fake adapters, local test servers and synthetic data only, never real credentials, mailboxes, payment or signing services, or client data. Keys are admin-entered settings at runtime. Put the module's unit tests under modules/documents/ and its one Postgres acceptance suite in internal/modules/module_documents_pg_test.go, which builds and signs the package with a generated test key, installs it through the module runtime and drives every MOD criterion in section 6.7, failure cases included, so the Core tests job runs it. If a core piece the spec names is still missing, do not edit core code: keep only that test skipped and list the gap under 'Core changes for integrate-modules' in the PR body. Never edit outside your owned paths, docs/modules/documents/SPEC.md, docs/modules/CORE-CHANGES.md, the PRDs, .github/, go.mod, go.sum, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-email",
+      "wave": "initial-modules",
+      "phase": 8,
+      "depends_on": [
+        "release-module-api"
+      ],
+      "owned_paths": [
+        "modules/email/",
+        "docs/modules/email/",
+        "internal/modules/module_email_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "5",
+        "7",
+        "12.3"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the Email module (send and receive through the firm's existing Gmail, Outlook or IMAP/SMTP mail, the unfiled email queue, IMAP filing to matters, the Outlook add-in and quick email) exactly as togavsu-initial-modules-prd.md section 7 and docs/modules/email/SPEC.md specify, in modules/email/. The spec records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Follow the shared module rules in section 5 and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module API update (module-core, CORE-01 to CORE-29) is already merged on main and released as a signed core update (release-module-api); build against it as named. The module is self-contained: its own container, its own schema, core records reached only through the core API with its approved scopes, core records linked by id, no table that duplicates a core record, files stored as core file records. Every outside service sits behind an adapter; tests use fake adapters, local test servers and synthetic data only, never real credentials, mailboxes, payment or signing services, or client data. Keys are admin-entered settings at runtime. Put the module's unit tests under modules/email/ and its one Postgres acceptance suite in internal/modules/module_email_pg_test.go, which builds and signs the package with a generated test key, installs it through the module runtime and drives every MOD criterion in section 7.7, failure cases included, so the Core tests job runs it. If a core piece the spec names is still missing, do not edit core code: keep only that test skipped and list the gap under 'Core changes for integrate-modules' in the PR body. Never edit outside your owned paths, docs/modules/email/SPEC.md, docs/modules/CORE-CHANGES.md, the PRDs, .github/, go.mod, go.sum, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-client-portal",
+      "wave": "initial-modules",
+      "phase": 8,
+      "depends_on": [
+        "release-module-api"
+      ],
+      "owned_paths": [
+        "modules/client-portal/",
+        "docs/modules/client-portal/",
+        "internal/modules/module_client_portal_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "5",
+        "8",
+        "12.3"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the Client portal module (the client portal and client messages) exactly as togavsu-initial-modules-prd.md section 8 and docs/modules/client-portal/SPEC.md specify, in modules/client-portal/. The spec records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Follow the shared module rules in section 5 and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module API update (module-core, CORE-01 to CORE-29) is already merged on main and released as a signed core update (release-module-api); build against it as named. The module is self-contained: its own container, its own schema, core records reached only through the core API with its approved scopes, core records linked by id, no table that duplicates a core record, files stored as core file records. Every outside service sits behind an adapter; tests use fake adapters, local test servers and synthetic data only, never real credentials, mailboxes, payment or signing services, or client data. Keys are admin-entered settings at runtime. Put the module's unit tests under modules/client-portal/ and its one Postgres acceptance suite in internal/modules/module_client_portal_pg_test.go, which builds and signs the package with a generated test key, installs it through the module runtime and drives every MOD criterion in section 8.7, failure cases included, so the Core tests job runs it. If a core piece the spec names is still missing, do not edit core code: keep only that test skipped and list the gap under 'Core changes for integrate-modules' in the PR body. Never edit outside your owned paths, docs/modules/client-portal/SPEC.md, docs/modules/CORE-CHANGES.md, the PRDs, .github/, go.mod, go.sum, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-lawpay-docuseal",
+      "wave": "initial-modules",
+      "phase": 8,
+      "depends_on": [
+        "release-module-api"
+      ],
+      "owned_paths": [
+        "modules/lawpay-docuseal/",
+        "docs/modules/lawpay-docuseal/",
+        "internal/modules/module_lawpay_docuseal_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "5",
+        "9",
+        "12.3"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the LawPay and DocuSeal module (LawPay payments, refunds and reconciliation, and DocuSeal signing for fee agreements) exactly as togavsu-initial-modules-prd.md section 9 and docs/modules/lawpay-docuseal/SPEC.md specify, in modules/lawpay-docuseal/. The spec records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Follow the shared module rules in section 5 and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module API update (module-core, CORE-01 to CORE-29) is already merged on main and released as a signed core update (release-module-api); build against it as named. The module is self-contained: its own container, its own schema, core records reached only through the core API with its approved scopes, core records linked by id, no table that duplicates a core record, files stored as core file records. Every outside service sits behind an adapter; tests use fake adapters, local test servers and synthetic data only, never real credentials, mailboxes, payment or signing services, or client data. Keys are admin-entered settings at runtime. Put the module's unit tests under modules/lawpay-docuseal/ and its one Postgres acceptance suite in internal/modules/module_lawpay_docuseal_pg_test.go, which builds and signs the package with a generated test key, installs it through the module runtime and drives every MOD criterion in section 9.7, failure cases included, so the Core tests job runs it. If a core piece the spec names is still missing, do not edit core code: keep only that test skipped and list the gap under 'Core changes for integrate-modules' in the PR body. Never edit outside your owned paths, docs/modules/lawpay-docuseal/SPEC.md, docs/modules/CORE-CHANGES.md, the PRDs, .github/, go.mod, go.sum, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-quickbooks",
+      "wave": "initial-modules",
+      "phase": 8,
+      "depends_on": [
+        "release-module-api"
+      ],
+      "owned_paths": [
+        "modules/quickbooks/",
+        "docs/modules/quickbooks/",
+        "internal/modules/module_quickbooks_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "module_prd_sections": [
+        "2",
+        "3",
+        "5",
+        "10",
+        "12.3"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the QuickBooks sync module (one-way QuickBooks Online sync for the accountant role) exactly as togavsu-initial-modules-prd.md section 10 and docs/modules/quickbooks/SPEC.md specify, in modules/quickbooks/. The spec records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Follow the shared module rules in section 5 and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module API update (module-core, CORE-01 to CORE-29) is already merged on main and released as a signed core update (release-module-api); build against it as named. The module is self-contained: its own container, its own schema, core records reached only through the core API with its approved scopes, core records linked by id, no table that duplicates a core record, files stored as core file records. Every outside service sits behind an adapter; tests use fake adapters, local test servers and synthetic data only, never real credentials, mailboxes, payment or signing services, or client data. Keys are admin-entered settings at runtime. Put the module's unit tests under modules/quickbooks/ and its one Postgres acceptance suite in internal/modules/module_quickbooks_pg_test.go, which builds and signs the package with a generated test key, installs it through the module runtime and drives every MOD criterion in section 10.7, failure cases included, so the Core tests job runs it. If a core piece the spec names is still missing, do not edit core code: keep only that test skipped and list the gap under 'Core changes for integrate-modules' in the PR body. Never edit outside your owned paths, docs/modules/quickbooks/SPEC.md, docs/modules/CORE-CHANGES.md, the PRDs, .github/, go.mod, go.sum, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "integrate-modules",
+      "wave": "integration",
+      "phase": 8,
+      "depends_on": [
+        "module-documents",
+        "module-email",
+        "module-client-portal",
+        "module-lawpay-docuseal",
+        "module-quickbooks"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md",
+        "modules/",
+        "docs/api/"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "module_prd_sections": [
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "12",
+        "13"
+      ],
+      "acceptance_ids": [
+        "AC-002",
+        "AC-003",
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-modules.json",
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count, covering all five modules. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Integrate the five initial modules (documents, email, client-portal, lawpay-docuseal, quickbooks) on one released core with the module API update. Reconcile any gap between a module and the core contract it was built against, land any core change a module PR still lists as missing, un-skip every module test that waited on a core piece, replace client-portal's lawpay-docuseal test fixture with the real module, and prove the shared and cross-module criteria in togavsu-initial-modules-prd.md section 13 (MOD-ALL-01 to 05, MOD-INT-01 to 04), the guide pages, and that each module installs signed onto a fresh install with no other module, works end to end with its fake adapters and uninstalls, all without a core restart. Run the simplification review and update PONYTAIL-DEBT.md. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, the PRDs, the specs or the task plan. If the same problem survives three fix passes, stop and report it plainly instead of trying again. Add docs/build/reports/integrate-modules.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Extend scripts/ci/test-core.sh so its strict no-skip run also covers ./internal/modules/ and fails if any test in the five internal/modules/module_<id>_pg_test.go suites skips or fails; every module phase case and the all-modules case must use that strict run, so a skipped module test can never pass Core tests or this report.",
+      "phase_acceptance": {
+        "module-api": [
+          "AC-002",
+          "AC-003",
+          "AC-012",
+          "AC-013"
+        ],
+        "module-documents": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-email": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-client-portal": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-lawpay-docuseal": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-quickbooks": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "all-modules": [
+          "AC-002",
+          "AC-003",
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ]
+      },
+      "stage_report": true
+    },
+    {
+      "id": "release-modules",
+      "wave": "release",
+      "phase": 8,
+      "depends_on": [
+        "integrate-modules"
+      ],
+      "owned_paths": [
+        "scripts/release/modules/",
+        "docs/release/modules/",
+        "docs/build/reports/release-modules.json"
+      ],
+      "prd_sections": [
+        "9",
+        "10",
+        "11"
+      ],
+      "module_prd_sections": [
+        "11",
+        "12.1",
+        "12.5",
+        "13"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/release-modules.json",
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count, and every listing link and signed package, as the final report that closes the module build. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the signing, publishing and listing path for the five initial modules per togavsu-initial-modules-prd.md section 11. Lanes cannot change .github/, so write the release workflow as docs/release/modules/proposed-ci/release-modules.yml (it must pass actionlint) and repeat it in your PR body under \"Proposed CI change\"; the integration lead lands it through a reviewed control PR and runs it. The workflow builds each module image, pushes it to ghcr.io/charitonmedia/togavsu-<id>, signs it with Cosign on the core's release signing path, pins its digest in the manifest, signs each package with the Chariton Media author key from its repository secret (never printed, logged or committed; no lane sees it), creates the <id>-v1.0.0 tag and GitHub release with the signed package attached, and uploads each package to the Togavsu marketplace under the Chariton Media author account, listed free with its permissions, the core version it needs and the no-warranty notice. Tests for the workflow use generated test keys and a local marketplace test server only; no test reaches a real service. Never create a key or secret: if the author key secret or the marketplace author account is missing, report it as an external blocker and leave those criteria pending. Never edit controller files, review gates, the PRDs, the specs, the task plan or module code. If the same problem survives three fix passes, stop and report it plainly instead of trying again. Add docs/build/reports/release-modules.json with task_id release-modules, status pass only after the landed workflow has run and every module is signed, tagged and listed (this assignment is full acceptance, so no criterion may stay pending). Until then, keep the scripts and their tests passing with generated test keys and a local marketplace test server, keep the proposed workflow passing actionlint, and report the pending criteria with the blocker named (workflow not yet landed, author key secret or marketplace author account missing); the integration lead lands your proposed workflow through a control PR and runs it, tests (actual command and exit_code), tested_revision, and passed_acceptance_ids and pending_acceptance_ids that exhaustively and disjointly partition the assigned acceptance_ids. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it.",
+      "phase_acceptance": {
+        "sign-publish-list": [
+          "AC-012",
+          "AC-013"
+        ]
+      },
+      "full_acceptance": true,
+      "stage_report": true
     }
   ],
   "max_repairs": 1,

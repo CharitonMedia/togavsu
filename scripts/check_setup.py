@@ -8,6 +8,7 @@ acceptance = json.loads((root / "docs/build/acceptance.json").read_text())
 ids = {x["id"] for x in acceptance}
 assert len(ids) == len(acceptance) == 52
 prd = (root / "togavsu-core-prd.md").read_text()
+MODULES = ("documents", "email", "client-portal", "lawpay-docuseal", "quickbooks")
 rows = [s[2:] for s in prd.split("## 12. Acceptance criteria")[1].splitlines() if s.startswith("- ")]
 assert rows == [x["requirement"] for x in acceptance], "Acceptance index drift"
 tasks = {t["id"]: t for t in plan["tasks"]}
@@ -32,6 +33,37 @@ for i, a in enumerate(initial):
             for y in b["owned_paths"]:
                 assert x != y and not x.startswith(y.rstrip("/") + "/") and not y.startswith(x.rstrip("/") + "/"), (a["id"],b["id"],x,y)
 assert set.union(*(set(t["acceptance_ids"]) for t in tasks.values())) == ids
-for p in ["AGENTS.md","docs/build/WORKFLOW.md","docs/build/review.schema.json","docs/build/prompts/codex-review.md","PONYTAIL-DEBT.md"]:
+# The controller plan and tasks.json are the same assignments; agents and reviewers read tasks.json.
+controller = json.loads((root / "docs/build/controller-plan.json").read_text())
+assert controller["tasks"] == plan["tasks"], "controller-plan.json and tasks.json assignments differ"
+assert controller["max_implementation_agents"] <= 4, "At most four implementation agents"
+# Implementation lanes that can run at once own disjoint paths. A broader path may give up a
+# narrower one through excluded_paths; the excluded file then belongs to the other lane only.
+from fnmatch import fnmatch
+def overlaps(a, b):
+    for x in a["owned_paths"]:
+        for y in b["owned_paths"]:
+            if x == y:
+                return (x, y)
+            for wide, narrow, owner in ((x, y, a), (y, x, b)):
+                if narrow.startswith(wide.rstrip("/") + "/"):
+                    if not any(fnmatch(narrow, g) for g in owner.get("excluded_paths", [])):
+                        return (x, y)
+    return None
+lanes = [t for t in tasks.values() if t["wave"] not in ("bootstrap", "integration", "release")]
+for i, a in enumerate(lanes):
+    for b in lanes[i+1:]:
+        if a["wave"] == b["wave"]:
+            hit = overlaps(a, b)
+            assert not hit, (a["id"], b["id"]) + hit
+# Module tasks name sections of the approved initial modules PRD, and those sections exist.
+import re
+mprd = (root / "togavsu-initial-modules-prd.md").read_text()
+headings = set(re.findall(r"^#{2,3} (\d+(?:\.\d+)?)\. ", mprd, re.M)) | set(re.findall(r"^### (\d+\.\d+) ", mprd, re.M))
+for t in tasks.values():
+    for s in t.get("module_prd_sections", []):
+        assert s in headings, (t["id"], "unknown modules PRD section", s)
+for p in ["AGENTS.md","docs/build/WORKFLOW.md","docs/build/review.schema.json","docs/build/prompts/codex-review.md","PONYTAIL-DEBT.md",
+          "togavsu-initial-modules-prd.md","docs/modules/CORE-CHANGES.md"] + ["docs/modules/" + m + "/SPEC.md" for m in MODULES]:
     assert (root / p).is_file(), p
-print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments. Product acceptance pending.")
+print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments, controller plan matches tasks.json, parallel lanes disjoint, module PRD sections exist. Product acceptance pending.")

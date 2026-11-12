@@ -118,6 +118,9 @@ def main():
                 "Work only inside this Cursor-hosted VM on your own branch. No client data or production access. "
                 "Owned paths: " + ", ".join(task["owned_paths"]) + ". "
                 "PRD sections: " + ", ".join(task["prd_sections"]) + ". "
+                + ("Also read the full togavsu-initial-modules-prd.md, the approved scope for the initial modules "
+                   "(core PRD section 9.10), which outranks docs/modules/CORE-CHANGES.md and each SPEC.md. Modules PRD sections: "
+                   + ", ".join(task["module_prd_sections"]) + ". " if task.get("module_prd_sections") else "") +
                 "Acceptance IDs (full behavior may span later integration): " + ", ".join(task["acceptance_ids"]) + ". "
                 + task["prompt"] + " Do the work, run appropriate checks, commit and push explicit paths, "
                 "and open a small pull request. Do not merge, push main, change the PRD or review gate, "
