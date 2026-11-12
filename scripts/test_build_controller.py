@@ -2220,6 +2220,16 @@ class StallAlertTests(unittest.TestCase):
         self.tick(0)
         self.assertEqual(self.controller.occupied, 0)
 
+    def test_held_task_with_uncertain_launch_keeps_its_slot_when_unreadable(self):
+        self.plan["held_tasks"] = ["one"]
+        self.record.pop("submitted")
+        self.record["launch_uncertain"] = True
+        before = dict(self.record)
+        with patch.object(self.remote, "agent", side_effect=RuntimeError("HTTP 503")):
+            self.tick(0)
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertEqual(self.record, before)
+
     def test_released_hold_resumes_processing(self):
         self.plan["held_tasks"] = ["one"]
         self.tick(0)

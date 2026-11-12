@@ -1548,9 +1548,14 @@ class Controller:
                 try:
                     snapshot = self.remote.agent(record)
                     validate_snapshot(snapshot)
+                except AgentNotFound:
+                    # As for an unheld task: only a never-submitted, never-dispatched create frees the slot.
+                    if (record.get("submitted") or record.get("halted") or record.get("intent")
+                            or "last_dispatched_run" in record or record.get("launch_uncertain")):
+                        self.occupied += 1
+                    continue
                 except Exception:
-                    if record.get("submitted") or record.get("intent") or "last_dispatched_run" in record:
-                        self.occupied += 1  # An unreadable held worker may still be running.
+                    self.occupied += 1  # An unreadable held worker may still be running.
                     continue
                 if snapshot["status"] in ACTIVE or record.get("intent") or unobserved_run(record, snapshot):
                     self.occupied += 1
