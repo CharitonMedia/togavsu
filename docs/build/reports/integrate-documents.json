@@ -1,8 +1,8 @@
 {
  "task_id": "integrate-documents",
  "status": "pass",
- "scope": "Phase 4 integration: the calendar, the file store with its storage backends, LawCraft (editor) and Doc Tender composed into the running core on Postgres with practice, identity, settings, audit, billing and trust; their API, /mcp tools, screens, background workers, the core data volume, and the core image's LawCraft build and pinned Tesseract. status pass means every assigned phase case and every required CI job's scripts passed locally at the tested revision. It is not full product acceptance: 34 of 52 criteria remain pending globally, including AC-011, AC-040, AC-041, AC-043, AC-050 and AC-052 whose phase cases pass with the gaps named in pending_notes. Product CI results for this head come from the pull request run, not this report.",
- "tested_revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+ "scope": "Phase 4 integration: the calendar, the file store with its storage backends, LawCraft (editor) and Doc Tender composed into the running core on Postgres with practice, identity, settings, audit, billing and trust; their API, /mcp tools, screens, background workers, the core data volume, and the core image's LawCraft build and pinned Tesseract. status pass means every assigned phase case and every required CI job's scripts passed locally at the tested revision. It is not full product acceptance: 34 of 52 criteria remain pending globally, including AC-011, AC-040, AC-041, AC-043, AC-050 and AC-052 whose phase cases pass with the gaps named in pending_notes. Product CI results for the published head come from the pull request run, not this report.",
+ "tested_revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
  "phase_cases": [
   {
    "id": "calendar-deadlines",
@@ -13,7 +13,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "id": "storage-versions-moves",
@@ -25,7 +25,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "id": "lawcraft-editor",
@@ -36,7 +36,7 @@
    "status": "pass",
    "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli copied from togavsu-core:local> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/ (also inside the image: sh scripts/ci/test-core-image-cases.sh)",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "id": "doctender-corpus",
@@ -55,7 +55,7 @@
    "status": "pass",
    "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/ (also inside the image with its Tesseract and DOCTENDER_REQUIRE_TESSERACT=1: sh scripts/ci/test-core-image-cases.sh)",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   }
  ],
  "passed_acceptance_ids": [
@@ -136,7 +136,7 @@
  },
  "pending_notes": {
   "AC-001": "Not changed by this phase beyond the new core_data volume; test-compose-first-run.sh passes at this revision on Linux Compose. Clean Docker Desktop (Windows/macOS) installation has not run.",
-  "AC-002": "273 of 430 contract operations are mounted on /api/v1 and offered on /mcp (186 before this phase, 270 at 7acef2f); all fail closed (TestContractRoutesFailClosed). The contract now includes getDocTenderStatus, reprocessDocTenderFile and getDocTenderModelChoices (token, scope, /mcp and wall refusal tested by TestDocumentsDocTenderTokensAndMCP). Users, modules, marketplace, AI call log, backups and nav remain unmounted.",
+  "AC-002": "273 of the 430 MCP tool operations in api/openapi/v1/mcp-tools.json are mounted on /api/v1 and offered on /mcp (186 before this phase, 270 at 7acef2f); all fail closed (TestContractRoutesFailClosed). The OpenAPI contract has 435 operations (docs/api/coverage.md); the 5 that are not MCP tools are GET /api/v1/llms.txt, GET /api/v1/health, POST /mcp, GET /help/guide and GET /help/guide.pdf. Both counts are the same at 0e5bdcd and at the merged head, and main's #38 did not change them. The earlier note's '430' meant the MCP tools, not all operations. The contract now includes getDocTenderStatus, reprocessDocTenderFile and getDocTenderModelChoices (token, scope, /mcp and wall refusal tested by TestDocumentsDocTenderTokensAndMCP). Users, modules (main #38 ships internal/modules, but nothing mounts it in the core yet), marketplace, AI call log, backups and nav remain unmounted.",
   "AC-003": "This phase's surfaces (files, renditions, search, deadlines, events, iCal feeds, available dates, editor runs, New Pleading, Doc Tender results) hide walled matters in the phase cases; other domains' widgets and reports are later phases.",
   "AC-004": "Unchanged by this phase; phase 3 evidence stands. The accountant is refused editor runs here.",
   "AC-006": "Unchanged by this phase; phase 3 evidence stands; global release acceptance pending.",
@@ -185,13 +185,14 @@
   "Checkpoint on 9be094c, P1: the lawcraft-editor case skipped in CI. test-core.sh builds the image and runs the case in the strict no-skip run with the image CLI and TOGAVSU_REQUIRE_WORDCRAFT_CLI=1; test-core-image-cases.sh runs the editor, Doc Tender, browser e2e and visual QC cases inside the image and fails on any skip.",
   "Checkpoint on 9be094c, P1: the contract lacked the Doc Tender status, reprocess and model-choices routes and ai.model_prices. All four are in the contract, registry and generated artifacts; reprocess now emits doc_tender.retry_scheduled (contract rule: writes declare events); TestDocumentsDocTenderTokensAndMCP covers tokens, scopes, /mcp, wall refusal and priced call costs.",
   "Checkpoint on 9be094c, P2: Tesseract drift. The image pins tesseract-ocr/libtesseract5 5.3.0-2 and tesseract-ocr-eng 1:4.1.0-2 and verifies eng.traineddata's SHA-256; the corpus requires every scanned page to be Tesseract-checked under DOCTENDER_REQUIRE_TESSERACT, and CI runs it inside the image.",
-  "Checkpoint on ca2b80d, P1: AC-048 was claimed but no screen showed a Doc Tender status or flag. files.Handler now takes a DocStatus hook (files cannot import doctender), the core sets it to doctender.Service.Status, and the matter Files tab shows the label and flags per file; a status error fails the page. Tests: TestPGFilesTabShowsDocTenderFlags (new) and Files tab assertions in TestDocumentsDocTenderCorpus (fail without the wiring) and TestDocumentsScreens; new screenshot 07-matter-files-tab.png."
+  "Checkpoint on ca2b80d, P1: AC-048 was claimed but no screen showed a Doc Tender status or flag. files.Handler now takes a DocStatus hook (files cannot import doctender), the core sets it to doctender.Service.Status, and the matter Files tab shows the label and flags per file; a status error fails the page. Tests: TestPGFilesTabShowsDocTenderFlags (new) and Files tab assertions in TestDocumentsDocTenderCorpus (fail without the wiring) and TestDocumentsScreens; new screenshot 07-matter-files-tab.png.",
+  "Merging main 46f00fd (#38 Modules) broke its own tests on this branch: the module test harness opened the core without DataDir, so the documents integration's default local-disk store at /var/lib/togavsu-core failed with permission denied, and it inserted practice_areas and matters rows that practice now projects itself (duplicate key). The harness now passes a temporary DataDir and drops both mirrors; its comment already said they lasted only 'until practice writes them itself'. Test-only change in internal/modules/harness_pg_test.go (cd4b31f); the 24 module PG tests fail without it and pass with it."
  ],
  "proposed_shared_changes": [],
  "visual_qc": {
   "test": "TestDocumentsScreens (scripts/ci/documents-qc.mjs, headless Chromium, real browser editor build)",
   "record": "docs/build/reports/screens/integrate-documents/qc.json",
-  "summary": "17 pages as staff, attorney, admin and signed out, captured inside the core image with its own browser editor build (scripts/ci/test-core-image-cases.sh) at 0e5bdcd (the merge of main fd08279; screenshots refreshed from that run): calendar week, deadlines, a deadline, an event, available dates, feeds, the matter Files tab (now with Doc Tender labels and the Damaged file flag on cut-off.pdf), Files and storage, the edit page with the LawCraft frame, the edit page locked for a second user, New Pleading, the Doc Tender review queue, an item, the Doc Tender tab and guide, a walled deadline (404 for staff) and the signed-out redirect to /login. The test fails on any console error, page error or failed request, and on a Files tab without the damaged file's flag. I looked at the Files tab screenshot (label and flag with detail beside cut-off.pdf), the edit page and the review queue. Each domain still draws its own top bar; the shared app shell (PRD 8.9) is the ui assignment."
+  "summary": "17 pages as staff, attorney, admin and signed out, captured inside the core image with its own browser editor build (scripts/ci/test-core-image-cases.sh) at cd4b31f (the merge of main 46f00fd plus the modules harness fix; screenshots refreshed from that run): calendar week, deadlines, a deadline, an event, available dates, feeds, the matter Files tab (now with Doc Tender labels and the Damaged file flag on cut-off.pdf), Files and storage, the edit page with the LawCraft frame, the edit page locked for a second user, New Pleading, the Doc Tender review queue, an item, the Doc Tender tab and guide, a walled deadline (404 for staff) and the signed-out redirect to /login. The test fails on any console error, page error or failed request, and on a Files tab without the damaged file's flag. I looked at the Files tab screenshot (label and flag with detail beside cut-off.pdf), the edit page and the review queue. Each domain still draws its own top bar; the shared app shell (PRD 8.9) is the ui assignment. At cd4b31f I looked again at the Files tab (Processed, Needs review with Damaged file and its detail, Processing), the edit page with the LawCraft frame and pinned commit, and the review queue; the only console line in qc.json is the expected 404 on the walled deadline page."
  },
  "simplification": {
   "basis": "git diff --numstat ad298f5 (review base) to the tested revision 9e45823",
@@ -206,86 +207,103 @@
   "review": "Composition reuses each package's own seams (files.PracticeDirectory, calendar/editor/doctender PracticeMatters, billing.FileLink, the handlers' Routes) and the existing first-match mux dispatch; /mcp needed no change because it is generated from mounted routes. Four debt entries were added (projection, calendar list scans, in-process tickers, calendar notices apart from notifications); the calendar Memory-store ceiling was removed in the calendar package and, at this revision, in the ui compose layer too (its in-code ponytail, never listed in PONYTAIL-DEBT.md, is gone: compose takes core.App.Calendar and only matches calendar paths to hand them to the core). At 9e45823: one entry added (Documents ceiling 5, the Tesseract pin); the ai.model_prices and image-has-no-tesseract in-code ponytails are resolved and removed.",
   "merge_note": "The merge 4f2e1c0 adds only main's internal/supervisor/backup_test.go change (+5/-3, from 5ce935e) to the Go lines; the counts above are unchanged by it.",
   "checkpoint_fix_ac048": "d554ac7 vs ca2b80d: +170/-1 over 7 files; Go +166 (non-test +41: files hook and DocStatus types +16, Files tab rows +14, core wiring +11; tests +125), template +2/-1, css +2. Reuses doctender.Service.Status, the same function the API endpoint serves, so the screen and API cannot disagree. PONYTAIL-DEBT unchanged (57 entries); no new shortcut.",
-  "merge_fd08279": "Merge 0e5bdcd of main fd08279 (#37 marketplace) into 236788a: only PONYTAIL-DEBT.md conflicted, resolved by keeping the Documents ceilings and the Marketplace ceilings in full. This lane adds no code in the merge. PONYTAIL-DEBT numbered entries go from 53 to 57, all four new ones being main's Marketplace ceilings; none are new from this lane."
+  "merge_fd08279": "Merge 0e5bdcd of main fd08279 (#37 marketplace) into 236788a: only PONYTAIL-DEBT.md conflicted, resolved by keeping the Documents ceilings and the Marketplace ceilings in full. This lane adds no code in the merge. PONYTAIL-DEBT numbered entries go from 53 to 57, all four new ones being main's Marketplace ceilings; none are new from this lane.",
+  "merge_note_46f00fd": "The merge 32b1a18 of main 46f00fd adds #38's internal/modules, examples/matter-clock and contract files; this lane's own change on top is cd4b31f, internal/modules/harness_pg_test.go +3/-15 (test only, net -12 lines). Debt count unchanged at 57: no ponytail added or removed (the harness mirror was never a numbered entry)."
  },
  "ci": {
-  "workflow": ".github/workflows/product-ci.yml as on main fd08279 (unchanged by #37); this branch makes no workflow change and needs none",
+  "workflow": ".github/workflows/product-ci.yml as on main 46f00fd (unchanged by #37 and #38); this branch makes no workflow change and needs none",
   "note": "Product CI's Core tests job runs scripts/ci/test-core.sh, which now builds the core image and runs the editor and Doc Tender phase cases with the image's wordcraft-cli, browser editor and Tesseract, so neither case can skip there. The job gets longer: an uncached LawCraft build took about 15 minutes on this VM. The controller publishes this branch; the Product CI run on the pull request head is the CI evidence."
  },
  "tests": [
   {
+   "job": "core_first_run_at_merge",
+   "command": "CI=1 sh scripts/ci/test-core.sh",
+   "exit_code": 1,
+   "revision": "32b1a180190a153737e88214048ef4dd6fb55b4c",
+   "note": "The run the checkpoint asked for, on the merge of main 46f00fd (#38) without changes: internal/modules failed 24 PG tests (permission denied on /var/lib/togavsu-core, then duplicate practice_areas keys). Fixed in cd4b31f; every job below was rerun there."
+  },
+  {
+   "job": "modules_regression_check",
+   "command": "go test -count=1 ./internal/modules/... (at 32b1a18 with only the DataDir fix applied, then with the mirror inserts removed = cd4b31f)",
+   "exit_code": 0,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "With only DataDir: exit 1, 24 tests fail on the duplicate key 'practice_areas_pkey'. With both changes (cd4b31f): exit 0, every test passes."
+  },
+  {
    "job": "core",
    "command": "CI=1 sh scripts/ci/test-core.sh",
    "exit_code": 0,
-   "seconds": null,
+   "seconds": 757,
    "database": "local postgres:17 container (user and database togavsu)",
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
-   "note": "35 packages (now including internal/marketplace and marketplace from main #37) with the image wordcraft-cli; strict no-skip run with a PASS for all five phase 4 core tests; race run; then scripts/ci/test-core-image-cases.sh (tesseract, wordcraft-cli, editor build, Chromium; no skip). Image layers were cached from the previous build on this runner only for unchanged stages."
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "39 packages (now including internal/modules, internal/modules/yamlsubset and examples from main #38) with the image wordcraft-cli; strict no-skip run with a PASS for all five phase 4 core tests; race run; then scripts/ci/test-core-image-cases.sh (tesseract, wordcraft-cli, editor build, Chromium; no skip). The first run at the merge 32b1a18 failed in internal/modules (see integration_findings_fixed); this run is at cd4b31f after the fix. Image layers were cached from that earlier build on this runner."
   },
   {
    "job": "compose_first_run",
    "command": "sh scripts/ci/test-compose-first-run.sh",
    "exit_code": 0,
-   "seconds": null,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "seconds": 23,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "job": "api",
    "command": "sh scripts/ci/test-api.sh",
    "exit_code": 0,
    "database": "a second local postgres:17 container",
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
-   "note": "api/check.sh (contract tests, both validators, regenerated artifacts identical) and the runtime contract tests: 273 of 430 operations mounted"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "api/check.sh (contract tests, both validators, regenerated artifacts identical; openapi.json operations=435) and the runtime contract tests: 273 of the 430 MCP tool operations mounted",
+   "seconds": 48
   },
   {
    "job": "qa",
    "command": "docker build -t togavsu-qa:local scripts/ci/qa-image && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "note": "the QA image from main's scripts/ci/qa-image recipe, as the merged product-ci.yml QA job runs it (no host apt needed)"
   },
   {
    "job": "supervisor",
    "command": "sh scripts/ci/test-supervisor.sh",
    "exit_code": 0,
-   "seconds": null,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
-   "note": "A first run, concurrent with the cold core image build on the same VM, failed only TestStalledPostgresCleanupStillRestartsWriters (a 5 s timing bound; cleanup did not start in time under load). That test passed 3 of 3 alone (go test -count=3 -run '^TestStalledPostgresCleanupStillRestartsWriters$' ./internal/supervisor/, exit 0), and the full suite then passed on the idle VM (this entry). No supervisor file changed in this revision."
+   "seconds": 298,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "run alone on an idle VM after the core and backup jobs; no flake this time."
   },
   {
    "job": "supervisor_job_other_steps",
    "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/ && sh scripts/ci/test-bootstrap.sh && sh scripts/ci/test-core-image-gate.sh && sh scripts/ci/pending-gate.sh && python3 scripts/ci/check-compose.py && sh scripts/ci/ui-qc.sh && sh scripts/ci/update-load.sh",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "job": "backup",
    "command": "TOGAVSU_TEST_DATABASE_URL=<fresh postgres:17 A> TOGAVSU_TEST_DATABASE_URL_B=<fresh postgres:17 B> TOGAVSU_PG_DUMP=<pg_dump 17 via postgres:17 image> TOGAVSU_PSQL=<psql 17 via postgres:17 image> sh scripts/ci/test-backup-integration.sh",
    "exit_code": 0,
-   "seconds": null,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "seconds": 397,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "database": "two fresh local postgres:17 containers"
   },
   {
    "job": "image",
    "command": "docker compose -f compose.yaml config >/dev/null && docker build -f Dockerfile -t togavsu-supervisor:local . && docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp >/dev/null' && sh scripts/ci/build-core-image.sh && sh scripts/ci/test-core-smoke.sh",
    "exit_code": 0,
-   "seconds": null,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
-   "note": "core and supervisor image builds cached after the core job's cold build; the smoke checks wordcraft-cli, the editor build, tesseract 5.3.0 and the pinned eng.traineddata hash"
+   "seconds": 3,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "core and supervisor image builds cached after the core job's build; the smoke checks wordcraft-cli, the editor build, tesseract 5.3.0 and the pinned eng.traineddata hash"
   },
   {
    "job": "case_calendar",
    "command": "go test -count=1 -v -run '^TestDocumentsCalendarDeadlines$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 2,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "seconds": 1,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "job": "case_storage",
    "command": "go test -count=1 -v -run '^TestDocumentsStorageVersionsMoves$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 16,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "seconds": 26,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "note": "full 1 GiB upload"
   },
   {
@@ -293,37 +311,38 @@
    "command": "TOGAVSU_WORDCRAFT_CLI=<wordcraft-cli copied from togavsu-core:local> TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 TOGAVSU_EDITOR_DIST=<editor copied from togavsu-core:local> go test -count=1 -v -run '^TestDocumentsLawCraftEditor$' ./internal/core/",
    "exit_code": 0,
    "seconds": 2,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3"
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58"
   },
   {
    "job": "case_doctender",
    "command": "go test -count=1 -v -run '^TestDocumentsDocTenderCorpus$' ./internal/core/",
    "exit_code": 0,
    "seconds": 37,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "note": "host, no tesseract"
   },
   {
    "job": "case_doctender_contract",
    "command": "go test -count=1 -v -run '^TestDocumentsDocTenderTokensAndMCP$' ./internal/core/",
    "exit_code": 0,
-   "seconds": 2,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "seconds": 3,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "note": "fails at 9be094c: ai.model_prices is not_found"
   },
   {
    "job": "image_cases",
    "command": "TOGAVSU_QC_OUT=docs/build/reports/screens/integrate-documents sh scripts/ci/test-core-image-cases.sh",
    "exit_code": 0,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
-   "note": "Also run as the last step of the core job; this separate run wrote the committed screenshots and qc.json at 0e5bdcd."
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
+   "note": "Also run as the last step of the core job; this separate run wrote the committed screenshots and qc.json at cd4b31f.",
+   "seconds": 230
   },
   {
    "job": "case_files_tab_flags",
    "command": "go test -count=1 -v -run '^TestPGFilesTab' ./internal/files/",
    "exit_code": 0,
    "seconds": 2,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "note": "TestPGFilesTabShowsDocTenderFlags (new) and TestPGFilesTabAndStoragePageRender"
   },
   {
@@ -335,17 +354,17 @@
    "note": "expected failure proving the new assertion: documents_pg_test.go: the closed matter's Files tab does not say Not processed (matter closed) Run at d554ac7 and not rerun at the merge 0e5bdcd, which changes no documents file."
   },
   {
-   "job": "marketplace_from_main",
-   "command": "go test -count=1 -v ./internal/marketplace/ ./marketplace/",
+   "job": "marketplace_and_modules_from_main",
+   "command": "go test -count=1 -v ./internal/marketplace/ ./marketplace/ ./internal/modules/...",
    "exit_code": 0,
-   "seconds": 3,
-   "revision": "0e5bdcd292da9f0a717b1429a66f2ebda122b3d3",
+   "seconds": 19,
+   "revision": "cd4b31ffeb2134f344651d709efe7210e857fd58",
    "database": "local postgres:17 container",
-   "note": "main's AC-015 marketplace packages, merged in at this revision; the PG tests ran (no skip). AC-015 itself stays pending in this report: this lane did not review its acceptance."
+   "note": "main's AC-015 marketplace packages (#37) and the #38 modules packages, at the merged head; 60 tests passed, the PG tests ran (no skip). AC-015 and the module criteria stay pending in this report: this lane did not review their acceptance, and modules are not yet mounted in the core."
   }
  ],
  "observations": [
   "The Tesseract disagreement on the synthetic scan comes from the English language data, not the engine version. Tesseract 5.3.4 (Alpine) with Alpine's eng.traineddata misreads the 5x7 glyph pages (P read as F, N as M; every page under 0.90). The same 5.3.4 engine with Debian's tesseract-ocr-eng 1:4.1.0-2 data (sha256 7d4322bd...) reads all 120 pages at 0.923 or better, as bookworm's 5.3.0 does. The image now pins the engine and that data file by hash, and CI runs the corpus with it."
  ],
- "revision_history": "Tested revision 4f2e1c0 is the merge of main 5ce935e (#39: QA harness in a ready-made OCR image, controller changes, a timing fix in internal/supervisor/backup_test.go) into 9e45823, the previous tested revision. The merge changed no file in the documents integration; every job and phase case was rerun at 4f2e1c0 because the merge changed code and CI. Then the Codex checkpoint on ca2b80d failed AC-048 (no screen showed the flag); d554ac7 adds Doc Tender labels and flags to the matter Files tab with tests, and every job and phase case was rerun at d554ac7 (previous tested revision 4f2e1c058a164cdd46c440e4eb42e2e31a921b70). Then main fd08279 (#37: marketplace service, AC-015) was merged in as 0e5bdcd; only PONYTAIL-DEBT.md conflicted (both sections kept). Every CI job and phase case was rerun at 0e5bdcd."
+ "revision_history": "Tested revision 4f2e1c0 is the merge of main 5ce935e (#39: QA harness in a ready-made OCR image, controller changes, a timing fix in internal/supervisor/backup_test.go) into 9e45823, the previous tested revision. The merge changed no file in the documents integration; every job and phase case was rerun at 4f2e1c0 because the merge changed code and CI. Then the Codex checkpoint on ca2b80d failed AC-048 (no screen showed the flag); d554ac7 adds Doc Tender labels and flags to the matter Files tab with tests, and every job and phase case was rerun at d554ac7 (previous tested revision 4f2e1c058a164cdd46c440e4eb42e2e31a921b70). Then main fd08279 (#37: marketplace service, AC-015) was merged in as 0e5bdcd; only PONYTAIL-DEBT.md conflicted (both sections kept). Every CI job and phase case was rerun at 0e5bdcd. Then main 46f00fd (#38 Modules) was merged in as 32b1a18 without conflicts. The Codex checkpoint on 32b1a18 failed because tested_revision was still 0e5bdcd. Rerunning the core job at 32b1a18 found the modules harness conflict above (exit 1); cd4b31f fixes it, and every CI job, phase case and the visual QC capture were rerun at cd4b31f (previous tested revision 0e5bdcd292da9f0a717b1429a66f2ebda122b3d3)."
 }
