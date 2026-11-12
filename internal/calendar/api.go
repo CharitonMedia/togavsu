@@ -334,11 +334,14 @@ func page[T any](s *Service, r *http.Request, rows []T) ([]T, map[string]any, er
 }
 
 // idempotent replays the stored response for a repeated Idempotency-Key from the
-// same caller and route, and refuses the same key with a different body.
-func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request, p domain.Principal, body []byte, run func() (int, any, error)) {
+// same caller and route, and refuses the same key with a different body. The write and
+// its stored response run in one audit.Service.Atomic, so on Postgres a write never
+// commits without its record: a failed record rolls the write back, and a retry with
+// the same key runs once. A failed read of the record is an error, never a second run.
+func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request, p domain.Principal, body []byte, run func(context.Context) (int, any, error)) {
 	key := r.Header.Get("Idempotency-Key")
 	if key == "" {
-		status, out, err := run()
+		status, out, err := run(r.Context())
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -351,7 +354,13 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request, p domain.Pr
 	hash := hex.EncodeToString(sum[:])
 	h.idemMu.Lock()
 	defer h.idemMu.Unlock()
-	if rec, ok := h.Svc.d.Store.IdemGet(scope); ok {
+	store := h.Svc.d.Store
+	rec, ok, err := store.IdemGet(r.Context(), scope)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if ok {
 		if rec.Hash != hash {
 			writeErr(w, domain.Conflict("Idempotency-Key was used with a different request"))
 			return
@@ -362,18 +371,24 @@ func (h *Handler) idempotent(w http.ResponseWriter, r *http.Request, p domain.Pr
 		_, _ = w.Write(rec.Body)
 		return
 	}
-	status, out, err := run()
+	var status int
+	var enc []byte
+	err = h.Svc.d.Audit.Atomic(r.Context(), func(ctx context.Context) error {
+		var out any
+		var err error
+		if status, out, err = run(ctx); err != nil {
+			return err
+		}
+		if enc, err = json.Marshal(out); err != nil {
+			return err
+		}
+		enc = append(enc, '\n')
+		return store.IdemPut(ctx, scope, IdemRecord{Hash: hash, Status: status, Body: enc})
+	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	enc, err := json.Marshal(out)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	enc = append(enc, '\n')
-	h.Svc.d.Store.IdemPut(scope, IdemRecord{Hash: hash, Status: status, Body: enc})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(enc)

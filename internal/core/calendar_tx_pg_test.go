@@ -8,9 +8,9 @@ import (
 
 // TestCalendarWritesAreOneTransaction covers the two halves of a calendar write that used
 // to commit separately on Postgres: each item of a bulk save, and the activity row that
-// follows a single save. A database failure partway (forced here by a trigger) leaves no
-// calendar row, audit row or timeline row behind, and a retry with the same
-// Idempotency-Key writes each item exactly once.
+// follows a single save, plus the Idempotency-Key record. A database failure partway
+// (forced here by a trigger or a revoked privilege) leaves no calendar row, audit row or
+// timeline row behind, and a retry with the same Idempotency-Key writes each item once.
 func TestCalendarWritesAreOneTransaction(t *testing.T) {
 	d := newDocs(t)
 	open, _ := d.matter("Rivera Dissolution", "", nil)
@@ -106,4 +106,36 @@ END $$`)
 	if now.events != before.events+2 || now.deadlines != before.deadlines+2 || now.timeline != before.timeline+4 || now.audit <= before.audit {
 		t.Fatalf("retries wrote %+v, was %+v; want two events, two deadlines and four timeline rows", now, before)
 	}
+
+	// The Idempotency-Key record commits with the write: when it can't be stored, the
+	// write rolls back, and the retry runs once and then replays.
+	var role string
+	if err := d.app.Pool.QueryRow(`SELECT current_user`).Scan(&role); err != nil {
+		t.Fatal(err)
+	}
+	before = now
+	third := map[string]any{"items": []any{event("Third consult", 15), event("Fourth consult", 16)}}
+	exec(`REVOKE INSERT ON core.calendar_idempotency FROM ` + role)
+	if r := d.staff.do("POST", "/api/v1/calendar-events:bulk", third, "Idempotency-Key", "bulk-3"); r.code < http.StatusInternalServerError {
+		t.Fatalf("bulk whose Idempotency-Key record can't be stored: %d %s", r.code, r.body)
+	}
+	unchanged("a bulk save whose Idempotency-Key record failed", before)
+	exec(`GRANT INSERT ON core.calendar_idempotency TO ` + role)
+	first := d.staff.do("POST", "/api/v1/calendar-events:bulk", third, "Idempotency-Key", "bulk-3")
+	replay := d.staff.do("POST", "/api/v1/calendar-events:bulk", third, "Idempotency-Key", "bulk-3")
+	if first.code/100 != 2 || replay.code != first.code || replay.body != first.body {
+		t.Fatalf("retry then replay: %d %s / %d %s", first.code, first.body, replay.code, replay.body)
+	}
+	if now := snap(); now.events != before.events+2 || now.timeline != before.timeline+2 {
+		t.Fatalf("retry and replay wrote %+v, was %+v; want two events", now, before)
+	}
+
+	// A failed read of the record is an error, never a second run of the write.
+	before = snap()
+	exec(`REVOKE SELECT ON core.calendar_idempotency FROM ` + role)
+	if r := d.staff.do("POST", "/api/v1/calendar-events:bulk", third, "Idempotency-Key", "bulk-3"); r.code < http.StatusInternalServerError {
+		t.Fatalf("bulk whose Idempotency-Key record can't be read: %d %s", r.code, r.body)
+	}
+	exec(`GRANT SELECT ON core.calendar_idempotency TO ` + role)
+	unchanged("a bulk save whose Idempotency-Key read failed", before)
 }

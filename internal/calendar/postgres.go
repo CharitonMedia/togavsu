@@ -6,7 +6,6 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
-	"log"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -401,26 +400,27 @@ record_id, matter_id, summary, client_visible) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$
 	return err
 }
 
-// IdemGet reads a stored Idempotency-Key response.
-func (p *Postgres) IdemGet(key string) (IdemRecord, bool) {
+// IdemGet reads a stored Idempotency-Key response. A database error is returned, so
+// the request fails instead of running the write again.
+func (p *Postgres) IdemGet(ctx context.Context, key string) (IdemRecord, bool, error) {
 	var rec IdemRecord
 	var body string
-	err := p.DB.QueryRowContext(context.Background(), `SELECT request_hash, status, body FROM calendar_idempotency WHERE idem_key = $1`, key).
+	err := p.q(ctx).QueryRowContext(ctx, `SELECT request_hash, status, body FROM calendar_idempotency WHERE idem_key = $1`, key).
 		Scan(&rec.Hash, &rec.Status, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return IdemRecord{}, false, nil
+	}
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("calendar: idempotency read: %v", err)
-		}
-		return IdemRecord{}, false
+		return IdemRecord{}, false, err
 	}
 	rec.Body = []byte(body)
-	return rec, true
+	return rec, true, nil
 }
 
-// IdemPut stores a response for key; a second put for the same key keeps the first.
-func (p *Postgres) IdemPut(key string, rec IdemRecord) {
-	if _, err := p.DB.ExecContext(context.Background(), `INSERT INTO calendar_idempotency (idem_key, request_hash, status, body)
-VALUES ($1,$2,$3,$4) ON CONFLICT (idem_key) DO NOTHING`, key, rec.Hash, rec.Status, string(rec.Body)); err != nil {
-		log.Printf("calendar: idempotency write: %v", err)
-	}
+// IdemPut stores a response for key in the open audit transaction; a second put for
+// the same key keeps the first.
+func (p *Postgres) IdemPut(ctx context.Context, key string, rec IdemRecord) error {
+	_, err := p.q(ctx).ExecContext(ctx, `INSERT INTO calendar_idempotency (idem_key, request_hash, status, body)
+VALUES ($1,$2,$3,$4) ON CONFLICT (idem_key) DO NOTHING`, key, rec.Hash, rec.Status, string(rec.Body))
+	return err
 }

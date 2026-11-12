@@ -164,7 +164,7 @@ func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b eventBody
 		if err := decodeStrict(body, &b); err != nil {
 			return 0, nil, err
@@ -173,7 +173,7 @@ func (h *Handler) createEvent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		e, err := h.Svc.CreateEvent(r.Context(), p, in)
+		e, err := h.Svc.CreateEvent(ctx, p, in)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -192,7 +192,7 @@ func (h *Handler) bulkEvents(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b struct {
 			Items []eventBody `json:"items"`
 		}
@@ -205,7 +205,7 @@ func (h *Handler) bulkEvents(w http.ResponseWriter, r *http.Request) {
 				return 0, nil, indexed(i, err)
 			}
 		}
-		rows, err := h.Svc.BulkEvents(r.Context(), p, ins)
+		rows, err := h.Svc.BulkEvents(ctx, p, ins)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -242,7 +242,7 @@ func (h *Handler) patchEvent(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b eventBody
 		if err := decodeStrict(body, &b); err != nil {
 			return 0, nil, err
@@ -251,7 +251,7 @@ func (h *Handler) patchEvent(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		e, err := h.Svc.UpdateEvent(r.Context(), p, domain.ID(r.PathValue("calendar_event_id")), patch)
+		e, err := h.Svc.UpdateEvent(ctx, p, domain.ID(r.PathValue("calendar_event_id")), patch)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -315,7 +315,7 @@ func (h *Handler) createDeadline(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b deadlineBody
 		if err := decodeStrict(body, &b); err != nil {
 			return 0, nil, err
@@ -324,7 +324,7 @@ func (h *Handler) createDeadline(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return 0, nil, err
 		}
-		d, err := h.Svc.CreateDeadline(r.Context(), p, in)
+		d, err := h.Svc.CreateDeadline(ctx, p, in)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -343,7 +343,7 @@ func (h *Handler) bulkDeadlines(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b struct {
 			Items []deadlineBody `json:"items"`
 		}
@@ -356,7 +356,7 @@ func (h *Handler) bulkDeadlines(w http.ResponseWriter, r *http.Request) {
 				return 0, nil, indexed(i, err)
 			}
 		}
-		rows, err := h.Svc.BulkDeadlines(r.Context(), p, ins)
+		rows, err := h.Svc.BulkDeadlines(ctx, p, ins)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -393,12 +393,12 @@ func (h *Handler) patchDeadline(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.idempotent(w, r, p, body, func() (int, any, error) {
+	h.idempotent(w, r, p, body, func(ctx context.Context) (int, any, error) {
 		var b deadlineBody
 		if err := decodeStrict(body, &b); err != nil {
 			return 0, nil, err
 		}
-		d, err := h.Svc.UpdateDeadline(r.Context(), p, domain.ID(r.PathValue("deadline_id")), b.patch())
+		d, err := h.Svc.UpdateDeadline(ctx, p, domain.ID(r.PathValue("deadline_id")), b.patch())
 		if err != nil {
 			return 0, nil, err
 		}
