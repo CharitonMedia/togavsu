@@ -48,6 +48,7 @@ func (a *App) routes() {
 	a.systemRoutes(m)
 	m.HandleFunc("POST /mcp", a.mcp)
 	a.backups.mount(m)
+	a.backups.mountUpdates(m)
 
 	m.HandleFunc("GET /{$}", a.home)
 	m.HandleFunc("GET /setup", a.setupPage)
