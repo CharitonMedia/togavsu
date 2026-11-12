@@ -35,12 +35,13 @@ func CheckModule(root string) error {
 		}
 		if d.IsDir() {
 			// These exact module-relative packages belong to the separate
-			// supervisor executable, not the core checked by AC-030.
+			// supervisor executable or the AC-016 load-test client, not the core
+			// checked by AC-030.
 			rel, err := filepath.Rel(root, path)
 			if err != nil {
 				return err
 			}
-			if rel == filepath.Join("cmd", "supervisor") || rel == filepath.Join("internal", "supervisor") {
+			if rel == filepath.Join("cmd", "supervisor") || rel == filepath.Join("internal", "supervisor") || rel == filepath.Join("tests", "update", "loadgen") {
 				return filepath.SkipDir
 			}
 			switch d.Name() {
@@ -492,7 +493,7 @@ func fixedSite(path, fn string) bool {
 		// Positive migration versions, placeholder numbers, the single held connection,
 		// and the first-match count passed to strings.Replace.
 		switch fn {
-		case "LoadFS", "Apply", "Rebind", "migrateOnHeldConn", "gooseNoTransaction":
+		case "LoadFS", "Apply", "ApplyCount", "Rebind", "migrateOnHeldConn", "gooseNoTransaction":
 			return true
 		}
 	case strings.HasSuffix(slash, "internal/db/goose_store.go"):
@@ -514,7 +515,7 @@ func fixedSite(path, fn string) bool {
 	case strings.HasSuffix(slash, "cmd/core/main.go"):
 		// Process status 0, 1 and 2, the argument index of "check", the HTTP read-header
 		// guard against slow clients and the shutdown drain. None is a firm setting.
-		return fn == "main" || fn == "serve"
+		return fn == "main" || fn == "serve" || fn == "migrate" || fn == "healthcheck"
 	case strings.HasSuffix(slash, "internal/core/app.go"):
 		// AES-256 keys are 32 bytes, checked before any service is built.
 		return fn == "Open"

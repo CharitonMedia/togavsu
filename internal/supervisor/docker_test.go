@@ -218,6 +218,34 @@ func TestDockerListReadsComposeNetworkAlias(t *testing.T) {
 	}
 }
 
+// The engine's container list (Docker 29 here) returns null Aliases and DNSNames; the
+// alias Caddy dials is only in inspect. A failed inspect fails the list.
+func TestDockerListInspectsWhenListOmitsAliases(t *testing.T) {
+	inspectFails := false
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/json", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"Id":"abc","Names":["/upd-load-core-1"],"Image":"upd-core:1.0.0","Labels":{"togavsu.role":"core","togavsu.version":"1.0.0"},"State":"running","NetworkSettings":{"Networks":{"upd-load_default":{"Aliases":null,"DNSNames":null}}}}]`))
+	})
+	mux.HandleFunc("/v1.43/containers/abc/json", func(w http.ResponseWriter, r *http.Request) {
+		if inspectFails {
+			http.Error(w, "engine down", http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"Id":"abc","Name":"/upd-load-core-1","State":{"Status":"running","Running":true},"NetworkSettings":{"Networks":{"upd-load_default":{"Aliases":["upd-load-core-1","core"],"DNSNames":["upd-load-core-1","core","abc"]}}}}`))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "upd-load_default"}
+	cores, err := rt.ListCores(context.Background())
+	if err != nil || len(cores) != 1 || !containerMatchesHost(cores[0], "core") || versionOf(cores[0]) != "1.0.0" {
+		t.Fatalf("%+v %v", cores, err)
+	}
+	inspectFails = true
+	if cores, err := rt.ListCores(context.Background()); err == nil {
+		t.Fatalf("list without aliases succeeded on a failed inspect: %+v", cores)
+	}
+}
+
 func TestStaleHealthDoesNotCountAsServing(t *testing.T) {
 	for _, status := range []string{"exited", "paused", "dead"} {
 		t.Run(status, func(t *testing.T) {

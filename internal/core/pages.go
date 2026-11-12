@@ -164,6 +164,7 @@ func (a *App) setupPost(w http.ResponseWriter, r *http.Request) {
 		render(w, status(err), "setup", view{Title: "Set up Togavsu", Error: message(err), Form: form})
 		return
 	}
+	a.persistBackupPassphrase(in.BackupPassphrase)
 	render(w, http.StatusOK, "enroll", view{Title: "Turn on two-factor sign-in", Enroll: e})
 }
 

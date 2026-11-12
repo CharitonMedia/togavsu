@@ -75,6 +75,9 @@ type Config struct {
 	ModuleBackups modules.Backups
 	// HelpFiles overrides the files service behind help images and videos (tests).
 	HelpFiles help.Files
+	// BackupPassphraseFile is where setup writes the backup passphrase for the
+	// supervisor. Empty is BackupPassphraseFile (the installer secrets volume).
+	BackupPassphraseFile string
 }
 
 // App is one running core.
@@ -119,20 +122,28 @@ type App struct {
 	docs     *documents
 	stopDocs context.CancelFunc
 	docsDone chan struct{}
+	// passphraseFile is Config.BackupPassphraseFile (passphrase.go).
+	passphraseFile string
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
 func Migrate(ctx context.Context, dsn string) error {
+	_, err := MigrateCount(ctx, dsn)
+	return err
+}
+
+// MigrateCount is Migrate that reports how many migrations it applied (`core migrate`).
+func MigrateCount(ctx context.Context, dsn string) (int, error) {
 	plain, err := db.OpenPostgres(dsn, "")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer plain.Close()
 	ms, err := migrations()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+	return db.ApplyCount(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
 }
 
 // Open migrates, seeds reference rows, and wires every service on one pool.
@@ -200,6 +211,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.practice = ph.Routes()
+	app.passphraseFile = cfg.BackupPassphraseFile
+	if app.passphraseFile == "" {
+		app.passphraseFile = BackupPassphraseFile
+	}
 	dataDir, cli, dist := cfg.DataDir, cfg.WordcraftCLI, cfg.EditorDist
 	if dataDir == "" {
 		dataDir = DataDir

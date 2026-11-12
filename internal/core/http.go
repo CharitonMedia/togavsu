@@ -429,6 +429,7 @@ func (a *App) setupJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	a.persistBackupPassphrase(body.BackupPassphrase)
 	writeJSON(w, http.StatusCreated, enrollJSON(e))
 }
 
