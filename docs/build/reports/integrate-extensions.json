@@ -2,7 +2,7 @@
   "task_id": "integrate-extensions",
   "status": "pass",
   "scope": "Phase 5/6 integration: core.Open now mounts the shell, home screen, admin page and help center, the marketplace client side and the module runtime on one pool and one handler, with the admin Modules and marketplace tab, module panels on the matter screen, module sidebar entries, module-facing routes and core.events from billing and practice. status pass means every assigned phase case passed at the tested revision, plus the local scripts listed in tests. It is not full product acceptance: 21 of 52 criteria remain pending globally, including AC-012, AC-014, AC-033, AC-036 and AC-037 whose phase case passes with the gaps named in pending_notes. Checkpoint fix at this revision: the supervisor now serves PUT and DELETE /v1/modules/{name}, so an installed module gets its container in the Compose stack's Docker engine (tested on a real engine with the Matter Clock image pulled by registry digest). Not run locally: scripts/ci/test-core.sh end to end (needs the LawCraft core image build), the QA harness, Backup integration and the Supervisor image jobs; their results come from the pull request's Product CI run.",
-  "tested_revision": "b1b02a08b47aa8e8b800133532f627f5d0d7b9ad",
+  "tested_revision": "b827a755cb500b9debd738c4c116a5b299c3a57d",
   "phase_cases": [
     {
       "id": "ui-admin-guide",
@@ -20,8 +20,8 @@
       "status": "pass",
       "command": "go test -count=1 -v -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -v -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -v -run '^TestExtensionsUIModules$' ./internal/core/",
       "exit_code": 0,
-      "revision": "b1b02a08b47aa8e8b800133532f627f5d0d7b9ad",
-      "evidence": "Local run at b1b02a0 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; the ui end-to-end suite now drives the handler core.Open builds (app.UI behind app.Handler(), no second composition); all 8 TestUI* cases, both guide-coverage checks and TestExtensionsUIModules (module widget opens its manifest tab, sidebar entry only while installed, widget without target refused) PASS."
+      "revision": "b827a755cb500b9debd738c4c116a5b299c3a57d",
+      "evidence": "Local run at b827a75 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; the ui end-to-end suite now drives the handler core.Open builds (app.UI behind app.Handler(), no second composition); all 8 TestUI* cases, both guide-coverage checks and TestExtensionsUIModules (module widget opens its manifest tab, sidebar entry only while installed, widget without target refused) PASS."
     },
     {
       "id": "module-lifecycle",
@@ -37,8 +37,8 @@
       "status": "pass",
       "command": "go test -count=1 -v -run '^TestExtensionsModuleLifecycle$' ./internal/core/ && go test -count=1 -v -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/ && sh scripts/ci/test-module-container.sh",
       "exit_code": 0,
-      "revision": "b1b02a08b47aa8e8b800133532f627f5d0d7b9ad",
-      "evidence": "Local run at b1b02a0 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; untrusted, unsigned and tampered packages refused; contacts-table, out-of-schema and trigger migrations refused; install and permission decisions on the admin Modules tab; widget, framed tab, sidebar entry and guide live with no restart; include= on API and matter screen inside walls with attorney-only redaction; module login denied core.contacts; billing time entry delivered as a signed webhook; changed migration refused on update; linked matter hard delete blocked; calendar switched to a module and back; disable/enable; Delete data needs the typed id and a fresh backup. The core case runs module servers in process through Config.ModuleRuntime; TestSupervisorClientMatchesSupervisorAPI drives the core's real supervisor client (modules.Supervisor) against the real supervisor routes (deploy, start, stop, remove, unpinned image refused, wrong secret refused); TestModuleContainerOnDocker (scripts/ci/test-module-container.sh) builds the Matter Clock image, publishes it to a throwaway registry, drops the local copy, and through modules.Supervisor -> supervisor.NewMux -> DockerRuntime on the real engine: an unknown digest is refused with no container left, the image is pulled by digest, togavsu-mod-matter-clock runs as 65532:65532 with no secret in its spec, the module (which exits if it cannot read its secret files) answers /healthz over the network alias from another container, a redeploy replaces it with the rotated token, stop and second stop succeed, remove and second remove leave no container."
+      "revision": "b827a755cb500b9debd738c4c116a5b299c3a57d",
+      "evidence": "Local run at b827a75 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; untrusted, unsigned and tampered packages refused; contacts-table, out-of-schema and trigger migrations refused; install and permission decisions on the admin Modules tab; widget, framed tab, sidebar entry and guide live with no restart; include= on API and matter screen inside walls with attorney-only redaction; module login denied core.contacts; billing time entry delivered as a signed webhook; changed migration refused on update; linked matter hard delete blocked; calendar switched to a module and back; disable/enable; Delete data needs the typed id and a fresh backup. The core case runs module servers in process through Config.ModuleRuntime; TestSupervisorClientMatchesSupervisorAPI drives the core's real supervisor client (modules.Supervisor) against the real supervisor routes (deploy, start, stop, remove, unpinned image refused, wrong secret refused); TestModuleContainerOnDocker (scripts/ci/test-module-container.sh) builds the Matter Clock image, publishes it to a throwaway registry, drops the local copy, and through modules.Supervisor -> supervisor.NewMux -> DockerRuntime on the real engine: an unknown digest is refused with no container left, the image is pulled by digest, togavsu-mod-matter-clock runs as 65532:65532 with no secret in its spec, the module (which exits if it cannot read its secret files) answers /healthz over the network alias from another container, a redeploy replaces it with the rotated token, stop and second stop succeed, remove and second remove leave no container."
     },
     {
       "id": "marketplace-alerts",
@@ -48,8 +48,8 @@
       "status": "pass",
       "command": "go test -count=1 -v -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
       "exit_code": 0,
-      "revision": "b1b02a08b47aa8e8b800133532f627f5d0d7b9ad",
-      "evidence": "Local run at b1b02a0 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; against the real marketplace service (package marketplace) in process: listing and notice on the admin tab, staff refused, install from the marketplace, operator flag shows the warning on the listing, opening the Modules tab checks and delivers one alert to the module-alerts widget and an email to the admin (sent through the fake SMTP server), module not switched off; after a pull a marketplace install is refused and a local file still installs."
+      "revision": "b827a755cb500b9debd738c4c116a5b299c3a57d",
+      "evidence": "Local run at b827a75 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; against the real marketplace service (package marketplace) in process: listing and notice on the admin tab, staff refused, install from the marketplace, operator flag shows the warning on the listing, opening the Modules tab checks and delivers one alert to the module-alerts widget and an email to the admin (sent through the fake SMTP server), module not switched off; after a pull a marketplace install is refused and a local file still installs."
     },
     {
       "id": "ai-mediation",
@@ -60,15 +60,15 @@
       "status": "pass",
       "command": "go test -count=1 -v -run '^TestExtensionsAIMediation$' ./internal/core/",
       "exit_code": 0,
-      "revision": "b1b02a08b47aa8e8b800133532f627f5d0d7b9ad",
-      "evidence": "Local run at b1b02a0 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; module token plus viewer context token calls POST /api/v1/ai/calls on the running core; primary unreachable, falls back to the secondary with the AI tab's key, which never reaches the module or the response; call log over API and MCP shows both attempts; staff refused the log; walled matter not found before any provider call; token without ai:use refused."
+      "revision": "b827a755cb500b9debd738c4c116a5b299c3a57d",
+      "evidence": "Local run at b827a75 on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; module token plus viewer context token calls POST /api/v1/ai/calls on the running core; primary unreachable, falls back to the secondary with the AI tab's key, which never reaches the module or the response; call log over API and MCP shows both attempts; staff refused the log; walled matter not found before any provider call; token without ai:use refused."
     }
   ],
   "tests": [
     {
       "command": "go test -count=1 -timeout 25m $(go list ./...)",
       "exit_code": 0,
-      "note": "all 25 test packages ok (no LawCraft CLI locally, so the editor case skipped here; CI's test-core.sh runs it with the image build)"
+      "note": "all 25 test packages ok (no LawCraft CLI locally, so TestDocumentsLawCraftEditor skipped here; its /admin/settings -> /admin?tab=document_editor fix, which failed CI on 3c7a814 with a 303, was checked by a throwaway probe that the new page shows the pinned commit; CI's test-core.sh runs the full case with the image's wordcraft-cli)"
     },
     {
       "command": "go test -count=1 -v -run '^(TestModuleDeploy|TestModuleRoutes)' ./internal/supervisor/",
@@ -99,7 +99,7 @@
     {
       "command": "TOGAVSU_QC_DIR=docs/build/reports/screens/integrate-extensions CHROME=/usr/bin/chromium PUPPETEER_CORE=<path to puppeteer-core@23> go test -count=1 -v -run '^TestExtensionsScreens$' ./internal/core/",
       "exit_code": 0,
-      "note": "visual QC, 8 screens rerun at b1b02a0, no console errors or failed requests; screenshots and qc.json in docs/build/reports/screens/integrate-extensions"
+      "note": "visual QC, 8 screens rerun at b827a75, no console errors or failed requests; screenshots and qc.json in docs/build/reports/screens/integrate-extensions"
     },
     {
       "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/",
@@ -197,6 +197,6 @@
     "review": "Folded internal/dashboard/compose into internal/core instead of duplicating auth and routing; reused the modules harness pattern, the existing documents-qc.mjs and test helpers; one shared db.PublishEvent for billing and practice events; no new dependency.",
     "ponytail_debt_entries": 64,
     "new_debt_entries": 4,
-    "checkpoint_fix": "b1b02a0 against 3c7a814: non-test +325 -8 across 7 files (internal/supervisor/modules.go new, server.go, docker.go, runtime.go comment, two CI scripts, PONYTAIL-DEBT.md); PONYTAIL-DEBT Extensions 1 replaced (debt count unchanged at 64): the gap is closed, the new ceiling is secret files in the container writable layer. No new dependency."
+    "checkpoint_fix": "b1b02a0 against 3c7a814 (b827a75 adds a one-line test URL fix): non-test +325 -8 across 7 files (internal/supervisor/modules.go new, server.go, docker.go, runtime.go comment, two CI scripts, PONYTAIL-DEBT.md); PONYTAIL-DEBT Extensions 1 replaced (debt count unchanged at 64): the gap is closed, the new ceiling is secret files in the container writable layer. No new dependency."
   }
 }
