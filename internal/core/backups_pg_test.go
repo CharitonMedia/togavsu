@@ -110,7 +110,7 @@ func (f *fakeSupervisor) handler(t *testing.T) http.Handler {
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("POST /v1/restores/upload",func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /v1/restores/upload", func(w http.ResponseWriter, r *http.Request) {
 		mr, err := r.MultipartReader()
 		if err != nil {
 			t.Error(err)
