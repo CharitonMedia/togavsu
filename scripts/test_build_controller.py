@@ -146,6 +146,19 @@ class ControllerTests(unittest.TestCase):
         self.assert_ci_ownership(launches[0][2]["prompt"]["text"])
         self.assertIn("Do not merge, push main, force-push", launches[0][2]["prompt"]["text"])
 
+    def test_launch_prompt_names_modules_prd_only_for_module_tasks(self):
+        for spec, expected in ((SPEC, False), (dict(SPEC, module_prd_sections=["4"]), True)):
+            with self.subTest(module_task=expected):
+                self.setUp()
+                self.controller.plan["tasks"] = [spec]
+                self.controller.tasks.clear()
+                self.controller.tick()
+                launches = [c for c in self.remote.calls if c[0] == "POST" and c[1] == "/agents"]
+                self.assertEqual(len(launches), 1)
+                text = launches[0][2]["prompt"]["text"]
+                self.assertEqual("also read the full togavsu-initial-modules-prd.md" in text, expected)
+                self.assert_ci_ownership(text)
+
     def test_initial_and_repeated_correction_prompts_keep_ci_ownership(self):
         self.failed_review()
         with self.advance(0):
@@ -2075,6 +2088,15 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.record["halted"])
         self.assertNotIn("completed", self.record)
 
+    def test_worker_cannot_change_module_scope_files(self):
+        for name in ("togavsu-initial-modules-prd.md", "docs/modules/CORE-CHANGES.md", "docs/modules/quickbooks/SPEC.md"):
+            with self.subTest(name):
+                self.setUp()
+                self.remote.changed_files = lambda n, name=name: [{"filename": name}]
+                self.process()
+                self.assertTrue(self.record["halted"])
+                self.assertNotIn("completed", self.record)
+
     def test_truncated_inventory_cannot_hide_protected_file(self):
         remote = Remote()
         all_files = [{"filename": "safe/" + str(i)} for i in range(3000)]
@@ -2189,6 +2211,56 @@ class StallAlertTests(unittest.TestCase):
 
     def posts(self):
         return [c for c in self.remote.calls if c[0] == "POST" and c[1].endswith("/runs")]
+
+    def stage_comments(self):
+        return [c for c in self.remote.calls if c[0] == "POST" and c[1] == "issues/1/comments"
+                and c[2]["body"].startswith("Stage report: ")]
+
+    def test_merged_stage_task_reports_once_by_issue_and_email(self):
+        self.plan["tasks"] = [dict(SPEC, stage_report=True)]
+        self.record["completed"] = {"pr": 7, "merge_sha": BASE, "head": HEAD, "report": "pr"}
+        self.remote.pr["body"] = "Intro\n\n## Stage report\nmodule-core merged; AC-002 passed.\n\n## Proposed CI change\nnone"
+        self.controller.stage_reports()
+        self.controller.stage_reports()
+        self.assertEqual(len(self.mailer.sent), 1)
+        to, subject, body = self.mailer.sent[0]
+        self.assertEqual(to, "lead@example.com")
+        self.assertIn("one", subject)
+        self.assertIn("module-core merged; AC-002 passed.", body)
+        self.assertNotIn("Proposed CI change", body)
+        self.assertEqual(len(self.stage_comments()), 1)
+
+    def test_task_without_stage_report_or_unmerged_sends_nothing(self):
+        self.record["completed"] = {"pr": 7, "merge_sha": BASE, "head": HEAD, "report": "pr"}
+        self.controller.stage_reports()
+        self.plan["tasks"] = [dict(SPEC, stage_report=True)]
+        self.record.pop("completed")
+        self.controller.stage_reports()
+        self.assertFalse(self.mailer.sent)
+        self.assertFalse(self.stage_comments())
+
+    def test_failed_stage_email_is_retried_without_reposting(self):
+        self.plan["tasks"] = [dict(SPEC, stage_report=True)]
+        self.record["completed"] = {"pr": 7, "merge_sha": BASE, "head": HEAD, "report": "pr"}
+        self.mailer.fail = True
+        self.controller.stage_reports()
+        self.assertIn("stage_report_failure", self.record)
+        self.controller.stage_reports()
+        self.mailer.fail = False
+        self.record["stage_report_failure"]["time"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).isoformat()
+        self.controller.stage_reports()
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("no Stage report section", self.mailer.sent[0][2])
+        self.assertEqual(len(self.stage_comments()), 1)
+        self.assertNotIn("stage_report_failure", self.record)
+
+    def test_dry_run_sends_no_stage_report(self):
+        self.controller.dry = True
+        self.plan["tasks"] = [dict(SPEC, stage_report=True)]
+        self.record["completed"] = {"pr": 7, "merge_sha": BASE, "head": HEAD, "report": "pr"}
+        self.controller.stage_reports()
+        self.assertFalse(self.mailer.sent)
+        self.assertFalse(self.stage_comments())
 
     def test_merge_refused_on_two_cycles_is_held_and_emailed_once(self):
         self.remote.fail_merge = THREADS_405
@@ -2872,6 +2944,9 @@ class LaneBackendTests(unittest.TestCase):
             "non-ASCII workflow name": {".github/workflows/\u00e9.yml": safe + "# ${{ secrets.X }}\n"},
             "backslash workflow name": {".github/workflows/a\\b.yml": safe},
             "non-ASCII control file": {"deploy/controller/\u00e9.py": "pass\n"},
+            "modules PRD": {"togavsu-initial-modules-prd.md": "scope\n"},
+            "module core changes": {"docs/modules/CORE-CHANGES.md": "scope\n"},
+            "module spec": {"docs/modules/email/SPEC.md": "scope\n"},
         }
         for label, files in cases.items():
             with self.subTest(label):

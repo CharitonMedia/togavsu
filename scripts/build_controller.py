@@ -50,8 +50,11 @@ PROTECTED = {
     "scripts/build_controller.py", "scripts/test_build_controller.py", "scripts/cursor_agents.py",
     "scripts/check_review.py", "scripts/check_setup.py", "scripts/test_review_gate.py",
     "docs/build/controller-plan.json", "docs/build/tasks.json", "docs/build/review.schema.json",
-    "docs/build/prompts/codex-review.md",
-}
+    "docs/build/prompts/codex-review.md", "togavsu-initial-modules-prd.md", "docs/modules/CORE-CHANGES.md",
+} | {"docs/modules/" + _m + "/SPEC.md" for _m in ("documents", "email", "client-portal", "lawpay-docuseal", "quickbooks")}
+MODULES_PRD = ("This is an initial modules task: also read the full togavsu-initial-modules-prd.md, the approved scope for "
+               "the initial modules (core PRD section 9.10), and the docs/modules files your assignment names. That PRD "
+               "outranks docs/modules/CORE-CHANGES.md, which outranks each SPEC.md. ")
 
 
 class ReviewPending(Exception):
@@ -159,6 +162,20 @@ class Mailer:
             refused = server.send_message(message)
         if refused:
             raise RuntimeError("Mail server refused " + ", ".join(refused))
+
+
+STAGE_HEADING = re.compile(r"^##\s+Stage report\s*$", re.I | re.M)
+STAGE_LIMIT = 8000  # Characters of a PR's Stage report section carried into the email and the issue comment.
+
+
+def stage_report_section(body):
+    # The PR body's "## Stage report" section, up to the next level-one or level-two heading.
+    found = STAGE_HEADING.search(body or "")
+    if not found:
+        return ""
+    rest = body[found.end():]
+    end = re.search(r"^#{1,2}\s", rest, re.M)
+    return (rest[:end.start()] if end else rest).strip()[:STAGE_LIMIT]
 
 
 def problem_fingerprints(problem):
@@ -1465,7 +1482,8 @@ class Controller:
         record = self.tasks.setdefault(task, {"agent_id": "bc-" + str(uuid.uuid4()), "starting_sha": main, "repair_count": 0})
         self.save()
         prompt = ("Implement Togavsu assignment " + task + ". Read AGENTS.md, the full togavsu-core-prd.md, "
-            "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. Your exact approved assignment follows. "
+            "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. "
+            + (MODULES_PRD if spec.get("module_prd_sections") else "") + "Your exact approved assignment follows. "
             "Work in your isolated hosted workspace (a Cursor-hosted VM or a GitHub-hosted lane runner) on your own branch using synthetic data only. "
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
             "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "
@@ -1515,6 +1533,7 @@ class Controller:
                 self.state["last_result"] = "Needs supervision: " + (", ".join(attention) or "controller request failed")
             self.save()
             self.alert()
+            self.stage_reports()
             try:
                 self.publish()
             except Exception as error:
@@ -1681,6 +1700,45 @@ class Controller:
                 "controller", "Controller tick failed " + str(watch["ticks"]) + " times in a row", watch["text"],
                 "Each tick stops at this error before doing any work.")
         return found
+
+    def stage_reports(self):
+        # Never raises. When a task marked stage_report merges, its PR's Stage report section is posted on the
+        # tracking issue and emailed to alert_email, once each. A failed send is retried after ALERT_RETRY_SECONDS.
+        if self.dry:
+            return
+        specs = {spec["id"]: spec for spec in self.plan.get("tasks", [])}
+        to = self.plan.get("alert_email")
+        for task, rec in self.tasks.items():
+            done = rec.get("completed")
+            if not done or not specs.get(task, {}).get("stage_report") or rec.get("stage_report_sent"):
+                continue
+            failure = rec.get("stage_report_failure")
+            if failure and age(failure["time"]) < ALERT_RETRY_SECONDS:
+                continue
+            try:
+                pr = self.remote.gh("pulls/" + str(done["pr"]))
+                section = stage_report_section(pr.get("body") or "")
+                body = ("The Togavsu build finished a stage: " + task + ", PR #" + str(done["pr"]) + ", merged as "
+                        + str(done["merge_sha"]) + ".\n\n"
+                        + (section or "The pull request has no Stage report section; the pull request is the record.")
+                        + "\n\nhttps://github.com/" + REPO + "/pull/" + str(done["pr"])
+                        + "\nController status: https://github.com/" + REPO + "/issues/1\n")
+                if not rec.get("stage_report_posted"):
+                    self.remote.gh("issues/1/comments", "POST", {"body": "Stage report: " + task + "\n\n" + body})
+                    rec["stage_report_posted"] = now()
+                    self.save()
+                if to:
+                    if self.mailer is None:
+                        raise RuntimeError("No mailer configured for alert_email")
+                    self.mailer.send(to, "Togavsu build stage done: " + task, body)
+                rec["stage_report_sent"] = now()
+                rec.pop("stage_report_failure", None)
+                self.event(task, "Stage report posted and emailed")
+            except Exception as error:
+                rec["stage_report_failure"] = {"time": now(), "error": type(error).__name__ + ": " + str(error)[:300]}
+                self.state["health"] = "needs_attention"
+                self.event(task, "Stage report failed: " + rec["stage_report_failure"]["error"])
+            self.save()
 
     def alert(self):
         # Never raises: a failed alert is recorded and shown as needs_attention, then retried later.
