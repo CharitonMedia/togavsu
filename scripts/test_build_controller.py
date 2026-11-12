@@ -2190,6 +2190,29 @@ class StallAlertTests(unittest.TestCase):
     def posts(self):
         return [c for c in self.remote.calls if c[0] == "POST" and c[1].endswith("/runs")]
 
+    def test_launched_task_on_hold_is_frozen_and_never_alerts(self):
+        # A green, mergeable PR on a held task is not merged, corrected or alerted on, even after hours.
+        self.plan["held_tasks"] = ["one"]
+        self.record["waiting"] = "Checks pending"
+        before = dict(self.record)
+        for minutes in (0, 3, 90, 400):
+            self.tick(minutes)
+        self.assertFalse(self.merges())
+        self.assertFalse(self.posts())
+        self.assertFalse(self.mailer.sent)
+        self.assertEqual(self.record, before)
+        self.assertEqual(self.controller.state["health"], "observing")
+        status = json.loads((Path(self.temp.name) / "status.json").read_text())
+        self.assertTrue(status["tasks"]["one"]["held"])
+
+    def test_released_hold_resumes_processing(self):
+        self.plan["held_tasks"] = ["one"]
+        self.tick(0)
+        self.assertFalse(self.merges())
+        self.plan["held_tasks"] = []
+        self.tick(3)
+        self.assertEqual(len(self.merges()), 1)
+
     def test_merge_refused_on_two_cycles_is_held_and_emailed_once(self):
         self.remote.fail_merge = THREADS_405
         self.remote.pr["mergeable_state"] = "blocked"

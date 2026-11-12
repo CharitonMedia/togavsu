@@ -1508,6 +1508,7 @@ class Controller:
         finally:
             threshold = self.plan.get("correction_attention_threshold", DEFAULT_CORRECTION_ATTENTION)
             attention = [task for task, rec in self.tasks.items() if not rec.get("completed")
+                and task not in self.plan.get("held_tasks", [])
                 and (any(rec.get(field) for field in ("halted", "stalled", "last_error", "launch_uncertain", "intent"))
                     or rec.get("correction_volume", 0) >= threshold)]
             self.state["health"] = "needs_attention" if attention or self.state.get("tick_error") else "observing"
@@ -1535,10 +1536,12 @@ class Controller:
         self.adopt()
         main = self.remote.gh("git/ref/heads/main")["object"]["sha"]
         specs = {t["id"]: t for t in self.plan["tasks"]}
+        held = set(self.plan.get("held_tasks", []))
         snapshots, unverified = {}, {}
         # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
+        # A held task is frozen: not observed, corrected, refreshed or merged, and it holds no slot.
         for task, record in list(self.tasks.items()):
-            if task not in specs or record.get("completed"):
+            if task not in specs or record.get("completed") or task in held:
                 continue
             try:
                 snapshot = self.remote.agent(record)
@@ -1614,8 +1617,9 @@ class Controller:
 
     def watch_progress(self):
         # Track repeating control errors and unchanged task state between ticks.
+        held = set(self.plan.get("held_tasks", []))
         for task, rec in self.tasks.items():
-            if rec.get("completed"):
+            if rec.get("completed") or task in held:
                 rec.pop("error_watch", None)
                 rec.pop("idle_watch", None)
                 continue
@@ -1643,9 +1647,10 @@ class Controller:
         # Returns {condition key: (task, headline, detail, what the controller does now)}.
         idle_limit = self.plan.get("idle_alert_seconds", DEFAULT_IDLE_ALERT_SECONDS)
         found = {}
+        held = set(self.plan.get("held_tasks", []))
         for task, rec in self.tasks.items():
-            if rec.get("completed"):
-                continue
+            if rec.get("completed") or task in held:
+                continue  # A held task is frozen on purpose; it is not a stall.
             if rec.get("halted"):
                 found["halted:" + task + ":" + rec["halted"]] = (task, "Stopped", rec["halted"],
                     "It stays stopped until the integration lead clears it.")
@@ -1770,6 +1775,9 @@ class Controller:
             k: {field: v[field] for field in ("pr", "agent_status", "repair_count", "correction_volume", "repair_window", "last_submission", "active_watch",
                 "completed", "halted", "stalled", "last_error", "waiting", "launch_uncertain", "intent") if field in v}
             for k, v in self.tasks.items()}}
+        for task in self.plan.get("held_tasks", []):
+            if task in summary["tasks"] and not summary["tasks"][task].get("completed"):
+                summary["tasks"][task]["held"] = True
         atomic(self.dir / "status.json", summary)
         return summary
 
@@ -1793,8 +1801,10 @@ class Controller:
             if summary["alert_failure"]:
                 body += "Alert email failed: " + summary["alert_failure"]["error"] + "\n\n"
             body += "| Assignment | PR | State | Corrections |\n|---|---|---|---|\n"
+            held = set(self.plan.get("held_tasks", []))
             for task, rec in self.tasks.items():
-                status = ("merged" if rec.get("completed") else "STOPPED: " + rec["halted"] if rec.get("halted")
+                status = ("merged" if rec.get("completed") else "HELD: frozen by the plan until the hold is released"
+                    if task in held else "STOPPED: " + rec["halted"] if rec.get("halted")
                     else "STALLED: " + rec["stalled"]["reason"] if rec.get("stalled")
                     else "CONTROL ERROR: " + rec["last_error"] if rec.get("last_error")
                     else "Launch outcome uncertain; inspect durable agent ID" if rec.get("launch_uncertain")

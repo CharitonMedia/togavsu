@@ -73,7 +73,7 @@ Agent records live in `.build-state/lane-agents.json`. Agents launched on Cursor
 
 The Run assignment step gives Claude Code the CLAUDE_CODE_OAUTH_TOKEN secret, which the review gate also uses, inside a job that runs candidate and dependency code with network access. Committed output is scanned, but network egress is not; see PONYTAIL-DEBT.md. Before verifying a bundle the controller fetches its base from GitHub, because that base is often a squash merge this checkout never saw. The lane job scans every published commit, not just the net diff, and the Claude step has its own time limit below the job's so committed work is always packaged.
 
-Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. Releasing a hold is a reviewed plan change. Patrick released calendar and files on 2026-11-10; no task is held now.
+Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. A held task that already launched is frozen: the controller doesn't observe its agent, send corrections, refresh its branch or merge its PR, it holds no worker slot, and it raises no stall or idle alert. Its state is kept as it was, status.json marks it `held` and the issue #1 table shows it as HELD. Releasing a hold is a reviewed plan change; the next tick picks the task up where it stopped. Patrick released calendar and files on 2026-11-10. On 2026-11-12 he held release (PR 41 stays open) so the five initial modules and their integration land first; release now also depends on integrate-modules.
 
 ## Stall alerts
 With `alert_email` in the plan, the controller emails that address instead of retrying a stopped or repeating step silently. Mail goes over SMTP with SSL using the SMTP_* settings above.
