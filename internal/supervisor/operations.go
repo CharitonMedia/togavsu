@@ -14,17 +14,91 @@ import (
 	"time"
 )
 
-// Gate lets one backup, restore, or update run at a time.
-type Gate struct{ mu sync.Mutex }
+// Gate lets one backup, restore, or update run at a time. Scheduled work
+// (the 30-second tick's nightly backup, update check, test restore and prune)
+// holds it for moments at a time, so an admin's request that arrives during a
+// tick waits up to ScheduledWait for that work to finish instead of being
+// refused. A request that finds another admin request holding the gate, and
+// scheduled work that finds it held at all, is refused at once.
+type Gate struct {
+	mu        sync.Mutex
+	held      bool
+	scheduled bool
+	free      chan struct{}
+	// ScheduledWait overrides scheduledWait (tests).
+	ScheduledWait time.Duration
+}
 
+// scheduledWait bounds how long an admin request waits for scheduled work.
+const scheduledWait = 30 * time.Second
+
+type scheduledKey struct{}
+
+// Scheduled marks ctx as the scheduler's, so its gate holds yield to admin
+// requests.
+func Scheduled(ctx context.Context) context.Context {
+	return context.WithValue(ctx, scheduledKey{}, true)
+}
+
+func isScheduled(ctx context.Context) bool {
+	v, _ := ctx.Value(scheduledKey{}).(bool)
+	return v
+}
+
+// Try takes the gate for an admin request without waiting.
 func (g *Gate) Try() (func(), bool) {
+	return g.take(false, nil)
+}
+
+// Acquire takes the gate for ctx. Scheduled work never waits. An admin
+// request waits for scheduled work up to ScheduledWait or until ctx ends.
+func (g *Gate) Acquire(ctx context.Context) (func(), bool) {
+	if isScheduled(ctx) {
+		return g.take(true, nil)
+	}
+	wait := g.ScheduledWait
+	if wait <= 0 {
+		wait = scheduledWait
+	}
+	wctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	return g.take(false, wctx.Done())
+}
+
+// take acquires the gate. stop, when non-nil, lets an admin request wait for
+// a scheduled holder until stop closes.
+func (g *Gate) take(scheduled bool, stop <-chan struct{}) (func(), bool) {
 	if g == nil {
 		return func() {}, true
 	}
-	if !g.mu.TryLock() {
-		return nil, false
+	for {
+		g.mu.Lock()
+		if !g.held {
+			g.held, g.scheduled, g.free = true, scheduled, make(chan struct{})
+			free := g.free
+			g.mu.Unlock()
+			var once sync.Once
+			return func() {
+				once.Do(func() {
+					g.mu.Lock()
+					g.held, g.scheduled = false, false
+					close(free)
+					g.mu.Unlock()
+				})
+			}, true
+		}
+		if stop == nil || !g.scheduled {
+			g.mu.Unlock()
+			return nil, false
+		}
+		free := g.free
+		g.mu.Unlock()
+		select {
+		case <-free:
+		case <-stop:
+			return nil, false
+		}
 	}
-	return g.mu.Unlock, true
 }
 
 // RestoreRecord is the stable restore status. Polling returns this shape from
@@ -133,7 +207,7 @@ func (o *Operations) CreateBackup(ctx context.Context, reason string) (BackupMet
 	if o.shutting.Load() {
 		return BackupMeta{}, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return BackupMeta{}, ErrBusy
 	}
@@ -155,7 +229,7 @@ func (o *Operations) Update(ctx context.Context, force bool) (UpdateResult, erro
 	if o.shutting.Load() {
 		return UpdateResult{}, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return UpdateResult{}, ErrBusy
 	}
@@ -196,7 +270,7 @@ func (o *Operations) DeleteBackup(ctx context.Context, id string) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -214,7 +288,7 @@ func (o *Operations) Prune(ctx context.Context, local time.Duration) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -473,7 +547,7 @@ func (o *Operations) admitRestoreFrom(ctx context.Context, backupID string, src 
 	if o.shutting.Load() {
 		return RestoreRecord{}, nil, ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return RestoreRecord{}, nil, ErrBusy
 	}
@@ -1296,7 +1370,7 @@ func (o *Operations) Recover(ctx context.Context) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}
@@ -1904,7 +1978,7 @@ func (o *Operations) TestRestore(ctx context.Context, id string) error {
 	if o.shutting.Load() {
 		return ErrShuttingDown
 	}
-	release, ok := o.Gate.Try()
+	release, ok := o.Gate.Acquire(ctx)
 	if !ok {
 		return ErrBusy
 	}

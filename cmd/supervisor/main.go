@@ -197,6 +197,8 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 }
 
 func schedule(ctx context.Context, cfg supervisor.Config, ops *supervisor.Operations) {
+	// Scheduled work yields the operation gate to admin requests.
+	ctx = supervisor.Scheduled(ctx)
 	sched, err := cfg.Schedule()
 	if err != nil {
 		slog.Error("scheduled tasks are off because the schedule settings are invalid", "err", err)
