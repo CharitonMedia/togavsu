@@ -817,7 +817,7 @@ func TestDocumentsLawCraftEditor(t *testing.T) {
 	if r := d.staff.must(http.StatusOK, "GET", "/api/v1/editor", nil); !strings.Contains(r.body, pin) {
 		t.Fatalf("editor info: %s", r.body)
 	}
-	if r := d.admin.must(http.StatusOK, "GET", "/admin/settings?tab=document_editor", nil); !strings.Contains(r.body, pin) {
+	if r := d.admin.must(http.StatusOK, "GET", "/admin?tab=document_editor", nil); !strings.Contains(r.body, pin) {
 		t.Fatalf("the Document editor tab does not show the pinned commit")
 	}
 	if r := d.admin.must(http.StatusOK, "GET", "/api/v1/settings/editor.lawcraft_commit", nil); r.json["value"] != pin || r.json["locked"] != true {
