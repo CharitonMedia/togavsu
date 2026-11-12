@@ -928,13 +928,283 @@
       }
     },
     {
+      "id": "module-core",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/api/"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "8",
+        "9"
+      ],
+      "acceptance_ids": [
+        "AC-002",
+        "AC-003",
+        "AC-012"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "prompt": "Build the core side the five initial modules need: implement every item in docs/modules/CORE-CHANGES.md, which merges the 'Core changes for integrate-modules' sections of the five docs/modules/*/SPEC.md files, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres, failure cases included. Each item lists the module acceptance criteria that depend on it; your tests must cover the core side of each. The five module lanes build in parallel against these contracts, so keep the names exactly as the specs give them. Never edit modules/, internal/modules/module_*_pg_test.go, the specs, the PRD, .github/, controller files or review gates. Never edit go.mod or go.sum; the mail libraries the email lane needs are already pinned, and any other dependency is proposed in your PR for the integrate-modules lead. If the same problem survives three fix passes, stop and report it plainly.",
+      "excluded_paths": [
+        "internal/modules/module_*_pg_test.go"
+      ]
+    },
+    {
+      "id": "module-documents",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "modules/documents/",
+        "internal/modules/module_documents_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "Build the Documents and templates module (templates, document assembly and generation, bulk download and extra versioning tools) exactly as docs/modules/documents/SPEC.md specifies, in modules/documents/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-email",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "modules/email/",
+        "internal/modules/module_email_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "Build the Email module (send and receive through the firm's existing Gmail, Outlook or IMAP/SMTP mail, the unfiled email queue, IMAP filing to matters, the Outlook add-in and quick email) exactly as docs/modules/email/SPEC.md specifies, in modules/email/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit go.mod or go.sum (go-imap v2, go-message and x/net are already pinned there), outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-client-portal",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "modules/client-portal/",
+        "internal/modules/module_client_portal_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "Build the Client portal module (the client portal and client messages) exactly as docs/modules/client-portal/SPEC.md specifies, in modules/client-portal/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-lawpay-docuseal",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "modules/lawpay-docuseal/",
+        "internal/modules/module_lawpay_docuseal_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "Build the LawPay and DocuSeal module (LawPay payments, refunds and reconciliation, and DocuSeal signing for fee agreements) exactly as docs/modules/lawpay-docuseal/SPEC.md specifies, in modules/lawpay-docuseal/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "module-quickbooks",
+      "wave": "modules",
+      "phase": 6,
+      "depends_on": [
+        "integrate-extensions"
+      ],
+      "owned_paths": [
+        "modules/quickbooks/",
+        "internal/modules/module_quickbooks_pg_test.go"
+      ],
+      "prd_sections": [
+        "9",
+        "10"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests"
+      ],
+      "prompt": "Build the QuickBooks sync module (one-way QuickBooks Online sync for the accountant role) exactly as docs/modules/quickbooks/SPEC.md specifies, in modules/quickbooks/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+    },
+    {
+      "id": "integrate-modules",
+      "wave": "integration",
+      "phase": 6,
+      "depends_on": [
+        "module-core",
+        "module-documents",
+        "module-email",
+        "module-client-portal",
+        "module-lawpay-docuseal",
+        "module-quickbooks"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/",
+        ".github/workflows/product-ci.yml",
+        "docs/build/reports/",
+        "PONYTAIL-DEBT.md",
+        "modules/"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "8",
+        "9",
+        "10",
+        "11"
+      ],
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/integrate-modules.json",
+      "prompt": "Integrate the five initial modules (documents, email, client-portal, lawpay-docuseal, quickbooks) with the module-core changes in the running core. Reconcile any gap between a module and the core contract it was built against, land any core change a module PR still lists as missing, un-skip every module test that waited on a core piece, wire the cross-module views between client-portal and lawpay-docuseal, and prove each module installs signed, migrates in its own schema, shows its widgets and tabs, works end to end with its fake adapter and uninstalls, all without a core restart. You are the integration lead with authority to reconcile shared implementation files in your owned paths; never edit controller files, review gates, PRD, specs or task plan. If the same problem survives three fix passes, stop and report it plainly. Add docs/build/reports/integrate-modules.json containing task_id, status (pass only after assigned integration behavior passes), tests (nonempty command and exit_code for every actual test run), tested_revision, passed_acceptance_ids and pending_acceptance_ids. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision.",
+      "phase_acceptance": {
+        "module-documents": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-email": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-client-portal": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-lawpay-docuseal": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ],
+        "module-quickbooks": [
+          "AC-012",
+          "AC-013",
+          "AC-036",
+          "AC-037",
+          "AC-038"
+        ]
+      }
+    },
+    {
       "id": "release",
       "wave": "release",
       "phase": 7,
       "depends_on": [
         "integrate-extensions",
         "integrate-documents",
-        "integrate-finance"
+        "integrate-finance",
+        "integrate-modules"
       ],
       "owned_paths": [
         "docs/release/",

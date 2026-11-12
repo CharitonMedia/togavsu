@@ -2205,6 +2205,21 @@ class StallAlertTests(unittest.TestCase):
         status = json.loads((Path(self.temp.name) / "status.json").read_text())
         self.assertTrue(status["tasks"]["one"]["held"])
 
+    def test_held_task_with_running_worker_keeps_its_slot(self):
+        self.plan["held_tasks"] = ["one"]
+        self.remote.run_status = "RUNNING"
+        before = dict(self.record)
+        self.tick(0)
+        self.assertEqual(self.controller.occupied, 1)
+        self.assertEqual(self.record, before)
+        self.assertFalse(self.posts())
+
+    def test_held_task_with_finished_worker_frees_its_slot(self):
+        self.plan["held_tasks"] = ["one"]
+        self.remote.run_status = "FINISHED"
+        self.tick(0)
+        self.assertEqual(self.controller.occupied, 0)
+
     def test_released_hold_resumes_processing(self):
         self.plan["held_tasks"] = ["one"]
         self.tick(0)

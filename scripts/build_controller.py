@@ -1539,9 +1539,21 @@ class Controller:
         held = set(self.plan.get("held_tasks", []))
         snapshots, unverified = {}, {}
         # Observe ALL workers before any dispatch; a later dictionary entry may already occupy a slot.
-        # A held task is frozen: not observed, corrected, refreshed or merged, and it holds no slot.
+        # A held task is frozen: its record is never changed and it is not corrected, refreshed or
+        # merged. A held worker that may still be running keeps its slot, so the cap stays real.
         for task, record in list(self.tasks.items()):
-            if task not in specs or record.get("completed") or task in held:
+            if task not in specs or record.get("completed"):
+                continue
+            if task in held:
+                try:
+                    snapshot = self.remote.agent(record)
+                    validate_snapshot(snapshot)
+                except Exception:
+                    if record.get("submitted") or record.get("intent") or "last_dispatched_run" in record:
+                        self.occupied += 1  # An unreadable held worker may still be running.
+                    continue
+                if snapshot["status"] in ACTIVE or record.get("intent") or unobserved_run(record, snapshot):
+                    self.occupied += 1
                 continue
             try:
                 snapshot = self.remote.agent(record)

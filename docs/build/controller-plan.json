@@ -1,5 +1,5 @@
 {
-  "max_implementation_agents": 6,
+  "max_implementation_agents": 4,
   "worker_backend": "claude-actions",
   "held_tasks": [
     "release"
@@ -947,8 +947,6 @@
         "web/",
         "api/",
         "tests/",
-        "go.mod",
-        "go.sum",
         "compose.yaml",
         "deploy/",
         "scripts/ci/",
@@ -974,7 +972,10 @@
         "Backup integration",
         "Supervisor image"
       ],
-      "prompt": "Build the core side the five initial modules need: implement every item in docs/modules/CORE-CHANGES.md, which merges the 'Core changes for integrate-modules' sections of the five docs/modules/*/SPEC.md files, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres, failure cases included. Each item lists the module acceptance criteria that depend on it; your tests must cover the core side of each. The five module lanes build in parallel against these contracts, so keep the names exactly as the specs give them. Never edit modules/, internal/modules/module_*_pg_test.go, the specs, the PRD, .github/, controller files or review gates. Change go.mod only if a core item needs a new library; the email lane adds its own mail libraries. If the same problem survives three fix passes, stop and report it plainly."
+      "prompt": "Build the core side the five initial modules need: implement every item in docs/modules/CORE-CHANGES.md, which merges the 'Core changes for integrate-modules' sections of the five docs/modules/*/SPEC.md files, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres, failure cases included. Each item lists the module acceptance criteria that depend on it; your tests must cover the core side of each. The five module lanes build in parallel against these contracts, so keep the names exactly as the specs give them. Never edit modules/, internal/modules/module_*_pg_test.go, the specs, the PRD, .github/, controller files or review gates. Never edit go.mod or go.sum; the mail libraries the email lane needs are already pinned, and any other dependency is proposed in your PR for the integrate-modules lead. If the same problem survives three fix passes, stop and report it plainly.",
+      "excluded_paths": [
+        "internal/modules/module_*_pg_test.go"
+      ]
     },
     {
       "id": "module-documents",
@@ -1012,9 +1013,7 @@
       ],
       "owned_paths": [
         "modules/email/",
-        "internal/modules/module_email_pg_test.go",
-        "go.mod",
-        "go.sum"
+        "internal/modules/module_email_pg_test.go"
       ],
       "prd_sections": [
         "9",
@@ -1030,7 +1029,7 @@
       "required_checks": [
         "Core tests"
       ],
-      "prompt": "Build the Email module (send and receive through the firm's existing Gmail, Outlook or IMAP/SMTP mail, the unfiled email queue, IMAP filing to matters, the Outlook add-in and quick email) exactly as docs/modules/email/SPEC.md specifies, in modules/email/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
+      "prompt": "Build the Email module (send and receive through the firm's existing Gmail, Outlook or IMAP/SMTP mail, the unfiled email queue, IMAP filing to matters, the Outlook add-in and quick email) exactly as docs/modules/email/SPEC.md specifies, in modules/email/. The spec is the assignment: it records how Nolan PMS Unified does this today and every decision; reuse that working approach, written clean. Read togavsu-core-prd.md section 9 (module interface and 9.9 data rules) and use examples/matter-clock as the working reference for manifest, signing, migrations, frames, events and tests. The module is self-contained: its own container, its own schema mod_<id>, core records reached only through the core API with its approved scopes, core records linked by id with ON DELETE RESTRICT, no table that duplicates a core record, files stored as core file records, signed with the marketplace signing path matter-clock uses. Every external service sits behind an adapter interface; tests use the fake adapter and synthetic data only, never real credentials, real mailboxes, real payment or signing services, or real client data. Keys are admin-entered settings at runtime. Put the module's Go tests in your owned paths so the Core tests job runs them against real Postgres, installing the signed package through the module runtime as the matter-clock acceptance tests do; cover every MOD acceptance criterion in the spec, failure cases included. If the module needs a core endpoint, scope, event or hook the core lacks, do not edit core code: implement against the contract the spec names, keep that test skipped only where the core piece is missing, and list each core change under 'Core changes for integrate-modules' in the PR body. The module-core lane builds the spec's core changes in parallel and integrate-modules turns those tests on. Never edit go.mod or go.sum (go-imap v2, go-message and x/net are already pinned there), outside your owned paths, .github/, the PRD, the spec, controller files or review gates. If the same problem survives three fix passes, stop and report it plainly instead of trying again."
     },
     {
       "id": "module-client-portal",

@@ -32,6 +32,30 @@ for i, a in enumerate(initial):
             for y in b["owned_paths"]:
                 assert x != y and not x.startswith(y.rstrip("/") + "/") and not y.startswith(x.rstrip("/") + "/"), (a["id"],b["id"],x,y)
 assert set.union(*(set(t["acceptance_ids"]) for t in tasks.values())) == ids
+# The controller plan and tasks.json are the same assignments; agents and reviewers read tasks.json.
+controller = json.loads((root / "docs/build/controller-plan.json").read_text())
+assert controller["tasks"] == plan["tasks"], "controller-plan.json and tasks.json assignments differ"
+assert controller["max_implementation_agents"] <= 4, "At most four implementation agents"
+assert set(controller.get("held_tasks", [])) <= tasks.keys()
+# Implementation lanes that can run at once own disjoint paths. A broader path may give up a
+# narrower one through excluded_paths; the excluded file then belongs to the other lane only.
+from fnmatch import fnmatch
+def overlaps(a, b):
+    for x in a["owned_paths"]:
+        for y in b["owned_paths"]:
+            if x == y:
+                return (x, y)
+            for wide, narrow, owner in ((x, y, a), (y, x, b)):
+                if narrow.startswith(wide.rstrip("/") + "/"):
+                    if not any(fnmatch(narrow, g) for g in owner.get("excluded_paths", [])):
+                        return (x, y)
+    return None
+lanes = [t for t in tasks.values() if t["wave"] not in ("bootstrap", "integration", "release")]
+for i, a in enumerate(lanes):
+    for b in lanes[i+1:]:
+        if a["wave"] == b["wave"]:
+            hit = overlaps(a, b)
+            assert not hit, (a["id"], b["id"]) + hit
 for p in ["AGENTS.md","docs/build/WORKFLOW.md","docs/build/review.schema.json","docs/build/prompts/codex-review.md","PONYTAIL-DEBT.md"]:
     assert (root / p).is_file(), p
-print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments. Product acceptance pending.")
+print("PASS: 52 criteria indexed, dependency graph valid, four disjoint bootstrap assignments, controller plan matches tasks.json, parallel lanes disjoint. Product acceptance pending.")

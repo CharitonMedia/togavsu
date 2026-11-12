@@ -212,7 +212,7 @@ The module-core lane builds these from docs/modules/CORE-CHANGES.md. The core la
 - **CC-8 Module notification kinds (CORE-03).** Manifest `notifications` entries `{kind, label, default_channels}`, named `email.<kind>` by the core and shown in each user's notification preferences, and the Go route for `POST /api/v1/notifications` (`createNotification`), which is in the contract today with no route. This module sends `account_problem` and `unfiled_mail` to one `user_id` at a time as a service call, with a link under `/modules/email/`; the core emails each recipient whose preference for the kind has email on.
 - **CC-9 Frame sandbox (CORE-09).** Staff frames gain `allow-popups` and `allow-popups-to-escape-sandbox`, so the Mail accounts tab opens the provider's consent page in its own top-level window, and `allow-downloads`, so the accounts tab's add-in `manifest.xml` and filed attachments download from the frame. Frames never get `allow-same-origin`.
 - **Harness:** none. The acceptance suite runs the module in process through the existing `fakeRuntime.handlers` map (CORE-29).
-- **Shared files:** the email lane itself adds `github.com/emersion/go-imap/v2` v2.0.0-beta.5, `github.com/emersion/go-message` v0.18.1 and `golang.org/x/net` v0.33.0 (HTML parsing for the sanitizer) to `go.mod` and `go.sum`. No other lane changes `go.mod`.
+- **Shared files:** the module's three libraries, `github.com/emersion/go-imap/v2` v2.0.0-beta.5, `github.com/emersion/go-message` v0.18.1 and `golang.org/x/net` v0.33.0 (HTML parsing for the sanitizer), are already pinned in `go.mod` and `go.sum` by the control change that adds these lanes, before any lane starts. The email lane never edits `go.mod` or `go.sum`, and neither does any other lane, module-core included. A lane that finds it needs another dependency proposes it in its PR for the integrate-modules lead.
 
 No other core change is needed: event subscriptions, include reads, published views, context tokens, help registration, file links and notes exist today.
 
@@ -407,7 +407,7 @@ modules/email/
 - `cmd/email/main.go` follows `examples/matter-clock/cmd/matter-clock/main.go`: `serve` reads the Docker secrets `togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password` and `togavsu_db_schema`; `package` reads a base64 Ed25519 seed and writes the signed package with `marketplace.Sign` and `marketplace.KeyID`, the marketplace signing path matter-clock uses, printing the PEM public key.
 - The package and the add-in files are embedded with `embed`, so the binary serves the add-in and `Build` packs the manifest and migrations.
 - The frames are server-rendered HTMX pages, as the core's are.
-- The email lane writes only `modules/email/`, the one suite file `internal/modules/module_email_pg_test.go`, and `go.mod` and `go.sum` for its three dependencies (section 7). It does not edit `.github/`, protected control files or any other file in a core package. CC-1 to CC-9 go to the module-core lane through docs/modules/CORE-CHANGES.md.
+- The email lane writes only `modules/email/` and the one suite file `internal/modules/module_email_pg_test.go`; its three dependencies are already pinned (section 7). It does not edit `go.mod`, `go.sum`, `.github/`, protected control files or any other file in a core package. CC-1 to CC-9 go to the module-core lane through docs/modules/CORE-CHANGES.md.
 
 ## 11. Out of scope
 
