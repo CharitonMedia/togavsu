@@ -3281,6 +3281,9 @@ QUERY = {
     "screen": _query("screen", {"type": "string"}, "Guide topic screen id."),
     "section_id": _query("section_id", _ref("Uuid"), "Help section filter."),
     "as_of": _query("as_of", _date(), "Report as-of date."),
+    "ai_task": _query("task", {"type": "string"}, "AI task filter, such as labeling, categorizing, ocr, summaries or a module task."),
+    "ai_provider": _query("provider", _enum(["anthropic", "openai", "compatible", "local"]), "AI provider filter."),
+    "ai_module_id": _query("module_id", {"type": "string"}, "Module that asked. Calls the core made itself have no module."),
     "custom": {
         "name": "custom",
         "in": "query",

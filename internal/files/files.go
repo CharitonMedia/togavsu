@@ -225,6 +225,10 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	if nf.Origin != "firm" && nf.Origin != "received" {
 		return FileView{}, domain.Invalid("origin", "origin is firm or received")
 	}
+	if nf.Source == "client_upload" && clientOnly(p) {
+		// The client uploaded it, so it is shared with them and never attorney-only.
+		nf.SharedWithClient, nf.AttorneyOnly = true, false
+	}
 	class := nf.FinancialClass
 	if class == "" {
 		class = string(domain.FileGeneral)

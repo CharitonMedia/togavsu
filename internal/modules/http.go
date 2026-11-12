@@ -12,8 +12,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/help"
@@ -548,12 +550,58 @@ func (h *Handler) aiCall(w http.ResponseWriter, r *http.Request, c Caller) {
 }
 
 func (h *Handler) aiCalls(w http.ResponseWriter, r *http.Request, c Caller) {
-	out, err := h.Svc.AICalls(r.Context(), c.Principal, r.URL.Query().Get("module_id"))
+	q, err := h.aiCallQuery(r)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": out, "page": map[string]any{"limit": len(out) + 1, "next_cursor": nil}})
+	out, next, err := h.Svc.AICalls(r.Context(), c.Principal, q)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	page := map[string]any{"limit": q.Limit, "next_cursor": nil}
+	if next != "" {
+		page["next_cursor"] = next
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": out, "page": page})
+}
+
+// aiCallQuery reads the call log filters and the page size: api.page_size by default,
+// and a limit above api.max_page_size is refused (docs/api/conventions.md).
+func (h *Handler) aiCallQuery(r *http.Request) (AICallQuery, error) {
+	v := r.URL.Query()
+	q := AICallQuery{Module: v.Get("module_id"), Task: v.Get("task"), Provider: v.Get("provider"),
+		MatterID: domain.ID(v.Get("matter_id")), Cursor: v.Get("cursor")}
+	for _, f := range []struct {
+		name string
+		to   *time.Time
+	}{{"from_time", &q.From}, {"to_time", &q.To}} {
+		if raw := v.Get(f.name); raw != "" {
+			t, err := time.Parse(time.RFC3339Nano, raw)
+			if err != nil {
+				return q, invalid(f.name, f.name+" is an RFC 3339 timestamp")
+			}
+			*f.to = t
+		}
+	}
+	def, err := h.Svc.intSetting(r.Context(), "api.page_size")
+	if err != nil {
+		return q, err
+	}
+	max, err := h.Svc.intSetting(r.Context(), "api.max_page_size")
+	if err != nil {
+		return q, err
+	}
+	q.Limit = def
+	if raw := v.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < one || n > max {
+			return q, invalid("limit", "limit is between 1 and api.max_page_size")
+		}
+		q.Limit = n
+	}
+	return q, nil
 }
 
 // --- frames ---

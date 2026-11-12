@@ -33,6 +33,12 @@ func NewPostgres(sqlDB *sql.DB) *Postgres {
 // CREATE ROLE cannot run inside a goose transaction, so this is not a migration file.
 // It is safe to run again.
 func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
+	// A sealed audit_log (db.SealLedgers) is owned by db.LedgerOwner, which already gave
+	// the writer role SELECT and INSERT; the application role can only join that role.
+	owns, err := db.OwnsTable(ctx, sqlDB, "audit_log")
+	if err != nil {
+		return err
+	}
 	stmts := []string{
 		`DO $body$ BEGIN
 		  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '` + writerRole + `') THEN
@@ -40,10 +46,13 @@ func InstallPrivileges(ctx context.Context, sqlDB *sql.DB) error {
 		  END IF;
 		END $body$`,
 		`GRANT ` + writerRole + ` TO CURRENT_USER`,
-		`GRANT USAGE ON SCHEMA core TO ` + writerRole,
-		`GRANT SELECT, INSERT ON TABLE core.audit_log TO ` + writerRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE core.audit_log FROM ` + writerRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.audit_log FROM PUBLIC, CURRENT_USER`,
+	}
+	if owns {
+		stmts = append(stmts,
+			`GRANT USAGE ON SCHEMA core TO `+writerRole,
+			`GRANT SELECT, INSERT ON TABLE core.audit_log TO `+writerRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE core.audit_log FROM `+writerRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.audit_log FROM PUBLIC, CURRENT_USER`)
 	}
 	for _, stmt := range stmts {
 		if _, err := sqlDB.ExecContext(ctx, stmt); err != nil {

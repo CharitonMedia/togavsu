@@ -2,11 +2,15 @@ package modules
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -94,18 +98,28 @@ const aiWriterRole = "togavsu_ai_log_writer"
 // installAILog makes the AI call log append-only for the role that writes module calls:
 // insert and select, no update, delete or truncate (docs/architecture/contracts.md).
 func (s *Service) installAILog(ctx context.Context) error {
-	for _, st := range []string{
+	// A sealed log (db.SealLedgers) is owned by db.LedgerOwner, which already gave the
+	// writer role SELECT and INSERT; the application role only joins the writer.
+	owns, err := db.OwnsTable(ctx, s.d.DB, "ai_call_log")
+	if err != nil {
+		return err
+	}
+	stmts := []string{
 		`DO $body$ BEGIN
 		  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '` + aiWriterRole + `') THEN
 		    CREATE ROLE ` + aiWriterRole + ` NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE;
 		  END IF;
 		END $body$`,
 		`GRANT ` + aiWriterRole + ` TO CURRENT_USER`,
-		`GRANT USAGE ON SCHEMA core TO ` + aiWriterRole,
-		`GRANT SELECT, INSERT ON TABLE core.ai_call_log TO ` + aiWriterRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER ON TABLE core.ai_call_log FROM ` + aiWriterRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.ai_call_log FROM PUBLIC`,
-	} {
+	}
+	if owns {
+		stmts = append(stmts,
+			`GRANT USAGE ON SCHEMA core TO `+aiWriterRole,
+			`GRANT SELECT, INSERT ON TABLE core.ai_call_log TO `+aiWriterRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER ON TABLE core.ai_call_log FROM `+aiWriterRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.ai_call_log FROM PUBLIC`)
+	}
+	for _, st := range stmts {
 		if _, err := s.d.DB.ExecContext(ctx, st); err != nil {
 			return err
 		}
@@ -225,40 +239,125 @@ func aiPrompt(input map[string]any) (string, string, error) {
 	return prompt, system, nil
 }
 
-// AICalls lists the AI call log for admins, oldest first, with each call's attempts.
-func (s *Service) AICalls(ctx context.Context, p domain.Principal, module string) ([]AICall, error) {
+// AICallQuery filters and pages the AI call log (GET /api/v1/ai/calls).
+type AICallQuery struct {
+	Module, Task, Provider string
+	MatterID               domain.ID
+	From, To               time.Time
+	// Cursor is the opaque page.next_cursor of the previous page; Limit is the page size.
+	Cursor string
+	Limit  int
+}
+
+// AICalls lists the AI call log for admins, newest first, with each call's attempts, and
+// returns the next page's cursor ("" on the last page). The admin does not bypass a
+// matter wall: a call on a matter the admin can't read is left out.
+func (s *Service) AICalls(ctx context.Context, p domain.Principal, q AICallQuery) ([]AICall, string, error) {
 	if err := requireAdmin(p); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, created_at, created_by, task, provider, model, prompt_tokens, completion_tokens, fell_back,
-fallback_provider, fallback_model, COALESCE(module_id, ''), COALESCE(user_id, '') FROM core.ai_call_log WHERE ($1 = '' OR module_id = $1) ORDER BY created_at, id`, module)
+	if q.Limit < one {
+		q.Limit = one
+	}
+	at, id, err := parseAICursor(q.Cursor)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	defer rows.Close()
+	var from, to int64
+	if !q.From.IsZero() {
+		from = q.From.UnixMicro()
+	}
+	if !q.To.IsZero() {
+		to = q.To.UnixMicro()
+	}
 	out := []AICall{}
-	for rows.Next() {
-		var c AICall
-		var at int64
-		var fell int
-		var fbProvider, fbModel, mod, user string
-		if err := rows.Scan(&c.ID, &at, &c.CreatedBy, &c.Task, &c.Provider, &c.Model, &c.TokensIn, &c.TokensOut, &fell, &fbProvider, &fbModel, &mod, &user); err != nil {
-			return nil, err
+	readable := map[string]bool{}
+	for {
+		rows, err := s.q(ctx).QueryContext(ctx, `SELECT id, created_at, created_by, task, provider, model, prompt_tokens, completion_tokens, cost_cents, fell_back,
+fallback_provider, fallback_model, COALESCE(module_id, ''), COALESCE(user_id, ''), COALESCE(matter_id, '') FROM core.ai_call_log
+WHERE (CAST($1 AS text) = '' OR module_id = $1) AND (CAST($2 AS text) = '' OR task = $2) AND (CAST($3 AS text) = '' OR provider = $3)
+AND (CAST($4 AS text) = '' OR matter_id = $4)
+AND (CAST($5 AS bigint) = 0 OR created_at >= CAST($5 AS bigint)) AND (CAST($6 AS bigint) = 0 OR created_at < CAST($6 AS bigint))
+AND (CAST($7 AS bigint) = 0 OR created_at < CAST($7 AS bigint) OR (created_at = CAST($7 AS bigint) AND id < CAST($8 AS text)))
+ORDER BY created_at DESC, id DESC LIMIT $9`, q.Module, q.Task, q.Provider, string(q.MatterID), from, to, at, id, q.Limit+one)
+		if err != nil {
+			return nil, "", err
 		}
-		c.CreatedAt, c.FellBack = time.UnixMicro(at).UTC(), fell == one
-		if c.FellBack {
-			c.Attempts = append(c.Attempts, AIAttempt{Provider: fbProvider, Model: fbModel, Status: "failed"})
+		batch, matters := []AICall{}, []string{}
+		for rows.Next() {
+			var c AICall
+			var created, cents int64
+			var fell int
+			var fbProvider, fbModel, mod, user, matter string
+			if err := rows.Scan(&c.ID, &created, &c.CreatedBy, &c.Task, &c.Provider, &c.Model, &c.TokensIn, &c.TokensOut, &cents, &fell, &fbProvider, &fbModel, &mod, &user, &matter); err != nil {
+				rows.Close()
+				return nil, "", err
+			}
+			c.CreatedAt, c.FellBack = time.UnixMicro(created).UTC(), fell == one
+			c.CostMicroUSD = cents * microUSDPerCent
+			if c.FellBack {
+				c.Attempts = append(c.Attempts, AIAttempt{Provider: fbProvider, Model: fbModel, Status: "failed"})
+			}
+			c.Attempts = append(c.Attempts, AIAttempt{Provider: c.Provider, Model: c.Model, Status: "succeeded", TokensIn: c.TokensIn, TokensOut: c.TokensOut, CostMicroUSD: c.CostMicroUSD})
+			switch {
+			case mod != "":
+				c.Requester = "module:" + mod
+			case user != "":
+				c.Requester = "user:" + user
+			default:
+				c.Requester = "system"
+			}
+			batch, matters = append(batch, c), append(matters, matter)
 		}
-		c.Attempts = append(c.Attempts, AIAttempt{Provider: c.Provider, Model: c.Model, Status: "succeeded", TokensIn: c.TokensIn, TokensOut: c.TokensOut})
-		switch {
-		case mod != "":
-			c.Requester = "module:" + mod
-		case user != "":
-			c.Requester = "user:" + user
-		default:
-			c.Requester = "system"
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, "", err
 		}
-		out = append(out, c)
+		for i, c := range batch {
+			at, id = c.CreatedAt.UnixMicro(), string(c.ID)
+			if m := matters[i]; m != "" {
+				ok, seen := readable[m]
+				if !seen {
+					dec, err := s.canReadMatter(ctx, p, domain.ID(m))
+					if err != nil {
+						return nil, "", err
+					}
+					ok = dec.Allow
+					readable[m] = ok
+				}
+				if !ok {
+					continue
+				}
+			}
+			if len(out) == q.Limit {
+				last := out[len(out)-one]
+				return out, aiCursor(last.CreatedAt.UnixMicro(), string(last.ID)), nil
+			}
+			out = append(out, c)
+		}
+		if len(batch) <= q.Limit {
+			return out, "", nil
+		}
 	}
-	return out, rows.Err()
+}
+
+// microUSDPerCent converts the log's cost_cents to the contract's cost_micro_usd: a
+// dollar is a million micro-dollars and a hundred cents. Not a setting.
+var microUSDPerCent = int64(hundred * hundred)
+
+func aiCursor(at int64, id string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprint(at) + "." + id))
+}
+
+func parseAICursor(raw string) (int64, string, error) {
+	if raw == "" {
+		return int64(zero), "", nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(raw)
+	at, id, ok := strings.Cut(string(b), ".")
+	n, perr := strconv.Atoi(at)
+	if err != nil || !ok || perr != nil || n <= zero || id == "" {
+		return int64(zero), "", invalid("cursor", "cursor is not a page.next_cursor from this list")
+	}
+	return int64(n), id, nil
 }

@@ -214,4 +214,18 @@
 </section>
 {{else if not (or (eq .Tab "help") (eq .Tab "users_roles") (eq .Tab "system") (eq .Tab "home_screen") (eq .Tab "appearance") (eq .Tab "modules"))}}<p class="hint">This tab has no settings in this core yet.</p>
 {{end}}
+
+{{if eq .Tab "ai"}}{{with .AICalls}}
+<section class="card" id="ai-call-log"><h2>AI call log</h2>
+<form method="get" action="/admin" class="filters"><input type="hidden" name="tab" value="ai">
+  <label for="ai-task">Task</label><select id="ai-task" name="task"><option value="">All tasks</option>{{$t := .Task}}{{range .Tasks}}<option{{if eq . $t}} selected{{end}}>{{.}}</option>{{end}}</select>
+  <label for="ai-provider">Provider</label><select id="ai-provider" name="provider"><option value="">All providers</option>{{$pr := .Provider}}{{range .Providers}}<option{{if eq . $pr}} selected{{end}}>{{.}}</option>{{end}}</select>
+  <button type="submit">Filter</button>
+</form>
+{{if .Calls}}<table class="ai-calls"><thead><tr><th>When</th><th>Task</th><th>Provider</th><th>Model</th><th>Tokens in</th><th>Tokens out</th><th>Fallback</th><th>Asked by</th></tr></thead><tbody>
+{{range .Calls}}<tr id="call-{{.ID}}"><td>{{when .CreatedAt}}</td><td>{{.Task}}</td><td>{{.Provider}}</td><td><code>{{.Model}}</code></td><td>{{.TokensIn}}</td><td>{{.TokensOut}}</td><td>{{if .FellBack}}Used the secondary provider{{else}}No{{end}}</td><td>{{.Requester}}</td></tr>{{end}}</tbody></table>
+{{else}}<p class="hint">No AI calls match.</p>{{end}}
+{{if .Older}}<p><a href="{{.Older}}">Older calls</a></p>{{end}}
+<p class="muted">Calls on matters behind a wall you are not on are not listed. The same log is at /api/v1/ai/calls.</p>
+</section>{{end}}{{end}}
 {{end}}{{template "shell-bottom" .}}{{end}}

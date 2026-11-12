@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -134,6 +135,57 @@ func Migrate(ctx context.Context, dsn string) error {
 	return db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
 }
 
+// MigrateSealed is "core migrate": it applies the core migrations as the application
+// role behind dsn and leaves the append-only tables owned by db.LedgerOwner. adminDSN is
+// a superuser on the same server; its database name is replaced with dsn's. It hands
+// the sealed tables back to the application role for the run, so a migration can still
+// ALTER them, and seals them again even when a migration fails. ran reports whether a
+// migration was applied. An empty adminDSN migrates only.
+func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err error) {
+	count := func(q *sql.DB) int {
+		var n int
+		_ = q.QueryRowContext(ctx, `SELECT COUNT(*) FROM core.schema_migrations`).Scan(&n)
+		return n
+	}
+	plain, err := db.OpenPostgres(dsn, "")
+	if err != nil {
+		return false, err
+	}
+	defer plain.Close()
+	var app string
+	if err := plain.QueryRowContext(ctx, `SELECT current_user`).Scan(&app); err != nil {
+		return false, err
+	}
+	before := count(plain)
+	if adminDSN == "" {
+		err = Migrate(ctx, dsn)
+		return count(plain) != before, err
+	}
+	target, err := url.Parse(dsn)
+	if err != nil {
+		return false, errors.New("core: database url does not parse")
+	}
+	au, err := url.Parse(adminDSN)
+	if err != nil {
+		return false, errors.New("core: admin database url does not parse")
+	}
+	au.Path = target.Path
+	admin, err := db.OpenPostgres(au.String(), "")
+	if err != nil {
+		return false, err
+	}
+	defer admin.Close()
+	if err := db.UnsealLedgers(ctx, admin, app); err != nil {
+		return false, fmt.Errorf("core: unseal ledgers: %w", err)
+	}
+	merr := Migrate(ctx, dsn)
+	ran = count(plain) != before
+	if serr := db.SealLedgers(ctx, admin, app); serr != nil {
+		return ran, errors.Join(merr, fmt.Errorf("core: seal ledgers: %w", serr))
+	}
+	return ran, merr
+}
+
 // Open migrates, seeds reference rows, and wires every service on one pool.
 func Open(ctx context.Context, cfg Config) (*App, error) {
 	if len(cfg.Key) != 32 {
@@ -246,6 +298,23 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.ext, app.Market = ext, ext.Market
+	// A module's own token writes files only while the module is installed and enabled
+	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
+	// the ui, so until then every module principal is refused.
+	docs.Files.SetModuleCheck(func(ctx context.Context, module string) (bool, error) {
+		if ext.Modules == nil {
+			return false, nil
+		}
+		in, err := ext.Modules.Installed(ctx, module)
+		var api *domain.APIError
+		if errors.As(err, &api) && api.Code == domain.CodeNotFound {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return in.Enabled, nil
+	})
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}

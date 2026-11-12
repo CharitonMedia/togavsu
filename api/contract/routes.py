@@ -4079,12 +4079,15 @@ def _admin(api: Contract) -> None:
         "/api/v1/ai/calls",
         operation_id="listAiCalls",
         summary="AI call log",
-        description="Task, provider, model, tokens, fallback, and the user or module that asked.",
+        description=(
+            "Task, provider, model, tokens, fallback, and the user or module that asked, newest first. "
+            "A call on a matter the admin is walled off from is omitted."
+        ),
         tag="AI",
         features=["ai"],
         roles=ADMIN,
         scopes=["ai:admin"],
-        query=["from_time", "to_time", "matter_id"],
+        query=["from_time", "to_time", "matter_id", "ai_task", "ai_provider", "ai_module_id"],
         response_schema=_page("AiCall"),
         paginate=True,
         writes=False,

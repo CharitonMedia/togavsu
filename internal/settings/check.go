@@ -512,9 +512,9 @@ func fixedSite(path, fn string) bool {
 		// Those exist before the registry can be read. A different function in this file is still reported.
 		return fn == "RunFrom" || fn == "LoadFrom"
 	case strings.HasSuffix(slash, "cmd/core/main.go"):
-		// Process status 0, 1 and 2, the argument index of "check", the HTTP read-header
-		// guard against slow clients and the shutdown drain. None is a firm setting.
-		return fn == "main" || fn == "serve"
+		// Process status 0, 1 and 2, the argument index of "check" and "migrate", the HTTP
+		// read-header guard against slow clients and the shutdown drain. None is a firm setting.
+		return fn == "main" || fn == "serve" || fn == "migrate"
 	case strings.HasSuffix(slash, "internal/core/app.go"):
 		// AES-256 keys are 32 bytes, checked before any service is built.
 		return fn == "Open"

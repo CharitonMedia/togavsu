@@ -64,6 +64,16 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 	return cfg, nil
 }
 
+// AdminDatabaseURLName is read only by "core migrate": a superuser URL that seals the
+// append-only tables (core.MigrateSealed). The serving core never reads it, so it is
+// not in EnvNames.
+const AdminDatabaseURLName = "TOGAVSU_ADMIN_DATABASE_URL"
+
+// AdminDatabaseURL returns AdminDatabaseURLName, or "" when it is unset.
+func AdminDatabaseURL() string {
+	return strings.TrimSpace(os.Getenv(AdminDatabaseURLName))
+}
+
 // Run is "core check": it loads configuration and reports that the HTTP service is not started.
 // It returns 0 when the four bootstrap values are valid and 2 when they are not.
 func Run(args []string, stdout, stderr io.Writer) int {

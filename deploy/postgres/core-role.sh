@@ -1,9 +1,13 @@
 #!/bin/sh
 # Create or update the core's login role. Runs on every Compose up, after Postgres is
 # healthy and before the core starts, so it also covers volumes from earlier installs.
-# togavsu_app has no superuser or CREATEDB. It owns schema core and every core table, so
-# the core can migrate, and audit.InstallPrivileges can take UPDATE, DELETE and TRUNCATE
-# on audit_log away from it. It has CREATEROLE so the module runtime can give each
+# togavsu_app has no superuser or CREATEDB. It owns schema core and every core table but
+# the append-only ones (audit_log, trust_ledger, events, ai_call_log, file_versions,
+# file_renditions): after this script, the one-shot "core migrate" service applies the
+# migrations as togavsu_app and, as this superuser, hands those tables to the NOLOGIN
+# togavsu_ledger_owner, leaving togavsu_app SELECT and INSERT only (db.SealLedgers).
+# togavsu_app is never a member of togavsu_ledger_owner, so it cannot grant UPDATE,
+# DELETE or TRUNCATE back to itself. It has CREATEROLE so the module runtime can give each
 # installed module its own NOINHERIT login and schema (PRD 9.9); on Postgres 16 and later
 # a CREATEROLE role administers only the roles it created and can't grant SUPERUSER,
 # CREATEDB, REPLICATION or BYPASSRLS, so this reaches no other role. The supervisor keeps the admin role
@@ -35,8 +39,13 @@ GRANT CONNECT, CREATE ON DATABASE togavsu TO togavsu_app;
 CREATE SCHEMA IF NOT EXISTS core AUTHORIZATION togavsu_app;
 -- A volume from an install where the core ran as togavsu has core and its tables owned
 -- by togavsu. Hand them to togavsu_app, or the core cannot migrate. Sequences tied to a
--- column move with their table.
-ALTER SCHEMA core OWNER TO togavsu_app;
+-- column move with their table. A sealed schema and its append-only tables stay with
+-- togavsu_ledger_owner; core migrate unseals the tables for its own run.
+DO \$\$ BEGIN
+  IF (SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'core') <> 'togavsu_ledger_owner' THEN
+    ALTER SCHEMA core OWNER TO togavsu_app;
+  END IF;
+END \$\$;
 DO \$\$
 DECLARE r record;
 BEGIN
@@ -44,6 +53,7 @@ BEGIN
     SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'core' AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
       AND c.relowner <> 'togavsu_app'::regrole::oid
+      AND pg_get_userbyid(c.relowner) <> 'togavsu_ledger_owner'
       AND NOT (c.relkind = 'S' AND EXISTS (SELECT 1 FROM pg_depend d
         WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype IN ('a', 'i')))
   LOOP

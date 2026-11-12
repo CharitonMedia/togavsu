@@ -57342,7 +57342,7 @@
       "get": {
         "operationId": "listAiCalls",
         "summary": "AI call log",
-        "description": "Task, provider, model, tokens, fallback, and the user or module that asked.",
+        "description": "Task, provider, model, tokens, fallback, and the user or module that asked, newest first. A call on a matter the admin is walled off from is omitted.",
         "tags": [
           "AI"
         ],
@@ -57398,6 +57398,39 @@
               "$ref": "#/components/schemas/Uuid"
             },
             "description": "Matter filter."
+          },
+          {
+            "name": "task",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "AI task filter, such as labeling, categorizing, ocr, summaries or a module task."
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "anthropic",
+                "openai",
+                "compatible",
+                "local"
+              ]
+            },
+            "description": "AI provider filter."
+          },
+          {
+            "name": "module_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Module that asked. Calls the core made itself have no module."
           }
         ],
         "responses": {
