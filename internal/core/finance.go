@@ -12,12 +12,16 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/calendar"
+	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/files"
+	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 	"github.com/CharitonMedia/togavsu/internal/trust"
@@ -33,7 +37,8 @@ func migrations() ([]db.Migration, error) {
 		return nil, err
 	}
 	for _, more := range []func() ([]db.Migration, error){billing.Migrations, trust.Migrations,
-		calendar.Migrations, files.Migrations, editor.Migrations, doctender.Migrations} {
+		calendar.Migrations, files.Migrations, editor.Migrations, doctender.Migrations,
+		dashboard.Migrations, help.Migrations, modules.Migrations, marketplace.Migrations} {
 		add, err := more()
 		if err != nil {
 			return nil, err
@@ -81,7 +86,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 		return nil, err
 	}
 	bs, err := billing.New(billing.Deps{
-		Store: billing.NewPostgres(pool), Practice: store, Walls: walls, Audit: aud, Settings: reg,
+		Store: billing.NewPostgres(pool).PublishEvents(), Practice: store, Walls: walls, Audit: aud, Settings: reg,
 		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Now: now,
 	})
 	if err != nil {

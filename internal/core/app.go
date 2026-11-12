@@ -1,6 +1,7 @@
 // Package core composes the running product: Postgres, migrations, settings, the
 // append-only audit ledger, identity, practice, billing, trust, calendar, files, the
-// editor, Doc Tender, the HTTP routes and /mcp.
+// editor, Doc Tender, the shell and admin ui, the help center, the module runtime, the
+// marketplace client side, the HTTP routes and /mcp.
 // Access control stays in the services; this package only authenticates the caller
 // and hands the principal to them.
 package core
@@ -22,12 +23,16 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/billing"
 	"github.com/CharitonMedia/togavsu/internal/calendar"
+	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/editor"
 	"github.com/CharitonMedia/togavsu/internal/files"
+	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 	"github.com/CharitonMedia/togavsu/internal/trust"
@@ -59,6 +64,17 @@ type Config struct {
 	// ProviderURLs overrides AI provider endpoints, so tests run Doc Tender against a
 	// synthetic model server on the providers' wire. Production leaves it nil.
 	ProviderURLs map[string]string
+	// SupervisorURL and SupervisorSecret reach the supervisor's local API, which runs
+	// module containers and takes the backups an uninstall needs. Empty URL is
+	// SupervisorURL (the Compose service).
+	SupervisorURL    string
+	SupervisorSecret string
+	// ModuleRuntime and ModuleBackups replace the supervisor for tests that run a module
+	// in process. Production leaves them nil.
+	ModuleRuntime modules.Runtime
+	ModuleBackups modules.Backups
+	// HelpFiles overrides the files service behind help images and videos (tests).
+	HelpFiles help.Files
 }
 
 // App is one running core.
@@ -79,13 +95,22 @@ type App struct {
 	Files     *files.Service
 	Editor    *editor.Service
 	DocTender *doctender.Service
+	// UI is the shell, home screen, admin page and help center (ui.go); Modules and
+	// Market are the module runtime and the marketplace client side (extensions.go).
+	UI      *UI
+	Modules *modules.Service
+	Market  *marketplace.Service
 
+	ext      *extensions
+	handler  http.Handler
 	ledger   *audit.Postgres
 	tools    []tool
 	practice http.Handler
 	// domains are the service muxes behind the core routes, first match wins: trust and
 	// billing own their reports ahead of practice's mirrored ones.
-	domains  []*http.ServeMux
+	domains []*http.ServeMux
+	// uiMuxes are the ui's help and dashboard routes, for MCP's mounted check.
+	uiMuxes  []*http.ServeMux
 	mux      *http.ServeMux
 	ready    atomic.Bool
 	mailMu   sync.Mutex
@@ -215,10 +240,48 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		}
 		app.domains = append(app.domains, mux)
 	}
+	// The module runtime and the marketplace serve beside the other domains, ahead of
+	// practice, which answers the rest.
+	ext, err := app.openMarketplace(now)
+	if err != nil {
+		return fail(err)
+	}
+	app.ext, app.Market = ext, ext.Market
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
 	app.routes()
+	files := cfg.HelpFiles
+	if files == nil {
+		files = FileVersions{Svc: docs.Files}
+	}
+	ui, err := MountUI(ctx, app, UIOptions{Now: now, Files: files, DocTender: docs.DocTender,
+		Sources: map[string]dashboard.Source{"module-alerts": ext.Market.WidgetSource()}})
+	if err != nil {
+		return fail(err)
+	}
+	app.UI = ui
+	if err := ext.openModules(app, cfg, ui, now); err != nil {
+		return fail(err)
+	}
+	app.Modules = ext.Modules
+	ph.Panels = app.matterPanels
+	modMux, ok := ext.modH.Routes().(*http.ServeMux)
+	if !ok {
+		return fail(errors.New("core: the module handler is not a ServeMux"))
+	}
+	mkMux, ok := (&marketplace.Handler{Svc: ext.Market, Principal: app.principal}).Routes().(*http.ServeMux)
+	if !ok {
+		return fail(errors.New("core: the marketplace handler is not a ServeMux"))
+	}
+	last := len(app.domains) - 1
+	app.domains = append(app.domains[:last:last], modMux, mkMux, app.domains[last])
+	app.uiMuxes = []*http.ServeMux{ui.helpMux, ui.dash}
+	app.handler = ui.Handler()
+	// Module events are pumped and their webhooks sent every five seconds.
+	if err := ext.start(ctx, !cfg.NoBackground, 5*time.Second); err != nil {
+		return fail(err)
+	}
 	if !cfg.NoBackground {
 		docCtx, stop := context.WithCancel(context.Background())
 		app.stopDocs, app.docsDone = stop, make(chan struct{})
@@ -250,6 +313,7 @@ func (a *App) Close() error {
 		a.stopDocs()
 		<-a.docsDone
 	}
+	a.ext.close()
 	if a.docs != nil {
 		a.docs.close()
 	}
@@ -260,8 +324,9 @@ func (a *App) Close() error {
 	return a.Pool.Close()
 }
 
-// Handler is the whole HTTP surface.
-func (a *App) Handler() http.Handler { return a.setupGate(a.mux) }
+// Handler is the whole HTTP surface: the module runtime's domain router and include=
+// reader around the ui, which serves its own routes and hands the rest to the core.
+func (a *App) Handler() http.Handler { return a.handler }
 
 // Ready reports first-run completion. Once true it stays true for this process.
 func (a *App) Ready(ctx context.Context) (bool, error) {

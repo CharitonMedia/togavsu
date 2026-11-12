@@ -20,6 +20,37 @@ type Handler struct {
 	Root      string
 	FS        fs.FS
 	Principal func(*http.Request) (domain.Principal, error)
+	// Panels adds the matter screen's module items (PRD 9.4, 9.9): enabled modules' matter
+	// tabs as framed pages and their extension rows for this matter, read as the viewer.
+	// The core sets it when it wires the module runtime; nil shows none.
+	Panels func(r *http.Request, p domain.Principal, matter domain.ID) ([]ModulePanel, error)
+}
+
+// ModulePanel is one module's items on the matter screen.
+type ModulePanel struct {
+	Module string
+	Name   string
+	Tabs   []ModuleTab
+	Rows   []ModuleRow
+}
+
+// ModuleTab is a matter tab a module serves; Path is the core page that frames it.
+type ModuleTab struct {
+	Title string
+	Path  string
+}
+
+// ModuleRow is one extension row (include=) for the matter in view.
+type ModuleRow struct {
+	Extension string
+	Fields    []ModuleField
+}
+
+// ModuleField is one column of an extension row. Value is what the include= read gave
+// this viewer: attorney-only columns are already redacted for the others.
+type ModuleField struct {
+	Name  string
+	Value any
 }
 
 // NewHandler parses templates in root and returns a handler. root may be empty for JSON-only tests.
@@ -143,6 +174,7 @@ type page struct {
 	ContactFields []ShownField
 	AttorneyName  string
 	PartyRoles    []string
+	Panels        []ModulePanel
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data page) {
@@ -214,6 +246,13 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 	if user, err := h.Svc.db.User(r.Context(), view.Matter.ResponsibleAttorneyID); err == nil {
 		attorney = user.Name
 	}
+	var panels []ModulePanel
+	if h.Panels != nil {
+		if panels, err = h.Panels(r, p, id); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	h.render(w, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
@@ -221,6 +260,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		MarkerChoices: h.Svc.listSetting(r.Context(), "practice.markers", domain.DefaultMarkers()),
 		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
 		AttorneyName:  attorney,
+		Panels:        panels,
 	})
 }
 

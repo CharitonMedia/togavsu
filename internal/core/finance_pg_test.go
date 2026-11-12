@@ -171,7 +171,8 @@ const (
 )
 
 // appRoleDSN is testDSN's database owned by and reached through a fresh non-superuser
-// login role, set up the way deploy/postgres/core-role.sh sets up togavsu_app, so the
+// login role, set up the way deploy/postgres/core-role.sh sets up togavsu_app (CREATEROLE
+// for module logins, nothing else), so the
 // append-only privileges on audit_log and trust_ledger hold as they do in Compose.
 func appRoleDSN(t *testing.T) string {
 	t.Helper()
@@ -190,10 +191,13 @@ func appRoleDSN(t *testing.T) string {
 	ctx := context.Background()
 	for _, stmt := range []string{
 		`DROP ROLE IF EXISTS ` + role,
-		`CREATE ROLE ` + role + ` LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '` + password + `'`,
+		`CREATE ROLE ` + role + ` LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '` + password + `'`,
 		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'togavsu_audit_writer') THEN
 		   CREATE ROLE togavsu_audit_writer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$`,
 		`GRANT togavsu_audit_writer TO ` + role + ` WITH ADMIN OPTION`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'togavsu_ai_log_writer') THEN
+		   CREATE ROLE togavsu_ai_log_writer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$`,
+		`GRANT togavsu_ai_log_writer TO ` + role + ` WITH ADMIN OPTION`,
 		`ALTER DATABASE ` + name + ` OWNER TO ` + role,
 		`CREATE SCHEMA core AUTHORIZATION ` + role,
 	} {

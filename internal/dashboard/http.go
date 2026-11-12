@@ -27,6 +27,8 @@ type Handler struct {
 	Accounts *Accounts
 	// Audit returns recent audit rows as p may read them (walls, attorney-only redaction).
 	Audit func(r *http.Request, p domain.Principal, limit int) ([]AuditRow, error)
+	// Modules backs the Modules and marketplace tab; nil shows its settings only.
+	Modules ModulesAdmin
 
 	tpl *template.Template
 }
@@ -101,6 +103,7 @@ func (h *Handler) Routes() *http.ServeMux {
 	api("POST /api/v1/problem-reports", h.createProblemJSON)
 	api("GET /api/v1/problem-reports/{problem_report_id}", h.problemJSON)
 	h.pageRoutes(m)
+	h.modulesRoutes(m)
 	return m
 }
 

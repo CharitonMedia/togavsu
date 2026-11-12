@@ -37,14 +37,15 @@ if ! go test -count=1 -timeout 25m $pkgs >"$log" 2>&1; then
 fi
 cat "$log"
 # A skipped Postgres test is a failure here: CI must exercise the database paths.
-# Every phase 4 documents case is in this strict run, the editor case with the image's
+# Every phase 4 documents case and every integrate-extensions case is in this strict run, the editor case with the image's
 # wordcraft-cli (TOGAVSU_REQUIRE_WORDCRAFT_CLI makes a missing CLI a failure, not a skip).
-go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup|Finance|Trust|Billing|DocumentsCalendar|DocumentsStorage|DocumentsLawCraft|DocumentsDocTender|PurgedFile|DTCorpus' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ ./internal/trust/ ./internal/billing/ ./internal/calendar/ ./internal/doctender/ >"$log" 2>&1 || { cat "$log"; exit 1; }
+go test -count=1 -v -run 'PG|Postgres|Durable|Core|FirstRun|Contract|Walls|Bearer|Practice|Fresh|Setup|Finance|Trust|Billing|DocumentsCalendar|DocumentsStorage|DocumentsLawCraft|DocumentsDocTender|PurgedFile|DTCorpus|ExtensionsModule|ExtensionsMarketplace|ExtensionsAI|ExtensionsUI' ./internal/core/ ./internal/practice/ ./internal/identity/ ./internal/audit/ ./internal/db/ ./internal/trust/ ./internal/billing/ ./internal/calendar/ ./internal/doctender/ >"$log" 2>&1 || { cat "$log"; exit 1; }
 if grep -E -- '--- SKIP' "$log"; then
   echo "a database test was skipped" >&2
   exit 1
 fi
-for name in TestDocumentsCalendarDeadlines TestDocumentsStorageVersionsMoves TestDocumentsLawCraftEditor TestDocumentsDocTenderCorpus TestDocumentsDocTenderTokensAndMCP; do
+for name in TestDocumentsCalendarDeadlines TestDocumentsStorageVersionsMoves TestDocumentsLawCraftEditor TestDocumentsDocTenderCorpus TestDocumentsDocTenderTokensAndMCP \
+  TestExtensionsModuleLifecycle TestExtensionsMarketplaceAlerts TestExtensionsAIMediation TestExtensionsUIModules; do
   grep -q -- "--- PASS: $name " "$log" || { cat "$log"; echo "$name did not pass in the strict run" >&2; exit 1; }
 done
 # -short keeps the race run's resumable upload at 64 MiB; the full run above sends 1 GiB.

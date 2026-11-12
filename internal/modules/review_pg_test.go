@@ -19,6 +19,11 @@ func TestPGPumpDeliversLateCommittedEvent(t *testing.T) {
 	e.installSample()
 	// A pump whose clock runs an hour ahead: without the open-transaction guard its
 	// lookback margin alone would put the horizon past the late event.
+	// Drain the setup's own events first (practice writes core.events too), on the
+	// wall clock so the horizon stays before the events below.
+	if _, err := e.svc.Pump(e.ctx); err != nil {
+		t.Fatal(err)
+	}
 	ahead := e.service(t, func() time.Time { return time.Now().Add(time.Hour) })
 	insert := `INSERT INTO core.events (id, created_at, updated_at, created_by, actor_kind, actor_id, action, record_type, record_id, matter_id, summary, client_visible)
 VALUES ($1,$2,$2,$3,'staff',$3,'matter.created','matter',$4,$4,'synthetic',0)`

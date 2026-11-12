@@ -975,6 +975,7 @@ type adminView struct {
 	Problems   []ProblemReport
 	Audit      []AuditRow
 	HelpPath   string
+	Modules    any
 }
 
 func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
@@ -1025,6 +1026,12 @@ func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request, p domain.Pri
 	case "help":
 		if v.Help, err = h.helpSections(r, p); err != nil {
 			return "", "", nil, err
+		}
+	case settings.TabModules:
+		if h.Modules != nil {
+			if v.Modules, err = h.Modules.Panel(r, p); err != nil {
+				return "", "", nil, err
+			}
 		}
 	case settings.TabAPI:
 		if h.Accounts != nil {

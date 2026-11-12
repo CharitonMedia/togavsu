@@ -51,8 +51,10 @@ type Deps struct {
 	Tokens   Tokens
 	Help     Help
 	Widgets  Widgets
-	Runtime  Runtime
-	Backups  Backups
+	// Nav is the sidebar's module entries; nil leaves the sidebar to the core entries.
+	Nav     Nav
+	Runtime Runtime
+	Backups Backups
 	// Signing checks package signatures (*marketplace.Service). Nil refuses every
 	// install and update, so a composition that leaves it out fails closed.
 	Signing Verifier
@@ -384,6 +386,9 @@ type View struct {
 	Permissions []PermissionView `json:"permissions"`
 	Replaces    *string          `json:"replaces"`
 	Status      string           `json:"status"`
+	// LastError is the last failed bring-up (help, widgets, sidebar or container), for
+	// the admin tab; the contract's Module has no field for it.
+	LastError string `json:"-"`
 }
 
 func (s *Service) view(ctx context.Context, r modRow) (View, error) {
@@ -391,7 +396,7 @@ func (s *Service) view(ctx context.Context, r modRow) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	v := View{ID: r.ID, Name: r.Name, Version: r.Version, Enabled: r.Enabled, Permissions: perms, Status: r.Status}
+	v := View{ID: r.ID, Name: r.Name, Version: r.Version, Enabled: r.Enabled, Permissions: perms, Status: r.Status, LastError: r.LastError}
 	if r.PackageID != "" {
 		pkg, err := s.loadPackage(ctx, r.PackageID)
 		if err != nil {
@@ -864,6 +869,12 @@ func (s *Service) bringUp(ctx context.Context, p domain.Principal, r modRow, m M
 			errs = append(errs, "widgets: "+err.Error())
 		}
 	}
+	if s.d.Nav != nil {
+		s.d.Nav.RemoveModuleNav(r.ID)
+		if err := s.d.Nav.AddModuleNav(r.ID, NavEntries(m), nil); err != nil {
+			errs = append(errs, "sidebar: "+err.Error())
+		}
+	}
 	if s.d.Runtime != nil {
 		dep, err := s.deployment(ctx, r, m)
 		if err == nil {
@@ -904,6 +915,9 @@ func (s *Service) bringDown(ctx context.Context, module string, remove bool) []s
 	var errs []string
 	if s.d.Widgets != nil {
 		s.d.Widgets.RemoveModule(module)
+	}
+	if s.d.Nav != nil {
+		s.d.Nav.RemoveModuleNav(module)
 	}
 	if s.d.Help != nil {
 		var err error
@@ -1582,16 +1596,21 @@ func (s *Service) Enabled(ctx context.Context) ([]*Installed, error) {
 	return out, nil
 }
 
-// Start re-registers every enabled module's widgets and guide when the core starts.
-// Help pages are persistent; the widget catalog is in memory.
+// Start re-registers every enabled module's widgets and sidebar entries when the core
+// starts. Help pages are persistent; the widget catalog and the sidebar are in memory.
 func (s *Service) Start(ctx context.Context) error {
 	mods, err := s.Enabled(ctx)
 	if err != nil {
 		return err
 	}
 	for _, in := range mods {
+		if s.d.Nav != nil {
+			if err := s.d.Nav.AddModuleNav(in.ID, NavEntries(in.Manifest), nil); err != nil {
+				return err
+			}
+		}
 		if s.d.Widgets == nil {
-			break
+			continue
 		}
 		ws, err := in.Manifest.DashboardWidgets()
 		if err != nil {

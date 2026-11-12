@@ -38,7 +38,8 @@ func serve(ctx context.Context, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
-	app, err := core.Open(ctx, core.Config{DatabaseURL: cfg.DatabaseURL, Key: cfg.EncryptionKey, Domain: cfg.Domain})
+	app, err := core.Open(ctx, core.Config{DatabaseURL: cfg.DatabaseURL, Key: cfg.EncryptionKey, Domain: cfg.Domain,
+		SupervisorURL: core.SupervisorURL, SupervisorSecret: cfg.SupervisorSecret})
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 1

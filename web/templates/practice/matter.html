@@ -141,6 +141,18 @@
   </ol>
 </section>
 
+{{range .Panels}}
+<section class="card" id="module-{{.Module}}" data-module="{{.Module}}">
+  <h2>{{.Name}}</h2>
+  {{range .Tabs}}<p><a href="{{.Path}}">{{.Title}}</a></p>{{end}}
+  {{range .Rows}}
+  <dl class="module-row" data-extension="{{.Extension}}">
+    {{range .Fields}}<dt>{{.Name}}</dt><dd>{{if .Value}}{{.Value}}{{else}}—{{end}}</dd>{{end}}
+  </dl>
+  {{end}}
+</section>
+{{end}}
+
 <details class="card" id="edit-history">
   <summary>Edit history</summary>
   <table>
