@@ -82,7 +82,6 @@ The release assignment owns the "Full acceptance" required check, but lanes can'
       TOGAVSU_TEST_DATABASE_URL_B: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5433/togavsu?sslmode=disable
       TOGAVSU_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
       TOGAVSU_PSQL: /usr/lib/postgresql/17/bin/psql
-      TOGAVSU_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -102,13 +101,18 @@ The release assignment owns the "Full acceptance" required check, but lanes can'
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
       - name: Full acceptance (all 52 criteria and every release gate)
+        # runner.temp is only available at step level, not in job-level env.
+        env:
+          TOGAVSU_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
         run: sh scripts/ci/full-acceptance.sh
       - name: Acceptance results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # the pin the other workflows use
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: full-acceptance
           path: ${{ runner.temp }}/acceptance
 ```
 
 The existing Supervisor tests job already runs `scripts/ci/update-load.sh`, which now builds the core image twice and runs a real Compose stack. It needs `timeout-minutes: 90` or a shared image cache.
+
+`docs/release/proposed-ci/product-ci-full-acceptance.patch` is that exact change as a unified diff against `.github/workflows/product-ci.yml`: the job above plus `timeout-minutes: 90` on Supervisor tests. It applies with `git apply` and passes actionlint 1.7.7. An earlier draft put `runner.temp` in job-level `env`, which actionlint rejects, so the results directory is now set on the step.
