@@ -50,7 +50,7 @@ func TestReleaseWallHidesMatterEverywhere(t *testing.T) {
 	query := url.Values{"q": {"Zephyr"}, "from": {day(-30)}, "to": {day(60)}, "start": {day(-30)}, "end": {day(60)},
 		"date_from": {day(-30)}, "date_to": {day(60)}, "limit": {"200"}}.Encode()
 	staffSaw := ""
-	checked := 0
+	checked, byCode := 0, map[int]int{}
 	for _, tl := range f.app.tools {
 		if tl.Method != "GET" || !f.app.mounted(tl) {
 			continue
@@ -75,6 +75,7 @@ func TestReleaseWallHidesMatterEverywhere(t *testing.T) {
 			}
 			r := f.staff.do("GET", path+sep+query, nil)
 			checked++
+			byCode[r.code]++
 			if ids["matter_id"] == walled || path == tl.Path {
 				if s := leak(r.body); s != "" {
 					t.Errorf("staff outside the wall got %q from GET %s (%d)", s, tl.Path, r.code)
@@ -118,5 +119,5 @@ func TestReleaseWallHidesMatterEverywhere(t *testing.T) {
 	if r := f.atty.must(http.StatusOK, "GET", "/api/v1/search?q=Zephyr", nil); !strings.Contains(r.body, "Zephyrine") {
 		t.Fatalf("search for the walled matter's name finds nothing even inside the wall: %s", r.body)
 	}
-	t.Logf("%d GET calls and their /mcp tools leaked nothing from the walled matter", checked)
+	t.Logf("%d GET calls (by status %v) and their /mcp tools leaked nothing from the walled matter", checked, byCode)
 }
