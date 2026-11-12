@@ -61,7 +61,7 @@ ponytail: ceiling: lane jobs and the review gate share the CLAUDE_CODE_OAUTH_TOK
 2. `internal/practice/history.go` — audit and timeline updates return append-only from the service and the memory store. Ceiling: the application role can still UPDATE and DELETE `events` in Postgres. On `audit_log`, the owning application role can grant UPDATE, DELETE and TRUNCATE back to itself after `InstallPrivileges`. Upgrade path: reject those statements for the application role without a business-logic trigger, and move `audit_log` ownership to a migration role. Trigger: AC-024-F4 is run against Postgres as the application role.
 3. `internal/practice/service.go` — `New` without a key seals SSN and EIN with a process-local AES-256-GCM key. Ceiling: only tests and `NewWithSettings` use it; the core calls `NewWithKey` with the installer field key, so sealed values survive restarts there. Upgrade path: remove the keyless constructors. Trigger: a production caller other than the core constructs `practice.Service`.
 
-Debt count: 52.
+Debt count: 56.
 
 ## Integration ceilings
 
@@ -90,6 +90,15 @@ Recorded by the finance integration from the billing and trust packages' own pon
 15. `internal/billing/worklist.go` — a flat-fee apply that loses a race with the trust page is rolled back; the rollback undoes the trust entry because trust joins billing's transaction on the shared pool, as the core wires it. Ceiling: an unjoined trust would already have committed. Upgrade path: trust's `ApplyFlatFee` caps the amount at fee minus collected under its own lock. Trigger: trust runs on a separate pool or service.
 16. `internal/core/http.go` `dispatch` — trust, billing and practice muxes are tried in order with `ServeMux.Handler`, so a route registered by two services (trust-balances and ar-aging reports) is served by the first. Ceiling: practice's mirrored `GET /api/v1/reports/trust-balances` and `GET /api/v1/reports/ar-aging` are unreachable dead code. Upgrade path: remove those two practice handlers. Trigger: the next practice change.
 
+## Documents ceilings
+
+Recorded by the documents integration (phase 4).
+
+1. `internal/practice/project.go` — practice keeps its rows in `practice_records`; the core mirrors practice areas, counties, contacts, referral sources and matters into their section 5 tables in the same transaction, so file, deadline, event and Doc Tender foreign keys hold. Ceiling: the copy carries the referenced columns only; a responsible attorney, assigned staff, county or referral source without a row of its own is written as the System user or NULL, and nothing reads practice data from these tables. Upgrade path: practice reads and writes the section 5 tables directly (Practice ceiling 1). Trigger: that move, or a criterion that reads practice data from the relational tables.
+2. `internal/calendar/postgres.go` `Events` and `Deadlines` — every calendar list reads all rows and the service filters walls and windows in Go. Ceiling: linear in calendar size. Upgrade path: push the window and matter filters into the query. Trigger: 50k calendar rows, or a calendar page slower than 200 ms.
+3. `internal/core/documents.go` `runDocuments` — the drop-folder scan (every 10 seconds) and calendar reminders (every minute) run on in-process tickers beside Doc Tender's Postgres-leased jobs; a storage move started over the API runs on a goroutine the core cancels on Close (a stopped move resumes at the next start). Ceiling: one core process; a second would scan and remind too. Upgrade path: the shared Postgres job queue (PRD 6) runs scans, moves and reminders as jobs. Trigger: a second core process, or the job-queue task.
+4. `internal/calendar/postgres.go` `PutNotice` — calendar reminders keep their in-app notices in `calendar_notices`, apart from the shared `notifications` table that trust and Doc Tender write. Ceiling: reminders are not on the notifications list or its unread count. Upgrade path: write reminders to `notifications` when the shell owns it (Finance ceiling 7). Trigger: the ui assignment adds the header bell.
+5. `deploy/core.Dockerfile` Tesseract pin — the image installs bookworm's `tesseract-ocr` 5.3.0-2 and `tesseract-ocr-eng` 1:4.1.0-2 by exact version and checks `eng.traineddata`'s SHA-256, because the language data decides how the synthetic scan reads (Alpine's data left page 1 at agreement 0.692; the same engine with Debian's data reads every page at 0.923 or better). Ceiling: an image build fails once Debian replaces either package version, and no other Tesseract build or data is accepted. Upgrade path: move the pin and the hash together and rerun `scripts/ci/test-core-image-cases.sh`, which runs the 120-page scan with the image's Tesseract and requires every page to be Tesseract-checked. Trigger: the image build fails on the pin, or the base image moves past bookworm.
 
 ## Marketplace ceilings
 

@@ -28,6 +28,26 @@ type Handler struct {
 	FS        fs.FS
 	// Background runs long work, such as a storage move, after the response.
 	Background func(func())
+	// BackgroundContext, when set, is the context that work runs under, so the core can
+	// stop a move on shutdown (a stopped move resumes where it stopped). Nil detaches
+	// the work from the request instead.
+	BackgroundContext context.Context
+	// DocStatus, when set, is a file's Doc Tender label and flags as p sees the file
+	// (PRD 8.21: a failed file carries a flag naming what failed; a closed matter's file
+	// is Not processed (matter closed)). The core sets it to Doc Tender's Status; files
+	// cannot import Doc Tender, which builds on files.
+	DocStatus func(ctx context.Context, p domain.Principal, fileID domain.ID) (DocStatus, error)
+}
+
+// DocStatus is what the Files tab shows beside a file for Doc Tender.
+type DocStatus struct {
+	Label string
+	Flags []DocFlag
+}
+
+// DocFlag is one open or kept review item on the file, named for people.
+type DocFlag struct {
+	Kind, Label, Detail string
 }
 
 // NewHandler parses the Files tab templates from fsys (web/templates/files). A nil
@@ -478,7 +498,10 @@ func (h *Handler) createMove(r *http.Request, p domain.Principal, in MoveRequest
 	if err != nil {
 		return MoveView{}, err
 	}
-	ctx := context.WithoutCancel(r.Context())
+	ctx := h.BackgroundContext
+	if ctx == nil {
+		ctx = context.WithoutCancel(r.Context())
+	}
 	h.Background(func() { _ = h.Svc.RunMove(ctx, v.ID) })
 	return v, nil
 }

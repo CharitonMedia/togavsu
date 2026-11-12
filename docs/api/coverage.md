@@ -318,6 +318,9 @@ It does not claim the handlers or the MCP server are implemented.
 | doc-tender | `GET` | `/api/v1/doc-tender/exceptions/{exception_id}` | `getDocTenderException` | required:getDocTenderException | admin, attorney | doc_tender:read |
 | doc-tender | `POST` | `/api/v1/doc-tender/exceptions/{exception_id}/resolve` | `resolveDocTenderException` | required:resolveDocTenderException | admin, attorney | doc_tender:write |
 | doc-tender | `GET` | `/api/v1/files/{file_id}/doc-tender-result` | `getDocTenderResult` | required:getDocTenderResult | admin, attorney, staff | doc_tender:read |
+| doc-tender | `GET` | `/api/v1/files/{file_id}/doc-tender-status` | `getDocTenderStatus` | required:getDocTenderStatus | admin, attorney, staff | doc_tender:read |
+| doc-tender | `POST` | `/api/v1/files/{file_id}/doc-tender-reprocess` | `reprocessDocTenderFile` | required:reprocessDocTenderFile | admin, attorney | doc_tender:write |
+| doc-tender | `GET` | `/api/v1/doc-tender/model-choices` | `getDocTenderModelChoices` | required:getDocTenderModelChoices | admin | doc_tender:read |
 | doc-tender | `GET` | `/api/v1/doc-tender/categories` | `listDocCategory` | required:listDocCategory | admin, attorney, staff | doc_tender:read |
 | doc-tender | `POST` | `/api/v1/doc-tender/categories` | `createDocCategory` | required:createDocCategory | admin | doc_tender:write |
 | doc-tender | `GET` | `/api/v1/doc-tender/categories/{category_id}` | `getDocCategory` | required:getDocCategory | admin, attorney, staff | doc_tender:read |
@@ -438,4 +441,4 @@ It does not claim the handlers or the MCP server are implemented.
 | domain-replacement | `GET` | `/api/v1/domain-handlers` | `listDomainHandlers` | required:listDomainHandlers | admin | modules:read |
 | domain-replacement | `PUT` | `/api/v1/domain-handlers/{domain}` | `putDomainHandler` | required:putDomainHandler | admin | modules:write |
 
-Operations: 432.
+Operations: 435.

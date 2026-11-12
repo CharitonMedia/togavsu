@@ -17,3 +17,18 @@ var Billing embed.FS
 //
 //go:embed templates/trust
 var Trust embed.FS
+
+// Calendar holds templates/calendar: the calendar, deadlines, feeds and available dates.
+//
+//go:embed templates/calendar
+var Calendar embed.FS
+
+// Files holds templates/files: the matter Files tab and the Files and storage tab.
+//
+//go:embed templates/files
+var Files embed.FS
+
+// DocTender holds templates/doctender: the review queue, the Doc Tender tab and its guide.
+//
+//go:embed templates/doctender
+var DocTender embed.FS

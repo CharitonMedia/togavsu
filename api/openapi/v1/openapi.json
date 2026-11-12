@@ -46978,6 +46978,377 @@
         ]
       }
     },
+    "/api/v1/files/{file_id}/doc-tender-status": {
+      "get": {
+        "operationId": "getDocTenderStatus",
+        "summary": "Read a file's Doc Tender status",
+        "description": "The newest job's status and its label for the Files tab, with the file's open or kept review flags. A file in a closed matter reads Not processed (matter closed). The file's matter wall and attorney-only flag apply: a file the caller cannot read is not_found.",
+        "tags": [
+          "Doc Tender"
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter file_id."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocTenderFileStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "doc-tender"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney",
+            "staff"
+          ],
+          "scopes": [
+            "doc_tender:read"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "file",
+          "attorney_only_files": "not_found",
+          "access_cases": [
+            {
+              "role": "staff",
+              "attorney_only": true,
+              "result": "not_found"
+            },
+            {
+              "role": "attorney",
+              "attorney_only": true,
+              "result": "allowed"
+            },
+            {
+              "role": "staff",
+              "matter_walled": true,
+              "on_wall": false,
+              "result": "not_found"
+            }
+          ],
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getDocTenderStatus",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/files/{file_id}/doc-tender-reprocess": {
+      "post": {
+        "operationId": "reprocessDocTenderFile",
+        "summary": "Reprocess a file with Doc Tender",
+        "description": "A person asks Doc Tender to process the file's current version again and gets the queued job; emits doc_tender.retry_scheduled. A person-locked name, category, matter, or grouping is left alone. A file in a closed matter is stored as not_processed_matter_closed and makes no model call. The file's matter wall and attorney-only flag apply: a file the caller cannot read is not_found.",
+        "tags": [
+          "Doc Tender"
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Uuid"
+            },
+            "description": "Path parameter file_id."
+          },
+          {
+            "$ref": "#/components/parameters/idempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/csrfToken"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocTenderJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/Unprocessable"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "doc-tender"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin",
+            "attorney"
+          ],
+          "scopes": [
+            "doc_tender:write"
+          ],
+          "public": false,
+          "matter_wall": true,
+          "client": "deny",
+          "access_inherits": "file",
+          "attorney_only_files": "not_found",
+          "access_cases": [
+            {
+              "role": "staff",
+              "attorney_only": true,
+              "result": "not_found"
+            },
+            {
+              "role": "attorney",
+              "attorney_only": true,
+              "result": "allowed"
+            },
+            {
+              "role": "staff",
+              "matter_walled": true,
+              "on_wall": false,
+              "result": "not_found"
+            }
+          ],
+          "module_delegation": "delegated_viewer",
+          "events_on": "commit",
+          "events_on_failure": "none"
+        },
+        "x-togavsu-events": [
+          "doc_tender.retry_scheduled"
+        ],
+        "x-togavsu-writes": true,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "reprocessDocTenderFile",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "idempotency_key",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/doc-tender/model-choices": {
+      "get": {
+        "operationId": "getDocTenderModelChoices",
+        "summary": "Doc Tender model choices",
+        "description": "The models the AI tab offers for each Doc Tender task, keyed by task. Labeling and categorizing never offer a local endpoint.",
+        "tags": [
+          "Doc Tender"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocTenderModelChoices"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "x-togavsu-features": [
+          "doc-tender"
+        ],
+        "x-togavsu-access": {
+          "roles": [
+            "admin"
+          ],
+          "scopes": [
+            "doc_tender:read"
+          ],
+          "public": false,
+          "matter_wall": false,
+          "client": "deny",
+          "module_delegation": "delegated_viewer"
+        },
+        "x-togavsu-events": [],
+        "x-togavsu-writes": false,
+        "x-togavsu-mcp": {
+          "parity": "required",
+          "tool": "getDocTenderModelChoices",
+          "transfer": {
+            "shape": "path_query_body",
+            "path": "Object of path parameters.",
+            "query": "Object of query parameters.",
+            "credentials": {
+              "context_token": {
+                "header": "X-Togavsu-Context-Token",
+                "argument": "context_token",
+                "roles_from_arguments": false
+              }
+            },
+            "forbidden_header_overrides": [
+              "Authorization",
+              "Host"
+            ],
+            "result": {
+              "encoding": "json",
+              "media_type": "application/json"
+            },
+            "arguments": [
+              "path",
+              "query",
+              "context_token"
+            ]
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/doc-tender/categories": {
       "get": {
         "operationId": "listDocCategory",
@@ -71006,6 +71377,59 @@
         ],
         "description": "Published Doc Tender labels for one file version. fields are the cited critical values."
       },
+      "DocTenderFileStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "The newest job's status; empty when no job has run."
+          },
+          "label": {
+            "type": "string"
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "label",
+                "detail"
+              ],
+              "description": "An open or kept review item on the file."
+            }
+          }
+        },
+        "required": [
+          "status",
+          "label",
+          "flags"
+        ],
+        "description": "A file's Doc Tender state as the caller sees the file."
+      },
+      "DocTenderModelChoices": {
+        "type": "object",
+        "description": "Model choices keyed by Doc Tender task: ocr, photo_description, photo_grouping, transcription, labeling, categorizing.",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
       "DocCategory": {
         "type": "object",
         "additionalProperties": false,
@@ -71780,6 +72204,7 @@
           "ai.secondary_fast_model",
           "ai.secondary_strong_model",
           "ai.task_overrides",
+          "ai.model_prices",
           "ai.openai_compatible_base_url",
           "ai.local_base_url",
           "ai.speech_to_text_models",
@@ -82242,6 +82667,15 @@
       "secret": false,
       "locked": false,
       "help": "Per-task provider and model overrides, keyed by task name."
+    },
+    {
+      "key": "ai.model_prices",
+      "type": "json",
+      "tab": "ai_and_inference",
+      "default": {},
+      "secret": false,
+      "locked": false,
+      "help": "Price per model in cents per million tokens, as {\"model\": {\"input\": cents, \"output\": cents}}. A model with no price costs 0 cents in the AI call log."
     },
     {
       "key": "ai.openai_compatible_base_url",

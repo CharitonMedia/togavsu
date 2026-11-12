@@ -99,3 +99,28 @@ func TestSTARTTLSSettingMatchesTheContract(t *testing.T) {
 		t.Fatalf("registry %s default %q, contract %v default %v; want a boolean defaulting to true", d.Kind, d.Default, c["type"], c["default"])
 	}
 }
+
+// TestModelPricesMatchTheContract checks ai.model_prices is one JSON setting on the AI
+// tab, default {}, in the runtime registry and the published contract. Its write check
+// is TestDocumentsDocTenderTokensAndMCP.
+func TestModelPricesMatchTheContract(t *testing.T) {
+	c, ok := contractSettings(t)["ai.model_prices"]
+	if !ok {
+		t.Fatal("ai.model_prices is not in the published settings contract")
+	}
+	var def settings.Definition
+	for _, d := range settings.Definitions() {
+		if d.Key == "ai.model_prices" {
+			def = d
+		}
+	}
+	if def.Key == "" {
+		t.Fatal("ai.model_prices is not in the settings registry")
+	}
+	if def.Kind != settings.KindJSON || c["type"] != "json" || def.Default != "{}" || c["tab"] != "ai_and_inference" || def.Tab != settings.TabAI {
+		t.Fatalf("registry %s %q %s, contract %v %v %v", def.Kind, def.Default, def.Tab, c["type"], c["default"], c["tab"])
+	}
+	if m, ok := c["default"].(map[string]any); !ok || len(m) != 0 {
+		t.Fatalf("contract default %v, want {}", c["default"])
+	}
+}

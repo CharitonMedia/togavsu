@@ -1,5 +1,6 @@
 // Package core composes the running product: Postgres, migrations, settings, the
-// append-only audit ledger, identity, practice, billing, trust, the HTTP routes and /mcp.
+// append-only audit ledger, identity, practice, billing, trust, calendar, files, the
+// editor, Doc Tender, the HTTP routes and /mcp.
 // Access control stays in the services; this package only authenticates the caller
 // and hands the principal to them.
 package core
@@ -12,6 +13,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,8 +21,12 @@ import (
 	"github.com/CharitonMedia/togavsu/api"
 	"github.com/CharitonMedia/togavsu/internal/audit"
 	"github.com/CharitonMedia/togavsu/internal/billing"
+	"github.com/CharitonMedia/togavsu/internal/calendar"
 	"github.com/CharitonMedia/togavsu/internal/db"
+	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/editor"
+	"github.com/CharitonMedia/togavsu/internal/files"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/settings"
@@ -40,6 +46,19 @@ type Config struct {
 	// MailEvery is how often queued trust mail is sent. Zero is 30 seconds; a negative
 	// value starts no delivery loop (tests call DeliverMail).
 	MailEvery time.Duration
+	// DataDir holds upload staging, editor run folders and the default local-disk
+	// backend. Empty is DataDir (the core volume); tests give a temporary folder.
+	DataDir string
+	// WordcraftCLI and EditorDist locate LawCraft's builds. Empty uses the image paths;
+	// a missing binary or folder leaves those features answering that they are absent.
+	WordcraftCLI string
+	EditorDist   string
+	// NoBackground leaves the documents' workers (Doc Tender, drop folder, moves and
+	// reminders) stopped, for tests that drive them step by step.
+	NoBackground bool
+	// ProviderURLs overrides AI provider endpoints, so tests run Doc Tender against a
+	// synthetic model server on the providers' wire. Production leaves it nil.
+	ProviderURLs map[string]string
 }
 
 // App is one running core.
@@ -55,6 +74,11 @@ type App struct {
 	Store    *practice.Durable
 	Trust    *trust.Service
 	Billing  *billing.Service
+	// Calendar, Files, Editor and DocTender are the phase 4 services (documents.go).
+	Calendar  *calendar.Service
+	Files     *files.Service
+	Editor    *editor.Service
+	DocTender *doctender.Service
 
 	ledger   *audit.Postgres
 	tools    []tool
@@ -67,6 +91,9 @@ type App struct {
 	mailMu   sync.Mutex
 	stopMail context.CancelFunc
 	mailDone chan struct{}
+	docs     *documents
+	stopDocs context.CancelFunc
+	docsDone chan struct{}
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
@@ -148,12 +175,40 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.practice = ph.Routes()
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, app.principal, app.scopes, now)
+	dataDir, cli, dist := cfg.DataDir, cfg.WordcraftCLI, cfg.EditorDist
+	if dataDir == "" {
+		dataDir = DataDir
+	}
+	docs, err := openFiles(ctx, pool, aud, reg, store, app.Practice.Policy.Walls, cfg.Key, dataDir, now)
+	if err != nil {
+		return fail(err)
+	}
+	app.docs = docs
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.principal, app.scopes, now)
 	if err != nil {
 		return fail(err)
 	}
 	app.Trust, app.Billing = fin.Trust, fin.Billing
-	for _, h := range []http.Handler{fin.trustH, fin.billH, app.practice} {
+	if cli == "" {
+		cli = WordcraftCLI
+	}
+	if dist == "" {
+		if _, err := os.Stat(EditorDist); err == nil {
+			dist = EditorDist
+		}
+	}
+	host, _ := os.Hostname()
+	if err := openDocuments(ctx, docs, pool, aud, reg, store, app.Practice, users, cfg.Domain,
+		documentsConfig{DataDir: dataDir, WordcraftCLI: cli, EditorDist: dist, ProviderURLs: cfg.ProviderURLs, Worker: "core-" + host},
+		app.principal, now); err != nil {
+		return fail(err)
+	}
+	app.Calendar, app.Files, app.Editor, app.DocTender = docs.Calendar, docs.Files, docs.Editor, docs.DocTender
+	// First match wins: trust and billing own their reports ahead of practice's mirrored
+	// ones, the editor's pages go before files', and practice answers the rest.
+	handlers := []http.Handler{fin.trustH, fin.billH}
+	handlers = append(handlers, docs.handlers...)
+	for _, h := range append(handlers, app.practice) {
 		mux, ok := h.(*http.ServeMux)
 		if !ok {
 			return fail(errors.New("core: a service handler is not a ServeMux"))
@@ -164,6 +219,14 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.routes()
+	if !cfg.NoBackground {
+		docCtx, stop := context.WithCancel(context.Background())
+		app.stopDocs, app.docsDone = stop, make(chan struct{})
+		go func() {
+			defer close(app.docsDone)
+			app.runDocuments(docCtx, 10*time.Second, time.Minute)
+		}()
+	}
 	if cfg.MailEvery >= 0 {
 		every := cfg.MailEvery
 		if every == 0 {
@@ -183,6 +246,13 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 // closes any SMTP connection it has open (internal/smtpsend), so a stalled server cannot
 // hold shutdown or an update.
 func (a *App) Close() error {
+	if a.stopDocs != nil {
+		a.stopDocs()
+		<-a.docsDone
+	}
+	if a.docs != nil {
+		a.docs.close()
+	}
 	if a.stopMail != nil {
 		a.stopMail()
 		<-a.mailDone

@@ -38,8 +38,10 @@ type Store interface {
 	Notices(ctx context.Context, user domain.ID) ([]Notice, error)
 	AppendEvent(ctx context.Context, row domain.Event) error
 
-	IdemGet(key string) (IdemRecord, bool)
-	IdemPut(key string, rec IdemRecord)
+	// IdemGet reads a stored Idempotency-Key response; an error is not "no record".
+	IdemGet(ctx context.Context, key string) (IdemRecord, bool, error)
+	// IdemPut stores a response; inside audit.Service.Atomic it commits with the write.
+	IdemPut(ctx context.Context, key string, rec IdemRecord) error
 }
 
 // IdemRecord is a stored response for an Idempotency-Key.
@@ -262,15 +264,16 @@ func (m *Memory) Stream() []domain.Event {
 	return append([]domain.Event(nil), m.stream...)
 }
 
-func (m *Memory) IdemGet(key string) (IdemRecord, bool) {
+func (m *Memory) IdemGet(_ context.Context, key string) (IdemRecord, bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	rec, ok := m.idem[key]
-	return rec, ok
+	return rec, ok, nil
 }
 
-func (m *Memory) IdemPut(key string, rec IdemRecord) {
+func (m *Memory) IdemPut(_ context.Context, key string, rec IdemRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.idem[key] = rec
+	return nil
 }

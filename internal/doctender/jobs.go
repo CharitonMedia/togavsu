@@ -268,7 +268,7 @@ func (s *Service) claim(ctx context.Context) (Job, bool, error) {
 	now := us(s.now())
 	var id domain.ID
 	err = s.row(ctx, `UPDATE doc_tender_jobs SET lease_owner = ?, lease_until = ?, updated_at = ?
-WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?
+WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group' AND next_attempt_at <= ? AND lease_until < ?`+notPurged+`
             ORDER BY next_attempt_at, created_at, id LIMIT 1)
   AND lease_until < ? RETURNING id`, s.d.Worker, now+int64(lease/microUnit), now, now, now, now).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -280,6 +280,11 @@ WHERE id = (SELECT id FROM doc_tender_jobs WHERE status IN (`+claimable(ready)+`
 	j, err := s.job(ctx, id)
 	return j, err == nil, err
 }
+
+// notPurged leaves out jobs whose file an admin emptied from the trash: there is nothing
+// left to process, so such a job is never claimed and never wakes the worker. The
+// nightly sweep already skips purged files.
+const notPurged = ` AND NOT EXISTS (SELECT 1 FROM files pf WHERE pf.id = doc_tender_jobs.file_id AND pf.purged_at <> 0)`
 
 // claimable is the job statuses claim takes: held_for_ai_setup only once AI is set up.
 func claimable(ready bool) string {
@@ -397,7 +402,7 @@ func (s *Service) nextWait(ctx context.Context) (time.Duration, error) {
 	d := lease
 	var next sql.NullInt64
 	err = s.row(ctx, `SELECT MIN(CASE WHEN lease_until > next_attempt_at THEN lease_until ELSE next_attempt_at END) FROM doc_tender_jobs
-WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group'`).Scan(&next)
+WHERE status IN (`+claimable(ready)+`) AND stage <> 'awaiting_group'`+notPurged).Scan(&next)
 	if err != nil {
 		return zeroDuration, err
 	}
@@ -771,8 +776,9 @@ WHERE job_id = ? AND status = 'failed'`, us(s.now()), j.ID); err != nil {
 	return j, err
 }
 
-// Reprocess queues a fresh job for a file's current version. Its Markdown copy is
-// added as a new version; fields a person locked are not changed.
+// Reprocess queues a fresh job for a file's current version and emits
+// doc_tender.retry_scheduled (reprocessDocTenderFile). Its Markdown copy is added as a
+// new version; fields a person locked are not changed.
 func (s *Service) Reprocess(ctx context.Context, p domain.Principal, fileID domain.ID) (domain.ID, error) {
 	if !reviewer(p) {
 		return "", domain.Forbidden("only admins and attorneys reprocess files")
@@ -788,7 +794,16 @@ func (s *Service) Reprocess(ctx context.Context, p domain.Principal, fileID doma
 	if f.MatterID != nil {
 		matter = *f.MatterID
 	}
-	return s.Enqueue(ctx, f.ID, *f.CurrentVersionID, matter, reasonReprocess)
+	var id domain.ID
+	err = s.tx(ctx, func(ctx context.Context) error {
+		var err error
+		if id, err = s.Enqueue(ctx, f.ID, *f.CurrentVersionID, matter, reasonReprocess); err != nil {
+			return err
+		}
+		return s.appendEvent(ctx, "doc_tender.retry_scheduled", "doc_tender_job", id, matter, "Doc Tender reprocess requested")
+	})
+	s.signal()
+	return id, err
 }
 
 // firstDelay is the retry schedule's first wait; a job that must wait (a provider that

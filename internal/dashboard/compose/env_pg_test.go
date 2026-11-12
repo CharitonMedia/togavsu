@@ -240,6 +240,8 @@ const adminPassword = "correct-horse-battery"
 // env is one running core with the ui mounted and four signed-in users.
 type env struct {
 	t                         *testing.T
+	dsn, dataDir              string
+	opt                       Options
 	recovery                  map[string][]string
 	app                       *core.App
 	ui                        *UI
@@ -253,27 +255,12 @@ func newEnv(t *testing.T) *env {
 	return newEnvWith(t, Options{})
 }
 
-// newEnvWith mounts the ui with opt; DatabaseURL and CalendarTemplates are filled in.
+// newEnvWith mounts the ui with opt; DatabaseURL is filled in.
 func newEnvWith(t *testing.T, opt Options) *env {
 	t.Helper()
-	dsn := appRoleDSN(t)
-	ctx := context.Background()
-	app, err := core.Open(ctx, core.Config{DatabaseURL: dsn, Key: testKey, Domain: "firm.example", MailEvery: -1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cal := os.DirFS("../../../web/templates/calendar")
-	opt.DatabaseURL, opt.CalendarTemplates = dsn, cal
-	ui, err := Mount(ctx, app, opt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(ui.Handler())
-	t.Cleanup(func() {
-		srv.Close()
-		_ = app.Close()
-	})
-	e := &env{t: t, app: app, ui: ui, srv: srv, recovery: map[string][]string{}}
+	e := &env{t: t, dsn: appRoleDSN(t), dataDir: t.TempDir(), opt: opt, recovery: map[string][]string{}}
+	e.open()
+	t.Cleanup(e.shut)
 	e.admin = e.firstRun()
 	e.atty = e.enroll("Ada Attorney", "ada@firm.example", domain.RoleAttorney)
 	e.staff = e.enroll("Sam Staff", "sam@firm.example", domain.RoleStaff)
@@ -282,6 +269,46 @@ func newEnvWith(t *testing.T, opt Options) *env {
 	e.account = str(t, e.admin.must(http.StatusCreated, "POST", "/api/v1/trust-accounts", map[string]any{"bank": "Synthetic Bank", "name": "IOLTA", "iolta": true, "last_four": "4242"}).json, "id")
 	e.activityID = str(t, e.admin.must(http.StatusCreated, "POST", "/api/v1/activity-types", map[string]any{"name": "Drafting"}).json, "id")
 	return e
+}
+
+// open starts the core and the ui on e's database and data folder.
+func (e *env) open() {
+	t := e.t
+	t.Helper()
+	ctx := context.Background()
+	app, err := core.Open(ctx, core.Config{DatabaseURL: e.dsn, Key: testKey, Domain: "firm.example", MailEvery: -1, DataDir: e.dataDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt := e.opt
+	opt.DatabaseURL = e.dsn
+	ui, err := Mount(ctx, app, opt)
+	if err != nil {
+		_ = app.Close()
+		t.Fatal(err)
+	}
+	e.app, e.ui, e.srv = app, ui, httptest.NewServer(ui.Handler())
+}
+
+func (e *env) shut() {
+	if e.srv != nil {
+		e.srv.Close()
+	}
+	if e.app != nil {
+		_ = e.app.Close()
+	}
+	e.srv, e.app = nil, nil
+}
+
+// restart stops the core and opens a new one on the same database and data folder;
+// the signed-in clients keep their sessions and point at the new server.
+func (e *env) restart(clients ...*client) {
+	e.t.Helper()
+	e.shut()
+	e.open()
+	for _, c := range clients {
+		c.base = e.srv.URL
+	}
 }
 
 func (e *env) firstRun() *client {

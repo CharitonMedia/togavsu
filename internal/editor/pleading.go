@@ -175,6 +175,19 @@ func captionSides(m MatterInfo) (first, second map[string]any, hasClient, hasOth
 	return first, second, len(us) > 0, len(them) > 0
 }
 
+// CanPlead checks that p may start a New Pleading on the matter: an editor role and
+// the matter as p sees it, so a walled or missing matter is not_found on the form too.
+func (s *Service) CanPlead(ctx context.Context, p domain.Principal, matterID domain.ID) error {
+	if err := requireEditor(p); err != nil {
+		return err
+	}
+	if s.matters == nil {
+		return domain.Conflict("matter details are not available to the editor")
+	}
+	_, err := s.matters.Matter(ctx, p, matterID)
+	return err
+}
+
 // PleadingParams are law.pleadings.new's parameters for the matter: court, county, case
 // number and parties from the matter, the firm block from firm settings. The caller's
 // access to the matter is checked by Matters.

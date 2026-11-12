@@ -23,7 +23,8 @@
     <thead><tr><th>Name</th><th>Folder</th><th>Size</th><th>Versions</th><th></th></tr></thead>
     <tbody>
     {{range .Files}}<tr>
-      <td><span class="name">{{.Name}}</span>{{if .Status}} <span class="tag status-{{.Status}}">{{.Status}}</span>{{end}}{{if .AttorneyOnly}} <span class="tag">attorney only</span>{{end}}{{if .Quarantined}} <span class="tag warn">quarantined</span>{{end}}</td>
+      <td><span class="name">{{.Name}}</span>{{if .Status}} <span class="tag status-{{.Status}}">{{.Status}}</span>{{end}}{{if .AttorneyOnly}} <span class="tag">attorney only</span>{{end}}{{if .Quarantined}} <span class="tag warn">quarantined</span>{{end}}
+        {{with .Doc}}<div class="doc-tender"><span class="tag dt" title="Doc Tender">{{.Label}}</span>{{range .Flags}} <span class="tag warn flag flag-{{.Kind}}">{{.Label}}</span>{{if .Detail}} <span class="flag-detail">{{.Detail}}</span>{{end}}{{end}}</div>{{end}}</td>
       <td>{{.Folder}}</td>
       <td>{{bytes .Size}}</td>
       <td>{{.Versions}}</td>

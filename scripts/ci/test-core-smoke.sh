@@ -10,6 +10,15 @@ if ! "$docker" image inspect togavsu-core:local >/dev/null 2>&1; then
   echo "core image is not built" >&2
   exit 1
 fi
+# The image ships LawCraft (core.WordcraftCLI, core.EditorDist) and the pinned Tesseract.
+"$docker" run --rm --user 65532:65532 --entrypoint /bin/sh togavsu-core:local -c '
+  set -eu
+  /usr/local/bin/wordcraft-cli --help >/dev/null
+  test -f /usr/share/togavsu/editor/index.html
+  ls /usr/share/togavsu/editor/*.wasm >/dev/null
+  tesseract --version 2>&1 | head -1 | grep -qx "tesseract 5.3.0"
+  echo "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2  /usr/share/tesseract-ocr/5/tessdata/eng.traineddata" | sha256sum -c - >/dev/null
+'
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/appsecrets"

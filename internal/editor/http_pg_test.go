@@ -220,6 +220,14 @@ func TestPGNewPleadingFormMakesAFileAndOpensIt(t *testing.T) {
 	if res, _ := call(t, srv, "staff", "GET", "/matters/"+string(e.matter)+"/pleadings/new", nil); res.StatusCode != 200 {
 		t.Fatalf("pleading form = %d", res.StatusCode)
 	}
+	// The form follows the matter as the POST does: an outsider of a walled matter, a
+	// matter that does not exist and a client user all get no form.
+	for user, path := range map[string]string{"outsider": "/matters/" + string(e.walled), "staff": "/matters/01a1c38b-0000-7000-8000-000000000000", "client": "/matters/" + string(e.matter)} {
+		res, b := call(t, srv, user, "GET", path+"/pleadings/new", nil)
+		if want := map[string]int{"outsider": 404, "staff": 404, "client": 403}[user]; res.StatusCode != want || strings.Contains(string(b), `name="title"`) {
+			t.Fatalf("%s pleading form for %s = %d, want %d", user, path, res.StatusCode, want)
+		}
+	}
 }
 
 const trunkIndex = `<!DOCTYPE html><html><head>

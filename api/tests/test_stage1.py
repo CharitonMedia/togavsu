@@ -328,7 +328,8 @@ class Stage1InventoryTest(unittest.TestCase):
             for rel, digest in self.inventory["artifacts"].items()
             if digest != self.inventory["baseline_artifacts"][rel]
         }
-        self.assertEqual(changed, {"api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json"})
+        # coverage.md changed with doc-tender-status-reprocess-model-choices: it lists operations.
+        self.assertEqual(changed, {"api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"})
         delta_ids = {row["id"] for row in self.inventory["intentional_generated_deltas"]}
         self.assertEqual(
             delta_ids,
@@ -345,6 +346,7 @@ class Stage1InventoryTest(unittest.TestCase):
                 "file-link-both-unresolved",
                 "extension-trust-entry-file-version",
                 "extension-section5-records",
+                "doc-tender-status-reprocess-model-choices",
             },
         )
 

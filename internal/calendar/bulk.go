@@ -7,12 +7,10 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
 
-// BulkEvents validates every item first and writes none if any item fails.
-//
-// ponytail: ceiling: on the Memory store a write error after validation (none are
-// possible in memory) would leave earlier items written. Upgrade path: run the
-// batch inside audit.Service.Atomic on the Postgres store. Trigger: the Postgres
-// calendar Store lands.
+// BulkEvents validates every item first and writes none if any item fails. The writes
+// run in one audit.Service.Atomic, so on Postgres a failure on a later item (a dropped
+// connection, an audit or activity row) rolls back the earlier ones and a retry starts
+// clean. The Memory store has no write that can fail after validation.
 func (s *Service) BulkEvents(ctx context.Context, p domain.Principal, ins []EventInput) ([]Event, error) {
 	if err := s.gate(ctx, p, domain.ActionWrite, ""); err != nil {
 		return nil, err
@@ -27,18 +25,26 @@ func (s *Service) BulkEvents(ctx context.Context, p domain.Principal, ins []Even
 			return nil, indexed(i, err)
 		}
 	}
-	out := make([]Event, 0, len(ins))
-	for _, in := range ins {
-		e, err := s.CreateEvent(ctx, p, in)
-		if err != nil {
-			return nil, err
+	var out []Event
+	err := s.d.Audit.Atomic(ctx, func(ctx context.Context) error {
+		out = make([]Event, 0, len(ins))
+		for _, in := range ins {
+			e, err := s.CreateEvent(ctx, p, in)
+			if err != nil {
+				return err
+			}
+			out = append(out, e)
 		}
-		out = append(out, e)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
 
-// BulkDeadlines validates every item first and writes none if any item fails.
+// BulkDeadlines validates every item first and writes none if any item fails, in one
+// transaction like BulkEvents.
 func (s *Service) BulkDeadlines(ctx context.Context, p domain.Principal, ins []DeadlineInput) ([]Deadline, error) {
 	if err := s.gate(ctx, p, domain.ActionWrite, ""); err != nil {
 		return nil, err
@@ -59,13 +65,20 @@ func (s *Service) BulkDeadlines(ctx context.Context, p domain.Principal, ins []D
 			return nil, indexed(i, err)
 		}
 	}
-	out := make([]Deadline, 0, len(ins))
-	for _, in := range ins {
-		d, err := s.CreateDeadline(ctx, p, in)
-		if err != nil {
-			return nil, err
+	var out []Deadline
+	err = s.d.Audit.Atomic(ctx, func(ctx context.Context) error {
+		out = make([]Deadline, 0, len(ins))
+		for _, in := range ins {
+			d, err := s.CreateDeadline(ctx, p, in)
+			if err != nil {
+				return err
+			}
+			out = append(out, d)
 		}
-		out = append(out, d)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

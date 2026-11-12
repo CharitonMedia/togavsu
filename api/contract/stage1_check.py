@@ -423,6 +423,11 @@ def write_stage1_documents() -> None:
                 "files": ["api/openapi/v1/openapi.json"],
                 "change": "ManifestExtension and ManifestView add every section 5 record with a published read: contact addresses, emails, phones and tags, practice areas, counties, referral sources, timers, file renditions and links, court profiles, Doc Tender categories, jobs, results and exceptions, conflict checks and their reviews, trust flags, replenishment requests and reconciliations, plus folders and matter markers, which are matter records outside section 5. Their list and get reads take include, their read schemas carry optional included, and DocTenderResult gains its row id. The MCP catalog still describes query as one object, and coverage does not list parameters, so their bytes stay the same.",
             },
+            {
+                "id": "doc-tender-status-reprocess-model-choices",
+                "files": ["api/openapi/v1/openapi.json", "api/openapi/v1/mcp-tools.json", "docs/api/coverage.md"],
+                "change": "The core's Doc Tender routes join the contract so tokens and /mcp reach them: getDocTenderStatus (GET /api/v1/files/{file_id}/doc-tender-status, staff, doc_tender:read), reprocessDocTenderFile (POST /api/v1/files/{file_id}/doc-tender-reprocess, admin or attorney, doc_tender:write, 202 with the queued DocTenderJob, emits doc_tender.retry_scheduled) and getDocTenderModelChoices (GET /api/v1/doc-tender/model-choices, admin, doc_tender:read). The two file routes carry the file wall. The settings catalog adds ai.model_prices (json, AI tab, default {}), the price table AI call costs read.",
+            },
         ],
         "intentional_corrections": [
             {

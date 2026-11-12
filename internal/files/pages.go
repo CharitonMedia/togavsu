@@ -21,6 +21,7 @@ type fileRowView struct {
 	Quarantined  bool
 	Markdown     domain.ID
 	MarkdownName string
+	Doc          *DocStatus
 }
 
 type pageData struct {
@@ -182,6 +183,19 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 				if rd.Kind == "markdown" {
 					row.Markdown = rd.ID
 				}
+			}
+		}
+		if h.DocStatus != nil {
+			st, err := h.DocStatus(ctx, p, f.ID)
+			var api *domain.APIError
+			switch {
+			case err == nil:
+				row.Doc = &st
+			case errors.As(err, &api) && api.Code == domain.CodeNotFound:
+				// Doc Tender does not show this reader the file's state; the row stays.
+			default:
+				h.pageError(w, r, err)
+				return
 			}
 		}
 		data.Files = append(data.Files, row)

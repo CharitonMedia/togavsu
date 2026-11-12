@@ -264,7 +264,9 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	ctx := context.Background()
 	e := &env{t: t, ctx: ctx, dsn: testDSN(t), users: map[string]domain.Principal{}}
-	app, err := core.Open(ctx, core.Config{DatabaseURL: e.dsn, Key: testKey, Domain: "firm.example", MailEvery: -1})
+	// The core keeps upload staging and its default local-disk file store in DataDir;
+	// empty means the image's /var/lib/togavsu-core, which a test runner cannot write.
+	app, err := core.Open(ctx, core.Config{DatabaseURL: e.dsn, Key: testKey, Domain: "firm.example", MailEvery: -1, DataDir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,14 +313,6 @@ func newEnv(t *testing.T) *env {
 
 	area, err := app.Practice.CreateArea(ctx, e.admin, "Probate", "", []string{"Intake"})
 	if err != nil {
-		t.Fatal(err)
-	}
-	// Practice keeps its records in practice_records; the section 5 rows that module
-	// foreign keys point at are mirrored here, as the files tests do, until practice
-	// writes them itself (billing/0300 records the same ceiling).
-	at := time.Now().UnixMicro()
-	if _, err := app.Pool.ExecContext(ctx, `INSERT INTO core.practice_areas (id, created_at, updated_at, created_by, name, matter_types, stages, active) VALUES ($1,$2,$2,$3,'Probate','[]','[]',1)`,
-		string(area.ID), at, string(e.admin.UserID)); err != nil {
 		t.Fatal(err)
 	}
 	e.open = e.matter("Open Estate", area.ID)
@@ -409,12 +403,6 @@ func (e *env) matter(name string, area domain.ID) domain.Matter {
 	e.t.Helper()
 	m, err := e.app.Practice.CreateMatter(e.ctx, e.attorney, practice.MatterInput{Name: name, PracticeAreaID: area, BillingType: "hourly", ResponsibleAttorneyID: e.attorney.UserID})
 	if err != nil {
-		e.t.Fatal(err)
-	}
-	at := time.Now().UnixMicro()
-	if _, err := e.app.Pool.ExecContext(e.ctx, `INSERT INTO core.matters (id, created_at, updated_at, created_by, number, name, practice_area_id, status, stage, case_number, court, client_position,
-opened_on, closed_on, close_reason, statute_of_limitations, billing_type, flat_fee_cents, matter_rate_cents, responsible_attorney_id)
-VALUES ($1,$2,$2,$3,$4,$5,$6,'open','','','','','','','','','hourly',0,0,$7)`, string(m.ID), at, string(e.admin.UserID), m.Number, m.Name, string(area), string(e.attorney.UserID)); err != nil {
 		e.t.Fatal(err)
 	}
 	return m

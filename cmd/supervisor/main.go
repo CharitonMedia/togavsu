@@ -139,8 +139,9 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Client:           supervisor.DockerSocketClient(cfg.DockerSocket),
 		Network:          cfg.DockerNetwork,
 		Env:              supervisor.CoreEnv(),
-		Binds:            supervisor.CoreBinds(cfg.AppSecretsVolume),
+		Binds:            supervisor.CoreBinds(cfg.AppSecretsVolume, cfg.CoreDataVolume),
 		AppSecretsVolume: cfg.AppSecretsVolume,
+		CoreDataVolume:   cfg.CoreDataVolume,
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {

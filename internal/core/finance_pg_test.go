@@ -218,7 +218,7 @@ func appRoleDSN(t *testing.T) string {
 
 func newFin(t *testing.T, cfg ...func(*Config)) *fin {
 	t.Helper()
-	c := Config{DatabaseURL: appRoleDSN(t), Key: testKey, Domain: "firm.example", MailEvery: -1}
+	c := Config{DatabaseURL: appRoleDSN(t), Key: testKey, Domain: "firm.example", MailEvery: -1, DataDir: t.TempDir()}
 	for _, f := range cfg {
 		f(&c)
 	}

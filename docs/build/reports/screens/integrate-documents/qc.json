@@ -1,0 +1,143 @@
+{
+ "editor_dist": true,
+ "pages": [
+  {
+   "name": "01-calendar-week",
+   "status": 200,
+   "landed": "/calendar",
+   "title": "Calendar · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "02-calendar-deadlines",
+   "status": 200,
+   "landed": "/calendar/deadlines",
+   "title": "Deadlines · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "03-calendar-deadline",
+   "status": 200,
+   "landed": "/calendar/deadlines/01a1cd2a-8bd0-7856-80a6-82697572e659",
+   "title": "Answer due · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "04-calendar-event",
+   "status": 200,
+   "landed": "/calendar/events/01a1cd2a-8bdc-7b5f-9a50-a56540708974",
+   "title": "Hearing · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "05-calendar-available-dates",
+   "status": 200,
+   "landed": "/calendar/available-dates",
+   "title": "Available dates · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "06-calendar-feeds",
+   "status": 200,
+   "landed": "/calendar/feeds",
+   "title": "Calendar feeds · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "07-matter-files-tab",
+   "status": 200,
+   "landed": "/practice/matters/01a1cd2a-8bae-7f65-8dca-940637c760a2/files",
+   "title": "Files · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "08-files-and-storage",
+   "status": 200,
+   "landed": "/files/admin/storage",
+   "title": "Files and storage · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "09-edit-page",
+   "status": 200,
+   "landed": "/files/01a1cd2a-8c52-7f13-8ced-8af5a855ec6a/edit",
+   "title": "Edit Engagement letter.docx · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "10-edit-page-locked",
+   "status": 200,
+   "landed": "/files/01a1cd2a-8c52-7f13-8ced-8af5a855ec6a/edit",
+   "title": "Edit Engagement letter.docx · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "11-new-pleading",
+   "status": 200,
+   "landed": "/matters/01a1cd2a-8bae-7f65-8dca-940637c760a2/pleadings/new",
+   "title": "New pleading · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "12-doc-tender-review",
+   "status": 200,
+   "landed": "/doc-tender/review",
+   "title": "Doc Tender review queue · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "13-doc-tender-item",
+   "status": 200,
+   "landed": "/doc-tender/review/01a1cd2a-8c32-7661-ad0e-cc976b874cba",
+   "title": "Review: cut-off.pdf · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "14-doc-tender-tab",
+   "status": 200,
+   "landed": "/admin/doc-tender",
+   "title": "Doc Tender · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "15-doc-tender-guide",
+   "status": 200,
+   "landed": "/doc-tender/guide",
+   "title": "Doc Tender guide · Togavsu",
+   "console": [],
+   "failed": []
+  },
+  {
+   "name": "16-walled-deadline-staff",
+   "status": 404,
+   "landed": "/calendar/deadlines/01a1cd2a-8bd7-7007-9f5e-2d8a622ac7b8",
+   "title": "Calendar · Togavsu",
+   "console": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+   ],
+   "failed": []
+  },
+  {
+   "name": "17-signed-out-calendar",
+   "status": 200,
+   "landed": "/login",
+   "title": "Sign in · Togavsu",
+   "console": [],
+   "failed": []
+  }
+ ]
+}

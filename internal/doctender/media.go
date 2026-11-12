@@ -454,8 +454,8 @@ type DocConverter interface {
 	ToMarkdown(ctx context.Context, name string, data []byte) (markdown string, words, pages int, err error)
 }
 
-// WordcraftCLI runs wordcraft-cli convert. It is pending until the editor task ships
-// the binary at the pinned LawCraft commit.
+// WordcraftCLI runs wordcraft-cli convert: the binary the core image builds at the
+// pinned LawCraft commit (core.WordcraftCLI).
 type WordcraftCLI struct {
 	Path string
 }

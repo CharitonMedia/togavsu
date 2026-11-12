@@ -23,21 +23,15 @@
 //
 // Deliberate shortcuts, each with its ceiling, upgrade path and trigger:
 //
-// ponytail: Word-family documents go through WordcraftCLI, which needs the editor
-// task's wordcraft-cli in the core image; until then each such file is an
-// extraction_failed review item and stays available. The independent check reads the
-// document's own counts (DOCX app.xml, ODT meta.xml, DOC SummaryInformation, RTF \info
-// or an in-package read of the RTF text); a document with no count of its own fails
-// its check and goes to review. Ceiling: a DOC saved without SummaryInformation counts
-// is never published as checked. Upgrade: read the DOC's WordDocument text (piece
-// table) in-package. Trigger: the core image ships wordcraft-cli at the pinned LawCraft
-// commit (AC-043-P3), or a firm reports such DOCs in the review queue.
-//
-// ponytail: the core image (platform-owned Dockerfile) does not yet ship tesseract or
-// ffmpeg. Without Tesseract the scanned-page check falls back to the check model's
-// read; without ffmpeg only uncompressed AVI video and WAV audio are read natively and
-// other video is an unsupported_format item. Trigger: the image adds tesseract-ocr and
-// ffmpeg (proposed in the PR).
+// ponytail: Word-family documents go through WordcraftCLI, the wordcraft-cli the core
+// image builds at the pinned LawCraft commit (deploy/core.Dockerfile); a core without it
+// makes each such file an extraction_failed review item that stays available. The
+// independent check reads the document's own counts (DOCX app.xml, ODT meta.xml, DOC
+// SummaryInformation, RTF \info or an in-package read of the RTF text); a document with
+// no count of its own fails its check and goes to review. Ceiling: a DOC saved without
+// SummaryInformation counts is never published as checked. Upgrade: read the DOC's
+// WordDocument text (piece table) in-package. Trigger: a firm reports such DOCs in the
+// review queue.
 //
 // ponytail: a text-layer page's OCR check sends a one-page PDF to the OCR model,
 // because the core has no rasterizer. Ceiling: the OCR model must accept PDF input.
@@ -66,12 +60,6 @@
 // ponytail: the organization-name cut (20 characters, PRD 8.21) and the PDF word-space
 // kern are fixed facts in wire.json, not registry settings. Trigger: an admin asks to
 // change the cut (add doctender.client_name_chars).
-//
-// ponytail: call cost reads ai.model_prices, a shared setting this lane proposes and
-// does not own (internal/settings, the API contract). Until the integration lead
-// registers it every call, step and job costs 0 cents. Upgrade: register the setting
-// (KindJSON, default "{}", AI tab) with parseModelPrices as its check. Trigger:
-// integrate-documents.
 //
 // ponytail: the decode caps (256 MiB of decoded stream or zip entry, 100 million pixels
 // per image and per PDF page's contents, 4 million cells per spreadsheet sheet, 262,144
