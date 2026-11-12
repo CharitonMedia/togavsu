@@ -19,7 +19,7 @@ import (
 
 func TestPendingStaysHonest(t *testing.T) {
 	text := strings.Join(Pending, "\n")
-	for _, needle := range []string{"module include", "application-role SQL", "migration 0001", "practice_records"} {
+	for _, needle := range []string{"module include", "migration 0001", "practice_records", "custom-field-values:bulk"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("pending list lost %q", needle)
 		}
