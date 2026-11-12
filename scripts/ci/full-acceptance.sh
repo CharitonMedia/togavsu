@@ -1,6 +1,6 @@
 #!/bin/sh
 # Full acceptance (release assignment): runs every check behind all 52 PRD 12 criteria
-# and both release gates through scripts/release/full_acceptance.py, then prints its
+# and every release gate through scripts/release/full_acceptance.py, then prints its
 # results. It exits non-zero while any criterion or gate is pending, so a job that runs
 # it never turns unexecuted acceptance into a pass. Needs Docker, the core image's
 # wordcraft-cli, and two Postgres 17 databases (TOGAVSU_TEST_DATABASE_URL and

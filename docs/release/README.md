@@ -101,7 +101,7 @@ The release assignment owns the "Full acceptance" required check, but lanes can'
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
-      - name: Full acceptance (all 52 criteria and both release gates)
+      - name: Full acceptance (all 52 criteria and every release gate)
         run: sh scripts/ci/full-acceptance.sh
       - name: Acceptance results
         if: always()
