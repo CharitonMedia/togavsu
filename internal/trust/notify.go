@@ -524,12 +524,13 @@ func (s *Service) SendNotification(ctx context.Context, who domain.Principal, us
 		return Notification{}, domain.Forbidden("only a module or an admin sends notifications")
 	}
 	kind, title, link = strings.TrimSpace(kind), strings.TrimSpace(title), strings.TrimSpace(link)
+	// The request body is already size-bounded; these are shape rules, not limits.
 	switch {
-	case kind == "" || len(kind) > 64:
-		return Notification{}, domain.Invalid("kind", "kind is required, up to 64 characters")
-	case title == "" || len(title) > 200 || strings.ContainsAny(title, "\r\n"):
-		return Notification{}, domain.Invalid("title", "title is one line, up to 200 characters")
-	case !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || strings.ContainsAny(link, "\\\r\n") || len(link) > 500:
+	case kind == "" || strings.ContainsAny(kind, " \r\n"):
+		return Notification{}, domain.Invalid("kind", "kind is required, one word")
+	case title == "" || strings.ContainsAny(title, "\r\n"):
+		return Notification{}, domain.Invalid("title", "title is one line")
+	case !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || strings.ContainsAny(link, "\\\r\n"):
 		return Notification{}, domain.Invalid("link", "link is a path on this site, such as /m/module-id/page")
 	}
 	u, ok, err := s.activeUser(ctx, user)

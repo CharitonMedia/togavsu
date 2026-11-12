@@ -29,7 +29,7 @@ func (a *App) seatsJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	seats := 0
+	var seats int
 	byRole := map[string]int{}
 	for _, u := range users {
 		if !u.Active {

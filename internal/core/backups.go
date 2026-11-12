@@ -182,7 +182,7 @@ func (b *backups) send(ctx context.Context, method, path, ctype string, body io.
 	if err != nil {
 		return nil, fmt.Errorf("backups: supervisor: %w", err)
 	}
-	if res.StatusCode >= 300 {
+	if res.StatusCode >= http.StatusMultipleChoices {
 		defer res.Body.Close()
 		e := &supError{Status: res.StatusCode}
 		_ = json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(e)
@@ -203,7 +203,7 @@ func fail(w http.ResponseWriter, err error) {
 	switch {
 	case errors.As(err, &se):
 		status, code := se.Status, se.Code
-		if status == http.StatusUnauthorized || status >= 500 {
+		if status == http.StatusUnauthorized || status >= http.StatusInternalServerError {
 			status = http.StatusBadGateway
 		}
 		if status == http.StatusUnprocessableEntity || status == http.StatusBadRequest {

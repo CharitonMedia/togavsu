@@ -266,14 +266,19 @@ type factorBody struct {
 }
 
 func (b factorBody) factor() (identity.Factor, error) {
-	n := 0
+	errFactor := domain.Invalid("factor", "give exactly one of current_password, totp_code, recovery_code or reauthentication_token")
+	var proof string
 	for _, v := range []string{b.Password, b.TOTP, b.Recovery, b.Reauth} {
-		if v != "" {
-			n++
+		if v == "" {
+			continue
 		}
+		if proof != "" {
+			return identity.Factor{}, errFactor
+		}
+		proof = v
 	}
-	if n != 1 {
-		return identity.Factor{}, domain.Invalid("factor", "give exactly one of current_password, totp_code, recovery_code or reauthentication_token")
+	if proof == "" {
+		return identity.Factor{}, errFactor
 	}
 	return identity.Factor{Password: b.Password, TOTPCode: strings.TrimSpace(b.TOTP), Recovery: strings.TrimSpace(b.Recovery), ReauthToken: b.Reauth}, nil
 }
@@ -450,9 +455,8 @@ type resetMailer struct {
 }
 
 func (m resetMailer) SendPasswordReset(email, token string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	err := m.mail.Send(ctx, billing.Message{
+	// smtpMailer bounds the send with mail.smtp_timeout_seconds.
+	err := m.mail.Send(context.Background(), billing.Message{
 		To:      []string{email},
 		Subject: "Reset your Togavsu password",
 		Text: "Someone asked to reset the password for this Togavsu account.\n\n" +

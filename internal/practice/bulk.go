@@ -34,21 +34,22 @@ func (h *Handler) bulkRoutes(mux *http.ServeMux) {
 
 // itemResult records one item's response.
 type itemResult struct {
-	head http.Header
-	code int
-	body bytes.Buffer
+	head  http.Header
+	code  int
+	wrote bool
+	body  bytes.Buffer
 }
 
 func (r *itemResult) Header() http.Header { return r.head }
 func (r *itemResult) Write(b []byte) (int, error) {
-	if r.code == 0 {
-		r.code = http.StatusOK
+	if !r.wrote {
+		r.code, r.wrote = http.StatusOK, true
 	}
 	return r.body.Write(b)
 }
 func (r *itemResult) WriteHeader(code int) {
-	if r.code == 0 {
-		r.code = code
+	if !r.wrote {
+		r.code, r.wrote = code, true
 	}
 }
 
@@ -71,7 +72,7 @@ func (h *Handler) bulk(one http.HandlerFunc) http.HandlerFunc {
 			writeErr(w, domain.Invalid("items", "items needs at least one record"))
 			return
 		}
-		if max := h.Svc.intSetting(r.Context(), "api.bulk_batch_max", 500); len(in.Items) > max {
+		if max := h.Svc.intSetting(r.Context(), "api.bulk_batch_max", len(in.Items)); len(in.Items) > max {
 			writeErr(w, domain.Invalid("items", "batch is larger than api.bulk_batch_max ("+strconv.Itoa(max)+")"))
 			return
 		}
@@ -86,7 +87,7 @@ func (h *Handler) bulk(one http.HandlerFunc) http.HandlerFunc {
 			req.Header.Del("Idempotency-Key")
 			res := &itemResult{head: http.Header{}}
 			one(res, req)
-			if res.code < 200 || res.code > 299 {
+			if res.code < http.StatusOK || res.code >= http.StatusMultipleChoices {
 				failed = itemErr(i, res)
 				break
 			}
@@ -105,7 +106,7 @@ func itemErr(i int, res *itemResult) error {
 	var api domain.APIError
 	if err := json.Unmarshal(res.body.Bytes(), &api); err != nil || api.Code == "" {
 		api = domain.APIError{Code: domain.CodeValidation, Message: http.StatusText(res.code)}
-		if res.code >= 500 {
+		if res.code >= http.StatusInternalServerError {
 			api.Code = "internal"
 		}
 	}

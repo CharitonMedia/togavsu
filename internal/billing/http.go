@@ -1042,7 +1042,7 @@ func (h *Handler) listFeeAgreements(w http.ResponseWriter, r *http.Request, p do
 func (h *Handler) createFeeAgreement(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	var body feeAgreementBody
 	h.write(w, r, p, &body, func() (int, any, error) {
-		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, []FeeAgreementInput{body.input()})
+		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, []FeeAgreementInput{body.input()}, false)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -1059,7 +1059,7 @@ func (h *Handler) bulkFeeAgreements(w http.ResponseWriter, r *http.Request, p do
 		for _, b := range body.Items {
 			in = append(in, b.input())
 		}
-		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, in)
+		rows, err := h.Svc.CreateFeeAgreements(r.Context(), p, in, true)
 		return http.StatusCreated, map[string]any{"data": anys(rows, feeAgreementView)}, err
 	})
 }

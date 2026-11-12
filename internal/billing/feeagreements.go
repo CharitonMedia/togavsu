@@ -121,7 +121,7 @@ func (s *Service) feeAgreement(ctx context.Context, id domain.ID) (FeeAgreement,
 
 // CreateFeeAgreements adds agreements in one transaction (one for a single create, the
 // whole batch for :bulk). Every item is checked first; any failure writes none.
-func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, items []FeeAgreementInput) ([]FeeAgreement, error) {
+func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, items []FeeAgreementInput, batch bool) ([]FeeAgreement, error) {
 	if len(items) == 0 {
 		return nil, domain.Invalid("items", "needs at least one agreement")
 	}
@@ -133,14 +133,14 @@ func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, i
 		active := map[domain.ID]bool{}
 		for i, in := range items {
 			if in.MatterID == nil || in.MatterID.IsZero() || in.FeeType == nil || in.Services == nil {
-				return itemInvalid(len(items), i, domain.Invalid("matter_id", "matter_id, fee_type and services_description are required"))
+				return itemInvalid(batch, i, domain.Invalid("matter_id", "matter_id, fee_type and services_description are required"))
 			}
 			row := FeeAgreement{MatterID: *in.MatterID, Status: "draft"}
 			if err := s.feeAccess(t.ctx, p, row.MatterID, domain.ActionWrite); err != nil {
-				return itemInvalid(len(items), i, err)
+				return itemInvalid(batch, i, err)
 			}
 			if err := s.applyFeeAgreement(t.ctx, p, &row, in); err != nil {
-				return itemInvalid(len(items), i, err)
+				return itemInvalid(batch, i, err)
 			}
 			if row.Status != "void" {
 				busy, err := s.activeFeeAgreement(t.ctx, row.MatterID, "")
@@ -148,7 +148,7 @@ func (s *Service) CreateFeeAgreements(ctx context.Context, p domain.Principal, i
 					return err
 				}
 				if busy || active[row.MatterID] {
-					return itemInvalid(len(items), i, domain.Conflict("the matter already has an active fee agreement; void it first"))
+					return itemInvalid(batch, i, domain.Conflict("the matter already has an active fee agreement; void it first"))
 				}
 				active[row.MatterID] = true
 			}
@@ -301,10 +301,10 @@ func (s *Service) applyFeeAgreement(ctx context.Context, p domain.Principal, row
 	return nil
 }
 
-// itemInvalid names the failing item of a batch of more than one.
-func itemInvalid(n, i int, err error) error {
+// itemInvalid names the failing item of a :bulk batch.
+func itemInvalid(batch bool, i int, err error) error {
 	var api *domain.APIError
-	if n < 2 || !errors.As(err, &api) {
+	if !batch || !errors.As(err, &api) {
 		return err
 	}
 	out := *api
