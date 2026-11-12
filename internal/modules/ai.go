@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/doctender"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -94,18 +95,28 @@ const aiWriterRole = "togavsu_ai_log_writer"
 // installAILog makes the AI call log append-only for the role that writes module calls:
 // insert and select, no update, delete or truncate (docs/architecture/contracts.md).
 func (s *Service) installAILog(ctx context.Context) error {
-	for _, st := range []string{
+	// A sealed log (db.SealLedgers) is owned by db.LedgerOwner, which already gave the
+	// writer role SELECT and INSERT; the application role only joins the writer.
+	owns, err := db.OwnsTable(ctx, s.d.DB, "ai_call_log")
+	if err != nil {
+		return err
+	}
+	stmts := []string{
 		`DO $body$ BEGIN
 		  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '` + aiWriterRole + `') THEN
 		    CREATE ROLE ` + aiWriterRole + ` NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE;
 		  END IF;
 		END $body$`,
 		`GRANT ` + aiWriterRole + ` TO CURRENT_USER`,
-		`GRANT USAGE ON SCHEMA core TO ` + aiWriterRole,
-		`GRANT SELECT, INSERT ON TABLE core.ai_call_log TO ` + aiWriterRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER ON TABLE core.ai_call_log FROM ` + aiWriterRole,
-		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.ai_call_log FROM PUBLIC`,
-	} {
+	}
+	if owns {
+		stmts = append(stmts,
+			`GRANT USAGE ON SCHEMA core TO `+aiWriterRole,
+			`GRANT SELECT, INSERT ON TABLE core.ai_call_log TO `+aiWriterRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE, TRIGGER ON TABLE core.ai_call_log FROM `+aiWriterRole,
+			`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.ai_call_log FROM PUBLIC`)
+	}
+	for _, st := range stmts {
 		if _, err := s.d.DB.ExecContext(ctx, st); err != nil {
 			return err
 		}

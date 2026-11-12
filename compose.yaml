@@ -44,6 +44,28 @@ services:
         condition: service_healthy
     restart: "no"
 
+  migrate:
+    # Applies the core migrations as togavsu_app and seals the append-only tables to the
+    # NOLOGIN togavsu_ledger_owner as the superuser (core migrate, core.MigrateSealed).
+    # Only this one-shot is handed the superuser URL; the serving core logs in as togavsu_app.
+    # Same build as core, so a first up builds the image once and both use it.
+    build:
+      context: .
+      dockerfile: deploy/core.Dockerfile
+    image: togavsu-core:local
+    user: "65532:65532"
+    command: ["migrate"]
+    environment:
+      TOGAVSU_DOMAIN: ${TOGAVSU_DOMAIN:-localhost}
+    volumes:
+      - appsecrets:/appsecrets:ro
+    depends_on:
+      dbinit:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   caddy:
     # ponytail: root so the alpine entrypoint can read the upstream file and write certificates, ceiling: root on the edge container, upgrade: a non-root entrypoint image, trigger: phase 7 release hardening.
     image: caddy:2-alpine
@@ -126,7 +148,7 @@ services:
       # supervisor mounts the same volume on a replacement core.
       - core_data:/var/lib/togavsu-core
     depends_on:
-      dbinit:
+      migrate:
         condition: service_completed_successfully
       postgres:
         condition: service_healthy

@@ -1,7 +1,7 @@
 #!/bin/sh
 # AC-001 on a clean Docker host: one Compose up with no edits reaches first-run setup.
 # Then: setup with two-factor, a matter write with its audit rows, proof that the core's
-# database role cannot change audit_log or trust_ledger, and a core restart that keeps the session and
+# database role cannot change, grant back, alter or drop the append-only tables, and a core restart that keeps the session and
 # the matter. Also: dbinit hands a superuser-owned core schema from an older volume to
 # togavsu_app. Synthetic data only. The project and its volumes are removed at the end.
 set -eu
@@ -15,7 +15,7 @@ cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
     compose ps -a || true
-    compose logs --no-color --tail 80 core dbinit postgres || true
+    compose logs --no-color --tail 80 core migrate dbinit postgres || true
   fi
   compose down -v --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
@@ -49,12 +49,28 @@ if [ "$super" != "f" ]; then
   echo "core role togavsu_app is missing or a superuser: '$super'" >&2
   exit 1
 fi
-owner=$(psql_as "SELECT tableowner FROM pg_tables WHERE schemaname = 'core' AND tablename = 'audit_log'")
-if [ "$owner" != "togavsu_app" ]; then
-  echo "audit_log owner is '$owner', want togavsu_app" >&2
-  exit 1
-fi
 append_only() {
+  # core migrate (compose service migrate) hands schema core and the append-only tables
+  # to the NOLOGIN togavsu_ledger_owner; togavsu_app keeps SELECT and INSERT only.
+  for t in audit_log trust_ledger events ai_call_log file_versions file_renditions; do
+    owner=$(psql_as "SELECT tableowner FROM pg_tables WHERE schemaname = 'core' AND tablename = '$t'")
+    if [ "$owner" != "togavsu_ledger_owner" ]; then
+      echo "$t owner is '$owner', want togavsu_ledger_owner" >&2
+      return 1
+    fi
+    for stmt in "UPDATE core.$t SET created_by = created_by" "DELETE FROM core.$t" "TRUNCATE core.$t" \
+      "GRANT UPDATE, DELETE, TRUNCATE ON core.$t TO togavsu_app; UPDATE core.$t SET created_by = created_by" \
+      "ALTER TABLE core.$t ADD COLUMN tampered text" "DROP TABLE core.$t"; do
+      if psql_as "SET ROLE togavsu_app; $stmt" >/dev/null 2>&1; then
+        echo "core role ran: $stmt" >&2
+        return 1
+      fi
+    done
+  done
+  if psql_as "SET ROLE togavsu_app; SET ROLE togavsu_ledger_owner" >/dev/null 2>&1; then
+    echo "core role can act as togavsu_ledger_owner" >&2
+    return 1
+  fi
   rows=$(psql_as "SELECT count(*) FROM core.audit_log")
   for stmt in "UPDATE core.audit_log SET new_value = 'tampered'" "DELETE FROM core.audit_log" "TRUNCATE core.audit_log"; do
     if psql_as "SET ROLE togavsu_app; $stmt" >/dev/null 2>&1; then
@@ -104,6 +120,8 @@ if [ "$schema_owner" != "togavsu_app" ] || [ "$left" != "0" ]; then
   exit 1
 fi
 echo "dbinit handed a superuser-owned core schema to togavsu_app"
+# core migrate seals the schema and the append-only tables again before the core starts.
+compose run --rm --no-deps migrate >/dev/null
 compose start core >/dev/null
 wait_health
 append_only

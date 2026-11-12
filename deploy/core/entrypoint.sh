@@ -67,4 +67,10 @@ export TOGAVSU_DATABASE_URL="$db"
 export TOGAVSU_ENCRYPTION_KEY="$key"
 export TOGAVSU_DOMAIN="$domain"
 export TOGAVSU_SUPERVISOR_SECRET="$token"
+# "core migrate" seals the append-only tables with the superuser (core.MigrateSealed).
+# The serving core never gets this value.
+if [ "${1:-}" = "migrate" ] && [ -r "$secrets/admin_database_url" ]; then
+  TOGAVSU_ADMIN_DATABASE_URL=$(read_trim "$secrets/admin_database_url")
+  export TOGAVSU_ADMIN_DATABASE_URL
+fi
 exec "$bin" "$@"

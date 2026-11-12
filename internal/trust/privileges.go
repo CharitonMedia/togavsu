@@ -3,6 +3,8 @@ package trust
 import (
 	"context"
 	"database/sql"
+
+	"github.com/CharitonMedia/togavsu/internal/db"
 )
 
 // InstallPrivileges makes trust_ledger append-only at the database (AC-006). It revokes
@@ -13,12 +15,14 @@ import (
 // row. No trigger is added (PRD section 6). It is safe to run again; the core runs it at
 // start next to audit.InstallPrivileges.
 //
-// ponytail: ceiling: the owning role keeps grant options and can GRANT UPDATE back to
-// itself, ALTER the CHECK or DROP the table; a superuser bypasses privileges. Compose runs
-// the core as the non-superuser togavsu_app. Upgrade path: a migration role owns
-// trust_ledger and the application role is a non-owner with SELECT and INSERT. Trigger:
-// the same change for audit_log (PONYTAIL-DEBT.md, contracts item 4).
+// Once core migrate has sealed the ledger (db.SealLedgers), db.LedgerOwner owns it, the
+// application role holds only SELECT, INSERT and REFERENCES (id), and this is a no-op.
 func InstallPrivileges(ctx context.Context, pool *sql.DB) error {
+	// A sealed ledger (db.SealLedgers) is owned by db.LedgerOwner and the application
+	// role already holds only SELECT and INSERT; foreign-key checks run as that owner.
+	if owns, err := db.OwnsTable(ctx, pool, "trust_ledger"); err != nil || !owns {
+		return err
+	}
 	for _, stmt := range []string{
 		`REVOKE UPDATE, DELETE, TRUNCATE ON TABLE core.trust_ledger FROM PUBLIC, CURRENT_USER`,
 		`GRANT UPDATE (row_guard) ON TABLE core.trust_ledger TO CURRENT_USER`,

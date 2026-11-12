@@ -2,6 +2,8 @@
 //
 //	core          migrate, seed reference rows, and serve HTTP on :8080
 //	core check    validate the four bootstrap values and exit
+//	core migrate  apply migrations and seal the append-only tables, then exit
+//	              (TOGAVSU_ADMIN_DATABASE_URL is a superuser; see core.MigrateSealed)
 package main
 
 import (
@@ -29,7 +31,26 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		os.Exit(migrate(ctx, os.Stdout, os.Stderr))
+	}
 	os.Exit(serve(ctx, os.Stdout, os.Stderr))
+}
+
+// migrate prints migrated=true or migrated=false, which the supervisor's update reads.
+func migrate(ctx context.Context, stdout, stderr io.Writer) int {
+	cfg, err := bootstrap.Load()
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	ran, err := core.MigrateSealed(ctx, cfg.DatabaseURL, bootstrap.AdminDatabaseURL())
+	fmt.Fprintf(stdout, "migrated=%t\n", ran)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	return 0
 }
 
 func serve(ctx context.Context, stdout, stderr io.Writer) int {
