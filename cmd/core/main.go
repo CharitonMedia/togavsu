@@ -2,6 +2,8 @@
 //
 //	core          migrate, seed reference rows, and serve HTTP on :8080
 //	core check    validate the four bootstrap values and exit
+//	core healthcheck  exit 0 when this container's core answers /healthz (the image HEALTHCHECK,
+//	              which the supervisor waits on after it restarts the core for a restore or update)
 package main
 
 import (
@@ -27,9 +29,28 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "check" {
 		os.Exit(bootstrap.Run(os.Args, os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheck("http://127.0.0.1"+listen+"/healthz", os.Stderr))
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	os.Exit(serve(ctx, os.Stdout, os.Stderr))
+}
+
+// healthcheck is 0 when url answers 200 within three seconds.
+func healthcheck(url string, stderr io.Writer) int {
+	client := &http.Client{Timeout: 3 * time.Second}
+	res, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		fmt.Fprintln(stderr, "health "+res.Status)
+		return 1
+	}
+	return 0
 }
 
 func serve(ctx context.Context, stdout, stderr io.Writer) int {

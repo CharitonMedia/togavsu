@@ -59729,6 +59729,16 @@
           },
           {
             "$ref": "#/components/parameters/csrfToken"
+          },
+          {
+            "name": "backup_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}(\\.tgbk)?$"
+            },
+            "description": "The archive's file name, with or without .tgbk. Its encrypted manifest names this id. An archive this installation still holds byte for byte is restored by its own id without it; any other needs it."
           }
         ],
         "responses": {

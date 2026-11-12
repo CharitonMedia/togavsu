@@ -742,10 +742,17 @@ func (b *backups) testDestination(w http.ResponseWriter, r *http.Request) {
 var uploadToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // upload keeps an archive the admin holds (for one downloaded earlier) on
-// the core volume until a restore takes it.
+// the core volume until a restore takes it. backup_id, the archive's file
+// name without .tgbk, is kept beside it: the archive's encrypted manifest
+// names that id, and the supervisor checks it.
 func (b *backups) upload(w http.ResponseWriter, r *http.Request) {
 	p, ok := b.admin(w, r)
 	if !ok {
+		return
+	}
+	named := strings.TrimSuffix(r.URL.Query().Get("backup_id"), ".tgbk")
+	if named != "" && !backupID.MatchString(named) {
+		writeErr(w, domain.Invalid("backup_id", "backup_id is the archive's file name, such as 20261112T090000Z-0123456789abcdef"))
 		return
 	}
 	if err := os.MkdirAll(b.uploads, 0o700); err != nil {
@@ -782,12 +789,19 @@ func (b *backups) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sum := hex.EncodeToString(h.Sum(nil))
-	id, err := domain.NewID()
+	if named != "" {
+		err = os.WriteFile(filepath.Join(b.uploads, token+".id"), []byte(named), 0o600)
+	}
+	id, nerr := domain.NewID()
+	if err == nil {
+		err = nerr
+	}
 	if err == nil {
 		err = b.record(r.Context(), p, "backup_upload", string(id), "uploaded", sum)
 	}
 	if err != nil {
 		_ = os.Remove(path)
+		_ = os.Remove(filepath.Join(b.uploads, token+".id"))
 		fail(w, err)
 		return
 	}
@@ -879,9 +893,10 @@ func (b *backups) createRestore(w http.ResponseWriter, r *http.Request) {
 			fail(w, err)
 			return
 		}
-		rec, err = b.restoreUpload(r.Context(), path)
+		rec, err = b.restoreUpload(r.Context(), in.UploadToken)
 		if err == nil {
 			_ = os.Remove(path)
+			_ = os.Remove(filepath.Join(b.uploads, in.UploadToken+".id"))
 		}
 	}
 	if err != nil {
@@ -891,26 +906,34 @@ func (b *backups) createRestore(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, restoreJSON(rec, string(p.UserID)))
 }
 
-// importID is a fresh supervisor backup id for an uploaded archive, which the
-// supervisor never writes over an existing one.
-func importID(now time.Time) (string, error) {
-	var raw [8]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		return "", err
-	}
-	return now.UTC().Format("20060102T150405Z") + "-" + hex.EncodeToString(raw[:]), nil
-}
-
-// restoreUpload streams an upload and its checksum sidecar to the
-// supervisor's restore upload, which checks, decrypts and admits it.
-func (b *backups) restoreUpload(ctx context.Context, path string) (supRestore, error) {
+// restoreUpload restores an uploaded archive. One the supervisor already
+// holds byte for byte (the admin downloaded it from this installation) is
+// restored by its id. Any other is sent with its checksum sidecar, under the
+// backup id it was uploaded with, to the supervisor's restore upload, which
+// checks, decrypts and admits it.
+func (b *backups) restoreUpload(ctx context.Context, token string) (supRestore, error) {
+	path := filepath.Join(b.uploads, token+".tgbk")
 	sum, err := fileSHA(path)
 	if err != nil {
 		return supRestore{}, err
 	}
-	id, err := importID(b.now())
-	if err != nil {
+	var held struct {
+		Backups []supBackup `json:"backups"`
+	}
+	if err := b.call(ctx, http.MethodGet, "/v1/backups", "", nil, &held); err != nil {
 		return supRestore{}, err
+	}
+	var rec supRestore
+	for _, m := range held.Backups {
+		if m.SHA256 == sum && !m.Deleting {
+			err := b.call(ctx, http.MethodPost, "/v1/restores", "application/json", jsonBody(map[string]string{"backup_id": m.ID}), &rec)
+			return rec, err
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(b.uploads, token+".id"))
+	id := strings.TrimSpace(string(raw))
+	if err != nil || !backupID.MatchString(id) {
+		return supRestore{}, domain.Invalid("backup_id", "this installation does not hold the archive; upload it again with backup_id set to its file name")
 	}
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
@@ -939,7 +962,6 @@ func (b *backups) restoreUpload(ctx context.Context, path string) (supRestore, e
 		}()
 		pw.CloseWithError(err)
 	}()
-	var rec supRestore
 	err = b.call(ctx, http.MethodPost, "/v1/restores/upload", mw.FormDataContentType(), pr, &rec)
 	_ = pr.Close()
 	return rec, err

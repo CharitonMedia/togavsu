@@ -19,6 +19,9 @@ import (
 
 const supSecret = "synthetic-supervisor-secret"
 
+// heldSum is the checksum of the archive the fake supervisor holds: "HELD".
+var heldSum = func() string { s := sha256.Sum256([]byte("HELD")); return hex.EncodeToString(s[:]) }()
+
 // fakeSupervisor answers the supervisor routes the core fronts and records
 // what reached it.
 type fakeSupervisor struct {
@@ -34,7 +37,7 @@ type fakeSupervisor struct {
 func (f *fakeSupervisor) handler(t *testing.T) http.Handler {
 	mux := http.NewServeMux()
 	meta := map[string]any{"id": "20261112T090000Z-0123456789abcdef", "created_at": "2026-11-12T09:00:00Z", "reason": "manual",
-		"sha256": strings.Repeat("ab", 32), "bytes": 7, "files": true}
+		"sha256": heldSum, "bytes": 4, "files": true}
 	mux.HandleFunc("POST /v1/backups", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -286,19 +289,34 @@ func TestBackupsAreAdminOnlyAuditedAndOnMCP(t *testing.T) {
 	if up.code != http.StatusBadRequest {
 		t.Fatalf("empty upload: %d", up.code)
 	}
-	req, _ := http.NewRequest("POST", srv.URL+"/api/v1/backup-uploads", strings.NewReader("ARCHIVE"))
-	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("X-CSRF-Token", admin.csrf)
-	res, err := admin.http.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	uploadArchive := func(body, query string) (int, map[string]any) {
+		req, _ := http.NewRequest("POST", srv.URL+"/api/v1/backup-uploads"+query, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("X-CSRF-Token", admin.csrf)
+		res, err := admin.http.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&out)
+		return res.StatusCode, out
 	}
-	var upload map[string]any
-	_ = json.NewDecoder(res.Body).Decode(&upload)
-	res.Body.Close()
+	if code, _ := uploadArchive("ARCHIVE", "?backup_id=../../etc"); code != http.StatusBadRequest {
+		t.Fatalf("bad backup_id: %d", code)
+	}
+	code, upload := uploadArchive("ARCHIVE", "")
 	sum := sha256.Sum256([]byte("ARCHIVE"))
-	if res.StatusCode != http.StatusCreated || upload["checksum"] != hex.EncodeToString(sum[:]) {
-		t.Fatalf("upload %d %v", res.StatusCode, upload)
+	if code != http.StatusCreated || upload["checksum"] != hex.EncodeToString(sum[:]) {
+		t.Fatalf("upload %d %v", code, upload)
+	}
+	// Neither held by the supervisor nor named: its manifest id is unknown.
+	if r := admin.do("POST", "/api/v1/restores", map[string]any{"upload_token": upload["upload_token"], "passphrase": "synthetic-backup-passphrase"}); r.code != http.StatusBadRequest || sup.uploadBody != "" {
+		t.Fatalf("unnamed foreign archive: %d %s", r.code, r.body)
+	}
+	code, upload = uploadArchive("ARCHIVE", "?backup_id=20261101T000000Z-00000000000000cc.tgbk")
+	if code != http.StatusCreated {
+		t.Fatalf("named upload %d", code)
 	}
 	token := upload["upload_token"].(string)
 	if r := admin.do("POST", "/api/v1/restores", map[string]any{"upload_token": token, "passphrase": "wrong-passphrase"}); r.code != http.StatusUnprocessableEntity {
@@ -312,12 +330,22 @@ func TestBackupsAreAdminOnlyAuditedAndOnMCP(t *testing.T) {
 	}
 	started := admin.must(http.StatusCreated, "POST", "/api/v1/restores", map[string]any{"upload_token": token, "passphrase": "synthetic-backup-passphrase"})
 	if started.json["status"] != "running" || started.json["interrupts_users"] != true || sup.uploadBody != "ARCHIVE" || sup.uploadSum != hex.EncodeToString(sum[:]) ||
-		!backupID.MatchString(strings.TrimSuffix(sup.uploadName, ".tgbk")) {
+		sup.uploadName != "20261101T000000Z-00000000000000cc.tgbk" {
 		t.Fatalf("restore = %s; supervisor got %q %q %q", started.body, sup.uploadName, sup.uploadBody, sup.uploadSum)
 	}
 	if r := admin.do("POST", "/api/v1/restores", map[string]any{"upload_token": token, "passphrase": "synthetic-backup-passphrase"}); r.code != http.StatusUnprocessableEntity {
 		t.Fatalf("a consumed upload restored again: %d", r.code)
 	}
+	// An archive downloaded from this installation is restored by its own id.
+	code, upload = uploadArchive("HELD", "")
+	if code != http.StatusCreated {
+		t.Fatalf("held upload %d", code)
+	}
+	admin.must(http.StatusCreated, "POST", "/api/v1/restores", map[string]any{"upload_token": upload["upload_token"], "passphrase": "synthetic-backup-passphrase"})
+	if sup.restoredFrom != id {
+		t.Fatalf("held archive restored as %q", sup.restoredFrom)
+	}
+	sup.restoredFrom = ""
 	admin.must(http.StatusCreated, "POST", "/api/v1/restores", map[string]any{"backup_id": id, "passphrase": "synthetic-backup-passphrase"})
 	if sup.restoredFrom != id {
 		t.Fatalf("supervisor restored %q", sup.restoredFrom)
@@ -355,7 +383,7 @@ func TestBackupsAreAdminOnlyAuditedAndOnMCP(t *testing.T) {
 	// The supervisor's file-bytes route: an export with its trailer, taken back whole.
 	exp, _ := http.NewRequest("GET", srv.URL+fileBytesPath, nil)
 	exp.Header.Set("Authorization", "Bearer "+supSecret)
-	res, err = http.DefaultClient.Do(exp)
+	res, err := http.DefaultClient.Do(exp)
 	if err != nil {
 		t.Fatal(err)
 	}

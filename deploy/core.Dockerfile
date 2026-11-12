@@ -58,4 +58,6 @@ RUN chmod 755 /usr/local/bin/core-entrypoint
 LABEL togavsu.role=core
 USER 65532:65532
 EXPOSE 8080
+# The supervisor waits for this after it restarts the core for a restore or an update.
+HEALTHCHECK --interval=5s --timeout=4s --start-period=10s --retries=6 CMD ["/usr/local/bin/core", "healthcheck"]
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/core-entrypoint"]
