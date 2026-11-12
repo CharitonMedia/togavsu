@@ -50,8 +50,11 @@ PROTECTED = {
     "scripts/build_controller.py", "scripts/test_build_controller.py", "scripts/cursor_agents.py",
     "scripts/check_review.py", "scripts/check_setup.py", "scripts/test_review_gate.py",
     "docs/build/controller-plan.json", "docs/build/tasks.json", "docs/build/review.schema.json",
-    "docs/build/prompts/codex-review.md",
-}
+    "docs/build/prompts/codex-review.md", "togavsu-initial-modules-prd.md", "docs/modules/CORE-CHANGES.md",
+} | {"docs/modules/" + _m + "/SPEC.md" for _m in ("documents", "email", "client-portal", "lawpay-docuseal", "quickbooks")}
+MODULES_PRD = ("This is an initial modules task: also read the full togavsu-initial-modules-prd.md, the approved scope for "
+               "the initial modules (core PRD section 9.10), and the docs/modules files your assignment names. That PRD "
+               "outranks docs/modules/CORE-CHANGES.md, which outranks each SPEC.md. ")
 
 
 class ReviewPending(Exception):
@@ -1465,7 +1468,8 @@ class Controller:
         record = self.tasks.setdefault(task, {"agent_id": "bc-" + str(uuid.uuid4()), "starting_sha": main, "repair_count": 0})
         self.save()
         prompt = ("Implement Togavsu assignment " + task + ". Read AGENTS.md, the full togavsu-core-prd.md, "
-            "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. Your exact approved assignment follows. "
+            "docs/build/WORKFLOW.md and docs/build/AUTOMATION.md. "
+            + (MODULES_PRD if spec.get("module_prd_sections") else "") + "Your exact approved assignment follows. "
             "Work in your isolated hosted workspace (a Cursor-hosted VM or a GitHub-hosted lane runner) on your own branch using synthetic data only. "
             "Implement working behavior with meaningful success/failure tests and honest pending criteria. "
             "Do not merge, push main, force-push or alter controller/gates/acceptance criteria. "

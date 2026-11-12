@@ -75,6 +75,8 @@ The Run assignment step gives Claude Code the CLAUDE_CODE_OAUTH_TOKEN secret, wh
 
 Tasks listed in the plan's `held_tasks` never launch, even when their dependencies are merged. Releasing a hold is a reviewed plan change. Patrick released calendar and files on 2026-11-10; no task is held now.
 
+The initial modules (togavsu-initial-modules-prd.md, approved by Patrick on 2026-11-12) run after the core release through dependencies alone: module-core depends on release, so it launches only once the controller has verified the release PR's merge on main, which needs release.json to pass all 52 criteria and the Full acceptance check. The five module lanes depend on module-core and run in one wave on disjoint paths (module-core gives up the module suite files through excluded_paths, and no lane edits go.mod; the email libraries are pinned up front); max_implementation_agents still caps them at four at once. integrate-modules depends on the five and release-modules on integrate-modules. Module tasks carry module_prd_sections, and the controller and the review gate then read the modules PRD. scripts/check_setup.py checks that controller-plan.json and tasks.json hold the same assignments, that same-wave lanes own disjoint paths and that every module_prd_sections entry exists.
+
 ## Stall alerts
 With `alert_email` in the plan, the controller emails that address instead of retrying a stopped or repeating step silently. Mail goes over SMTP with SSL using the SMTP_* settings above.
 
