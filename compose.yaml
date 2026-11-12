@@ -48,7 +48,11 @@ services:
     # Applies the core migrations as togavsu_app and seals the append-only tables to the
     # NOLOGIN togavsu_ledger_owner as the superuser (core migrate, core.MigrateSealed).
     # Only this one-shot is handed the superuser URL; the serving core logs in as togavsu_app.
-    # Same build as core, so a first up builds the image once and both use it.
+    # Same build as core, so a first up builds the image once and both use it. The label
+    # replaces the image's togavsu.role=core, so the supervisor never takes this exited
+    # one-shot for the core container.
+    labels:
+      togavsu.role: migrate
     build:
       context: .
       dockerfile: deploy/core.Dockerfile
