@@ -6,4 +6,6 @@ var (
 	zero = int(0)
 	one  = zero + 1
 	two  = one + one
+	// hundred is cents in a dollar (the AI call log's cost units).
+	hundred = (two + two + one) * two * (two + two + one) * two
 )

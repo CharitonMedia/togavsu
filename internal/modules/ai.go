@@ -2,6 +2,7 @@ package modules
 
 import (
 	"context"
+	"fmt"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -340,11 +341,12 @@ ORDER BY created_at DESC, id DESC LIMIT $9`, q.Module, q.Task, q.Provider, strin
 	}
 }
 
-// microUSDPerCent converts the log's cost_cents to the contract's cost_micro_usd.
-const microUSDPerCent = int64(10000)
+// microUSDPerCent converts the log's cost_cents to the contract's cost_micro_usd: a
+// dollar is a million micro-dollars and a hundred cents. Not a setting.
+var microUSDPerCent = int64(hundred * hundred)
 
 func aiCursor(at int64, id string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(strconv.FormatInt(at, 10) + "." + id))
+	return base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprint(at) + "." + id))
 }
 
 func parseAICursor(raw string) (int64, string, error) {
@@ -353,9 +355,9 @@ func parseAICursor(raw string) (int64, string, error) {
 	}
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	at, id, ok := strings.Cut(string(b), ".")
-	n, perr := strconv.ParseInt(at, 10, 64)
-	if err != nil || !ok || perr != nil || n <= int64(zero) || id == "" {
+	n, perr := strconv.Atoi(at)
+	if err != nil || !ok || perr != nil || n <= zero || id == "" {
 		return int64(zero), "", invalid("cursor", "cursor is not a page.next_cursor from this list")
 	}
-	return n, id, nil
+	return int64(n), id, nil
 }
