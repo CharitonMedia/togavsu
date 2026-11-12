@@ -164,6 +164,18 @@ class Mailer:
             raise RuntimeError("Mail server refused " + ", ".join(refused))
 
 
+NOTE_LIMIT = 4000  # Characters of one operator note.
+
+
+def with_operator_notes(record, prompt):
+    notes = record.get("operator_notes") or []
+    if not notes:
+        return prompt
+    return ("Integration lead instructions for this fix pass (approved by Patrick). They are part of this "
+            "assignment: do them within its owned paths and PRD scope, with regression tests, alongside the findings "
+            "below. They do not relax any gate.\n" + "\n".join("- " + n["text"] for n in notes) + "\n\n" + prompt)
+
+
 STAGE_HEADING = re.compile(r"^##\s+Stage report\s*$", re.I | re.M)
 STAGE_LIMIT = 8000  # Characters of a PR's Stage report section carried into the email and the issue comment.
 
@@ -849,6 +861,7 @@ class Controller:
             record["waiting"] = "Correction queued: all Cursor worker slots occupied"
             return
         self.occupied += 1  # Reserve before POST, including uncertain delivery outcomes.
+        prompt = with_operator_notes(record, prompt)
         if self.dry:
             self.effect("followup " + task + " " + key, lambda: None)
             return
@@ -1784,6 +1797,38 @@ class Controller:
         finally:
             self.save()
 
+    def note(self, task, operator, text):
+        # Operator path: instructions the integration lead adds to every later fix pass for TASK. A note
+        # is guidance inside the assignment; it never changes owned paths, gates, budgets or halts.
+        record = self.tasks.get(task)
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited note")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Operator note text is required")
+        if len(text) > NOTE_LIMIT:
+            raise ValueError("Operator note is longer than " + str(NOTE_LIMIT) + " characters")
+        if not record or record.get("completed"):
+            raise ValueError("Task " + str(task) + " has no unfinished record")
+        if self.dry:
+            print("WOULD add an operator note to " + task, flush=True)
+            return
+        record.setdefault("operator_notes", []).append({"time": now(), "operator": operator, "text": text.strip()})
+        self.event(task, "Operator " + operator + " added instructions for later fix passes")
+        self.save()
+
+    def clear_notes(self, task, operator):
+        record = self.tasks.get(task)
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited note")
+        if not record or not record.get("operator_notes"):
+            raise ValueError("Task " + str(task) + " has no operator notes")
+        if self.dry:
+            print("WOULD clear operator notes on " + task, flush=True)
+            return
+        record.pop("operator_notes")
+        self.event(task, "Operator " + operator + " cleared instructions")
+        self.save()
+
     def resume(self, task, operator):
         # Operator path: after a fix lands, give a stalled assignment one fresh attempt. Halts are not touched.
         record = self.tasks.get(task)
@@ -1879,11 +1924,14 @@ def main():
         help="retire TASK's stopped Cursor record so the next tick launches it as a lane; runs no tick")
     parser.add_argument("--resume", metavar="TASK",
         help="give TASK's repeated-problem, fix-pass-limit, CI-infrastructure or held-merge stall a fresh attempt; runs no tick")
+    parser.add_argument("--note", nargs=2, metavar=("TASK", "TEXT"),
+        help="add instructions to every later fix pass for TASK; runs no tick")
+    parser.add_argument("--clear-notes", metavar="TASK", help="remove TASK's operator notes; runs no tick")
     parser.add_argument("--test-alert", action="store_true", help="email a test alert to the plan's alert_email; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome or --resume")
+    parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome, --resume, --note or --clear-notes")
     args = parser.parse_args()
-    if (args.reconcile_intent or args.rehome or args.resume) and not args.operator:
-        parser.error("--reconcile-intent, --rehome and --resume require --operator")
+    if (args.reconcile_intent or args.rehome or args.resume or args.note or args.clear_notes) and not args.operator:
+        parser.error("--reconcile-intent, --rehome, --resume, --note and --clear-notes require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1911,6 +1959,11 @@ def main():
             controller.rehome(args.rehome, args.operator)
         elif args.resume:
             controller.resume(args.resume, args.operator)
+        elif args.note:
+            task, text = args.note
+            controller.note(task, args.operator, text)
+        elif args.clear_notes:
+            controller.clear_notes(args.clear_notes, args.operator)
         else:
             controller.tick()
 

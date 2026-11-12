@@ -2392,6 +2392,54 @@ class StallAlertTests(unittest.TestCase):
             build_controller.main()
         send.assert_not_called()
 
+    def test_operator_note_leads_every_later_fix_pass_until_cleared(self):
+        with self.at(0):
+            self.controller.note("one", "Integration lead", "Fix the ledger seal")
+        self.assertEqual(self.record["operator_notes"][0]["operator"], "Integration lead")
+        self.remote.run_status = "ERROR"
+        self.tick(5)
+        text = self.posts()[0][2]["prompt"]["text"]
+        self.assertTrue(text.startswith("Integration lead instructions"))
+        self.assertIn("- Fix the ledger seal", text)
+        with self.at(10):
+            self.controller.clear_notes("one", "Integration lead")
+        self.assertNotIn("operator_notes", self.record)
+        with self.assertRaises(ValueError):
+            self.controller.clear_notes("one", "Integration lead")
+
+    def test_operator_note_needs_operator_text_and_an_open_task(self):
+        for operator, text in (("", "x"), ("Integration lead", " "), ("Integration lead", "x" * 4001)):
+            with self.assertRaises(ValueError):
+                self.controller.note("one", operator, text)
+        self.record["completed"] = True
+        with self.assertRaises(ValueError):
+            self.controller.note("one", "Integration lead", "x")
+        self.assertNotIn("operator_notes", self.record)
+
+    def test_operator_note_changes_no_budget_or_halt(self):
+        self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
+        self.controller.note("one", "Integration lead", "Fix the ledger seal")
+        self.assertIn("halted", self.record)
+        self.assertNotIn("stalled", self.record)
+        self.assertEqual(self.record.get("correction_volume", 0), 0)
+
+    def test_operator_note_cli_requires_an_operator(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps(self.plan))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--note", "one", "x"]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+            build_controller.main()
+
+    def test_operator_note_cli_passes_task_operator_and_text_in_order(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps(self.plan))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--note", "one", "Fix the ledger exposure", "--operator", "Integration lead"]
+        with patch.object(sys, "argv", argv), patch.object(build_controller.Controller, "note") as note:
+            build_controller.main()
+        note.assert_called_once_with("one", "Integration lead", "Fix the ledger exposure")
+
     def test_resume_never_clears_a_halt(self):
         self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
         with self.assertRaises(ValueError):
