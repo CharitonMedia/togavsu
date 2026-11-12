@@ -1,0 +1,190 @@
+{
+  "task_id": "integrate-extensions",
+  "status": "pass",
+  "scope": "Phase 5/6 integration: core.Open now mounts the shell, home screen, admin page and help center, the marketplace client side and the module runtime on one pool and one handler, with the admin Modules and marketplace tab, module panels on the matter screen, module sidebar entries, module-facing routes and core.events from billing and practice. status pass means every assigned phase case passed at the tested revision, plus the local scripts listed in tests. It is not full product acceptance: 21 of 52 criteria remain pending globally, including AC-012, AC-014, AC-033, AC-036 and AC-037 whose phase case passes with the gaps named in pending_notes. Not run locally: scripts/ci/test-core.sh end to end (needs the LawCraft core image build), the QA harness, Backup integration and the Supervisor image jobs; their results come from the pull request's Product CI run.",
+  "tested_revision": "ef0c5274699c7f855151817b71790a123c78b95c",
+  "phase_cases": [
+    {
+      "id": "ui-admin-guide",
+      "acceptance_ids": [
+        "AC-010",
+        "AC-011",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-028",
+        "AC-029",
+        "AC-032"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -v -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -v -run '^TestExtensionsUIModules$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "ef0c5274699c7f855151817b71790a123c78b95c",
+      "evidence": "Local run at the tested revision on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; the ui end-to-end suite now drives the handler core.Open builds (app.UI behind app.Handler(), no second composition); all 8 TestUI* cases, both guide-coverage checks and TestExtensionsUIModules (module widget opens its manifest tab, sidebar entry only while installed, widget without target refused) PASS."
+    },
+    {
+      "id": "module-lifecycle",
+      "acceptance_ids": [
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-033",
+        "AC-036",
+        "AC-037",
+        "AC-038"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsModuleLifecycle$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "ef0c5274699c7f855151817b71790a123c78b95c",
+      "evidence": "Local run at the tested revision on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; untrusted, unsigned and tampered packages refused; contacts-table, out-of-schema and trigger migrations refused; install and permission decisions on the admin Modules tab; widget, framed tab, sidebar entry and guide live with no restart; include= on API and matter screen inside walls with attorney-only redaction; module login denied core.contacts; billing time entry delivered as a signed webhook; changed migration refused on update; linked matter hard delete blocked; calendar switched to a module and back; disable/enable; Delete data needs the typed id and a fresh backup. Module containers run in process through Config.ModuleRuntime (see pending_notes)."
+    },
+    {
+      "id": "marketplace-alerts",
+      "acceptance_ids": [
+        "AC-015"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "ef0c5274699c7f855151817b71790a123c78b95c",
+      "evidence": "Local run at the tested revision on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; against the real marketplace service (package marketplace) in process: listing and notice on the admin tab, staff refused, install from the marketplace, operator flag shows the warning on the listing, opening the Modules tab checks and delivers one alert to the module-alerts widget and an email to the admin (sent through the fake SMTP server), module not switched off; after a pull a marketplace install is refused and a local file still installs."
+    },
+    {
+      "id": "ai-mediation",
+      "acceptance_ids": [
+        "AC-028",
+        "AC-031"
+      ],
+      "status": "pass",
+      "command": "go test -count=1 -v -run '^TestExtensionsAIMediation$' ./internal/core/",
+      "exit_code": 0,
+      "revision": "ef0c5274699c7f855151817b71790a123c78b95c",
+      "evidence": "Local run at the tested revision on postgres:17 (Docker) as a non-superuser core role, TOGAVSU_TEST_DATABASE_URL set; module token plus viewer context token calls POST /api/v1/ai/calls on the running core; primary unreachable, falls back to the secondary with the AI tab's key, which never reaches the module or the response; call log over API and MCP shows both attempts; staff refused the log; walled matter not found before any provider call; token without ai:use refused."
+    }
+  ],
+  "tests": [
+    {
+      "command": "go test -count=1 -timeout 25m $(go list ./...)",
+      "exit_code": 0,
+      "note": "all 25 test packages ok (no LawCraft CLI locally, so the editor case skipped here; CI's test-core.sh runs it with the image build)"
+    },
+    {
+      "command": "go test -count=1 -v -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -v -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -v -run '^TestExtensionsUIModules$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsModuleLifecycle$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 -v -run '^TestExtensionsAIMediation$' ./internal/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "TOGAVSU_QC_DIR=docs/build/reports/screens/integrate-extensions CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core@23> go test -count=1 -v -run '^TestExtensionsScreens$' ./internal/core/",
+      "exit_code": 0,
+      "note": "visual QC, 8 screens, no console errors or failed requests; screenshots and qc.json in docs/build/reports/screens/integrate-extensions"
+    },
+    {
+      "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/",
+      "exit_code": 0
+    },
+    {
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0
+    },
+    {
+      "command": "go test -count=1 ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
+      "exit_code": 0
+    },
+    {
+      "command": "go vet ./... && gofmt -l cmd internal api web && git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-005",
+    "AC-007",
+    "AC-008",
+    "AC-009",
+    "AC-010",
+    "AC-011",
+    "AC-013",
+    "AC-015",
+    "AC-019",
+    "AC-020",
+    "AC-021",
+    "AC-022",
+    "AC-025",
+    "AC-026",
+    "AC-027",
+    "AC-028",
+    "AC-029",
+    "AC-030",
+    "AC-031",
+    "AC-032",
+    "AC-035",
+    "AC-038",
+    "AC-039",
+    "AC-042",
+    "AC-044",
+    "AC-045",
+    "AC-046",
+    "AC-047",
+    "AC-048",
+    "AC-049",
+    "AC-051"
+  ],
+  "pending_acceptance_ids": [
+    "AC-001",
+    "AC-002",
+    "AC-003",
+    "AC-004",
+    "AC-006",
+    "AC-012",
+    "AC-014",
+    "AC-016",
+    "AC-017",
+    "AC-018",
+    "AC-023",
+    "AC-024",
+    "AC-033",
+    "AC-034",
+    "AC-036",
+    "AC-037",
+    "AC-040",
+    "AC-041",
+    "AC-043",
+    "AC-050",
+    "AC-052"
+  ],
+  "pending_notes": {
+    "AC-012": "Install, permissions, widget, tab, sidebar, guide, events and uninstall pass on the running core with the module server in process. In the Compose stack the supervisor does not yet serve PUT/DELETE /v1/modules/{name}, so no module container is created (PONYTAIL-DEBT Extensions 1).",
+    "AC-014": "Calendar replacement routing passes on the running core; in the Compose stack the replacing module's container cannot be started yet (same supervisor gap).",
+    "AC-033": "Guide appears under its heading, in search, opens from the widget's ? topic and leaves on uninstall in the core case; refresh on update is covered only by internal/modules tests, and the container gap applies.",
+    "AC-036": "Schema, include= on API and matter screen, walls, redaction and the module login's denied core access pass in the core case; a second module reading a published view only after approval is covered only by internal/modules tests.",
+    "AC-037": "Install refusals and the changed-migration update refusal pass in the core case; a failing migration rolling back with the old version running is covered only by internal/modules tests."
+  },
+  "visual_qc": {
+    "command": "TOGAVSU_QC_DIR=docs/build/reports/screens/integrate-extensions CHROME=/usr/bin/chromium PUPPETEER_CORE=<puppeteer-core@23> go test -count=1 -v -run '^TestExtensionsScreens$' ./internal/core/",
+    "exit_code": 0,
+    "screens": "docs/build/reports/screens/integrate-extensions"
+  },
+  "simplification": {
+    "net_lines_non_test": 928,
+    "diff": "30 files, +2576 -451 (non-test +1362 -434) against f225daa",
+    "review": "Folded internal/dashboard/compose into internal/core instead of duplicating auth and routing; reused the modules harness pattern, the existing documents-qc.mjs and test helpers; one shared db.PublishEvent for billing and practice events; no new dependency.",
+    "ponytail_debt_entries": 64,
+    "new_debt_entries": 4
+  }
+}
