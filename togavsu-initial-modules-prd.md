@@ -39,7 +39,7 @@ The modules need core additions the released core doesn't have. Those ship first
 
 ## 3. Sources and precedence
 
-- **Specs:** docs/modules/documents/SPEC.md, email/SPEC.md, client-portal/SPEC.md, lawpay-docuseal/SPEC.md and quickbooks/SPEC.md, and docs/modules/CORE-CHANGES.md (CORE-01 to CORE-29), written Nov 12, 2026 from Unified's working code. They sit on branch control/initial-modules and land on main in the control change that starts this build (section 12.1).
+- **Specs:** docs/modules/documents/SPEC.md, email/SPEC.md, client-portal/SPEC.md, lawpay-docuseal/SPEC.md and quickbooks/SPEC.md, and docs/modules/CORE-CHANGES.md (CORE-01 to CORE-29), written Nov 12, 2026 from Unified's working code. They are on main under docs/modules/, landed by the first part of the control change that starts this build (section 12.1).
 - **Precedence:** this PRD, then CORE-CHANGES.md, then each SPEC.md. Where a spec and this PRD differ (author, price, build order, tunables), this PRD wins. Everything this PRD doesn't restate is built exactly as its spec says.
 - **Criterion IDs** keep the specs' numbering (MOD-DOC, MOD-EML, MOD-POR, MOD-PAY, MOD-QBO), so CORE-CHANGES.md's cross-references stay valid.
 
@@ -616,7 +616,7 @@ Any write from QuickBooks back into Togavsu or any Intuit webhook (a later versi
 
 - Each module image is built by the release workflow, pushed to ghcr.io/charitonmedia/togavsu-<id> and signed with Cosign using the same release signing path as the core images; its digest goes into the manifest before the package is signed.
 - Each package (manifest, migrations and help, with the image digest) is signed through the marketplace signing path matter-clock uses (marketplace.Sign, SignedPackage, KeyID) by `<id> package -key <key file> -out <id>.signed.json`, with the Chariton Media author key.
-- The Chariton Media author key is an Ed25519 key kept as a GitHub repository secret beside the Togavsu release key. The integration lead adds it in the same control change that holds the release key, and registers its public key on the Chariton Media author account on the marketplace. No module lane sees the private key; only the release workflow signs.
+- The Chariton Media author key is an Ed25519 key kept as a GitHub repository secret beside the Togavsu release key. It is added beside the release key before the sign, publish and list stage (12.1 step 5), and its public key is registered on the Chariton Media author account on the marketplace. No module lane sees the private key; only the release workflow signs.
 - A tampered or unsigned package is refused by the core at install.
 
 ### 11.2 Submission
@@ -643,7 +643,7 @@ Each listing shows the author, the author's verified signing key, every permissi
 
 ### 12.1 Order
 
-1. **Control change** (integration lead): the five specs and CORE-CHANGES.md land on main under docs/modules/; this PRD lands at the repo root beside the core PRD; the email libraries are pinned in go.mod; docs/build/tasks.json gets the assignments below; the Chariton Media author key is added (11.1).
+1. **Control change** (integration lead), in two parts. The first puts the five specs and CORE-CHANGES.md on main under docs/modules/, this PRD at the repo root beside the core PRD, and the core PRD 9.10 pointer. The second, once the first has merged, pins the email libraries in go.mod, gives docs/build/tasks.json and the controller plan the assignments below, and has the controller and review gate read this PRD for module tasks. The Chariton Media author key is added before step 5 (11.1).
 2. **Module API update** (one module-core lane): CORE-01 to CORE-29 in the order of 4.4, merged to main, released as a signed core image, and applied through the overnight updater. Done when CU-01 to CU-05 pass.
 3. **Five module lanes in parallel**, each starting from the released core: documents, email, client-portal, lawpay-docuseal and quickbooks. None depends on another; client-portal tests the lawpay-docuseal views against a signed test fixture module that never ships.
 4. **Integrate modules** (integration lead): all five on one core, the cross-module checks in section 13, the guide pages, and the fresh-install checks.
