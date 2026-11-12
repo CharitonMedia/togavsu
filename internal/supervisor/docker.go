@@ -130,11 +130,41 @@ func (d *DockerRuntime) base() string {
 }
 
 func (d *DockerRuntime) ListCores(ctx context.Context) ([]ContainerInfo, error) {
-	return d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, true)
+	cores, err := d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, true)
+	if err != nil {
+		return nil, err
+	}
+	return d.withAliases(ctx, cores)
 }
 
 func (d *DockerRuntime) ListAllCores(ctx context.Context) ([]ContainerInfo, error) {
-	return d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, false)
+	cores, err := d.list(ctx, map[string][]string{"label": {"togavsu.role=core"}}, false)
+	if err != nil {
+		return nil, err
+	}
+	return d.withAliases(ctx, cores)
+}
+
+// withAliases fills network aliases from inspect. Docker's container list leaves
+// them null; without them the Compose core's "core" alias, which Caddy dials,
+// matches no container and every update is refused as proxy_unknown. A core
+// gone since the list is dropped; any other inspect error fails the list.
+func (d *DockerRuntime) withAliases(ctx context.Context, cores []ContainerInfo) ([]ContainerInfo, error) {
+	out := cores[:0]
+	for _, c := range cores {
+		if len(c.Aliases) == 0 {
+			found, err := d.Inspect(ctx, c.ID)
+			if errors.Is(err, ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			c.Aliases = found.Aliases
+		}
+		out = append(out, c)
+	}
+	return out, nil
 }
 
 func (d *DockerRuntime) list(ctx context.Context, filters map[string][]string, runningOnly bool) ([]ContainerInfo, error) {

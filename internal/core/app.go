@@ -128,16 +128,22 @@ type App struct {
 
 // Migrate applies every embedded core migration to dsn in schema core.
 func Migrate(ctx context.Context, dsn string) error {
+	_, err := MigrateCount(ctx, dsn)
+	return err
+}
+
+// MigrateCount is Migrate that reports how many migrations it applied (`core migrate`).
+func MigrateCount(ctx context.Context, dsn string) (int, error) {
 	plain, err := db.OpenPostgres(dsn, "")
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer plain.Close()
 	ms, err := migrations()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+	return db.ApplyCount(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
 }
 
 // MigrateSealed is "core migrate": it applies the core migrations as the application

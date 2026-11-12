@@ -142,28 +142,35 @@ func Rebind(query, dialect string) string {
 // Apply runs migrations with goose on one connection. When Schema is set, that connection uses it
 // for the whole run and RESET search_path before the connection returns to the pool.
 func Apply(ctx context.Context, db *sql.DB, spec ApplySpec) error {
+	_, err := ApplyCount(ctx, db, spec)
+	return err
+}
+
+// ApplyCount is Apply that also reports how many migrations were applied, counting the ones
+// applied before a later migration failed. `core migrate` prints it for the update migrator.
+func ApplyCount(ctx context.Context, db *sql.DB, spec ApplySpec) (int, error) {
 	if spec.Owner == "" {
-		return fmt.Errorf("%w: owner is required", ErrVersion)
+		return 0, fmt.Errorf("%w: owner is required", ErrVersion)
 	}
 	if spec.Schema != "" && !identName.MatchString(spec.Schema) {
-		return fmt.Errorf("%w: schema %q", ErrVersion, spec.Schema)
+		return 0, fmt.Errorf("%w: schema %q", ErrVersion, spec.Schema)
 	}
 	if len(spec.Migrations) == 0 {
-		return nil
+		return 0, nil
 	}
 	seen := map[int]bool{}
 	for _, m := range spec.Migrations {
 		if m.Version < 1 || seen[m.Version] {
-			return fmt.Errorf("%w: %d", ErrVersion, m.Version)
+			return 0, fmt.Errorf("%w: %d", ErrVersion, m.Version)
 		}
 		seen[m.Version] = true
 		if gooseNoTransaction(m.SQL) {
-			return fmt.Errorf("%w: version %d", ErrTransaction, m.Version)
+			return 0, fmt.Errorf("%w: version %d", ErrTransaction, m.Version)
 		}
 	}
 	files, sums, err := gooseFS(spec.Migrations)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	store := &ledgerStore{owner: spec.Owner, dialect: spec.Dialect, checksums: sums}
 	return migrateOnHeldConn(ctx, db, spec, store, files)
@@ -175,10 +182,10 @@ var migrationAfterSearchPath func(context.Context, *sql.Conn) error
 
 // migrateOnHeldConn checks one connection out of the caller's pool and does not put it
 // back until search_path has been restored, including when preparation fails.
-func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore, files fs.FS) error {
+func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore, files fs.FS) (int, error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer conn.Close()
 	changed := false
@@ -189,19 +196,20 @@ func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *l
 	}()
 	if spec.Schema != "" {
 		if _, err := conn.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+spec.Schema); err != nil {
-			return err
+			return 0, err
 		}
 		if _, err := conn.ExecContext(ctx, "SET search_path TO "+spec.Schema); err != nil {
-			return err
+			return 0, err
 		}
 		changed = true
 		if migrationAfterSearchPath != nil {
 			if err := migrationAfterSearchPath(ctx, conn); err != nil {
-				return err
+				return 0, err
 			}
 		}
 	}
-	return conn.Raw(func(raw any) error {
+	applied := 0
+	err = conn.Raw(func(raw any) error {
 		dc, ok := raw.(driver.Conn)
 		if !ok {
 			return fmt.Errorf("db: driver connection is %T", raw)
@@ -221,9 +229,19 @@ func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *l
 		if err != nil {
 			return err
 		}
-		_, err = provider.Up(ctx)
+		results, err := provider.Up(ctx)
+		var partial *goose.PartialError
+		if errors.As(err, &partial) {
+			results = partial.Applied
+		}
+		for _, r := range results {
+			if r != nil && r.Error == nil {
+				applied++
+			}
+		}
 		return err
 	})
+	return applied, err
 }
 
 func ensureLedger(ctx context.Context, db *sql.DB, store *ledgerStore) error {

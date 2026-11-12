@@ -39,6 +39,7 @@ type Config struct {
 	ReleaseIndexURL    string
 	CosignBin          string
 	CosignKey          string
+	CosignFlags        []string
 	UpdateWindowStart  string
 	UpdateWindowEnd    string
 	BackupTime         string
@@ -102,6 +103,10 @@ func LoadFrom(getenv func(string) string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.AdminDatabaseURL, err = secret(getenv, "ADMIN_DATABASE_URL", "ADMIN_DATABASE_URL_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.CosignFlags, err = ParseCosignFlags(getenv("COSIGN_VERIFY_FLAGS"))
 	if err != nil {
 		return Config{}, err
 	}

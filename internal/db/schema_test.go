@@ -710,3 +710,30 @@ func (b blockAudit) SettingChanged(context.Context, settings.Change) error {
 type allowAudit struct{}
 
 func (allowAudit) SettingChanged(context.Context, settings.Change) error { return nil }
+
+// TestApplyCount is the count `core migrate` prints as migrated=true or false for the
+// supervisor's update migrator: new migrations, none on a rerun, and the ones applied
+// before a later migration failed.
+func TestApplyCount(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	ms := []Migration{
+		{Version: 2, Name: "0002_a", SQL: "CREATE TABLE count_a (id TEXT);\n"},
+		{Version: 3, Name: "0003_b", SQL: "CREATE TABLE count_b (id TEXT);\n"},
+	}
+	n, err := ApplyCount(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: ms})
+	if err != nil || n != 2 {
+		t.Fatalf("first run applied %d, %v; want 2", n, err)
+	}
+	n, err = ApplyCount(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: ms})
+	if err != nil || n != 0 {
+		t.Fatalf("rerun applied %d, %v; want 0", n, err)
+	}
+	more := append(ms,
+		Migration{Version: 4, Name: "0004_c", SQL: "CREATE TABLE count_c (id TEXT);\n"},
+		Migration{Version: 5, Name: "0005_bad", SQL: "INSERT INTO count_missing (id) VALUES ('x');\n"})
+	n, err = ApplyCount(ctx, db, ApplySpec{Owner: CoreOwner, Dialect: "postgres", Migrations: more})
+	if err == nil || n != 1 {
+		t.Fatalf("partial run applied %d, %v; want 1 and the count_missing error", n, err)
+	}
+}

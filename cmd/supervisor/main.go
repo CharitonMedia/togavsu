@@ -153,7 +153,7 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		Window:   sched.Window,
 		Paused:   cfg.UpdatesPaused,
 		Registry: supervisor.IndexRegistry{URL: cfg.ReleaseIndexURL, HTTP: &http.Client{Timeout: 30 * time.Second}},
-		Verifier: supervisor.CLIVerifier{Cosign: cfg.CosignBin, KeyPath: cfg.CosignKey},
+		Verifier: supervisor.CLIVerifier{Cosign: cfg.CosignBin, KeyPath: cfg.CosignKey, Flags: cfg.CosignFlags},
 		Runtime:  docker,
 		Migrator: supervisor.DockerMigrator{Docker: docker},
 		Backup: func(ctx context.Context, reason string) (supervisor.BackupMeta, error) {
