@@ -2336,21 +2336,24 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-module-api"
     ],
     "implementing_domains": [
       "platform",
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions"
+      "integrate-extensions",
+      "release-module-api"
     ],
     "pending_dependencies": [
       "platform",
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions"
+      "integrate-extensions",
+      "release-module-api"
     ],
     "note": "The load test runs during a signed swap. A bad signature or a failed health check keeps the old version. A migration that ran before a failed health check restores the backup.",
     "legacy_failures": [],

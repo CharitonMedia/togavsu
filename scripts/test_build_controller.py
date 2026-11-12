@@ -146,6 +146,19 @@ class ControllerTests(unittest.TestCase):
         self.assert_ci_ownership(launches[0][2]["prompt"]["text"])
         self.assertIn("Do not merge, push main, force-push", launches[0][2]["prompt"]["text"])
 
+    def test_launch_prompt_names_modules_prd_only_for_module_tasks(self):
+        for spec, expected in ((SPEC, False), (dict(SPEC, module_prd_sections=["4"]), True)):
+            with self.subTest(module_task=expected):
+                self.setUp()
+                self.controller.plan["tasks"] = [spec]
+                self.controller.tasks.clear()
+                self.controller.tick()
+                launches = [c for c in self.remote.calls if c[0] == "POST" and c[1] == "/agents"]
+                self.assertEqual(len(launches), 1)
+                text = launches[0][2]["prompt"]["text"]
+                self.assertEqual("also read the full togavsu-initial-modules-prd.md" in text, expected)
+                self.assert_ci_ownership(text)
+
     def test_initial_and_repeated_correction_prompts_keep_ci_ownership(self):
         self.failed_review()
         with self.advance(0):
@@ -2075,6 +2088,15 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(self.record["halted"])
         self.assertNotIn("completed", self.record)
 
+    def test_worker_cannot_change_module_scope_files(self):
+        for name in ("togavsu-initial-modules-prd.md", "docs/modules/CORE-CHANGES.md", "docs/modules/quickbooks/SPEC.md"):
+            with self.subTest(name):
+                self.setUp()
+                self.remote.changed_files = lambda n, name=name: [{"filename": name}]
+                self.process()
+                self.assertTrue(self.record["halted"])
+                self.assertNotIn("completed", self.record)
+
     def test_truncated_inventory_cannot_hide_protected_file(self):
         remote = Remote()
         all_files = [{"filename": "safe/" + str(i)} for i in range(3000)]
@@ -2872,6 +2894,9 @@ class LaneBackendTests(unittest.TestCase):
             "non-ASCII workflow name": {".github/workflows/\u00e9.yml": safe + "# ${{ secrets.X }}\n"},
             "backslash workflow name": {".github/workflows/a\\b.yml": safe},
             "non-ASCII control file": {"deploy/controller/\u00e9.py": "pass\n"},
+            "modules PRD": {"togavsu-initial-modules-prd.md": "scope\n"},
+            "module core changes": {"docs/modules/CORE-CHANGES.md": "scope\n"},
+            "module spec": {"docs/modules/email/SPEC.md": "scope\n"},
         }
         for label, files in cases.items():
             with self.subTest(label):

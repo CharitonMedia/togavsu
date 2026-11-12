@@ -25,7 +25,7 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 | AC-013 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions, module-core, module-documents, module-email, module-client-portal, module-lawpay-docuseal, module-quickbooks, integrate-modules, release-modules | 3 | pending |
 | AC-014 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, modules, integrate-extensions | 4 | pending |
 | AC-015 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, marketplace, integrate-extensions | 5 | pending |
-| AC-016 | 7 | none | platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
+| AC-016 | 7 | none | platform, integrate-practice, integrate-finance, integrate-documents, integrate-extensions, release-module-api | 3 | pending |
 | AC-017 | 7 | none | integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 3 | pending |
 | AC-018 | 7 | none | platform, identity, integrate-practice, integrate-finance, integrate-documents, integrate-extensions | 6 | pending |
 | AC-019 | 6 | 7 | integrate-practice, integrate-finance, integrate-documents, ui, integrate-extensions | 6 | pending |
