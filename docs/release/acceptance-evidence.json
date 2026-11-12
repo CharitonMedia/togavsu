@@ -189,7 +189,7 @@
       ]
     },
     "go-release-api": {
-      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed)$' ./internal/core/",
+      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing)$' ./internal/core/",
       "needs": [
         "db"
       ]
@@ -229,9 +229,7 @@
         "go-documents",
         "go-release-api"
       ],
-      "gaps": [
-        "No sweep shows that every mounted write route (calendar, files, editor, Doc Tender, modules, help, layouts, settings) refuses an accountant; the evidence covers practice, billing, trust, editor runs and users only."
-      ]
+      "gaps": []
     },
     "AC-005": {
       "checks": [
