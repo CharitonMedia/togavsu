@@ -20,6 +20,10 @@ PRD 11 asks for a whole-repository audit before the phase 7 tag: apply only cuts
 | `MigrateSealed` counts applied migrations through `MigrateCount`, not with its own before-and-after `schema_migrations` queries. | Same `migrated=true/false` answer, from one place. |
 | Practice bulk endpoints are one generic handler that replays each item through its record's own create handler inside one unit of work, not ten bulk implementations. | Each item keeps its record's access, wall, validation, audit and event rules; the batch is one transaction (PRD 7). |
 
+## Fixed during the final acceptance run
+
+- The supervisor's operation gate (`internal/supervisor/operations.go`) stays one mutex-like gate, not a queue. Scheduled work marks its context with `Scheduled`. An admin request waits at most 30 s for a scheduled holder and is refused at once while another admin operation runs. That cleared the backup e2e restore's 409 race with the 30-second tick (AC-018, AC-040, AC-050) without adding a dependency, a job queue or a ponytail ceiling.
+
 ## Reviewed and not cut
 
 - Twelve packages each have their own `writeJSON` and `writeErr`. Each maps its own domain errors to HTTP. Collapsing them changes a shared interface across about twelve domain packages, the supervisor and the marketplace. That is an integration-lead change with its own review, not a release-time cut. It isn't a shortcut, so it carries no ponytail marker.
