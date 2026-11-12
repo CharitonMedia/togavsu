@@ -67,7 +67,9 @@ append_only() {
       fi
     done
   done
-  if psql_as "SET ROLE togavsu_app; SET ROLE togavsu_ledger_owner" >/dev/null 2>&1; then
+  # SET ROLE is checked against the superuser session here, so ask the catalog instead.
+  member=$(psql_as "SELECT pg_has_role('togavsu_app', 'togavsu_ledger_owner', 'MEMBER')")
+  if [ "$member" != "f" ]; then
     echo "core role can act as togavsu_ledger_owner" >&2
     return 1
   fi
