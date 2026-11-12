@@ -11,7 +11,10 @@ root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
 docker=${DOCKER:-docker}
 project=${TOGAVSU_MODSTACK_PROJECT:-togavsu-modstack}
-port=${TOGAVSU_MODSTACK_HTTPS_PORT:-38443}
+# The default host ports (29443, and 29080 for HTTP) sit below Linux's ephemeral range
+# (32768-60999). A port in that range can be held by any outbound socket; 38080 once
+# was, and the caddy bind failed.
+port=${TOGAVSU_MODSTACK_HTTPS_PORT:-29443}
 regport=${TOGAVSU_MODSTACK_REGISTRY_PORT:-5057}
 base=https://localhost:$port
 reg=togavsu-modstack-registry-$$
