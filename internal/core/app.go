@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"sync"
@@ -177,7 +176,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	ids, err := identity.New(identity.Deps{
 		Users: pg.Users(), Sessions: pg.Sessions(), Passwords: pg.Passwords(),
 		TOTP: pg.TOTP(), Recovery: pg.Recovery(), Tokens: pg.Tokens(),
-		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: logMailer{},
+		Audit: aud, Settings: reg, Key: cfg.Key, Now: now, Mail: resetMailer{mail: smtpMailer{Settings: reg}},
 	})
 	if err != nil {
 		return fail(err)
@@ -341,14 +340,4 @@ func (a *App) Ready(ctx context.Context) (bool, error) {
 		a.ready.Store(true)
 	}
 	return ok, nil
-}
-
-// logMailer records that a reset was requested. Outbound mail is a later package.
-// ponytail: ceiling: password-reset tokens are not delivered; the admin resets the user instead.
-// Upgrade path: the notifications package sends the reset mail. Trigger: SMTP settings ship.
-type logMailer struct{}
-
-func (logMailer) SendPasswordReset(email, _ string) error {
-	log.Printf("core: password reset requested; mail delivery is not configured")
-	return nil
 }

@@ -44,6 +44,7 @@ func (a *App) routes() {
 	m.HandleFunc("GET /api/v1/api-tokens", a.tokensJSON)
 	m.HandleFunc("POST /api/v1/api-tokens", a.issueTokenJSON)
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
+	a.identityRoutes(m)
 	m.HandleFunc("POST /mcp", a.mcp)
 
 	m.HandleFunc("GET /{$}", a.home)

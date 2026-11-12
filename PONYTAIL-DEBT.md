@@ -65,9 +65,8 @@ Debt count: 56.
 
 ## Integration ceilings
 
-1. `internal/core/app.go` — `logMailer` logs that a password reset was requested and does not deliver the token. Ceiling: a user who forgets a password needs an admin. Upgrade path: send the reset through the core SMTP mailer (`internal/core/mail.go`, wired for billing and trust since the finance integration). Trigger: the core mounts the password-reset request and completion routes.
-2. `internal/core/http.go` — `GET /api/v1/audit-log` without `entity_id` reads the whole ledger and returns one page. Ceiling: one response holds every row. Upgrade path: cursor pagination over (created_at, id) in `audit.Postgres`. Trigger: an install passes 100k audit rows.
-3. `internal/core/mcp.go` — `/mcp` is JSON-RPC over plain HTTP POST; each `tools/call` is dispatched in process through `/api/v1` and its whole response is buffered. Ceiling: no MCP session id, SSE stream, or result over the 4 MiB request bound. Upgrade path: the streamable HTTP transport with sessions. Trigger: an MCP client requires sessions or a tool result exceeds 4 MiB.
+1. `internal/core/http.go` — `GET /api/v1/audit-log` without `entity_id` reads the whole ledger and returns one page. Ceiling: one response holds every row. Upgrade path: cursor pagination over (created_at, id) in `audit.Postgres`. Trigger: an install passes 100k audit rows.
+2. `internal/core/mcp.go` — `/mcp` is JSON-RPC over plain HTTP POST; each `tools/call` is dispatched in process through `/api/v1` and its whole response is buffered. Ceiling: no MCP session id, SSE stream, or result over the 4 MiB request bound. Upgrade path: the streamable HTTP transport with sessions. Trigger: an MCP client requires sessions or a tool result exceeds 4 MiB.
 
 ## Finance ceilings
 
