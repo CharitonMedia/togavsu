@@ -152,11 +152,9 @@ func (s *Supervisor) call(ctx context.Context, method, path string, body, out an
 	return nil
 }
 
-// Deploy hands the supervisor the image, digest and secrets, then starts the container.
-// ponytail: ceiling: PUT /v1/modules/{name} (image, digest, secrets) is proposed to the
-// platform owner in this PR; the supervisor has only start and stop today. Upgrade path:
-// the supervisor creates the container from the digest with the secrets mounted.
-// Trigger: integrate-extensions wires the supervisor module endpoints.
+// Deploy hands the supervisor the image, digest and secrets (PUT /v1/modules/{name}
+// creates the container from image@digest with the secrets as files under /run/secrets
+// and the alias togavsu-mod-{id}), then starts the container.
 func (s *Supervisor) Deploy(ctx context.Context, d Deployment) error {
 	if err := s.call(ctx, http.MethodPut, "/v1/modules/"+url.PathEscape(d.Module), d, nil); err != nil {
 		return err
@@ -169,7 +167,7 @@ func (s *Supervisor) Stop(ctx context.Context, module string) error {
 	return s.call(ctx, http.MethodPost, "/v1/modules/"+url.PathEscape(module)+"/stop", nil, nil)
 }
 
-// Remove deletes the module container (proposed DELETE /v1/modules/{name}).
+// Remove deletes the module container (DELETE /v1/modules/{name}).
 func (s *Supervisor) Remove(ctx context.Context, module string) error {
 	return s.call(ctx, http.MethodDelete, "/v1/modules/"+url.PathEscape(module), nil, nil)
 }

@@ -28,6 +28,12 @@ if [ -f "$root/go.mod" ]; then
   go test -count=1 -timeout 360s -v ./internal/supervisor/ -run '^(TestPathOwnedTemp|TestPathTempRestoreStall|TestPathShareFallback|TestPathDisposeRestoresForeign|TestAbortedPathUpload|TestPathCleanStageCrash|TestPathSidecarCrash|TestPathQuarantineStage|TestPathPublishDurability|TestPathAbortProof|TestPathNoHardlink|TestRenameat2Number|TestPathPrejournalResidual)$'
   go build -o /dev/null ./cmd/supervisor
   compile_arm64_supervisor
+  # The module container path (PUT/DELETE /v1/modules/{name}) on a real engine.
+  if docker info >/dev/null 2>&1; then
+    sh "$root/scripts/ci/test-module-container.sh"
+  else
+    echo "Docker engine unavailable: TestModuleContainerOnDocker NOT run" >&2
+  fi
   exit 0
 fi
 work=$(mktemp -d)

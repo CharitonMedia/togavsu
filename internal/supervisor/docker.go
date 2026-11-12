@@ -478,7 +478,12 @@ func (d *DockerRuntime) module(ctx context.Context, name, action string) error {
 	if len(found) == 0 {
 		return ErrNotFound
 	}
-	return d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+found[0].ID+"/"+action, nil, nil)
+	err = d.call(ctx, http.MethodPost, dockerAPI+"/containers/"+found[0].ID+"/"+action, nil, nil)
+	if errors.Is(err, errDockerNotModified) {
+		// Already started or already stopped.
+		return nil
+	}
+	return err
 }
 
 func safeModule(name string) error {
