@@ -584,6 +584,8 @@ These come from Nolan PMS Unified and Doc Tender and are built later as modules,
 11. Google account banner and NotebookLM panel.
 12. Matter wiki: an individualized wiki for each matter, built from Doc Tender's saved Markdown copies. Named here only; this PRD doesn't spec it.
 
+Items 1, 5, 6 and 8, with QuickBooks sync from section 9.7, are the initial modules in section 9.10.
+
 ### 9.9 Module data and database extension
 
 There's one database. Core records live in the Postgres schema core and each module's records in a schema of its own, so modules extend the base and never rebuild it.
@@ -601,6 +603,10 @@ There's one database. Core records live in the Postgres schema core and each mod
 - **Backups** include every module schema with the database.
 - **Core migrations** follow the same process (section 6), so the base grows over time during overnight updates, with no restart.
 - **Files** are never stored in a module schema (section 8.19).
+
+### 9.10 Initial modules
+
+The first five modules are documents and templates, email, client portal and messages, LawPay and DocuSeal, and QuickBooks Online sync. They are marketplace modules, specified in togavsu-initial-modules-prd.md, which Patrick approved on Nov 12, 2026. They build after the core release tags, under every rule of sections 9 and 10, as signed packages listed free in the marketplace with author Chariton Media. The core release doesn't wait on them, and the core installs and runs with none of them.
 
 ## 10. Marketplace
 
@@ -685,6 +691,8 @@ Sub-agents run in parallel wherever their work doesn't depend on each other, so 
 5. UI: matter screen, home-screen grid with all core widgets and role defaults, admin page and all its tabs, appearance, profile, my settings, notification preferences. (Runs in parallel with phase 4 once phase 3's APIs exist.)
 6. Modules and marketplace: manifest, install flow, permissions, iframe bridge, domain replacement, module schemas and migrations, sample module, marketplace service, flag and pull alerts, AI settings.
 7. Updates and release: zero-downtime updater, backups, restore, user guide rebuilt in HTML and PDF, fresh-install test on a clean Docker Desktop, release tag.
+
+After the release tag, the initial modules build under the plan in togavsu-initial-modules-prd.md section 12 (section 9.10).
 
 **Sample module:** "Matter Clock," a small module that adds a home-screen widget, a matter-screen tab and a help guide page; the widget and tab show hours worked per matter this month. It also keeps a monthly target of hours per matter in its own schema: its migration creates matter\_targets linked to matters, its manifest declares that it extends matters and publishes a read view, and the matter screen shows the target through an include read. It exercises signing, install, permission approval, the iframe bridge, events, module data and uninstall. It's test scaffolding and doesn't ship in the release.
 
