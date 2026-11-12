@@ -479,3 +479,80 @@ func (m SMTP) Send(ctx context.Context, to, subject, body string) error {
 func headerSafe(s string) string {
 	return strings.NewReplacer("\r", " ", "\n", " ").Replace(s)
 }
+
+// Notification is one of the caller's own notifications. Another user's id, or one about
+// a matter the caller can no longer see, is not found.
+func (s *Service) Notification(ctx context.Context, who domain.Principal, id domain.ID) (Notification, error) {
+	if who.UserID.IsZero() {
+		return Notification{}, domain.Unauthenticated("sign in is required")
+	}
+	all, err := s.ownNotifications(ctx, who)
+	if err != nil {
+		return Notification{}, err
+	}
+	for _, n := range all {
+		if n.ID == id {
+			return n, nil
+		}
+	}
+	return Notification{}, domain.NotFound("notification")
+}
+
+// DeleteNotification removes one of the caller's own notifications from their list. It
+// is the recipient's inbox, not a record of the firm, so it is the one row here a user
+// may delete; the deletion is audited.
+func (s *Service) DeleteNotification(ctx context.Context, who domain.Principal, id domain.ID) error {
+	n, err := s.Notification(ctx, who, id)
+	if err != nil {
+		return err
+	}
+	_, err = s.tx(ctx, func(ctx context.Context) error {
+		if _, err := s.q(ctx).ExecContext(ctx, `DELETE FROM notifications WHERE id = $1 AND user_id = $2`, string(n.ID), string(who.UserID)); err != nil {
+			return err
+		}
+		return s.record(ctx, who, "notification", n.ID, "title", n.Title, "", "notification.deleted")
+	})
+	return err
+}
+
+// SendNotification is a module or an admin notifying one active user (PRD 8.9: modules
+// send notifications through the API). The link must be a path on this site, so a
+// notification can't send its reader elsewhere. It names no matter, so it shows no
+// matter's data; a module that wants a matter linked puts its own tab in the link.
+func (s *Service) SendNotification(ctx context.Context, who domain.Principal, user domain.ID, kind, title, link string) (Notification, error) {
+	if who.Source != domain.SourceModule && !who.HasRole(domain.RoleAdmin) {
+		return Notification{}, domain.Forbidden("only a module or an admin sends notifications")
+	}
+	kind, title, link = strings.TrimSpace(kind), strings.TrimSpace(title), strings.TrimSpace(link)
+	switch {
+	case kind == "" || len(kind) > 64:
+		return Notification{}, domain.Invalid("kind", "kind is required, up to 64 characters")
+	case title == "" || len(title) > 200 || strings.ContainsAny(title, "\r\n"):
+		return Notification{}, domain.Invalid("title", "title is one line, up to 200 characters")
+	case !strings.HasPrefix(link, "/") || strings.HasPrefix(link, "//") || strings.ContainsAny(link, "\\\r\n") || len(link) > 500:
+		return Notification{}, domain.Invalid("link", "link is a path on this site, such as /m/module-id/page")
+	}
+	u, ok, err := s.activeUser(ctx, user)
+	if err != nil {
+		return Notification{}, err
+	}
+	if !ok {
+		return Notification{}, domain.Invalid("user_id", "the recipient is not an active user")
+	}
+	id, err := s.newID()
+	if err != nil {
+		return Notification{}, err
+	}
+	now := s.now()
+	_, err = s.tx(ctx, func(ctx context.Context) error {
+		if _, err := s.q(ctx).ExecContext(ctx, `INSERT INTO notifications (id, created_at, updated_at, created_by, user_id, kind, title, link, matter_id, read_at) VALUES ($1,$2,$2,$3,$4,$5,$6,$7,NULL,0)`,
+			string(id), micro(now), string(actorID(who)), string(u.ID), kind, title, link); err != nil {
+			return err
+		}
+		return s.record(ctx, who, "notification", id, "title", "", title, "notification.created")
+	})
+	if err != nil {
+		return Notification{}, err
+	}
+	return Notification{ID: id, CreatedAt: now, CreatedBy: actorID(who), UpdatedAt: now, UserID: u.ID, Kind: kind, Title: title, Link: link}, nil
+}
