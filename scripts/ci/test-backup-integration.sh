@@ -18,6 +18,7 @@ else
   trap 'rm -rf "$work"' EXIT
   mkdir -p "$work/internal"
   cp -a "$root/internal/supervisor" "$work/internal/supervisor"
+  cp -a "$root/internal/ledgerseal" "$work/internal/ledgerseal"
   printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > "$work/go.mod"
   cd "$work"
 fi
@@ -26,7 +27,7 @@ log=$(mktemp)
 # safety test actually ran; a name filter that omits one is a failure.
 # The build tag also compiles the rest of the package. This list is every
 # Test in the integration files, not the sshd and Compose tests.
-if ! go test -tags=integration -count=1 -timeout 20m -v ./internal/supervisor/ -run '^(TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap|TestDelayedRenameCannotCommitAfterRecovery|TestInFlightRenameCannotCommitAfterAFailedRestore|TestCommittedRenameSurvivesLostJournal|TestOwnedTempDatabaseSurvivesOnlyWhenVerified|TestUnverifiedAllocationRestartsWriters|TestRolledBackRecoveryKeepsRecreatedFreshDatabase|TestLostCreateAcknowledgmentRecoversWriters|TestSwapIntentBeforePromoteCannotCommitAfterRecovery|TestReplacedCleanupVerifiesIdentity|TestEarlierCleanupFollowsTheNextRestore|TestWrongClusterAbsenceStaysPending|TestDifferentClusterIsRejected|TestRestoreKeepsCoreRoleOwnership)($|/)' >"$log" 2>&1; then
+if ! go test -tags=integration -count=1 -timeout 20m -v ./internal/supervisor/ -run '^(TestPostgresRestoreReplacesEvolvedSchema|TestUpdateRollbackKeepsWriteAfterSnapshot|TestPostgres17Swap|TestDelayedRenameCannotCommitAfterRecovery|TestInFlightRenameCannotCommitAfterAFailedRestore|TestCommittedRenameSurvivesLostJournal|TestOwnedTempDatabaseSurvivesOnlyWhenVerified|TestUnverifiedAllocationRestartsWriters|TestRolledBackRecoveryKeepsRecreatedFreshDatabase|TestLostCreateAcknowledgmentRecoversWriters|TestSwapIntentBeforePromoteCannotCommitAfterRecovery|TestReplacedCleanupVerifiesIdentity|TestEarlierCleanupFollowsTheNextRestore|TestWrongClusterAbsenceStaysPending|TestDifferentClusterIsRejected|TestRestoreKeepsCoreRoleOwnership|TestRestoreSealsLedgers)($|/)' >"$log" 2>&1; then
   cat "$log" >&2
   rm -f "$log"
   exit 1
@@ -53,7 +54,8 @@ for name in \
   TestEarlierCleanupFollowsTheNextRestore \
   TestWrongClusterAbsenceStaysPending \
   TestDifferentClusterIsRejected \
-  TestRestoreKeepsCoreRoleOwnership
+  TestRestoreKeepsCoreRoleOwnership \
+  TestRestoreSealsLedgers
 do
   if ! grep -q -e "=== RUN   ${name}$" "$log"; then
     echo "backup integration did not run ${name}" >&2

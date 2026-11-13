@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/CharitonMedia/togavsu/internal/ledgerseal"
 )
 
 // DumpCommand streams a plain SQL dump. The database URL is passed to the
@@ -109,6 +111,9 @@ func RestoreIntoCleanDatabase(ctx context.Context, bin, adminURL, databaseURL st
 		return err
 	}
 	if err := compareCounts(expect, got); err != nil {
+		return err
+	}
+	if err := sealRestored(ctx, bin, target, owner); err != nil {
 		return err
 	}
 	if err := swapDatabase(ctx, bin, adminURL, orig, fresh, suffix); err != nil {
@@ -1242,6 +1247,29 @@ func withDatabase(rawURL, name string) (string, error) {
 	}
 	u.Path = "/" + name
 	return u.String(), nil
+}
+
+// sealRestored runs ledgerseal.Script, the seal core migrate runs, as the admin on the
+// loaded copy before the swap, so a core restarted on restored data finds its
+// append-only tables owned by ledgerseal.Owner and does not refuse to start (PRD
+// section 6). The dump loaded every object as owner, the core's role. A copy with no
+// core.audit_log is not a core database and is left as loaded; an admin-only install
+// (owner "") has no application role to seal against.
+func sealRestored(ctx context.Context, bin, adminTarget, owner string) error {
+	if owner == "" {
+		return nil
+	}
+	found, err := psqlLines(ctx, bin, adminTarget, "SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'core' AND c.relname = 'audit_log'")
+	if err != nil {
+		return err
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	if err := psqlExec(ctx, bin, adminTarget, ledgerseal.Script(owner)); err != nil {
+		return fmt.Errorf("seal restored ledgers: %w", err)
+	}
+	return nil
 }
 
 func psqlLines(ctx context.Context, bin, databaseURL, sql string) ([]string, error) {

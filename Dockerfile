@@ -5,6 +5,7 @@ FROM golang:1.22-bookworm AS supervisor-build
 WORKDIR /src
 COPY cmd/supervisor ./cmd/supervisor
 COPY internal/supervisor ./internal/supervisor
+COPY internal/ledgerseal ./internal/ledgerseal
 RUN printf 'module github.com/CharitonMedia/togavsu\n\ngo 1.22\n' > go.mod \
     && CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/supervisor ./cmd/supervisor
 
