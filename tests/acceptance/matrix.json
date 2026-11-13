@@ -30,8 +30,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "contracts",
@@ -40,8 +39,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Phase 1 is one Compose up to the first-run form. Phase 7 runs that same check on a clean Docker Desktop install. Linux Compose CI does not meet the phase 7 recheck.",
     "legacy_failures": [],
@@ -138,7 +136,6 @@
       "integrate-documents",
       "integrate-extensions",
       "release-api-coverage",
-      "release-final",
       "module-core",
       "integrate-modules"
     ],
@@ -149,7 +146,6 @@
       "integrate-documents",
       "integrate-extensions",
       "release-api-coverage",
-      "release-final",
       "module-core",
       "integrate-modules",
       "contracts",
@@ -306,7 +302,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "integrate-modules"
     ],
@@ -317,7 +312,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "integrate-modules",
       "billing",
@@ -520,8 +514,7 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "identity",
@@ -531,7 +524,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "files",
       "ui",
       "modules",
@@ -746,16 +738,14 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "A below-zero withdrawal posts. It raises a flag and emails every admin and the responsible attorney. It does not block the post.",
     "legacy_failures": [],
@@ -870,16 +860,14 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "No path may edit or delete a ledger row. A reversal is a new row. The original row and its history stay byte for byte. API, MCP, and UI are not the only paths: the trust service, the trust repository, and direct SQL as the application role must refuse UPDATE and DELETE. A repository interface that omits those methods is not acceptance. PONYTAIL-DEBT.md contracts entry 4 stays pending until the trust task shows that SQL rejection. No database trigger carries the rule.",
     "legacy_failures": [],
@@ -1062,16 +1050,14 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Seeded books tie out to the cent. An off statement shows that same cent difference, including the sign.",
     "legacy_failures": [],
@@ -1184,16 +1170,14 @@
       "billing",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "billing",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Draft from unbilled time and unbilled expenses, attorney approves, system mail sends, payment applies, and void returns both to unbilled. Each eligible expense is included once and leaves the unbilled set when the draft consumes it. A time-only draft does not satisfy the expense cases.",
     "legacy_failures": [],
@@ -1411,8 +1395,7 @@
       "billing",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "practice",
@@ -1420,8 +1403,7 @@
       "billing",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Unpaid invoices and leftover trust warn. Neither one blocks the close.",
     "legacy_failures": [],
@@ -1556,16 +1538,14 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Ten saved layouts is the cap. Reset offers the user's default first and restores it exactly. The role default remains available.",
     "legacy_failures": [],
@@ -1703,8 +1683,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -1713,7 +1692,6 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release-final",
       "modules"
     ],
     "note": "The deadlines widget keeps its date range. A walled matter is not reachable from the click. A module widget needs a click-through target or install refuses it.",
@@ -1857,7 +1835,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -1873,7 +1850,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -2007,7 +1983,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -2023,7 +1998,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -2127,8 +2101,7 @@
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -2136,7 +2109,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "calendar"
     ],
     "note": "Switching calendar to a module moves screens and API to that module and leaves core calendar data read-only. Switching back restores the core.",
@@ -2252,16 +2224,14 @@
       "integrate-finance",
       "integrate-documents",
       "marketplace",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "marketplace",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "A flag warns. It does not remove the listing. A pull blocks marketplace install and still allows a local file.",
     "legacy_failures": [],
@@ -2392,7 +2362,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "release-module-api"
     ],
     "pending_dependencies": [
@@ -2401,7 +2370,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "release-module-api"
     ],
     "note": "The load test runs during a signed swap. A bad signature or a failed health check keeps the old version. A migration that ran before a failed health check restores the backup.",
@@ -2496,8 +2464,7 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-perf",
-      "release-final"
+      "release-perf"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -2505,7 +2472,6 @@
       "integrate-documents",
       "integrate-extensions",
       "release-perf",
-      "release-final",
       "contracts",
       "platform"
     ],
@@ -2602,8 +2568,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "platform",
@@ -2611,8 +2576,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Phase 1 is the audit row on every write. Phase 7 is download, the S3-compatible copy, the network-path copy, and a restore with matching counts.",
     "legacy_failures": [],
@@ -2766,8 +2730,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -2775,7 +2738,6 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release-final",
       "modules"
     ],
     "note": "Sidebar entries follow the role and the installed modules. Counts are live. Collapse state follows that user to another computer.",
@@ -2932,8 +2894,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "practice",
@@ -2942,7 +2903,6 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release-final",
       "billing"
     ],
     "note": "Matter number, E.164 phone, and invoice number hit their own scope and All. A walled matter and its invoice stay out. Attorney-only values are not searched for staff.",
@@ -3097,8 +3057,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -3106,8 +3065,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "The new trust flag raises the responsible attorney's unread count. Mark all read clears that count. Another attorney's count stays put.",
     "legacy_failures": [],
@@ -3219,16 +3177,14 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "HTML and the firm's help items are phase 5. The PDF has to be the guide for the running version, which is the phase 7 image. A client user gets 404 on /help/guide.",
     "legacy_failures": [],
@@ -3343,8 +3299,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "practice",
@@ -3352,7 +3307,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "billing"
     ],
     "note": "Reopen needs a reason, returns the pre-close status, and shows on the timeline. A zero-fee matter keeps that marker and stays out of AR aging.",
@@ -3474,8 +3428,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "identity",
@@ -3484,7 +3437,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "ui"
     ],
     "note": "The history card shows every matter change with old and new values. Staff see attorney-only values redacted. The service redacts them too.",
@@ -3641,8 +3593,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "practice",
@@ -3650,7 +3601,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "ui"
     ],
     "note": "A custom field limited to one practice area shows only there, saves from the UI and the API, and appears in CSV.",
@@ -3786,8 +3736,7 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -3795,8 +3744,7 @@
       "trust",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Flat fee sitting in trust shows Ready to apply. Apply posts the trust transfer and marks Collected. An hourly matter does not show Ready to apply.",
     "legacy_failures": [],
@@ -3892,16 +3840,14 @@
       "calendar",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "calendar",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "List days with no court date, block, or all-day event, in pleading form and letter form. The calendar does not change. Half-day mode is the section 8.16 rule on the same tool.",
     "legacy_failures": [],
@@ -4042,8 +3988,7 @@
       "integrate-documents",
       "ui",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -4051,8 +3996,7 @@
       "integrate-documents",
       "ui",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "/llms.txt is phase 1 and needs no sign-in. Appearance is the next page load with no restart. The module never sees the AI key.",
     "legacy_failures": [],
@@ -4209,8 +4153,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "contracts",
@@ -4218,8 +4161,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "The harness inventory in tests/harness/defaults.py is the list of named defaults, including every Doc Tender category and the conditional labeling, categorizing, and check-model defaults. Phase 1 checks the registry. Phase 5 changes, audits, and resets each resettable default on its own. One working setting does not cover the rest. Fixed rules are not switches.",
     "legacy_failures": [],
@@ -11409,8 +11351,7 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "contracts",
@@ -11418,7 +11359,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "platform"
     ],
     "note": "The product CI fails a core env read outside bootstrap and a tunable that is not in the registry. The release build passes. settings.CheckModule is a source heuristic, not full AC-030 acceptance: it flags an integer literal used as configuration even when the number is not a current registry default, and it does not treat arithmetic, shifts, a leading minus, empty len or cap, loop counters, or return 0, err as configuration. fixedSite exclusions are debt. A settings.Get lookup of a registry key is not this proof. A green harness fixture is not that CI log.",
@@ -11599,16 +11539,14 @@
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "When the primary provider does not answer, the call uses the secondary. The call log shows both attempts.",
     "legacy_failures": [],
@@ -11725,8 +11663,7 @@
       "integrate-finance",
       "integrate-documents",
       "ui",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -11734,7 +11671,6 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release-final",
       "modules"
     ],
     "note": "Every screen and every admin tab has a ? topic that says what it does and where it lives. The CI check fails a gap. Each of admin, attorney, staff, and accountant has a getting-started tutorial from /help.",
@@ -11886,16 +11822,14 @@
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "The sample guide shows under its own heading, in search, and from the widget ? icon. Update refreshes it. Uninstall removes it. No restart.",
     "legacy_failures": [],
@@ -12027,15 +11961,13 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "release"
     ],
     "note": "Every phase report includes the simplification net line count and the debt ledger count. The released repo has PONYTAIL-DEBT.md, and every ponytail marker in it names an upgrade trigger. A marker check on the current file does not pass this criterion by itself.",
@@ -12131,16 +12063,14 @@
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "contracts",
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "The record list is tests/harness/records.py. Records added after section 5 do not fill this criterion. Every seed row is synthetic.",
     "legacy_failures": [],
@@ -12280,7 +12210,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12294,7 +12223,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12459,7 +12387,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12473,7 +12400,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12641,7 +12567,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12655,7 +12580,6 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12776,16 +12700,14 @@
       "files",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "files",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "A 1 GB upload resumes after a dropped connection and the SHA-256 matches. A walled file is hidden from list, preview, download, and search. Every save adds a version and no version's bytes change.",
     "legacy_failures": [],
@@ -12921,8 +12843,7 @@
       "files",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -12930,7 +12851,6 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "platform"
     ],
     "note": "Move local disk to S3-compatible storage, then to Dropbox. Files stay readable, every SHA-256 is checked, and old copies go only after the admin confirms. A changed byte fails the read and emails admins. Restore brings back every backend. AC-040-P1 needs disposable synthetic endpoints. In-process doubles are not acceptance, including when the adapter calls into the double.",
@@ -13048,16 +12968,14 @@
       "integrate-finance",
       "editor",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "editor",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "LawCraft commit 770a8fab12392485c0c2789fb254da7d9296df4d. A DOCX round-trips through Word with no repair prompt. The lock is visible to the second user and frees 5 minutes after the editor closes without a save. New Pleading fills the caption from the matter.",
     "legacy_failures": [],
@@ -13230,16 +13148,14 @@
       "integrate-finance",
       "editor",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "editor",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "An editor run fills merge fields into a new version. A command that reads a local file is refused. PDF conversion creates a new file linked to the source.",
     "legacy_failures": [],
@@ -13357,8 +13273,7 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -13366,7 +13281,6 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "modules"
     ],
     "note": "Staff upload, client upload, drop folder, and a sample-module file each finish within 10 minutes with no nightly batch. The pattern name is the only name. The legacy .doc slot is the old binary Word failure. The OLE stand-in in the corpus is not evidence that wordcraft-cli converted it.",
@@ -13542,16 +13456,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Corpus file legacy/scanned-120.pdf has 120 image-only pages. The product injects the failure at page 49 and resumes at page 49. Pages 1 through 48 are not redone.",
     "legacy_failures": [
@@ -13650,16 +13562,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Eight photos: a three-page letter and a five-page lease. Each photo paints LETTER or LEASE and PAGE n OF m. The pass is two PDFs and two Markdown copies, pages in order. The corpus bad-merge and bad-split files are the old wrong outputs, not a pass.",
     "legacy_failures": [
@@ -13777,16 +13687,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Audio gets a Markdown transcript with timestamps and no unexplained gap over 30 seconds. Video adds what is on screen, on the same timeline. The corpus tone and color frames are the synthetic inputs.",
     "legacy_failures": [],
@@ -13900,8 +13808,7 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -13909,7 +13816,6 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "practice"
     ],
     "note": "A file on a closed matter makes no model call and is listed as Not processed (matter closed). Reopening the matter processes it.",
@@ -14024,16 +13930,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "Password-protected, damaged, and low-confidence files go to the review queue, email the admin, and stay listed, viewable, and downloadable with a flag. The corpus password PDF is a structural stand-in. Evidence has to come from a file a PDF library reports as encrypted. Score 890 of 1000 queues. Score 900 does not queue for low confidence.",
     "legacy_failures": [
@@ -14152,16 +14056,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "A person-set name, category, or matter stays put on reprocess. Grouping is locked the same way. Reprocess adds a Markdown version and keeps the old one.",
     "legacy_failures": [],
@@ -14294,8 +14196,7 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -14304,7 +14205,6 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release-final",
       "platform"
     ],
     "note": "The Markdown copy uses the original base name plus .md. It follows the original's walls. Files search matches it. Phase 7 checks that the backup contains it. The arrival name is not the search name.",
@@ -14440,16 +14340,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "The Doc Tender tab edits the pattern and the categories. A status token is refused and the saved pattern stays. A new category is used on the next file. received-date is allowed. received, draft, and file-status are not.",
     "legacy_failures": [],
@@ -14567,16 +14465,14 @@
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "doc-tender",
       "integrate-documents",
-      "integrate-extensions",
-      "release-final"
+      "integrate-extensions"
     ],
     "note": "With test keys set, the labeling call log shows gpt-6.1-sol. The AI tab offers no local endpoint for labeling or categorizing.",
     "legacy_failures": [],
