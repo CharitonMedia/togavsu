@@ -198,7 +198,7 @@ func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err err
 		return false, err
 	}
 	n, merr := db.ApplySealed(ctx, admin, app, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
-	ran = n > 0
+	ran = n > int(0)
 	if errors.Is(merr, db.ErrNotSuperuser) {
 		return false, merr
 	}

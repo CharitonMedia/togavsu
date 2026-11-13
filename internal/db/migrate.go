@@ -160,6 +160,16 @@ func ApplyCount(ctx context.Context, db *sql.DB, spec ApplySpec) (int, error) {
 // ApplyCountConn is ApplyCount on one session the caller has already checked out, as
 // ApplySealed does after SET ROLE. The session's search_path is restored afterwards.
 func ApplyCountConn(ctx context.Context, conn *sql.Conn, spec ApplySpec) (int, error) {
+	return migrateOnHeldConn(ctx, conn, spec)
+}
+
+// migrationAfterSearchPath, when set, runs after search_path changes and before goose.
+// Tests use it to force a preparation failure. Production leaves it nil.
+var migrationAfterSearchPath func(context.Context, *sql.Conn) error
+
+// migrateOnHeldConn validates spec, then runs it on one checked-out connection and
+// restores search_path before the caller puts it back, including when preparation fails.
+func migrateOnHeldConn(ctx context.Context, conn *sql.Conn, spec ApplySpec) (int, error) {
 	if spec.Owner == "" {
 		return 0, fmt.Errorf("%w: owner is required", ErrVersion)
 	}
@@ -184,16 +194,7 @@ func ApplyCountConn(ctx context.Context, conn *sql.Conn, spec ApplySpec) (int, e
 		return 0, err
 	}
 	store := &ledgerStore{owner: spec.Owner, dialect: spec.Dialect, checksums: sums}
-	return migrateOnHeldConn(ctx, conn, spec, store, files)
-}
 
-// migrationAfterSearchPath, when set, runs after search_path changes and before goose.
-// Tests use it to force a preparation failure. Production leaves it nil.
-var migrationAfterSearchPath func(context.Context, *sql.Conn) error
-
-// migrateOnHeldConn runs on one checked-out connection and restores search_path before
-// the caller puts it back, including when preparation fails.
-func migrateOnHeldConn(ctx context.Context, conn *sql.Conn, spec ApplySpec, store *ledgerStore, files fs.FS) (int, error) {
 	changed := false
 	defer func() {
 		if changed {
@@ -215,7 +216,7 @@ func migrateOnHeldConn(ctx context.Context, conn *sql.Conn, spec ApplySpec, stor
 		}
 	}
 	applied := 0
-	err := conn.Raw(func(raw any) error {
+	err = conn.Raw(func(raw any) error {
 		dc, ok := raw.(driver.Conn)
 		if !ok {
 			return fmt.Errorf("db: driver connection is %T", raw)

@@ -90,14 +90,14 @@ func wrapLedgerMigration(sqlText, app string) string {
 	lines := strings.SplitAfter(body, "\n")
 	up, down := -1, len(lines)
 	for i, l := range lines {
-		if up < 0 && strings.Contains(l, "+goose Up") {
+		if up == -1 && strings.Contains(l, "+goose Up") {
 			up = i
-		} else if up >= 0 && strings.Contains(l, "+goose Down") {
+		} else if up != -1 && strings.Contains(l, "+goose Down") {
 			down = i
 			break
 		}
 	}
-	if up < 0 {
+	if up == -1 {
 		return sqlText
 	}
 	a := quoteIdent(app)
