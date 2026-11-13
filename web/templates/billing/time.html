@@ -1,6 +1,6 @@
 {{template "subnav" .}}
 {{if .CanWrite}}
-<details class="new"{{if .Error}} open{{end}}>
+<details class="new" id="new-time"{{if or .Error .OpenNew}} open{{end}}>
 <summary class="button primary">New time entry</summary>
 <form method="post" action="/billing/time" class="grid card" aria-label="Log time">
   {{template "csrf" .CSRF}}

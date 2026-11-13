@@ -1,6 +1,7 @@
 package compose
 
 import (
+	"html"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -207,4 +208,41 @@ func TestEveryStaffScreenDrawsInTheShell(t *testing.T) {
 			t.Errorf("GET %s (%s) nests a page inside the shell", path, route)
 		}
 	}
+
+	// Each link in the shell's New menu lands on a create form the user can fill at once,
+	// not a page where the form still has to be found and opened.
+	menu := quickMenu.FindStringSubmatch(e.admin.do("GET", "/", nil).body)
+	if menu == nil {
+		t.Fatal("the shell has no New menu")
+	}
+	links := menuLink.FindAllStringSubmatch(menu[1], -1)
+	if len(links) < 3 {
+		t.Fatalf("the New menu lists %d links, want matter, person and time", len(links))
+	}
+	for _, l := range links {
+		target, frag, _ := strings.Cut(html.UnescapeString(l[1]), "#")
+		body := e.admin.do("GET", target, nil).body
+		if !strings.Contains(body, `<form method="post"`) {
+			t.Errorf("New menu link %s draws no create form", l[1])
+			continue
+		}
+		if frag == "" {
+			continue
+		}
+		at := strings.Index(body, `id="`+frag+`"`)
+		if at < 0 {
+			t.Errorf("New menu link %s points at an element the page lacks", l[1])
+			continue
+		}
+		open := strings.LastIndex(body[:at], "<")
+		tag := body[open : at+strings.Index(body[at:], ">")+1]
+		if strings.HasPrefix(tag, "<details") && !strings.Contains(tag, " open") {
+			t.Errorf("New menu link %s lands on a closed panel: %s", l[1], tag)
+		}
+	}
 }
+
+var (
+	quickMenu = regexp.MustCompile(`(?s)<details class="menu quick">(.*?)</details>`)
+	menuLink  = regexp.MustCompile(`<a href="([^"]+)"`)
+)

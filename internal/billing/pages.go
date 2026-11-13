@@ -90,6 +90,7 @@ type page struct {
 	CSRF         string
 	Notice       string
 	Error        string
+	OpenNew      bool // ?new=1: open the page's New panel, as the shell's New menu links
 	CanWrite     bool
 	CanApprove   bool
 	CanTrust     bool
@@ -304,7 +305,7 @@ func (h *Handler) basePage(w http.ResponseWriter, r *http.Request, p domain.Prin
 		return err == nil && d.Allow
 	}
 	return &page{
-		Path: r.URL.Path, CSRF: csrf(w, r), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
+		Path: r.URL.Path, CSRF: csrf(w, r), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"), OpenNew: r.URL.Query().Has("new"),
 		CanWrite: can(domain.ResInvoice, domain.ActionWrite), CanApprove: can(domain.ResInvoice, domain.ActionApproveInvoice),
 		CanTrust: can(domain.ResTrust, domain.ActionTrustWithdraw), Today: h.Svc.today(ctx), Reports: reportNames, ReportTitles: reportTitles,
 		Clients: map[domain.ID]string{}, MatterNames: map[domain.ID]string{}, TypeNames: map[string]string{},

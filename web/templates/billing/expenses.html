@@ -1,6 +1,6 @@
 {{template "subnav" .}}
 {{if .CanWrite}}
-<details class="new"{{if .Error}} open{{end}}>
+<details class="new" id="new-expense"{{if or .Error .OpenNew}} open{{end}}>
 <summary class="button primary">New expense</summary>
 <div class="card">
 <form method="post" action="/billing/expenses" class="grid" aria-label="Record expense">

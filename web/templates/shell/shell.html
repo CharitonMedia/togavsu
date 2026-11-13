@@ -69,7 +69,7 @@
     <div class="panel"><ul class="menu-list">
       <li><a href="/practice/matters/new">New matter</a></li>
       <li><a href="/practice/contacts/new">New person</a></li>
-      {{if .CanTime}}<li><a href="/billing/time#log-h">Log time</a></li>{{end}}
+      {{if .CanTime}}<li><a href="/billing/time?new=1#new-time">Log time</a></li>{{end}}
     </ul></div></details>
   <details class="menu user"><summary class="chip" aria-label="Account menu for {{.UserName}}">{{if .Picture}}<img class="avatar" src="{{.Picture}}" alt="" width="32" height="32">{{else}}{{.Initials}}{{end}}</summary>
     <div class="panel"><ul class="menu-list">
