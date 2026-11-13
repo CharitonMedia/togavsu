@@ -9,7 +9,7 @@ from .cases import SPECS
 from .corpus import LEGACY_IDS
 
 CASE_KINDS = frozenset({"e2e", "integration", "security", "performance"})
-NON_IMPLEMENTING = frozenset({"qa", "release"})
+NON_IMPLEMENTING = frozenset({"qa", "release", "release-final"})
 
 
 def repo_root() -> Path:

@@ -21,7 +21,7 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release-final"
     ],
     "implementing_domains": [
       "contracts",
@@ -124,7 +124,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release",
+      "release-api-coverage",
+      "release-final",
       "module-core",
       "integrate-modules"
     ],
@@ -134,6 +135,7 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
+      "release-api-coverage",
       "module-core",
       "integrate-modules"
     ],
@@ -143,6 +145,7 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
+      "release-api-coverage",
       "module-core",
       "integrate-modules",
       "contracts",
@@ -288,6 +291,7 @@
       "integrate-documents",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-core",
       "integrate-modules"
     ],
@@ -500,7 +504,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "identity",
@@ -725,7 +730,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -846,7 +852,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1035,7 +1042,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1154,7 +1162,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1377,7 +1386,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "practice",
@@ -1520,7 +1530,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1663,7 +1674,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1807,6 +1819,7 @@
       "modules",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -1954,6 +1967,7 @@
       "modules",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-core",
       "module-documents",
       "module-email",
@@ -2079,7 +2093,8 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -2201,7 +2216,8 @@
       "integrate-documents",
       "marketplace",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -2337,6 +2353,7 @@
       "integrate-documents",
       "integrate-extensions",
       "release",
+      "release-final",
       "release-module-api"
     ],
     "implementing_domains": [
@@ -2439,19 +2456,22 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release-perf",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
-      "integrate-extensions"
+      "integrate-extensions",
+      "release-perf"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
+      "release-perf",
       "contracts",
       "platform"
     ],
@@ -2539,7 +2559,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "platform",
@@ -2701,7 +2722,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -2863,7 +2885,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "practice",
@@ -3025,7 +3048,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -3145,7 +3169,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -3266,7 +3291,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "practice",
@@ -3393,7 +3419,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "identity",
@@ -3558,7 +3585,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "practice",
@@ -3699,7 +3727,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -3803,7 +3832,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -3949,7 +3979,8 @@
       "ui",
       "modules",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -4113,7 +4144,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "contracts",
@@ -11311,7 +11343,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "contracts",
@@ -11498,7 +11531,8 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -11621,7 +11655,8 @@
       "integrate-documents",
       "ui",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -11779,7 +11814,8 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -11918,7 +11954,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -12018,7 +12055,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "contracts",
@@ -12158,6 +12196,7 @@
       "modules",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12334,6 +12373,7 @@
       "modules",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12513,6 +12553,7 @@
       "modules",
       "integrate-extensions",
       "release",
+      "release-final",
       "module-documents",
       "module-email",
       "module-client-portal",
@@ -12651,7 +12692,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -12793,7 +12835,8 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -12918,7 +12961,7 @@
       "editor",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13097,7 +13140,8 @@
       "editor",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13221,7 +13265,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13403,7 +13448,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13508,7 +13554,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13632,7 +13679,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13752,7 +13800,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13873,7 +13922,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -13998,7 +14048,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -14136,7 +14187,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -14280,7 +14332,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -14404,7 +14457,8 @@
       "doc-tender",
       "integrate-documents",
       "integrate-extensions",
-      "release"
+      "release",
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
