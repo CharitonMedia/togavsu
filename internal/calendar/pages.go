@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 )
 
 var funcs = template.FuncMap{
 	"kindLabel": kindLabel,
 	"list":      func(v ...string) []string { return v },
+	"on":        func(path, tab string) bool { return path == tab || strings.HasPrefix(path, tab+"/") },
 }
 
 func kindLabel(k string) string {
@@ -38,6 +40,7 @@ func kindLabel(k string) string {
 // view is the data every calendar page template gets.
 type view struct {
 	Title   string
+	Path    string // the screen's path, for the area tabs
 	CSRF    string
 	Me      domain.ID
 	Error   string
@@ -77,7 +80,6 @@ type calendarData struct {
 }
 
 func (h *Handler) pageRoutes(m *http.ServeMux) {
-	m.HandleFunc("GET /calendar/static/calendar.css", h.static("calendar.css", "text/css; charset=utf-8"))
 	m.HandleFunc("GET /calendar/static/calendar.js", h.static("calendar.js", "text/javascript; charset=utf-8"))
 	m.HandleFunc("GET /calendar", h.calendarPage)
 	m.HandleFunc("POST /calendar/events", h.createEventPost)
@@ -132,17 +134,17 @@ func (h *Handler) formCaller(r *http.Request) (domain.Principal, error) {
 	return p, nil
 }
 
+// render draws the named calendar screen inside the app shell.
 func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, name string, v view) {
-	v.CSRF = h.csrf(w, r)
+	v.CSRF, v.Path = h.csrf(w, r), r.URL.Path
 	var buf bytes.Buffer
 	if err := h.Templates.ExecuteTemplate(&buf, name, v); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; frame-ancestors 'none'; form-action 'self'")
-	w.WriteHeader(status)
-	_, _ = w.Write(buf.Bytes())
+	frame.Write(w, r, frame.Page{Title: v.Title, Area: "calendar", Body: template.HTML(buf.String()), Status: status,
+		Notice: v.Notice, Error: v.Error, Scripts: []string{"/calendar/static/calendar.js"}})
 }
 
 func (h *Handler) pageErr(w http.ResponseWriter, r *http.Request, err error) {

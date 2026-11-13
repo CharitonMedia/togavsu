@@ -1,4 +1,3 @@
-{{template "head" .}}
 <form method="get" action="/practice/notes">
   <label>Search <input name="q" value="{{.Query}}"></label>
   <label>Matter <input name="matter" value="{{.NoteMatter}}"></label>
@@ -10,10 +9,9 @@
 </form>
 <ul>
 {{range .Notes}}
-  <li>{{if .Pinned}}Pinned: {{end}}{{.Title}}<br><span style="white-space:pre-wrap">{{.Body}}</span></li>
+  <li>{{if .Pinned}}Pinned: {{end}}{{.Title}}<br><span class="pre">{{.Body}}</span></li>
 {{else}}
   <li>No notes.</li>
 {{end}}
 </ul>
 {{if .NoteNext}}<p><a href="/practice/notes?q={{.Query}}&matter={{.NoteMatter}}&author={{.NoteAuthor}}&tag={{.NoteTag}}&from={{.NoteFrom}}&to={{.NoteTo}}&cursor={{.NoteNext}}">Next page</a></p>{{end}}
-{{template "foot" .}}

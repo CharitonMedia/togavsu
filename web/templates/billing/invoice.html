@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Invoice}}
 <p class="meta"><a href="/practice/matters/{{.MatterID}}">{{.MatterNum}} {{.MatterName}}</a> · Issued {{.IssuedOn}} · Due {{.DueOn}} ·
 <span class="tag tag-{{.Status}}">{{.Status}}{{if and (eq .Status "draft") .Approved}} · approved{{end}}</span>
@@ -172,4 +172,3 @@
 {{end}}
 
 {{if .Staff}}{{template "history" .History}}{{end}}
-{{template "foot" .}}

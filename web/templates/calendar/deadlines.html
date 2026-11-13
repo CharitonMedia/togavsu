@@ -1,6 +1,17 @@
-{{template "head" .}}
+{{template "subnav" .}}
+<details class="new"{{if .Error}} open{{end}}>
+  <summary class="button primary">New deadline</summary>
+  <form method="post" action="/calendar/deadlines">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Matter id <input name="matter_id" size="38" required></label>
+    <label>Title <input name="title" required></label>
+    <label>Due <input type="date" name="due_on" required></label>
+    <label>Responsible user id (blank is you) <input name="responsible_user_id" size="38"></label>
+    <label>Reminder days before (blank is the firm default) <input name="reminder_offsets_days" placeholder="7,1"></label>
+    <button type="submit">Save deadline</button>
+  </form>
+</details>
 {{with .Data}}
-<h1>Deadlines</h1>
 <form class="filters" method="get" action="/calendar/deadlines">
   <label>From <input type="date" name="from_date" value="{{.From}}"></label>
   <label>To <input type="date" name="to_date" value="{{.To}}"></label>
@@ -33,16 +44,3 @@
 </table>
 {{else}}<p class="muted">No deadlines match.</p>{{end}}
 {{end}}
-<details class="new">
-  <summary>New deadline</summary>
-  <form method="post" action="/calendar/deadlines">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>Matter id <input name="matter_id" size="38" required></label>
-    <label>Title <input name="title" required></label>
-    <label>Due <input type="date" name="due_on" required></label>
-    <label>Responsible user id (blank is you) <input name="responsible_user_id" size="38"></label>
-    <label>Reminder days before (blank is the firm default) <input name="reminder_offsets_days" placeholder="7,1"></label>
-    <button type="submit">Save deadline</button>
-  </form>
-</details>
-{{template "foot" .}}

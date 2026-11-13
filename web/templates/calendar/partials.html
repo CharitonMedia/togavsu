@@ -1,0 +1,19 @@
+{{define "subnav"}}<nav class="tabs" aria-label="Calendar">
+  <a href="/calendar"{{if eq .Path "/calendar"}} class="active" aria-current="page"{{end}}>Calendar</a>
+  <a href="/calendar/deadlines?status=open&amp;include_overdue=true"{{if on .Path "/calendar/deadlines"}} class="active" aria-current="page"{{end}}>Deadlines</a>
+  <a href="/calendar/available-dates"{{if on .Path "/calendar/available-dates"}} class="active" aria-current="page"{{end}}>Available dates</a>
+  <a href="/calendar/feeds"{{if on .Path "/calendar/feeds"}} class="active" aria-current="page"{{end}}>Calendar feeds</a>
+</nav>
+{{if .Overdue}}
+<section class="overdue" aria-labelledby="overdue-h">
+  <h2 id="overdue-h">Overdue deadlines</h2>
+  <ul>{{range .Overdue}}<li><a href="/calendar/deadlines/{{.ID}}">{{.Title}}</a> — due {{.DueOn}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{if .Remind}}
+<section class="reminders" aria-labelledby="remind-h">
+  <h2 id="remind-h">Reminders</h2>
+  <ul>{{range .Remind}}<li><a href="{{.Path}}">{{.Title}}</a> <span class="muted">{{.Body}}</span></li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}

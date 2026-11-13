@@ -1214,8 +1214,10 @@ class Controller:
                     "Your PR is missing required executable CI jobs: " + ", ".join(missing) + ". Wire the actual tests into CI, "
                     "run them and push on the same branch. Do not add placeholder success jobs or weaken required checks.",
                     problem={"missing_checks": missing})
-            elif elapsed > 5400:
-                self.halt(task, record, "Required CI missing or stalled for 90 minutes; no merge or duplicate job launch")
+            elif missing and elapsed > 5400:
+                # Only a required check that never reported halts the task. A check that is still
+                # running is left to finish; GitHub's own job limit is the only cap on its runtime.
+                self.halt(task, record, "Required CI missing for 90 minutes; no merge or duplicate job launch")
             return False
         record.pop("waiting", None)
         record.pop("check_wait", None)

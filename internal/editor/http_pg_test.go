@@ -277,7 +277,7 @@ func TestEditorBuildIsServedWithAWasmPolicy(t *testing.T) {
 		"GET /files/0193/edit": true, "GET /files/0193/edit/document": true, "POST /files/0193/edit/save": true,
 		"POST /api/v1/files/0193/lock": true, "DELETE /api/v1/files/0193/lock": true, "POST /api/v1/files/0193/editor-runs": true,
 		"GET /api/v1/court-profiles": true, "GET /editor/": true, "GET /editor/x_bg.wasm": true, "POST /matters/0193/pleadings": true,
-		"GET /files/static/files.css": false, "GET /api/v1/files/0193": false, "GET /api/v1/files/0193/versions": false,
+		"GET /files/static/files.js": false, "GET /api/v1/files/0193": false, "GET /api/v1/files/0193/versions": false,
 		"GET /practice/matters/0193/files": false, "GET /files/0193/editx": false,
 	} {
 		method, target, _ := strings.Cut(path, " ")

@@ -66,8 +66,9 @@ class CatalogTests(unittest.TestCase):
             "integrate-documents",
             "integrate-extensions",
         ]
-        self.assertEqual(perf["implementing_domains"], integration)
-        for task_id in integration:
+        # The 2026-11-13 split gives AC-017 its own fix lane; release-final is a gate like release.
+        self.assertEqual(perf["implementing_domains"], integration + ["release-perf"])
+        for task_id in integration + ["release-perf", "release-final"]:
             self.assertIn(task_id, perf["responsible_domains"])
         self.assertIn("contracts", perf["pending_dependencies"])
         self.assertIn("platform", perf["pending_dependencies"])

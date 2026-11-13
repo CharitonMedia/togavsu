@@ -1,4 +1,3 @@
-{{template "head" .}}
 <p>{{.Contact.Kind}}{{if .Contact.Archived}} · archived{{end}}</p>
 {{if .Contact.AlsoKnownAs}}<p>Also known as {{.Contact.AlsoKnownAs}}</p>{{end}}
 <form class="card" method="post" action="/practice/contacts/{{.Contact.ID}}">
@@ -49,4 +48,3 @@
     </tbody>
   </table>
 </details>
-{{template "foot" .}}

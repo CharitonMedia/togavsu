@@ -1,4 +1,4 @@
-{{define "storage.html"}}{{template "head" .}}
+{{define "storage.html"}}
 <section class="card">
   <h2>Storage backends</h2>
   <table>
@@ -32,4 +32,4 @@
   <h2>Storage alerts</h2>
   {{if not .Alerts}}<p class="empty">No file has failed its integrity check.</p>{{else}}<ul>{{range .Alerts}}<li class="warn">{{.Detail}}</li>{{end}}</ul>{{end}}
 </section>
-{{template "foot" .}}{{end}}
+{{end}}

@@ -2,7 +2,11 @@
 
 ## Matters {#practice-matters}
 <!-- template: practice/matters.html | path: /practice/matters | where: Sidebar > Matters | keywords: create matter, status, open matters, list -->
-Lists every matter you can see; walled matters are absent unless you are inside the wall. Filter by status. The Create matter form at the top opens a new matter with its number (YYYY-NNNN by default), practice area, client and responsible attorney.
+Lists every matter you can see; walled matters are absent unless you are inside the wall. Filter by status. The New matter button above the list opens the form for a new matter.
+
+## New matter {#practice-matter-new}
+<!-- template: practice/matter_new.html | path: /practice/matters/new | where: Sidebar > Matters > New matter, or New in the top bar | keywords: create matter, open a matter, matter number -->
+Opens a new matter with its name, practice area and billing type; the matter gets its number (YYYY-NNNN by default). Create matter saves it and opens the matter screen, where you add the client, parties and responsible attorney; Cancel goes back to the list.
 
 ## Matter screen {#practice-matter}
 <!-- template: practice/matter.html | path: /practice/matters/{matter_id} | where: Sidebar > Matters > a matter | keywords: parties, at a glance, timeline, conflict check, notes, edit history -->
@@ -18,7 +22,11 @@ Lists open matters with no case number that have a court or something shaped lik
 
 ## Contacts {#practice-contacts}
 <!-- template: practice/contacts.html | path: /practice/contacts | where: Sidebar > Contacts | keywords: people, organizations, create contact, archive -->
-Lists people and organizations. The Create contact form adds one with addresses, emails and phones. Archived contacts stay searchable.
+Lists people and organizations. The New person button above the list opens the form for a new contact. Archived contacts stay searchable.
+
+## New person {#practice-contact-new}
+<!-- template: practice/contact_new.html | path: /practice/contacts/new | where: Sidebar > Contacts > New person, or New in the top bar | keywords: create contact, add person, organization -->
+Adds a person or an organization by name. Create contact saves it and opens the contact screen, where you add more addresses, emails, phones and custom fields; Cancel goes back to the list.
 
 ## Contact screen {#practice-contact}
 <!-- template: practice/contact.html | path: /practice/contacts/{contact_id} | where: Sidebar > Contacts > a contact | keywords: phones, emails, addresses, custom fields, ssn -->

@@ -1,0 +1,10 @@
+<form class="card" method="post" action="/practice/contacts">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <p><label>Kind<br>
+    <select name="kind"><option value="person">person</option><option value="organization">organization</option></select>
+  </label></p>
+  <p><label>Given name<br><input name="given_name"></label></p>
+  <p><label>Family name<br><input name="family_name"></label></p>
+  <p><label>Organization name<br><input name="organization_name"></label></p>
+  <p><button type="submit" class="primary">Create contact</button> <a href="/practice/contacts">Cancel</a></p>
+</form>

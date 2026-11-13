@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"html/template"
 	"io"
 	"io/fs"
 	"mime"
@@ -16,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
@@ -109,7 +111,9 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
-func (h *Handler) render(w http.ResponseWriter, status int, name string, data pageData) {
+// render draws the named editor screen inside the app shell. The shell's title is the
+// file's name; the policy lets the page frame /editor/ on the same origin.
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, name string, data pageData) {
 	if h.templates == nil {
 		http.Error(w, "the editor pages are not installed", http.StatusNotFound)
 		return
@@ -120,12 +124,18 @@ func (h *Handler) render(w http.ResponseWriter, status int, name string, data pa
 		http.Error(w, "the page could not be drawn", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", pageCSP)
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_, _ = w.Write(buf.Bytes())
+	title := data.Title
+	if data.FileName != "" {
+		title = data.FileName
+	}
+	var scripts []string
+	if name == "edit.html" {
+		scripts = []string{"/editor-host/edit.js"}
+	}
+	frame.Write(w, r, frame.Page{Title: title, Area: "editor", Body: template.HTML(buf.String()), Status: status,
+		Notice: data.Notice, Error: data.Error, Scripts: scripts, WorkInFrame: name == "edit.html" && data.Mode != "error"})
 }
 
 func (h *Handler) pageError(w http.ResponseWriter, r *http.Request, err error, data pageData) {
@@ -148,7 +158,7 @@ func (h *Handler) pageError(w http.ResponseWriter, r *http.Request, err error, d
 	if data.Title == "" {
 		data.Title = "Editor"
 	}
-	h.render(w, status, "edit.html", data)
+	h.render(w, r, status, "edit.html", data)
 }
 
 func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +195,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 	}
 	if !Editable(f.Extension) {
 		data.Mode, data.Notice = "readonly", "The editor opens DOCX, DOC, ODT, RTF, HTML, Markdown and text files. Preview or download this one."
-		h.render(w, http.StatusOK, "edit.html", data)
+		h.render(w, r, http.StatusOK, "edit.html", data)
 		return
 	}
 	if _, err := h.Svc.AcquireLock(ctx, p, id); err != nil {
@@ -195,7 +205,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 			if data.HolderName == "" {
 				data.HolderName = "Another user"
 			}
-			h.render(w, http.StatusOK, "edit.html", data)
+			h.render(w, r, http.StatusOK, "edit.html", data)
 			return
 		}
 		h.pageError(w, r, err, data)
@@ -203,7 +213,7 @@ func (h *Handler) editPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data.Mode = "edit"
 	data.FrameURL = "/editor/?host=parent&author=" + url.QueryEscape(h.Svc.userName(ctx, p.UserID))
-	h.render(w, http.StatusOK, "edit.html", data)
+	h.render(w, r, http.StatusOK, "edit.html", data)
 }
 
 func (h *Handler) document(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +268,7 @@ func (h *Handler) pleadingForm(w http.ResponseWriter, r *http.Request) {
 		h.pageError(w, r, err, data)
 		return
 	}
-	h.render(w, http.StatusOK, "pleading.html", data)
+	h.render(w, r, http.StatusOK, "pleading.html", data)
 }
 
 func (h *Handler) pleadingPost(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +289,7 @@ func (h *Handler) pleadingPost(w http.ResponseWriter, r *http.Request) {
 		var api *domain.APIError
 		if errors.As(err, &api) && api.Code == domain.CodeValidation {
 			data.Error = api.Message
-			h.render(w, http.StatusBadRequest, "pleading.html", data)
+			h.render(w, r, http.StatusBadRequest, "pleading.html", data)
 			return
 		}
 		h.pageError(w, r, err, data)
@@ -290,7 +300,7 @@ func (h *Handler) pleadingPost(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) hostAsset(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	if h.Pages == nil || (name != "edit.js" && name != "edit.css") {
+	if h.Pages == nil || name != "edit.js" {
 		http.NotFound(w, r)
 		return
 	}

@@ -47,7 +47,7 @@ func TestUIVisualQC(t *testing.T) {
 	moreno, _, morenoClient := e.matter("Guardianship of Moreno", nil)
 	walled, _, _ := e.matter("Walled Estate of Quist", nil)
 	e.wall(walled, e.atty.id, e.admin.id)
-	e.invoice(harlow)
+	invoice, _ := e.invoice(harlow)
 	today := firmToday()
 	for _, d := range []struct{ m, title string }{{harlow, "File inventory"}, {moreno, "Annual guardianship report"}, {walled, "Quist accounting"}} {
 		e.atty.must(http.StatusCreated, "POST", "/api/v1/deadlines", map[string]any{"matter_id": d.m, "title": d.title, "due_on": time.Now().AddDate(0, 0, 4).Format("2006-01-02"), "responsible_user_id": e.staff.id})
@@ -107,6 +107,22 @@ func TestUIVisualQC(t *testing.T) {
 	add(qcPage{Name: "08-problem-reports", Role: "admin", Path: "/admin?tab=system"})
 	add(qcPage{Name: "09-user-edit", Role: "admin", Path: "/admin/users/" + e.atty.id, Full: true})
 	add(qcPage{Name: "10-profile", Role: "admin", Path: "/me/profile", Full: true})
+	// Area screens (practice, billing, trust, calendar, files, Doc Tender, settings): each
+	// renders inside the shell like the home screen.
+	for i, a := range []struct{ name, path string }{
+		{"matters", "/practice/matters"}, {"matter-new", "/practice/matters/new"}, {"matter", "/practice/matters/" + harlow},
+		{"contacts", "/practice/contacts"}, {"contact-new", "/practice/contacts/new"}, {"contact", "/practice/contacts/" + harlowClient},
+		{"notes", "/practice/notes"}, {"activity", "/practice/activity"}, {"needs-case-number", "/practice/matters/needs-case-number"},
+		{"time", "/billing/time"}, {"expenses", "/billing/expenses"}, {"billing", "/billing"}, {"invoices", "/billing/invoices"},
+		{"invoice", "/billing/invoices/" + invoice}, {"payments", "/billing/payments"}, {"ar-aging", "/billing/reports/ar-aging"},
+		{"trust-ledger", "/trust/ledger"}, {"trust-balances", "/trust/balances"}, {"trust-replenishment", "/trust/replenishment"},
+		{"trust-flags", "/trust/flags?status=open"}, {"trust-reconciliation", "/trust/reconciliation"}, {"trust-matter", "/trust/matters/" + moreno},
+		{"calendar", "/calendar"}, {"deadlines", "/calendar/deadlines"}, {"available-dates", "/calendar/available-dates"}, {"feeds", "/calendar/feeds"},
+		{"matter-files", "/practice/matters/" + harlow + "/files"}, {"storage", "/files/admin/storage"},
+		{"doc-tender", "/doc-tender/review"}, {"doc-tender-settings", "/admin/doc-tender"}, {"settings", "/admin/settings"},
+	} {
+		add(qcPage{Name: "area-" + twoDigits(i+1) + "-" + a.name, Role: "admin", Path: a.path, Full: true})
+	}
 	add(qcPage{Name: "01-home", Role: "attorney", Path: "/", Full: true})
 	add(qcPage{Name: "02-home-edit", Role: "attorney", Path: "/?edit=1", Action: "editclick", Full: true})
 	add(qcPage{Name: "03-bell", Role: "attorney", Path: "/", Action: "bell"})

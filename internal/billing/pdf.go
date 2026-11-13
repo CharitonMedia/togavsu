@@ -16,7 +16,7 @@ import (
 )
 
 // pdfLayout is the invoice page design in PDF points on US Letter: margins, columns, line
-// spacing and font sizes. It is a fixed page design shipped with the code, like billing.css,
+// spacing and font sizes. It is a fixed page design shipped with the code, like the app stylesheet,
 // not a firm setting; the firm's name, contact lines, logo and terms come from the registry.
 type pdfLayout struct {
 	Top           float64 `json:"top"`
