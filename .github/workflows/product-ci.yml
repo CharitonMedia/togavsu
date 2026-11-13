@@ -9,7 +9,6 @@ jobs:
   supervisor:
     name: Supervisor tests
     runs-on: ubuntu-latest
-    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -209,10 +208,6 @@ jobs:
   full-acceptance:
     name: Full acceptance
     runs-on: ubuntu-latest
-    # The controller halts a task whose checks are still running after 90 minutes. The release
-    # lane's last full run took about 48 minutes (docs/build/reports/release.json), so 80 minutes
-    # ends the job first: a slow run fails as CI and gets a fix pass instead of a halt.
-    timeout-minutes: 80
     services:
       postgres:
         image: postgres:17

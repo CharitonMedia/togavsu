@@ -2145,11 +2145,19 @@ class ControllerTests(unittest.TestCase):
         self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
         self.assertEqual(len(self.posts()), 1)
 
-    def test_stalled_ci_does_not_silently_wait_forever(self):
+    def test_running_ci_is_never_halted_for_time(self):
+        self.remote.check_rows["Codex checkpoint"]["status"] = "in_progress"
+        self.record["check_wait"] = {"head": HEAD, "since": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=6)).isoformat()}
+        self.process()
+        self.assertNotIn("halted", self.record)
+        self.assertIn("Checks pending", self.record["waiting"])
+
+    def test_required_ci_that_never_reports_halts(self):
+        spec = dict(SPEC, required_checks=["Core tests"])
         self.remote.check_rows["Codex checkpoint"]["status"] = "in_progress"
         self.record["check_wait"] = {"head": HEAD, "since": (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=91)).isoformat()}
-        self.process()
-        self.assertIn("90 minutes", self.record["halted"])
+        self.controller.process(spec, self.record, self.remote.agent(self.record), BASE)
+        self.assertIn("missing for 90 minutes", self.record["halted"])
 
     def test_missing_phase_report_is_a_bounded_correction(self):
         spec = dict(SPEC, report_path="docs/build/reports/one.json")
