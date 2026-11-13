@@ -563,7 +563,7 @@
       "post": {
         "operationId": "createSetup",
         "summary": "Run first-run setup",
-        "description": "Creates the firm and the first admin, then returns an enrollment challenge with otpauth_uri and the TOTP secret. No session cookie is set. The next call is confirmTotpEnrollment. A later setup call returns already_set_up.",
+        "description": "Creates the firm and the first admin, then returns an enrollment challenge with otpauth_uri and the TOTP secret. No session cookie is set. Setup is complete at this point. Two-factor is optional unless security.totp_required.admin is on: the next call is confirmTotpEnrollment to turn it on, or login to skip it. A later setup call returns already_set_up.",
         "tags": [
           "Platform"
         ],
@@ -664,7 +664,7 @@
       "post": {
         "operationId": "login",
         "summary": "Sign in",
-        "description": "Password check. No session cookie is set until TOTP is confirmed. A user who already enrolled gets status totp_required. A user who has not enrolled gets status enrollment_required and enrollment_token, then calls startTotpEnrollment. Repeated failures lock the account.",
+        "description": "Password check. A user who has not turned on two-factor and holds no role that requires it (security.totp_required.<role>, all off by default) gets status authenticated and a session cookie. A user who already enrolled gets status totp_required and no session until the code is confirmed. A user whose role requires two-factor and who has not enrolled gets status enrollment_required and enrollment_token, then calls startTotpEnrollment. Repeated failures lock the account.",
         "tags": [
           "Identity"
         ],
@@ -81739,16 +81739,16 @@
       "key": "security.totp_required.admin",
       "type": "boolean",
       "tab": "security",
-      "default": true,
+      "default": false,
       "secret": false,
-      "locked": true,
-      "help": "Admin two-factor. The admin role always requires it. Update and reset are refused."
+      "locked": false,
+      "help": "Admin two-factor required when true. Off by default; an admin can turn it on."
     },
     {
       "key": "security.totp_required.attorney",
       "type": "boolean",
       "tab": "security",
-      "default": true,
+      "default": false,
       "secret": false,
       "locked": false,
       "help": "Attorney two-factor required when true."
@@ -81757,7 +81757,7 @@
       "key": "security.totp_required.staff",
       "type": "boolean",
       "tab": "security",
-      "default": true,
+      "default": false,
       "secret": false,
       "locked": false,
       "help": "Staff two-factor required when true."
@@ -81766,7 +81766,7 @@
       "key": "security.totp_required.accountant",
       "type": "boolean",
       "tab": "security",
-      "default": true,
+      "default": false,
       "secret": false,
       "locked": false,
       "help": "Accountant two-factor required when true."

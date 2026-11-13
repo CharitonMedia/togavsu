@@ -1,7 +1,7 @@
 [
   {
     "id": "AC-001",
-    "requirement": "A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits."
+    "requirement": "A fresh install reaches the first-run setup (firm name, first admin, optional two-factor) in one Compose up with no manual edits."
   },
   {
     "id": "AC-002",

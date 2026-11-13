@@ -1,7 +1,7 @@
 [
   {
     "id": "AC-001",
-    "requirement": "A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits.",
+    "requirement": "A fresh install reaches the first-run setup (firm name, first admin, optional two-factor) in one Compose up with no manual edits.",
     "status": "pending",
     "product_acceptance": "pending",
     "in_scope_phases": [
@@ -51,7 +51,7 @@
         "arrange": "Empty synthetic volume. No hand-edited env file and no client data.",
         "action": "docker compose up, then open the first-run URL.",
         "expect": [
-          "The form asks for firm name, the first admin, and TOTP enrollment.",
+          "The form asks for firm name and the first admin, then offers TOTP enrollment with a scannable QR code and a way to skip it.",
           "No manual edit was required before the form appeared."
         ],
         "evidence": [
@@ -88,11 +88,11 @@
       {
         "phase": 1,
         "kind": "e2e",
-        "title": "First admin without two-factor",
-        "arrange": "Synthetic firm name and admin account.",
-        "action": "Submit the first admin with TOTP skipped.",
+        "title": "First admin forced into two-factor",
+        "arrange": "Synthetic firm name and admin account. Default settings: security.totp_required.admin is off.",
+        "action": "Submit the first admin, skip TOTP enrollment, then sign in with email and password.",
         "expect": [
-          "The account is not saved as the first admin."
+          "If setup stays open, or the password sign-in asks for a code or enrollment, the criterion fails."
         ],
         "evidence": [
           "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
@@ -4221,7 +4221,7 @@
         "arrange": "totp_by_role on the Security tab has been changed away from its inventoried default.",
         "action": "Press Reset to default on totp_by_role and issue the next request.",
         "expect": [
-          "totp_by_role is back to its inventoried default: required for admin, attorney, staff, and accountant; optional for client; admin always required."
+          "totp_by_role is back to its inventoried default: optional for every role, admin included; the admin can require it for any role."
         ],
         "evidence": [
           "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."
@@ -7878,7 +7878,7 @@
         "arrange": "totp_by_role was changed away from its inventoried default.",
         "action": "Reset totp_by_role and read it.",
         "expect": [
-          "A value of totp_by_role other than required for admin, attorney, staff, and accountant; optional for client; admin always required fails the criterion."
+          "A value of totp_by_role other than optional for every role, admin included; the admin can require it for any role fails the criterion."
         ],
         "evidence": [
           "Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused."

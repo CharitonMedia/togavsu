@@ -232,21 +232,22 @@ func firstRun(t *testing.T, base string) *client {
 	if r := admin.do("POST", "/api/v1/auth/totp/confirm", map[string]string{"enrollment_token": token, "code": totp(t, secret, time.Now())}); r.code != http.StatusUnauthorized {
 		t.Fatalf("spent enrollment token reused: %d %s", r.code, r.body)
 	}
+	// Two-factor is optional by default (2026-11-13): the admin skips it and signs in
+	// with email and password.
 	login := admin.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "avery@firm.example", "password": adminPassword})
-	if str(t, login.json, "status") != "enrollment_required" {
+	if str(t, login.json, "status") != "authenticated" {
 		t.Fatal(login.body)
 	}
-	en := admin.must(http.StatusOK, "POST", "/api/v1/auth/totp/enroll", map[string]string{"enrollment_token": str(t, login.json, "enrollment_token")})
-	token, secret = str(t, en.json, "enrollment_token"), str(t, en.json, "secret")
-	ok := admin.must(http.StatusOK, "POST", "/api/v1/auth/totp/confirm", map[string]string{"enrollment_token": token, "code": totp(t, secret, time.Now())})
-	if str(t, ok.json, "status") != "authenticated" {
-		t.Fatal(ok.body)
-	}
-	if codes, _ := ok.json["recovery_codes"].([]any); len(codes) == 0 {
-		t.Fatal("no recovery codes", ok.body)
-	}
-	admin.csrf = str(t, ok.json, "csrf_token")
+	admin.csrf = str(t, login.json, "csrf_token")
 	return admin
+}
+
+// requireTOTPFor turns two-factor on for roles through the settings API, as an admin would.
+func requireTOTPFor(t *testing.T, admin *client, roles ...domain.Role) {
+	t.Helper()
+	for _, role := range roles {
+		admin.must(http.StatusOK, "PATCH", "/api/v1/settings/security.totp_required."+string(role), map[string]any{"value": true})
+	}
 }
 
 // enrollUser creates a user through the identity service and signs it in over HTTP.
@@ -270,6 +271,10 @@ func enrollUser(t *testing.T, app *App, base string, admin *client, name, email 
 	}
 	c := newClient(t, base)
 	login := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "synthetic-password-" + name})
+	if str(t, login.json, "status") == "authenticated" {
+		c.csrf = str(t, login.json, "csrf_token")
+		return c, user.ID
+	}
 	if str(t, login.json, "status") != "enrollment_required" {
 		t.Fatal(login.body)
 	}
@@ -303,7 +308,7 @@ func mcpCall(c *client, name string, args map[string]any) resp {
 // TestFirstRunGate is AC-001 on the composed core: a fresh database serves only setup,
 // setup runs once, and the install is ready after the admin confirms two-factor.
 func TestFirstRunGate(t *testing.T) {
-	_, srv := start(t, testDSN(t))
+	app, srv := start(t, testDSN(t))
 	anon := newClient(t, srv.URL)
 	if r := anon.must(http.StatusOK, "GET", "/api/v1/setup", nil); r.json["ready"] != false {
 		t.Fatal(r.body)
@@ -341,6 +346,73 @@ func TestFirstRunGate(t *testing.T) {
 	if r := admin.must(http.StatusOK, "GET", "/practice/matters", nil); !strings.Contains(r.body, "Matters") {
 		t.Fatal("matters screen did not render")
 	}
+	// An admin can require two-factor for any role, admin included. A staff user then
+	// enrolls at sign-in before a session opens.
+	requireTOTPFor(t, admin, domain.RoleStaff)
+	staff, _ := enrollUser(t, app, srv.URL, admin, "Sam", "sam@firm.example", domain.RoleStaff)
+	if r := staff.must(http.StatusOK, "GET", "/api/v1/me", nil); str(t, r.json, "email") != "sam@firm.example" {
+		t.Fatal(r.body)
+	}
+	again2 := newClient(t, srv.URL)
+	if r := again2.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "sam@firm.example", "password": "synthetic-password-Sam"}); str(t, r.json, "status") != "totp_required" {
+		t.Fatal("staff two-factor was turned on, so sign-in asks for a code:", r.body)
+	}
+	// A role left at the default signs in with a password only.
+	atty := newClient(t, srv.URL)
+	if _, err := enrollUserNoTOTP(t, app, srv.URL, admin, atty, "Ann", "ann@firm.example", domain.RoleAttorney); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// enrollUserNoTOTP creates a user and checks that a password alone opens a session.
+func enrollUserNoTOTP(t *testing.T, app *App, base string, admin, c *client, name, email string, roles ...domain.Role) (domain.ID, error) {
+	t.Helper()
+	ctx := context.Background()
+	u, _ := url.Parse(base)
+	var session string
+	for _, ck := range admin.http.Jar.Cookies(u) {
+		if ck.Name == sessionCookie {
+			session = ck.Value
+		}
+	}
+	caller, err := app.Identity.Authenticate(ctx, identity.Presented{SessionToken: session})
+	if err != nil {
+		return "", err
+	}
+	user, err := app.Identity.CreateUser(ctx, caller, identity.NewUser{Name: name, Email: email, Password: "synthetic-password-" + name, Roles: roles})
+	if err != nil {
+		return "", err
+	}
+	login := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "synthetic-password-" + name})
+	if str(t, login.json, "status") != "authenticated" {
+		t.Fatal("a role left at the default signs in with a password only:", login.body)
+	}
+	return user.ID, nil
+}
+
+// TestBrowserSetupSkipsTwoFactor is the default path: setup, skip two-factor, sign in
+// with email and password, no code.
+func TestBrowserSetupSkipsTwoFactor(t *testing.T) {
+	_, srv := start(t, testDSN(t))
+	b := newClient(t, srv.URL)
+	r := b.must(http.StatusOK, "POST", "/setup", url.Values{"firm_name": {"Form Firm"}, "time_zone": {"America/Chicago"}, "admin_name": {"Fran Form"},
+		"admin_email": {"fran@firm.example"}, "password": {adminPassword}, "backup_passphrase": {"synthetic-backup-passphrase"}})
+	if !strings.Contains(r.body, `href="/login">Skip two-factor and sign in</a>`) {
+		t.Fatal("no skip link", r.body)
+	}
+	if r := b.do("GET", "/setup", nil); r.code != http.StatusSeeOther || r.loc != "/login" {
+		t.Fatalf("setup is complete before two-factor: %d %q", r.code, r.loc)
+	}
+	if r := b.must(http.StatusOK, "GET", "/login", nil); !strings.Contains(r.body, `name="password"`) {
+		t.Fatal("sign-in form missing")
+	}
+	ok := b.do("POST", "/login", url.Values{"email": {"fran@firm.example"}, "password": {adminPassword}})
+	if ok.code != http.StatusSeeOther || ok.loc != "/practice/matters" {
+		t.Fatalf("password-only sign-in: %d %q %s", ok.code, ok.loc, ok.body)
+	}
+	if r := b.do("GET", "/practice/matters", nil); r.code != http.StatusOK {
+		t.Fatalf("signed-in browser: %d", r.code)
+	}
 }
 
 // TestBrowserSetupAndSignIn drives the HTML forms: setup, two-factor, and a later sign-in.
@@ -350,9 +422,15 @@ func TestBrowserSetupAndSignIn(t *testing.T) {
 	r := b.must(http.StatusOK, "POST", "/setup", url.Values{"firm_name": {"Form Firm"}, "time_zone": {"America/Chicago"}, "admin_name": {"Fran Form"},
 		"admin_email": {"fran@firm.example"}, "password": {adminPassword}, "backup_passphrase": {"synthetic-backup-passphrase"}})
 	token := between(r.body, `name="enrollment_token" value="`, `"`)
-	secret := between(r.body, "Secret: <code>", "</code>")
+	secret := between(r.body, "Enter this key in the app instead: <code>", "</code>")
 	if token == "" || secret == "" {
 		t.Fatal("enrollment page missing token or secret")
+	}
+	if !strings.Contains(r.body, "<svg ") || !strings.Contains(r.body, `aria-label="QR code for your authenticator app"`) {
+		t.Fatal("enrollment page has no QR code")
+	}
+	if !strings.Contains(r.body, `href="/login">Skip two-factor and sign in</a>`) {
+		t.Fatal("setup enrollment offers no way to skip two-factor")
 	}
 	at := time.Now()
 	done := b.must(http.StatusOK, "POST", "/setup/confirm", url.Values{"enrollment_token": {token}, "code": {totp(t, secret, at)}})

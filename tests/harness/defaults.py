@@ -13,7 +13,7 @@ import re
 # setting False: a fixed rule. It is not a switch.
 DEFAULTS = (
     {"key": "matter_number_format", "value": "YYYY-NNNN", "tab": "Firm profile", "setting": True, "anchor": "default YYYY-NNNN"},
-    {"key": "totp_by_role", "value": "required for admin, attorney, staff, and accountant; optional for client; admin always required", "tab": "Security", "setting": True, "anchor": "default required for admin, attorney, staff and accountant, optional for client users"},
+    {"key": "totp_by_role", "value": "optional for every role, admin included; the admin can require it for any role", "tab": "Security", "setting": True, "anchor": "default optional for every role, admin included"},
     {"key": "idle_timeout", "value": "12 hours", "tab": "Security", "setting": True, "anchor": "default 12 hours"},
     {"key": "failed_sign_ins_before_lockout", "value": "5", "tab": "Security", "setting": True, "anchor": "failed sign-ins before lockout (default 5)"},
     {"key": "lockout_length", "value": "15 minutes", "tab": "Security", "setting": True, "anchor": "lockout length (default 15 minutes)"},

@@ -12,11 +12,13 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/practice"
+	"github.com/CharitonMedia/togavsu/internal/qrcode"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
 var pages = template.Must(template.New("core").Funcs(template.FuncMap{
 	"label": tabLabel,
+	"qr":    qrcode.HTML,
 }).Parse(`
 {{define "top"}}<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -29,7 +31,7 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{define "bottom"}}</main></body></html>{{end}}
 
 {{define "setup"}}{{template "top" .}}
-<p>Name the firm and create the first administrator. Two-factor sign-in is set up next.</p>
+<p>Name the firm and create the first administrator. Two-factor sign-in is offered next; you can skip it.</p>
 <form class="card" method="post" action="/setup">
 <p><label>Firm name<br><input name="firm_name" required value="{{.Form.firm_name}}"></label></p>
 <p><label>Time zone<br><input name="time_zone" required value="{{or .Form.time_zone "America/Chicago"}}"></label></p>
@@ -41,11 +43,13 @@ td form{display:inline-block;margin:0 6px 4px 0}ul.card{padding-left:2.2em}heade
 {{template "bottom" .}}{{end}}
 
 {{define "enroll"}}{{template "top" .}}
-<p>Add this account to your authenticator app, then enter the six-digit code it shows.</p>
-<div class="card"><p>Secret: <code>{{.Enroll.Secret}}</code></p><p class="muted"><code>{{.Enroll.OTPAuthURI}}</code></p></div>
+<p>Scan this code with your authenticator app, then enter the six-digit code it shows.{{if .Enroll.Optional}} Two-factor is optional; you can skip it and sign in with your password.{{end}}</p>
+<div class="card qr">{{qr .Enroll.OTPAuthURI}}
+<p>Can't scan it? Enter this key in the app instead: <code>{{.Enroll.Secret}}</code></p></div>
 <form class="card" method="post" action="/setup/confirm"><input type="hidden" name="enrollment_token" value="{{.Enroll.EnrollmentToken}}">
 <p><label>Code<br><input name="code" inputmode="numeric" autocomplete="one-time-code" required></label></p>
 <p><button type="submit">Turn on two-factor</button></p></form>
+{{if .Enroll.Optional}}<p><a href="/login">Skip two-factor and sign in</a></p>{{end}}
 {{template "bottom" .}}{{end}}
 
 {{define "recovery"}}{{template "top" .}}

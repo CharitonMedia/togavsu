@@ -150,7 +150,8 @@ func TestTOTPCodeCannotBeReused(t *testing.T) {
 	}
 }
 
-func TestStaffTOTPStaysRequiredWhenSettingIsOff(t *testing.T) {
+// Two-factor follows the per-role setting for every role (Patrick's change, 2026-11-13).
+func TestRoleTOTPFollowsSetting(t *testing.T) {
 	ctx := context.Background()
 	b := newBox(t)
 	_, admin := b.enrollAdmin(t)
@@ -163,9 +164,9 @@ func TestStaffTOTPStaysRequiredWhenSettingIsOff(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pending, err := b.svc.Login(ctx, "sam@example.test", "correct-horse-battery")
-	if err != nil || pending.Status != statusEnroll || pending.SessionToken != "" {
-		t.Fatal(pending, err)
+	open, err := b.svc.Login(ctx, "sam@example.test", "correct-horse-battery")
+	if err != nil || open.Status != statusAuthenticated || open.SessionToken == "" {
+		t.Fatal(open, err)
 	}
 	if _, err := b.reg.Set(ctx, "security.totp_required.client", "true", admin.Principal); err != nil {
 		t.Fatal(err)
@@ -233,7 +234,7 @@ func TestSetupRollbackIsAudited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := settings.New(settings.NewMemory(), failAudit{})
+	reg, err := settings.New(strictTOTP(t, settings.NewMemory()), failAudit{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +323,7 @@ func TestSetupRetryReusesRolledBackAdmin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := settings.New(settings.NewMemory(), &failOnceAudit{})
+	reg, err := settings.New(strictTOTP(t, settings.NewMemory()), &failOnceAudit{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +348,7 @@ func TestSetupRetryReusesRolledBackAdmin(t *testing.T) {
 		t.Fatal(enroll, err)
 	}
 	ready, err := svc.Ready(ctx)
-	if err != nil || ready {
+	if err != nil || !ready {
 		t.Fatal(ready, err)
 	}
 }
@@ -376,7 +377,7 @@ func TestSetupRetryAfterLaterSettingsWriteFails(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			reg, err := settings.New(settings.NewMemory(), &failNthAudit{failAt: failAt})
+			reg, err := settings.New(strictTOTP(t, settings.NewMemory()), &failNthAudit{failAt: failAt})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -487,7 +488,7 @@ func TestConfirmedAdminClosesSetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := settings.New(settings.NewMemory(), &failOnceAudit{})
+	reg, err := settings.New(strictTOTP(t, settings.NewMemory()), &failOnceAudit{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +597,7 @@ func TestInactiveStaffIsNotPromotedBySetup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := settings.New(settings.NewMemory(), aud)
+	reg, err := settings.New(strictTOTP(t, settings.NewMemory()), aud)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,6 +37,21 @@ func (m *mailer) SendPasswordReset(email, token string) error {
 	return nil
 }
 
+// strictTOTP stores the pre-2026-11-13 requirement (two-factor on for admin, attorney,
+// staff and accountant) so the tests below exercise the enrollment and code paths.
+// Patrick made two-factor optional for every role on 2026-11-13; optional_test.go
+// covers the shipped defaults.
+func strictTOTP(t testing.TB, store settings.Store) settings.Store {
+	t.Helper()
+	at := time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)
+	for _, role := range []string{"admin", "attorney", "staff", "accountant"} {
+		if err := store.Put(context.Background(), "security.totp_required."+role, "true", at, domain.SystemUserID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return store
+}
+
 func newBox(t *testing.T) box {
 	t.Helper()
 	clk := &clock{t: time.Date(2026, 11, 9, 15, 0, 0, 0, time.UTC)}
@@ -45,7 +60,7 @@ func newBox(t *testing.T) box {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg, err := settings.New(settings.NewMemory(), aud)
+	reg, err := settings.New(strictTOTP(t, settings.NewMemory()), aud)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,9 +232,13 @@ func (b box) enrollAdmin(t *testing.T) (LoginResult, Caller) {
 	}); codeOf(err) != "already_set_up" {
 		t.Fatal(err)
 	}
+	// Setup is complete once the firm and the admin are stored; two-factor is not part of it.
 	ready, err := b.svc.Ready(ctx)
-	if err != nil || ready {
+	if err != nil || !ready {
 		t.Fatal(ready, err)
+	}
+	if enroll.Optional {
+		t.Fatal("this box requires admin two-factor, so setup enrollment is not optional")
 	}
 	code := TOTPCode(decodeSecret(t, enroll.Secret), b.clk.Now())
 	started, err := b.svc.ConfirmEnrollment(ctx, enroll.EnrollmentToken, code)

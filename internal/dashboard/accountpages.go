@@ -452,7 +452,7 @@ func (h *Handler) totpConfirmPost(r *http.Request, p domain.Principal) (string, 
 	if err := a.ConfirmTOTPReset(r.Context(), p, r.FormValue("enrollment_token"), r.FormValue("code")); err != nil {
 		return back, "", err
 	}
-	return back, "Two-factor reset. Use the new authenticator entry from now on; the old one no longer works. Make new recovery codes below.", nil
+	return back, "Two-factor is on. Use this authenticator entry from now on; any older one no longer works. Make new recovery codes below.", nil
 }
 
 func (h *Handler) recoveryPost(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
