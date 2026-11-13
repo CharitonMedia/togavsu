@@ -28,7 +28,7 @@ type IdentityAPI interface {
 	CreateUser(ctx context.Context, caller identity.Caller, in identity.NewUser) (domain.User, error)
 	ChangePassword(ctx context.Context, caller identity.Caller, current, next string) error
 	ResetTOTP(ctx context.Context, caller identity.Caller, factor identity.Factor) (identity.Enrollment, error)
-	ConfirmReset(ctx context.Context, caller identity.Caller, enrollmentToken, code string) error
+	ConfirmReset(ctx context.Context, caller identity.Caller, enrollmentToken, code string) ([]string, error)
 	RegenerateRecovery(ctx context.Context, caller identity.Caller, factor identity.Factor) ([]string, error)
 	IssueToken(ctx context.Context, caller identity.Caller, in identity.Issue) (identity.IssuedToken, error)
 	ListTokens(ctx context.Context, caller identity.Caller) ([]identity.TokenView, error)
@@ -850,15 +850,17 @@ func (a *Accounts) StartTOTPReset(ctx context.Context, p domain.Principal, passw
 	return en, nil
 }
 
-// ConfirmTOTPReset activates the new secret with a code from it.
-func (a *Accounts) ConfirmTOTPReset(ctx context.Context, p domain.Principal, token, code string) error {
+// ConfirmTOTPReset activates the new secret with a code from it. It returns recovery
+// codes, shown once, when this turned two-factor on for the first time.
+func (a *Accounts) ConfirmTOTPReset(ctx context.Context, p domain.Principal, token, code string) ([]string, error) {
 	if err := staff(p); err != nil {
-		return err
+		return nil, err
 	}
-	if err := a.Identity.ConfirmReset(ctx, caller(p), token, strings.TrimSpace(code)); err != nil {
-		return factorErr(err)
+	codes, err := a.Identity.ConfirmReset(ctx, caller(p), token, strings.TrimSpace(code))
+	if err != nil {
+		return nil, factorErr(err)
 	}
-	return nil
+	return codes, nil
 }
 
 // NewRecoveryCodes proves the password and replaces the unused recovery codes.

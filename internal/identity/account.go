@@ -547,23 +547,26 @@ func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (
 
 // ConfirmReset activates the pending secret for the signed-in user.
 // A wrong code, a replay, or another user's token leaves the current secret in place.
-func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentToken, code string) error {
+// When this turns two-factor on for the first time (the user never confirmed a secret,
+// as with the optional default), it also issues recovery codes, returned once.
+func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentToken, code string) ([]string, error) {
 	if err := caller.RequireScopes("profile:write"); err != nil {
-		return err
+		return nil, err
 	}
 	body, sess, user, err := s.loadChallenge(ctx, enrollmentToken, purposeReset)
 	if err != nil {
-		return domain.Forbidden("enrollment token is not valid")
+		return nil, domain.Forbidden("enrollment token is not valid")
 	}
 	if caller.Principal.UserID != user.ID {
-		return domain.Forbidden("enrollment token is not valid")
+		return nil, domain.Forbidden("enrollment token is not valid")
 	}
 	roles, err := rolesOf(user)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var codes []string
 	// One reset challenge is one guess, under the same per-account lock as sign-in.
-	return s.withUser(ctx, user.ID, func() error {
+	err = s.withUser(ctx, user.ID, func() error {
 		if err := s.claimChallenge(ctx, sess, caller.Principal); err != nil {
 			if !errors.Is(err, repository.ErrConflict) {
 				return err
@@ -576,26 +579,33 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 		if err := s.rejectIfLocked(ctx, user); err != nil {
 			return err
 		}
-		return s.confirmReset(ctx, caller, user, roles, body, code)
+		codes, err = s.confirmReset(ctx, caller, user, roles, body, code)
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }
 
-func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.User, roles []domain.Role, body challengeBody, code string) error {
+func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.User, roles []domain.Role, body challengeBody, code string) ([]string, error) {
 	state, raw, err := openTOTP(s.key, body.Secret)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	step, ok := acceptedStep(raw, code, s.now().UTC())
 	if !ok || (state.Used && step <= state.Step) {
-		return s.recordFailure(ctx, user, roles)
+		return nil, s.recordFailure(ctx, user, roles)
 	}
 	sealed, err := sealTOTP(s.key, raw, step, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+	var codes []string
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
 		row, err := s.totp.GetByUser(ctx, user.ID)
 		old := ""
+		first := errors.Is(err, repository.ErrNotFound) || (err == nil && !row.Confirmed)
 		if errors.Is(err, repository.ErrNotFound) {
 			meta, merr := s.meta(user.ID)
 			if merr != nil {
@@ -616,10 +626,22 @@ func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.U
 				return err
 			}
 		}
-		return s.record(ctx, caller.Principal, audit.Change{
+		if err := s.record(ctx, caller.Principal, audit.Change{
 			Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
-		})
+		}); err != nil {
+			return err
+		}
+		if !first {
+			return nil
+		}
+		// First time on: without codes, a lost phone would lock this user out.
+		codes, err = s.replaceRecovery(ctx, user, roles)
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }
 
 // RegenerateRecovery replaces unused codes after a fresh factor check.

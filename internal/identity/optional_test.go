@@ -140,12 +140,35 @@ func TestUserOptsIntoTOTP(t *testing.T) {
 	if err != nil || start.OTPAuthURI == "" {
 		t.Fatal(start, err)
 	}
-	if err := b.svc.ConfirmReset(ctx, me, start.EnrollmentToken, TOTPCode(decodeSecret(t, start.Secret), b.clk.Now())); err != nil {
+	codes, err := b.svc.ConfirmReset(ctx, me, start.EnrollmentToken, TOTPCode(decodeSecret(t, start.Secret), b.clk.Now()))
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(codes) != recoveryCount() {
+		t.Fatalf("turning two-factor on must issue recovery codes, got %d", len(codes))
 	}
 	next, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
 	if err != nil || next.Status != statusTOTP || next.SessionToken != "" {
 		t.Fatal("a user who turned two-factor on is asked for a code", next, err)
+	}
+	// A lost phone: one of the issued codes still signs in.
+	rec, err := b.svc.VerifyRecovery(ctx, next.TOTPToken, codes[0])
+	if err != nil || rec.Status != statusAuthenticated || rec.SessionToken == "" {
+		t.Fatal("a recovery code from the opt-in signs in", rec, err)
+	}
+	// A later reset swaps the secret only; the codes stay as they are.
+	me, err = b.svc.Authenticate(ctx, Presented{SessionToken: rec.SessionToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.clk.t = b.clk.t.Add(time.Minute)
+	again, err := b.svc.ResetTOTP(ctx, me, Factor{Password: "correct-horse-battery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	more, err := b.svc.ConfirmReset(ctx, me, again.EnrollmentToken, TOTPCode(decodeSecret(t, again.Secret), b.clk.Now()))
+	if err != nil || len(more) != 0 {
+		t.Fatal("a reset of a confirmed secret issues no codes", more, err)
 	}
 }
 

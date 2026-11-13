@@ -196,7 +196,7 @@ func TestNarrowBearerCannotManageSessionsOrAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	code := TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())
-	if err := b.svc.ConfirmReset(ctx, adminBearer, reset.EnrollmentToken, code); codeOf(err) != "scope_denied" {
+	if _, err := b.svc.ConfirmReset(ctx, adminBearer, reset.EnrollmentToken, code); codeOf(err) != "scope_denied" {
 		t.Fatal(err)
 	}
 	after, err := b.mem.TOTP().GetByUser(ctx, admin.Principal.UserID)
@@ -352,7 +352,7 @@ func mustSecret(t *testing.T, b box, caller Caller) string {
 	old := TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())
 	// The reset secret is not active yet. Confirm it so later logins use a known secret,
 	// and prove the previous secret still worked up to this call by confirming the new one.
-	if err := b.svc.ConfirmReset(ctxBackground(), caller, reset.EnrollmentToken, old); err != nil {
+	if _, err := b.svc.ConfirmReset(ctxBackground(), caller, reset.EnrollmentToken, old); err != nil {
 		t.Fatal(err)
 	}
 	return reset.Secret
@@ -382,7 +382,7 @@ func TestResetKeepsOldSecretUntilConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The original enrollment secret is not retained in the clear. A wrong new-secret code must not switch.
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, "000000"); codeOf(err) != domain.CodeUnauthenticated {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, "000000"); codeOf(err) != domain.CodeUnauthenticated {
 		t.Fatal(err)
 	}
 	row, err = b.mem.TOTP().GetByUser(ctx, admin.Principal.UserID)
@@ -390,7 +390,7 @@ func TestResetKeepsOldSecretUntilConfirm(t *testing.T) {
 		t.Fatal("wrong code changed the secret", err)
 	}
 	// A wrong code spends the reset challenge, so the user starts a new reset.
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
 		t.Fatal("spent reset token", err)
 	}
 	reset, err = b.svc.ResetTOTP(ctx, admin, Factor{Password: "correct-horse-battery"})
@@ -399,13 +399,13 @@ func TestResetKeepsOldSecretUntilConfirm(t *testing.T) {
 	}
 	other := admin
 	other.Principal.UserID = "01936b8e-7c00-7000-8000-000000000099"
-	if err := b.svc.ConfirmReset(ctx, other, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
+	if _, err := b.svc.ConfirmReset(ctx, other, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
 		t.Fatal(err)
 	}
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); err != nil {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); err != nil {
 		t.Fatal(err)
 	}
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), b.clk.Now())); codeOf(err) != domain.CodeForbidden {
 		t.Fatal("replay", err)
 	}
 	b.clk.t = b.clk.t.Add(31 * time.Second)
@@ -592,7 +592,7 @@ func TestPasswordResetChangeAndReauth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := b.svc.ConfirmReset(ctx, caller, codes.EnrollmentToken, TOTPCode(decodeSecret(t, codes.Secret), b.clk.Now())); err != nil {
+	if _, err := b.svc.ConfirmReset(ctx, caller, codes.EnrollmentToken, TOTPCode(decodeSecret(t, codes.Secret), b.clk.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if err := b.svc.Logout(ctx, caller); err != nil {

@@ -130,7 +130,7 @@ func TestTOTPCodeCannotBeReused(t *testing.T) {
 	}
 	secret := decodeSecret(t, reset.Secret)
 	code := TOTPCode(secret, b.clk.Now())
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, code); err != nil {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, code); err != nil {
 		t.Fatal(err)
 	}
 	login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
@@ -195,7 +195,7 @@ func TestSecurityWritesAreAudited(t *testing.T) {
 		t.Fatal("spent recovery code was not audited")
 	}
 	secret := decodeSecret(t, reset.Secret)
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(secret, b.clk.Now())); err != nil {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(secret, b.clk.Now())); err != nil {
 		t.Fatal(err)
 	}
 	if !auditHas(t, b.log, "ciphertext", "user.totp_reset_confirmed") {
@@ -648,7 +648,7 @@ func TestHeldChallengeCannotFinishLockedSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := decodeSecret(t, reset.Secret)
-	if err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(secret, b.clk.Now())); err != nil {
+	if _, err := b.svc.ConfirmReset(ctx, admin, reset.EnrollmentToken, TOTPCode(secret, b.clk.Now())); err != nil {
 		t.Fatal(err)
 	}
 	b.clk.t = b.clk.t.Add(31 * time.Second)

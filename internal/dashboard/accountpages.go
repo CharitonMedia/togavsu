@@ -55,7 +55,7 @@ func (h *Handler) accountRoutes(m *http.ServeMux) {
 	m.HandleFunc("GET /ui/pictures/{user_id}", h.picture)
 	m.HandleFunc("POST /me/password", h.form(h.passwordPost))
 	m.HandleFunc("POST /me/totp/reset", h.screen(h.totpResetPost))
-	m.HandleFunc("POST /me/totp/reset/confirm", h.form(h.totpConfirmPost))
+	m.HandleFunc("POST /me/totp/reset/confirm", h.screen(h.totpConfirmPost))
 	m.HandleFunc("POST /me/recovery-codes", h.screen(h.recoveryPost))
 	m.HandleFunc("POST /me/api-tokens", h.screen(h.myIssueTokenPost))
 	m.HandleFunc("POST /me/api-tokens/{token_id}/revoke", h.form(h.myRevokeTokenPost))
@@ -443,16 +443,27 @@ func (h *Handler) totpResetPost(w http.ResponseWriter, r *http.Request, p domain
 	return "profile.html", "My profile", v, nil
 }
 
-func (h *Handler) totpConfirmPost(r *http.Request, p domain.Principal) (string, string, error) {
+func (h *Handler) totpConfirmPost(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
 	back := "/me/profile"
 	a, err := h.accounts()
 	if err != nil {
-		return back, "", err
+		return redirectErr(w, r, back, err)
 	}
-	if err := a.ConfirmTOTPReset(r.Context(), p, r.FormValue("enrollment_token"), r.FormValue("code")); err != nil {
-		return back, "", err
+	codes, err := a.ConfirmTOTPReset(r.Context(), p, r.FormValue("enrollment_token"), r.FormValue("code"))
+	if err != nil {
+		return redirectErr(w, r, back, err)
 	}
-	return back, "Two-factor is on. Use this authenticator entry from now on; any older one no longer works. Make new recovery codes below.", nil
+	if len(codes) == 0 {
+		http.Redirect(w, r, pathOnly(withParam(back, "notice", "Two-factor is on. Use this authenticator entry from now on; any older one no longer works. Make new recovery codes below.")), http.StatusSeeOther)
+		return "", "", nil, nil
+	}
+	// Two-factor was just turned on for the first time: show the recovery codes once.
+	v, err := h.profileView(r, p)
+	if err != nil {
+		return "", "", nil, err
+	}
+	v.Codes = codes
+	return "profile.html", "My profile", v, nil
 }
 
 func (h *Handler) recoveryPost(w http.ResponseWriter, r *http.Request, p domain.Principal) (string, string, any, error) {
