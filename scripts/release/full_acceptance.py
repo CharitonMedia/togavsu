@@ -5,14 +5,16 @@ once and decide each of the 52 criteria from the results.
 A criterion passes only when it has at least one check, every one of its checks exited 0,
 and it lists no gap. A go test check passes only when each test its -run pattern names
 printed "--- PASS" and none was skipped, so a pattern that matches nothing never passes.
-The release passes only when all 52 criteria pass and every release gate's check passed.
+The full run passes only when all 52 criteria pass and every release gate's check passed.
 The exit code is 0 only then; anything not executed or not proven is pending, never pass.
 
 Usage:
-  python3 scripts/release/full_acceptance.py [--out DIR] [--phase ID ...] [--check ID ...] [--list]
+  python3 scripts/release/full_acceptance.py [--out DIR] [--ids AC-003,AC-004 ...] [--check ID ...] [--list]
 
---phase limits the run to the checks of the named phase case (full-acceptance,
-desktop-install, signed-images-updater-load, backup-restore) and decides only its criteria.
+--ids (scripts/ci/full-acceptance.sh passes TOGAVSU_ACCEPTANCE_IDS here) runs the checks of
+exactly the listed criteria and decides only those; release gates belong to the full run and
+are not decided. It exits 0 only when every listed criterion passes, and 2 on an empty list
+or an id that is not in docs/build/acceptance.json.
 """
 import argparse
 import datetime
@@ -26,14 +28,6 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EVIDENCE = os.path.join(ROOT, "docs", "release", "acceptance-evidence.json")
 CRITERIA = os.path.join(ROOT, "docs", "build", "acceptance.json")
-
-# The release assignment's phase cases and their exact criteria.
-PHASES = {
-    "desktop-install": ["AC-001"],
-    "signed-images-updater-load": ["AC-013", "AC-016"],
-    "backup-restore": ["AC-018", "AC-040"],
-}
-PHASE_GATES = {"desktop-install": ["docker-desktop"], "signed-images-updater-load": ["signed-release"]}
 
 NEEDS = {
     "db": lambda: bool(os.environ.get("TOGAVSU_TEST_DATABASE_URL")),
@@ -131,7 +125,7 @@ def revision():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(os.environ.get("TMPDIR", "/tmp"), "togavsu-acceptance"))
-    ap.add_argument("--phase", action="append", default=[])
+    ap.add_argument("--ids", help="comma-separated criteria to run instead of all 52 and the release gates")
     ap.add_argument("--check", action="append", default=[])
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--reuse", help="decide from the check results in this results.json instead of running them again; "
@@ -146,15 +140,18 @@ def main():
         print("\n".join(problems), file=sys.stderr)
         return 2
     want_ids, want_gates = ids, list(ev["release_gates"])
-    for p in args.phase:
-        if p == "full-acceptance":
-            continue
-        if p not in PHASES:
-            print("unknown phase " + p, file=sys.stderr)
+    if args.ids is not None:
+        want_ids = []
+        for i in args.ids.split(","):
+            i = i.strip()
+            if i and i not in want_ids:
+                want_ids.append(i)
+        unknown = [i for i in want_ids if i not in ids]
+        if not want_ids or unknown:
+            print("--ids must list criteria from docs/build/acceptance.json; unknown: " + ", ".join(unknown or ["(empty list)"]),
+                  file=sys.stderr)
             return 2
-    if args.phase and "full-acceptance" not in args.phase:
-        want_ids = sorted({i for p in args.phase for i in PHASES[p]})
-        want_gates = sorted({g for p in args.phase for g in PHASE_GATES.get(p, [])})
+        want_gates = []
     checks = []
     for cid in want_ids:
         checks += [c for c in ev["criteria"][cid]["checks"] if c not in checks]
@@ -198,7 +195,8 @@ def main():
     summary = {
         "tested_revision": head, "working_tree_dirty": dirty,
         "finished_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "phases": args.phase or ["full-acceptance"], "status": "pass" if ok else "pending",
+        "mode": "subset" if args.ids is not None else "full", "acceptance_ids": want_ids,
+        "status": "pass" if ok else "pending",
         "passed_acceptance_ids": passed, "pending_acceptance_ids": pending,
         "release_gates": gates, "criteria": decided, "checks": results,
     }

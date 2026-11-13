@@ -1,6 +1,15 @@
 # Release (phase 7)
 
-This folder is the release assignment's working record: how full acceptance is decided, what still blocks a tagged release, and how the release is cut once nothing does.
+This folder is the release record: how acceptance is decided, what still blocks a tagged release, and how the release is cut once nothing does.
+
+## Scope since the 2026-11-13 split
+
+Patrick approved splitting the core release on 2026-11-13 (control PR #50):
+
+- `release` (the release candidate) merges the integrated core with its 48 assigned criteria passing: every PRD 12 criterion except AC-001, AC-002, AC-017 and AC-041. Its phase cases are `candidate-acceptance` (the 48), `signed-images-updater-load` (AC-013, AC-016) and `backup-restore` (AC-018, AC-040), each run in subset mode. It does not tag, sign or publish anything.
+- `release-api-coverage`: AC-002 (every contract operation mounted).
+- `release-perf`: AC-017 (p95 performance).
+- `release-final`: AC-001 (clean Docker Desktop install), AC-041 (Word opens editor files with no repair prompt), the release gates, and the signed release. It runs all 52 criteria and every gate.
 
 - [acceptance-evidence.json](acceptance-evidence.json): each of the 52 PRD 12 criteria, the executable checks that prove it, and any gap no check proves yet. Two release gates sit beside them.
 - [INSTALL.md](INSTALL.md): the firm's install and operations guide (Docker Desktop install, first-run, updates, backups, restore, removal).
@@ -17,11 +26,13 @@ This folder is the release assignment's working record: how full acceptance is d
 - A check that prints `PENDING`, or whose prerequisites (Docker, the two Postgres databases, the Postgres 17 client, the core image's wordcraft-cli) are missing, is not a pass.
 - The release passes only when all 52 criteria pass, every gate passes, and the working tree is clean. Otherwise the script exits 1.
 
-`--phase desktop-install`, `--phase signed-images-updater-load` and `--phase backup-restore` run one phase case's checks and decide only its criteria. `--check ID` runs single checks; `--list` prints them.
+Subset mode: `TOGAVSU_ACCEPTANCE_IDS=AC-013,AC-016 sh scripts/ci/full-acceptance.sh` (it passes `--ids` to the runner) runs the checks of exactly the listed criteria and decides only those. It decides no release gate, since the gates belong to the full run on release-final. It exits 0 only when every listed criterion passes on a clean tree, 1 otherwise, and 2 when the list is empty or names an id that is not in docs/build/acceptance.json. With the variable unset the script runs all 52 criteria and every gate, as before. `tests/test_full_acceptance.py` covers both modes. `--check ID` runs single checks; `--list` prints them.
+
+`scripts/release/write_report.py PHASE_DIR` writes the report from one subset run per phase case of the release assignment in docs/build/tasks.json. It refuses runs that aren't exact subset runs of the mapped ids, ran on a dirty tree, or ran at different revisions.
 
 ## Release gates
 
-The first two can't pass from a lane runner (below); the third is the product CI suites.
+The gates are decided only by the full run (release-final and main). The first two can't pass from a lane runner (below); the third is the product CI suites.
 
 
 | Gate | Check | Passes when |
@@ -44,7 +55,7 @@ Patrick decided on 2026-11-12:
 
 ## Cutting the release
 
-These steps need the integration lead and credentials no lane has:
+This is release-final's work, not the release candidate's. These steps need the integration lead and credentials no lane has:
 
 1. Land `docs/release/proposed-ci/release.yml` as `.github/workflows/release.yml` through a reviewed control PR.
 2. Tag the revision on which `sh scripts/ci/full-acceptance.sh` exits 0, except for the two gates below, and push the tag. The workflow publishes both images and `digests.json`.
@@ -55,4 +66,6 @@ These steps need the integration lead and credentials no lane has:
 
 ## Proposed CI change
 
-The Full acceptance job is in `.github/workflows/product-ci.yml` (control PR #46). The release workflow is the one CI change still proposed: copy [proposed-ci/release.yml](proposed-ci/release.yml) to `.github/workflows/release.yml` unchanged. `docs/release/proposed-ci/product-ci-full-acceptance.patch` is the earlier Full acceptance proposal, kept for the record.
+The Full acceptance job is in `.github/workflows/product-ci.yml` (control PRs #46 and #50). It runs all 52 criteria and every gate on release-final and on main, and reports not applicable on the release candidate, which is proven by its subset runs instead. The release candidate proposes no product-ci.yml change. The earlier full-acceptance patch is removed because it is obsolete.
+
+The release workflow, [proposed-ci/release.yml](proposed-ci/release.yml), is still only a proposal. It belongs to the signed release, so it is for release-final to land, not this candidate: copy it to `.github/workflows/release.yml` unchanged.

@@ -1,11 +1,13 @@
 #!/bin/sh
-# Full acceptance (release assignment): runs every check behind all 52 PRD 12 criteria
-# and every release gate through scripts/release/full_acceptance.py, then prints its
-# results. It exits non-zero while any criterion or gate is pending, so a job that runs
-# it never turns unexecuted acceptance into a pass. Needs Docker, the core image's
-# wordcraft-cli, and two Postgres 17 databases (TOGAVSU_TEST_DATABASE_URL and
-# TOGAVSU_TEST_DATABASE_URL_B) with TOGAVSU_PG_DUMP and TOGAVSU_PSQL for the backup
-# checks. TOGAVSU_ACCEPTANCE_OUT names the results directory.
+# Full acceptance: runs every check behind all 52 PRD 12 criteria and every release gate
+# through scripts/release/full_acceptance.py, then prints its results. It exits non-zero
+# while any criterion or gate is pending, so a job that runs it never turns unexecuted
+# acceptance into a pass. With TOGAVSU_ACCEPTANCE_IDS set (comma-separated, for example
+# AC-013,AC-016) it runs exactly those criteria, decides no release gate, and exits 0 only
+# when every listed criterion passes; set but empty, or naming an unknown id, it exits 2.
+# Needs Docker, the core image's wordcraft-cli, and two Postgres 17 databases
+# (TOGAVSU_TEST_DATABASE_URL and TOGAVSU_TEST_DATABASE_URL_B) with TOGAVSU_PG_DUMP and
+# TOGAVSU_PSQL for the backup checks. TOGAVSU_ACCEPTANCE_OUT names the results directory.
 set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 cd "$root"
@@ -20,6 +22,10 @@ if [ -z "${TOGAVSU_WORDCRAFT_CLI:-}" ]; then
   export TOGAVSU_WORDCRAFT_CLI="$tools/wordcraft-cli" TOGAVSU_REQUIRE_WORDCRAFT_CLI=1 TOGAVSU_EDITOR_DIST="$tools/editor"
 fi
 status=0
-python3 scripts/release/full_acceptance.py --out "$out" "$@" || status=$?
+if [ "${TOGAVSU_ACCEPTANCE_IDS+set}" = set ]; then
+  python3 scripts/release/full_acceptance.py --out "$out" --ids "$TOGAVSU_ACCEPTANCE_IDS" "$@" || status=$?
+else
+  python3 scripts/release/full_acceptance.py --out "$out" "$@" || status=$?
+fi
 echo "results: $out/results.json"
 exit "$status"
