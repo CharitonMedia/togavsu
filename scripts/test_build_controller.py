@@ -3057,6 +3057,7 @@ class LaneBackendTests(unittest.TestCase):
 class LanePackageScanTests(unittest.TestCase):
     """Runs the Package result step of the protected lane workflow against a local repository."""
 
+    # A piece of a real repository secret still withholds the whole result.
     TOKEN = "sk-ant-oat01-" + "Q" * 48
 
     def setUp(self):
@@ -3132,6 +3133,74 @@ class LanePackageScanTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential", result.stderr)
         self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    # Shaped like a GitHub token but not a repository secret, as a lane's fake test fixture would be.
+    FAKE = "gh" + "p_" + "A" * 36
+
+    def result(self):
+        return json.loads((self.runner / "lane-pack" / "lane-result.json").read_text())
+
+    def lane_log(self):
+        return self.git("log", "-p", "-m", "--text", "--format=%H%n%B", self.base + "..lane")
+
+    def test_fake_token_line_is_removed_and_the_rest_is_kept(self):
+        self.commit("redact_test.go", "package x\nconst a = 1\nvar fake = \"" + self.FAKE + "\"\nconst b = 2\n")
+        self.commit("work.txt", "done\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.runner / "lane-pack" / "lane.bundle").exists())
+        data = self.result()
+        self.assertEqual(data["head"], self.git("rev-parse", "lane"))
+        self.assertEqual(data["credential_lines_removed"], {"redact_test.go": 1})
+        self.assertIn("Credential guard: removed 1 line(s)", data["pr_body"])
+        self.assertEqual(self.git("show", "lane:redact_test.go"), "package x\nconst a = 1\nconst b = 2")
+        self.assertEqual(self.git("show", "lane:work.txt"), "done")
+        self.assertNotIn(self.FAKE, self.lane_log())
+        self.assertEqual(len(self.git("rev-list", self.base + "..lane").split()), 2)
+
+    def test_fake_token_added_then_removed_is_scrubbed_from_history(self):
+        self.commit("debug.txt", "keep me\nleft " + self.FAKE + "\n")
+        self.commit("debug.txt", "keep me\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn(self.FAKE, self.lane_log())
+        self.assertEqual(self.git("show", "lane:debug.txt"), "keep me")
+
+    def test_fake_token_in_pr_text_and_summary_drops_only_those_lines(self):
+        (self.runner / "lane-out").mkdir()
+        (self.runner / "lane-out" / "pr-body.md").write_text("Fixed the ledger.\nSample " + self.FAKE + "\nTests pass.\n")
+        (self.runner / "lane-claude.json").write_text(json.dumps({"result": "ok\nused " + self.FAKE + "\nend"}))
+        self.commit("work.txt", "done\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = self.result()
+        self.assertTrue(data["pr_body"].startswith("Fixed the ledger.\nTests pass.\n"))
+        self.assertEqual(data["summary"], "ok\nend")
+        self.assertEqual(data["credential_lines_removed"], {"PR body": 1, "run summary": 1})
+
+    def test_fake_token_in_binary_file_drops_only_that_file(self):
+        self.commit("screenshot.png", self.PNG + b"tEXt" + self.FAKE.encode() + b"\xff\x00")
+        self.commit("work.txt", "done\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        files = self.git("ls-tree", "-r", "--name-only", "lane").split()
+        self.assertNotIn("screenshot.png", files)
+        self.assertIn("work.txt", files)
+        self.assertEqual(self.result()["credential_lines_removed"], {"screenshot.png": 1})
+
+    def test_merged_main_commit_keeps_its_parent_and_content(self):
+        self.git("checkout", "-q", "-b", "main-side", self.base)
+        self.commit("main.txt", "from main\n")
+        side = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "lane")
+        self.commit("fixture.txt", "a\nt " + self.FAKE + "\n")
+        self.git("merge", "-q", "--no-edit", "main-side")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.git("rev-list", "--parents", "-n", "1", "lane").split()[2], side)
+        self.assertEqual(self.git("show", "lane:main.txt"), "from main")
+        self.assertEqual(self.git("show", "lane:fixture.txt"), "a")
+        self.assertNotIn(self.FAKE, self.lane_log())
 
 
 if __name__ == "__main__":

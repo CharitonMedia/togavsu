@@ -120,17 +120,20 @@ jobs:
           SECRET_GITHUB: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - <<'PY'
-          import base64, json, os, pathlib, re, subprocess, sys
+          import base64, hashlib, json, os, pathlib, re, subprocess, sys
           temp = pathlib.Path(os.environ["RUNNER_TEMP"])
           out, pack = temp / "lane-out", temp / "lane-pack"
           pack.mkdir()
-          def git(*args):
+          def raw(*args, data=None, env=None):
+              return subprocess.run(["git"] + list(args), check=True, capture_output=True, input=data,
+                                    env=dict(os.environ, **(env or {}))).stdout
+          def git(*args, env=None):
               # Lanes may commit binary files (screenshots); undecodable bytes become U+FFFD so the scan still sees ASCII tokens.
-              return subprocess.run(["git"] + list(args), check=True, capture_output=True, text=True,
-                                    encoding="utf-8", errors="replace").stdout.strip()
+              return raw(*args, env=env).decode("utf-8", "replace").strip()
           base, head = os.environ["LANE_BASE"], git("rev-parse", "refs/heads/lane")
           if git("merge-base", base, head) != base:
               sys.exit("Lane head does not descend from its base")
+          uncommitted = bool(git("status", "--porcelain"))
           read = lambda name: (out / name).read_text(errors="replace") if (out / name).exists() else ""
           title, body = read("pr-title.txt").strip()[:200], read("pr-body.md")[:60000]
           summary = ""
@@ -144,20 +147,108 @@ jobs:
               if value:
                   forms.update({value, value[::-1], base64.b64encode(value.encode()).decode().rstrip("=")})
                   forms.update(value[i:i + 16] for i in range(0, max(len(value) - 15, 1), 4))
-          # Every commit the bundle publishes, not only the net diff: a token added then removed still counts.
-          history = git("log", "-p", "-m", "--text", "--no-textconv", "--no-ext-diff", "--format=%H%n%B",
-                        base + ".." + head) if head != base else ""
-          scanned = "\n".join([title, body, summary, history])
-          shaped = re.search(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}", scanned)
-          if shaped or any(len(f) >= 16 and f in scanned for f in forms):
+          SHAPED = re.compile(r"sk-ant-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}")
+          def history():
+              # Every commit the bundle publishes, not only the net diff: a token added then removed still counts.
+              return git("log", "-p", "-m", "--text", "--no-textconv", "--no-ext-diff", "--format=%H%n%B",
+                         base + ".." + head) if head != base else ""
+          def live(text):
+              return any(len(f) >= 16 and f in text for f in forms)
+          # A piece of a real repository secret means the run leaked a live credential: withhold the whole result.
+          if live("\n".join([title, body, summary, history()])):
+              sys.exit("Lane output contains a credential; result withheld")
+          # Text merely shaped like a token (usually a fake test fixture) costs only the lines that carry it.
+          removed = {}
+          def strip(text, where):
+              kept = []
+              for line in text.splitlines(keepends=True):
+                  if SHAPED.search(line):
+                      removed.setdefault(where, set()).add(hashlib.sha256(line.encode()).hexdigest())
+                  else:
+                      kept.append(line)
+              return "".join(kept)
+          title, body, summary = strip(title, "PR title"), strip(body, "PR body"), strip(summary, "run summary")
+          if head != base and SHAPED.search(history()):
+              commits = git("rev-list", "--reverse", "--topo-order", base + ".." + head).split()
+              inside = set(commits)
+              def tree(rev):
+                  entries = {}
+                  for item in raw("ls-tree", "-r", "-z", rev).split(b"\0"):
+                      if item:
+                          meta, path = item.split(b"\t", 1)
+                          mode, kind, sha = meta.decode().split()
+                          entries[path] = (mode, kind, sha)
+                  return entries
+              base_tree = tree(base)
+              # Content the lane did not write (the base and anything merged in from outside the run) is left alone.
+              foreign = {e[2] for e in base_tree.values()}
+              for c in commits:
+                  for p in git("rev-list", "--parents", "-n", "1", c).split()[1:]:
+                      if p not in inside and p != base:
+                          foreign.update(e[2] for e in tree(p).values())
+              cleaned, mapping = {}, {}
+              def clean(sha, path):
+                  if sha not in cleaned:
+                      data = raw("cat-file", "blob", sha)
+                      if not SHAPED.search(data.decode("utf-8", "replace")):
+                          cleaned[sha] = sha
+                      else:
+                          try:
+                              text = data.decode("utf-8")
+                          except UnicodeDecodeError:
+                              cleaned[sha] = None  # A binary file carrying one: keep the base version, or leave it out.
+                              removed.setdefault(path, set()).add("binary")
+                          else:
+                              cleaned[sha] = raw("hash-object", "-w", "--stdin", data=strip(text, path).encode()).decode().strip()
+                  return cleaned[sha]
+              index = {"GIT_INDEX_FILE": str(temp / "lane-clean.index")}
+              for c in commits:
+                  raw("read-tree", c, env=index)
+                  updates = []
+                  for path, (mode, kind, sha) in tree(c).items():
+                      if kind != "blob" or sha in foreign:
+                          continue
+                      new = clean(sha, path.decode("utf-8", "replace"))
+                      if new == sha:
+                          continue
+                      if new is None:
+                          old = base_tree.get(path)
+                          updates.append(((old[0] + " " + old[2]) if old else "0 " + "0" * 40).encode() + b"\t" + path)
+                      else:
+                          updates.append((mode + " " + new).encode() + b"\t" + path)
+                  original = git("rev-list", "--parents", "-n", "1", c).split()[1:]
+                  parents = [mapping.get(p, p) for p in original]
+                  text = raw("cat-file", "commit", c).partition(b"\n\n")[2]
+                  message = strip(text.decode("utf-8", "replace"), "commit messages")
+                  if not updates and parents == original and message.encode() == text:
+                      mapping[c] = c  # Untouched commits, such as main's merged in during the run, keep their hashes.
+                      continue
+                  if updates:
+                      raw("update-index", "--index-info", data=b"\n".join(updates) + b"\n", env=index)
+                  new_tree = git("write-tree", env=index)
+                  an, ae, ad, cn, ce, cd = git("log", "-1", "--format=%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI", c).split("\0")
+                  args = ["commit-tree", new_tree] + [x for p in parents for x in ("-p", p)]
+                  mapping[c] = raw(*args, data=message.encode(), env={
+                      "GIT_AUTHOR_NAME": an, "GIT_AUTHOR_EMAIL": ae, "GIT_AUTHOR_DATE": ad,
+                      "GIT_COMMITTER_NAME": cn, "GIT_COMMITTER_EMAIL": ce, "GIT_COMMITTER_DATE": cd}).decode().strip()
+              (temp / "lane-clean.index").unlink(missing_ok=True)
+              head = mapping[head]
+              raw("update-ref", "refs/heads/lane", head)
+          counts = {where: len(lines) for where, lines in sorted(removed.items())}
+          if counts:
+              note = ("\n\nCredential guard: removed " + str(sum(counts.values())) + " line(s) shaped like a token from: "
+                      + ", ".join(counts) + ". The rest of this pass is kept. Restore what those lines did without writing a"
+                      " token-shaped string; build fake tokens at runtime.\n")
+              body = (body + (note if not SHAPED.search(note) else "\n\nCredential guard removed lines shaped like a token.\n"))[:60000]
+          if SHAPED.search("\n".join([title, body, summary, history()])) or live(history()):
               sys.exit("Lane output contains a credential; result withheld")
           if head != base:
               git("bundle", "create", str(pack / "lane.bundle"), "refs/heads/lane", "^" + base)
           (pack / "lane-result.json").write_text(json.dumps({
               "agent_id": os.environ["LANE_AGENT"], "run_id": os.environ["LANE_RUN"], "task": os.environ["LANE_TASK"],
               "branch": os.environ["LANE_BRANCH"], "base": base, "head": head, "pr_title": title, "pr_body": body,
-              "claude_outcome": os.environ["CLAUDE_OUTCOME"], "uncommitted": bool(git("status", "--porcelain")),
-              "summary": summary}))
+              "claude_outcome": os.environ["CLAUDE_OUTCOME"], "uncommitted": uncommitted,
+              "summary": summary, "credential_lines_removed": counts}))
           PY
       - name: Retain lane result
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
