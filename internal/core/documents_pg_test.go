@@ -1726,11 +1726,14 @@ func inOrder(s string, parts ...string) bool {
 // core keeps its files under; the two constants must agree or an update would start on
 // an empty file store.
 func TestCoreDataDirMatchesTheSupervisorMount(t *testing.T) {
+	if filepath.Dir(PassphraseFile) != supervisor.BackupKeyDir {
+		t.Fatalf("the core writes the backup passphrase to %s, the supervisor mounts %s", PassphraseFile, supervisor.BackupKeyDir)
+	}
 	if supervisor.CoreDataDir != DataDir {
 		t.Fatalf("supervisor mounts the core data volume at %s, the core uses %s", supervisor.CoreDataDir, DataDir)
 	}
-	binds := supervisor.CoreBinds("p_appsecrets", "p_core_data")
-	if len(binds) != 2 || binds[1] != "p_core_data:"+DataDir {
+	binds := supervisor.CoreBinds(supervisor.CoreVolumes{AppSecrets: "p_appsecrets", Data: "p_core_data"})
+	if len(binds) != 3 || binds[2] != "p_core_data:"+DataDir {
 		t.Fatalf("replacement core binds %v", binds)
 	}
 }

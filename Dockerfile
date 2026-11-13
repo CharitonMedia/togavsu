@@ -40,6 +40,10 @@ RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
     && apt-get purge -y curl && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/* \
     && cosign version >/dev/null
+# The release public key (compose.yaml COSIGN_KEY). The private key is kept off GitHub;
+# release signatures are made there and are not in the public transparency log.
+COPY deploy/release/cosign.pub /usr/share/togavsu/cosign.pub
+RUN chmod 644 /usr/share/togavsu/cosign.pub
 COPY --from=supervisor-build /out/supervisor /usr/local/bin/supervisor
 ENTRYPOINT ["/usr/local/bin/supervisor"]
 CMD ["serve"]

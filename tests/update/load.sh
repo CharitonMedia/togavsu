@@ -9,8 +9,9 @@
 #  2. brings up the real compose.yaml stack (own project name, Caddy on 127.0.0.1 high
 #     ports) plus a local registry:2 and a release-index file server that share the
 #     supervisor's network namespace, and completes first-run setup over HTTPS;
-#  3. pushes and signs the images with a throwaway cosign key pair (no transparency log),
-#     installs the public key at the supervisor's COSIGN_KEY;
+#  3. pushes and signs the images with a throwaway cosign key pair (no transparency log,
+#     as release signing is), mounted read-only in place of the release key the image
+#     ships (COSIGN_KEY), and checks the image does ship deploy/release/cosign.pub;
 #  4. runs tests/update/loadgen through Caddy while asking the supervisor API for an
 #     update to 2.0.0, then to each bad image, and checks zero failed requests, the
 #     served version, the refusals and the update history.
@@ -110,6 +111,11 @@ images="$images upd-core:1.0.0"
 images="$images upd-core:2.0.0"
 "$docker" build -q -f "$root/Dockerfile" -t upd-supervisor:local "$root" >/dev/null
 images="$images upd-supervisor:local"
+# The image carries the release public key at compose.yaml's default COSIGN_KEY.
+"$docker" run --rm --entrypoint cat upd-supervisor:local /usr/share/togavsu/cosign.pub > "$work/image-cosign.pub" \
+  || fail "the supervisor image has no /usr/share/togavsu/cosign.pub"
+cmp -s "$work/image-cosign.pub" "$root/deploy/release/cosign.pub" \
+  || fail "the supervisor image's cosign.pub is not deploy/release/cosign.pub"
 thin() { # tag, then Dockerfile lines after FROM upd-core:2.0.0
   tag=$1
   shift
@@ -120,6 +126,13 @@ thin upd-core:3.0.0-unsigned 'LABEL togavsu.version=3.0.0'
 thin upd-core:3.0.1-wrongkey 'LABEL togavsu.version=3.0.1'
 thin upd-core:3.0.2-badhealth 'LABEL togavsu.version=3.0.2
 HEALTHCHECK --interval=1s --timeout=2s --start-period=0s --retries=2 CMD ["/bin/sh", "-c", "exit 1"]'
+
+# --- throwaway keys. They live only in $work; the supervisor mounts the public half in
+# place of the release key for this test.
+pass=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+(cd "$work/keys" && COSIGN_PASSWORD=$pass "$cosign" generate-key-pair >/dev/null 2>&1) || fail "cosign generate-key-pair"
+(cd "$work/keys" && COSIGN_PASSWORD=$pass "$cosign" generate-key-pair --output-key-prefix wrong >/dev/null 2>&1) || fail "cosign generate-key-pair (wrong key)"
+chmod 644 "$work/keys/cosign.pub"
 
 # --- stack. The registry and the release index join the supervisor's network namespace,
 # so the supervisor (cosign) and the host engine (docker pull) both reach 127.0.0.1:$reg_port.
@@ -141,7 +154,10 @@ services:
       - "127.0.0.1:$reg_port:$reg_port"
     environment:
       TOGAVSU_RELEASE_INDEX: http://127.0.0.1:$idx_port/index.json
+      COSIGN_KEY: /run/test-release/cosign.pub
       COSIGN_VERIFY_FLAGS: "--insecure-ignore-tlog=true --allow-http-registry=true"
+    volumes:
+      - $work/keys/cosign.pub:/run/test-release/cosign.pub:ro
   registry:
     image: registry:2
     network_mode: "service:supervisor"
@@ -176,12 +192,7 @@ version() { curl -skf --max-time 10 "$base/api/v1/health" 2>/dev/null | json 'd[
 v_before=$(version)
 [ "$v_before" = "1.0.0" ] || fail "compose core reports version '$v_before', want 1.0.0"
 
-# --- keys, push, sign. The keys live only in $work.
-pass=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
-(cd "$work/keys" && COSIGN_PASSWORD=$pass "$cosign" generate-key-pair >/dev/null 2>&1) || fail "cosign generate-key-pair"
-(cd "$work/keys" && COSIGN_PASSWORD=$pass "$cosign" generate-key-pair --output-key-prefix wrong >/dev/null 2>&1) || fail "cosign generate-key-pair (wrong key)"
-"$docker" run --rm --name upd-keyinstall -v "${project}_appsecrets:/appsecrets" -v "$work/keys/cosign.pub:/in/cosign.pub:ro" \
-  --entrypoint /bin/sh upd-supervisor:local -c 'cp /in/cosign.pub /appsecrets/cosign.pub && chmod 644 /appsecrets/cosign.pub'
+# --- push, sign.
 
 push() { # local tag, repository tag -> prints name@digest
   "$docker" tag "$1" "$reg/togavsu-core:$2"

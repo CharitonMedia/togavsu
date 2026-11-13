@@ -138,12 +138,11 @@ func wire(cfg supervisor.Config) (*supervisor.Operations, error) {
 		return nil, err
 	}
 	docker := &supervisor.DockerRuntime{
-		Client:           supervisor.DockerSocketClient(cfg.DockerSocket),
-		Network:          cfg.DockerNetwork,
-		Env:              supervisor.CoreEnv(),
-		Binds:            supervisor.CoreBinds(cfg.AppSecretsVolume, cfg.CoreDataVolume),
-		AppSecretsVolume: cfg.AppSecretsVolume,
-		CoreDataVolume:   cfg.CoreDataVolume,
+		Client:  supervisor.DockerSocketClient(cfg.DockerSocket),
+		Network: cfg.DockerNetwork,
+		Env:     supervisor.CoreEnv(),
+		Volumes: supervisor.CoreVolumes{AppSecrets: cfg.AppSecretsVolume, AdminSecrets: cfg.AdminSecretsVolume,
+			BackupKey: cfg.BackupKeyVolume, Data: cfg.CoreDataVolume},
 	}
 	sched, err := cfg.Schedule()
 	if err != nil {

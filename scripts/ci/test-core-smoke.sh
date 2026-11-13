@@ -47,7 +47,8 @@ out=$("$docker" run --rm --user 65532:65532 \
 printf '%s\n' "$out" | grep -q "bootstrap configuration accepted"
 after=$(python3 -c 'import sys; print(open(sys.argv[1],"rb").read().hex())' "$work/appsecrets/field_key")
 test "$before" = "$after"
-# Serving without a reachable database exits non-zero instead of serving or hanging.
+# Serving without a reachable database exits non-zero instead of serving or hanging: the
+# seal check (core.Config.RequireSealed) is the first thing that needs the database.
 if timeout 60 "$docker" run --rm --user 65532:65532 --network none \
   -e TOGAVSU_DOMAIN=firm.example \
   -v "$work/appsecrets:/appsecrets:ro" \
@@ -55,5 +56,5 @@ if timeout 60 "$docker" run --rm --user 65532:65532 --network none \
   echo "core served without a database" >&2
   exit 1
 fi
-grep -q "core: migrate" "$work/serve.log"
+grep -q "core: refusing to serve" "$work/serve.log"
 echo "core image smoke passed"

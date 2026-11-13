@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -114,7 +115,8 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 	for _, want := range []string{
 		"TOGAVSU_DOMAIN=firm.example",
 		"SUPERVISOR_URL=http://supervisor:8081",
-		"togavsu_appsecrets:/appsecrets",
+		"togavsu_appsecrets:/appsecrets:ro",
+		"togavsu_backupkey:/backupkey",
 		"65532:65532",
 		"unless-stopped",
 		image,
@@ -123,7 +125,8 @@ func TestStartCoreReproducesComposeSpec(t *testing.T) {
 			t.Fatalf("create body missing %s: %s", want, body)
 		}
 	}
-	for _, banned := range []string{"FIELD_KEY_FILE", "DATABASE_URL_FILE", "SUPERVISOR_TOKEN_FILE", "postgres://"} {
+	// A replacement core never mounts the superuser URL (PRD section 6, AC-006).
+	for _, banned := range []string{"FIELD_KEY_FILE", "DATABASE_URL_FILE", "SUPERVISOR_TOKEN_FILE", "postgres://", "adminsecrets", "ADMIN_DATABASE"} {
 		if strings.Contains(body, banned) {
 			t.Fatalf("create body carried %s: %s", banned, body)
 		}
@@ -481,8 +484,8 @@ func TestTwoComposeProjectsStaySeparate(t *testing.T) {
 		if cfg.DockerNetwork != project+"_default" || cfg.AppSecretsVolume != project+"_appsecrets" {
 			t.Fatalf("config %+v", cfg)
 		}
-		if got := CoreBinds(cfg.AppSecretsVolume, cfg.CoreDataVolume); len(got) != 2 || got[0] != project+"_appsecrets:/appsecrets" ||
-			got[1] != project+"_core_data:/var/lib/togavsu-core" {
+		if got := CoreBinds(CoreVolumes{AppSecrets: cfg.AppSecretsVolume, Data: cfg.CoreDataVolume}); len(got) != 3 || got[0] != project+"_appsecrets:/appsecrets:ro" ||
+			got[2] != project+"_core_data:/var/lib/togavsu-core" {
 			t.Fatalf("binds %v", got)
 		}
 	}
@@ -524,5 +527,54 @@ func TestMigratorUnconfigured(t *testing.T) {
 	code, _ := PublicCode(err)
 	if err == nil || code != "not_configured" {
 		t.Fatalf("%v", err)
+	}
+}
+
+// TestCoreAndMigratorSecretMounts (PRD section 6, AC-006, AC-024): a replacement core
+// mounts the core's secrets read-only and never the superuser volume; only the update
+// migrator gets the superuser volume, read-only.
+func TestCoreAndMigratorSecretMounts(t *testing.T) {
+	v := CoreVolumes{AppSecrets: "p_appsecrets", AdminSecrets: "p_adminsecrets", BackupKey: "p_backupkey", Data: "p_core_data"}
+	core := strings.Join(CoreBinds(v), " ")
+	if core != "p_appsecrets:/appsecrets:ro p_backupkey:/backupkey p_core_data:/var/lib/togavsu-core" {
+		t.Fatalf("core binds %s", core)
+	}
+	if strings.Contains(core, "adminsecrets") {
+		t.Fatalf("core mounts the superuser volume: %s", core)
+	}
+	if got := strings.Join(MigrateBinds(v), " "); got != "p_appsecrets:/appsecrets:ro p_adminsecrets:/adminsecrets:ro" {
+		t.Fatalf("migrate binds %s", got)
+	}
+	var created []map[string]any
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.43/containers/create", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		created = append(created, body)
+		_ = json.NewEncoder(w).Encode(map[string]string{"Id": "c" + strconv.Itoa(len(created))})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	rt := &DockerRuntime{Client: srv.Client(), BaseURL: srv.URL, Network: "p_default", Volumes: v}
+	if _, err := rt.CreateCore(context.Background(), testReleaseImage, "togavsu-core-next"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (DockerMigrator{Docker: rt}).createOrFind(context.Background(), testReleaseImage, "togavsu-migrate-x"); err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 2 {
+		t.Fatalf("created %d containers", len(created))
+	}
+	binds := func(body map[string]any) string {
+		raw, _ := json.Marshal(body["HostConfig"].(map[string]any)["Binds"])
+		return string(raw)
+	}
+	if got := binds(created[0]); strings.Contains(got, "adminsecrets") || !strings.Contains(got, "p_appsecrets:/appsecrets:ro") {
+		t.Fatalf("replacement core binds %s", got)
+	}
+	if got := binds(created[1]); !strings.Contains(got, "p_adminsecrets:/adminsecrets:ro") {
+		t.Fatalf("migrator binds %s", got)
 	}
 }

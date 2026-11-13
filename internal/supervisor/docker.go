@@ -43,19 +43,17 @@ var errDockerNotModified = errors.New("container already running")
 // DockerRuntime talks to the engine over the socket. The core container does
 // not get this client.
 type DockerRuntime struct {
-	Client           *http.Client
-	BaseURL          string
-	Network          string
-	AppSecretsVolume string
-	// CoreDataVolume is the core's own volume (upload staging and the default
-	// local-disk file store); a replacement core must mount the same one.
-	CoreDataVolume string
-	Env            []string
-	Binds          []string
+	Client  *http.Client
+	BaseURL string
+	Network string
+	// Volumes are the installer volumes a replacement core and the update migrator
+	// mount (CoreBinds, MigrateBinds); empty names take the togavsu project defaults.
+	Volumes CoreVolumes
+	Env     []string
+	// Binds, when set, replaces CoreBinds(Volumes) on a replacement core only.
+	Binds []string
 }
 
-// CoreEnv is the environment the Compose core service receives. Replacements
-// started by the supervisor must carry the same files and supervisor address.
 // CoreEnv is the process environment shared by Compose and by containers
 // this supervisor creates. Secrets stay in the mounted files. The core image
 // entrypoint reads those files into the bootstrap contract. TOGAVSU_DOMAIN,
@@ -72,18 +70,57 @@ func CoreEnv() []string {
 // CoreDataDir is where the core image keeps its data volume (core.DataDir).
 const CoreDataDir = "/var/lib/togavsu-core"
 
-// CoreBinds mounts the installer secret volume and the core's data volume, as the
-// Compose core service does. The default names match the Compose project name togavsu.
-// Without the data volume a replacement core would start on an empty local-disk file
-// store.
-func CoreBinds(secrets, data string) []string {
-	if secrets == "" {
-		secrets = "togavsu_appsecrets"
+// BackupKeyDir is where the core writes the backup passphrase (core.PassphraseFile).
+const BackupKeyDir = "/backupkey"
+
+// AdminSecretsDir holds admin_database_url, the Postgres superuser URL. Only the
+// migrate one-shot and this supervisor mount it; a serving core never does, and the
+// core image entrypoint refuses to serve when it can read it (PRD section 6).
+const AdminSecretsDir = "/adminsecrets"
+
+// CoreVolumes names the installer volumes (compose.yaml). The defaults match the
+// Compose project name togavsu.
+type CoreVolumes struct {
+	// AppSecrets holds database_url, field_key, supervisor_token and domain. Every
+	// core mounts it read-only.
+	AppSecrets string
+	// AdminSecrets holds admin_database_url; only the migrator mounts it.
+	AdminSecrets string
+	// BackupKey holds backup_passphrase, the one secret the core writes.
+	BackupKey string
+	// Data is upload staging and the default local-disk file store.
+	Data string
+}
+
+func (v CoreVolumes) withDefaults() CoreVolumes {
+	def := func(s, d string) string {
+		if s == "" {
+			return d
+		}
+		return s
 	}
-	if data == "" {
-		data = "togavsu_core_data"
+	return CoreVolumes{
+		AppSecrets:   def(v.AppSecrets, "togavsu_appsecrets"),
+		AdminSecrets: def(v.AdminSecrets, "togavsu_adminsecrets"),
+		BackupKey:    def(v.BackupKey, "togavsu_backupkey"),
+		Data:         def(v.Data, "togavsu_core_data"),
 	}
-	return []string{secrets + ":/appsecrets", data + ":" + CoreDataDir}
+}
+
+// CoreBinds are the Compose core service's mounts: the secrets read-only, the backup
+// passphrase volume and the core's data volume. Without the data volume a
+// replacement core would start on an empty local-disk file store. The superuser
+// volume is never among them.
+func CoreBinds(v CoreVolumes) []string {
+	v = v.withDefaults()
+	return []string{v.AppSecrets + ":/appsecrets:ro", v.BackupKey + ":" + BackupKeyDir, v.Data + ":" + CoreDataDir}
+}
+
+// MigrateBinds are the Compose migrate service's mounts: the core's secrets and the
+// superuser URL, both read-only, so core migrate can seal the ledgers.
+func MigrateBinds(v CoreVolumes) []string {
+	v = v.withDefaults()
+	return []string{v.AppSecrets + ":/appsecrets:ro", v.AdminSecrets + ":" + AdminSecretsDir + ":ro"}
 }
 
 func (d *DockerRuntime) coreEnv() []string {
@@ -95,7 +132,7 @@ func (d *DockerRuntime) coreEnv() []string {
 
 func (d *DockerRuntime) coreBinds() []string {
 	if len(d.Binds) == 0 {
-		return CoreBinds(d.AppSecretsVolume, d.CoreDataVolume)
+		return CoreBinds(d.Volumes)
 	}
 	return d.Binds
 }
@@ -664,7 +701,7 @@ func (m DockerMigrator) createOrFind(ctx context.Context, image, name string) (s
 		"Tty":   true,
 		"HostConfig": map[string]any{
 			"NetworkMode": m.Docker.Network,
-			"Binds":       m.Docker.coreBinds(),
+			"Binds":       MigrateBinds(m.Docker.Volumes),
 		},
 	}
 	var created struct {

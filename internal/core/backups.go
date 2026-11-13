@@ -25,8 +25,9 @@ import (
 
 // PassphraseFile is where the supervisor reads the backup passphrase
 // (compose.yaml BACKUP_PASSPHRASE_FILE). Bootstrap creates it empty and owned
-// by the core; the core fills it from the backups.passphrase setting.
-const PassphraseFile = "/appsecrets/backup_passphrase"
+// by the core; the core fills it from the backups.passphrase setting. It has
+// its own volume, the only secret volume the core mounts read-write.
+const PassphraseFile = "/backupkey/backup_passphrase"
 
 // fileBytesPath is the supervisor's route into the files service
 // (supervisor.CoreFilesPath). It is not a product API: only the supervisor

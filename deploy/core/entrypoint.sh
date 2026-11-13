@@ -67,10 +67,28 @@ export TOGAVSU_DATABASE_URL="$db"
 export TOGAVSU_ENCRYPTION_KEY="$key"
 export TOGAVSU_DOMAIN="$domain"
 export TOGAVSU_SUPERVISOR_SECRET="$token"
-# "core migrate" seals the append-only tables with the superuser (core.MigrateSealed).
-# The serving core never gets this value.
-if [ "${1:-}" = "migrate" ] && [ -r "$secrets/admin_database_url" ]; then
-  TOGAVSU_ADMIN_DATABASE_URL=$(read_trim "$secrets/admin_database_url")
-  export TOGAVSU_ADMIN_DATABASE_URL
-fi
+# "core migrate" seals the append-only tables with the superuser (core.MigrateSealed)
+# and fails without it. Only the migrate one-shot mounts the admin volume; a serving
+# core that can read the superuser URL anywhere refuses to start (PRD section 6).
+admin=${TOGAVSU_ADMIN_SECRETS_DIR:-/adminsecrets}
+unset TOGAVSU_ADMIN_DATABASE_URL
+case "${1:-}" in
+  migrate)
+    if [ ! -r "$admin/admin_database_url" ]; then
+      echo "core entrypoint: migrate needs $admin/admin_database_url to seal the ledgers" >&2
+      exit 2
+    fi
+    TOGAVSU_ADMIN_DATABASE_URL=$(read_trim "$admin/admin_database_url")
+    export TOGAVSU_ADMIN_DATABASE_URL
+    ;;
+  check | healthcheck) ;;
+  *)
+    for f in "$admin/admin_database_url" "$secrets/admin_database_url"; do
+      if [ -e "$f" ]; then
+        echo "core entrypoint: refusing to serve: the superuser url $f is visible to the serving core" >&2
+        exit 2
+      fi
+    done
+    ;;
+esac
 exec "$bin" "$@"
