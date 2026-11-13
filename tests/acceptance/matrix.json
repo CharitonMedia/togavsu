@@ -88,7 +88,7 @@
       {
         "phase": 1,
         "kind": "e2e",
-        "title": "First admin forced into two-factor",
+        "title": "Setup or sign-in demands two-factor",
         "arrange": "Synthetic firm name and admin account. Default settings: security.totp_required.admin is off.",
         "action": "Submit the first admin, skip TOTP enrollment, then sign in with email and password.",
         "expect": [

@@ -18,7 +18,7 @@ var backends = []string{"local_disk", "network_path", "s3", "dropbox"}
 
 // definitions is the single catalog. Defaults named in the PRD are marked PRD.
 var definitions = []Definition{
-	{Key: "firm.name", Kind: KindString, Tab: TabFirm, Help: "Firm name shown on documents and invoices."},
+	{Key: "firm.name", Kind: KindString, Tab: TabFirm, Help: "Firm name shown on documents and invoices.", Special: "required"},
 	{Key: "firm.short_name", Kind: KindString, Tab: TabFirm, Help: "Short name shown in the sidebar."},
 	{Key: "firm.address", Kind: KindString, Tab: TabFirm, Help: "Firm mailing address."},
 	{Key: "firm.phone", Kind: KindString, Tab: TabFirm, Help: "Firm phone in E.164.", Optional: true, Special: "phone"},
@@ -165,7 +165,7 @@ var definitions = []Definition{
 	{Key: "backups.local_retention_days", Kind: KindInt, Default: "30", Min: 1, Max: 36500, HasMin: true, HasMax: true, Tab: TabBackups, Help: "Days to keep local backups. Default 30.", PRD: true},
 	{Key: "backups.test_restore_day", Kind: KindInt, Default: "1", Min: 1, Max: 28, HasMin: true, HasMax: true, Tab: TabBackups, Help: "Day of the month for the test restore. Default the 1st.", PRD: true},
 	{Key: "backups.log_retention_days", Kind: KindInt, Default: "400", Min: 1, Max: 36500, HasMin: true, HasMax: true, Tab: TabBackups, Help: "Days to keep application and access logs. Default 400.", PRD: true},
-	{Key: "backups.passphrase", Kind: KindString, Secret: true, Optional: true, Tab: TabBackups, Help: "Backup archive passphrase set at first run. Stored encrypted and omitted from the audit log."},
+	{Key: "backups.passphrase", Kind: KindString, Secret: true, Optional: true, Special: "required", Tab: TabBackups, Help: "Backup archive passphrase set at first run. Stored encrypted and omitted from the audit log."},
 
 	{Key: "api.page_size", Kind: KindInt, Default: "50", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Default rows per API page unless the list has its own page-size setting. The effective size is limited by api.max_page_size. Default 50."},
 	{Key: "api.max_page_size", Kind: KindInt, Default: "200", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Maximum rows per API page for lists using general pagination. Default 200."},

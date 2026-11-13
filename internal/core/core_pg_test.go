@@ -306,7 +306,8 @@ func mcpCall(c *client, name string, args map[string]any) resp {
 }
 
 // TestFirstRunGate is AC-001 on the composed core: a fresh database serves only setup,
-// setup runs once, and the install is ready after the admin confirms two-factor.
+// setup runs once, and the install is ready once the firm and first admin are stored;
+// two-factor is optional and applies only to roles an admin turns it on for.
 func TestFirstRunGate(t *testing.T) {
 	app, srv := start(t, testDSN(t))
 	anon := newClient(t, srv.URL)

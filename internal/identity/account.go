@@ -214,8 +214,9 @@ func (s *Service) setupClosed(ctx context.Context) (bool, error) {
 }
 
 // Ready reports whether first-run setup finished: the firm name, the backup passphrase
-// (the last setup setting written) and an active admin are stored. Two-factor is not
-// part of it; it is optional unless an admin turns it on for a role.
+// (the last setup setting written) and an active admin are stored. Neither setting can be
+// cleared once set (settings Special "required"), so a finished install stays ready.
+// Two-factor is not part of it; it is optional unless an admin turns it on for a role.
 func (s *Service) Ready(ctx context.Context) (bool, error) {
 	for _, key := range []string{"firm.name", "backups.passphrase"} {
 		value, err := s.settings.Get(ctx, key)

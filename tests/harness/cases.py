@@ -95,7 +95,7 @@ SPECS = {
                "Follow only the Compose up path.",
                ["The first-run form is not reached, so the criterion fails."],
                _EVIDENCE),
-            _c("F2", 1, "e2e", "First admin forced into two-factor",
+            _c("F2", 1, "e2e", "Setup or sign-in demands two-factor",
                "Synthetic firm name and admin account. Default settings: security.totp_required.admin is off.",
                "Submit the first admin, skip TOTP enrollment, then sign in with email and password.",
                ["If setup stays open, or the password sign-in asks for a code or enrollment, the criterion fails."],

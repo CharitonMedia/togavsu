@@ -148,3 +148,39 @@ func TestUserOptsIntoTOTP(t *testing.T) {
 		t.Fatal("a user who turned two-factor on is asked for a code", next, err)
 	}
 }
+
+// Clearing a setting after setup must not send a finished install back to /setup,
+// where setup is already closed: the firm name and backup passphrase can't be cleared.
+func TestReadySurvivesClearedSettings(t *testing.T) {
+	ctx := context.Background()
+	b := newDefaultBox(t)
+	if _, err := b.svc.Setup(ctx, SetupInput{
+		FirmName: "North Firm", TimeZone: "America/Chicago", AdminName: "Ada Admin",
+		AdminEmail: "ada@example.test", Password: "correct-horse-battery", BackupPassphrase: "backup-passphrase",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	login, err := b.svc.Login(ctx, "ada@example.test", "correct-horse-battery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := b.svc.Authenticate(ctx, Presented{SessionToken: login.SessionToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.reg.Set(ctx, "backups.passphrase", "", admin.Principal); err == nil {
+		t.Fatal("the backup passphrase was cleared")
+	}
+	if _, err := b.reg.Reset(ctx, "backups.passphrase", admin.Principal); err == nil {
+		t.Fatal("reset cleared the backup passphrase")
+	}
+	if _, err := b.reg.Set(ctx, "firm.name", " ", admin.Principal); err == nil {
+		t.Fatal("the firm name was cleared")
+	}
+	if _, err := b.reg.Reset(ctx, "firm.name", admin.Principal); err == nil {
+		t.Fatal("reset cleared the firm name")
+	}
+	if ready, err := b.svc.Ready(ctx); err != nil || !ready {
+		t.Fatal("install left setup after a settings change", ready, err)
+	}
+}

@@ -108,7 +108,7 @@ Expect: The first-run form is not reached, so the criterion fails.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
-#### AC-001-F2 First admin forced into two-factor
+#### AC-001-F2 Setup or sign-in demands two-factor
 
 Phase 1. Kind: e2e. Status: pending. Expected exit code: 0.
 
