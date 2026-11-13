@@ -135,3 +135,113 @@ ul.codes{columns:2;list-style:none;padding:0}
 tr.inactive td{opacity:.6}
 td.scopes{max-width:340px;font-size:.9em}
 .form-grid>p{grid-column:1/-1;margin:0}
+/* Area screens: practice, billing, trust, calendar, files, Doc Tender, the editor and module tabs draw in this shell. */
+.page-actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.page table{background:var(--surface)}
+.tabs .count{display:inline-block;min-width:1.4em;border-radius:1em;background:var(--danger);color:#fff;text-align:center;font-size:.8rem;padding:0 4px}
+.sr,.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.clip{max-width:18rem;overflow-wrap:anywhere;font-size:.85rem}
+td.nowrap{white-space:nowrap}
+.page .badge{display:inline-block;background:var(--accent);color:#000;border-radius:99px;padding:0 .55rem;font-size:.85rem}
+.area-practice .warn,.area-billing .card.warn{border:1px solid var(--danger);border-radius:10px;background:var(--surface);padding:14px 18px;margin:0 0 16px}
+.area-practice .warn h2,.area-billing .card.warn h2{color:var(--danger);margin-top:0}
+.glance{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem;max-width:64rem;margin:0 0 12px}
+.glance div{background:var(--surface);border:1px solid var(--line);padding:.6rem;border-radius:6px}
+.client{background:#fff4d6}
+.area-practice form.card,.area-practice .card{max-width:64rem}
+.area-billing .tag-ready_to_apply{background:#fff4d6;border-color:var(--accent)}
+.area-billing .tag-collected,.area-billing .tag-paid{background:#e9f3e6;border-color:#9cc192}
+.area-billing .tag-awaiting_trust_funds,.area-billing .tag-needs_fee_amount{background:#f2f2f2}
+.area-billing .tag-void{background:#f7e6e3;border-color:#c58b82}
+.area-billing form.inline,.area-trust .inline{display:inline-flex;gap:.4rem;align-items:center;margin:0;flex-wrap:wrap}
+.area-billing .card form{margin:.6rem 0;display:flex;gap:.5rem;align-items:end;flex-wrap:wrap}
+.area-billing .card form h3{width:100%;margin:.2rem 0;font-size:1rem}
+.area-billing .grid{display:flex;flex-wrap:wrap;gap:.6rem;align-items:end}
+.area-billing .grid label,.area-trust .grid label{display:flex;flex-direction:column;gap:.2rem;font-size:.9rem}
+.area-billing .grid .wide{flex:1 1 20rem}
+.area-billing .grid .wide input,.area-billing .grid textarea{width:100%}
+.area-billing .actions,.area-calendar .actions{display:flex;gap:.5rem;margin:.8rem 0}
+.area-billing .meta{margin-top:-.4rem}
+.area-billing tfoot th{text-align:right;font-weight:500}
+.area-billing tr.due th,.area-billing tr.due td{font-weight:700}
+.area-billing .filters{margin:.5rem 0 1rem;display:flex;gap:.8rem;flex-wrap:wrap}
+.area-billing .timer{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin:.4rem 0}
+.area-billing form.draft fieldset{border:1px solid var(--line);border-radius:6px;display:flex;flex-wrap:wrap;gap:.5rem;align-items:end;width:100%}
+.area-billing form.draft fieldset label{display:flex;gap:.3rem;align-items:center}
+.area-trust .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(14rem,1fr));gap:.75rem;align-items:end}
+.area-trust .grid .wide{grid-column:1/-1}
+.area-trust .debit{color:var(--danger)}
+.area-trust tr.reversal td{font-style:italic}
+.area-trust .notes li.unread{font-weight:600}
+.area-calendar .toolbar{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between}
+.area-calendar .toolbar h2{margin:.4rem 0}
+.area-calendar .pager{display:flex;gap:.4rem}
+.area-calendar .views a,.area-calendar .pager a{padding:.25rem .6rem;border:1px solid var(--line);border-radius:4px;text-decoration:none;background:var(--surface)}
+.area-calendar .views a[aria-current]{background:var(--accent);color:#000;border-color:var(--accent)}
+.area-calendar .filters,.area-calendar .inline{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end;margin:.8rem 0}
+.area-calendar .filters label,.area-calendar form label{display:flex;flex-direction:column;font-size:.9rem;gap:.2rem}
+.area-calendar form label:has(input[type=checkbox]){flex-direction:row;align-items:center}
+.area-calendar button.danger{color:var(--danger);border-color:var(--danger)}
+.area-calendar .days{display:grid;gap:.6rem}
+.area-calendar .day{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:.5rem .8rem}
+.area-calendar .day.today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.area-calendar .day ul{margin:.2rem 0;padding-left:1.1rem}
+.area-calendar table.month{table-layout:fixed}
+.area-calendar table.month th{padding:.3rem;font-size:.85rem;color:var(--muted)}
+.area-calendar table.month td{border:1px solid var(--line);height:6.5rem;padding:.25rem;overflow:hidden}
+.area-calendar table.month td.outside{background:#f1f2f5;color:var(--muted)}
+.area-calendar table.month td.today{box-shadow:inset 0 0 0 2px var(--accent)}
+.area-calendar .daynum{font-size:.8rem;color:var(--muted)}
+.area-calendar .ev,.area-calendar .dl{display:block;font-size:.8rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;padding:0 .2rem;border-radius:3px;margin-top:2px}
+.area-calendar .ev{background:#e7ecf6}
+.area-calendar .ev.k-court_date{background:#f6e7e7}
+.area-calendar .ev.k-block{background:#ececec}
+.area-calendar .dl{background:#fff6df}
+.area-calendar .late{color:var(--danger)}
+.area-calendar .day li.dl{display:list-item;font-size:inherit;white-space:normal;background:none;padding:0}
+.area-calendar .overdue,.area-calendar .reminders{border-left:4px solid var(--danger);background:var(--surface);padding:.4rem .8rem;margin-bottom:.8rem}
+.area-calendar .reminders{border-left-color:var(--accent)}
+.area-calendar .overdue ul,.area-calendar .reminders ul{margin:.2rem 0;padding-left:1.1rem}
+.area-calendar .overdue h2,.area-calendar .reminders h2{font-size:1.1rem;margin:.4rem 0}
+.area-calendar details.new form{display:grid;gap:.6rem;max-width:40rem;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 18px}
+.area-calendar form.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(18rem,1fr));gap:.7rem;align-items:end}
+.area-calendar .result{margin-top:1rem}
+.area-calendar .panes{display:grid;grid-template-columns:repeat(auto-fit,minmax(22rem,1fr));gap:1rem}
+.area-calendar .panes textarea{width:100%;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem}
+.area-calendar .newurl{background:var(--surface);border:1px solid var(--accent);padding:.6rem .8rem;border-radius:6px}
+.area-files .drop{display:block;border:2px dashed #8a94a6;border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer}
+.area-files .drop.over{background:#eef4ff;border-color:#2f5fd0}
+.area-files #pick{position:absolute;left:-9999px}
+.area-files .link{text-decoration:underline}
+.area-files .warn{background:#fdecc8;color:#6b4300}
+.area-files .tag.warn{border-color:#e0b25a}
+.area-files .folders{display:flex;flex-wrap:wrap;gap:.75rem;list-style:none;padding:0}
+.area-files .folders [aria-current]{font-weight:600}
+.area-files table.files .name{overflow-wrap:anywhere}
+.area-files table.files .acts{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.area-files #progress li.failed{color:var(--danger)}
+.area-files .doc-tender{margin-top:.25rem;font-size:.85rem}
+.area-files .doc-tender .flag-detail{color:var(--muted)}
+.dt-count{display:inline-block;min-width:1.5em;padding:0 .4em;border-radius:1em;background:var(--accent);color:#000;text-align:center}
+.dt-flag{display:inline-block;padding:.1em .5em;border-radius:.3em;background:#fde8e8;color:#7a1010;font-size:.85em}
+.dt-best{background:#f6f6f6;padding:.6em;overflow-x:auto}
+.dt-resolve fieldset{border:1px solid var(--line);padding:.8em}
+.area-editor .editor-main{display:flex;flex-direction:column;min-height:calc(100vh - 170px)}
+.area-editor .editor-head{display:flex;flex-wrap:wrap;align-items:center;gap:.75rem}
+.area-editor .editor-head .acts{display:flex;gap:.75rem;align-items:center;margin-left:auto}
+.area-editor #state:empty{display:none}
+.area-editor #state.dirty{background:#fdecc8;color:#6b4300}
+.area-editor #frame{flex:1;width:100%;min-height:70vh;border:1px solid var(--line);border-radius:6px;margin-top:.5rem;background:var(--surface)}
+.area-editor .notice.locked{background:#fdecc8;border-left-color:#c58b1d}
+.area-editor .editor-foot{font-size:.8rem;color:var(--muted);padding:.25rem 0}
+.area-editor form label{display:block;margin:.75rem 0}
+.area-module .module-frame{display:block;width:100%;height:calc(100vh - 150px);border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+@media (max-width:800px){.glance{grid-template-columns:1fr 1fr}}
+/* A list page's New button: a closed panel above the list that opens the create form. */
+details.new{margin:0 0 14px}
+details.new>summary{list-style:none}
+details.new>summary::-webkit-details-marker{display:none}
+details.new[open]>summary{margin-bottom:10px}
+details.new>.card,details.new>form.card{margin-top:0}

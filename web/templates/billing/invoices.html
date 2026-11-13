@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <nav class="filters" aria-label="Status">
   <a href="/billing/invoices">All</a> <a href="/billing/invoices?status=draft">Drafts</a>
   <a href="/billing/invoices?status=sent">Sent</a> <a href="/billing/invoices?status=paid">Paid</a> <a href="/billing/invoices?status=void">Void</a>
@@ -24,4 +24,3 @@
 </tbody>
 </table></div>
 {{else}}<p class="muted">No invoices.</p>{{end}}
-{{template "foot" .}}

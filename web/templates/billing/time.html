@@ -1,8 +1,8 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{if .CanWrite}}
-<section class="card" aria-labelledby="log-h">
-<h2 id="log-h">Log time</h2>
-<form method="post" action="/billing/time" class="grid">
+<details class="new" id="new-time"{{if or .Error .OpenNew}} open{{end}}>
+<summary class="button primary">New time entry</summary>
+<form method="post" action="/billing/time" class="grid card" aria-label="Log time">
   {{template "csrf" .CSRF}}
   <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
   <label>Date <input type="date" name="worked_on" value="{{.Today}}" required></label>
@@ -12,7 +12,7 @@
   <label><input type="checkbox" name="billable" value="1" checked> Billable</label>
   <button type="submit">Log time</button>
 </form>
-</section>
+</details>
 <section class="card" aria-labelledby="timer-h">
 <h2 id="timer-h">Timers</h2>
 {{range .Timers}}
@@ -68,4 +68,3 @@
 </table></div>
 {{else}}<p class="muted">No time entries.</p>{{end}}
 </section>
-{{template "foot" .}}

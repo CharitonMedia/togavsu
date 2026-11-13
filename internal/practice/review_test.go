@@ -318,20 +318,29 @@ func TestCustomKeyPrefersActiveAndCSVUsesDefinitionID(t *testing.T) {
 	}
 }
 
-func TestSearchShortcutIsAStaticFile(t *testing.T) {
-	layout, err := os.ReadFile(filepath.Join(repoRoot(t), "web", "templates", "practice", "layout.html"))
+// The practice pages draw inside the app shell, whose static app.js carries the search
+// shortcut. No practice template may carry an inline script, since the shell's policy blocks it.
+func TestPracticePagesHaveNoInlineScript(t *testing.T) {
+	dir := filepath.Join(repoRoot(t), "web", "templates", "practice")
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(layout), "<script>") || !strings.Contains(string(layout), `src="/practice/static/practice.js"`) {
-		t.Fatal("shortcut is still inline")
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".html") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(b), "<script") || strings.Contains(string(b), " style=") {
+			t.Errorf("%s has an inline script or style", e.Name())
+		}
 	}
-	svc, _ := newSvc(t)
-	h := testHandler(t, svc)
-	status, body := getAPI(t, svc, person(tid(3), domain.RoleStaff), "/practice/static/practice.js")
-	_ = h
-	if status != 200 || !strings.Contains(body, "keydown") || strings.Contains(body, "<script>") {
-		t.Fatalf("script %d %s", status, body)
+	app, err := os.ReadFile(filepath.Join(repoRoot(t), "web", "static", "app.js"))
+	if err != nil || !strings.Contains(string(app), "keydown") {
+		t.Fatalf("app.js has no keyboard shortcut: %v", err)
 	}
 }
 

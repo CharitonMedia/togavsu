@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Flag}}
 <dl class="facts">
   <dt>Matter</dt><dd>{{flagLabel $.Labels .ID}}</dd>
@@ -17,4 +17,3 @@
 {{end}}
 <h2>Entry that raised it</h2>
 {{template "entries" .}}
-{{template "foot" .}}

@@ -1,6 +1,7 @@
 package doctender
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
@@ -315,9 +317,6 @@ func (h *Handler) Routes() *http.ServeMux {
 	m.HandleFunc("POST /admin/doc-tender/naming", h.namingForm)
 	m.HandleFunc("POST /admin/doc-tender/categories", h.categoryForm)
 	m.HandleFunc("GET /doc-tender/guide", h.guidePage)
-	if h.FS != nil {
-		m.Handle("GET /doc-tender/static/", http.StripPrefix("/doc-tender/static/", http.FileServerFS(h.FS)))
-	}
 	return m
 }
 
@@ -459,6 +458,7 @@ func (h *Handler) spend(w http.ResponseWriter, r *http.Request) {
 
 type pageData struct {
 	Title     string
+	Path      string // the screen's path, for the area tabs
 	CSRF      string
 	Admin     bool
 	Reviewer  bool
@@ -492,14 +492,19 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, data pageData, code int) {
+// render draws the named Doc Tender screen inside the app shell.
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data pageData, code int) {
 	if h.Templates == nil {
 		writeErr(w, domain.NotFound("page"))
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(code)
-	_ = h.Templates.ExecuteTemplate(w, name, data)
+	data.Path = r.URL.Path
+	var buf bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&buf, name, data); err != nil {
+		http.Error(w, "the page could not be drawn", http.StatusInternalServerError)
+		return
+	}
+	frame.Write(w, r, frame.Page{Title: data.Title, Area: "doctender", Body: template.HTML(buf.String()), Status: code, Notice: data.Notice, Error: data.Error})
 }
 
 func (h *Handler) pageErr(w http.ResponseWriter, r *http.Request, err error) {
@@ -509,7 +514,7 @@ func (h *Handler) pageErr(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.As(err, &api) {
 		code, msg = api.HTTPStatus(), api.Message
 	}
-	h.render(w, "error.html", pageData{Title: "Doc Tender", CSRF: csrfOf(r), Error: msg}, code)
+	h.render(w, r, "error.html", pageData{Title: "Doc Tender", CSRF: csrfOf(r), Error: msg}, code)
 }
 
 func (h *Handler) row(r *http.Request, p domain.Principal, e Exception) itemRow {
@@ -550,7 +555,7 @@ func (h *Handler) reviewPage(w http.ResponseWriter, r *http.Request) {
 	for _, e := range items {
 		data.Items = append(data.Items, h.row(r, p, e))
 	}
-	h.render(w, "review.html", data, http.StatusOK)
+	h.render(w, r, "review.html", data, http.StatusOK)
 }
 
 func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request) {
@@ -568,7 +573,7 @@ func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request) {
 	count, _ := h.Svc.OpenCount(r.Context(), p)
 	data := pageData{Title: "Review: " + row.FileName, CSRF: csrfOf(r), Admin: p.HasRole(domain.RoleAdmin), Reviewer: true, Item: &row, Cats: cats,
 		OpenCount: count, Notice: r.URL.Query().Get("notice")}
-	h.render(w, "item.html", data, http.StatusOK)
+	h.render(w, r, "item.html", data, http.StatusOK)
 }
 
 func (h *Handler) resolveForm(w http.ResponseWriter, r *http.Request) {
@@ -629,7 +634,7 @@ func (h *Handler) renderAdmin(w http.ResponseWriter, r *http.Request, p domain.P
 	on, _ := h.Svc.boolSetting(ctx, "doctender.enabled")
 	count, _ := h.Svc.OpenCount(ctx, p)
 	choices := map[string][]string{TaskLabeling: ChoicesForTask(TaskLabeling), TaskCategorizing: ChoicesForTask(TaskCategorizing)}
-	h.render(w, "admin.html", pageData{Title: "Doc Tender", CSRF: csrfOf(r), Admin: true, Reviewer: true, Error: errMsg, Notice: notice,
+	h.render(w, r, "admin.html", pageData{Title: "Doc Tender", CSRF: csrfOf(r), Admin: true, Reviewer: true, Error: errMsg, Notice: notice,
 		Naming: naming, Cats: cats, Spend: spend, Enabled: on, OpenCount: count, Choices: choices}, code)
 }
 
@@ -698,5 +703,5 @@ func (h *Handler) guidePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	count, _ := h.Svc.OpenCount(r.Context(), p)
-	h.render(w, "guide.html", pageData{Title: "Doc Tender guide", CSRF: csrfOf(r), Admin: p.HasRole(domain.RoleAdmin), Reviewer: reviewer(p), OpenCount: count}, http.StatusOK)
+	h.render(w, r, "guide.html", pageData{Title: "Doc Tender guide", CSRF: csrfOf(r), Admin: p.HasRole(domain.RoleAdmin), Reviewer: reviewer(p), OpenCount: count}, http.StatusOK)
 }

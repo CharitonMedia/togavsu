@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <p>Only exceptions reach this queue. Every file here stays listed, viewable and downloadable with its flag until it is cleared.</p>
 <nav class="dt-filter" aria-label="Filter">
   <a href="/doc-tender/review?status=open">Open</a> · <a href="/doc-tender/review?status=resolved">Resolved</a>
@@ -21,4 +21,3 @@
 {{else}}
 <p class="empty">Nothing to review.</p>
 {{end}}
-{{template "foot" .}}

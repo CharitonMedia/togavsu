@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <p class="filters"><a href="/trust/flags?status=open">Open</a> · <a href="/trust/flags?status=resolved">Resolved</a> · <a href="/trust/flags">All</a></p>
 <table>
 <thead><tr><th>Raised</th><th>Matter</th><th>Scope</th><th class="num">Balance</th><th>Status</th></tr></thead>
@@ -8,4 +8,3 @@
 {{else}}<tr><td colspan="5">No trust flags.</td></tr>{{end}}
 </tbody>
 </table>
-{{template "foot" .}}

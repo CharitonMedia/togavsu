@@ -1,4 +1,3 @@
-{{template "head" .}}
 <nav class="tabs" aria-label="Activity tabs">
   <a href="/practice/activity?tab=all">All ({{.Feed.All}})</a>
   <a href="/practice/activity?tab=clients">Clients ({{.Feed.Clients}})</a>
@@ -27,4 +26,3 @@
   <p>No activity in this window.</p>
 {{end}}
 {{if .Feed.Next}}<p><a href="/practice/activity?tab={{.Feed.Tab}}&user={{.Feed.UserID}}&cursor={{.Feed.Next}}">Next page</a></p>{{end}}
-{{template "foot" .}}

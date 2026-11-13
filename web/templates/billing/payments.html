@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{if .Payments}}
 <div class="scroll"><table>
 <thead><tr><th>Received</th><th>Matter</th><th>Destination</th><th>Method</th><th>Reference</th><th>Status</th><th class="num">Amount</th><th>Invoice</th></tr></thead>
@@ -6,4 +6,3 @@
 <td>{{if .InvoiceID}}<a href="/billing/invoices/{{.InvoiceID}}">open</a>{{end}}</td></tr>{{end}}</tbody>
 </table></div>
 {{else}}<p class="muted">No payments.</p>{{end}}
-{{template "foot" .}}

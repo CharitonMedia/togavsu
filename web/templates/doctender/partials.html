@@ -1,0 +1,5 @@
+{{define "subnav"}}<nav class="tabs" aria-label="Doc Tender">
+  {{if .Reviewer}}<a href="/doc-tender/review"{{if eq .Path "/doc-tender/review"}} class="active" aria-current="page"{{end}}>Review queue <span class="dt-count" aria-label="{{.OpenCount}} open review items">{{.OpenCount}}</span></a>{{end}}
+  {{if .Admin}}<a href="/admin/doc-tender"{{if eq .Path "/admin/doc-tender"}} class="active" aria-current="page"{{end}}>Doc Tender settings</a>{{end}}
+  <a href="/doc-tender/guide"{{if eq .Path "/doc-tender/guide"}} class="active" aria-current="page"{{end}}>Guide</a>
+</nav>{{end}}

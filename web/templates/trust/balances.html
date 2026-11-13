@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <p><a href="/api/v1/reports/trust-balances?format=csv">Download CSV</a></p>
 <table>
 <thead><tr><th>Client</th><th>Matter</th><th class="num">Balance</th></tr></thead>
@@ -8,4 +8,3 @@
 {{else}}<tr><td colspan="3">No trust balances.</td></tr>{{end}}
 </tbody>
 </table>
-{{template "foot" .}}

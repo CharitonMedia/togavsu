@@ -1,7 +1,32 @@
-{{template "head" .}}
+{{template "subnav" .}}
+<details class="new"{{if .Error}} open{{end}}>
+  <summary class="button primary">New event</summary>
+  <form method="post" action="/calendar/events">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Title <input name="title" required></label>
+    <label>Kind
+      <select name="kind">
+        <option value="court_date">Court date</option>
+        <option value="client_meeting">Client meeting</option>
+        <option value="deadline">Deadline</option>
+        <option value="block">Block</option>
+        <option value="other" selected>Other</option>
+      </select>
+    </label>
+    <label><input type="checkbox" name="all_day"> All day (use the date part of start and end)</label>
+    <label>Starts <input type="datetime-local" name="starts_at" required></label>
+    <label>Ends <input type="datetime-local" name="ends_at" required></label>
+    <label>Matter id <input name="matter_id" size="38"></label>
+    <label>Location <input name="location"></label>
+    <label><input type="checkbox" name="attend_me" checked> I attend</label>
+    <label>Other attendee user ids <input name="attendee_user_ids" size="60"></label>
+    <label>Notes <textarea name="notes" rows="3"></textarea></label>
+    <button type="submit">Save event</button>
+  </form>
+</details>
 {{with .Data}}
 <div class="toolbar">
-  <h1>{{.Heading}}</h1>
+  <h2>{{.Heading}}</h2>
   <div class="views" role="group" aria-label="View">
     <a href="{{.DayLink}}"{{if eq .View "day"}} aria-current="true"{{end}}>Day</a>
     <a href="{{.WeekLink}}"{{if eq .View "week"}} aria-current="true"{{end}}>Week</a>
@@ -11,7 +36,7 @@
     <a href="{{.FirmLink}}"{{if not .UserID}} aria-current="true"{{end}}>Firm-wide</a>
     <a href="{{.MineLink}}"{{if .UserID}} aria-current="true"{{end}}>Mine</a>
   </div>
-  <div class="nav">
+  <div class="pager">
     <a href="{{.Prev}}" aria-label="Previous">‹ Previous</a>
     <a href="{{.Today}}">Today</a>
     <a href="{{.Next}}" aria-label="Next">Next ›</a>
@@ -60,30 +85,3 @@
 </div>
 {{end}}
 {{end}}
-
-<details class="new">
-  <summary>New event</summary>
-  <form method="post" action="/calendar/events">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <label>Title <input name="title" required></label>
-    <label>Kind
-      <select name="kind">
-        <option value="court_date">Court date</option>
-        <option value="client_meeting">Client meeting</option>
-        <option value="deadline">Deadline</option>
-        <option value="block">Block</option>
-        <option value="other" selected>Other</option>
-      </select>
-    </label>
-    <label><input type="checkbox" name="all_day"> All day (use the date part of start and end)</label>
-    <label>Starts <input type="datetime-local" name="starts_at" required></label>
-    <label>Ends <input type="datetime-local" name="ends_at" required></label>
-    <label>Matter id <input name="matter_id" size="38"></label>
-    <label>Location <input name="location"></label>
-    <label><input type="checkbox" name="attend_me" checked> I attend</label>
-    <label>Other attendee user ids <input name="attendee_user_ids" size="60"></label>
-    <label>Notes <textarea name="notes" rows="3"></textarea></label>
-    <button type="submit">Save event</button>
-  </form>
-</details>
-{{template "foot" .}}

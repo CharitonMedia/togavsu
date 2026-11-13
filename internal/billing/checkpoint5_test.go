@@ -217,6 +217,14 @@ func TestTimeEntryScreenAndBulk(t *testing.T) {
 	if !strings.Contains(body, `href="`+path+`"`) || !strings.Contains(body, "Bulk entry") {
 		t.Fatal("time list must link each entry and offer bulk entry")
 	}
+	if strings.Contains(body, `id="new-time" open`) {
+		t.Fatal("the New time entry panel must start closed")
+	}
+	// The shell's New > Log time link lands on the open form.
+	if _, body := a.page(f.staff, "/billing/time?new=1"); !strings.Contains(body, `<details class="new" id="new-time" open>`) ||
+		!strings.Contains(body, `aria-label="Log time"`) {
+		t.Fatal("?new=1 must open the New time entry panel")
+	}
 	code, body := a.page(f.staff, path)
 	if code != 200 || !strings.Contains(body, "Edit time entry") || !strings.Contains(body, historyHeader) ||
 		!historyHas(body, "Sam Staff", "staff", "create", "", "*", "create", "") {

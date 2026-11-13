@@ -1,9 +1,11 @@
 package billing
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"html/template"
 	"mime"
 	"net/http"
 	"net/url"
@@ -12,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
@@ -33,6 +36,8 @@ var funcs = map[string]any{
 		return out
 	},
 	"date":    dateOf,
+	"tabs":    func() []billingTab { return billingTabs },
+	"on":      billingTab.on,
 	"shown":   shownColumns,
 	"isMoney": func(col string) bool { return strings.HasSuffix(col, "_cents") },
 	"heading": func(col string) string { return strings.ReplaceAll(strings.TrimSuffix(col, "_cents"), "_", " ") },
@@ -42,6 +47,21 @@ var funcs = map[string]any{
 		}
 		return cell(v)
 	},
+}
+
+// billingTab is one of the tabs above every billing screen; the sidebar lists only some
+// of these screens (no Expenses or Reports).
+type billingTab struct{ Path, Label, Under string }
+
+var billingTabs = []billingTab{
+	{"/billing/time", "Time Entries", "/billing/time/"}, {"/billing/expenses", "Expenses", "/billing/expenses/"},
+	{"/billing", "Billing / Generate", ""}, {"/billing/invoices", "Invoices", "/billing/invoices/"},
+	{"/billing/payments", "Payments", "/billing/payments/"}, {"/billing/reports/ar-aging", "Reports", "/billing/reports/"},
+}
+
+// on reports whether the screen at path belongs to tab t.
+func (t billingTab) on(path string) bool {
+	return path == t.Path || (t.Under != "" && strings.HasPrefix(path, t.Under))
 }
 
 // shownColumns hides record ids on the report screen; CSV keeps every column.
@@ -66,9 +86,11 @@ func dateOf(micros int64) string {
 // page is the data every billing screen renders from.
 type page struct {
 	Title        string
+	Path         string // the screen's path, for the area tabs
 	CSRF         string
 	Notice       string
 	Error        string
+	OpenNew      bool // ?new=1: open the page's New panel, as the shell's New menu links
 	CanWrite     bool
 	CanApprove   bool
 	CanTrust     bool
@@ -110,10 +132,6 @@ var reportTitles = map[string]string{"unbilled-time": "Unbilled time", "time-by-
 	"payments-received": "Payments received", "write-offs": "Write-offs"}
 
 func (h *Handler) pageRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /billing/static/billing.css", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/css; charset=utf-8")
-		http.ServeFileFS(w, r, h.FS, "billing.css")
-	})
 	screen := func(pattern string, fn func(http.ResponseWriter, *http.Request, domain.Principal, *page) (string, error)) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, err := h.principal(r)
@@ -131,10 +149,12 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 				writeErr(w, err)
 				return
 			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			if err := h.Templates.ExecuteTemplate(w, name, pg); err != nil {
+			var buf bytes.Buffer
+			if err := h.Templates.ExecuteTemplate(&buf, name, pg); err != nil {
 				http.Error(w, "template error", http.StatusInternalServerError)
+				return
 			}
+			frame.Write(w, r, frame.Page{Title: pg.Title, Area: "billing", Body: template.HTML(buf.String()), Notice: pg.Notice, Error: pg.Error})
 		})
 	}
 	post := func(pattern string, fn func(*http.Request, domain.Principal) (string, string, error)) {
@@ -285,7 +305,7 @@ func (h *Handler) basePage(w http.ResponseWriter, r *http.Request, p domain.Prin
 		return err == nil && d.Allow
 	}
 	return &page{
-		CSRF: csrf(w, r), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"),
+		Path: r.URL.Path, CSRF: csrf(w, r), Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"), OpenNew: r.URL.Query().Has("new"),
 		CanWrite: can(domain.ResInvoice, domain.ActionWrite), CanApprove: can(domain.ResInvoice, domain.ActionApproveInvoice),
 		CanTrust: can(domain.ResTrust, domain.ActionTrustWithdraw), Today: h.Svc.today(ctx), Reports: reportNames, ReportTitles: reportTitles,
 		Clients: map[domain.ID]string{}, MatterNames: map[domain.ID]string{}, TypeNames: map[string]string{},
