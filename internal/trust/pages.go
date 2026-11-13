@@ -514,7 +514,7 @@ func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	v := &view{Title: "Notifications", Notes: notes, Notice: r.URL.Query().Get("notice")}
+	v := &view{Title: "Notifications", Path: r.URL.Path, Notes: notes, Notice: r.URL.Query().Get("notice")}
 	if c, err := r.Cookie(csrfCookie); err == nil {
 		v.CSRF = c.Value
 	}

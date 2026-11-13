@@ -583,7 +583,7 @@ func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src 
 			writeErr(w, err)
 			return
 		}
-		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(buf.String())})
+		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(buf.String()), WorkInFrame: true})
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

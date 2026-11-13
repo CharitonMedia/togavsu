@@ -463,6 +463,9 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if !strings.Contains(frame.body, `<body class="shell`) || !strings.Contains(frame.body, `<aside class="sidebar"`) || !strings.Contains(frame.body, `<header class="topbar">`) {
 		t.Fatalf("module tab outside the app shell: %s", frame.body)
 	}
+	if !strings.Contains(frame.body, `data-idle-seconds="0"`) {
+		t.Fatal("a module tab is worked in its iframe, so the client idle sign-out must be off")
+	}
 	if !navHas(t, x.staff, "matter-clock.hours") {
 		t.Fatal("module tab not in the sidebar")
 	}

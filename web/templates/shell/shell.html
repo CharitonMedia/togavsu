@@ -14,7 +14,7 @@
 <script src="/ui/static/app.js" defer></script>{{range .Scripts}}
 <script src="{{.}}" defer></script>{{end}}
 </head>
-<body class="shell{{if .Nav.SidebarCollapsed}} sidebar-collapsed{{end}}" data-idle-seconds="{{.IdleSeconds}}">
+<body class="shell{{if .Nav.SidebarCollapsed}} sidebar-collapsed{{end}}" data-idle-seconds="{{if .WorkInFrame}}0{{else}}{{.IdleSeconds}}{{end}}">
 <a class="skip" href="#main">Skip to content</a>
 <aside class="sidebar" aria-label="Sidebar">
   <a class="brand" href="/"><span class="firm">{{.Nav.FirmShortName}}</span><span class="portal">{{.Nav.StaffPortalLabel}}</span></a>

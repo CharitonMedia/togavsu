@@ -1,4 +1,4 @@
-// Package editorpages embeds the edit page, the New Pleading form and the page.s script
+// Package editorpages embeds the edit page, the New Pleading form and the page's script
 // (internal/editor serves them).
 package editorpages
 

@@ -46,6 +46,8 @@ type Chrome struct {
 	// class and the deferred scripts its content needs.
 	Area    string
 	Scripts []string
+	// WorkInFrame (frame.Page) turns the client idle sign-out off.
+	WorkInFrame bool
 }
 
 type view struct {
@@ -280,7 +282,7 @@ func (h *Handler) Frame(w http.ResponseWriter, r *http.Request, pg frame.Page) {
 		frame.Bare(w, pg)
 		return
 	}
-	c.Area, c.Scripts = pg.Area, pg.Scripts
+	c.Area, c.Scripts, c.WorkInFrame = pg.Area, pg.Scripts, pg.WorkInFrame
 	if pg.Notice != "" {
 		c.Notice, _ = truncate(pg.Notice, fixed.NoticeMax)
 	}

@@ -833,6 +833,11 @@ func TestDocumentsLawCraftEditor(t *testing.T) {
 	if !strings.Contains(html, `data-mode="edit"`) || !strings.Contains(html, "/editor/?host=parent") || !strings.Contains(html, pin) {
 		t.Fatalf("edit page:\n%s", html)
 	}
+	// The user types in the editor's iframe, which the shell's idle sign-out cannot hear,
+	// so the edit page turns that timer off; the server's idle limit still applies.
+	if !strings.Contains(html, `<body class="shell`) || !strings.Contains(html, `data-idle-seconds="0"`) {
+		t.Fatal("the edit page must draw in the shell with the client idle sign-out off")
+	}
 	sent := d.staff.must(http.StatusOK, "GET", page+"/document", nil)
 	if sent.body != string(original) {
 		t.Fatalf("the edit page sent %d bytes, not the current version", len(sent.body))

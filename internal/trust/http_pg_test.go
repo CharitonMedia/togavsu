@@ -251,6 +251,10 @@ func TestPGPagesAndForms(t *testing.T) {
 		if code != 200 || !strings.Contains(string(body), want) {
 			t.Fatalf("GET %s %d: missing %q in %s", path, code, want, body)
 		}
+		// Each tab screen marks its own tab in the area's sub-navigation.
+		if tab, _, _ := strings.Cut(path, "?"); !strings.HasPrefix(tab, "/trust/matters/") && !strings.Contains(string(body), `href="`+tab+`" class="active" aria-current="page"`) {
+			t.Fatalf("GET %s does not mark its tab active", path)
+		}
 	}
 	// The flag page resolves with a note; opening a notification marks it read.
 	flags, _ := e.svc.Flags(e.ctx, e.admin, FlagFilter{Status: "open"})

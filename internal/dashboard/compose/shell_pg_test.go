@@ -207,6 +207,11 @@ func TestEveryStaffScreenDrawsInTheShell(t *testing.T) {
 		if strings.Count(r.body, "<body") != 1 || strings.Count(r.body, `<main id="main"`) != 1 {
 			t.Errorf("GET %s (%s) nests a page inside the shell", path, route)
 		}
+		// Only screens worked inside an iframe (the editor, a module tab) turn the client
+		// idle sign-out off; none of these is one.
+		if strings.Contains(r.body, `data-idle-seconds="0"`) {
+			t.Errorf("GET %s (%s) has no client idle sign-out", path, route)
+		}
 	}
 
 	// Each link in the shell's New menu lands on a create form the user can fill at once,

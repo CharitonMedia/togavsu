@@ -135,7 +135,7 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, status int, nam
 		scripts = []string{"/editor-host/edit.js"}
 	}
 	frame.Write(w, r, frame.Page{Title: title, Area: "editor", Body: template.HTML(buf.String()), Status: status,
-		Notice: data.Notice, Error: data.Error, Scripts: scripts})
+		Notice: data.Notice, Error: data.Error, Scripts: scripts, WorkInFrame: name == "edit.html" && data.Mode != "error"})
 }
 
 func (h *Handler) pageError(w http.ResponseWriter, r *http.Request, err error, data pageData) {

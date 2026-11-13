@@ -24,6 +24,11 @@ type Page struct {
 	Notice, Error string
 	// Scripts are same-origin scripts the content needs, loaded deferred.
 	Scripts []string
+	// WorkInFrame marks a screen whose work happens inside an iframe (the document
+	// editor, a module tab). The shell's client idle sign-out hears only the outer page,
+	// so it is off there and would sign out someone typing in the frame; the server's
+	// session idle limit (security.idle_timeout) still applies.
+	WorkInFrame bool
 }
 
 // Shell writes pg inside the app shell for r. The handler may already have set headers
