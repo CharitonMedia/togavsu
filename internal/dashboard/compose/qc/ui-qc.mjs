@@ -77,6 +77,28 @@ for (const pg of plan.pages) {
   } catch (e) {
     problems.push("navigation: " + e.message);
   }
+  // Home widgets: rows must get the same gutter as columns, and no widget may overlap another.
+  const gridProblems = await page.evaluate(() => {
+    const items = [...document.querySelectorAll("#home-grid.gs-ready .grid-stack-item-content")].map((e) => e.getBoundingClientRect());
+    const out = [];
+    const hGaps = [], vGaps = [];
+    for (let i = 0; i < items.length; i++) for (let j = 0; j < items.length; j++) {
+      if (i === j) continue;
+      const a = items[i], b = items[j];
+      const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (xOverlap > 0.5 && yOverlap > 0.5) out.push(`widgets ${i} and ${j} overlap`);
+      if (yOverlap > 0.5 && b.left >= a.right - 0.5) hGaps.push(b.left - a.right);
+      if (xOverlap > 0.5 && b.top >= a.bottom - 0.5) vGaps.push(b.top - a.bottom);
+    }
+    // Only the nearest neighbour counts as a gutter.
+    const nearest = (gaps) => (gaps.length ? Math.min(...gaps) : null);
+    const h = nearest(hGaps), v = nearest(vGaps);
+    if (v !== null && v < 15) out.push(`row gutter is ${v.toFixed(1)}px`);
+    if (h !== null && v !== null && Math.abs(h - v) > 1) out.push(`row gutter ${v.toFixed(1)}px does not match column gutter ${h.toFixed(1)}px`);
+    return out;
+  }).catch((e) => ["grid check: " + e.message]);
+  problems.push(...gridProblems);
   const title = await page.title().catch(() => "");
   const file = path.join(outDir, pg.name + ".png");
   await page.screenshot({ path: file, fullPage: !!pg.full });

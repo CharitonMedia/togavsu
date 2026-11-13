@@ -83,7 +83,10 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertic
 tr.changed td:first-child{border-left:3px solid var(--accent)}
 .home-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
 .grid-stack{min-height:120px}
-.widget{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;overflow:auto;height:100%}
+/* gridstack sizes each widget from its cell's top, right, bottom and left margins (8px each,
+   home.js), so rows get the same 16px gutter as columns. A height here would override the
+   bottom margin and push the widget onto the row below. */
+.widget{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;overflow:auto}
 .widget header{display:flex;justify-content:space-between;align-items:center}
 .widget h2{font-size:1rem;margin:0 0 6px}
 .widget .rows{list-style:none;margin:0;padding:0}
@@ -91,7 +94,7 @@ tr.changed td:first-child{border-left:3px solid var(--accent)}
 .widget .remove{color:var(--danger);font-size:1.2rem;padding:0 6px}
 .grid-stack.editing .widget{outline:2px dashed var(--accent);cursor:move}
 .grid-stack.editing a{cursor:move}
-.grid-stack:not(.gs-ready){display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.grid-stack:not(.gs-ready){display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
 .grid-stack:not(.gs-ready) .grid-stack-item{grid-column:span 6}
 .notifications{list-style:none;margin:0 0 10px;padding:0}
 .notifications li{padding:6px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column}
