@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -70,6 +71,10 @@ type Config struct {
 	// SupervisorURL (the Compose service).
 	SupervisorURL    string
 	SupervisorSecret string
+	// RequireSealed makes Open refuse a database whose append-only tables are not sealed
+	// to db.LedgerOwner (db.VerifySealed), before it migrates or serves anything. The
+	// serving core (cmd/core) sets it; only core migrate, as the superuser, can seal.
+	RequireSealed bool
 	// BackupPassphraseFile is where the core writes the backup passphrase for the
 	// supervisor. Empty is PassphraseFile when that file exists, else none.
 	BackupPassphraseFile string
@@ -146,16 +151,20 @@ func MigrateCount(ctx context.Context, dsn string) (int, error) {
 	return db.ApplyCount(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
 }
 
+// ErrNoAdminDatabaseURL is returned by MigrateSealed when it has no superuser URL: the
+// migrations would run and leave the append-only tables unsealed.
+var ErrNoAdminDatabaseURL = errors.New("core: migrate needs the superuser database url (TOGAVSU_ADMIN_DATABASE_URL) to seal the append-only tables")
+
 // MigrateSealed is "core migrate": it applies the core migrations as the application
 // role behind dsn and leaves the append-only tables owned by db.LedgerOwner. adminDSN is
 // a superuser on the same server; its database name is replaced with dsn's. It hands
 // the sealed tables back to the application role for the run, so a migration can still
 // ALTER them, and seals them again even when a migration fails. ran reports whether a
-// migration was applied. An empty adminDSN migrates only.
+// migration was applied. An empty adminDSN fails before anything runs, and the run
+// fails unless db.VerifySealed then passes on the application role's own connection.
 func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err error) {
-	if adminDSN == "" {
-		n, err := MigrateCount(ctx, dsn)
-		return n > int(0), err
+	if strings.TrimSpace(adminDSN) == "" {
+		return false, ErrNoAdminDatabaseURL
 	}
 	plain, err := db.OpenPostgres(dsn, "")
 	if err != nil {
@@ -188,13 +197,24 @@ func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err err
 	if serr := db.SealLedgers(ctx, admin, app); serr != nil {
 		return ran, errors.Join(merr, fmt.Errorf("core: seal ledgers: %w", serr))
 	}
-	return ran, merr
+	if merr != nil {
+		return ran, merr
+	}
+	if verr := db.VerifySealed(ctx, plain); verr != nil {
+		return ran, fmt.Errorf("core: after migrate: %w", verr)
+	}
+	return ran, nil
 }
 
 // Open migrates, seeds reference rows, and wires every service on one pool.
 func Open(ctx context.Context, cfg Config) (*App, error) {
 	if len(cfg.Key) != 32 {
 		return nil, errors.New("core: encryption key must be 32 bytes")
+	}
+	if cfg.RequireSealed {
+		if err := requireSealed(ctx, cfg.DatabaseURL); err != nil {
+			return nil, err
+		}
 	}
 	now := cfg.Now
 	if now == nil {
@@ -425,4 +445,17 @@ func (a *App) Ready(ctx context.Context) (bool, error) {
 		}
 	}
 	return ok, nil
+}
+
+// requireSealed is Config.RequireSealed.
+func requireSealed(ctx context.Context, dsn string) error {
+	plain, err := db.OpenPostgres(dsn, "")
+	if err != nil {
+		return err
+	}
+	defer plain.Close()
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		return fmt.Errorf("core: refusing to serve: %w; run core migrate (the Compose migrate service) first", err)
+	}
+	return nil
 }

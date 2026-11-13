@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,20 @@ func TestLedgersSealedForApplicationRole(t *testing.T) {
 	var u *url.URL
 	f := newFin(t, func(c *Config) {
 		appDSN = c.DatabaseURL
+		// Failure path: without the superuser URL core migrate applies nothing and fails
+		// instead of leaving the ledgers unsealed.
+		if ran, err := MigrateSealed(ctx, appDSN, ""); !errors.Is(err, ErrNoAdminDatabaseURL) || ran {
+			t.Fatalf("MigrateSealed without a superuser url: ran=%v err=%v", ran, err)
+		}
+		// Failure path: the serving core refuses a database core migrate never sealed.
+		strict := *c
+		strict.RequireSealed = true
+		if app, err := Open(ctx, strict); !errors.Is(err, db.ErrUnsealed) {
+			if app != nil {
+				_ = app.Close()
+			}
+			t.Fatalf("Open(RequireSealed) on an unsealed database: %v", err)
+		}
 		// Failure path: the seal needs a superuser; the application role is refused.
 		if _, err := MigrateSealed(ctx, appDSN, appDSN); !errors.Is(err, db.ErrNotSuperuser) {
 			t.Fatalf("MigrateSealed with a non-superuser admin: %v", err)
@@ -35,6 +50,8 @@ func TestLedgersSealedForApplicationRole(t *testing.T) {
 		if err != nil || !ran {
 			t.Fatalf("first core migrate: ran=%v err=%v", ran, err)
 		}
+		// The serving core opens once the database is sealed.
+		c.RequireSealed = true
 	})
 	appRole := ""
 	if err := f.app.Pool.QueryRow(`SELECT current_user`).Scan(&appRole); err != nil {
@@ -172,9 +189,39 @@ func TestLedgersSealedForApplicationRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.restart()
+	if !f.cfg.RequireSealed {
+		t.Fatal("the restarted core did not require a sealed database")
+	}
 	if n := f.count(`SELECT count(*) FROM information_schema.columns WHERE table_schema = 'core' AND column_name = 'seal_probe'`); n != 2 {
 		t.Fatalf("probe columns: %d", n)
 	}
 	f.post(f.admin, matter, clientID, "deposit", 25_00)
 	sealed("after a second boot and a migration")
+
+	// Ownership is checked, not assumed: a ledger handed back to the application role
+	// fails db.VerifySealed, the serving core refuses to start, and core migrate seals
+	// it again.
+	if err := f.app.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.ExecContext(ctx, `ALTER TABLE core.trust_ledger OWNER TO `+appRole); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.VerifySealed(ctx, plain); !errors.Is(err, db.ErrUnsealed) || !strings.Contains(err.Error(), "core.trust_ledger") {
+		t.Fatalf("VerifySealed with trust_ledger owned by the application role: %v", err)
+	}
+	if app, err := Open(ctx, f.cfg); !errors.Is(err, db.ErrUnsealed) {
+		if app != nil {
+			_ = app.Close()
+		}
+		t.Fatalf("Open(RequireSealed) with trust_ledger unsealed: %v", err)
+	}
+	if _, err := MigrateSealed(ctx, appDSN, super); err != nil {
+		t.Fatalf("core migrate after the tamper: %v", err)
+	}
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		t.Fatalf("VerifySealed after core migrate: %v", err)
+	}
+	f.restart()
+	sealed("after a tampered owner was sealed again")
 }

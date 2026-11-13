@@ -1,9 +1,11 @@
 // Command core is the Togavsu application server.
 //
-//	core              migrate, seed reference rows, and serve HTTP on :8080
+//	core              refuse an unsealed database (core.Config.RequireSealed), migrate,
+//	                  seed reference rows, and serve HTTP on :8080
 //	core check        validate the four bootstrap values and exit
 //	core migrate      apply the migrations as the core role and seal the append-only tables
-//	                  (TOGAVSU_ADMIN_DATABASE_URL is a superuser; see core.MigrateSealed),
+//	                  (TOGAVSU_ADMIN_DATABASE_URL is a superuser and is required; see
+//	                  core.MigrateSealed), verify the seal,
 //	                  print migrated=true|false, and exit; Compose's migrate one-shot and the
 //	                  supervisor's update migrator run it
 //	core healthcheck  exit 0 when this container's /api/v1/health answers 200 (image HEALTHCHECK)
@@ -91,8 +93,13 @@ func serve(ctx context.Context, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err.Error())
 		return 2
 	}
+	// The serving core never holds the superuser URL; only core migrate does.
+	if bootstrap.AdminDatabaseURL() != "" {
+		fmt.Fprintln(stderr, "core: refusing to serve with "+bootstrap.AdminDatabaseURLName+" set; only core migrate may hold the superuser url")
+		return 2
+	}
 	app, err := core.Open(ctx, core.Config{DatabaseURL: cfg.DatabaseURL, Key: cfg.EncryptionKey, Domain: cfg.Domain,
-		SupervisorURL: core.SupervisorURL, SupervisorSecret: cfg.SupervisorSecret})
+		SupervisorURL: core.SupervisorURL, SupervisorSecret: cfg.SupervisorSecret, RequireSealed: true})
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 1

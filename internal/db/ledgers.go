@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+
+	"github.com/CharitonMedia/togavsu/internal/ledgerseal"
 )
 
 // LedgerOwner is the NOLOGIN role that owns the append-only tables once they are sealed.
@@ -12,16 +15,11 @@ import (
 // role holds only the SELECT and INSERT the owner gave it: it cannot UPDATE, DELETE or
 // TRUNCATE a row, GRANT those back to itself, or ALTER or DROP the table. No trigger is
 // involved (PRD section 6).
-const LedgerOwner = "togavsu_ledger_owner"
+const LedgerOwner = ledgerseal.Owner
 
 // AppendOnlyTables are the tables in schema core that SealLedgers hands to LedgerOwner
 // (PRD section 5: append-only tables).
-var AppendOnlyTables = []string{"audit_log", "trust_ledger", "events", "ai_call_log", "file_versions", "file_renditions"}
-
-// ledgerWriters are the NOINHERIT writer roles the core switches to for one statement.
-// The sealed owner grants them SELECT and INSERT directly, since the application role
-// holds no grant option.
-var ledgerWriters = map[string]string{"audit_log": "togavsu_audit_writer", "ai_call_log": "togavsu_ai_log_writer"}
+var AppendOnlyTables = ledgerseal.Tables
 
 // ErrNotSuperuser is returned when a seal or unseal connection is not a superuser.
 var ErrNotSuperuser = errors.New("db: ledger ownership needs a superuser connection")
@@ -50,70 +48,81 @@ func UnsealLedgers(ctx context.Context, admin *sql.DB, app string) error {
 
 // SealLedgers makes LedgerOwner own schema core and every append-only table that exists
 // and leaves app with SELECT and INSERT on them, without grant option, plus REFERENCES
-// on id. admin must be a superuser
-// connection to the core's database. It fails if app can act as LedgerOwner through any
-// membership. It is safe to run again.
+// on id (ledgerseal.Script, which the supervisor's restore runs too). admin must be a
+// superuser connection to the core's database. It fails if app can act as LedgerOwner
+// through any membership. It is safe to run again.
 func SealLedgers(ctx context.Context, admin *sql.DB, app string) error {
 	if err := needSuper(ctx, admin); err != nil {
 		return err
 	}
-	stmts := []string{`DO $body$ BEGIN
-	  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '` + LedgerOwner + `') THEN
-	    CREATE ROLE ` + LedgerOwner + ` NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
-	  END IF;
-	END $body$`,
-		`ALTER ROLE ` + LedgerOwner + ` NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
-		`REVOKE ` + LedgerOwner + ` FROM ` + quoteIdent(app),
-		// A schema's owner may DROP any table in it, so schema core moves to the ledger
-		// owner as well. The application role keeps USAGE (with grant option, for the
-		// module logins it provisions) and CREATE, so it still creates and owns every
-		// other core table and its migrations still run.
-		`ALTER SCHEMA core OWNER TO ` + LedgerOwner,
-		`GRANT USAGE ON SCHEMA core TO ` + quoteIdent(app) + ` WITH GRANT OPTION`,
-		`GRANT CREATE ON SCHEMA core TO ` + quoteIdent(app),
+	if _, err := admin.ExecContext(ctx, ledgerseal.Script(app)); err != nil {
+		return fmt.Errorf("db: seal ledgers: %w", err)
 	}
-	for _, w := range ledgerWriters {
-		stmts = append(stmts, `DO $body$ BEGIN
-		  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '`+w+`') THEN
-		    CREATE ROLE `+w+` NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE;
-		  END IF;
-		END $body$`, `GRANT USAGE ON SCHEMA core TO `+w)
-	}
-	for _, s := range stmts {
-		if _, err := admin.ExecContext(ctx, s); err != nil {
-			return err
-		}
-	}
-	var member bool
-	if err := admin.QueryRowContext(ctx, `SELECT pg_has_role($1, $2, 'MEMBER')`, app, LedgerOwner).Scan(&member); err != nil {
+	return nil
+}
+
+// ErrUnsealed is returned by VerifySealed when the application role could change or
+// alter an append-only table.
+var ErrUnsealed = errors.New("db: the append-only tables are not sealed")
+
+// VerifySealed checks, on the application role's own connection, that schema core and
+// every append-only table exist and belong to LedgerOwner, that the role is not a
+// member of LedgerOwner, so it cannot ALTER or DROP them, and that it holds no UPDATE,
+// DELETE or TRUNCATE on them. core migrate runs it after sealing and the serving core
+// refuses to start without it.
+func VerifySealed(ctx context.Context, app interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) error {
+	var problems []string
+	var exists bool
+	if err := app.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)`, LedgerOwner).Scan(&exists); err != nil {
 		return err
 	}
+	if !exists {
+		return fmt.Errorf("%w: role %s does not exist", ErrUnsealed, LedgerOwner)
+	}
+	var schemaOwner string
+	var member bool
+	err := app.QueryRowContext(ctx, `SELECT pg_get_userbyid(nspowner), pg_has_role(current_user, $1, 'MEMBER')
+		FROM pg_namespace WHERE nspname = 'core'`, LedgerOwner).Scan(&schemaOwner, &member)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: schema core is missing", ErrUnsealed)
+	}
+	if err != nil {
+		return err
+	}
+	if schemaOwner != LedgerOwner {
+		problems = append(problems, "schema core is owned by "+schemaOwner)
+	}
 	if member {
-		return fmt.Errorf("db: %s is a member of %s through another role", app, LedgerOwner)
+		problems = append(problems, "the application role is a member of "+LedgerOwner)
 	}
 	for _, t := range AppendOnlyTables {
-		if _, ok, err := tableOwner(ctx, admin, t); err != nil {
-			return err
-		} else if !ok {
+		var owner string
+		var owns, upd, del, trunc bool
+		err := app.QueryRowContext(ctx, `SELECT pg_get_userbyid(c.relowner), pg_has_role(current_user, c.relowner, 'USAGE'),
+			has_table_privilege(c.oid, 'UPDATE'), has_table_privilege(c.oid, 'DELETE'), has_table_privilege(c.oid, 'TRUNCATE')
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = 'core' AND c.relname = $1 AND c.relkind IN ('r', 'p')`, t).Scan(&owner, &owns, &upd, &del, &trunc)
+		if errors.Is(err, sql.ErrNoRows) {
+			problems = append(problems, "core."+t+" is missing")
 			continue
 		}
-		q := "core." + t
-		ts := []string{
-			`ALTER TABLE ` + q + ` OWNER TO ` + LedgerOwner,
-			`REVOKE ALL ON TABLE ` + q + ` FROM PUBLIC, ` + quoteIdent(app),
-			`GRANT SELECT, INSERT ON TABLE ` + q + ` TO ` + quoteIdent(app),
-			// REFERENCES on id alone lets a module schema or a later table point a
-			// foreign key at a ledger row (modules.Schemas grants it on); it changes no row.
-			`GRANT REFERENCES (id) ON TABLE ` + q + ` TO ` + quoteIdent(app) + ` WITH GRANT OPTION`,
+		if err != nil {
+			return err
 		}
-		if w, ok := ledgerWriters[t]; ok {
-			ts = append(ts, `REVOKE ALL ON TABLE `+q+` FROM `+w, `GRANT SELECT, INSERT ON TABLE `+q+` TO `+w)
+		if owner != LedgerOwner {
+			problems = append(problems, "core."+t+" is owned by "+owner)
 		}
-		for _, s := range ts {
-			if _, err := admin.ExecContext(ctx, s); err != nil {
-				return fmt.Errorf("db: seal %s: %w", t, err)
-			}
+		if owns {
+			problems = append(problems, "the application role can alter core."+t)
 		}
+		if upd || del || trunc {
+			problems = append(problems, "the application role can update, delete or truncate core."+t)
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("%w: %s", ErrUnsealed, strings.Join(problems, "; "))
 	}
 	return nil
 }
@@ -154,13 +163,4 @@ func tableOwner(ctx context.Context, q *sql.DB, table string) (string, bool, err
 	return owner, err == nil, err
 }
 
-func quoteIdent(s string) string {
-	out := []byte{'"'}
-	for i := 0; i < len(s); i++ {
-		if s[i] == '"' {
-			out = append(out, '"')
-		}
-		out = append(out, s[i])
-	}
-	return string(append(out, '"'))
-}
+func quoteIdent(s string) string { return ledgerseal.QuoteIdent(s) }
