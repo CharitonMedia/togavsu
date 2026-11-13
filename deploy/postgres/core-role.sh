@@ -40,7 +40,8 @@ CREATE SCHEMA IF NOT EXISTS core AUTHORIZATION togavsu_app;
 -- A volume from an install where the core ran as togavsu has core and its tables owned
 -- by togavsu. Hand them to togavsu_app, or the core cannot migrate. Sequences tied to a
 -- column move with their table. A sealed schema and its append-only tables stay with
--- togavsu_ledger_owner; core migrate unseals the tables for its own run.
+-- togavsu_ledger_owner; core migrate hands a ledger to togavsu_app only inside the
+-- transaction of a migration that names it (db.ApplySealed).
 DO \$\$ BEGIN
   IF (SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'core') <> 'togavsu_ledger_owner' THEN
     ALTER SCHEMA core OWNER TO togavsu_app;

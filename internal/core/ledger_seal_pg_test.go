@@ -160,8 +160,6 @@ func TestLedgersSealedForApplicationRole(t *testing.T) {
 	if ran, err := MigrateSealed(ctx, appDSN, super); err != nil || ran {
 		t.Fatalf("second core migrate: ran=%v err=%v", ran, err)
 	}
-	// An expand migration that ALTERs a sealed table applies through the same unseal,
-	// migrate as the application role, seal sequence core migrate uses.
 	u, err = url.Parse(super)
 	if err != nil {
 		t.Fatal(err)
@@ -173,20 +171,85 @@ func TestLedgersSealedForApplicationRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer admin.Close()
-	if err := db.UnsealLedgers(ctx, admin, appRole); err != nil {
-		t.Fatal(err)
-	}
 	plain, err := db.OpenPostgres(appDSN, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer plain.Close()
-	probe := db.Migration{Version: 1, Name: "seal_probe", SQL: "-- +goose Up\nALTER TABLE audit_log ADD COLUMN seal_probe TEXT;\nALTER TABLE trust_ledger ADD COLUMN seal_probe TEXT;\n"}
-	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: "seal-probe", Schema: "core", Dialect: "postgres", Migrations: []db.Migration{probe}}); err != nil {
-		t.Fatalf("expand migration on unsealed ledgers: %v", err)
+	columns := func(name string) int {
+		t.Helper()
+		var n int
+		if err := admin.QueryRow(`SELECT count(*) FROM information_schema.columns WHERE table_schema = 'core' AND column_name = $1`, name).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
 	}
-	if err := db.SealLedgers(ctx, admin, appRole); err != nil {
+	// Failure path: a migration that ALTERs a ledger and then fails leaves the ledgers
+	// sealed and the column absent; the handoff rolled back with it.
+	bad := db.Migration{Version: 1, Name: "seal_fail", SQL: "-- +goose Up\nALTER TABLE audit_log ADD COLUMN seal_fail TEXT;\nSELECT 1/0;\n"}
+	if _, err := db.ApplySealed(ctx, admin, appRole, db.ApplySpec{Owner: "seal-fail", Schema: "core", Dialect: "postgres", Migrations: []db.Migration{bad}}); err == nil {
+		t.Fatal("a failing ledger migration applied")
+	}
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		t.Fatalf("ledgers after a failed migration: %v", err)
+	}
+	if n := columns("seal_fail"); n != 0 {
+		t.Fatalf("failed migration left %d columns", n)
+	}
+	// Failure path: the migrating backend dies mid-migration (the migrate container
+	// killed during an update). While it runs, the serving role still sees every ledger
+	// sealed; after it dies nothing was handed over and no column was added.
+	slow := db.Migration{Version: 1, Name: "seal_kill", SQL: "-- +goose Up\nALTER TABLE trust_ledger ADD COLUMN seal_kill TEXT;\nSELECT pg_sleep(60);\n"}
+	done := make(chan error, 1)
+	go func() {
+		_, err := db.ApplySealed(ctx, admin, appRole, db.ApplySpec{Owner: "seal-kill", Schema: "core", Dialect: "postgres", Migrations: []db.Migration{slow}})
+		done <- err
+	}()
+	su := admin
+	var pid int
+	for deadline := time.Now().Add(20 * time.Second); ; {
+		err := su.QueryRow(`SELECT pid FROM pg_stat_activity WHERE query LIKE 'SELECT pg_sleep(60)%' AND pid <> pg_backend_pid()`).Scan(&pid)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the slow migration never started: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		t.Fatalf("ledgers seen by the serving role while a migration runs: %v", err)
+	}
+	if _, err := su.Exec(`SELECT pg_terminate_backend($1)`, pid); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a killed migration reported success")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the killed migration did not return")
+	}
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		t.Fatalf("ledgers after the migrating backend died: %v", err)
+	}
+	if n := columns("seal_kill"); n != 0 {
+		t.Fatalf("killed migration left %d columns", n)
+	}
+	// An expand migration that ALTERs sealed tables applies through ApplySealed, the path
+	// core migrate uses, and the tables are sealed when it commits.
+	probe := db.Migration{Version: 1, Name: "seal_probe", SQL: "-- +goose Up\nALTER TABLE audit_log ADD COLUMN seal_probe TEXT;\nALTER TABLE trust_ledger ADD COLUMN seal_probe TEXT;\n"}
+	if n, err := db.ApplySealed(ctx, admin, appRole, db.ApplySpec{Owner: "seal-probe", Schema: "core", Dialect: "postgres", Migrations: []db.Migration{probe}}); err != nil || n != 1 {
+		t.Fatalf("expand migration on sealed ledgers: n=%d err=%v", n, err)
+	}
+	if err := db.VerifySealed(ctx, plain); err != nil {
+		t.Fatalf("ledgers after the expand migration: %v", err)
+	}
+	// The session ApplySealed used went back to the pool as the superuser.
+	var who string
+	if err := admin.QueryRow(`SELECT current_user`).Scan(&who); err != nil || who == appRole {
+		t.Fatalf("admin pool session after ApplySealed: %q %v", who, err)
 	}
 	f.restart()
 	if !f.cfg.RequireSealed {

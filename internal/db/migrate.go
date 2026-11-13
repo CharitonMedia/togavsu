@@ -149,6 +149,17 @@ func Apply(ctx context.Context, db *sql.DB, spec ApplySpec) error {
 // ApplyCount is Apply that also reports how many migrations were applied, counting the ones
 // applied before a later migration failed. `core migrate` prints it for the update migrator.
 func ApplyCount(ctx context.Context, db *sql.DB, spec ApplySpec) (int, error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	return ApplyCountConn(ctx, conn, spec)
+}
+
+// ApplyCountConn is ApplyCount on one session the caller has already checked out, as
+// ApplySealed does after SET ROLE. The session's search_path is restored afterwards.
+func ApplyCountConn(ctx context.Context, conn *sql.Conn, spec ApplySpec) (int, error) {
 	if spec.Owner == "" {
 		return 0, fmt.Errorf("%w: owner is required", ErrVersion)
 	}
@@ -173,21 +184,16 @@ func ApplyCount(ctx context.Context, db *sql.DB, spec ApplySpec) (int, error) {
 		return 0, err
 	}
 	store := &ledgerStore{owner: spec.Owner, dialect: spec.Dialect, checksums: sums}
-	return migrateOnHeldConn(ctx, db, spec, store, files)
+	return migrateOnHeldConn(ctx, conn, spec, store, files)
 }
 
 // migrationAfterSearchPath, when set, runs after search_path changes and before goose.
 // Tests use it to force a preparation failure. Production leaves it nil.
 var migrationAfterSearchPath func(context.Context, *sql.Conn) error
 
-// migrateOnHeldConn checks one connection out of the caller's pool and does not put it
-// back until search_path has been restored, including when preparation fails.
-func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *ledgerStore, files fs.FS) (int, error) {
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer conn.Close()
+// migrateOnHeldConn runs on one checked-out connection and restores search_path before
+// the caller puts it back, including when preparation fails.
+func migrateOnHeldConn(ctx context.Context, conn *sql.Conn, spec ApplySpec, store *ledgerStore, files fs.FS) (int, error) {
 	changed := false
 	defer func() {
 		if changed {
@@ -209,7 +215,7 @@ func migrateOnHeldConn(ctx context.Context, db *sql.DB, spec ApplySpec, store *l
 		}
 	}
 	applied := 0
-	err = conn.Raw(func(raw any) error {
+	err := conn.Raw(func(raw any) error {
 		dc, ok := raw.(driver.Conn)
 		if !ok {
 			return fmt.Errorf("db: driver connection is %T", raw)

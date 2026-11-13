@@ -42,25 +42,29 @@ Togavsu updates itself with no restart and no interruption:
 - Each night in the update window the supervisor checks the registry for a newer core image, verifies its Cosign signature against the Togavsu release public key that ships in the supervisor image (`/usr/share/togavsu/cosign.pub`, the same file as `deploy/release/cosign.pub` in the repository), backs up the database, runs the migrations, starts the new core, waits for its health check, switches caddy to it and stops the old one. You install no key.
 - Release signatures are made off GitHub by the Togavsu integration lead with a private key that is never stored on GitHub, and they are not written to the public Sigstore transparency log. That is why compose.yaml sets `COSIGN_VERIFY_FLAGS` to `--insecure-ignore-tlog=true`: it skips only the log lookup. The signature itself is always checked against the release key, and an unsigned image, or one signed by any other key, is refused.
 - To check a release yourself: `cosign verify --key deploy/release/cosign.pub --insecure-ignore-tlog=true ghcr.io/charitonmedia/togavsu-core:<version>` (and the same for `togavsu-supervisor`).
-- A failed signature check, migration or health check stops the update, keeps the running version, restores the backup if a migration ran, and emails the admins.
-- Administrative > Updates sets the window, pauses updates, starts an update now and lists the update history. Updates never run outside the window unless an admin starts one.
+- A failed signature check, migration or health check stops the update and keeps the running version. The supervisor does not replay the pre-update backup on its own, so commits made after that snapshot are kept; if a migration failed, restore that backup by hand (Restore, below). Automatic rollback of a failed migration is pending (docs/platform/pending.md, AC-016).
+- The failure notice for the admins is written to the supervisor's mail outbox (`mail-outbox.jsonl` in the supervisor data volume). Sending it through the firm's mail is pending (`PONYTAIL-DEBT.md`).
+- Administrative > Updates sets the window and pauses updates. Starting an update now and the update history are in the API today (`POST` and `GET /api/v1/updates`, admin role or an `updates:admin` token); the dashboard buttons for them are pending. Updates never run outside the window unless an admin starts one.
 
 The supervisor container itself, caddy and Postgres are updated by pulling the new release's `compose.yaml` and running `docker compose up -d --wait` again. That restarts those containers briefly; the core's data stays in its volumes.
 
 ## Backups
 
-- Automatic: a full backup every night (the database with every module schema, file bytes from every storage backend and module data volumes) and one before every update, kept 30 days on the local backup volume by default.
-- Administrative > Backups and logs makes a backup now, downloads one to your computer as one encrypted file, adds destinations (a local or network path, S3-compatible storage, or SFTP) that receive a copy of every automatic backup with their own retention, and sets the monthly test-restore day.
-- Every backup is checksummed when written and when copied. Once a month the supervisor test-restores the newest backup into a temporary database and compares record counts. Failures email the admins.
+- Automatic: a full backup every night (the database with every module schema, and the file bytes from every storage backend with backups on) and one before every update, kept 30 days on the local backup volume by default. Module data volumes are not in the archive yet (pending, docs/platform/pending.md).
+- Administrative > Backups and logs sets the nightly backup time, the local retention, the log retention and the monthly test-restore day.
+- Making a backup now, downloading one as one encrypted file, and adding destinations (a local or network path, S3-compatible storage, or SFTP) that receive a copy of every automatic backup with their own retention are in the API today: `/api/v1/backups` and `/api/v1/backup-destinations`, admin role or a `backups:admin` token, also on `/mcp`. The dashboard screens for them are pending.
+- Every backup is checksummed when written and when copied. Once a month the supervisor test-restores the newest backup into a temporary database and compares record counts. A failure notice goes to the supervisor's mail outbox, as for updates.
 - Keep at least one destination off this computer. A backup only on the computer's own disk does not survive losing the computer.
 
 ## Restore
 
-Restore is the one operation that interrupts users; the dashboard warns before it starts.
+Restore is the one operation that interrupts users. Tell them before you start: the dashboard warning, upload and destination picker for restore are pending (docs/platform/pending.md, AC-018), so restore runs through the API today, as an admin or with a `backups:admin` token.
 
-1. Administrative > Backups and logs > Restore. Upload a backup file, or pick one from the list or a destination.
-2. Enter the backup passphrase.
-3. The supervisor checks the file, takes a safety backup of the current state, restores the database and the file bytes, and brings the core back with no manual step.
+1. Pick the backup: `GET /api/v1/backups` lists the ones this installation holds. For a downloaded file, send its bytes to `POST /api/v1/backup-uploads?backup_id=<the file name without .tgbk>`; the answer carries an `upload_token`.
+2. `POST /api/v1/restores` with either `backup_id` or `upload_token`, and `passphrase`, the backup passphrase.
+3. The supervisor checks the file, takes a safety backup of the current state, restores the database and the file bytes, and brings the core back with no manual step. `GET /api/v1/restores/{restore_id}` shows its progress.
+
+Module data volumes are not restored yet (pending).
 
 To move Togavsu to a new computer: install it there (Install, steps 1 to 4), complete first-run setup with a throwaway admin, then restore the latest backup from the old computer. The restored firm's users, settings and files replace the throwaway setup.
 

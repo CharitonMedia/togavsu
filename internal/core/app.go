@@ -157,11 +157,15 @@ var ErrNoAdminDatabaseURL = errors.New("core: migrate needs the superuser databa
 
 // MigrateSealed is "core migrate": it applies the core migrations as the application
 // role behind dsn and leaves the append-only tables owned by db.LedgerOwner. adminDSN is
-// a superuser on the same server; its database name is replaced with dsn's. It hands
-// the sealed tables back to the application role for the run, so a migration can still
-// ALTER them, and seals them again even when a migration fails. ran reports whether a
-// migration was applied. An empty adminDSN fails before anything runs, and the run
-// fails unless db.VerifySealed then passes on the application role's own connection.
+// a superuser on the same server; its database name is replaced with dsn's. The
+// migrations run on a superuser session switched to the application role
+// (db.ApplySealed), and a migration that names an append-only table gets it for its
+// own transaction only, so no other session ever sees an unsealed ledger, even while
+// the old core serves during an update or when a migration fails or the process dies.
+// It then runs the seal again, which also repairs a database an older core migrate
+// left unsealed. ran reports whether a migration was applied. An empty adminDSN fails
+// before anything runs, and the run fails unless db.VerifySealed then passes on the
+// application role's own connection.
 func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err error) {
 	if strings.TrimSpace(adminDSN) == "" {
 		return false, ErrNoAdminDatabaseURL
@@ -189,11 +193,15 @@ func MigrateSealed(ctx context.Context, dsn, adminDSN string) (ran bool, err err
 		return false, err
 	}
 	defer admin.Close()
-	if err := db.UnsealLedgers(ctx, admin, app); err != nil {
-		return false, fmt.Errorf("core: unseal ledgers: %w", err)
+	ms, err := migrations()
+	if err != nil {
+		return false, err
 	}
-	n, merr := MigrateCount(ctx, dsn)
-	ran = n > int(0)
+	n, merr := db.ApplySealed(ctx, admin, app, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: ms})
+	ran = n > 0
+	if errors.Is(merr, db.ErrNotSuperuser) {
+		return false, merr
+	}
 	if serr := db.SealLedgers(ctx, admin, app); serr != nil {
 		return ran, errors.Join(merr, fmt.Errorf("core: seal ledgers: %w", serr))
 	}
