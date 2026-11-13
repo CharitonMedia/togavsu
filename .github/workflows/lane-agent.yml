@@ -170,7 +170,10 @@ jobs:
           title, body, summary = strip(title, "PR title"), strip(body, "PR body"), strip(summary, "run summary")
           if head != base and SHAPED.search(history()):
               commits = git("rev-list", "--reverse", "--topo-order", base + ".." + head).split()
-              inside = set(commits)
+              # The run's own commits are the first-parent chain from its head. Anything else in the range, such as
+              # main's commits merged in during the run, is never rewritten: if it carries token-shaped text, the
+              # rescan below withholds the whole result.
+              own = set(git("rev-list", "--first-parent", base + ".." + head).split())
               def tree(rev):
                   entries = {}
                   for item in raw("ls-tree", "-r", "-z", rev).split(b"\0"):
@@ -183,9 +186,8 @@ jobs:
               # Content the lane did not write (the base and anything merged in from outside the run) is left alone.
               foreign = {e[2] for e in base_tree.values()}
               for c in commits:
-                  for p in git("rev-list", "--parents", "-n", "1", c).split()[1:]:
-                      if p not in inside and p != base:
-                          foreign.update(e[2] for e in tree(p).values())
+                  if c not in own:
+                      foreign.update(e[2] for e in tree(c).values())
               cleaned, mapping = {}, {}
               def clean(sha, path):
                   if sha not in cleaned:
@@ -203,6 +205,9 @@ jobs:
                   return cleaned[sha]
               index = {"GIT_INDEX_FILE": str(temp / "lane-clean.index")}
               for c in commits:
+                  if c not in own:
+                      mapping[c] = c
+                      continue
                   raw("read-tree", c, env=index)
                   updates = []
                   for path, (mode, kind, sha) in tree(c).items():
@@ -221,7 +226,7 @@ jobs:
                   text = raw("cat-file", "commit", c).partition(b"\n\n")[2]
                   message = strip(text.decode("utf-8", "replace"), "commit messages")
                   if not updates and parents == original and message.encode() == text:
-                      mapping[c] = c  # Untouched commits, such as main's merged in during the run, keep their hashes.
+                      mapping[c] = c  # A commit with nothing to strip keeps its hash.
                       continue
                   if updates:
                       raw("update-index", "--index-info", data=b"\n".join(updates) + b"\n", env=index)
@@ -239,7 +244,8 @@ jobs:
               note = ("\n\nCredential guard: removed " + str(sum(counts.values())) + " line(s) shaped like a token from: "
                       + ", ".join(counts) + ". The rest of this pass is kept. Restore what those lines did without writing a"
                       " token-shaped string; build fake tokens at runtime.\n")
-              body = (body + (note if not SHAPED.search(note) else "\n\nCredential guard removed lines shaped like a token.\n"))[:60000]
+              note = note if not SHAPED.search(note) else "\n\nCredential guard removed lines shaped like a token.\n"
+              body = body[:60000 - len(note)] + note  # The notice always survives the body cap.
           if SHAPED.search("\n".join([title, body, summary, history()])) or live(history()):
               sys.exit("Lane output contains a credential; result withheld")
           if head != base:

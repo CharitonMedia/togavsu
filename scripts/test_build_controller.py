@@ -3202,6 +3202,27 @@ class LanePackageScanTests(unittest.TestCase):
         self.assertEqual(self.git("show", "lane:fixture.txt"), "a")
         self.assertNotIn(self.FAKE, self.lane_log())
 
+    def test_token_shaped_text_merged_in_from_main_withholds_the_result(self):
+        self.git("checkout", "-q", "-b", "main-side", self.base)
+        self.commit("main_fixture.txt", "m " + self.FAKE + "\n")
+        self.git("checkout", "-q", "lane")
+        self.commit("work.txt", "done\n")
+        self.git("merge", "-q", "--no-edit", "main-side")
+        result = self.package()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("credential", result.stderr)
+        self.assertFalse((self.runner / "lane-pack" / "lane.bundle").exists())
+
+    def test_removal_notice_survives_a_full_pr_body(self):
+        (self.runner / "lane-out").mkdir()
+        (self.runner / "lane-out" / "pr-body.md").write_text("x" * 70000)
+        self.commit("fixture.txt", "a\nt " + self.FAKE + "\n")
+        result = self.package()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        body = self.result()["pr_body"]
+        self.assertLessEqual(len(body), 60000)
+        self.assertIn("Credential guard: removed 1 line(s)", body)
+
 
 if __name__ == "__main__":
     unittest.main()
