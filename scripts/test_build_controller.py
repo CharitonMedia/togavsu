@@ -2492,6 +2492,19 @@ class StallAlertTests(unittest.TestCase):
         self.assertEqual(len(self.mailer.sent), 1)
         self.assertIn("No progress for 61 minutes", self.mailer.sent[0][2])
 
+    def test_check_still_running_emails_after_an_hour_and_never_halts(self):
+        self.remote.check_rows["Codex checkpoint"]["status"] = "in_progress"
+        self.remote.run_status = "FINISHED"
+        for minutes in (0, 30):
+            self.tick(minutes)
+        self.assertFalse(self.mailer.sent)
+        self.tick(61)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIn("No progress for 61 minutes", self.mailer.sent[0][2])
+        self.tick(400)
+        self.assertNotIn("halted", self.record)
+        self.assertIn("Checks pending", self.record["waiting"])
+
     def test_failed_alert_email_never_breaks_the_tick_and_retries_later(self):
         self.mailer.fail = True
         self.record["halted"] = "PR is already assigned to another task"
