@@ -963,6 +963,233 @@
         "12"
       ],
       "acceptance_ids": [
+        "AC-003",
+        "AC-004",
+        "AC-005",
+        "AC-006",
+        "AC-007",
+        "AC-008",
+        "AC-009",
+        "AC-010",
+        "AC-011",
+        "AC-012",
+        "AC-013",
+        "AC-014",
+        "AC-015",
+        "AC-016",
+        "AC-018",
+        "AC-019",
+        "AC-020",
+        "AC-021",
+        "AC-022",
+        "AC-023",
+        "AC-024",
+        "AC-025",
+        "AC-026",
+        "AC-027",
+        "AC-028",
+        "AC-029",
+        "AC-030",
+        "AC-031",
+        "AC-032",
+        "AC-033",
+        "AC-034",
+        "AC-035",
+        "AC-036",
+        "AC-037",
+        "AC-038",
+        "AC-039",
+        "AC-040",
+        "AC-042",
+        "AC-043",
+        "AC-044",
+        "AC-045",
+        "AC-046",
+        "AC-047",
+        "AC-048",
+        "AC-049",
+        "AC-050",
+        "AC-051",
+        "AC-052"
+      ],
+      "prompt": "Release candidate. On 2026-11-13 the integration lead, with Patrick's approval, split this assignment: merge the integrated core with every assigned criterion passing, so focused lanes finish the rest from main. AC-002 (all contract operations mounted) moved to release-api-coverage, AC-017 (performance p95) to release-perf after it, and AC-001 (clean Docker Desktop install), AC-041 (Word opens editor files with no repair) and the signed release to release-final. None of those is assigned here; do not work on them. Add a subset mode to scripts/ci/full-acceptance.sh (TOGAVSU_ACCEPTANCE_IDS, a comma-separated list) that runs exactly the listed criteria and exits 0 only when every one passes; with the variable unset it still runs all 52, and the Full acceptance CI job keeps running all 52 and may stay red on this PR. Fix docs/platform/README.md so it names the backup passphrase at its new backupkey location. Provide docs/build/reports/release.json with task_id release, status pass only when the subset run of the assigned criteria exits 0, actual tests/exit_code, and an exhaustive disjoint partition of the assigned acceptance_ids into passed_acceptance_ids and pending_acceptance_ids. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Do not tag, sign or publish anything. Protected controller and review-gate files remain forbidden.",
+      "report_path": "docs/build/reports/release.json",
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "phase_acceptance": {
+        "candidate-acceptance": [
+          "AC-003",
+          "AC-004",
+          "AC-005",
+          "AC-006",
+          "AC-007",
+          "AC-008",
+          "AC-009",
+          "AC-010",
+          "AC-011",
+          "AC-012",
+          "AC-013",
+          "AC-014",
+          "AC-015",
+          "AC-016",
+          "AC-018",
+          "AC-019",
+          "AC-020",
+          "AC-021",
+          "AC-022",
+          "AC-023",
+          "AC-024",
+          "AC-025",
+          "AC-026",
+          "AC-027",
+          "AC-028",
+          "AC-029",
+          "AC-030",
+          "AC-031",
+          "AC-032",
+          "AC-033",
+          "AC-034",
+          "AC-035",
+          "AC-036",
+          "AC-037",
+          "AC-038",
+          "AC-039",
+          "AC-040",
+          "AC-042",
+          "AC-043",
+          "AC-044",
+          "AC-045",
+          "AC-046",
+          "AC-047",
+          "AC-048",
+          "AC-049",
+          "AC-050",
+          "AC-051",
+          "AC-052"
+        ],
+        "signed-images-updater-load": [
+          "AC-013",
+          "AC-016"
+        ],
+        "backup-restore": [
+          "AC-018",
+          "AC-040"
+        ]
+      },
+      "full_acceptance": false
+    },
+    {
+      "id": "release-api-coverage",
+      "wave": "release-fix-api",
+      "phase": 7,
+      "depends_on": [
+        "release"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "docs/api/",
+        "docs/build/reports/release-api-coverage.json"
+      ],
+      "prd_sections": [
+        "5",
+        "6",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-002"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/release-api-coverage.json",
+      "phase_acceptance": {
+        "all-operations-mounted": [
+          "AC-002"
+        ]
+      },
+      "prompt": "Focused lane for AC-002 only, split from the core release on 2026-11-13. TestReleaseAllOperationsMounted (build tag acceptance) lists the contract operations the core does not mount. At the release candidate 31 of 430 were missing: ai/providers list, key and check; events list, create and bulk; party-roles (4); marker-definitions (4); matter-markers PATCH; module markers (3); contacts and matters merge; matter archive (needs an archived column and its migration); custom-field-values:bulk; time-entry and expense custom fields; invoices:bulk and files:bulk; files/unassigned and publication-grants; payments processor-initializations; me/email-change and confirm. Implement every one fully as the OpenAPI contract describes, reusing the patterns of the 399 already mounted: real behavior on Postgres, role and ethical-wall checks, audit entries, the same operation on /mcp, and Go tests against real Postgres with failure cases beside the code. Never stub an operation, return 501, or change the contract to drop one. Done when TestReleaseAllOperationsMounted passes with 430 of 430 and every existing suite still passes. Provide docs/build/reports/release-api-coverage.json with task_id release-api-coverage, status pass, actual tests/exit_code, passed_acceptance_ids and pending_acceptance_ids partitioning [AC-002], and phase_cases with one entry all-operations-mounted mapped to [AC-002], status pass, its actual command and integer exit_code 0. Set tested_revision to the full 40-character commit SHA tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Protected controller and review-gate files remain forbidden."
+    },
+    {
+      "id": "release-perf",
+      "wave": "release-fix-perf",
+      "phase": 7,
+      "depends_on": [
+        "release-api-coverage"
+      ],
+      "owned_paths": [
+        "cmd/core/",
+        "internal/",
+        "tests/",
+        "scripts/ci/",
+        "docs/build/reports/release-perf.json"
+      ],
+      "prd_sections": [
+        "6",
+        "12"
+      ],
+      "acceptance_ids": [
+        "AC-017"
+      ],
+      "required_checks": [
+        "Core tests",
+        "API contract tests",
+        "QA harness tests",
+        "Supervisor tests",
+        "Backup integration",
+        "Supervisor image"
+      ],
+      "report_path": "docs/build/reports/release-perf.json",
+      "phase_acceptance": {
+        "perf-p95": [
+          "AC-017"
+        ]
+      },
+      "prompt": "Focused lane for AC-017 only, split from the core release on 2026-11-13. At the release candidate the perf check measured overall p95 5490.8 ms at TOGAVSU_PERF_N=20 against the 300 ms target on the 1M-row seed, and every listed admin API read exceeded the target; three earlier release passes did not move it. Profile before changing code: run the perf check, capture EXPLAIN (ANALYZE, BUFFERS) for each slow read, and name the cause of each (missing indexes, sequential scans, N+1 queries, unbounded counts, per-row permission or wall checks, missing pagination limits, pool settings). Then fix those causes in the query and data-access code and migrations: indexes, query rewrites, keyset pagination where the contract allows it, batching. Never relax the 300 ms target, shrink the seed, lower TOGAVSU_PERF_N, cache around permission or wall checks, or leave a read out of the measurement. Keep the Full acceptance CI job inside its time limit; if seeding the 1M rows is slow, make seeding faster (COPY in one transaction), never smaller. Done when the perf check passes at TOGAVSU_PERF_N=20 on the 1M-row seed and every existing suite still passes. You start after release-api-coverage merged, so the newly mounted operations are on main; any read among them that the perf check lists must meet the target too. Provide docs/build/reports/release-perf.json with task_id release-perf, status pass, actual tests/exit_code, the measured p95 for each read, passed_acceptance_ids and pending_acceptance_ids partitioning [AC-017], and phase_cases with one entry perf-p95 mapped to [AC-017], status pass, its actual command and integer exit_code 0. Set tested_revision to the full 40-character commit SHA tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Protected controller and review-gate files remain forbidden."
+    },
+    {
+      "id": "release-final",
+      "wave": "release",
+      "phase": 7,
+      "depends_on": [
+        "release-perf"
+      ],
+      "owned_paths": [
+        "docs/release/",
+        "docs/build/reports/release-final.json",
+        "scripts/release/",
+        ".github/workflows/product-ci.yml",
+        "cmd/core/",
+        "internal/",
+        "web/",
+        "api/",
+        "tests/",
+        "go.mod",
+        "go.sum",
+        "compose.yaml",
+        "deploy/",
+        "scripts/ci/"
+      ],
+      "prd_sections": [
+        "6",
+        "11",
+        "12"
+      ],
+      "acceptance_ids": [
         "AC-001",
         "AC-002",
         "AC-003",
@@ -1016,8 +1243,8 @@
         "AC-051",
         "AC-052"
       ],
-      "prompt": "Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes. Add a Full acceptance CI job that actually executes all 52 criteria and clean Docker Desktop validation; never turn unexecuted acceptance into a passing job. Provide docs/build/reports/release.json with task_id release, status pass only after full acceptance, actual tests/exit_code and acceptance results. External blockers remain pending; never claim a signed release from scaffolding. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs. You are the final integration lead, authorized to reconcile shared implementation and product CI in these owned paths, including the Full acceptance job. Protected controller and review-gate files remain forbidden.",
-      "report_path": "docs/build/reports/release.json",
+      "prompt": "Final core release, split on 2026-11-13: it starts after the release candidate, release-api-coverage and then release-perf merged, so all 52 criteria should already pass on main except AC-001, AC-041 and the signed release, whose evidence the integration lead supplies by operator note (clean Docker Desktop installs on Windows and macOS, the Word check, and the off-GitHub signatures attached through the release workflow). Fix any regression the full run finds. Integrate full seven-phase acceptance, signed images, zero-downtime updater/load tests, verified encrypted backups/restore, clean Docker Desktop test, complete guide and whole-repo simplification audit. Coordinate shared platform changes through lead; do not release until every acceptance criterion passes. Add a Full acceptance CI job that actually executes all 52 criteria and clean Docker Desktop validation; never turn unexecuted acceptance into a passing job. Provide docs/build/reports/release-final.json with task_id release-final, status pass only after full acceptance, actual tests/exit_code and acceptance results. External blockers remain pending; never claim a signed release from scaffolding. The JSON report must exhaustively partition every assigned acceptance_id into disjoint passed_acceptance_ids and pending_acceptance_ids; partial phase evidence is not global criterion acceptance. Include phase_cases: one entry for every key in this assignment phase_acceptance map, with id, exactly mapped acceptance_ids, status pass, actual command and integer exit_code 0. Every assigned phase case must pass. Set tested_revision to the full 40-character commit SHA actually tested; then commit ONLY docs/build/reports files after it. Any code change requires rerunning tests and a new tested_revision. Full release acceptance permits no pending acceptance IDs. You are the final integration lead, authorized to reconcile shared implementation and product CI in these owned paths, including the Full acceptance job. Protected controller and review-gate files remain forbidden.",
+      "report_path": "docs/build/reports/release-final.json",
       "required_checks": [
         "Core tests",
         "API contract tests",
@@ -1101,7 +1328,7 @@
       "wave": "module-api",
       "phase": 8,
       "depends_on": [
-        "release"
+        "release-final"
       ],
       "owned_paths": [
         "cmd/core/",
@@ -1144,7 +1371,7 @@
         "Backup integration",
         "Supervisor image"
       ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from the released core (the release assignment is merged). Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five module lanes start from your merge, so keep every name exactly as the specs give it. Never edit modules/, internal/modules/module_*_pg_test.go, docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from the released core (the release-final assignment is merged). Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five module lanes start from your merge, so keep every name exactly as the specs give it. Never edit modules/, internal/modules/module_*_pg_test.go, docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
       "stage_report": true
     },
     {
