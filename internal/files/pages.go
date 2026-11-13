@@ -3,11 +3,13 @@ package files
 import (
 	"bytes"
 	"errors"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"path"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/practice"
 	"github.com/CharitonMedia/togavsu/internal/repository"
 )
@@ -61,15 +63,16 @@ func csrfOf(r *http.Request) string {
 	return ""
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, data pageData) {
+// render draws the named files screen inside the app shell.
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data pageData) {
 	var buf bytes.Buffer
 	if err := h.Templates.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, "the page could not be drawn", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'self'; base-uri 'none'")
-	_, _ = w.Write(buf.Bytes())
+	frame.Write(w, r, frame.Page{Title: data.Title, Area: "files", Body: template.HTML(buf.String()), Error: data.Error,
+		Scripts: []string{"/files/static/files.js"}})
 }
 
 func (h *Handler) pageError(w http.ResponseWriter, r *http.Request, err error) {
@@ -89,10 +92,10 @@ func (h *Handler) pageError(w http.ResponseWriter, r *http.Request, err error) {
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
-// static serves files.js and files.css from the template tree.
+// static serves files.js from the template tree.
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	types := map[string]string{"files.js": "text/javascript; charset=utf-8", "files.css": "text/css; charset=utf-8"}
+	types := map[string]string{"files.js": "text/javascript; charset=utf-8"}
 	ct, ok := types[name]
 	if !ok {
 		http.NotFound(w, r)
@@ -200,7 +203,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		}
 		data.Files = append(data.Files, row)
 	}
-	h.render(w, "matter_files.html", data)
+	h.render(w, r, "matter_files.html", data)
 }
 
 // storagePage is the Files and storage admin tab: backends with Test, moves with
@@ -237,5 +240,5 @@ func (h *Handler) storagePage(w http.ResponseWriter, r *http.Request) {
 		h.pageError(w, r, err)
 		return
 	}
-	h.render(w, "storage.html", data)
+	h.render(w, r, "storage.html", data)
 }

@@ -239,7 +239,7 @@ func TestPGPagesAndForms(t *testing.T) {
 		t.Fatalf("evergreen %d", code)
 	}
 	for path, want := range map[string]string{
-		"/trust/ledger":                         "Post an entry",
+		"/trust/ledger":                         "New entry",
 		"/trust/balances":                       "Casey Client",
 		"/trust/flags?status=open":              "2026-0020",
 		"/trust/replenishment":                  "Trust Replenishment",
@@ -250,6 +250,10 @@ func TestPGPagesAndForms(t *testing.T) {
 		code, body, _ := admin.do("GET", path, nil)
 		if code != 200 || !strings.Contains(string(body), want) {
 			t.Fatalf("GET %s %d: missing %q in %s", path, code, want, body)
+		}
+		// Each tab screen marks its own tab in the area's sub-navigation.
+		if tab, _, _ := strings.Cut(path, "?"); !strings.HasPrefix(tab, "/trust/matters/") && !strings.Contains(string(body), `href="`+tab+`" class="active" aria-current="page"`) {
+			t.Fatalf("GET %s does not mark its tab active", path)
 		}
 	}
 	// The flag page resolves with a note; opening a notification marks it read.
@@ -269,7 +273,7 @@ func TestPGPagesAndForms(t *testing.T) {
 	if code, _, _ := attorney.do("POST", "/trust/notifications/read-all", nil); code != http.StatusSeeOther {
 		t.Fatalf("read all form %d", code)
 	}
-	if _, body, _ := attorney.do("GET", "/trust/ledger", nil); !strings.Contains(string(body), `Notifications, 0 unread`) || strings.Contains(string(body), `class="count"`) {
+	if _, body, _ := attorney.do("GET", "/trust/ledger", nil); !strings.Contains(string(body), `Trust notifications, 0 unread`) || strings.Contains(string(body), `class="count"`) {
 		t.Fatalf("bell not cleared: %s", body)
 	}
 	// A client and an anonymous caller get the error page, not trust data.
@@ -278,8 +282,5 @@ func TestPGPagesAndForms(t *testing.T) {
 	}
 	if code, _, _ := e.as(t, srv, "nobody").do("GET", "/trust/balances", nil); code != http.StatusUnauthorized {
 		t.Fatalf("anonymous page %d", code)
-	}
-	if code, _, _ := e.as(t, srv, "nobody").do("GET", "/trust/static/trust.css", nil); code != 200 {
-		t.Fatalf("css %d", code)
 	}
 }

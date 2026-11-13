@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <section aria-labelledby="g1"><h2 id="g1">What Doc Tender does</h2>
 <p>Every file that lands in a matter is processed as it arrives: text and Markdown are read as they are; Word documents are converted and checked against their own word and page counts; spreadsheets become one table per sheet; PDFs are read page by page (a text layer is checked against an OCR read, a scanned page against a second read by Tesseract); photos are described and grouped into documents once the matter has been quiet; audio and video get timestamped transcripts, and video adds what is on screen. A file on a closed matter is listed as Not processed (matter closed) and costs nothing until the matter reopens.</p></section>
 <section aria-labelledby="g2"><h2 id="g2">How names are made</h2>
@@ -7,4 +7,3 @@
 <p>Only exceptions reach the queue: low confidence, models that disagree, a matter that can't be matched, an extraction that failed after its retries, a password-protected, damaged or unsupported file, or a provider down for an hour. Each item offers Accept, Correct, Assign matter, Retry and Keep as is. The file stays available with its flag the whole time.</p></section>
 <section aria-labelledby="g4"><h2 id="g4">Where its settings live</h2>
 <p>The Doc Tender tab holds the naming pattern, categories, review confidence, quiet time, retry schedule, recipients, the daily summary and spend. Its models are on the AI tab.</p></section>
-{{template "foot" .}}

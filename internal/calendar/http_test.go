@@ -253,7 +253,7 @@ func TestCalendarPagesRender(t *testing.T) {
 	if status, _ := get(t, srv.URL, f.accountant, "/calendar"); status != http.StatusForbidden {
 		t.Fatalf("accountant page: %d", status)
 	}
-	for _, path := range []string{"/calendar/static/calendar.css", "/calendar/static/calendar.js", "/calendar/feeds", "/calendar/available-dates", "/calendar/deadlines"} {
+	for _, path := range []string{"/calendar/static/calendar.js", "/calendar/feeds", "/calendar/available-dates", "/calendar/deadlines"} {
 		if status, _ := get(t, srv.URL, f.staff, path); status != http.StatusOK {
 			t.Fatalf("%s: %d", path, status)
 		}

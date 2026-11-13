@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <dl class="facts">
   <dt>Client</dt><dd>{{label .Labels .Matter.Client}}</dd>
   <dt>Trust balance</dt><dd class="{{if lt .MatterBalance 0}}debit{{end}}">{{money .MatterBalance}}</dd>
@@ -43,4 +43,3 @@
 <h2>Ledger</h2>
 <p><a href="/api/v1/reports/trust-client-ledger?client_id={{.Matter.Client}}&amp;matter_id={{.Matter.ID}}&amp;format=csv">Download client ledger CSV</a></p>
 {{template "entries" .}}
-{{template "foot" .}}

@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <form method="post" action="/trust/notifications/read-all"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Mark all read</button></form>
 <ul class="notes">
 {{range .Notes}}
@@ -9,4 +9,3 @@
 </li>
 {{else}}<li>No notifications.</li>{{end}}
 </ul>
-{{template "foot" .}}

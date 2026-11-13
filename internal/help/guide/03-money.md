@@ -14,7 +14,7 @@ Shows the lines, totals, payments and balance. Attorneys approve and send; the P
 
 ## Time Entries {#billing-time}
 <!-- template: billing/time.html | path: /billing/time | where: Money > Time Entries | keywords: log time, timers, bulk entry, increments -->
-Log time against a matter in the firm's increment (6 minutes by default), run timers, and review drafts from stopped timers.
+Log time against a matter in the firm's increment (6 minutes by default) with the New time entry button, run timers, and review drafts from stopped timers.
 
 ## Time entry {#billing-time-entry}
 <!-- template: billing/time_entry.html | path: /billing/time/{time_entry_id} | where: Money > Time Entries > an entry | keywords: edit time, activity type, billable -->
@@ -22,7 +22,7 @@ Edit one entry's date, increments, description, activity type and billable flag 
 
 ## Expenses {#billing-expenses}
 <!-- template: billing/expenses.html | path: /billing/expenses | where: Money > Time Entries > Expenses | keywords: receipts, markup, expense types -->
-Record expenses with a type, amount, billable flag, markup and receipt file.
+The New expense button records an expense with a type, amount, billable flag and markup; open it afterward to attach the receipt file.
 
 ## Expense {#billing-expense}
 <!-- template: billing/expense.html | path: /billing/expenses/{expense_id} | where: Money > Expenses > an expense | keywords: edit expense -->
@@ -38,7 +38,7 @@ Unbilled time, time by user, AR aging, payments received and write-offs, each wi
 
 ## Trust overview {#trust-ledger}
 <!-- template: trust/ledger.html | path: /trust, /trust/ledger | where: Money > Trust > Trust Ledger | keywords: deposit, withdrawal, transfer, refund, adjustment, reversal -->
-The append-only trust ledger. Post deposits (staff and up), withdrawals, transfers to operating and refunds (attorneys and admins). Corrections are reversal entries; no entry is ever edited or deleted.
+The append-only trust ledger. The New entry button posts deposits (staff and up), withdrawals, transfers to operating and refunds (attorneys and admins). Corrections are reversal entries; no entry is ever edited or deleted.
 
 ## Trust Balances {#trust-balances}
 <!-- template: trust/balances.html | path: /trust/balances | where: Money > Trust > Trust Balances | keywords: client balance, matter balance, account -->

@@ -2,7 +2,7 @@
 
 ## Calendar {#calendar}
 <!-- template: calendar/calendar.html | path: /calendar | where: Sidebar > Calendar | keywords: day, week, month, firm-wide, court date, event -->
-Day, week and month views, per user or firm-wide, filtered by matter and kind. Today's calendar on Home opens today in day view.
+Day, week and month views, per user or firm-wide, filtered by matter and kind. The New event button adds an event. Today's calendar on Home opens today in day view.
 
 ## Event {#calendar-event}
 <!-- template: calendar/event.html | path: /calendar/events/{id} | where: Calendar > an event | keywords: attendees, travel, location -->
@@ -10,7 +10,7 @@ One event with its kind, times, matter, location, travel minutes, attendees and 
 
 ## Deadlines {#calendar-deadlines}
 <!-- template: calendar/deadlines.html | path: /calendar/deadlines | where: Sidebar > Calendar > Deadlines | keywords: upcoming deadlines, overdue, done, waived, date range -->
-Deadlines in a date range, overdue ones first. The Upcoming deadlines widget opens this page on the same dates. Mark a deadline done or waived.
+Deadlines in a date range, overdue ones first. The Upcoming deadlines widget opens this page on the same dates. The New deadline button adds one. Mark a deadline done or waived.
 
 ## Deadline {#calendar-deadline}
 <!-- template: calendar/deadline.html | path: /calendar/deadlines/{id} | where: Deadlines > a deadline | keywords: reminders, responsible -->

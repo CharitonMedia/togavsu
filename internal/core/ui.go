@@ -27,6 +27,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/dashboard"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/files"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/repository"
@@ -82,6 +83,7 @@ type UI struct {
 	dash    *http.ServeMux
 	helpMux *http.ServeMux
 	cal     *http.ServeMux
+	shell   frame.Shell
 	scopes  *http.ServeMux
 	scopeOf map[string][]string
 }
@@ -161,6 +163,7 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 		return AuditRows(r.Context(), p, ledger, app, limit)
 	}
 	u.dash = dh.Routes()
+	u.shell = dh.Frame
 	u.helpMux = (&help.Handler{Svc: hs, Principal: u.principal}).Routes()
 	if err := u.loadScopes(); err != nil {
 		return nil, err
@@ -170,8 +173,14 @@ func MountUI(ctx context.Context, app *App, opt UIOptions) (*UI, error) {
 }
 
 // Handler is the whole site: the module runtime's domain router and include= reader,
-// then calendar routes to the core, then ui routes, then the core.
-func (u *UI) Handler() http.Handler { return u.App.extend(u.inner) }
+// then calendar routes to the core, then ui routes, then the core. Every request carries
+// the shell, so each area's screens (and a module's tab) draw inside it.
+func (u *UI) Handler() http.Handler {
+	site := u.App.extend(u.inner)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		site.ServeHTTP(w, frame.With(r, u.shell))
+	})
+}
 
 // uiCoreWidgets are the widget routes a domain service already serves; the core keeps them.
 var uiCoreWidgets = map[string]bool{

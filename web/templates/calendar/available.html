@@ -1,6 +1,5 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Data}}
-<h1>Available dates</h1>
 <p class="muted">Lists weekdays with no court date, block or all-day event for the attorney. This never changes the calendar.</p>
 <form method="get" action="/calendar/available-dates" class="inline" role="search" aria-label="Find a matter">
   <input type="hidden" name="user_id" value="{{index .Form "user_id"}}">
@@ -99,4 +98,3 @@
 </section>
 {{end}}
 {{end}}
-{{template "foot" .}}
