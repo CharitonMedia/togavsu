@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
@@ -41,6 +42,10 @@ type Chrome struct {
 	Notice      string
 	Error       string
 	Active      string
+	// Area and Scripts come from a framed area screen (frame.Page): main's area-<Area>
+	// class and the deferred scripts its content needs.
+	Area    string
+	Scripts []string
 }
 
 type view struct {
@@ -86,7 +91,9 @@ var funcs = template.FuncMap{
 	},
 }
 
-// activeEntry is the sidebar entry whose path is the longest prefix of path.
+// activeEntry is the sidebar entry whose path is the longest prefix of path. A screen no
+// entry covers (Trust flags, the Doc Tender guide) lights the first entry of its area: the
+// one whose path starts with the same first segment.
 func activeEntry(nav NavContext, path string) string {
 	best, bestLen := "", -1
 	for _, e := range nav.Entries {
@@ -99,7 +106,21 @@ func activeEntry(nav NavContext, path string) string {
 			best, bestLen = e.ID, len(p)
 		}
 	}
-	return best
+	if best != "" {
+		return best
+	}
+	seg := firstSegment(path)
+	for _, e := range nav.Entries {
+		if seg != "" && firstSegment(e.Path) == seg {
+			return e.ID
+		}
+	}
+	return ""
+}
+
+func firstSegment(path string) string {
+	s, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
+	return s
 }
 
 func initials(name string) string {
@@ -184,10 +205,17 @@ func (h *Handler) render(w http.ResponseWriter, code int, name string, v any) {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", help.CSP)
-	w.Header().Set("Cache-Control", "private, no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	hdr := w.Header()
+	hdr.Set("Content-Type", "text/html; charset=utf-8")
+	// A framed area screen may have set a policy its content needs (the editor's frame);
+	// every policy an area sets is at least as strict as the shell's for its own assets.
+	if hdr.Get("Content-Security-Policy") == "" {
+		hdr.Set("Content-Security-Policy", help.CSP)
+	}
+	if hdr.Get("Cache-Control") == "" {
+		hdr.Set("Cache-Control", "private, no-store")
+	}
+	hdr.Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(code)
 	_, _ = buf.WriteTo(w)
 }
@@ -236,6 +264,30 @@ func (h *Handler) screen(fn func(w http.ResponseWriter, r *http.Request, p domai
 		}
 		h.render(w, http.StatusOK, name, view{Chrome: c, Page: page})
 	}
+}
+
+// Frame is the core's frame.Shell: it draws an area screen (practice, billing, trust,
+// calendar, files, Doc Tender, the editor, settings, a module tab) inside the shell. A
+// caller the shell does not serve (a client, or no session) gets the plain document.
+func (h *Handler) Frame(w http.ResponseWriter, r *http.Request, pg frame.Page) {
+	p, err := h.Principal(r)
+	if err != nil || staff(p) != nil {
+		frame.Bare(w, pg)
+		return
+	}
+	c, err := h.ChromeFor(r, p, pg.Title)
+	if err != nil {
+		frame.Bare(w, pg)
+		return
+	}
+	c.Area, c.Scripts = pg.Area, pg.Scripts
+	if pg.Notice != "" {
+		c.Notice, _ = truncate(pg.Notice, fixed.NoticeMax)
+	}
+	if pg.Error != "" {
+		c.Error = pg.Error
+	}
+	h.render(w, pg.StatusCode(), "framed", view{Chrome: c, Page: pg.Body})
 }
 
 func (h *Handler) renderError(w http.ResponseWriter, r *http.Request, p domain.Principal, code int, msg string) {

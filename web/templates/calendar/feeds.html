@@ -1,6 +1,5 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Data}}
-<h1>Calendar feeds</h1>
 <p class="muted">A read-only iCal link for Google or Outlook. Anyone with the link can read the feed, so revoke a link you no longer use. Two-way sync belongs to a module.</p>
 {{if .NewURL}}
 <div class="newurl" role="status">
@@ -32,4 +31,3 @@
 </table>
 {{else}}<p class="muted">No feeds yet.</p>{{end}}
 {{end}}
-{{template "foot" .}}

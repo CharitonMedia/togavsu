@@ -1,18 +1,15 @@
-{{template "head" .}}
-<main class="editor-main" id="editor"
+<div class="editor-main" id="editor"
   data-mode="{{.Mode}}" data-file-id="{{.FileID}}" data-file-name="{{.FileName}}" data-download="{{.DownloadURL}}">
   <div class="editor-head">
-    <h1>{{if .FileName}}{{.FileName}}{{else}}{{.Title}}{{end}}</h1>
     <span id="state" class="tag" role="status" aria-live="polite"></span>
     <span class="acts">
       {{if .PreviewURL}}<a href="{{.PreviewURL}}" target="_blank" rel="noopener">Preview</a>{{end}}
       {{if .DownloadURL}}<a href="{{.DownloadURL}}">Download</a>{{end}}
+      {{if .MatterID}}<a href="/practice/matters/{{.MatterID}}/files">Matter files</a>{{end}}
       {{if and (eq .Mode "edit") .MatterID}}<a href="/matters/{{.MatterID}}/pleadings/new">New pleading from this matter</a>{{end}}
       {{if eq .Mode "edit"}}<button type="button" id="close">Close editor</button>{{end}}
     </span>
   </div>
-  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
-  {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
   <p id="message" class="notice" role="alert" hidden></p>
   {{if eq .Mode "locked"}}
   <p class="notice locked" role="status"><strong>{{.HolderName}}</strong> is editing this file, since {{.HolderSince}}.
@@ -21,6 +18,5 @@
   {{if eq .Mode "edit"}}
   <iframe id="frame" title="LawCraft editor" src="{{.FrameURL}}"></iframe>
   {{end}}
-</main>
-<script src="/editor-host/edit.js"></script>
-{{template "foot" .}}
+</div>
+<footer class="editor-foot">LawCraft commit <code>{{.Commit}}</code></footer>

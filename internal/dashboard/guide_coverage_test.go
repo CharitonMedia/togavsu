@@ -1,9 +1,7 @@
 package dashboard
 
 import (
-	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -12,9 +10,10 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/help"
 )
 
-// screenTemplate marks a page template: it opens a whole page (a domain's "head" layout
-// or the shell). Layouts and partials define those and are not screens themselves.
-var screenTemplate = regexp.MustCompile(`\{\{template "(head|shell-top)"`)
+// notScreen names the template files that are not screens: an area's partials (its
+// sub-navigation and shared blocks) and its error page. Every other template under
+// web/templates/<area> is a screen drawn inside the shell.
+var notScreen = map[string]bool{"partials.html": true, "error.html": true}
 
 // TestEveryScreenAndAdminTabHasAGuideTopic is the AC-032 CI check. It runs in the Core
 // tests job (scripts/ci/test-core.sh runs every Go package), so a new screen template
@@ -31,13 +30,9 @@ func TestEveryScreenAndAdminTabHasAGuideTopic(t *testing.T) {
 	}
 	var screens []string
 	for _, f := range files {
-		raw, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
 		base := filepath.Base(f)
 		// shell/ holds the shell itself and its partials, not screens.
-		if base == "error.html" || filepath.Base(filepath.Dir(f)) == "shell" || !screenTemplate.Match(raw) {
+		if notScreen[base] || filepath.Base(filepath.Dir(f)) == "shell" {
 			continue
 		}
 		name := filepath.Base(filepath.Dir(f)) + "/" + base
@@ -103,7 +98,8 @@ func TestHelpIconTopicForEachScreenPath(t *testing.T) {
 		"/": "home", "/billing/invoices": "billing-invoices", "/billing/invoices/0190": "billing-invoice",
 		"/practice/matters/needs-case-number": "practice-needs-case-number", "/practice/matters/0190": "practice-matter",
 		"/practice/matters/0190/files": "files-matter", "/calendar/deadlines": "calendar-deadlines", "/help": "help-center",
-		"/trust/flags/1": "trust-flag", "/me/settings": "my-settings",
+		"/trust/flags/1": "trust-flag", "/me/settings": "my-settings", "/practice/matters/new": "practice-matter-new",
+		"/practice/contacts/new": "practice-contact-new",
 	} {
 		got, ok := g.ForPath(path)
 		if !ok || got.ID != want {

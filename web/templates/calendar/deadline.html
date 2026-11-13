@@ -1,6 +1,5 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Data}}
-<h1>{{.Title}}</h1>
 <dl class="facts">
   <dt>Due</dt><dd>{{.DueOn}}{{if .Overdue}} <strong class="late">overdue</strong>{{end}}</dd>
   <dt>Status</dt><dd>{{.Status}}{{if .DoneAt}} by {{.DoneBy}} on {{.DoneAt}}{{end}}</dd>
@@ -18,4 +17,3 @@
 </div>
 {{end}}
 <p><a href="/calendar/deadlines?status=open&amp;include_overdue=true">All open deadlines</a></p>
-{{template "foot" .}}

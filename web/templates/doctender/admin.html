@@ -1,4 +1,4 @@
-{{template "head" .}}
+{{template "subnav" .}}
 <p>Doc Tender is <strong>{{if .Enabled}}on{{else}}off{{end}}</strong>. Its models are on the <a href="/admin/settings?tab=ai">AI tab</a>; labeling and categorizing offer {{join (index .Choices "labeling") ", "}}, never a local endpoint.</p>
 <section aria-labelledby="naming-h">
   <h2 id="naming-h">Naming pattern</h2>
@@ -36,4 +36,3 @@
   {{else}}<p class="empty">No model calls yet.</p>{{end}}
   <p><a href="/api/v1/reports/doc-tender-spend?format=csv">Download CSV</a></p>
 </section>
-{{template "foot" .}}

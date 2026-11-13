@@ -1,6 +1,5 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{with .Data}}
-<h1>{{.Title}}</h1>
 <dl class="facts">
   <dt>Kind</dt><dd>{{kindLabel .Kind}}</dd>
   <dt>When</dt><dd>{{.When}}</dd>
@@ -15,4 +14,3 @@
 </form>
 {{end}}
 <p><a href="/calendar">Back to the calendar</a></p>
-{{template "foot" .}}

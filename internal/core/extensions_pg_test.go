@@ -459,6 +459,10 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if !strings.Contains(frame.body, `/m/matter-clock/tab?context=`) || !strings.Contains(frame.body, "sandbox") {
 		t.Fatalf("home tab frame: %s", frame.body)
 	}
+	// A module tab is a screen: it draws inside the app shell like the core's own pages.
+	if !strings.Contains(frame.body, `<body class="shell`) || !strings.Contains(frame.body, `<aside class="sidebar"`) || !strings.Contains(frame.body, `<header class="topbar">`) {
+		t.Fatalf("module tab outside the app shell: %s", frame.body)
+	}
 	if !navHas(t, x.staff, "matter-clock.hours") {
 		t.Fatal("module tab not in the sidebar")
 	}
@@ -688,6 +692,11 @@ func TestExtensionsMatterItems(t *testing.T) {
 			if !strings.Contains(r.body, want) {
 				t.Fatalf("%s frame lacks %q: %s", path, want, r.body)
 			}
+		}
+		// The action opens as its own screen inside the shell; the panel draws inside the
+		// matter screen's iframe, so it carries no shell of its own.
+		if shelled := strings.Contains(r.body, `<body class="shell`); shelled != (path == action) {
+			t.Fatalf("%s: inside the shell = %v", path, shelled)
 		}
 	}
 	if r := x.staff.do("GET", "/modules/matter-notes/matter-items/notes", nil); r.code == http.StatusOK {

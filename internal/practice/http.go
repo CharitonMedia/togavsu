@@ -1,6 +1,7 @@
 package practice
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 )
 
 // Handler serves practice HTML and the practice JSON API.
@@ -93,9 +95,9 @@ func (h *Handler) Routes() http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /practice/static/practice.css", h.staticCSS)
-	mux.HandleFunc("GET /practice/static/practice.js", h.staticJS)
 	mux.HandleFunc("GET /practice/matters", h.mattersPage)
 	mux.HandleFunc("POST /practice/matters", h.createMatterPost)
+	mux.HandleFunc("GET /practice/matters/new", h.newMatterPage)
 	mux.HandleFunc("GET /practice/matters/needs-case-number", h.needsCasePage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}", h.matterPage)
 	mux.HandleFunc("GET /practice/matters/{matter_id}/close", h.closePage)
@@ -116,6 +118,7 @@ func (h *Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /practice/search", h.searchPage)
 	mux.HandleFunc("GET /practice/notes", h.notesPage)
 	mux.HandleFunc("GET /practice/contacts", h.contactsPage)
+	mux.HandleFunc("GET /practice/contacts/new", h.newContactPage)
 	mux.HandleFunc("GET /practice/contacts/{contact_id}", h.contactPage)
 	mux.HandleFunc("GET /practice/activity", h.activityPage)
 
@@ -146,11 +149,6 @@ func (h *Handler) principal(r *http.Request) (domain.Principal, error) {
 func (h *Handler) staticCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	http.ServeFileFS(w, r, h.FS, "practice.css")
-}
-
-func (h *Handler) staticJS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	http.ServeFileFS(w, r, h.FS, "practice.js")
 }
 
 type page struct {
@@ -188,15 +186,18 @@ type page struct {
 	Panels        []ModulePanel
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, data page) {
+// render draws the named practice screen inside the app shell.
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, data page) {
 	if h.Templates == nil {
 		http.Error(w, "templates are not loaded", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.Templates.ExecuteTemplate(w, name, data); err != nil {
+	var buf bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	frame.Write(w, r, frame.Page{Title: data.Title, Area: "practice", Body: template.HTML(buf.String()), Notice: data.Notice})
 }
 
 func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
@@ -210,12 +211,33 @@ func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows})
+}
+
+// newMatterPage is the create form the Matters list's New button and the shell's New menu
+// open.
+func (h *Handler) newMatterPage(w http.ResponseWriter, r *http.Request) {
+	p, err := h.principal(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	areas, err := h.Svc.ListAreas(r.Context(), p)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows, Areas: areas})
+	h.render(w, r, "matter_new.html", page{Title: "New matter", CSRF: h.csrf(w, r), Areas: areas})
+}
+
+// newContactPage is the create form the Contacts list's New button and the shell's New
+// menu open.
+func (h *Handler) newContactPage(w http.ResponseWriter, r *http.Request) {
+	if _, err := h.principal(r); err != nil {
+		writeErr(w, err)
+		return
+	}
+	h.render(w, r, "contact_new.html", page{Title: "New person", CSRF: h.csrf(w, r)})
 }
 
 func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +286,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.render(w, "matter.html", page{
+	h.render(w, r, "matter.html", page{
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
@@ -292,7 +314,7 @@ func (h *Handler) closePage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "close.html", page{Title: "Close " + row.Number, CSRF: h.csrf(w, r), Matter: view, Warnings: warnings})
+	h.render(w, r, "close.html", page{Title: "Close " + row.Number, CSRF: h.csrf(w, r), Matter: view, Warnings: warnings})
 }
 
 func (h *Handler) reopenPost(w http.ResponseWriter, r *http.Request) {
@@ -436,7 +458,7 @@ func (h *Handler) searchPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "search.html", page{Title: "Search", CSRF: h.csrf(w, r), Query: q, Scope: scope, Search: result})
+	h.render(w, r, "search.html", page{Title: "Search", CSRF: h.csrf(w, r), Query: q, Scope: scope, Search: result})
 }
 
 func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
@@ -454,7 +476,7 @@ func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "notes.html", page{
+	h.render(w, r, "notes.html", page{
 		Title: "Notes", CSRF: h.csrf(w, r), Notes: notes, Query: q.Get("q"), NoteNext: next,
 		NoteMatter: q.Get("matter"), NoteAuthor: q.Get("author"), NoteTag: q.Get("tag"),
 		NoteFrom: q.Get("from"), NoteTo: q.Get("to"),
@@ -472,7 +494,7 @@ func (h *Handler) contactsPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "contacts.html", page{Title: "Contacts", CSRF: h.csrf(w, r), Contacts: rows})
+	h.render(w, r, "contacts.html", page{Title: "Contacts", CSRF: h.csrf(w, r), Contacts: rows})
 }
 
 func (h *Handler) contactPage(w http.ResponseWriter, r *http.Request) {
@@ -497,7 +519,7 @@ func (h *Handler) contactPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history, ContactFields: fields})
+	h.render(w, r, "contact.html", page{Title: row.FullName, CSRF: h.csrf(w, r), Contact: row, History: history, ContactFields: fields})
 }
 
 func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {
@@ -514,7 +536,7 @@ func (h *Handler) activityPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "activity.html", page{Title: "Activities", CSRF: h.csrf(w, r), Feed: feed, Activity: feed.Groups})
+	h.render(w, r, "activity.html", page{Title: "Activities", CSRF: h.csrf(w, r), Feed: feed, Activity: feed.Groups})
 }
 
 func (h *Handler) needsCasePage(w http.ResponseWriter, r *http.Request) {
@@ -528,7 +550,7 @@ func (h *Handler) needsCasePage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, "needs_case_number.html", page{Title: "Matters missing a case number", CSRF: h.csrf(w, r), Needs: rows})
+	h.render(w, r, "needs_case_number.html", page{Title: "Matters missing a case number", CSRF: h.csrf(w, r), Needs: rows})
 }
 
 func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,7 @@
 package trust
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"html/template"
@@ -11,12 +12,22 @@ import (
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 )
 
 // csrfCookie is the practice double-submit cookie; the core checks the form field.
 const csrfCookie = "togavsu_practice_csrf"
 
+// trustTabs are the tabs above every trust screen; the sidebar lists only the ledger,
+// balances and replenishment.
+var trustTabs = []struct{ Path, Label string }{
+	{"/trust/ledger", "Ledger"}, {"/trust/balances", "Balances"}, {"/trust/replenishment", "Replenishment"},
+	{"/trust/flags", "Flags"}, {"/trust/reconciliation", "Reconciliation"}, {"/trust/notifications", "Trust notifications"},
+}
+
 var funcs = template.FuncMap{
+	"tabs":      func() []struct{ Path, Label string } { return trustTabs },
+	"on":        func(path, tab string) bool { return path == tab || strings.HasPrefix(path, tab+"/") },
 	"money":     func(c int64) string { return domain.Cents(c).String() },
 	"date":      func(t time.Time) string { return t.UTC().Format("2006-01-02") },
 	"label":     func(m map[string]string, k any) string { return m[fmt.Sprint(k)] },
@@ -53,6 +64,7 @@ type matterOption struct {
 
 type view struct {
 	Title, CSRF, Notice, Error string
+	Path                       string // the screen's path, for the area tabs
 	Unread                     int
 	CanWithdraw, CanDeposit    bool
 	Accounts                   []Account
@@ -73,7 +85,6 @@ type view struct {
 }
 
 func (h *Handler) pageRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /trust/static/trust.css", h.css)
 	mux.HandleFunc("GET /trust", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/trust/ledger", http.StatusSeeOther)
 	})
@@ -96,11 +107,6 @@ func (h *Handler) pageRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /trust/notifications/{notification_id}/open", h.openPost)
 }
 
-func (h *Handler) css(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/css; charset=utf-8")
-	http.ServeFileFS(w, r, h.FS, "trust.css")
-}
-
 // base fills the shared page fields. A caller without trust read gets the error page.
 func (h *Handler) base(w http.ResponseWriter, r *http.Request, title string) (domain.Principal, *view, bool) {
 	p, err := h.Principal(r)
@@ -108,10 +114,10 @@ func (h *Handler) base(w http.ResponseWriter, r *http.Request, title string) (do
 		err = h.Svc.allow(r.Context(), p, domain.ResTrust, domain.ActionRead, "")
 	}
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return p, nil, false
 	}
-	v := &view{Title: title, Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"), Today: h.Svc.now().Format("2006-01-02"), Labels: map[string]string{}}
+	v := &view{Title: title, Path: r.URL.Path, Notice: r.URL.Query().Get("notice"), Error: r.URL.Query().Get("error"), Today: h.Svc.now().Format("2006-01-02"), Labels: map[string]string{}}
 	if c, err := r.Cookie(csrfCookie); err == nil {
 		v.CSRF = c.Value
 	}
@@ -121,22 +127,27 @@ func (h *Handler) base(w http.ResponseWriter, r *http.Request, title string) (do
 	return p, v, true
 }
 
-func (h *Handler) fail(w http.ResponseWriter, err error) {
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 	status := http.StatusInternalServerError
 	msg := "Something went wrong."
 	if api, ok := err.(*domain.APIError); ok {
 		status, msg = api.HTTPStatus(), api.Message
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	_ = h.Templates.ExecuteTemplate(w, "error.html", &view{Title: "Trust", Error: msg})
+	h.write(w, r, status, "error.html", &view{Title: "Trust", Path: r.URL.Path, Error: msg})
 }
 
-func (h *Handler) render(w http.ResponseWriter, name string, v *view) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := h.Templates.ExecuteTemplate(w, name, v); err != nil {
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, name string, v *view) {
+	h.write(w, r, http.StatusOK, name, v)
+}
+
+// write draws the named trust screen inside the app shell.
+func (h *Handler) write(w http.ResponseWriter, r *http.Request, status int, name string, v *view) {
+	var buf bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&buf, name, v); err != nil {
 		http.Error(w, "template error", http.StatusInternalServerError)
+		return
 	}
+	frame.Write(w, r, frame.Page{Title: v.Title, Area: "trust", Body: template.HTML(buf.String()), Status: status, Notice: v.Notice, Error: v.Error})
 }
 
 // back redirects after a form post with a notice or an error message.
@@ -196,7 +207,7 @@ func (h *Handler) ledgerPage(w http.ResponseWriter, r *http.Request) {
 	matter := qID(r, "matter_id")
 	entries, err := h.Svc.visibleEntries(ctx, p, EntryFilter{MatterID: matter})
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Entries = newestFirst(entries)
@@ -205,7 +216,7 @@ func (h *Handler) ledgerPage(w http.ResponseWriter, r *http.Request) {
 	}
 	v.Accounts = h.activeAccounts(ctx)
 	v.Matters = h.matterOptions(ctx, p)
-	h.render(w, "ledger.html", v)
+	h.render(w, r, "ledger.html", v)
 }
 
 // newestFirst reverses posting order for the screen.
@@ -240,7 +251,7 @@ func cents(r *http.Request, key string) (int64, error) {
 func (h *Handler) ledgerPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	ret := "/trust/ledger"
@@ -275,7 +286,7 @@ func (h *Handler) ledgerPost(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) reversePost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	res, err := h.Svc.Reverse(r.Context(), p, pathID(r, "trust_entry_id"), ReverseInput{Reason: r.FormValue("reason")}, "")
@@ -293,11 +304,11 @@ func (h *Handler) balancesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	rep, err := h.Svc.BalancesReport(r.Context(), p, qID(r, "trust_account_id"))
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Balances = rep.Rows
-	h.render(w, "balances.html", v)
+	h.render(w, r, "balances.html", v)
 }
 
 func (h *Handler) flagsPage(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +319,7 @@ func (h *Handler) flagsPage(w http.ResponseWriter, r *http.Request) {
 	v.Status = r.URL.Query().Get("status")
 	flags, err := h.Svc.visibleFlags(r.Context(), p, FlagFilter{Status: v.Status, MatterID: qID(r, "matter_id")})
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Flags = flags
@@ -316,7 +327,7 @@ func (h *Handler) flagsPage(w http.ResponseWriter, r *http.Request) {
 		h.labels(r.Context(), v, f.entryMatter, f.entryClient)
 		v.Labels["flag:"+string(f.ID)] = v.Labels[string(f.entryMatter)]
 	}
-	h.render(w, "flags.html", v)
+	h.render(w, r, "flags.html", v)
 }
 
 func (h *Handler) flagPage(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +337,7 @@ func (h *Handler) flagPage(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := h.Svc.Flag(r.Context(), p, pathID(r, "trust_flag_id"))
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Flag = f
@@ -335,13 +346,13 @@ func (h *Handler) flagPage(w http.ResponseWriter, r *http.Request) {
 	if e, err := h.Svc.Entry(r.Context(), p, f.TrustEntryID); err == nil {
 		v.Entries = []Entry{e}
 	}
-	h.render(w, "flag.html", v)
+	h.render(w, r, "flag.html", v)
 }
 
 func (h *Handler) resolvePost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	id := pathID(r, "trust_flag_id")
@@ -357,20 +368,20 @@ func (h *Handler) replPage(w http.ResponseWriter, r *http.Request) {
 	v.Status = r.URL.Query().Get("status")
 	repls, err := h.Svc.visibleRepls(r.Context(), p, qID(r, "matter_id"), v.Status)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Repls = repls
 	for _, x := range v.Repls {
 		h.labels(r.Context(), v, x.MatterID, x.ClientID)
 	}
-	h.render(w, "replenishment.html", v)
+	h.render(w, r, "replenishment.html", v)
 }
 
 func (h *Handler) replPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	id := pathID(r, "replenishment_id")
@@ -394,7 +405,7 @@ func (h *Handler) reconPage(w http.ResponseWriter, r *http.Request) {
 	v.Accounts, _ = h.Svc.accounts(r.Context())
 	recons, err := h.Svc.readRecons(r.Context(), p, qID(r, "trust_account_id"))
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	for i := range recons {
@@ -403,13 +414,13 @@ func (h *Handler) reconPage(w http.ResponseWriter, r *http.Request) {
 	for _, a := range v.Accounts {
 		v.Labels[string(a.ID)] = a.Name + " ****" + a.LastFour
 	}
-	h.render(w, "reconciliation.html", v)
+	h.render(w, r, "reconciliation.html", v)
 }
 
 func (h *Handler) reconPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	bal, err := cents(r, "statement_balance")
@@ -432,22 +443,22 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := pathID(r, "matter_id")
 	if err := h.Svc.allow(ctx, p, domain.ResTrust, domain.ActionRead, id); err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	m, err := h.Svc.practice.Matter(ctx, id)
 	if err != nil {
-		h.fail(w, notFound(err, "matter"))
+		h.fail(w, r, notFound(err, "matter"))
 		return
 	}
 	v.Matter = matterOption{ID: m.ID, Label: m.Number + " " + m.Name, Client: h.Svc.primaryClient(m.ID)}
 	v.Title = "Trust: " + v.Matter.Label
 	if v.Fee, err = h.Svc.FlatFeeStatus(ctx, p, id); err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	if v.MatterBalance, err = h.Svc.clientMatterCents(ctx, v.Matter.Client, id); err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	if minimum, has, err := h.Svc.evergreen(ctx, id); err == nil && has {
@@ -455,19 +466,19 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 	}
 	entries, err := h.Svc.visibleEntries(ctx, p, EntryFilter{MatterID: id})
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v.Entries = newestFirst(entries)
 	v.Accounts = h.activeAccounts(ctx)
 	h.labels(ctx, v, v.Matter.Client)
-	h.render(w, "matter.html", v)
+	h.render(w, r, "matter.html", v)
 }
 
 func (h *Handler) evergreenPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	id := pathID(r, "matter_id")
@@ -481,7 +492,7 @@ func (h *Handler) evergreenPost(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) flatFeePost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	id := pathID(r, "matter_id")
@@ -495,12 +506,12 @@ func (h *Handler) flatFeePost(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	notes, err := h.Svc.notifications(r.Context(), p, nil)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	v := &view{Title: "Notifications", Notes: notes, Notice: r.URL.Query().Get("notice")}
@@ -508,13 +519,13 @@ func (h *Handler) notesPage(w http.ResponseWriter, r *http.Request) {
 		v.CSRF = c.Value
 	}
 	v.Unread, _ = h.Svc.UnreadCount(r.Context(), p)
-	h.render(w, "notifications.html", v)
+	h.render(w, r, "notifications.html", v)
 }
 
 func (h *Handler) readAllPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	_, err = h.Svc.MarkAllRead(r.Context(), p)
@@ -525,12 +536,12 @@ func (h *Handler) readAllPost(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) openPost(w http.ResponseWriter, r *http.Request) {
 	p, err := h.Principal(r)
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	n, err := h.Svc.MarkRead(r.Context(), p, pathID(r, "notification_id"))
 	if err != nil {
-		h.fail(w, err)
+		h.fail(w, r, err)
 		return
 	}
 	to := n.Link

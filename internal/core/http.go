@@ -77,8 +77,7 @@ func (a *App) dispatch(w http.ResponseWriter, r *http.Request) { a.domain(r).Ser
 
 // screenPrefixes are the server-rendered areas; staticPrefixes are their public assets.
 var screenPrefixes = []string{"/practice/", "/billing", "/trust", "/calendar", "/files/", "/matters/", "/doc-tender", "/admin/doc-tender"}
-var staticPrefixes = []string{"/practice/static/", "/billing/static/", "/trust/static/", "/calendar/static/", "/files/static/",
-	"/doc-tender/static/", "/editor/", "/editor-host/"}
+var staticPrefixes = []string{"/practice/static/", "/calendar/static/", "/files/static/", "/editor/", "/editor-host/"}
 
 func isScreen(path string) bool {
 	for _, p := range staticPrefixes {

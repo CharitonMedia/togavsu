@@ -1,6 +1,9 @@
 {{define "admin.html"}}{{template "shell-top" .}}{{with .Page}}
 <nav class="tabs" aria-label="Admin tabs">{{$tab := .Tab}}{{range .Tabs}}<a href="/admin?tab={{.ID}}"{{if eq .ID $tab}} aria-current="page" class="active"{{end}}>{{.Label}}</a>{{end}}</nav>
 
+{{if eq .Tab "files_storage"}}<p><a class="button" href="/files/admin/storage">Storage backends</a></p>{{end}}
+{{if eq .Tab "doc_tender"}}<p><a class="button" href="/admin/doc-tender">Doc Tender rules and folders</a></p>{{end}}
+
 {{if eq .Tab "appearance"}}
 <form method="post" action="/admin/appearance" class="card form-grid appearance">
   <input type="hidden" name="csrf" value="{{$.CSRF}}">

@@ -1,7 +1,8 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{if .CanDeposit}}
-<section class="card">
-<h2>Post an entry</h2>
+<details class="new"{{if .Error}} open{{end}}>
+<summary class="button primary">New entry</summary>
+<div class="card">
 <p class="hint">A withdrawal that takes a balance below zero still posts. It raises a trust flag and emails the admins and the responsible attorney. Corrections are reversals; entries are never edited or deleted.</p>
 <form method="post" action="/trust/ledger" class="grid">
   <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -25,10 +26,10 @@
   <label class="wide">Description <input name="description" required></label>
   <button type="submit">Post entry</button>
 </form>
-</section>
+</div>
+</details>
 {{end}}
 <section>
 <h2>Entries</h2>
 {{template "entries" .}}
 </section>
-{{template "foot" .}}

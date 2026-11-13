@@ -11,7 +11,8 @@
 <link rel="stylesheet" href="/ui/static/app.css">
 <link rel="stylesheet" href="/ui/appearance.css">
 <script src="/ui/static/vendor/htmx-2.0.11.min.js" defer></script>
-<script src="/ui/static/app.js" defer></script>
+<script src="/ui/static/app.js" defer></script>{{range .Scripts}}
+<script src="{{.}}" defer></script>{{end}}
 </head>
 <body class="shell{{if .Nav.SidebarCollapsed}} sidebar-collapsed{{end}}" data-idle-seconds="{{.IdleSeconds}}">
 <a class="skip" href="#main">Skip to content</a>
@@ -66,8 +67,8 @@
   <a class="icon-btn" href="/help" aria-label="Help">{{template "icon" "help"}}<span class="label">Help</span></a>
   <details class="menu quick"><summary class="icon-btn" aria-label="Quick create">{{template "icon" "plus"}}<span class="label">New</span></summary>
     <div class="panel"><ul class="menu-list">
-      <li><a href="/practice/matters#create">New matter</a></li>
-      <li><a href="/practice/contacts#create">New person</a></li>
+      <li><a href="/practice/matters/new">New matter</a></li>
+      <li><a href="/practice/contacts/new">New person</a></li>
       {{if .CanTime}}<li><a href="/billing/time#log-h">Log time</a></li>{{end}}
     </ul></div></details>
   <details class="menu user"><summary class="chip" aria-label="Account menu for {{.UserName}}">{{if .Picture}}<img class="avatar" src="{{.Picture}}" alt="" width="32" height="32">{{else}}{{.Initials}}{{end}}</summary>
@@ -77,13 +78,17 @@
       <li><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" class="link">Sign out</button></form></li>
     </ul></div></details>
 </header>
-<main id="main" class="page">
+<main id="main" class="page{{if .Area}} area-{{.Area}}{{end}}">
 <div class="titlebar"><h1>{{.Title}}</h1>{{if .HelpPath}}<a class="help-q" href="{{.HelpPath}}" aria-label="Help for this page" title="Help for this page">?</a>{{end}}</div>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
 {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
 {{end}}
 
 {{define "nav-entry"}}<li><a href="{{.E.Path}}"{{if .Active}} class="active" aria-current="page"{{end}}>{{template "icon" .E.Icon}}<span class="label">{{.E.Label}}</span>{{if .E.Count}}<span class="badge{{if eq .E.Tone "warning"}} warn{{end}}">{{deref .E.Count}}</span>{{end}}</a></li>{{end}}
+
+{{define "framed"}}{{template "shell-top" .}}
+{{.Page}}
+{{template "shell-bottom" .}}{{end}}
 
 {{define "shell-bottom"}}
 </main>

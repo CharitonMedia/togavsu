@@ -239,7 +239,7 @@ func TestPGPagesAndForms(t *testing.T) {
 		t.Fatalf("evergreen %d", code)
 	}
 	for path, want := range map[string]string{
-		"/trust/ledger":                         "Post an entry",
+		"/trust/ledger":                         "New entry",
 		"/trust/balances":                       "Casey Client",
 		"/trust/flags?status=open":              "2026-0020",
 		"/trust/replenishment":                  "Trust Replenishment",
@@ -269,7 +269,7 @@ func TestPGPagesAndForms(t *testing.T) {
 	if code, _, _ := attorney.do("POST", "/trust/notifications/read-all", nil); code != http.StatusSeeOther {
 		t.Fatalf("read all form %d", code)
 	}
-	if _, body, _ := attorney.do("GET", "/trust/ledger", nil); !strings.Contains(string(body), `Notifications, 0 unread`) || strings.Contains(string(body), `class="count"`) {
+	if _, body, _ := attorney.do("GET", "/trust/ledger", nil); !strings.Contains(string(body), `Trust notifications, 0 unread`) || strings.Contains(string(body), `class="count"`) {
 		t.Fatalf("bell not cleared: %s", body)
 	}
 	// A client and an anonymous caller get the error page, not trust data.
@@ -278,8 +278,5 @@ func TestPGPagesAndForms(t *testing.T) {
 	}
 	if code, _, _ := e.as(t, srv, "nobody").do("GET", "/trust/balances", nil); code != http.StatusUnauthorized {
 		t.Fatalf("anonymous page %d", code)
-	}
-	if code, _, _ := e.as(t, srv, "nobody").do("GET", "/trust/static/trust.css", nil); code != 200 {
-		t.Fatalf("css %d", code)
 	}
 }

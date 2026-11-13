@@ -1,8 +1,9 @@
-{{template "head" .}}
+{{template "subnav" .}}
 {{if .CanWrite}}
-<section class="card" aria-labelledby="exp-h">
-<h2 id="exp-h">Record expense</h2>
-<form method="post" action="/billing/expenses" class="grid">
+<details class="new"{{if .Error}} open{{end}}>
+<summary class="button primary">New expense</summary>
+<div class="card">
+<form method="post" action="/billing/expenses" class="grid" aria-label="Record expense">
   {{template "csrf" .CSRF}}
   <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
   <label>Date <input type="date" name="incurred_on" value="{{.Today}}" required></label>
@@ -14,7 +15,8 @@
   <button type="submit">Record expense</button>
 </form>
 <p class="muted">To attach a receipt, open the expense after recording it and upload the receipt there.</p>
-</section>
+</div>
+</details>
 <details class="card">
 <summary>Bulk entry</summary>
 <form method="post" action="/billing/expenses/bulk">
@@ -47,4 +49,3 @@
 </table></div>
 {{else}}<p class="muted">No expenses.</p>{{end}}
 </section>
-{{template "foot" .}}

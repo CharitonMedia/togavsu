@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 )
@@ -562,18 +563,32 @@ var framePage = template.Must(template.New("frame").Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{{.Title}}</title>
 <style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%}</style></head>
 <body><main aria-label="{{.Title}}">
-<iframe title="{{.Title}}" src="{{.Src}}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>
-</main></body></html>`))
+{{template "iframe" .}}
+</main></body></html>
+{{define "iframe"}}<iframe class="module-frame" title="{{.Title}}" src="{{.Src}}" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>{{end}}`))
 
 // writeFrame renders the core page that shows a module page in a sandboxed iframe. The
 // sandbox has no allow-same-origin: the frame runs in an opaque origin, so script in it
 // can't read the core's cookies or page even though /m/ is on the core's domain.
-func writeFrame(w http.ResponseWriter, title, src string) {
+//
+// A page that opens as a screen of its own (a module tab, a matter action) is drawn
+// inside the app shell; a panel or widget the core embeds in its own iframe is the bare
+// frame page, so the shell never nests.
+func writeFrame(w http.ResponseWriter, r *http.Request, screen bool, title, src string) {
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	data := map[string]string{"Title": title, "Src": src}
+	var buf bytes.Buffer
+	if screen && r.Header.Get("Sec-Fetch-Dest") != "iframe" {
+		if err := framePage.ExecuteTemplate(&buf, "iframe", data); err != nil {
+			writeErr(w, err)
+			return
+		}
+		frame.Write(w, r, frame.Page{Title: title, Area: "module", Body: template.HTML(buf.String())})
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; frame-ancestors 'self'")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	var buf bytes.Buffer
-	if err := framePage.Execute(&buf, map[string]string{"Title": title, "Src": src}); err != nil {
+	if err := framePage.Execute(&buf, data); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -605,7 +620,7 @@ func (h *Handler) tabPage(w http.ResponseWriter, r *http.Request, c Caller) {
 	for k, v := range r.URL.Query() {
 		q[k] = v
 	}
-	writeFrame(w, tab.Title, FramePath(in.ID, tab.Path, t.Token, q))
+	writeFrame(w, r, true, tab.Title, FramePath(in.ID, tab.Path, t.Token, q))
 }
 
 // matterItemPage frames a module's matter-screen panel or action for one matter, with a
@@ -631,7 +646,7 @@ func (h *Handler) matterItemPage(w http.ResponseWriter, r *http.Request, c Calle
 		writeErr(w, err)
 		return
 	}
-	writeFrame(w, item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}))
+	writeFrame(w, r, item.Kind != "panel", item.Title, FramePath(in.ID, item.Path, t.Token, url.Values{"matter_id": {string(matter)}}))
 }
 
 func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
@@ -658,7 +673,7 @@ func (h *Handler) widgetPage(w http.ResponseWriter, r *http.Request, c Caller) {
 			}
 		}
 	}
-	writeFrame(w, wd.Title, FramePath(in.ID, wd.Path, t.Token, q))
+	writeFrame(w, r, false, wd.Title, FramePath(in.ID, wd.Path, t.Token, q))
 }
 
 // frame proxies /m/{id}/... to the module without the core's cookie or credentials.

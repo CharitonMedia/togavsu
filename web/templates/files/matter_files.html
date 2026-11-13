@@ -1,4 +1,4 @@
-{{define "matter_files.html"}}{{template "head" .}}
+{{define "matter_files.html"}}
 <p class="crumbs"><a href="/practice/matters/{{.MatterID}}">Matter {{.MatterNumber}}</a> · Files{{if eq .MatterStatus "closed"}} · <span class="tag">closed</span>{{end}}</p>
 <section class="card" id="upload" data-matter="{{.MatterID}}" data-folder="{{.FolderID}}">
   <h2>Upload</h2>
@@ -38,4 +38,4 @@
     </tbody>
   </table>{{end}}
 </section>
-{{template "foot" .}}{{end}}
+{{end}}
