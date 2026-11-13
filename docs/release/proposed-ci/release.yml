@@ -1,0 +1,175 @@
+# Proposed .github/workflows/release.yml (the integration lead lands it through a
+# reviewed control PR; lanes cannot change .github/).
+#
+# Release signing, as Patrick decided on 2026-11-12: the release private key is kept off
+# GitHub, on the integration lead's machine. No repository secret holds it, this
+# workflow never signs, and release signatures are not written to the public
+# transparency log. The public key is deploy/release/cosign.pub, which the supervisor
+# image ships and verifies every update against (cosign verify --key, with
+# --insecure-ignore-tlog=true only because the signatures are not in that log).
+#
+# publish (a v* tag push, or a manual run with operation=publish and the tag): builds
+# deploy/core.Dockerfile and Dockerfile at the tag, pushes them to ghcr.io/charitonmedia
+# as togavsu-core:<tag> and togavsu-supervisor:<tag>, and records each image digest in
+# the job summary and in the tag's GitHub release as digests.json. It refuses to replace
+# a digests.json the tag already has.
+#
+# attach-signature (manual only): takes one image digest and a base64 signature and
+# base64 payload made off GitHub with the release key. It refuses unless the digest is
+# one of the tag's recorded images, the payload names that digest, and the signature
+# verifies over the payload with deploy/release/cosign.pub; then it attaches them with
+# cosign attach signature, using GITHUB_TOKEN with packages: write.
+#
+# ponytail: linux/amd64 images only, ceiling: Apple Silicon Docker Desktop runs them
+# under emulation, upgrade: build arm64 on a native arm64 runner and push one manifest
+# list per image, trigger: the first arm64 install or a slow-start report.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "publish builds and pushes the tag's images; attach-signature attaches a signature made off GitHub"
+        type: choice
+        options:
+          - publish
+          - attach-signature
+        default: publish
+      tag:
+        description: "Release tag, for example v1.0.0"
+        type: string
+        required: true
+      digest:
+        description: "attach-signature: the image digest (sha256:...) from the tag's digests.json"
+        type: string
+        required: false
+      signature:
+        description: "attach-signature: the base64 signature over the payload"
+        type: string
+        required: false
+      payload:
+        description: "attach-signature: the base64 simple-signing payload that was signed"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/charitonmedia
+  COSIGN_VERSION: v2.4.1
+  COSIGN_SHA256_AMD64: 8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b
+
+jobs:
+  publish:
+    name: Publish release images
+    if: github.event_name == 'push' || github.event.inputs.operation == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+      packages: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the tag
+        run: |
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
+            || { echo "not a release tag: $TAG" >&2; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Refuse to replace recorded digests
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx digests.json; then
+            echo "release $TAG already records digests.json; publish a new tag instead" >&2
+            exit 1
+          fi
+      - name: Log in to ghcr.io
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Build and push
+        run: |
+          set -eu
+          version=${TAG#v}
+          docker buildx create --use --name release >/dev/null
+          build() { # image, dockerfile
+            docker buildx build --platform linux/amd64 --push --provenance=false \
+              --build-arg "TOGAVSU_VERSION=$version" \
+              --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+              -f "$2" -t "$REGISTRY/$1:$TAG" --metadata-file "$RUNNER_TEMP/$1.json" .
+            digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/$1.json")
+            printf '%s' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$' || { echo "no digest for $1" >&2; exit 1; }
+            printf '%s' "$digest" > "$RUNNER_TEMP/$1.digest"
+          }
+          build togavsu-core deploy/core.Dockerfile
+          build togavsu-supervisor Dockerfile
+          jq -n --arg tag "$TAG" --arg rev "$GITHUB_SHA" --arg reg "$REGISTRY" \
+            --arg core "$(cat "$RUNNER_TEMP/togavsu-core.digest")" \
+            --arg sup "$(cat "$RUNNER_TEMP/togavsu-supervisor.digest")" \
+            '{tag: $tag, revision: $rev, signed: false, transparency_log: false,
+              images: [{name: "togavsu-core", ref: ($reg + "/togavsu-core@" + $core), digest: $core},
+                       {name: "togavsu-supervisor", ref: ($reg + "/togavsu-supervisor@" + $sup), digest: $sup}]}' \
+            > "$RUNNER_TEMP/digests.json"
+      - name: Record the digests
+        run: |
+          set -eu
+          {
+            echo "## Release $TAG images (unsigned until a signature is attached)"
+            echo
+            echo "| Image | Digest |"
+            echo "| --- | --- |"
+            jq -r '.images[] | "| " + .name + ":" + env.TAG + " | `" + .digest + "` |"' "$RUNNER_TEMP/digests.json"
+            echo
+            echo "Sign each digest off GitHub with the release key, without the transparency log, then run this workflow with operation=attach-signature."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "Togavsu $TAG" \
+              --notes "Images are unsigned until the integration lead attaches the release signatures. digests.json records each image digest."
+          fi
+          gh release upload "$TAG" "$RUNNER_TEMP/digests.json" --repo "$GITHUB_REPOSITORY"
+
+  attach-signature:
+    name: Attach a release signature
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.operation == 'attach-signature'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      TAG: ${{ github.event.inputs.tag }}
+      DIGEST: ${{ github.event.inputs.digest }}
+      SIGNATURE: ${{ github.event.inputs.signature }}
+      PAYLOAD: ${{ github.event.inputs.payload }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - name: Download the tag's recorded digests
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern digests.json --dir "$RUNNER_TEMP/release"
+      - name: Install cosign
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/cosign" "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64"
+          echo "$COSIGN_SHA256_AMD64  $RUNNER_TEMP/cosign" | sha256sum -c -
+          chmod 755 "$RUNNER_TEMP/cosign"
+      - name: Check, attach and verify
+        # scripts/release/attach-signature.sh refuses unless the digest is one of the
+        # tag's recorded images, the payload names it, and the signature verifies with
+        # deploy/release/cosign.pub (scripts/ci/test-release-attach.sh tests it).
+        env:
+          DIGESTS_FILE: ${{ runner.temp }}/release/digests.json
+          COSIGN_BIN: ${{ runner.temp }}/cosign
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          sh scripts/release/attach-signature.sh
+          echo "Attached and verified the release signature on $DIGEST for $TAG." >> "$GITHUB_STEP_SUMMARY"

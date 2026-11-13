@@ -123,7 +123,7 @@
       "needs": [
         "docker"
       ],
-      "about": "cosign verify of the release tag's ghcr.io images with the release public key in deploy/release/cosign.pub; refuses to pass without a published, signed tag."
+      "about": "cosign verify --key deploy/release/cosign.pub --insecure-ignore-tlog=true of the release tag's ghcr.io core and supervisor images (signed off GitHub, not in the public transparency log), and the supervisor image ships that key; refuses to pass without a published, signed tag."
     },
     "debt-audit": {
       "command": "python3 scripts/release/check_debt.py",

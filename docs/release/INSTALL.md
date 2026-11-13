@@ -18,7 +18,7 @@ Status: the tagged, signed release is not published yet. Until it is, the instal
 3. Start the stack, naming the domain staff will use (leave it out for `localhost`):
    - macOS or Linux: `TOGAVSU_DOMAIN=togavsu.firm.example docker compose up -d --wait`
    - Windows PowerShell: `$env:TOGAVSU_DOMAIN="togavsu.firm.example"; docker compose up -d --wait`
-4. The first start generates the database passwords, the supervisor's token and the field encryption key into Docker volumes. You edit no file and set no environment value other than the domain. The core migrates the database and seeds its reference rows on its own.
+4. The first start generates the database passwords, the supervisor's token and the field encryption key into Docker volumes. You edit no file and set no environment value other than the domain. A one-time `migrate` step migrates the database and locks the trust ledger and audit log so that the running app can only add to them; the core then seeds its reference rows on its own. Only that step and the supervisor can read the database administrator's password (the `adminsecrets` volume); the running core never can, and it refuses to start on a database whose ledgers are not locked.
 5. Open `https://<your domain>/` (or `https://localhost/`). The browser shows first-run setup.
 
 Nothing else is needed. If `docker compose up` stops with an error, run `docker compose ps -a` and `docker compose logs core supervisor` and see Troubleshooting below.
@@ -39,7 +39,9 @@ After setup, follow Help & Training > Getting started > Admin, which walks throu
 
 Togavsu updates itself with no restart and no interruption:
 
-- Each night in the update window the supervisor checks the registry for a newer core image, verifies its Cosign signature against the Togavsu release key that ships in the image, backs up the database, runs the migrations, starts the new core, waits for its health check, switches caddy to it and stops the old one.
+- Each night in the update window the supervisor checks the registry for a newer core image, verifies its Cosign signature against the Togavsu release public key that ships in the supervisor image (`/usr/share/togavsu/cosign.pub`, the same file as `deploy/release/cosign.pub` in the repository), backs up the database, runs the migrations, starts the new core, waits for its health check, switches caddy to it and stops the old one. You install no key.
+- Release signatures are made off GitHub by the Togavsu integration lead with a private key that is never stored on GitHub, and they are not written to the public Sigstore transparency log. That is why compose.yaml sets `COSIGN_VERIFY_FLAGS` to `--insecure-ignore-tlog=true`: it skips only the log lookup. The signature itself is always checked against the release key, and an unsigned image, or one signed by any other key, is refused.
+- To check a release yourself: `cosign verify --key deploy/release/cosign.pub --insecure-ignore-tlog=true ghcr.io/charitonmedia/togavsu-core:<version>` (and the same for `togavsu-supervisor`).
 - A failed signature check, migration or health check stops the update, keeps the running version, restores the backup if a migration ran, and emails the admins.
 - Administrative > Updates sets the window, pauses updates, starts an update now and lists the update history. Updates never run outside the window unless an admin starts one.
 
@@ -64,11 +66,11 @@ To move Togavsu to a new computer: install it there (Install, steps 1 to 4), com
 
 ## Removing Togavsu
 
-`docker compose down` stops the stack and keeps every volume, so `docker compose up -d --wait` brings the same firm back. `docker compose down -v` deletes the database, the files, the backups on the local backup volume and the generated keys for good; download a backup first.
+`docker compose down` stops the stack and keeps every volume, so `docker compose up -d --wait` brings the same firm back. `docker compose down -v` deletes the database, the files, the backups on the local backup volume and the generated keys (the `appsecrets`, `adminsecrets` and `backupkey` volumes) for good; download a backup first, and keep the backup passphrase.
 
 ## Troubleshooting
 
 - The browser warns about the certificate: caddy issues a local certificate for the domain. Trust it once, or put the install behind the firm's own certificate.
 - `docker compose up` says port 80 or 443 is in use: stop the other web server on the computer, or run Togavsu on a computer of its own.
-- The core keeps restarting: `docker compose logs core`. The core never prints passwords, keys or tokens.
+- The core keeps restarting: `docker compose logs core`. The core never prints passwords, keys or tokens. "refusing to serve: the append-only tables are not sealed" means the `migrate` step has not run or failed: `docker compose logs migrate`, then `docker compose up -d --wait` again.
 - Report a problem from inside Togavsu with the sidebar's Report a problem link; the report goes to the firm's admins.

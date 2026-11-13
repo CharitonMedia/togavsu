@@ -26,93 +26,33 @@ The first two can't pass from a lane runner (below); the third is the product CI
 
 | Gate | Check | Passes when |
 | --- | --- | --- |
-| signed-release | `scripts/release/verify-release.sh` | `deploy/release/cosign.pub` (the Togavsu release public key) is in the repository, HEAD carries a release tag, and `cosign verify` accepts `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>` with that key. |
+| signed-release | `scripts/release/verify-release.sh` | HEAD carries a release tag, `cosign verify --key deploy/release/cosign.pub --insecure-ignore-tlog=true` accepts `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>`, and the supervisor image ships that same key at `/usr/share/togavsu/cosign.pub`. |
 | docker-desktop | `scripts/release/desktop-install.sh` | It runs on Docker Desktop (Windows or macOS) and a clean install of the tested revision passes the first-run checks. It refuses any other engine. |
 | product-suites | the Core, API contract, QA harness, Supervisor, Backup integration, UI QC and Compose first-run scripts | Every product CI suite passes at the tested revision, not only the checks a criterion names. |
 
-The signed-release and docker-desktop gates can't pass from a lane runner: the release private key is not provisioned, nothing here can push images or tags, and GitHub's Linux runners have Docker Engine, not Docker Desktop.
+The signed-release and docker-desktop gates can't pass from a lane runner: the release private key is kept off GitHub by design, nothing here can push images or tags, and GitHub's Linux runners have Docker Engine, not Docker Desktop.
+
+## Release signing
+
+Patrick decided on 2026-11-12:
+
+- The release private key is kept off GitHub, on the integration lead's machine. No repository secret holds it, ever, and no workflow signs.
+- The release public key is committed at [deploy/release/cosign.pub](../../deploy/release/cosign.pub). The supervisor image copies it to `/usr/share/togavsu/cosign.pub`, and compose.yaml points `COSIGN_KEY` there, so no install creates or edits a key file.
+- Release signatures are not written to the public transparency log. compose.yaml therefore defaults `COSIGN_VERIFY_FLAGS` to `--insecure-ignore-tlog=true`. The supervisor still runs `cosign verify --key` against the release key before every update; nothing skips the signature check (`TestUpdate*` in internal/supervisor, `tests/update/load.sh`).
+- The release workflow, [proposed-ci/release.yml](proposed-ci/release.yml), passes actionlint 1.7.7. On a `v*` tag, or a manual run with `operation=publish`, it builds `deploy/core.Dockerfile` and `Dockerfile` at the tag, pushes `ghcr.io/charitonmedia/togavsu-core:<tag>` and `togavsu-supervisor:<tag>`, and records both digests in the job summary and in a `digests.json` asset on a draft release for the tag. It never signs and holds no private key.
+- Its second job runs only when dispatched by hand with `operation=attach-signature`. It takes one image digest plus a base64 signature and a base64 payload made off GitHub. It runs [scripts/release/attach-signature.sh](../../scripts/release/attach-signature.sh), which refuses unless the digest is one of that tag's recorded images, the payload names that digest, and the signature verifies over the payload with `deploy/release/cosign.pub`. Only then does it run `cosign attach signature` with `GITHUB_TOKEN` (`packages: write`) and verify the image. `scripts/ci/test-release-attach.sh` checks every refusal and the good path against a local registry with throwaway keys; `scripts/ci/update-load.sh` runs it.
 
 ## Cutting the release
 
-These steps need Patrick or the integration lead and credentials no lane has:
+These steps need the integration lead and credentials no lane has:
 
-1. Generate the Togavsu release key pair with `cosign generate-key-pair`. Store the private key and its password as repository secrets. Commit the public key as `deploy/release/cosign.pub` and copy it into the supervisor image (`COSIGN_KEY` in compose.yaml then points at the image's copy instead of `/appsecrets/cosign.pub`, which nothing creates today).
-2. Land the "Full acceptance" job (below) and a release workflow that, on a `v*` tag, builds `deploy/core.Dockerfile` and `Dockerfile` with `TOGAVSU_VERSION` set to the tag, pushes both to ghcr.io/charitonmedia, signs each digest with the release key, publishes the release index the supervisor reads, and attaches a `compose.yaml` that names the images by digest instead of building them.
-3. Run `sh scripts/release/desktop-install.sh` on a clean Windows machine and a clean Mac with Docker Desktop, and attach the output to the release.
-4. Tag only when `sh scripts/ci/full-acceptance.sh` exits 0 on the tagged revision.
+1. Land `docs/release/proposed-ci/release.yml` as `.github/workflows/release.yml` through a reviewed control PR.
+2. Tag the revision on which `sh scripts/ci/full-acceptance.sh` exits 0, except for the two gates below, and push the tag. The workflow publishes both images and `digests.json`.
+3. Off GitHub, for each recorded digest: `cosign generate ghcr.io/charitonmedia/<image>@<digest> > payload.json`, then `cosign sign-blob --key <release key> --tlog-upload=false payload.json`. Dispatch the workflow with `operation=attach-signature`, the tag, the digest, the base64 signature and `base64 -w0 payload.json`.
+4. Run `sh scripts/release/verify-release.sh` at the tag; it passes only when both images verify and the supervisor image ships the committed key.
+5. Run `sh scripts/release/desktop-install.sh` on a clean Windows machine and a clean Mac with Docker Desktop, and attach the output to the release.
+6. Publish the draft release.
 
 ## Proposed CI change
 
-The release assignment owns the "Full acceptance" required check, but lanes can't change `.github/`. The integration lead lands this job in `.github/workflows/product-ci.yml` through a reviewed control PR. It runs every criterion's checks and fails while any criterion or gate is pending, so it can't turn unexecuted acceptance into a pass:
-
-```yaml
-  full-acceptance:
-    name: Full acceptance
-    runs-on: ubuntu-latest
-    timeout-minutes: 300
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: togavsu
-          POSTGRES_PASSWORD: synthetic-postgres-password
-          POSTGRES_DB: togavsu
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U togavsu -d togavsu"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-      postgres_b:
-        image: postgres:17
-        env:
-          POSTGRES_USER: togavsu
-          POSTGRES_PASSWORD: synthetic-postgres-password
-          POSTGRES_DB: togavsu
-        ports:
-          - 5433:5432
-        options: >-
-          --health-cmd "pg_isready -U togavsu -d togavsu"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
-    env:
-      TOGAVSU_TEST_DATABASE_URL: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5432/togavsu?sslmode=disable
-      TOGAVSU_TEST_DATABASE_URL_B: postgres://togavsu:synthetic-postgres-password@127.0.0.1:5433/togavsu?sslmode=disable
-      TOGAVSU_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
-      TOGAVSU_PSQL: /usr/lib/postgresql/17/bin/psql
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with:
-          go-version: "1.22"
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          python-version: "3.12"
-      - name: Install Postgres 17 client
-        run: |
-          sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          . /etc/os-release
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
-      - name: Full acceptance (all 52 criteria and every release gate)
-        # runner.temp is only available at step level, not in job-level env.
-        env:
-          TOGAVSU_ACCEPTANCE_OUT: ${{ runner.temp }}/acceptance
-        run: sh scripts/ci/full-acceptance.sh
-      - name: Acceptance results
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: full-acceptance
-          path: ${{ runner.temp }}/acceptance
-```
-
-The existing Supervisor tests job already runs `scripts/ci/update-load.sh`, which now builds the core image twice and runs a real Compose stack. It needs `timeout-minutes: 90` or a shared image cache.
-
-`docs/release/proposed-ci/product-ci-full-acceptance.patch` is that exact change as a unified diff against `.github/workflows/product-ci.yml`: the job above plus `timeout-minutes: 90` on Supervisor tests. It applies with `git apply` and passes actionlint 1.7.7. An earlier draft put `runner.temp` in job-level `env`, which actionlint rejects, so the results directory is now set on the step.
+The Full acceptance job is in `.github/workflows/product-ci.yml` (control PR #46). The release workflow is the one CI change still proposed: copy [proposed-ci/release.yml](proposed-ci/release.yml) to `.github/workflows/release.yml` unchanged. `docs/release/proposed-ci/product-ci-full-acceptance.patch` is the earlier Full acceptance proposal, kept for the record.
