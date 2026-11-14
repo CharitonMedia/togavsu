@@ -226,27 +226,29 @@ func (h *Handler) ledgerPage(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	matter := qID(r, "matter_id")
-	entries, err := h.Svc.visibleEntries(ctx, p, EntryFilter{MatterID: matter})
+	// The screen shows a page of entries, newest first, with a link to older ones; the
+	// API and the ledger exports carry every entry.
+	n, err := h.Svc.intSetting(ctx, "api.page_size")
 	if err != nil {
 		h.fail(w, r, err)
 		return
 	}
-	// The screen shows a page of entries, newest first, with a link to older ones; the
-	// API and the ledger exports carry every entry.
-	v.Entries = newestFirst(entries)
-	if n, err := h.Svc.intSetting(ctx, "api.page_size"); err == nil && positive(int64(n)) {
-		var from int
-		if c, err := strconv.Atoi(r.URL.Query().Get("from")); err == nil && positive(int64(c)) && c < len(v.Entries) {
-			from = c
+	var from int
+	if c, err := strconv.Atoi(r.URL.Query().Get("from")); err == nil && positive(int64(c)) {
+		from = c
+	}
+	entries, more, err := h.Svc.ledgerPage(ctx, p, EntryFilter{MatterID: matter}, from, n)
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	v.Entries = entries
+	if more {
+		older := url.Values{"from": {strconv.Itoa(from + n)}}
+		if !matter.IsZero() {
+			older.Set("matter_id", string(matter))
 		}
-		v.Entries = v.Entries[from:]
-		if len(v.Entries) > n {
-			older := url.Values{"from": {strconv.Itoa(from + n)}}
-			if !matter.IsZero() {
-				older.Set("matter_id", string(matter))
-			}
-			v.Entries, v.OlderEntries = v.Entries[:n], "/trust/ledger?"+older.Encode()
-		}
+		v.OlderEntries = "/trust/ledger?" + older.Encode()
 	}
 	for _, e := range v.Entries {
 		h.labels(ctx, v, e.MatterID, e.ClientID)
