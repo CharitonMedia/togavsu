@@ -280,3 +280,95 @@ func TestAccepts(t *testing.T) {
 		t.Fatalf("accepts with an argument: %d", code)
 	}
 }
+
+func checkJSON(t *testing.T, args ...string) (int, checkResult) {
+	t.Helper()
+	code, out, errs := cli(append([]string{"check", "-json"}, args...)...)
+	var res checkResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("check -json %v: stdout %q is not the result (%v); stderr %s", args, out, err, errs)
+	}
+	return code, res
+}
+
+// Every failure under -json, Installable's included, is the documented result.
+func TestCheckJSONReportsInstallableRefusals(t *testing.T) {
+	for name, tc := range map[string]struct {
+		edit func(map[string][]byte)
+		code string
+	}{
+		"uncovered field": {func(f map[string][]byte) {
+			waiting(f)
+			replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
+		}, modulekit.RefuseUnknownField},
+		"invalid pending list": {func(f map[string][]byte) {
+			waiting(f)
+			f[modulekit.PendingFile] = []byte("pending:\n  - field: notifications\n    reason: no core item\n")
+		}, modulekit.RefusePendingInvalid},
+		"held migration out of order": {func(f map[string][]byte) {
+			waiting(f)
+			f["migrations/0003_index.sql"] = []byte("CREATE INDEX matter_targets_note ON matter_targets (note);\n")
+		}, modulekit.RefusePendingOrder},
+	} {
+		code, res := checkJSON(t, "-installable", copyPackage(t, tc.edit))
+		if code != exitRefused || res.OK || len(res.Refusals) == 0 || res.Refusals[0].Code != tc.code {
+			t.Fatalf("%s: %d %+v", name, code, res)
+		}
+	}
+	code, res := checkJSON(t, "-installable", filepath.Join(t.TempDir(), "missing"))
+	if code != exitRefused || res.OK || len(res.Refusals) != 1 || res.Refusals[0].Code != modulekit.RefuseUnreadable {
+		t.Fatalf("missing directory: %d %+v", code, res)
+	}
+}
+
+// The update baseline is what the previous release shipped, not its source run through
+// Installable again.
+func TestCheckUpdateAgainstTheShippedPackage(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	pemFile := write(t, "signing.pub", modulekit.PublicKeyPEM(pub))
+	v1 := copyPackage(t, waiting)
+	shipped := filepath.Join(t.TempDir(), "v1.signed.json")
+	if code, _, errs := cli("package", "-installable", "-dir", v1, "-key", seed, "-out", shipped); code != exitOK {
+		t.Fatalf("v1: %d %s", code, errs)
+	}
+	bump := func(f map[string][]byte) {
+		replaceIn(f, modulekit.ManifestFile, `version: "1.0.0"`, `version: "1.1.0"`)
+	}
+	// v1 held 0002 back, so v2 may still change it while it waits.
+	v2 := copyPackage(t, func(f map[string][]byte) {
+		waiting(f)
+		bump(f)
+		f["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_account TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+	})
+	if code, out, errs := cli("check", "-installable", "-previous-file", shipped, "-previous-pub", pemFile, v2); code != exitOK || !strings.Contains(out, "ok: matter-clock 1.1.0, 1 migration(s)") {
+		t.Fatalf("v2 against what v1 shipped: %d %s %s", code, out, errs)
+	}
+	// A source directory whose build held parts back is not a baseline.
+	code, res := checkJSON(t, "-installable", "-previous", v1, v2)
+	if code != exitRefused || len(res.Refusals) != 1 || res.Refusals[0].Code != modulekit.RefuseUpgradeBaseline {
+		t.Fatalf("pending source as the baseline: %d %+v", code, res)
+	}
+	// A migration v1 did ship can't change.
+	v3 := copyPackage(t, func(f map[string][]byte) {
+		waiting(f)
+		bump(f)
+		f["migrations/0001_matter_targets.sql"] = append(f["migrations/0001_matter_targets.sql"], []byte("\n-- changed after it ran\n")...)
+	})
+	code, res = checkJSON(t, "-installable", "-previous-file", shipped, "-previous-pub", pemFile, v3)
+	if code != exitRefused || len(res.Refusals) != 1 || res.Refusals[0].Code != modulekit.RefuseUpgrade || res.Refusals[0].APICode != modulekit.CodeMigration {
+		t.Fatalf("changed shipped migration: %d %+v", code, res)
+	}
+	// The baseline must verify with the named key.
+	other, _, _ := ed25519.GenerateKey(nil)
+	otherFile := write(t, "other.pub", modulekit.PublicKeyPEM(other))
+	if code, _, _ := cli("check", "-installable", "-previous-file", shipped, "-previous-pub", otherFile, v2); code != exitRefused {
+		t.Fatalf("baseline signed by another key: %d", code)
+	}
+	if code, _, _ := cli("check", "-previous-file", shipped, v2); code != exitUsage {
+		t.Fatalf("-previous-file without its key: %d", code)
+	}
+}

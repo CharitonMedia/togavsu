@@ -102,6 +102,10 @@ func ReadPackage(raw []byte) (*Package, error) {
 	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
 }
 
+// Unpack reads the files of a gzip tar package with the package format's bounds and
+// file-name rules, and checks nothing else.
+func Unpack(raw []byte) (map[string][]byte, error) { return unpack(raw) }
+
 // unpack reads the files of a gzip tar package with the package format's bounds and
 // file-name rules.
 func unpack(raw []byte) (map[string][]byte, error) {

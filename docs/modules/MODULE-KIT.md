@@ -38,7 +38,8 @@ and its `package` subcommand, as Matter Clock does), and `pkg/modulekit/coretest
 | Every refusal at once, structured | `CheckAll(files)` (a `Refusals` list of `Refusal`) |
 | What this core accepts | `Accepts()`, `Scopes()`, `KnownScope(scope)` |
 | A package without the parts that wait on core changes | `Installable(files)`, `BuildInstallable(priv, files)`, `ParsePending(src)`, `Unused(entries, held)` |
-| Update checksum rule (no migration that ran may change or go missing) | `CheckUpgrade(prev, next)`, `CheckChecksums(applied, ms)`, `Applied(ms)` |
+| Update checksum rule (no migration that ran may change or go missing) | `CheckUpdate(shipped, next)` against the previous release's shipped package, `CheckUpgrade(prev, next)`, `CheckChecksums(applied, ms)`, `Applied(ms)` |
+| The package inside a signed package file | `ReadSignedFile(file)` |
 | Installable package (gzip tar) | `Archive(files)` |
 | Marketplace listing tar and its manifest | `BuildPackage(manifest, extra)`, `ReadManifest(pkg)` |
 | Signed package file | `Build(priv, files)` (checks first), `SignFile(priv, pkg)` (signs bytes unchecked) |
@@ -67,6 +68,7 @@ go run github.com/CharitonMedia/togavsu/cmd/togavsu-module check package
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module check -json package
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module check -installable package
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module check -previous ../v1/package package
+go run github.com/CharitonMedia/togavsu/cmd/togavsu-module check -installable -previous-file <id>-1.0.0.signed.json -previous-pub signing.pub package
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -dir package -key signing.key -out <id>.signed.json
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -installable -dir package -key signing.key -out <id>.signed.json
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module verify -file <id>.signed.json -pub signing.pub
@@ -79,7 +81,17 @@ print every refusal, one line each, as `<file> <path or statement>: <code>: <mes
 `check -json` prints `{ok, id, version, migrations, digest, refusals}` on stdout instead.
 With `-installable`, `check` and `package` work on `Installable`'s files and print one
 stderr line per held-back part with the core item it waits on, and one line per pending
-entry that held nothing back. `accepts` prints `Accepts()` as JSON. Exit codes: 0 passed,
+entry that held nothing back. Under `-json` every failure, an `Installable` refusal or an
+unreadable directory included, is the same `{ok, refusals}` result.
+
+The update check compares against what the previous release shipped. Pass its signed
+package file with `-previous-file` and the key it was signed with as `-previous-pub`: the
+command verifies the signature and reads that package's module id and migrations
+(`CheckUpdate`), without judging it again by today's core. Running `Installable` on the
+previous release's source would apply today's core to it, so a migration it held back
+(and never shipped) would count as shipped. `-previous <dir>` therefore takes a source
+directory only when it has no `pending.yaml`, and refuses with `upgrade_baseline`
+otherwise. An update failure is `upgrade_refused`. `accepts` prints `Accepts()` as JSON. Exit codes: 0 passed,
 1 refused, 2 usage. The command never makes or stores a key; keep the release key out of
 the repository, and generate throwaway keys at test time.
 
@@ -113,6 +125,8 @@ Each `Refusal` has:
 | `manifest_invalid` | a manifest value the core refuses (the manifest checks) | the first, since one bad value can make the next check meaningless |
 | `manifest_yaml`, `package_unreadable`, `migration_file` | the manifest, the archive or a migration file name can't be read | the first; nothing past it can be checked |
 | `pending_invalid`, `pending_edit`, `pending_order`, `pending_unbuilt` | the pending list (next section) | each one |
+| `upgrade_refused`, `upgrade_baseline` | the update check, and a previous version given by a source directory that held parts back | the first |
+| `unreadable` | a file or directory the command was given can't be read (command only) | the first |
 
 A package with no refusals passes the core's install check; `Check` confirms that by
 running `CheckPackage` on the same bytes.

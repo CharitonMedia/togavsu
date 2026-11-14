@@ -106,6 +106,13 @@ const (
 	RefusePendingOrder = "pending_order"
 	// RefusePendingUnbuilt: Build was handed the full package with its pending list.
 	RefusePendingUnbuilt = "pending_unbuilt"
+	// RefuseUpgrade: the package is not a valid update of the previous release.
+	RefuseUpgrade = "upgrade_refused"
+	// RefuseUpgradeBaseline: the previous release can't be told from its source
+	// directory, because its build held parts back; compare against what it shipped.
+	RefuseUpgradeBaseline = "upgrade_baseline"
+	// RefuseUnreadable: a file or directory the command was given can't be read.
+	RefuseUnreadable = "unreadable"
 )
 
 // Accepted is what a core accepts from a module package: the manifest fields it reads
@@ -232,6 +239,47 @@ func CheckUpgrade(prev, next []byte) error {
 		return domain.Invalid("package", "this package is module "+pkg.Manifest.ID+", not "+old.Manifest.ID)
 	}
 	return CheckChecksums(Applied(oldMS), ms)
+}
+
+// CheckUpdate checks next as an update of shipped, the package bytes a firm may have
+// installed (the previous release's signed package, see ReadSignedFile). Only shipped's
+// module id and migrations are read: it is the record of what ran, so it is not judged
+// again by this core, and parts its build held back (Installable) are not in it. next
+// must pass CheckPackage, be the same module, and keep every migration of shipped
+// unchanged. A refusal is a Refusals error with code upgrade_refused.
+func CheckUpdate(shipped, next []byte) error {
+	refused := func(err error) error {
+		return Refusals{{Kind: KindMigration, Code: RefuseUpgrade, Message: err.Error(), APICode: Code(err), Err: err}}
+	}
+	old, err := ReadManifest(shipped)
+	if err != nil {
+		return refused(err)
+	}
+	files, err := modules.Unpack(shipped)
+	if err != nil {
+		return refused(err)
+	}
+	oldMS, err := (&Package{Files: files}).Migrations()
+	if err != nil {
+		return refused(err)
+	}
+	pkg, ms, err := CheckPackage(next)
+	if err != nil {
+		return refused(err)
+	}
+	if old.ID != pkg.Manifest.ID {
+		return refused(domain.Invalid("package", "this package is module "+pkg.Manifest.ID+", not "+old.ID))
+	}
+	if err := CheckChecksums(Applied(oldMS), ms); err != nil {
+		return refused(err)
+	}
+	return nil
+}
+
+// ReadSignedFile reads a signed package file's form and returns it with the package
+// bytes it carries. It does not verify the signature; Verify does.
+func ReadSignedFile(file []byte) (SignedPackage, []byte, error) {
+	return marketplace.ReadSignedFile(file)
 }
 
 // --- Package build ---

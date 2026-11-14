@@ -1,14 +1,16 @@
 // Command togavsu-module checks, packages and verifies Togavsu module packages with the
 // core's own code (pkg/modulekit).
 //
-//	togavsu-module check [-installable] [-json] [-previous <package dir>] <package dir>
+//	togavsu-module check [-installable] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
 //	togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
 //	togavsu-module accepts
 //
 // check runs the manifest, scope and migration checks the core runs at install and
-// prints every refusal, one per line; with -previous it also checks the package as an
-// update of that version (no migration that ran may change or go missing). package
+// prints every refusal, one per line; with -previous-file (the previous release's signed
+// package, verified with -previous-pub) it also checks the package as an update of what
+// that release shipped (no migration that ran may change or go missing). -previous takes
+// the previous release's source directory instead, only when its build held nothing back. package
 // checks the directory, archives it, signs it with the base64 Ed25519 seed in the key
 // file and writes the signed package file; it refuses to sign a package check refuses.
 // With -installable, check and package first hold back each part the directory's
@@ -43,7 +45,7 @@ func main() {
 }
 
 const usage = `usage:
-  togavsu-module check [-installable] [-json] [-previous <package dir>] <package dir>
+  togavsu-module check [-installable] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
   togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
   togavsu-module verify -file <signed file> -pub <public key PEM file>
   togavsu-module accepts
@@ -84,7 +86,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		var refs modulekit.Refusals
 		if errors.As(err, &refs) {
 			for _, r := range refs {
-				fmt.Fprintf(stderr, "togavsu-module %s: %s: %s: %s\n", args[0], r.Where(), r.Code, r.Message)
+				if where := r.Where(); where != "" {
+					fmt.Fprintf(stderr, "togavsu-module %s: %s: %s: %s\n", args[0], where, r.Code, r.Message)
+				} else {
+					fmt.Fprintf(stderr, "togavsu-module %s: %s: %s\n", args[0], r.Code, r.Message)
+				}
 			}
 			return code
 		}
@@ -129,7 +135,9 @@ func flags(name string, code *int) *flag.FlagSet {
 
 func check(args []string, stdout, stderr io.Writer, code *int) error {
 	fs := flags("check", code)
-	previous := fs.String("previous", "", "package directory of the version this one updates")
+	previous := fs.String("previous", "", "source directory of the version this one updates (one built without pending parts)")
+	previousFile := fs.String("previous-file", "", "signed package file of the version this one updates")
+	previousPub := fs.String("previous-pub", "", "public key PEM the previous signed package file was signed with")
 	hold := fs.Bool("installable", false, "hold back the pending parts the core refuses (pending.yaml)")
 	asJSON := fs.Bool("json", false, "print the result as JSON on stdout")
 	if err := fs.Parse(args); err != nil {
@@ -138,36 +146,17 @@ func check(args []string, stdout, stderr io.Writer, code *int) error {
 	if fs.NArg() != one {
 		return fmt.Errorf("name one package directory")
 	}
+	if *previous != "" && *previousFile != "" {
+		return fmt.Errorf("name -previous or -previous-file, not both")
+	}
+	if (*previousFile == "") != (*previousPub == "") {
+		return fmt.Errorf("-previous-file and -previous-pub go together")
+	}
 	*code = exitRefused
-	files, err := installable(fs.Arg(zero), *hold, stderr)
-	if err != nil {
-		return err
-	}
-	pkg, ms, err := modulekit.Check(files)
-	if err == nil && *previous != "" {
-		old, err2 := installable(*previous, *hold, io.Discard)
-		if err2 != nil {
-			return err2
-		}
-		prev, err2 := modulekit.Archive(old)
-		if err2 != nil {
-			return err2
-		}
-		next, err2 := modulekit.Archive(files)
-		if err2 != nil {
-			return err2
-		}
-		err = modulekit.CheckUpgrade(prev, next)
-	}
+	pkg, ms, err := checkDir(fs.Arg(zero), *previous, *previousFile, *previousPub, *hold, stderr)
 	if *asJSON {
-		res := checkResult{OK: err == nil, Refusals: modulekit.Refusals{}}
-		var refs modulekit.Refusals
-		switch {
-		case errors.As(err, &refs):
-			res.Refusals = refs
-		case err != nil:
-			res.Refusals = modulekit.Refusals{{Kind: modulekit.KindPackage, Code: modulekit.Code(err), Message: err.Error()}}
-		default:
+		res := checkResult{OK: err == nil, Refusals: structured(err)}
+		if err == nil {
 			res.ID, res.Version, res.Migrations, res.Digest = pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest
 		}
 		if werr := json.NewEncoder(stdout).Encode(res); werr != nil {
@@ -181,6 +170,88 @@ func check(args []string, stdout, stderr io.Writer, code *int) error {
 		fmt.Fprintf(stdout, "ok: %s %s, %d migration(s), digest %s\n", pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest)
 	}
 	return nil
+}
+
+// checkDir is check's work: the package (its installable form with hold), then the
+// update rule against the previous release when one is named.
+func checkDir(dir, previous, previousFile, previousPub string, hold bool, stderr io.Writer) (*modulekit.Package, []modulekit.Migration, error) {
+	files, err := installable(dir, hold, stderr)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg, ms, err := modulekit.Check(files)
+	if err != nil {
+		return nil, nil, err
+	}
+	next, err := modulekit.Archive(files)
+	if err != nil {
+		return nil, nil, err
+	}
+	switch {
+	case previousFile != "":
+		shipped, err := shippedPackage(previousFile, previousPub)
+		if err != nil {
+			return nil, nil, err
+		}
+		err = modulekit.CheckUpdate(shipped, next)
+		return pkg, ms, err
+	case previous != "":
+		// A source directory is the previous release only when its build held nothing
+		// back; re-running Installable on it would apply today's core, not what shipped.
+		old, err := modulekit.ReadDir(previous)
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, ok := old[modulekit.PendingFile]; ok {
+			return nil, nil, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgradeBaseline, File: modulekit.PendingFile,
+				Message: "the previous version lists pending parts, so its source is not what it shipped; pass its signed package with -previous-file and -previous-pub"}}
+		}
+		prev, err := modulekit.Archive(old)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := modulekit.CheckUpgrade(prev, next); err != nil {
+			return nil, nil, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgrade, Message: err.Error(), APICode: modulekit.Code(err), Err: err}}
+		}
+	}
+	return pkg, ms, nil
+}
+
+// shippedPackage reads a signed package file, verifies its signature with the key in
+// pubFile, and returns the package bytes it carries.
+func shippedPackage(file, pubFile string) ([]byte, error) {
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	pemText, err := os.ReadFile(pubFile)
+	if err != nil {
+		return nil, err
+	}
+	pub, err := modulekit.ParsePublicKeyPEM(string(pemText))
+	if err != nil {
+		return nil, err
+	}
+	sp, shipped, err := modulekit.ReadSignedFile(raw)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := modulekit.Verify(shipped, sp.Digest, sp.Signature, sp.KeyID, []modulekit.TrustedKey{modulekit.Trust(pub)}); err != nil {
+		return nil, err
+	}
+	return shipped, nil
+}
+
+// structured is err as refusals: its own list, or one refusal for any other failure.
+func structured(err error) modulekit.Refusals {
+	if err == nil {
+		return modulekit.Refusals{}
+	}
+	var refs modulekit.Refusals
+	if errors.As(err, &refs) {
+		return refs
+	}
+	return modulekit.Refusals{{Kind: modulekit.KindPackage, Code: modulekit.RefuseUnreadable, Message: err.Error(), APICode: modulekit.Code(err), Err: err}}
 }
 
 // checkResult is check -json's output.

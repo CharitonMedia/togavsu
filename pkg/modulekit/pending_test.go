@@ -288,3 +288,44 @@ func TestBuildChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCheckUpdateReadsWhatShipped(t *testing.T) {
+	_, priv := key(t)
+	signed, held, err := modulekit.BuildInstallable(priv, waiting(t))
+	if err != nil || len(held) == 0 {
+		t.Fatalf("v1: %v", err)
+	}
+	sp, shipped, err := modulekit.ReadSignedFile(signed)
+	if err != nil || sp.ListingID != "matter-clock" {
+		t.Fatalf("ReadSignedFile: %v", err)
+	}
+	next := func(f func(map[string][]byte)) []byte {
+		files := edit(waiting(t), func(m map[string][]byte) {
+			replaceIn(m, modulekit.ManifestFile, `version: "1.0.0"`, `version: "1.1.0"`)
+			f(m)
+		})
+		out, _, err := modulekit.Installable(files)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := modulekit.Archive(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	// The held migration never shipped, so it may change, or ship now.
+	if err := modulekit.CheckUpdate(shipped, next(func(m map[string][]byte) {
+		m["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_note TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+	})); err != nil {
+		t.Fatalf("changed held migration: %v", err)
+	}
+	changed := next(func(m map[string][]byte) {
+		m["migrations/0001_matter_targets.sql"] = append(m["migrations/0001_matter_targets.sql"], []byte("\n-- changed\n")...)
+	})
+	err = modulekit.CheckUpdate(shipped, changed)
+	var refs modulekit.Refusals
+	if !errors.As(err, &refs) || refs[0].Code != modulekit.RefuseUpgrade || modulekit.Code(err) != modulekit.CodeMigration {
+		t.Fatalf("changed shipped migration: %v", err)
+	}
+}

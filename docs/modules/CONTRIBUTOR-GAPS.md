@@ -19,6 +19,8 @@ Status is `fixed` (with where) or `open`. "Follow-up" names the CORE item in
 | `Check` ignored scopes; an unknown scope surfaced only when the admin approved the install | quickbooks, email, documents, client-portal, lawpay-docuseal | fixed in this PR: `Check` refuses scopes not in `Scopes()` | none |
 | `Build` signed a package without checking it | quickbooks (wrapped `Build` in its own check) | fixed in this PR: `Build` checks and refuses | none |
 | No way to ask what a core accepts | all five | partly fixed in this PR: `Accepts()` and `togavsu-module accepts` give the manifest fields and their digest, scopes and linkable core records | open: the core does not record which CORE items it has built; add a built-items list the core keeps with each item |
+| The update check compared against the previous release's source, re-run through today's core, so a migration it held back counted as shipped | review of this PR | fixed in this PR: `CheckUpdate` and `check -previous-file` read the shipped signed package | none |
+| `check -json` printed nothing when the pending list or a hold-back failed | review of this PR | fixed in this PR: every failure is the `{ok, refusals}` result | none |
 | `coretest` has one client login and no stand-ins for mail, the rendition service, the converter or Doc Tender, so modules that need them build their own fakes | client-portal, documents, email, lawpay-docuseal | open | CORE-29 (acceptance harness core surface) |
 | Marketplace submission by an outside author has not been exercised end to end | kit review | open | a dry run of listing submission and review from a repository outside the org |
 
