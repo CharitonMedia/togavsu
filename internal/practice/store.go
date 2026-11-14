@@ -89,6 +89,11 @@ type Store interface {
 	Marker(id domain.ID) (MarkerDef, bool)
 	MarkerByLabel(label string) (MarkerDef, bool)
 	PutMatterMarker(ctx context.Context, row MatterMarker) error
+	UpdateMatterMarker(ctx context.Context, row MatterMarker) error
+	PutMarker(ctx context.Context, row MarkerDef) error
+	Markers() []MarkerDef
+	PutPartyRole(ctx context.Context, row PartyRoleDef) error
+	PartyRoles() []PartyRoleDef
 	MatterMarkers(matter domain.ID) []MatterMarker
 	AppendClose(ctx context.Context, row CloseRecord) error
 	LatestClose(matter domain.ID) (CloseRecord, bool)

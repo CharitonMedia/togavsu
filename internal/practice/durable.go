@@ -104,7 +104,7 @@ func (m *Memory) adopt(f *Memory) {
 	m.referrals, m.notes, m.noteTags, m.conflicts, m.reviews = f.referrals, f.notes, f.noteTags, f.conflicts, f.reviews
 	m.invoices, m.trust, m.times, m.users = f.invoices, f.trust, f.times, f.users
 	m.audits, m.events = f.audits, f.events
-	m.fields, m.values, m.markers, m.pinned = f.fields, f.values, f.markers, f.pinned
+	m.fields, m.values, m.markers, m.pinned, m.roles = f.fields, f.values, f.markers, f.pinned, f.roles
 	m.closes, m.runs, m.checked = f.closes, f.runs, f.checked
 	m.idx, m.gidx = nil, nil
 	// Pending idempotency reservations belong to requests still running in this process.
@@ -185,6 +185,8 @@ func (m *Memory) restore(kind, id string, raw []byte) error {
 		return into(raw, m.markers)
 	case "matter_marker":
 		return into(raw, m.pinned)
+	case "party_role":
+		return into(raw, m.roles)
 	case "value":
 		var v FieldValue
 		if err := json.Unmarshal(raw, &v); err != nil {
@@ -554,6 +556,15 @@ func (d *Durable) EnsureMarkers(ctx context.Context, labels []string, at time.Ti
 
 func (d *Durable) PutMatterMarker(ctx context.Context, row MatterMarker) error {
 	return simple(ctx, d, func() error { return d.Memory.PutMatterMarker(ctx, row) }, put("matter_marker", row.ID, row))
+}
+func (d *Durable) UpdateMatterMarker(ctx context.Context, row MatterMarker) error {
+	return simple(ctx, d, func() error { return d.Memory.UpdateMatterMarker(ctx, row) }, put("matter_marker", row.ID, row))
+}
+func (d *Durable) PutMarker(ctx context.Context, row MarkerDef) error {
+	return simple(ctx, d, func() error { return d.Memory.PutMarker(ctx, row) }, put("marker", row.ID, row))
+}
+func (d *Durable) PutPartyRole(ctx context.Context, row PartyRoleDef) error {
+	return simple(ctx, d, func() error { return d.Memory.PutPartyRole(ctx, row) }, put("party_role", row.ID, row))
 }
 func (d *Durable) AppendClose(ctx context.Context, row CloseRecord) error {
 	return simple(ctx, d, func() error { return d.Memory.AppendClose(ctx, row) }, put("close", row.ID, row))
