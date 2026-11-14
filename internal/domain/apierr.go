@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -65,6 +66,24 @@ func (e *APIError) HTTPStatus() int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// BatchRejected marks an item's error as rejecting its all-or-nothing batch
+// (batch_rejected, 422), as the contract's bulk routes list. Access errors stay as they
+// are, so an inaccessible record is still not_found and a missing scope still denied;
+// an error that is not an APIError is a fault and passes through.
+func BatchRejected(err error) error {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return err
+	}
+	switch api.Code {
+	case CodeNotFound, CodeForbidden, CodeUnauthenticated, CodeFieldLocked, CodeIdempotencyConflict, CodeBatchRejected, "scope_denied":
+		return err
+	}
+	out := *api
+	out.Code = CodeBatchRejected
+	return &out
 }
 
 // Unauthenticated constructs a 401 error.

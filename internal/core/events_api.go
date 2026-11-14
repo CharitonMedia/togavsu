@@ -347,7 +347,9 @@ func (a *App) bulkEventJSON(w http.ResponseWriter, r *http.Request) {
 	res, _, err := a.idempotentTx(r.Context(), p, "bulkEvent", r.Header.Get("Idempotency-Key"), raw, func(ctx context.Context) (idemResult, error) {
 		out, err := a.appendEvents(ctx, p, body.Items, func(i int) string { return "items[" + strconv.Itoa(i) + "]." })
 		if err != nil {
-			return idemResult{}, err
+			// An invalid item rejects the whole batch (batch_rejected, as bulkEvent's
+			// contract lists); a walled matter stays not_found.
+			return idemResult{}, domain.BatchRejected(err)
 		}
 		return idemResult{Status: http.StatusCreated, Body: map[string]any{"data": out}}, nil
 	})

@@ -2,7 +2,6 @@ package billing
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -120,19 +119,7 @@ func (s *Service) BulkInvoices(ctx context.Context, p domain.Principal, items []
 // all-or-nothing batch. Not found, forbidden and unauthenticated keep their codes, so a
 // wall still answers not_found; request-shape errors are checked before the batch and
 // stay validation.
-func batchRejected(err error) error {
-	var api *domain.APIError
-	if !errors.As(err, &api) {
-		return err
-	}
-	switch api.Code {
-	case domain.CodeNotFound, domain.CodeForbidden, domain.CodeUnauthenticated:
-		return err
-	}
-	out := *api
-	out.Code = domain.CodeBatchRejected
-	return &out
-}
+func batchRejected(err error) error { return domain.BatchRejected(err) }
 
 func (s *Service) importOne(t *txn, in InvoiceImport, i int, numbers map[string]bool, sources map[domain.ID]bool) (Invoice, error) {
 	field := func(name string) string { return fmt.Sprintf("items/%d/%s", i, name) }

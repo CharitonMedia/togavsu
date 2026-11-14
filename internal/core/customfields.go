@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -37,10 +38,16 @@ type customBulkItem struct {
 // putExpenseCustomFields and the core writes none of them. One inaccessible record is
 // not_found and one invalid item rejects the batch; either way nothing is written. The
 // core's items then commit in one practice unit.
-// ponytail: ceiling: with time replaced, the module's writes go first and the core's items
-// commit after them, so a core commit failure (only a database fault; every core item was
-// already validated) leaves the module's values in place. Upgrade path: a two-phase
-// prepare on the module contract. Trigger: a replacement module with its own custom fields.
+// With time replaced, every forwarded record is first resolved on the module (a read, no
+// write), so an unavailable replacement or a missing record rejects the batch before
+// anything is written, core items included.
+// ponytail: ceiling: the module contract has no batch or prepare call for custom fields, so
+// forwarded items are written one PUT at a time and the core's items commit after them. A
+// module that refuses a later item's values after accepting earlier ones, or a core commit
+// failure (only a database fault; every core item was already validated), leaves the values
+// already written on the module in place. Upgrade path: a two-phase prepare (or a batch
+// custom-fields call) on the module contract. Trigger: a replacement module with its own
+// custom fields.
 func (a *App) bulkCustomFields(w http.ResponseWriter, r *http.Request) {
 	p, err := a.principal(r)
 	if err != nil {
@@ -90,7 +97,7 @@ func rejected(i int, err error) error {
 	if !errors.As(err, &api) || api.Code == domain.CodeNotFound || api.Code == domain.CodeForbidden || api.Code == domain.CodeUnauthenticated {
 		return err
 	}
-	return &domain.APIError{Code: domain.CodeValidation, Field: fmt.Sprintf("items[%d]", i), Message: "batch rejected: " + api.Message}
+	return &domain.APIError{Code: domain.CodeBatchRejected, Field: fmt.Sprintf("items[%d]", i), Message: "batch rejected: " + api.Message}
 }
 
 func (a *App) writeCustomBatch(r *http.Request, p domain.Principal, items []customBulkItem, replaced string) (any, error) {
@@ -137,6 +144,13 @@ func (a *App) writeCustomBatch(r *http.Request, p domain.Principal, items []cust
 		}
 		core = append(core, practice.CustomWrite{Target: t, Values: values})
 	}
+	// Resolve every forwarded record on the module before the first module write, so an
+	// unavailable replacement or a missing record rejects the batch with nothing written.
+	for _, i := range forward {
+		if err := a.resolveForwarded(r, replaced, items[i]); err != nil {
+			return nil, rejected(i, err)
+		}
+	}
 	for _, i := range forward {
 		if err := a.forwardCustom(r, replaced, items[i]); err != nil {
 			return nil, rejected(i, err)
@@ -148,29 +162,66 @@ func (a *App) writeCustomBatch(r *http.Request, p domain.Principal, items []cust
 	return map[string]any{"updated": len(items)}, nil
 }
 
-// forwardCustom sends one time_entry or expense item to the module that replaces time,
-// through the core's own routing with the caller's credentials, as /mcp dispatches.
-func (a *App) forwardCustom(r *http.Request, module string, it customBulkItem) error {
+// forwardPath is the time domain's path for a forwarded item's record.
+func forwardPath(it customBulkItem) string {
 	path := "/api/v1/time-entries/"
 	if it.RecordType == practice.RecordExpense {
 		path = "/api/v1/expenses/"
 	}
+	return path + url.PathEscape(string(it.RecordID))
+}
+
+// inner serves one request through the core's own routing with the caller's
+// credentials, as /mcp dispatches, so a replaced domain reaches its module.
+func (a *App) inner(r *http.Request, method, path string, body []byte) (*httptest.ResponseRecorder, error) {
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(r.Context(), method, path, rd)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token"} {
+		if v := r.Header.Get(h); v != "" {
+			req.Header.Set(h, v)
+		}
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	return rec, nil
+}
+
+// resolveForwarded reads a forwarded item's record from the module that replaces time
+// (getTimeEntry or getExpense) and writes nothing. A missing record is not_found; a
+// module that cannot answer rejects the batch.
+func (a *App) resolveForwarded(r *http.Request, module string, it customBulkItem) error {
+	rec, err := a.inner(r, http.MethodGet, forwardPath(it), nil)
+	if err != nil {
+		return err
+	}
+	if rec.Code == http.StatusNotFound {
+		return domain.NotFound(it.RecordType)
+	}
+	if rec.Code >= http.StatusMultipleChoices {
+		return domain.Invalid("record_id", "module "+module+", which replaces time, could not resolve the record: "+strings.TrimSpace(rec.Body.String()))
+	}
+	return nil
+}
+
+// forwardCustom sends one time_entry or expense item to the module that replaces time.
+func (a *App) forwardCustom(r *http.Request, module string, it customBulkItem) error {
 	raw, err := json.Marshal(map[string]any{"values": it.Values})
 	if err != nil {
 		return err
 	}
-	inner, err := http.NewRequestWithContext(r.Context(), http.MethodPut, path+url.PathEscape(string(it.RecordID))+"/custom-fields", bytes.NewReader(raw))
+	rec, err := a.inner(r, http.MethodPut, forwardPath(it)+"/custom-fields", raw)
 	if err != nil {
 		return err
 	}
-	for _, h := range []string{"Authorization", "Cookie", "X-CSRF-Token"} {
-		if v := r.Header.Get(h); v != "" {
-			inner.Header.Set(h, v)
-		}
-	}
-	inner.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	a.Handler().ServeHTTP(rec, inner)
 	if rec.Code == http.StatusNotFound {
 		return domain.NotFound(it.RecordType)
 	}

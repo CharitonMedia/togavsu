@@ -112,6 +112,11 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	if r := x.staff.do("POST", "/api/v1/events:bulk", map[string]any{"items": []any{}}); r.code != http.StatusBadRequest {
 		t.Fatalf("empty batch: %d %s", r.code, r.body)
 	}
+	// One invalid item rejects the batch with batch_rejected, as bulkEvent's contract lists.
+	if r := x.staff.do("POST", "/api/v1/events:bulk", map[string]any{"items": []any{ev(open, "intake.batch", "one"), ev(open, "intake.batch", "")}}); r.code != http.StatusUnprocessableEntity ||
+		!strings.Contains(r.body, "batch_rejected") || !strings.Contains(r.body, "items[1].summary") {
+		t.Fatalf("batch with an invalid item: %d %s", r.code, r.body)
+	}
 	if got := actionCount(t, x.app, "intake.batch"); got != before {
 		t.Fatalf("a rejected batch wrote %d events", got-before)
 	}

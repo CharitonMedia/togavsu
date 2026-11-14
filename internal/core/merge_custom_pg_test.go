@@ -286,7 +286,7 @@ func TestReleaseRecordCustomFields(t *testing.T) {
 	}
 	unchanged()
 	if r := f.staff.do("POST", "/api/v1/custom-field-values:bulk", map[string]any{"items": []map[string]any{
-		item("matter", open, room, "9Z"), item("time_entry", entry, phase, "Q")}}); r.code != http.StatusBadRequest || !strings.Contains(r.body, "items[1]") {
+		item("matter", open, room, "9Z"), item("time_entry", entry, phase, "Q")}}); r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "batch_rejected") || !strings.Contains(r.body, "items[1]") {
 		t.Fatalf("batch with a bad value: %d %s", r.code, r.body)
 	}
 	unchanged()

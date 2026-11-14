@@ -202,7 +202,7 @@ func TestPGPostAcceptsNullReversesEntryID(t *testing.T) {
 	if err := json.Unmarshal(out, &api); status != http.StatusBadRequest || err != nil || api.Field != "reverses_entry_id" || !strings.Contains(api.Message, "/reversals") {
 		t.Fatalf("uuid reverses_entry_id %d %s", status, out)
 	}
-	if code, out, _ := staff.do("POST", "/api/v1/trust-ledger:bulk", map[string]any{"items": []any{body(nil), body(string(mustID(t)))}}); code != http.StatusBadRequest {
+	if code, out, _ := staff.do("POST", "/api/v1/trust-ledger:bulk", map[string]any{"items": []any{body(nil), body(string(mustID(t)))}}); code != http.StatusUnprocessableEntity || !strings.Contains(string(out), "batch_rejected") {
 		t.Fatalf("bulk uuid reverses_entry_id %d %s", code, out)
 	}
 	if e.count("trust_ledger") != before {
