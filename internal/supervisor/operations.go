@@ -732,7 +732,14 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 			})
 			return herr
 		})
-		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, nil); perr != nil {
+		var spooled func(*journalRecord)
+		if payload.FileBytes != "" {
+			spooled = func(cur *journalRecord) {
+				cur.Files = filesPending
+				cur.FilesSafety = safety.ID
+			}
+		}
+		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, spooled); perr != nil {
 			return perr
 		}
 		if o.ApplyRestore != nil {
@@ -777,18 +784,9 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		}
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), errors.Join(persistErr, startErr))
 	}
-	if kept, ok := o.takeFiles(rec.ID); ok {
-		// Only the running core can write the bytes: it holds the storage backends'
-		// credentials and reads where each object lives from the restored database.
-		// The set was checked and spooled before the swap, so what is left to fail is
-		// the backend write itself.
-		ctx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
-		ferr := o.RestoreFiles(ctx, kept.path)
-		cancel()
-		kept.cleanup()
-		if ferr != nil {
-			return o.rollBackFiles(rec, kept.safety, ferr)
-		}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		return rec, ferr
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -798,6 +796,54 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(persistErr, perr))
 	}
 	return saved, nil
+}
+
+// importFiles writes a committed restore's file export through the running core.
+// Every path that ends a committed swap calls it once the writers are back, so a
+// restore never ends completed while the bytes it spooled are unwritten. Only the
+// running core can write them: it holds the storage backends' credentials and reads
+// where each object lives from the restored database. The set was checked and spooled
+// before the swap, so what is left to fail is the backend write itself, and that
+// rolls back to the safety backup. The spool exists only in the process that made it;
+// a recovery that finds the journal's Files still pending without it (the supervisor
+// restarted after the swap) cannot write the bytes and rolls back the same way.
+// done is true when the record was finished or left pending here.
+func (o *Operations) importFiles(rec RestoreRecord) (RestoreRecord, bool, error) {
+	item, _ := o.journalItem(rec.ID)
+	kept, ok := o.takeFiles(rec.ID)
+	if !ok {
+		if item.Files != filesPending {
+			return rec, false, nil
+		}
+		saved, err := o.rollBackFiles(rec, item.FilesSafety, errFilesLost)
+		return saved, true, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
+	ferr := o.RestoreFiles(ctx, kept.path)
+	cancel()
+	kept.cleanup()
+	if ferr != nil {
+		saved, err := o.rollBackFiles(rec, kept.safety, ferr)
+		return saved, true, err
+	}
+	if item.Files == "" {
+		return rec, false, nil
+	}
+	phase := item.Phase
+	if phase == "" {
+		phase = phaseApplied
+	}
+	saved, perr := o.persist(rec, phase, func(cur *journalRecord) {
+		cur.Files = ""
+		cur.FilesSafety = ""
+	})
+	if perr != nil {
+		// The journal still says pending, so a later recovery rolls back rather
+		// than trust bytes it cannot see were written.
+		saved, err := o.keepPending(rec, phaseApplied, "journal_unpersisted", perr)
+		return saved, true, err
+	}
+	return saved, false, nil
 }
 
 func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, err error) (RestoreRecord, error) {
@@ -813,6 +859,10 @@ func (o *Operations) finishCleanup(rec RestoreRecord, stopped []ContainerInfo, e
 				return o.keepPending(rec, phaseSwapIntended, "commit_unjournaled", derr)
 			}
 		}
+	}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		return rec, ferr
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -984,6 +1034,9 @@ func (o *Operations) finishCommittedUnjournaled(rec RestoreRecord, stopped []Con
 // configured data is unchanged, and the poll says so without deleting the
 // name that proves the rollback.
 func (o *Operations) finishRollbackUnjournaled(rec RestoreRecord, stopped []ContainerInfo, cause error) (RestoreRecord, error) {
+	if kept, ok := o.takeFiles(rec.ID); ok {
+		kept.cleanup()
+	}
 	if o.Outbox != nil {
 		_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. The loaded database was kept because the rollback was not recorded. "+Scrub(cause.Error()))
 	}
@@ -1550,6 +1603,13 @@ func (o *Operations) recoverOne(ctx context.Context, item journalRecord) error {
 				return nil
 			}
 		}
+		rec, done, ferr := o.importFiles(rec)
+		if done {
+			if rec.Status == "running" {
+				return ferr
+			}
+			return nil
+		}
 		rec.Status = "completed"
 		rec.Recovery = ""
 		rec.Finished = o.now().UTC()
@@ -1650,6 +1710,13 @@ func (o *Operations) recoverCommitted(item journalRecord) error {
 	if err := o.restoreWriters(rec, nil); err != nil {
 		_, perr := o.keepPending(rec, phaseApplied, writerRecoveryReason(err), err)
 		return errors.Join(err, perr)
+	}
+	rec, done, ferr := o.importFiles(rec)
+	if done {
+		if rec.Status == "running" {
+			return ferr
+		}
+		return nil
 	}
 	rec.Status = "completed"
 	rec.Recovery = ""
@@ -1936,6 +2003,8 @@ func (o *Operations) persist(rec RestoreRecord, phase string, mutate func(*journ
 		if ok {
 			cur.Containers = prev.Containers
 			cur.Database = prev.Database
+			cur.Files = prev.Files
+			cur.FilesSafety = prev.FilesSafety
 		}
 	}
 	cur.Record = rec

@@ -360,3 +360,103 @@ func TestFileArchiveRejectedWithoutACoreBeforeWritersStop(t *testing.T) {
 		t.Fatalf("writers were touched: %v", *order)
 	}
 }
+
+// Codex PR #41 finding on 2f13c23: a committed swap whose replaced-database drop fails
+// ends through finishCleanup. It must still hand the spooled bytes to the core before
+// the restore reports completed.
+func TestRestoreCleanupPendingStillWritesTheFiles(t *testing.T) {
+	handed := false
+	ops, id, order := fileRestoreOps(t, func(_ context.Context, path string) error {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("spooled export missing: %v", err)
+		}
+		handed = true
+		return nil
+	})
+	ops.ApplyRestore = func(context.Context, RestorePayload) error {
+		*order = append(*order, "dump")
+		return ErrRestoreCleanup
+	}
+	rec, err := ops.Restore(context.Background(), id)
+	if rec.Status != "completed" || rec.Error != "cleanup_pending" || !errors.Is(err, ErrRestoreCleanup) {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	if !handed {
+		t.Fatalf("the restore completed with cleanup pending and the core never got the files: %v", *order)
+	}
+}
+
+// The same cleanup path with a backend write failure rolls back like the plain path.
+func TestRestoreCleanupPendingFileWriteFailureRollsBack(t *testing.T) {
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return errors.New("backend write failed") })
+	dumps := 0
+	ops.ApplyRestore = func(context.Context, RestorePayload) error {
+		dumps++
+		*order = append(*order, "dump")
+		if dumps == 1 {
+			return ErrRestoreCleanup
+		}
+		return nil
+	}
+	rec, err := ops.Restore(context.Background(), id)
+	if err == nil || rec.Status != "failed" || rec.Error != "files_rolled_back" {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	if dumps != 2 {
+		t.Fatalf("the safety backup was not restored: %v", *order)
+	}
+}
+
+// A committed restore left pending (the core did not come back healthy) keeps its spool
+// only in this process. After a supervisor restart, recovery finds the journal's file
+// export still pending with no spool, so it rolls back to the safety backup instead of
+// marking the restore completed without the bytes.
+func TestRecoveryAfterRestartRollsBackALostFileExport(t *testing.T) {
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return nil })
+	rt := ops.Runtime.(*scriptRuntime)
+	ops.Journal = OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	rt.health = errors.New("core not healthy")
+	rec, err := ops.Restore(context.Background(), id)
+	if err == nil || rec.Status != "running" {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	if item, ok := ops.journalItem(rec.ID); !ok || item.Files != filesPending || item.FilesSafety == "" {
+		t.Fatalf("journal does not say the file export is pending: %+v", item)
+	}
+	rt.health = nil
+	handed := 0
+	next := &Operations{
+		Store: ops.Store, Gate: &Gate{}, Now: ops.Now, Passphrase: ops.Passphrase,
+		ApplyDump:    ops.ApplyDump,
+		RestoreFiles: func(context.Context, string) error { handed++; return nil },
+		Runtime:      rt, Journal: ops.Journal, Ledger: ops.Ledger, Outbox: ops.Outbox,
+	}
+	if err := next.Recover(context.Background()); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	got, ok, err := next.LookupRestore(rec.ID)
+	if err != nil || !ok || got.Status != "failed" || got.Error != "files_rolled_back" {
+		t.Fatalf("recovered %+v %v %v (order %v)", got, ok, err, *order)
+	}
+	// A safety backup holds the database only, so the rollback hands the core nothing.
+	if strings.Count(strings.Join(*order, ","), "dump") != 2 || handed != 0 {
+		t.Fatalf("the safety backup was not restored: %v handed=%d", *order, handed)
+	}
+	if notes, _ := next.Outbox.List(); len(notes) == 0 || notes[len(notes)-1].Subject != "Restore rolled back" {
+		t.Fatalf("notices %+v", notes)
+	}
+}
+
+// When the bytes were written, recovery of the same committed record completes it.
+func TestRecoveryCompletesACommittedRestoreWhoseFilesWereWritten(t *testing.T) {
+	handed := 0
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { handed++; return nil })
+	ops.Journal = OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	rec, err := ops.Restore(context.Background(), id)
+	if err != nil || rec.Status != "completed" || handed != 1 {
+		t.Fatalf("restore %+v %v handed=%d (order %v)", rec, err, handed, *order)
+	}
+	if item, _ := ops.journalItem(rec.ID); item.Files != "" {
+		t.Fatalf("written file export still pending in the journal: %+v", item)
+	}
+}

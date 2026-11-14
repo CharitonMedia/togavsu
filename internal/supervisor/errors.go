@@ -29,15 +29,18 @@ var (
 	// ErrRemoteUncertain means the wait for a destination ended while the
 	// remote work may still be running. A blocked filesystem call is not
 	// cancelled; the operation stays tracked until that call returns.
-	ErrRemoteUncertain        = fmt.Errorf("%w: remote operation outcome is uncertain", ErrDestination)
-	ErrPreserveWrites         = errors.New("pre-update snapshot was kept so later commits stay in place")
-	ErrRestoreCleanup         = errors.New("restored database is live and the previous database was not dropped")
-	ErrProxyUnreconciled      = errors.New("caddy kept the new upstream and it could not be rolled back")
-	ErrCleanupUnreconciled    = errors.New("aborted update container was not stopped and removed")
-	ErrMigrationUnknown       = errors.New("migration outcome is unknown")
-	ErrProxyUnknown           = errors.New("caddy upstream is not one managed container")
-	ErrShuttingDown           = errors.New("supervisor is shutting down")
-	ErrRecoveryRequired       = errors.New("a restore is waiting for recovery")
+	ErrRemoteUncertain     = fmt.Errorf("%w: remote operation outcome is uncertain", ErrDestination)
+	ErrPreserveWrites      = errors.New("pre-update snapshot was kept so later commits stay in place")
+	ErrRestoreCleanup      = errors.New("restored database is live and the previous database was not dropped")
+	ErrProxyUnreconciled   = errors.New("caddy kept the new upstream and it could not be rolled back")
+	ErrCleanupUnreconciled = errors.New("aborted update container was not stopped and removed")
+	ErrMigrationUnknown    = errors.New("migration outcome is unknown")
+	ErrProxyUnknown        = errors.New("caddy upstream is not one managed container")
+	ErrShuttingDown        = errors.New("supervisor is shutting down")
+	ErrRecoveryRequired    = errors.New("a restore is waiting for recovery")
+	// errFilesLost is a committed restore whose spooled file export did not survive
+	// a supervisor restart, so the core never wrote those bytes.
+	errFilesLost              = errors.New("the restore's file export was lost before the core wrote it")
 	ErrFileRestoreUnsupported = errors.New("archived file bytes cannot be restored until a storage backend adapter exists")
 	// ErrBackupExists means an imported archive names a backup id that is
 	// already on the local volume. That archive is restored by backup_id.
