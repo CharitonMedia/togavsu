@@ -358,7 +358,7 @@ All run against the fake QBO and synthetic records (firm Sample Law Co, client J
 
 ## 10. Tests
 
-Unit tests live under modules/quickbooks and the acceptance suite lives in internal/modules. Both run in the existing "Core tests" CI job: scripts/ci/test-core.sh runs `go vet ./...` and `go test` over `go list ./...`, which includes both, against real Postgres via TOGAVSU_TEST_DATABASE_URL. No CI file changes.
+Unit tests and the acceptance suite live in the module's repository and run in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package), with `go vet ./...`.
 
 - **Unit (no database):** `mapping_test.go` for every row of section 5, cent conversion, hash stability, DisplayName cleaning and account type checks; `qbo/http_test.go` drives the HTTP adapter against an httptest server with synthetic QBO JSON (requestid sent, minorversion 75, 401 then refresh, 429 backoff, fault parsing, limiter); `qbo/fake/fake_test.go` proves the fake enforces what section 6 says.
 - **Acceptance (`internal/modules/module_quickbooks_pg_test.go`, package `modules_test`):** uses the existing harness in `internal/modules/harness_pg_test.go` (`newEnv`, `approveAll`, `contextFor`, `moduleDB`) through its coretest counterparts (section 8, item 10). Before install each test sets `e.rt.handlers["quickbooks"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("quickbooks")` for the deployment's secrets and builds `quickbooks.New(Config{...})` with the module's own database login from `e.moduleDB`, the core test server URL and `qbo/fake`. Each test builds the package with `quickbooks.Build` and a generated Ed25519 key, adds the public key as a trusted local key, installs through POST /api/v1/modules and approves the scopes. Tests create synthetic money through the core API (invoices, payments, trust posts, apply trust, flat fee apply, void, write-off, reversals), let core events reach `/events`, drive the worker with an injected clock, and assert on the fake's state and the module's tables. One test per criterion, named `TestMODQBO01Install` and so on. They skip only when TOGAVSU_TEST_DATABASE_URL is unset outside CI, as the harness does.
@@ -396,7 +396,7 @@ internal/modules/module_quickbooks_pg_test.go   section 10 acceptance suite
 
 - Go standard library plus existing dependencies (pgx). No new dependency and no change to go.mod.
 - Small fixed numbers follow the AC-030 convention matter-clock uses; tunables live in limits.json. Code is gofmt clean.
-- Signing: `quickbooks package` signs with an Ed25519 seed through internal/marketplace (Sign, Digest, KeyID, SignedPackage), exactly as matter-clock; the admin installs the signed file locally or from the marketplace.
+- Signing: `quickbooks package` signs with an Ed25519 seed through `pkg/modulekit` (SignFile, Digest, KeyID and the signed package file), as matter-clock does; the admin installs the signed file locally or from the marketplace.
 - The build writes only the CharitonMedia/togavsu-quickbooks repository and nothing in the core repository; a change to this spec goes to the integration lead. Section 8 items go to the module-core lane through docs/modules/CORE-CHANGES.md.
 
 ## 12. Out of scope

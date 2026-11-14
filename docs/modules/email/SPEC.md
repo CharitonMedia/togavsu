@@ -369,7 +369,7 @@ Criteria:
 
 ## 9. Tests
 
-All tests are Go and run in the existing "Core tests" job (`scripts/ci/test-core.sh`, `go test ./...` against real Postgres through `TOGAVSU_TEST_DATABASE_URL`). No test reaches a real mail server, a real Google or Microsoft endpoint, or the internet.
+All tests are Go and run in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package). No test reaches a real mail server, a real Google or Microsoft endpoint, or the internet.
 
 - `modules/email/mailparse/parse_test.go`: multipart/alternative, mixed with attachments, inline cid images, quoted-printable and base64 bodies, non-UTF-8 charsets, encoded-word subjects, a missing Message-ID (the module derives `<sha256@togavsu.invalid>`), a 30 MB message (refused above 50 MB with `message_too_large`), malformed MIME (error, no panic).
 - `modules/email/render/sanitize_test.go`: script, style with `expression()`, `javascript:` links, `on*` attributes, remote images, SVG and iframes are removed; anchors and tables survive (MOD-EML-22, 32).
@@ -406,7 +406,7 @@ modules/email/
   package/migrations/        0001_accounts.sql through 0005_views.sql
 ```
 
-- `cmd/email/main.go` follows `examples/matter-clock/cmd/matter-clock/main.go`: `serve` reads the Docker secrets `togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password` and `togavsu_db_schema`; `package` reads a base64 Ed25519 seed and writes the signed package with `marketplace.Sign` and `marketplace.KeyID`, the marketplace signing path matter-clock uses, printing the PEM public key.
+- `cmd/email/main.go` follows `examples/matter-clock/cmd/matter-clock/main.go`: `serve` reads the Docker secrets `togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password` and `togavsu_db_schema`; `package` reads a base64 Ed25519 seed and writes the signed package with `pkg/modulekit` (`SignFile`, `KeyID`), the module kit's signing path that matter-clock uses, printing the PEM public key from `modulekit.PublicKeyPEM`.
 - The package and the add-in files are embedded with `embed`, so the binary serves the add-in and `Build` packs the manifest and migrations.
 - The frames are server-rendered HTMX pages, as the core's are.
 - The email build writes only the CharitonMedia/togavsu-email repository; its three dependencies are pinned in the core (section 7). It writes nothing in the core repository. CC-1 to CC-9 go to the module-core lane through docs/modules/CORE-CHANGES.md.

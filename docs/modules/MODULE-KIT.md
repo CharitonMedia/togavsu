@@ -37,6 +37,7 @@ Code). Import `pkg/modulekit` from the module's `package` subcommand and
 | Signed package file | `SignFile(priv, pkg)`, `Build(priv, files)` |
 | Keys | `ParseSeed(text)`, `KeyID(pub)`, `PublicKeyPEM(pub)`, `ParsePublicKeyPEM(text)`, `Trust(pub)` |
 | Verification | `Digest(pkg)`, `Verify(pkg, digest, sig, keyID, trusted)`, `VerifyFile(file, trusted)` |
+| Settings source check (no environment reads, no numeric configuration literals outside settings) | `CheckSource(root)` |
 | The code the install API would answer with | `Code(err)`: `migration_refused`, `tampered_module`, `unsigned_module`, `validation` |
 
 `VerifyFile` is the whole local-install check: the file's form and digest, signature and

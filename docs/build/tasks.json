@@ -1130,6 +1130,8 @@
       ],
       "owned_paths": [
         "cmd/core/",
+        "cmd/togavsu-module/",
+        "pkg/",
         "internal/",
         "tests/",
         "scripts/ci/",
@@ -1171,6 +1173,8 @@
         "scripts/release/",
         ".github/workflows/product-ci.yml",
         "cmd/core/",
+        "cmd/togavsu-module/",
+        "pkg/",
         "internal/",
         "web/",
         "api/",
@@ -1329,6 +1333,7 @@
       ],
       "owned_paths": [
         "cmd/core/",
+        "cmd/togavsu-module/",
         "internal/",
         "pkg/",
         "web/",

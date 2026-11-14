@@ -568,7 +568,7 @@ Each criterion runs against Postgres and the fake adapters with synthetic record
 
 ## 9. Tests
 
-Every test runs in the existing "Core tests" CI job (`go test ./...` against Postgres from `TOGAVSU_TEST_DATABASE_URL`). Postgres tests skip locally without it and fail in CI without it, as `testDSN` in `internal/modules/harness_pg_test.go` does.
+Every test runs in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package). Postgres tests skip locally without `TOGAVSU_TEST_DATABASE_URL` and fail in CI without it, as coretest does.
 
 - `internal/modules/module_lawpay_docuseal_pg_test.go` (package `modules_test`, so it uses the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, `approveAll`, `contextFor`, `moduleDB`): before install the suite sets `e.rt.handlers["lawpay-docuseal"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("lawpay-docuseal")` for the deployment's secrets and builds this module's handler with its own schema login from `e.moduleDB`, with `fake.LawPay`, `fake.DocuSeal` and a test clock injected through `Config`. It then builds and signs this package with `lawpaydocuseal.Build(priv, nil)` from a generated key, adds that key as trusted, installs through `POST /api/v1/modules` and approves every permission. coretest serves the core routes this module calls (CORE-29). Core events reach the module's `/events`; provider webhooks reach it through `/hooks/lawpay-docuseal/...` on the core (CORE-07).
 - In the same file, one test per criterion, `TestPGModPay01` through `TestPGModPay53`, asserting core rows through the core API and module rows through the module's own database login.
@@ -597,7 +597,7 @@ modules/lawpay-docuseal/
 internal/modules/module_lawpay_docuseal_pg_test.go   section 9 acceptance suite
 ```
 
-Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, so `settings.CheckModule` passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build writes only the CharitonMedia/togavsu-lawpay-docuseal repository and nothing in the core repository; a change to this spec goes to the integration lead. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
+Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, so `modulekit.CheckSource` (the core's `settings.CheckModule`) passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build writes only the CharitonMedia/togavsu-lawpay-docuseal repository and nothing in the core repository; a change to this spec goes to the integration lead. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
 
 ## 11. Out of scope
 

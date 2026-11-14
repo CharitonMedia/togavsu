@@ -26,6 +26,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
 // ManifestFile is the manifest's path inside a package.
@@ -284,3 +285,9 @@ func VerifyFile(file []byte, trusted []TrustedKey) (Verified, []Migration, error
 	}
 	return v, ms, nil
 }
+
+// CheckSource is the core's settings source check (AC-030) over a module's Go source
+// tree at root: it fails on an environment read or an unproven numeric configuration
+// literal outside a setting, as the core's own check does. Test files, vendor and
+// testdata are skipped.
+func CheckSource(root string) error { return settings.CheckModule(root) }

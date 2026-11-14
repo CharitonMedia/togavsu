@@ -469,7 +469,7 @@ Module rows point at files with `ON DELETE RESTRICT`, so the core refuses to pur
 
 ## 8. Tests
 
-All tests run in the existing "Core tests" CI job (`go test ./...` against real Postgres through `TOGAVSU_TEST_DATABASE_URL`, with the wordcraft-cli build that job already extracts). No test reads real client data.
+All tests run in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package), which sets up the same wordcraft-cli build the core's Core tests job extracts. No test reads real client data.
 
 Unit tests in `modules/documents/`, no database:
 
@@ -477,7 +477,7 @@ Unit tests in `modules/documents/`, no database:
 - `tokens_test.go`: the resolver against an `httptest` server serving synthetic matter, party, contact, address, county, firm, directory and custom field JSON at a fixed clock; address choice rules; blank counts as unresolved; principal choice (MOD-DOC-11, 17).
 - `zip_test.go`: entry paths, folder and flat layouts, `-v<n>` and `.md` naming, clash suffixes, the CC-5 path rules (MOD-DOC-30).
 - `diff_test.go`: line diff on synthetic Markdown (MOD-DOC-33 compare).
-- `package_test.go`: `Files()` parses with `modules.ParseManifest`, every migration passes `modules.CheckMigrations`, the widget target resolves, and a tampered migration fails the check (the static half of MOD-DOC-01).
+- `package_test.go`: `Files()` parses with `modulekit.ParseManifest`, every migration passes `modulekit.CheckMigrations`, the widget target resolves, and a tampered migration fails the check (the static half of MOD-DOC-01).
 
 Acceptance tests in `internal/modules/module_documents_pg_test.go` (package `modules_test`, reusing the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, the fake runtime, `approveAll`, `contextFor`, `moduleDB`). Before install each test sets `e.rt.handlers["documents"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("documents")` for the deployment's secrets and builds `documents.New` with its own schema login from `e.moduleDB`. coretest serves the core routes this module calls (CORE-29). Each test builds and signs the package with `documents.Build` and a generated key, trusts the key, installs over `POST /api/v1/modules`, approves permissions, and drives the module's pages through the core with context tokens:
 

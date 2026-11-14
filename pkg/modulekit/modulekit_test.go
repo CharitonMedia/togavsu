@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -261,5 +263,23 @@ func TestBuildPackageAndReadManifest(t *testing.T) {
 	// The core installs only gzip packages.
 	if _, err := modulekit.ReadPackage(tarball); err == nil {
 		t.Fatal("a plain tar read as an installable package")
+	}
+}
+
+func TestCheckSource(t *testing.T) {
+	dir := t.TempDir()
+	write := func(src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "m.go"), []byte(src), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("package m\n\nfunc f() int { return 1 + 1 }\n")
+	if err := modulekit.CheckSource(dir); err != nil {
+		t.Fatalf("clean source refused: %v", err)
+	}
+	write("package m\n\nimport \"os\"\n\nfunc f() string { return os.Getenv(\"X\") }\n")
+	if err := modulekit.CheckSource(dir); err == nil {
+		t.Fatal("an environment read passed")
 	}
 }
