@@ -161,26 +161,31 @@ func (s *Service) Balances(ctx context.Context, who domain.Principal, f EntryFil
 // building either string: the balance order compares account, client and matter ids as one
 // string, and a sort over thousands of rows must not allocate two strings per comparison.
 func concatLess(a, b [3]domain.ID) bool {
-	ai, aj, bi, bj := 0, 0, 0, 0 // part and byte within it
-	for {
-		for ai < len(a) && aj == len(a[ai]) {
-			ai, aj = ai+1, 0
-		}
-		for bi < len(b) && bj == len(b[bi]) {
-			bi, bj = bi+1, 0
-		}
+	var k int // byte offset into the joined strings
+	for ; ; k++ {
+		ca, aok := concatAt(&a, k)
+		cb, bok := concatAt(&b, k)
 		switch {
-		case ai == len(a):
-			return bi < len(b) // a ended: less only if b goes on
-		case bi == len(b):
+		case !aok:
+			return bok // a ended: less only if b goes on
+		case !bok:
 			return false
-		}
-		if ca, cb := a[ai][aj], b[bi][bj]; ca != cb {
+		case ca != cb:
 			return ca < cb
 		}
-		aj++
-		bj++
 	}
+}
+
+// concatAt is the byte at offset k of p's parts joined, and whether the join is that long.
+func concatAt(p *[3]domain.ID, k int) (byte, bool) {
+	for i := range p {
+		if k < len(p[i]) {
+			return p[i][k], true
+		}
+		k -= len(p[i])
+	}
+	var none byte
+	return none, false
 }
 
 // scopeRank orders balance rows matter, client, account.

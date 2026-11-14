@@ -278,7 +278,8 @@ func (s pgSessions) touchAsync(ctx context.Context, args []any) error {
 	if err != nil {
 		return err
 	}
-	if n == 0 {
+	var none int64
+	if n == none {
 		return repository.ErrNotFound
 	}
 	return tx.Commit()
