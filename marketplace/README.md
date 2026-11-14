@@ -2,7 +2,7 @@
 
 PRD section 10. A small Go service, deployed separately from any firm's stack, that lists signed modules. The operator does not review, inspect, test or vouch for modules: signing proves who published a module, not that it works.
 
-Build and run:
+Build and run (a module author's whole submission walk-through is in `docs/modules/MODULE-KIT.md`, Submitting to the marketplace):
 
 ```sh
 docker build -f marketplace/Dockerfile -t togavsu-marketplace .
@@ -33,11 +33,11 @@ Authors (bearer token from `/v1/sessions`):
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/v1/authors` | `{name, email, password}` |
+| POST | `/v1/authors` | `{name, email, password}`; the password has at least 12 characters, and name and email are each unique. |
 | POST | `/v1/sessions` | `{email, password}` → `{token}` |
 | GET/POST | `/v1/authors/me/keys` | Register `{public_key_pem}`; the response has a `challenge` and the exact `proof_message`. |
-| POST | `/v1/authors/me/keys/{key_id}/verify` | `{signature}` of `proof_message` with the private key. Only verified keys sign uploads or are published. |
-| POST | `/v1/authors/me/packages` | `{package_base64, signature, key_id, price_note?}`. The manifest's module id names the listing; the first author owns it; a listed version never changes. |
+| POST | `/v1/authors/me/keys/{key_id}/verify` | `{signature}` of `proof_message` with the private key (`togavsu-module key -key <seed file> -prove <proof_message>`, or `modulekit.ProveKey`). Only verified keys sign uploads or are published. |
+| POST | `/v1/authors/me/packages` | `{package_base64, signature, key_id, price_note?}`: those fields of the kit's signed package file (`jq '{package_base64, signature, key_id}' <id>.signed.json`); its other fields are refused. The manifest's module id names the listing; the first author owns it; a listed version never changes. The listing's price is `price_note`, not the manifest's `price`. |
 
 Operator (bearer operator token):
 

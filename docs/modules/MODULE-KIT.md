@@ -37,13 +37,14 @@ and its `package` subcommand, as Matter Clock does), and `pkg/modulekit/coretest
 | Install checks: unpacking, manifest, scopes, migration files, migration rules | `Check(files)`, `CheckPackage(raw)`, `CheckMigrations(m, ms)` |
 | Every refusal at once, structured | `CheckAll(files)` (a `Refusals` list of `Refusal`) |
 | What this core accepts | `Accepts()`, `Scopes()`, `KnownScope(scope)` |
-| A package without the parts that wait on core changes | `Installable(files)` and `BuildInstallable(priv, files)` (an `InstallablePackage`: `Files`, `Held`, `Pending`, `Unused`, and `UnusedRefusals()`), `ParsePending(src)`, `Unused(entries, held)` |
+| A package without the parts that wait on core changes | `Installable(files)` and `BuildInstallable(priv, files)` (an `InstallablePackage`: `Files`, `Held` in manifest order, `Pending`, `Unused`, and `UnusedRefusals()`), `ParsePending(src)`, `Unused(entries, held)`; `Pending.Core` is a `CoreItems` list with `Has(item)` |
+| Write the pending list | `WritePending(entries)` (a whole list), `AddPending(src, entry)` (one entry appended in place, comments kept); both read the result back with `ParsePending` |
 | Update checksum rule (no migration that ran may change or go missing) | `CheckUpdate(shipped, next)` against the previous release's shipped package, `CheckUpgrade(prev, next)`, `CheckChecksums(applied, ms)`, `Applied(ms)` |
 | The package inside a signed package file | `ReadSignedFile(file)` |
 | Installable package (gzip tar) | `Archive(files)` |
 | Marketplace listing tar and its manifest | `BuildPackage(manifest, extra)`, `ReadManifest(pkg)` |
 | Signed package file | `Build(priv, files)` (checks first), `SignFile(priv, pkg)` (signs bytes unchecked) |
-| Keys | `ParseSeed(text)`, `KeyID(pub)`, `PublicKeyPEM(pub)`, `ParsePublicKeyPEM(text)`, `Trust(pub)` |
+| Keys | `ParseSeed(text)`, `KeyID(pub)`, `PublicKeyPEM(pub)`, `ParsePublicKeyPEM(text)`, `Trust(pub)`; `ProveKey(priv, proofMessage)` signs the marketplace's key proof (see [Submitting to the marketplace](#submitting-to-the-marketplace)) |
 | Verification | `Digest(pkg)`, `Verify(pkg, digest, sig, keyID, trusted)`, `VerifyFile(file, trusted)` |
 | Settings source check, the core's own AC-030 check (`settings.CheckModule`): no environment read outside a directory named `internal/bootstrap`, no numeric or duration configuration literal outside settings. The core's fixed-site allowances name only core functions, so a module names its fixed numbers as constants, as Matter Clock does | `CheckSource(root)` |
 | The code the install API would answer with | `Code(err)`: `migration_refused`, `tampered_module`, `unsigned_module`, `validation` |
@@ -57,11 +58,40 @@ refuse at approval.
 its `pending.yaml` (`pending_unbuilt`). `SignFile` signs whatever bytes it is given; use it
 only to make a refused package on purpose in a test.
 
-Upgrading from a kit at core `3d9453e` or earlier: `Build` signed whatever files it was
-given there, unchecked. It now checks first and refuses a package the core would refuse,
-or one holding `pending.yaml`. A build that signed a refused package (to test the core's
-refusal, say) now fails: sign `Archive(files)` with `SignFile` for that, and build a package
-with pending parts with `BuildInstallable`.
+## Upgrading
+
+### From core `3d9453e` or earlier
+
+`Build` signed whatever files it was given there, unchecked. It now checks first and
+refuses a package the core would refuse, or one holding `pending.yaml`. A build that signed
+a refused package (to test the core's refusal, say) now fails: sign `Archive(files)` with
+`SignFile` for that, and build a package with pending parts with `BuildInstallable`.
+
+### From a pre-release pending kit to core `0e111ca`
+
+Modules that pinned a commit of the pending-list branch before it merged (PR 57; its
+branch commit `9b5f884`, say) see three signature changes:
+
+| Before | Now |
+| --- | --- |
+| `Installable(files) (map[string][]byte, []Held, error)` | `Installable(files) (InstallablePackage, error)`: the files are `ip.Files`, the held parts `ip.Held`, plus `ip.Pending` and `ip.Unused` |
+| `BuildInstallable(priv, files) ([]byte, []Held, error)` | `BuildInstallable(priv, files) ([]byte, InstallablePackage, error)`: the held parts are `ip.Held` |
+| `Pending.Core string` (also `Held.Pending.Core`) | `Pending.Core CoreItems`, a `[]string`: one item or several. `Core.String()` joins them with " and "; `Core.Has("CORE-22")` asks for one; compare a list with `strings.Join(p.Core, ",")`, never `p.Core == "CORE-22"` |
+
+```go
+// before
+files, held, err := modulekit.Installable(raw)
+signed, held, err := modulekit.BuildInstallable(priv, raw)
+if h.Pending.Core == "CORE-08" { ... }
+// now
+ip, err := modulekit.Installable(raw)        // ip.Files, ip.Held, ip.Unused
+signed, ip, err := modulekit.BuildInstallable(priv, raw)
+if h.Pending.Core.Has("CORE-08") { ... }
+```
+
+`Held` comes in manifest order (the order the parts are written, then held migrations by
+file name), not the order the checks found them, so a test that pinned the old order needs
+its expected list rewritten.
 
 ## What a package holds
 
@@ -86,8 +116,10 @@ never by listing the embed FS yourself, and build what ships with `Installable` 
 would carry the pending list and the parts it holds back.
 
 `VerifyFile` is the whole local-install check: the file's form and digest, signature and
-signer, the signed manifest, then the install checks. Only `Archive` output installs;
-`BuildPackage` writes the plain tar the marketplace listing reads.
+signer, the signed manifest, then the install checks. Only `Archive` output installs, and
+the marketplace takes the same signed bytes (see
+[Submitting to the marketplace](#submitting-to-the-marketplace)); `BuildPackage` writes a
+plain tar for marketplace listing tests only.
 
 ## cmd/togavsu-module
 
@@ -102,17 +134,25 @@ go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -dir package 
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -installable -dir package -key signing.key -out <id>.signed.json
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module package -installable -unsigned -dir package -out <new dir>
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module verify -file <id>.signed.json -pub signing.pub
+go run github.com/CharitonMedia/togavsu/cmd/togavsu-module key -key signing.key > signing.pub
+go run github.com/CharitonMedia/togavsu/cmd/togavsu-module key -key signing.key -prove "<proof_message>"
+go run github.com/CharitonMedia/togavsu/cmd/togavsu-module pending -dir package -field sidebar[*].section -core CORE-08 -reason "File the entry under Money."
 go run github.com/CharitonMedia/togavsu/cmd/togavsu-module accepts
 ```
 
-The key file holds a base64 Ed25519 seed; `package` prints the PEM public key the admin
-adds as a trusted signing key. `package` refuses to sign a package `check` refuses. Both
+The key file holds a base64 Ed25519 seed, any 32 random bytes: make a throwaway one with
+`openssl rand -base64 32 > signing.key` (keep the release key out of the repository).
+`package` prints the PEM public key the admin adds as a trusted signing key, and
+`key -key signing.key` prints only that PEM, so `> signing.pub` gives the file `verify -pub`
+and `-previous-pub` take. `key -prove` signs the marketplace's key proof and nothing else.
+`pending` adds one entry to `package/pending.yaml` (`AddPending`), creating it if missing;
+`-core` takes one item or several separated by commas. `package` refuses to sign a package `check` refuses. Both
 print every refusal, one line each, as `<file> <path or statement>: <code>: <message>`;
 `check -json` prints `{ok, id, version, migrations, digest, refusals}` on stdout instead.
 With `-installable`, `check` and `package` work on `Installable`'s files and print one
 stderr line per held-back part with the core item it waits on, and one line per pending
 entry that held nothing back; `check -json` adds `held` and `unused` (the entries that held
-nothing back) to its result. `-strict` (with `-installable`) makes an entry that holds
+nothing back) to its result. Held-back parts print in manifest order. `-strict` (with `-installable`) makes an entry that holds
 nothing back a `pending_unused` refusal: exit 1, and the refusal in `-json`, so CI notices
 when a core item has landed and the entry can go. Under `-json` every failure, an
 `Installable` refusal or an unreadable directory included, is the same `{ok, refusals}`
@@ -186,7 +226,9 @@ refusal.
 - `core_records`, `core_relations`: the record names `data` declarations take and the core
   tables a migration may reference.
 
-It does not say which CORE items a core has built; read the core's release notes for that.
+It does not say which CORE items a core has built: the core keeps no such record yet
+(`CONTRIBUTOR-GAPS.md`). Until it does, `-strict` tells you when a pending entry holds
+nothing back, which is when its part's core item has landed.
 
 ## Building and signing before your core items land
 
@@ -297,6 +339,61 @@ signed, ip, err := modulekit.BuildInstallable(priv, files)
 // every refusal is covered
 c.Install(signed)
 ```
+
+## Submitting to the marketplace
+
+The marketplace (`marketplace/`, API in `marketplace/README.md`) lists signed packages. It
+runs no install check and its operator reviews nothing: it checks only that a verified key
+of yours signed the exact bytes and that the manifest has `id`, `name`, `version` and
+`permissions`. `package` refuses to sign what the core would refuse, so submit only what
+`package` built. The listing is named by the manifest's `id`; the first author to list an
+id owns it, and a listed version never changes (a second upload of it is `409 conflict`),
+so ship a fix as a new version.
+
+The Togavsu marketplace has no public address yet (the core's `modules.marketplace_address`
+default is the placeholder `togavsu-marketplace`). For a dry run, run one locally:
+`go run github.com/CharitonMedia/togavsu/marketplace/cmd/marketplace -config market.json`
+with `{"listen": "127.0.0.1:8090", "data_dir": "<dir>", "operator_token_file": "<file of
+32 or more random bytes>", "secure_cookies": false}`. A core reaches it over http only on a
+loopback host.
+
+`togavsu-module` below is `go run github.com/CharitonMedia/togavsu/cmd/togavsu-module`.
+
+```sh
+M=http://127.0.0.1:8090                       # the marketplace
+openssl rand -base64 32 > signing.key         # throwaway key; your release key in a real submission
+togavsu-module package -installable -dir package -key signing.key -out documents.signed.json
+togavsu-module key -key signing.key > signing.pub
+
+# 1. An author account (password of 12 or more characters), then a session token.
+curl -s -X POST $M/v1/authors -d '{"name":"Your Name","email":"you@example.com","password":"<password>"}'
+T=$(curl -s -X POST $M/v1/sessions -d '{"email":"you@example.com","password":"<password>"}' | jq -r .token)
+
+# 2. Register the public key and prove you hold it, once per key.
+curl -s -X POST $M/v1/authors/me/keys -H "Authorization: Bearer $T" \
+  -d "$(jq -n --rawfile pem signing.pub '{public_key_pem: $pem}')" > key.json
+SIG=$(togavsu-module key -key signing.key -prove "$(jq -r .proof_message key.json)")
+curl -s -X POST $M/v1/authors/me/keys/$(jq -r .key_id key.json)/verify -H "Authorization: Bearer $T" \
+  -d "$(jq -n --arg s "$SIG" '{signature: $s}')"
+
+# 3. Upload the signed package: three fields of the signed package file (the endpoint
+#    refuses its other fields). Add "price_note" to set the listing's price text; the
+#    manifest's price is not read.
+jq '{package_base64, signature, key_id}' documents.signed.json \
+  | curl -s -X POST $M/v1/authors/me/packages -H "Authorization: Bearer $T" -d @-
+
+# 4. The listing, and the package exactly as a firm's core will fetch it.
+curl -s $M/v1/listings/documents
+curl -s $M/v1/listings/documents/versions/1.0.0/package > served.json
+togavsu-module verify -file served.json -pub signing.pub
+```
+
+A firm's admin then installs it from the marketplace (`POST /api/v1/modules` with
+`{"source": "marketplace", "listing_id": "documents"}`), trusting the keys the marketplace
+publishes with no local key, and approves its permissions as for a file install. A
+`coretest` suite can do the same against the local marketplace: set
+`modules.marketplace_address` with `PATCH /api/v1/settings/modules.marketplace_address`
+`{"value": "http://127.0.0.1:8090"}` as `c.Admin`, then post the install.
 
 ## Acceptance suites with coretest
 

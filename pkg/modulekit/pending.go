@@ -74,6 +74,17 @@ func (c *CoreItems) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Has reports whether item is one of the core changes, as written (CORE-22), ignoring
+// surrounding space and letter case.
+func (c CoreItems) Has(item string) bool {
+	for _, x := range c {
+		if strings.EqualFold(strings.TrimSpace(x), strings.TrimSpace(item)) {
+			return true
+		}
+	}
+	return false
+}
+
 // String joins the items with " and ".
 func (c CoreItems) String() string { return strings.Join(c, " and ") }
 
@@ -172,6 +183,127 @@ func ParsePending(src []byte) ([]Pending, error) {
 		}
 	}
 	return doc.Pending, nil
+}
+
+// WritePending writes entries as a pending list (PendingFile) that ParsePending reads
+// back as exactly entries, so tests and tools need not write the YAML by hand. Values
+// are written plain where the YAML subset reads them back unchanged and double-quoted
+// otherwise. Entries ParsePending would refuse (no part, no core item, no reason, a
+// duplicate) are refused the same way.
+func WritePending(entries []Pending) ([]byte, error) {
+	var b strings.Builder
+	b.WriteString("pending:\n")
+	for _, e := range entries {
+		b.WriteString(pendingItem(e, "  "))
+	}
+	return pendingReadsBack([]byte(b.String()), entries)
+}
+
+// AddPending appends entry to the pending list src (empty for a new list) in place,
+// keeping src's comments, layout and line endings (a CRLF file stays CRLF), and checks
+// that the result reads back as src's entries followed by entry.
+func AddPending(src []byte, entry Pending) ([]byte, error) {
+	entries, err := ParsePending(src)
+	if err != nil {
+		return nil, err
+	}
+	crlf := strings.Contains(string(src), "\r\n")
+	text := strings.ReplaceAll(string(src), "\r\n", "\n")
+	indent := "  "
+	if m := itemIndent.FindStringSubmatch(text); m != nil {
+		indent = m[one]
+	}
+	if len(entries) == zero && !pendingKey.MatchString(text) {
+		text += "pending:\n"
+	} else if text != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	text += pendingItem(entry, indent)
+	if crlf {
+		text = strings.ReplaceAll(text, "\n", "\r\n")
+	}
+	return pendingReadsBack([]byte(text), append(entries, entry))
+}
+
+var (
+	itemIndent = regexp.MustCompile(`(?m)^pending:[ \t]*\n(?:[ \t]*(?:#.*)?\n)*([ ]*)- `)
+	pendingKey = regexp.MustCompile(`(?m)^pending:`)
+	plainText  = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9 _.,;:()/\[\]=*+-]*$`)
+)
+
+// pendingItem is one entry as a list item at indent.
+func pendingItem(e Pending, indent string) string {
+	var b strings.Builder
+	first := true
+	line := func(key, value string) {
+		if value == "" {
+			return
+		}
+		lead := indent + "  "
+		if first {
+			lead, first = indent+"- ", false
+		}
+		b.WriteString(lead + key + ": " + value + "\n")
+	}
+	line("field", yamlText(e.Field))
+	line("scope", yamlText(e.Scope))
+	line("migration", yamlText(e.Migration))
+	if len(e.Core) == one {
+		line("core", yamlText(e.Core[zero]))
+	} else if len(e.Core) > one {
+		items := make([]string, len(e.Core))
+		for i, c := range e.Core {
+			items[i] = yamlText(c)
+			if strings.ContainsAny(c, ",[]") {
+				items[i] = quoted(c)
+			}
+		}
+		line("core", "["+strings.Join(items, ", ")+"]")
+	}
+	line("reason", yamlText(e.Reason))
+	return b.String()
+}
+
+// yamlText is s as a YAML subset scalar that reads back as s: plain when that is safe,
+// double-quoted otherwise.
+func yamlText(s string) string {
+	if s == "" {
+		return ""
+	}
+	if plainText.MatchString(s) {
+		if v, err := yamlsubset.ToJSON([]byte("v: " + s)); err == nil {
+			if want, _ := json.Marshal(map[string]string{"v": s}); string(v) == string(want) {
+				return s
+			}
+		}
+	}
+	return quoted(s)
+}
+
+func quoted(s string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSpace(b.String())
+}
+
+// pendingReadsBack returns src when ParsePending reads it as exactly want.
+func pendingReadsBack(src []byte, want []Pending) ([]byte, error) {
+	got, err := ParsePending(src)
+	if err != nil {
+		return nil, err
+	}
+	if len(got) == zero && len(want) == zero {
+		return src, nil // nil and an empty list are the same list
+	}
+	a, _ := json.Marshal(got)
+	b, _ := json.Marshal(want)
+	if len(got) != len(want) || !bytes.Equal(a, b) {
+		return nil, Refusals{{Kind: KindPending, Code: RefusePendingInvalid, File: PendingFile,
+			Message: "the written pending list does not read back as the entries given; write the list with WritePending"}}
+	}
+	return src, nil
 }
 
 // InstallablePackage is Installable's result: the files to build, the parts held back,
@@ -334,6 +466,7 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 			held = append(held, *h)
 		}
 	}
+	manifestOrder(orig, held)
 	if err := heldLast(out, held); err != nil {
 		return InstallablePackage{}, err
 	}
@@ -344,6 +477,30 @@ func Installable(files map[string][]byte) (InstallablePackage, error) {
 		return InstallablePackage{}, err
 	}
 	return InstallablePackage{Files: out, Held: held, Pending: entries, Unused: Unused(entries, held)}, nil
+}
+
+// manifestOrder sorts held into the order the parts are written: manifest parts by the
+// line they start on in the manifest as written, then held-back migrations by file name.
+// Installable finds parts pass by pass, so without this a part one pass uncovered would
+// be listed after parts written below it.
+func manifestOrder(orig []byte, held []Held) {
+	lines, _ := yamlsubset.Lines(orig) // a manifest that doesn't parse holds nothing back
+	line := func(h Held) int {
+		if n, ok := lines[h.Part]; ok && h.File == ManifestFile {
+			return n
+		}
+		return -one
+	}
+	sort.SliceStable(held, func(i, j int) bool {
+		a, b := held[i], held[j]
+		if (a.File == ManifestFile) != (b.File == ManifestFile) {
+			return a.File == ManifestFile
+		}
+		if a.File != ManifestFile {
+			return a.File < b.File
+		}
+		return line(a) < line(b)
+	})
 }
 
 // passHook, when set (by tests), sees each pass of Installable's loop.

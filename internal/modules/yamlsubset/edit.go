@@ -174,6 +174,20 @@ var selectorStart = regexp.MustCompile(`^\[[A-Za-z_][A-Za-z0-9_-]*=`)
 // map[string]any, lists as []any, scalars as written.
 func Parse(src []byte) (any, error) { return parseYAML(string(src)) }
 
+// Lines maps every key and list item in src, by its concrete path (FormatPath), to the
+// 0-based line it starts on, so parts can be listed in the order they are written.
+func Lines(src []byte) (map[string]int, error) {
+	p := &yparser{spans: map[string]span{}, dash: map[int]dashLine{}}
+	if _, err := p.parse(string(src)); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(p.spans))
+	for path, sp := range p.spans {
+		out[path] = sp.start
+	}
+	return out, nil
+}
+
 // Expand resolves a pattern against doc: each [key=value] becomes the index of every
 // list item that matches, and each [*] the index of every item of a list doc has, so
 // the result is concrete paths (keys past the end of doc are kept as written). A
