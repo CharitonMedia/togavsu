@@ -609,3 +609,36 @@ func TestUIProfileSaveKeepsAdminChanges(t *testing.T) {
 		}
 	}
 }
+
+// Two-factor is off for attorneys here: Profile's "Set up two-factor" shows a QR code
+// with the key as a fallback, and turning it on the first time shows recovery codes.
+func TestUIProfileTurnsOnTwoFactor(t *testing.T) {
+	e := newEnv(t)
+	e.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/security.totp_required.attorney", map[string]any{"value": false})
+	opal := e.enroll("Opal Optin", "opal@firm.example", domain.RoleAttorney)
+	page := opal.must(http.StatusOK, "GET", "/me/profile", nil).body
+	if !strings.Contains(page, "Set up two-factor") {
+		t.Fatalf("profile offers no two-factor setup: %.600s", page)
+	}
+	r := render(t, opal, "/me/totp/reset", url.Values{"password": {"synthetic-password-Opal Optin"}})
+	section := between(r.body, `id="totp-reset"`, "</section>")
+	if !strings.Contains(section, "<svg") || !strings.Contains(section, `aria-label="QR code for your authenticator app"`) {
+		t.Fatalf("no QR code: %.600s", section)
+	}
+	secret, tok := totpRe.FindStringSubmatch(r.body), enrollRe.FindStringSubmatch(r.body)
+	if secret == nil || tok == nil {
+		t.Fatalf("no key fallback: %.600s", section)
+	}
+	done := render(t, opal, "/me/totp/reset/confirm", url.Values{
+		"enrollment_token": {html.UnescapeString(tok[1])}, "code": {totp(t, html.UnescapeString(secret[1]), time.Now())},
+	})
+	codes := between(done.body, `id="recovery-codes"`, "</section>")
+	if strings.Count(codes, "<code>") < 1 {
+		t.Fatalf("turning two-factor on showed no recovery codes: %.600s", codes)
+	}
+	c := newClient(t, e.srv.URL)
+	lr := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "opal@firm.example", "password": "synthetic-password-Opal Optin"})
+	if str(t, lr.json, "status") != "totp_required" {
+		t.Fatalf("sign-in after opting in: %s", lr.body)
+	}
+}

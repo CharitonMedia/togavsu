@@ -42,6 +42,8 @@ type Enrollment struct {
 	OTPAuthURI      string
 	Secret          string
 	ExpiresAt       time.Time
+	// Optional is true when the user may skip this enrollment and sign in with a password.
+	Optional bool
 }
 
 // Caller is an authenticated session or bearer token.

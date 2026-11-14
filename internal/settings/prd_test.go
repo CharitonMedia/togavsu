@@ -22,10 +22,10 @@ func TestPRDDefaults(t *testing.T) {
 	folders, _ := json.Marshal([]string{"Correspondence", "Pleadings", "Discovery", "Evidence", "Client documents", "Billing", "Notes"})
 	want := map[string]string{
 		"firm.matter_number_format":             "YYYY-NNNN",
-		"security.totp_required.admin":          "true",
-		"security.totp_required.attorney":       "true",
-		"security.totp_required.staff":          "true",
-		"security.totp_required.accountant":     "true",
+		"security.totp_required.admin":          "false",
+		"security.totp_required.attorney":       "false",
+		"security.totp_required.staff":          "false",
+		"security.totp_required.accountant":     "false",
 		"security.totp_required.client":         "false",
 		"security.idle_timeout":                 "12h0m0s",
 		"security.lockout_attempts":             "5",

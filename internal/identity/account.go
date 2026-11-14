@@ -12,8 +12,10 @@ import (
 
 // SetupInput fields are checked here. A second setup is refused once an admin exists.
 
-// Setup creates the firm settings and the first admin, then returns a TOTP enrollment.
-// It does not open a session.
+// Setup creates the firm settings and the first admin, then offers a TOTP enrollment.
+// Two-factor is optional unless the admin role requires it: setup is complete once the
+// firm and the admin are stored, and the admin may skip the enrollment and sign in with
+// a password. It does not open a session.
 func (s *Service) Setup(ctx context.Context, in SetupInput) (Enrollment, error) {
 	if err := ctx.Err(); err != nil {
 		return Enrollment{}, err
@@ -80,11 +82,11 @@ func (s *Service) claimFirstAdmin(ctx context.Context, in SetupInput) (domain.Us
 	if err != nil {
 		return domain.User{}, err
 	}
-	confirmed, err := s.adminConfirmed(ctx)
+	closed, err := s.setupClosed(ctx)
 	if err != nil {
 		return domain.User{}, err
 	}
-	if confirmed {
+	if closed {
 		return domain.User{}, apiCode("already_set_up", "firm is already set up")
 	}
 	admins, err := s.activeAdmins(ctx)
@@ -191,9 +193,10 @@ func (s *Service) rollbackAdmin(ctx context.Context, user domain.User) bool {
 	return false
 }
 
-// adminConfirmed reports whether any admin, including an inactive one, has confirmed TOTP.
-// That closes first-run setup for good.
-func (s *Service) adminConfirmed(ctx context.Context) (bool, error) {
+// setupClosed reports whether any admin, active or not, exists that is not the inactive
+// row of a rolled-back setup. One finished setup closes first-run setup for good, even
+// if every admin is later deactivated.
+func (s *Service) setupClosed(ctx context.Context) (bool, error) {
 	page, err := s.users.List(ctx, repository.Filter{})
 	if err != nil {
 		return false, err
@@ -203,43 +206,32 @@ func (s *Service) adminConfirmed(ctx context.Context) (bool, error) {
 		if err != nil || !principalOf(user, roles).HasRole(domain.RoleAdmin) {
 			continue
 		}
-		secret, err := s.totp.GetByUser(ctx, user.ID)
-		if errors.Is(err, repository.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		if secret.Confirmed {
+		if !s.rollbackAdmin(ctx, user) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-// Ready reports whether firm name, an active admin, and confirmed admin TOTP are stored.
+// Ready reports whether first-run setup finished: the firm name, the backup passphrase
+// (the last setup setting written) and an active admin are stored. Neither setting can be
+// cleared once set (settings Special "required"), so a finished install stays ready.
+// Two-factor is not part of it; it is optional unless an admin turns it on for a role.
 func (s *Service) Ready(ctx context.Context) (bool, error) {
-	name, err := s.settings.Get(ctx, "firm.name")
+	for _, key := range []string{"firm.name", "backups.passphrase"} {
+		value, err := s.settings.Get(ctx, key)
+		if err != nil {
+			return false, err
+		}
+		if value == "" {
+			return false, nil
+		}
+	}
+	admins, err := s.activeAdmins(ctx)
 	if err != nil {
 		return false, err
 	}
-	if name == "" {
-		return false, nil
-	}
-	admins, err := s.activeAdmins(ctx)
-	if err != nil || len(admins) == 0 {
-		return false, err
-	}
-	for _, user := range admins {
-		row, err := s.totp.GetByUser(ctx, user.ID)
-		if err == nil && row.Confirmed {
-			return true, nil
-		}
-		if err != nil && !errors.Is(err, repository.ErrNotFound) {
-			return false, err
-		}
-	}
-	return false, nil
+	return len(admins) != 0, nil
 }
 
 func (s *Service) activeAdmins(ctx context.Context) ([]domain.User, error) {
@@ -555,23 +547,26 @@ func (s *Service) ResetTOTP(ctx context.Context, caller Caller, factor Factor) (
 
 // ConfirmReset activates the pending secret for the signed-in user.
 // A wrong code, a replay, or another user's token leaves the current secret in place.
-func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentToken, code string) error {
+// When this turns two-factor on for the first time (the user never confirmed a secret,
+// as with the optional default), it also issues recovery codes, returned once.
+func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentToken, code string) ([]string, error) {
 	if err := caller.RequireScopes("profile:write"); err != nil {
-		return err
+		return nil, err
 	}
 	body, sess, user, err := s.loadChallenge(ctx, enrollmentToken, purposeReset)
 	if err != nil {
-		return domain.Forbidden("enrollment token is not valid")
+		return nil, domain.Forbidden("enrollment token is not valid")
 	}
 	if caller.Principal.UserID != user.ID {
-		return domain.Forbidden("enrollment token is not valid")
+		return nil, domain.Forbidden("enrollment token is not valid")
 	}
 	roles, err := rolesOf(user)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var codes []string
 	// One reset challenge is one guess, under the same per-account lock as sign-in.
-	return s.withUser(ctx, user.ID, func() error {
+	err = s.withUser(ctx, user.ID, func() error {
 		if err := s.claimChallenge(ctx, sess, caller.Principal); err != nil {
 			if !errors.Is(err, repository.ErrConflict) {
 				return err
@@ -584,26 +579,33 @@ func (s *Service) ConfirmReset(ctx context.Context, caller Caller, enrollmentTok
 		if err := s.rejectIfLocked(ctx, user); err != nil {
 			return err
 		}
-		return s.confirmReset(ctx, caller, user, roles, body, code)
+		codes, err = s.confirmReset(ctx, caller, user, roles, body, code)
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }
 
-func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.User, roles []domain.Role, body challengeBody, code string) error {
+func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.User, roles []domain.Role, body challengeBody, code string) ([]string, error) {
 	state, raw, err := openTOTP(s.key, body.Secret)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	step, ok := acceptedStep(raw, code, s.now().UTC())
 	if !ok || (state.Used && step <= state.Step) {
-		return s.recordFailure(ctx, user, roles)
+		return nil, s.recordFailure(ctx, user, roles)
 	}
 	sealed, err := sealTOTP(s.key, raw, step, true)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return s.audit.Atomic(ctx, func(ctx context.Context) error {
+	var codes []string
+	err = s.audit.Atomic(ctx, func(ctx context.Context) error {
 		row, err := s.totp.GetByUser(ctx, user.ID)
 		old := ""
+		first := errors.Is(err, repository.ErrNotFound) || (err == nil && !row.Confirmed)
 		if errors.Is(err, repository.ErrNotFound) {
 			meta, merr := s.meta(user.ID)
 			if merr != nil {
@@ -624,10 +626,22 @@ func (s *Service) confirmReset(ctx context.Context, caller Caller, user domain.U
 				return err
 			}
 		}
-		return s.record(ctx, caller.Principal, audit.Change{
+		if err := s.record(ctx, caller.Principal, audit.Change{
 			Entity: "totp", EntityID: row.ID, Field: "ciphertext", Old: old, New: sealed, Secret: true, Reason: "user.totp_reset_confirmed",
-		})
+		}); err != nil {
+			return err
+		}
+		if !first {
+			return nil
+		}
+		// First time on: without codes, a lost phone would lock this user out.
+		codes, err = s.replaceRecovery(ctx, user, roles)
+		return err
 	})
+	if err != nil {
+		return nil, err
+	}
+	return codes, nil
 }
 
 // RegenerateRecovery replaces unused codes after a fresh factor check.

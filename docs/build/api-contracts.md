@@ -24,7 +24,7 @@ These stay proposals until that agent adopts them. This branch does not edit `in
 - Custom fields on contact, matter, time entry, and expense creates, including bulk creates, travel in `custom_fields` on the write body. The record and its values commit together. A failed item writes neither.
 - Webhook delivery checks installation, subscription, read scope, matter wall, and attorney-only records before the envelope is serialized. A failed check sends no body.
 - Background file publication for email, Zoom, drop folder, and importers is a core-issued `files:write` grant for one matter. It expires and does not grant admin.
-- Settings registry keys and starting values: `x-togavsu-settings` on the core document. 133 keys. Locked key: `security.totp_required.admin`.
+- Settings registry keys and starting values: `x-togavsu-settings` on the core document. 133 keys. `security.totp_required.<role>` is false for every role by default and none of them is locked.
 
 Seeds the data layer should load are `x-togavsu-seeds`: 17 Doc Tender categories, the party-role keys, the naming tokens, the default folder names, and LawCraft commit `770a8fab12392485c0c2789fb254da7d9296df4d`.
 

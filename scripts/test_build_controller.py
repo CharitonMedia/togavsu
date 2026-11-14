@@ -48,6 +48,8 @@ class FakeRemote:
         self.check_rows = {name: check(name) for name in ["Setup checks", "Codex checkpoint"]}
         self.protection = {"required_status_checks": {"strict": True, "contexts": ["Setup checks", "Codex checkpoint"]},
                            "enforce_admins": {"enabled": True}, "required_pull_request_reviews": {}}
+        self.reviews = []
+        self.open_threads = 0
 
     def gh(self, path, method="GET", payload=None, binary=False):
         self.calls.append((method, path, payload))
@@ -71,7 +73,14 @@ class FakeRemote:
             return {"merged": True, "sha": NEW}
         if path == "issues/1/comments":
             return {"id": 99}
+        if path.startswith("pulls/7/reviews"):
+            page = int(path.rsplit("page=", 1)[1])
+            return copy.deepcopy(self.reviews[(page - 1) * 100:page * 100])
         return {}
+
+    def unresolved_threads(self, number):
+        self.calls.append(("GRAPHQL", "reviewThreads", number))
+        return self.open_threads
 
     def agent(self, record):
         return {"status": self.run_status, "run_id": self.run_id, "git": {}}
@@ -236,6 +245,140 @@ class ControllerTests(unittest.TestCase):
         merge = [c for c in self.remote.calls if c[1] == "pulls/7/merge"]
         self.assertEqual(merge[0][2]["sha"], HEAD)
         self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_admin_enforcement_off_halts_until_an_operator_adopts_it(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.assertFalse(self.process())
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.controller.adopt_protection("Integration lead")
+        self.assertNotIn("halted", self.record)
+        entry = self.controller.state["adopted_protection"]
+        self.assertEqual(entry["operator"], "Integration lead")
+        self.assertIs(entry["enforce_admins"], False)
+        self.assertEqual(entry["cleared_halts"], ["one"])
+        self.assertEqual(self.controller.state["protection_adoptions"], [entry])
+        backup = json.loads((Path(self.temp.name) / entry["backup"]).read_text())
+        self.assertEqual(backup["tasks"]["one"]["halted"], build_controller.PROTECTION_HALT)
+        self.assertEqual(self.record["recovered_halts"][-1]["operator"], "Integration lead")
+        self.assertTrue(self.process())
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_adopted_protection_still_requires_checks_and_reviews(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        for change in ({"required_pull_request_reviews": None},
+                       {"required_status_checks": {"strict": False, "contexts": ["Setup checks", "Codex checkpoint"]}},
+                       {"required_status_checks": {"strict": True, "contexts": ["Setup checks"]}}):
+            with self.subTest(change=change):
+                saved = copy.deepcopy(self.remote.protection)
+                self.remote.protection.update(change)
+                self.record.pop("halted", None)
+                self.assertFalse(self.process())
+                self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+                self.remote.protection = saved
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_adoption_ends_once_admin_enforcement_is_seen_on_again(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        self.remote.protection["enforce_admins"] = {"enabled": True}
+        self.record.update(head=None)
+        self.assertTrue(self.controller.admins_accepted(self.remote.protection))
+        self.assertNotIn("adopted_protection", self.controller.state)
+        self.assertIn("superseded", self.controller.state["protection_adoptions"][0])
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.assertFalse(self.process())
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def approval(self, login, state="APPROVED", commit=HEAD, association="COLLABORATOR"):
+        return {"user": {"login": login}, "state": state, "commit_id": commit, "author_association": association}
+
+    def test_admin_bypass_merges_only_when_every_protected_rule_is_met(self):
+        self.remote.protection.update(enforce_admins={"enabled": False},
+            required_conversation_resolution={"enabled": True},
+            required_pull_request_reviews={"required_approving_review_count": 1})
+        self.controller.adopt_protection("Integration lead")
+        self.remote.open_threads = 2
+        self.assertFalse(self.process())
+        self.assertIn("1 required approvals", self.record["waiting"])
+        self.assertIn("2 unresolved review threads", self.record["waiting"])
+        self.remote.reviews = [self.approval("a"), self.approval("b", "CHANGES_REQUESTED")]
+        self.remote.open_threads = 0
+        self.assertFalse(self.process())
+        self.assertIn("a review requesting changes", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.remote.reviews.append(self.approval("b"))
+        self.assertTrue(self.process())
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_admin_bypass_counts_only_write_access_approvals_of_the_head(self):
+        self.remote.protection.update(enforce_admins={"enabled": False},
+            required_pull_request_reviews={"required_approving_review_count": 1})
+        self.controller.adopt_protection("Integration lead")
+        for review in (self.approval("a", commit=BASE), self.approval("a", association="CONTRIBUTOR"),
+                       self.approval("a", association="NONE")):
+            with self.subTest(review=review):
+                self.remote.reviews = [review]
+                self.assertFalse(self.process())
+                self.assertIn("required approvals", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_admin_bypass_refuses_review_rules_it_does_not_evaluate(self):
+        for flag in ("require_code_owner_reviews", "require_last_push_approval"):
+            with self.subTest(flag=flag):
+                self.setUp()
+                self.remote.protection.update(enforce_admins={"enabled": False},
+                    required_pull_request_reviews={flag: True})
+                self.controller.adopt_protection("Integration lead")
+                self.assertFalse(self.process())
+                self.assertIn(flag.replace("_", " "), self.record["waiting"])
+                self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_admin_bypass_reads_every_page_of_reviews(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        self.remote.reviews = [self.approval("u" + str(i)) for i in range(100)] + [self.approval("late", "CHANGES_REQUESTED")]
+        self.assertFalse(self.process())
+        self.assertIn("a review requesting changes", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_enforced_admins_leave_review_rules_to_github(self):
+        self.remote.protection["required_conversation_resolution"] = {"enabled": True}
+        self.remote.open_threads = 3
+        self.assertTrue(self.process())
+        self.assertFalse(any(c[0] == "GRAPHQL" for c in self.remote.calls))
+
+    def test_adoption_refuses_protection_without_checkpoints_and_needs_an_operator(self):
+        self.record["halted"] = build_controller.PROTECTION_HALT
+        self.remote.protection["required_pull_request_reviews"] = None
+        with self.assertRaises(ValueError):
+            self.controller.adopt_protection("Integration lead")
+        self.remote.protection["required_pull_request_reviews"] = {}
+        for operator in ("", "  ", None):
+            with self.assertRaises(ValueError):
+                self.controller.adopt_protection(operator)
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertNotIn("adopted_protection", self.controller.state)
+
+    def test_adoption_clears_only_protection_halts(self):
+        self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
+        self.controller.adopt_protection("Integration lead")
+        self.assertEqual(self.record["halted"], "Delivery outcome uncertain; no automatic replay")
+        self.assertEqual(self.controller.state["adopted_protection"]["cleared_halts"], [])
+
+    def test_adopt_protection_cli_requires_an_operator(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps({"tasks": [SPEC]}))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--adopt-protection"]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+            build_controller.main()
+        with patch.object(sys, "argv", argv + ["--operator", "Integration lead"]), \
+                patch.object(build_controller.Controller, "adopt_protection") as adopt:
+            build_controller.main()
+        adopt.assert_called_once_with("Integration lead")
 
     def test_github_rejection_never_records_completion(self):
         self.remote.fail_merge = True

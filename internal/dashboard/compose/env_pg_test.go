@@ -323,7 +323,18 @@ func (e *env) firstRun() *client {
 		"firm_name": "Synthetic Firm LLP", "time_zone": "America/Chicago", "admin_name": "Avery Admin",
 		"admin_email": "avery@firm.example", "password": adminPassword, "backup_passphrase": "synthetic-backup-passphrase",
 	})
+	// Two-factor is optional by default. These UI tests cover the firm that requires it for
+	// its staff roles (the pre-2026-11-13 defaults), so the admin turns it on and signs in again.
 	login := admin.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "avery@firm.example", "password": adminPassword})
+	if str(t, login.json, "status") != "authenticated" {
+		t.Fatalf("first sign-in should not need two-factor: %s", login.body)
+	}
+	admin.csrf = str(t, login.json, "csrf_token")
+	for _, role := range []domain.Role{domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant} {
+		admin.must(http.StatusOK, "PATCH", "/api/v1/settings/security.totp_required."+string(role), map[string]any{"value": true})
+	}
+	admin = newClient(t, e.srv.URL)
+	login = admin.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "avery@firm.example", "password": adminPassword})
 	en := admin.must(http.StatusOK, "POST", "/api/v1/auth/totp/enroll", map[string]string{"enrollment_token": str(t, login.json, "enrollment_token")})
 	ok := admin.must(http.StatusOK, "POST", "/api/v1/auth/totp/confirm", map[string]string{"enrollment_token": str(t, en.json, "enrollment_token"), "code": totp(t, str(t, en.json, "secret"), time.Now())})
 	admin.csrf = str(t, ok.json, "csrf_token")

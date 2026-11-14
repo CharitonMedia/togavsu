@@ -324,7 +324,9 @@ func (a *App) totpResetConfirmJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	if err := a.Identity.ConfirmReset(r.Context(), c, body.Token, strings.TrimSpace(body.Code)); err != nil {
+	// The contract's response is User, so recovery codes from a first enrollment are not
+	// returned here; regenerateRecoveryCodes issues a fresh set for an API client.
+	if _, err := a.Identity.ConfirmReset(r.Context(), c, body.Token, strings.TrimSpace(body.Code)); err != nil {
 		writeErr(w, err)
 		return
 	}

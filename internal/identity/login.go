@@ -322,6 +322,10 @@ func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enroll
 	if err != nil {
 		return Enrollment{}, err
 	}
+	required, err := s.totpRequired(ctx, roles)
+	if err != nil {
+		return Enrollment{}, err
+	}
 	existing, err := s.totp.GetByUser(ctx, user.ID)
 	if err == nil && existing.Confirmed {
 		return Enrollment{}, domain.Conflict("two-factor is already enrolled")
@@ -359,6 +363,7 @@ func (s *Service) beginEnrollment(ctx context.Context, user domain.User) (Enroll
 		enroll = Enrollment{
 			Status: statusEnrollChallenge, EnrollmentToken: token, ExpiresAt: exp,
 			OTPAuthURI: otpauth(user.Email, secret), Secret: encodeSecret(secret),
+			Optional: !required,
 		}
 		return nil
 	})

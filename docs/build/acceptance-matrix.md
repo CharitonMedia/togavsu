@@ -67,7 +67,7 @@ Requirement sentences are copied from `docs/build/acceptance.json` at build time
 
 ## AC-001
 
-A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits.
+A fresh install reaches the first-run setup (firm name, first admin, optional two-factor) in one Compose up with no manual edits.
 
 Phases in scope: 1, 7.
 Full behavior phase: 1.
@@ -90,7 +90,7 @@ Arrange: Empty synthetic volume. No hand-edited env file and no client data.
 
 Action: docker compose up, then open the first-run URL.
 
-Expect: The form asks for firm name, the first admin, and TOTP enrollment.; No manual edit was required before the form appeared.
+Expect: The form asks for firm name and the first admin, then offers TOTP enrollment with a scannable QR code and a way to skip it.; No manual edit was required before the form appeared.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -108,15 +108,15 @@ Expect: The first-run form is not reached, so the criterion fails.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
-#### AC-001-F2 First admin without two-factor
+#### AC-001-F2 Setup or sign-in demands two-factor
 
 Phase 1. Kind: e2e. Status: pending. Expected exit code: 0.
 
-Arrange: Synthetic firm name and admin account.
+Arrange: Synthetic firm name and admin account. Default settings: security.totp_required.admin is off.
 
-Action: Submit the first admin with TOTP skipped.
+Action: Submit the first admin, skip TOTP enrollment, then sign in with email and password.
 
-Expect: The account is not saved as the first admin.
+Expect: If setup stays open, or the password sign-in asks for a code or enrollment, the criterion fails.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -2362,7 +2362,7 @@ Arrange: totp_by_role on the Security tab has been changed away from its invento
 
 Action: Press Reset to default on totp_by_role and issue the next request.
 
-Expect: totp_by_role is back to its inventoried default: required for admin, attorney, staff, and accountant; optional for client; admin always required.
+Expect: totp_by_role is back to its inventoried default: optional for every role, admin included; the admin can require it for any role.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 
@@ -4560,7 +4560,7 @@ Arrange: totp_by_role was changed away from its inventoried default.
 
 Action: Reset totp_by_role and read it.
 
-Expect: A value of totp_by_role other than required for admin, attorney, staff, and accountant; optional for client; admin always required fails the criterion.
+Expect: A value of totp_by_role other than optional for every role, admin included; the admin can require it for any role fails the criterion.
 
 Evidence: Command, integer exit code, and the observation named above. A mock, a double, a skip, an oracle pass, or a structural stand-in hash is refused.
 

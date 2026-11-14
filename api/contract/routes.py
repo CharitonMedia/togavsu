@@ -325,7 +325,8 @@ def _platform(api: Contract) -> None:
         summary="Run first-run setup",
         description=(
             "Creates the firm and the first admin, then returns an enrollment challenge with otpauth_uri and the TOTP secret. "
-            "No session cookie is set. The next call is confirmTotpEnrollment. A later setup call returns already_set_up."
+            "No session cookie is set. Setup is complete at this point. Two-factor is optional unless security.totp_required.admin is on: "
+            "the next call is confirmTotpEnrollment to turn it on, or login to skip it. A later setup call returns already_set_up."
         ),
         tag="Platform",
         features=["setup"],
@@ -349,9 +350,10 @@ def _identity(api: Contract) -> None:
         operation_id="login",
         summary="Sign in",
         description=(
-            "Password check. No session cookie is set until TOTP is confirmed. "
-            "A user who already enrolled gets status totp_required. "
-            "A user who has not enrolled gets status enrollment_required and enrollment_token, then calls startTotpEnrollment. "
+            "Password check. A user who has not turned on two-factor and holds no role that requires it "
+            "(security.totp_required.<role>, all off by default) gets status authenticated and a session cookie. "
+            "A user who already enrolled gets status totp_required and no session until the code is confirmed. "
+            "A user whose role requires two-factor and who has not enrolled gets status enrollment_required and enrollment_token, then calls startTotpEnrollment. "
             "Repeated failures lock the account."
         ),
         tag="Identity",

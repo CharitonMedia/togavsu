@@ -199,7 +199,7 @@ func TestFailedAuditKeepsResetSecretAndToken(t *testing.T) {
 			return strings.Contains(row.Reason, "user.totp_reset_confirmed")
 		},
 	})
-	if err := broken.ConfirmReset(ctx, caller, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), time.Now())); err == nil {
+	if _, err := broken.ConfirmReset(ctx, caller, reset.EnrollmentToken, TOTPCode(decodeSecret(t, reset.Secret), time.Now())); err == nil {
 		t.Fatal("confirm reset kept a secret without its audit row")
 	}
 	after, err := NewPG(sqlDB).TOTP().GetByUser(ctx, started.User.ID)
@@ -256,18 +256,18 @@ func TestConcurrentConfirmResetIsSingleUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	code := TOTPCode(decodeSecret(t, reset.Secret), time.Now())
-	wins := race(func() error {
-		return svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code)
-	}, func() error {
-		return svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code)
-	})
+	confirm := func() error {
+		_, err := svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code)
+		return err
+	}
+	wins := race(confirm, confirm)
 	if wins != 1 {
 		t.Fatalf("confirm reset wins %d", wins)
 	}
 	if n := countRows(t, sqlDB, `SELECT count(*) FROM audit_log WHERE reason LIKE '%user.totp_reset_confirmed%'`); n != 1 {
 		t.Fatalf("%d confirmation rows", n)
 	}
-	if err := svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code); codeOf(err) != "forbidden" {
+	if _, err := svc.ConfirmReset(ctx, caller, reset.EnrollmentToken, code); codeOf(err) != "forbidden" {
 		t.Fatalf("spent reset token: %v", err)
 	}
 }

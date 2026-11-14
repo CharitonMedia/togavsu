@@ -59,8 +59,12 @@ func TestRegistrySetResetAndReload(t *testing.T) {
 	if _, ok, err := mem.Get(ctx, "billing.time_increment_minutes"); err != nil || ok {
 		t.Fatal("reset left an override", ok, err)
 	}
-	if _, err := reg.Set(ctx, "security.totp_required.admin", "false", actor()); !errors.Is(err, settings.ErrReadOnly) {
+	// Admin two-factor is an ordinary setting: off by default, an admin can turn it on.
+	if _, err := reg.Set(ctx, "security.totp_required.admin", "true", actor()); err != nil {
 		t.Fatal(err)
+	}
+	if got, err := reg.Get(ctx, "security.totp_required.admin"); err != nil || got != "true" {
+		t.Fatal(got, err)
 	}
 	if _, err := reg.Set(ctx, "files.encrypt_s3", "false", actor()); !errors.Is(err, settings.ErrReadOnly) {
 		t.Fatal(err)
