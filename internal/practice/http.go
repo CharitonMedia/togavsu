@@ -290,7 +290,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
-		MarkerChoices: h.Svc.listSetting(r.Context(), "practice.markers", domain.DefaultMarkers()),
+		MarkerChoices: h.Svc.markerChoices(r.Context()),
 		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
 		AttorneyName:  attorney,
 		Panels:        panels,

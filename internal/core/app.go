@@ -339,7 +339,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// A module's own token writes files only while the module is installed and enabled
 	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
 	// the ui, so until then every module principal is refused.
-	docs.Files.SetModuleCheck(func(ctx context.Context, module string) (bool, error) {
+	moduleOn := func(ctx context.Context, module string) (bool, error) {
 		if ext.Modules == nil {
 			return false, nil
 		}
@@ -352,7 +352,9 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 			return false, err
 		}
 		return in.Enabled, nil
-	})
+	}
+	docs.Files.SetModuleCheck(moduleOn)
+	app.Practice.SetModuleCheck(moduleOn)
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}

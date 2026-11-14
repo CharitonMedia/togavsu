@@ -3,6 +3,7 @@ package practice
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -52,6 +53,7 @@ type Memory struct {
 	values  map[string]FieldValue
 	markers map[domain.ID]MarkerDef
 	pinned  map[domain.ID]MatterMarker
+	roles   map[domain.ID]PartyRoleDef
 	closes  []CloseRecord
 	runs    []ConflictRun
 	checked map[domain.ID]time.Time
@@ -90,6 +92,7 @@ func NewMemory() *Memory {
 		values:    map[string]FieldValue{},
 		markers:   map[domain.ID]MarkerDef{},
 		pinned:    map[domain.ID]MatterMarker{},
+		roles:     map[domain.ID]PartyRoleDef{},
 		checked:   map[domain.ID]time.Time{},
 		idem:      map[string]idemRecord{},
 	}
@@ -979,9 +982,8 @@ func (m *Memory) EnsureMarkers(ctx context.Context, labels []string, at time.Tim
 		if err != nil {
 			return err
 		}
-		m.markers[id] = MarkerDef{ID: id, Label: label}
-		_ = at
-		_ = actor
+		m.markers[id] = MarkerDef{ID: id, Label: label, CreatedAt: at, CreatedBy: actor, UpdatedAt: at}
+		have[label] = true
 	}
 	return nil
 }
@@ -993,15 +995,90 @@ func (m *Memory) Marker(id domain.ID) (MarkerDef, bool) {
 	return row, ok
 }
 
+// MarkerByLabel finds the firm marker with label, preferring an active one. Module
+// markers are pinned by id only.
 func (m *Memory) MarkerByLabel(label string) (MarkerDef, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	var found MarkerDef
+	ok := false
 	for _, row := range m.markers {
-		if row.Label == label {
-			return row, true
+		if row.Label != label || row.ModuleID != "" {
+			continue
+		}
+		if !ok || (found.Inactive && !row.Inactive) || (found.Inactive == row.Inactive && row.ID < found.ID) {
+			found, ok = row, true
 		}
 	}
-	return MarkerDef{}, false
+	return found, ok
+}
+
+func (m *Memory) PutMarker(ctx context.Context, row MarkerDef) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.markers[row.ID] = row
+	return nil
+}
+
+// Markers returns every marker definition in id (creation) order.
+func (m *Memory) Markers() []MarkerDef {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]MarkerDef, 0, len(m.markers))
+	for _, row := range m.markers {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func (m *Memory) PutPartyRole(ctx context.Context, row PartyRoleDef) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, other := range m.roles {
+		if other.ID != row.ID && other.Key == row.Key {
+			return repository.ErrConflict
+		}
+	}
+	m.roles[row.ID] = row
+	return nil
+}
+
+// PartyRoles returns every party-role record in id (creation) order.
+func (m *Memory) PartyRoles() []PartyRoleDef {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]PartyRoleDef, 0, len(m.roles))
+	for _, row := range m.roles {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// UpdateMatterMarker replaces a pinned marker; the same marker twice on a matter is a conflict.
+func (m *Memory) UpdateMatterMarker(ctx context.Context, row MatterMarker) error {
+	if err := ready(ctx); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.pinned[row.ID]; !ok {
+		return repository.ErrNotFound
+	}
+	for id, existing := range m.pinned {
+		if id != row.ID && existing.MatterID == row.MatterID && existing.MarkerID == row.MarkerID && existing.PracticeAreaID == row.PracticeAreaID {
+			return repository.ErrConflict
+		}
+	}
+	m.pinned[row.ID] = row
+	return nil
 }
 
 func (m *Memory) PutMatterMarker(ctx context.Context, row MatterMarker) error {

@@ -457,8 +457,12 @@ func tagDoc(row domain.ContactTag) map[string]any {
 }
 
 func markerDoc(row MatterMarker) map[string]any {
+	updated := row.UpdatedAt
+	if updated.IsZero() {
+		updated = row.CreatedAt
+	}
 	return map[string]any{
-		"id": row.ID, "created_at": when(row.CreatedAt), "created_by": row.CreatedBy, "updated_at": when(row.CreatedAt),
+		"id": row.ID, "created_at": when(row.CreatedAt), "created_by": row.CreatedBy, "updated_at": when(updated),
 		"matter_id": row.MatterID, "marker_id": row.MarkerID, "practice_area_id": idOrNil(row.PracticeAreaID),
 	}
 }
