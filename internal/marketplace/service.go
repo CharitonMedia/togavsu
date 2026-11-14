@@ -114,11 +114,11 @@ func admin(p domain.Principal) error {
 	return nil
 }
 
-// apiError maps a client or verification error onto the shared error table.
 // APIError is err as the API reports it: a failed verification becomes the contract's
 // tampered_module or unsigned_module, a missing manifest a validation error.
 func APIError(err error) error { return apiError(err) }
 
+// apiError maps a client or verification error onto the shared error table.
 func apiError(err error) error {
 	switch {
 	case err == nil:
