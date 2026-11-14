@@ -60,13 +60,13 @@ func TestFileGrantsBulkAndUnassignedReview(t *testing.T) {
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 	mods := map[string]*client{}
 	for _, id := range []string{"mail-intake", "other-intake"} {
-		x.rt.handlers[id] = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+		x.rt.Handle(id, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 		if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(intakeManifest(id)))); problem != "" {
 			t.Fatalf("install %s: %s", id, problem)
 		}
 		x.approveOnTab(id)
 		c := newClient(t, d.srv.URL)
-		c.bearer = x.rt.last(id).Secrets["togavsu_api_token"]
+		c.bearer = x.rt.Last(id).Secrets["togavsu_api_token"]
 		mods[id] = c
 	}
 	mod, other := mods["mail-intake"], mods["other-intake"]

@@ -2,6 +2,8 @@
 
 Module id `documents`. PRD 9.8 item 1: documents and templates, document assembly and generation, bulk download and extra versioning tools. This spec is complete: every decision is made here, and a build lane runs it start to finish.
 
+**Where this module builds (Nov 14, 2026).** This module builds in its own repository, CharitonMedia/togavsu-documents (modules PRD section 2), not in the core repository. Read each path below under `modules/documents/` as the same path at that repository's root, `cmd/documents/` as its `cmd/`, and `internal/modules/module_documents_pg_test.go` as that repository's Postgres acceptance suite. The suite runs on `pkg/modulekit/coretest` from the public module kit (modules PRD section 5), whose counterparts of the harness names used below (`newEnv`, `e.rt.handlers`, `e.rt.last`, `approveAll`, `contextFor`, `moduleDB`) are listed in docs/modules/MODULE-KIT.md. Packaging and signing go through `pkg/modulekit`, never `internal/marketplace`. "Lane" below means this module's build in its repository. The repository's go.mod requires the core module for the kit and only dependencies the core's go.mod pins. The spec itself stays here, at docs/modules/documents/SPEC.md.
+
 ## 1. Purpose and scope
 
 The module turns the firm's own templates into finished drafts on a matter, generates whole document packages in one step, downloads a matter's files as one zip, and adds version notes, compare and copy tools on top of the core's file versions.
@@ -467,7 +469,7 @@ Module rows point at files with `ON DELETE RESTRICT`, so the core refuses to pur
 
 ## 8. Tests
 
-All tests run in the existing "Core tests" CI job (`go test ./...` against real Postgres through `TOGAVSU_TEST_DATABASE_URL`, with the wordcraft-cli build that job already extracts). No test reads real client data.
+All tests run in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package), which sets up the same wordcraft-cli build the core's Core tests job extracts. No test reads real client data.
 
 Unit tests in `modules/documents/`, no database:
 
@@ -475,9 +477,9 @@ Unit tests in `modules/documents/`, no database:
 - `tokens_test.go`: the resolver against an `httptest` server serving synthetic matter, party, contact, address, county, firm, directory and custom field JSON at a fixed clock; address choice rules; blank counts as unresolved; principal choice (MOD-DOC-11, 17).
 - `zip_test.go`: entry paths, folder and flat layouts, `-v<n>` and `.md` naming, clash suffixes, the CC-5 path rules (MOD-DOC-30).
 - `diff_test.go`: line diff on synthetic Markdown (MOD-DOC-33 compare).
-- `package_test.go`: `Files()` parses with `modules.ParseManifest`, every migration passes `modules.CheckMigrations`, the widget target resolves, and a tampered migration fails the check (the static half of MOD-DOC-01).
+- `package_test.go`: `Files()` parses with `modulekit.ParseManifest`, every migration passes `modulekit.CheckMigrations`, the widget target resolves, and a tampered migration fails the check (the static half of MOD-DOC-01).
 
-Acceptance tests in `internal/modules/module_documents_pg_test.go` (package `modules_test`, reusing the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, the fake runtime, `approveAll`, `contextFor`, `moduleDB`). Before install each test sets `e.rt.handlers["documents"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("documents")` for the deployment's secrets and builds `documents.New` with its own schema login from `e.moduleDB`. The harness itself doesn't change (CORE-29). Each test builds and signs the package with `documents.Build` and a generated key, trusts the key, installs over `POST /api/v1/modules`, approves permissions, and drives the module's pages through the core with context tokens:
+Acceptance tests in `internal/modules/module_documents_pg_test.go` (package `modules_test`, reusing the existing harness in `internal/modules/harness_pg_test.go`: `newEnv`, the fake runtime, `approveAll`, `contextFor`, `moduleDB`). Before install each test sets `e.rt.handlers["documents"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("documents")` for the deployment's secrets and builds `documents.New` with its own schema login from `e.moduleDB`. coretest serves the core routes this module calls (CORE-29). Each test builds and signs the package with `documents.Build` and a generated key, trusts the key, installs over `POST /api/v1/modules`, approves permissions, and drives the module's pages through the core with context tokens:
 
 - `TestPGDocumentsInstall`: MOD-DOC-01, 02 (declining a required scope cancels; declining an optional one installs).
 - `TestPGDocumentsLibrary`: MOD-DOC-03, 06 to 09.
@@ -517,7 +519,7 @@ modules/documents/
 internal/modules/module_documents_pg_test.go   section 8 acceptance tests
 ```
 
-Only the Go standard library and the repo's existing dependencies are used; no PDF or DOCX library is added. The package is signed through the marketplace signing path matter-clock uses (`marketplace.Sign`, `marketplace.SignedPackage`); `documents package -key <file> -out documents.signed.json` writes the signed file. The lane edits `modules/documents/` and the one acceptance test file `internal/modules/module_documents_pg_test.go`. It doesn't edit `.github/`, `go.mod`, protected control files or any other file in a core package. CC-1 to CC-7 go to the module-core lane through docs/modules/CORE-CHANGES.md.
+Only the Go standard library, the dependencies the core's go.mod pins and the module kit are used; no PDF or DOCX library is added. The package is signed through the module kit (`pkg/modulekit`, the signing path the core uses); `documents package -key <file> -out documents.signed.json` writes the signed file. The build writes only the CharitonMedia/togavsu-documents repository and nothing in the core repository. CC-1 to CC-7 go to the module-core lane through docs/modules/CORE-CHANGES.md.
 
 ## 10. Out of scope
 

@@ -1,6 +1,8 @@
 # QuickBooks module specification
 
-Module id `quickbooks`. Status: specified, not built. This file is the whole build contract for the module lane; every decision is made here.
+Module id `quickbooks`. Status: specified, not built. This file is the whole build contract for the module's build; every decision is made here.
+
+**Where this module builds (Nov 14, 2026).** This module builds in its own repository, CharitonMedia/togavsu-quickbooks (modules PRD section 2), not in the core repository. Read each path below under `modules/quickbooks/` as the same path at that repository's root, `cmd/quickbooks/` as its `cmd/`, and `internal/modules/module_quickbooks_pg_test.go` as that repository's Postgres acceptance suite. The suite runs on `pkg/modulekit/coretest` from the public module kit (modules PRD section 5), whose counterparts of the harness names used below (`newEnv`, `e.rt.handlers`, `e.rt.last`, `approveAll`, `contextFor`, `moduleDB`) are listed in docs/modules/MODULE-KIT.md. Packaging and signing go through `pkg/modulekit`, never `internal/marketplace`. "Lane" below means this module's build in its repository. The repository's go.mod requires the core module for the kit and only dependencies the core's go.mod pins. The spec itself stays here, at docs/modules/quickbooks/SPEC.md.
 
 ## 1. Purpose and scope
 
@@ -273,7 +275,7 @@ The core today runs a module token with no context token as a principal with no 
 7. **Module notification kinds and POST /api/v1/notifications (CORE-03).** The route is in the contract with no Go route today. The manifest's `notifications` list declares kind `sync_problem`, which the core names `quickbooks.sync_problem`, with default channels in_app and email, in a QuickBooks group of the notification preferences grid. NotificationWrite takes `recipient_roles` (a non-empty subset of admin and accountant) in place of `user_id`, accepted only on a service call from a module holding `notifications:write`. The core creates one notification per active user holding a named role and emails each recipient whose preference for the kind keeps email on. `link` must be a `/modules/{module_id}/` page of the calling module.
 8. **Module secret store (CORE-06).** `PUT`, `GET` and `DELETE /api/v1/modules/{module_id}/secrets/{name}` with new scope `module_secrets:write`, callable only by the module's own token. Values are sealed with the core key like secret settings, and the audit log records only the name. This module stores `qbo/client_secret`, `qbo/access_token` and `qbo/refresh_token`.
 9. **Linkable trust accounts (CORE-22).** Add `trust_account` (`trust_accounts`) to `coreRecords` in `internal/modules/manifest.go`, so `trust_bank_map`'s foreign key to `core.trust_accounts` passes the install check.
-10. **Test support: no harness change (CORE-29).** The acceptance suite is `internal/modules/module_quickbooks_pg_test.go` in package `modules_test` and uses the existing harness as it is (section 10). CORE-29 extends `compose` so the money, trust, notification and secret routes this module calls are served in the test core.
+10. **Test support (CORE-29).** The acceptance suite runs in the module's repository on `pkg/modulekit/coretest` (section 10). CORE-29 extends coretest so the money, trust, notification and secret routes this module calls are served in the test core.
 11. **Sidebar placement (CORE-08).** Manifest `sidebar` entries gain `section`, `icon` and `order`. This module's entry sits in section `money` with icon `ledger` at order 410, in place of the fixed Activity section and puzzle icon.
 12. **Frame sandbox (CORE-09).** The staff frame sandbox gains `allow-popups` and `allow-popups-to-escape-sandbox`, so the setup tab's Connect button opens Intuit's consent page in its own top-level window. Frames never get `allow-same-origin`.
 
@@ -356,10 +358,10 @@ All run against the fake QBO and synthetic records (firm Sample Law Co, client J
 
 ## 10. Tests
 
-Unit tests live under modules/quickbooks and the acceptance suite lives in internal/modules. Both run in the existing "Core tests" CI job: scripts/ci/test-core.sh runs `go vet ./...` and `go test` over `go list ./...`, which includes both, against real Postgres via TOGAVSU_TEST_DATABASE_URL. No CI file changes.
+Unit tests and the acceptance suite live in the module's repository and run in the repository's own CI (`go test -race ./...` against a Postgres 17 service through `TOGAVSU_TEST_DATABASE_URL`, plus `togavsu-module check` on the package), with `go vet ./...`.
 
 - **Unit (no database):** `mapping_test.go` for every row of section 5, cent conversion, hash stability, DisplayName cleaning and account type checks; `qbo/http_test.go` drives the HTTP adapter against an httptest server with synthetic QBO JSON (requestid sent, minorversion 75, 401 then refresh, 429 backoff, fault parsing, limiter); `qbo/fake/fake_test.go` proves the fake enforces what section 6 says.
-- **Acceptance (`internal/modules/module_quickbooks_pg_test.go`, package `modules_test`):** uses the existing harness in `internal/modules/harness_pg_test.go` (`newEnv`, `approveAll`, `contextFor`, `moduleDB`) with no change to it (section 8, item 10). Before install each test sets `e.rt.handlers["quickbooks"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("quickbooks")` for the deployment's secrets and builds `quickbooks.New(Config{...})` with the module's own database login from `e.moduleDB`, the core test server URL and `qbo/fake`. Each test builds the package with `quickbooks.Build` and a generated Ed25519 key, adds the public key as a trusted local key, installs through POST /api/v1/modules and approves the scopes. Tests create synthetic money through the core API (invoices, payments, trust posts, apply trust, flat fee apply, void, write-off, reversals), let core events reach `/events`, drive the worker with an injected clock, and assert on the fake's state and the module's tables. One test per criterion, named `TestMODQBO01Install` and so on. They skip only when TOGAVSU_TEST_DATABASE_URL is unset outside CI, as the harness does.
+- **Acceptance (`internal/modules/module_quickbooks_pg_test.go`, package `modules_test`):** uses the existing harness in `internal/modules/harness_pg_test.go` (`newEnv`, `approveAll`, `contextFor`, `moduleDB`) through its coretest counterparts (section 8, item 10). Before install each test sets `e.rt.handlers["quickbooks"]` to a handler that, on its first request after each Deploy, reads `e.rt.last("quickbooks")` for the deployment's secrets and builds `quickbooks.New(Config{...})` with the module's own database login from `e.moduleDB`, the core test server URL and `qbo/fake`. Each test builds the package with `quickbooks.Build` and a generated Ed25519 key, adds the public key as a trusted local key, installs through POST /api/v1/modules and approves the scopes. Tests create synthetic money through the core API (invoices, payments, trust posts, apply trust, flat fee apply, void, write-off, reversals), let core events reach `/events`, drive the worker with an injected clock, and assert on the fake's state and the module's tables. One test per criterion, named `TestMODQBO01Install` and so on. They skip only when TOGAVSU_TEST_DATABASE_URL is unset outside CI, as the harness does.
 - No test reaches the network beyond httptest servers; the HTTP adapter's base URLs are always overridden in tests.
 
 ## 11. Code layout
@@ -369,7 +371,7 @@ modules/quickbooks/
   README.md                 what it does, build, sign, install
   Dockerfile                as examples/matter-clock/Dockerfile, building ./modules/quickbooks/cmd/quickbooks
   limits.json               tunables: limiter, worker tick, state lifetime
-  package.go                embeds package/; Files, Archive, Build, SignFile (matter-clock's signing path)
+  package.go                embeds package/; Files, Archive, Build, SignFile (the module kit's signing path, pkg/modulekit)
   server.go                 routes: /widget /books /setup /matter /events /oauth/start /oauth/callback
                             /retry /acknowledge /sync-now /reset /disconnect /create-missing /trust-bank-map /healthz
   core.go                   core API client (module token, optional context token)
@@ -394,8 +396,8 @@ internal/modules/module_quickbooks_pg_test.go   section 10 acceptance suite
 
 - Go standard library plus existing dependencies (pgx). No new dependency and no change to go.mod.
 - Small fixed numbers follow the AC-030 convention matter-clock uses; tunables live in limits.json. Code is gofmt clean.
-- Signing: `quickbooks package` signs with an Ed25519 seed through internal/marketplace (Sign, Digest, KeyID, SignedPackage), exactly as matter-clock; the admin installs the signed file locally or from the marketplace.
-- The lane edits only modules/quickbooks/, docs/modules/quickbooks/ and the one suite file internal/modules/module_quickbooks_pg_test.go. It does not edit .github/, go.mod, protected control files or any other file in a core package. Section 8 items go to the module-core lane through docs/modules/CORE-CHANGES.md.
+- Signing: `quickbooks package` signs with an Ed25519 seed through `pkg/modulekit` (SignFile, Digest, KeyID and the signed package file), as matter-clock does; the admin installs the signed file locally or from the marketplace.
+- The build writes only the CharitonMedia/togavsu-quickbooks repository and nothing in the core repository; a change to this spec goes to the integration lead. Section 8 items go to the module-core lane through docs/modules/CORE-CHANGES.md.
 
 ## 12. Out of scope
 

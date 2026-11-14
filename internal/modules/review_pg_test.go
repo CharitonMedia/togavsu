@@ -111,20 +111,20 @@ func TestPGUninstallRejectsStaleBackup(t *testing.T) {
 	}
 	// First life: Delete data with a backup Togavsu takes itself. The login is locked
 	// while the backup runs, so nothing can write between backup and drop.
-	role := e.rt.last("matter-clock").Secrets["togavsu_db_role"]
+	role := e.rt.Last("matter-clock").Secrets["togavsu_db_role"]
 	canLogin := func() bool {
 		return e.count(`SELECT COUNT(*) FROM pg_roles WHERE rolname = $1 AND rolcanlogin`, role) == 1
 	}
 	locked := false
-	e.backups.during = func() { locked = !canLogin() }
+	e.backups.During = func() { locked = !canLogin() }
 	if r := del(""); r.code != http.StatusOK {
 		t.Fatalf("first delete: %d %s", r.code, r.body)
 	}
-	e.backups.during = nil
+	e.backups.During = nil
 	if !locked {
 		t.Fatal("the module could still log in while its pre-delete backup ran")
 	}
-	b1 := e.backups.made[0].ID
+	b1 := e.backups.Made()[0].ID
 
 	// Second life: reinstall, write new data, then name the first life's backup.
 	e.installSample()
@@ -164,7 +164,7 @@ func TestPGUninstallRejectsStaleBackup(t *testing.T) {
 		} else {
 			bk.SHA256 = "synthetic-sha"
 		}
-		e.backups.add(bk)
+		e.backups.Add(bk)
 		if r := del(bk.ID); r.code != http.StatusConflict {
 			t.Fatalf("%s backup accepted: %d %s", name, r.code, r.body)
 		}

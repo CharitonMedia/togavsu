@@ -172,6 +172,19 @@ func (p *Package) Migrations() ([]db.Migration, error) {
 	return out, nil
 }
 
+// CheckedMigrations returns the package's migrations once they pass the install check
+// (CheckMigrations against the manifest).
+func (p *Package) CheckedMigrations() ([]db.Migration, error) {
+	ms, err := p.Migrations()
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckMigrations(p.Manifest, ms); err != nil {
+		return nil, err
+	}
+	return ms, nil
+}
+
 // Archive writes files as a gzip tar in path order.
 func Archive(files map[string][]byte) ([]byte, error) {
 	names := make([]string, 0, len(files))

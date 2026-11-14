@@ -45,7 +45,7 @@ func TestPGFailedUpdateAppliesDeclineToRunningToken(t *testing.T) {
 		t.Fatalf("install: %d %s", r.code, r.body)
 	}
 	e.approveAll("matter-clock")
-	running := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	running := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	if !strings.Contains(strings.Join(e.tokenScopes(t), ","), "events:read") {
 		t.Fatal("events:read was approved but isn't on the token")
 	}
@@ -70,7 +70,7 @@ func TestPGFailedUpdateAppliesDeclineToRunningToken(t *testing.T) {
 		t.Fatal("the failed migration didn't roll back")
 	}
 
-	now := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	now := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	if now == running {
 		t.Fatal("the running module kept the token that carries the declined scope")
 	}
@@ -81,7 +81,7 @@ func TestPGFailedUpdateAppliesDeclineToRunningToken(t *testing.T) {
 	if e.tokenScopesOf(t, running) != nil {
 		t.Fatal("the old token, which carries the declined scope, still works")
 	}
-	if e.rt.last("matter-clock").Version != "1.0.0" {
+	if e.rt.Last("matter-clock").Version != "1.0.0" {
 		t.Fatal("the running version changed")
 	}
 	if d := e.decision("events:read"); d != "declined" {
@@ -115,7 +115,7 @@ func TestPGFailedUpdateAppliesDeclineToRunningToken(t *testing.T) {
 func TestPGFailedUpdateRestoresRunningDecisions(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	running := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	running := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 
 	changed := e.build(func(f map[string][]byte) {
 		withVersion(f, "1.1.0")
@@ -133,7 +133,7 @@ func TestPGFailedUpdateRestoresRunningDecisions(t *testing.T) {
 	if r.code != http.StatusOK || r.json["version"] != "1.0.0" {
 		t.Fatalf("decisions for a failing update: %d %s", r.code, r.body)
 	}
-	if e.rt.last("matter-clock").Secrets["togavsu_api_token"] != running {
+	if e.rt.Last("matter-clock").Secrets["togavsu_api_token"] != running {
 		t.Fatal("the running token changed though its decisions were restored")
 	}
 	scopes := strings.Join(e.tokenScopes(t), ",")

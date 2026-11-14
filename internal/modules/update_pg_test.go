@@ -44,7 +44,7 @@ func TestPGRefusedMigrationsAtInstall(t *testing.T) {
 func TestPGMigrationRoleCannotTouchCore(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	role := e.rt.last("matter-clock").Secrets["togavsu_db_role"]
+	role := e.rt.Last("matter-clock").Secrets["togavsu_db_role"]
 	for _, stmt := range []string{
 		"CREATE TABLE core.evil (id TEXT)",
 		"INSERT INTO core.settings (id) VALUES ('x')",
@@ -78,7 +78,7 @@ func firstChecksum(t *testing.T, e *env) string {
 func TestPGUpdates(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	running := e.rt.last("matter-clock")
+	running := e.rt.Last("matter-clock")
 
 	changed := e.build(func(f map[string][]byte) {
 		withVersion(f, "1.1.0")
@@ -112,7 +112,7 @@ func TestPGUpdates(t *testing.T) {
 	if e.count(`SELECT COUNT(*) FROM core.schema_migrations WHERE owner = 'mod_matter_clock' AND version = 2`) != 0 {
 		t.Fatal("the failed migration was recorded")
 	}
-	if e.rt.last("matter-clock").Version != "1.0.0" || e.rt.last("matter-clock").Secrets["togavsu_api_token"] != running.Secrets["togavsu_api_token"] {
+	if e.rt.Last("matter-clock").Version != "1.0.0" || e.rt.Last("matter-clock").Secrets["togavsu_api_token"] != running.Secrets["togavsu_api_token"] {
 		t.Fatal("the old version stopped running")
 	}
 	if r := e.do("GET", "/api/v1/modules/matter-clock", nil, e.as("admin")...); r.json["version"] != "1.0.0" || r.json["status"] != modules.StatusInstalled {
@@ -136,7 +136,7 @@ func TestPGUpdates(t *testing.T) {
 	if err != nil || tp.Title != "Matter Clock monthly targets" {
 		t.Fatalf("guide not refreshed on update: %+v %v", tp, err)
 	}
-	if e.rt.last("matter-clock").Version != "1.3.0" {
+	if e.rt.Last("matter-clock").Version != "1.3.0" {
 		t.Fatal("the new version wasn't deployed")
 	}
 
@@ -151,7 +151,7 @@ func TestPGUpdates(t *testing.T) {
 	if r.code != http.StatusAccepted || r.json["outcome"] != "awaiting_approval" || mod["version"] != "1.3.0" {
 		t.Fatalf("update with a new permission: %d %s", r.code, r.body)
 	}
-	if e.rt.last("matter-clock").Version != "1.3.0" {
+	if e.rt.Last("matter-clock").Version != "1.3.0" {
 		t.Fatal("the old version stopped while the new permission waited")
 	}
 	r = e.do("POST", "/api/v1/modules/matter-clock/permissions", map[string]any{"decisions": []map[string]string{{"scope": "notes:read", "decision": "decline"}}}, e.as("admin")...)
@@ -186,7 +186,7 @@ func TestPGUpdates(t *testing.T) {
 }
 
 func (e *env) tokenScopes(t *testing.T) []string {
-	return e.tokenScopesOf(t, e.rt.last("matter-clock").Secrets["togavsu_api_token"])
+	return e.tokenScopesOf(t, e.rt.Last("matter-clock").Secrets["togavsu_api_token"])
 }
 
 func (e *env) tokenScopesOf(t *testing.T, secret string) []string {

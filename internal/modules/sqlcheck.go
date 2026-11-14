@@ -718,9 +718,12 @@ func (c *migrationCheck) createView(p *stmt) error {
 		return err
 	}
 	// Every relation a view reads is in the module's schema (after FROM or JOIN, a
-	// qualified name must carry the module schema).
+	// qualified name must carry the module schema). A FROM that is an argument keyword
+	// of EXTRACT, SUBSTRING, TRIM or OVERLAY names a value, not a relation, so it is
+	// skipped; a subquery inside those calls opens its own parenthesis and is checked.
+	argFrom := argumentFroms(body)
 	for i := 0; i < len(body); i++ {
-		if !body[i].is("from", "join") {
+		if !body[i].is("from", "join") || argFrom[i] {
 			continue
 		}
 		j := i + 1
@@ -747,6 +750,28 @@ func (c *migrationCheck) createView(p *stmt) error {
 	}
 	c.views[name] = true
 	return nil
+}
+
+// argumentFroms marks each FROM whose innermost enclosing parenthesis belongs to a call
+// of EXTRACT, SUBSTRING, TRIM or OVERLAY, where FROM is part of the call's syntax.
+func argumentFroms(body []tok) map[int]bool {
+	out := map[int]bool{}
+	var calls []bool
+	var prev tok
+	for i, t := range body {
+		switch {
+		case t.kind == tPunct && t.text == "(":
+			calls = append(calls, prev.is("extract", "substring", "trim", "overlay"))
+		case t.kind == tPunct && t.text == ")":
+			if len(calls) > 0 {
+				calls = calls[:len(calls)-1]
+			}
+		case t.is("from") && len(calls) > 0 && calls[len(calls)-1]:
+			out[i] = true
+		}
+		prev = t
+	}
+	return out
 }
 
 func (c *migrationCheck) alterTable(p *stmt) error {

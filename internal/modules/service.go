@@ -481,21 +481,43 @@ func (s *Service) download(ctx context.Context, p domain.Principal, listing, ver
 // verify reads and checks a package whose signature the marketplace component has
 // verified. Nothing in it is used before this passes.
 func (s *Service) verify(v marketplace.Verified) (*Package, Signer, []db.Migration, error) {
-	pkg, err := ReadPackage(v.Package)
+	pkg, ms, err := CheckSigned(v)
 	if err != nil {
-		return nil, Signer{}, nil, err
-	}
-	if pkg.Manifest.ID != v.ModuleID || pkg.Manifest.Version != v.Version {
-		return nil, Signer{}, nil, refuse(CodeTampered, "the package manifest doesn't match the signed manifest")
-	}
-	ms, err := pkg.Migrations()
-	if err != nil {
-		return nil, Signer{}, nil, err
-	}
-	if err := CheckMigrations(pkg.Manifest, ms); err != nil {
 		return nil, Signer{}, nil, err
 	}
 	return pkg, Signer{KeyID: v.Signer.KeyID, Source: v.Signer.Source, Name: v.Signer.Author}, ms, nil
+}
+
+// CheckSigned is the install check on a package whose signature passed: it unpacks the
+// package, refuses a manifest that differs from the signed one, and runs the migration
+// checks. Install and update run it before anything in the package is used.
+func CheckSigned(v marketplace.Verified) (*Package, []db.Migration, error) {
+	pkg, err := ReadPackage(v.Package)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pkg.Manifest.ID != v.ModuleID || pkg.Manifest.Version != v.Version {
+		return nil, nil, refuse(CodeTampered, "the package manifest doesn't match the signed manifest")
+	}
+	ms, err := pkg.CheckedMigrations()
+	if err != nil {
+		return nil, nil, err
+	}
+	return pkg, ms, nil
+}
+
+// CheckPackage is CheckSigned without the signature: it unpacks package bytes and runs
+// the manifest and migration checks the core runs at install.
+func CheckPackage(raw []byte) (*Package, []db.Migration, error) {
+	pkg, err := ReadPackage(raw)
+	if err != nil {
+		return nil, nil, err
+	}
+	ms, err := pkg.CheckedMigrations()
+	if err != nil {
+		return nil, nil, err
+	}
+	return pkg, ms, nil
 }
 
 // Install verifies an uploaded signed package file and records it awaiting the admin's

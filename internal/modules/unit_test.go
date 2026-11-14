@@ -147,6 +147,34 @@ func TestPackageMigrations(t *testing.T) {
 	}
 }
 
+// A FROM inside EXTRACT, SUBSTRING, TRIM or OVERLAY is call syntax, not a relation the
+// view reads; a subquery inside such a call is still checked.
+func TestViewCallFromIsNotARelation(t *testing.T) {
+	check := func(view string) error {
+		raw, err := matterclock.Archive(func(f map[string][]byte) {
+			f["migrations/0002_view.sql"] = []byte(view)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pkg, err := modules.ReadPackage(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = pkg.CheckedMigrations()
+		return err
+	}
+	ok := "CREATE VIEW event_ages AS SELECT e.event_id, extract(epoch FROM to_timestamp(e.received_at)) AS secs, " +
+		"substring(e.action FROM 1 FOR 3) AS verb, trim(both ' ' FROM e.record_id) AS rec FROM received_events e;"
+	if err := check(ok); err != nil {
+		t.Fatalf("call FROM read as a relation: %v", err)
+	}
+	bad := "CREATE VIEW leak AS SELECT extract(epoch FROM (SELECT max(m.opened_at) FROM core.matters m)) AS secs FROM received_events;"
+	if err := check(bad); code(err) != modules.CodeMigration || !strings.Contains(err.Error(), "core.matters") {
+		t.Fatalf("subquery inside EXTRACT not checked: %v", err)
+	}
+}
+
 func TestWebhookSignature(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	body := []byte(`{"id":"e1"}`)

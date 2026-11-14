@@ -3,69 +3,24 @@ package core
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha1"
-	"crypto/sha256"
-	"encoding/base32"
-	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/api"
-	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/identity"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
 )
 
 // testDSN creates an empty database for t and returns its URL.
 func testDSN(t *testing.T) string {
 	t.Helper()
-	raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
-	if raw == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("TOGAVSU_TEST_DATABASE_URL is required in CI")
-		}
-		t.Skip("TOGAVSU_TEST_DATABASE_URL is not set")
-	}
-	admin, err := db.OpenPostgres(raw, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Close()
-	sum := sha256.Sum256([]byte("core/" + t.Name()))
-	name := "c" + hex.EncodeToString(sum[:8])
-	ctx := context.Background()
-	if _, err := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+name); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+name); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		admin, err := db.OpenPostgres(raw, "")
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.ExecContext(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
-		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name)
-	})
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.Path = "/" + name
-	return u.String()
+	return testkit.NewDatabase(t, "c", "core/"+t.Name())
 }
 
 var testKey = bytes.Repeat([]byte{7}, 32)
@@ -102,20 +57,11 @@ func start(t *testing.T, dsn string) (*App, *httptest.Server) {
 // totp is RFC 6238 with SHA-1, 30 seconds and six digits, as identity/params.go sets.
 func totp(t *testing.T, secret string, at time.Time) string {
 	t.Helper()
-	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], uint64(at.Unix()/30))
-	mac := hmac.New(sha1.New, key)
-	mac.Write(buf[:])
-	sum := mac.Sum(nil)
-	off := sum[len(sum)-1] & 0x0f
-	bin := binary.BigEndian.Uint32(sum[off:off+4]) & 0x7fffffff
-	return fmt.Sprintf("%06d", bin%1000000)
+	return testkit.TOTP(t, secret, at)
 }
 
+// client is a person's or token's view of the core: testkit.Client's session, CSRF and
+// bearer handling behind the short names these tests use.
 type client struct {
 	t      *testing.T
 	base   string
@@ -124,14 +70,15 @@ type client struct {
 	bearer string
 }
 
-func newClient(t *testing.T, base string) *client {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &client{t: t, base: base, http: &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}}
+func newClient(t *testing.T, base string) *client { return wrapClient(testkit.NewClient(t, base)) }
+
+func wrapClient(k *testkit.Client) *client {
+	return &client{t: k.T, base: k.Base, http: k.HTTP, csrf: k.CSRF, bearer: k.Bearer}
+}
+
+// kit is c as a testkit.Client; the cookie jar is shared.
+func (c *client) kit() *testkit.Client {
+	return &testkit.Client{T: c.t, Base: c.base, HTTP: c.http, CSRF: c.csrf, Bearer: c.bearer}
 }
 
 type resp struct {
@@ -141,105 +88,29 @@ type resp struct {
 	loc  string
 }
 
+func fromKit(r testkit.Resp) resp { return resp{code: r.Code, body: r.Body, json: r.JSON, loc: r.Loc} }
+
 func (c *client) do(method, path string, body any, hdr ...string) resp {
 	c.t.Helper()
-	var rd io.Reader
-	ctype := ""
-	switch b := body.(type) {
-	case nil:
-	case url.Values:
-		rd, ctype = strings.NewReader(b.Encode()), "application/x-www-form-urlencoded"
-	default:
-		raw, err := json.Marshal(b)
-		if err != nil {
-			c.t.Fatal(err)
-		}
-		rd, ctype = bytes.NewReader(raw), "application/json"
-	}
-	req, err := http.NewRequest(method, c.base+path, rd)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	if ctype != "" {
-		req.Header.Set("Content-Type", ctype)
-	}
-	if c.csrf != "" {
-		req.Header.Set("X-CSRF-Token", c.csrf)
-	}
-	if c.bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearer)
-	}
-	for i := 0; i+1 < len(hdr); i += 2 {
-		if hdr[i+1] == "" {
-			req.Header.Del(hdr[i])
-		} else {
-			req.Header.Set(hdr[i], hdr[i+1])
-		}
-	}
-	res, err := c.http.Do(req)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	out := resp{code: res.StatusCode, body: string(raw), loc: res.Header.Get("Location")}
-	_ = json.Unmarshal(raw, &out.json)
-	return out
+	return fromKit(c.kit().Do(method, path, body, hdr...))
 }
 
 func (c *client) must(code int, method, path string, body any) resp {
 	c.t.Helper()
-	r := c.do(method, path, body)
-	if r.code != code {
-		c.t.Fatalf("%s %s: want %d, got %d: %s", method, path, code, r.code, r.body)
-	}
-	return r
+	return fromKit(c.kit().Must(code, method, path, body))
 }
 
 func str(t *testing.T, m map[string]any, keys ...string) string {
 	t.Helper()
-	var cur any = m
-	for _, k := range keys {
-		obj, ok := cur.(map[string]any)
-		if !ok {
-			t.Fatalf("no %s in %v", k, m)
-		}
-		cur = obj[k]
-	}
-	s, ok := cur.(string)
-	if !ok {
-		t.Fatalf("%v is not a string in %v", keys, m)
-	}
-	return s
+	return testkit.Str(t, m, keys...)
 }
 
-const adminPassword = "correct-horse-battery"
+const adminPassword = testkit.AdminPassword
 
 // firstRun drives setup over HTTP and returns the signed-in admin.
 func firstRun(t *testing.T, base string) *client {
 	t.Helper()
-	admin := newClient(t, base)
-	enroll := admin.must(http.StatusCreated, "POST", "/api/v1/setup", map[string]string{
-		"firm_name": "Synthetic Firm LLP", "time_zone": "America/Chicago", "admin_name": "Avery Admin",
-		"admin_email": "avery@firm.example", "password": adminPassword, "backup_passphrase": "synthetic-backup-passphrase",
-	})
-	token, secret := str(t, enroll.json, "enrollment_token"), str(t, enroll.json, "secret")
-	bad := admin.do("POST", "/api/v1/auth/totp/confirm", map[string]string{"enrollment_token": token, "code": "000000"})
-	if bad.code < 400 || bad.code == http.StatusInternalServerError {
-		t.Fatalf("wrong code accepted or crashed: %d %s", bad.code, bad.body)
-	}
-	// The challenge is single use: after a wrong code the admin signs in again to enroll.
-	if r := admin.do("POST", "/api/v1/auth/totp/confirm", map[string]string{"enrollment_token": token, "code": totp(t, secret, time.Now())}); r.code != http.StatusUnauthorized {
-		t.Fatalf("spent enrollment token reused: %d %s", r.code, r.body)
-	}
-	// Two-factor is optional by default (2026-11-13): the admin skips it and signs in
-	// with email and password.
-	login := admin.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": "avery@firm.example", "password": adminPassword})
-	if str(t, login.json, "status") != "authenticated" {
-		t.Fatal(login.body)
-	}
-	admin.csrf = str(t, login.json, "csrf_token")
-	return admin
+	return wrapClient(testkit.FirstRun(t, base))
 }
 
 // requireTOTPFor turns two-factor on for roles through the settings API, as an admin would.
@@ -253,37 +124,8 @@ func requireTOTPFor(t *testing.T, admin *client, roles ...domain.Role) {
 // enrollUser creates a user through the identity service and signs it in over HTTP.
 func enrollUser(t *testing.T, app *App, base string, admin *client, name, email string, roles ...domain.Role) (*client, domain.ID) {
 	t.Helper()
-	ctx := context.Background()
-	u, _ := url.Parse(base)
-	var session string
-	for _, c := range admin.http.Jar.Cookies(u) {
-		if c.Name == sessionCookie {
-			session = c.Value
-		}
-	}
-	caller, err := app.Identity.Authenticate(ctx, identity.Presented{SessionToken: session})
-	if err != nil {
-		t.Fatal(err)
-	}
-	user, err := app.Identity.CreateUser(ctx, caller, identity.NewUser{Name: name, Email: email, Password: "synthetic-password-" + name, Roles: roles})
-	if err != nil {
-		t.Fatal(err)
-	}
-	c := newClient(t, base)
-	login := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "synthetic-password-" + name})
-	if str(t, login.json, "status") == "authenticated" {
-		c.csrf = str(t, login.json, "csrf_token")
-		return c, user.ID
-	}
-	if str(t, login.json, "status") != "enrollment_required" {
-		t.Fatal(login.body)
-	}
-	en := c.must(http.StatusOK, "POST", "/api/v1/auth/totp/enroll", map[string]string{"enrollment_token": str(t, login.json, "enrollment_token")})
-	done := c.must(http.StatusOK, "POST", "/api/v1/auth/totp/confirm", map[string]string{
-		"enrollment_token": str(t, en.json, "enrollment_token"), "code": totp(t, str(t, en.json, "secret"), time.Now()),
-	})
-	c.csrf = str(t, done.json, "csrf_token")
-	return c, user.ID
+	c, id := testkit.EnrollUser(t, app.Identity, base, admin.kit(), name, email, "", roles...)
+	return wrapClient(c), id
 }
 
 func toolName(t *testing.T, method, path string) string {

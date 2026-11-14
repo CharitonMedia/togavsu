@@ -52,7 +52,7 @@ CREATE VIEW contact_notes AS
 			t.Fatal(err)
 		}
 	}
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	for _, c := range []domain.ID{loose.ID, onOpen.ID, walledOnly.ID} {
 		if _, err := mdb.ExecContext(e.ctx, `INSERT INTO contact_note_rows (contact_id, body) VALUES ($1, $2)`, string(c), "note on "+string(c)); err != nil {
@@ -85,9 +85,7 @@ CREATE VIEW contact_notes AS
 func TestPGSampleTargetWriteNeedsRole(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	e.rt.mu.Lock()
-	base := e.rt.servers["matter-clock"].URL
-	e.rt.mu.Unlock()
+	base := e.rt.BaseURL("matter-clock")
 	post := func(who string, form url.Values) int {
 		res, err := http.PostForm(base+"/targets?context="+url.QueryEscape(e.contextFor(who, "matter-clock", e.open.ID)), form)
 		if err != nil {
@@ -105,7 +103,7 @@ func TestPGSampleTargetWriteNeedsRole(t *testing.T) {
 	if code := post("staff", url.Values{"monthly_target_tenths": {"50"}}); code != http.StatusNoContent {
 		t.Fatalf("staff target save: %d", code)
 	}
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	var tenths int
 	var note string
@@ -122,7 +120,7 @@ func TestPGSampleTargetWriteNeedsRole(t *testing.T) {
 func TestPGUpdateDropsOmittedPermission(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	before := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	before := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	next := e.build(func(f map[string][]byte) {
 		man := string(f[modules.ManifestFile])
 		man = strings.Replace(man, `version: "1.0.0"`, `version: "1.0.1"`, 1)
@@ -143,7 +141,7 @@ func TestPGUpdateDropsOmittedPermission(t *testing.T) {
 		}
 	}
 	// The running module gets a token issued from what stays approved.
-	if after := e.rt.last("matter-clock").Secrets["togavsu_api_token"]; after == "" || after == before {
+	if after := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]; after == "" || after == before {
 		t.Fatal("the update did not reissue the module token")
 	}
 }

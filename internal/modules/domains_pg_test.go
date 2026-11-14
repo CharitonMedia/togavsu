@@ -108,7 +108,7 @@ func handlers(t *testing.T, e *env, want map[string]string) {
 func TestPGCalendarReplacement(t *testing.T) {
 	e := newEnv(t)
 	h, seen := calendarModule(t, true)
-	e.rt.handlers["calendar-plus"] = h
+	e.rt.Handle("calendar-plus", h)
 	e.do("POST", "/api/v1/modules", e.build(moduleOnly(calendarManifest)), e.as("admin")...)
 	e.approveAll("calendar-plus")
 
@@ -121,13 +121,13 @@ func TestPGCalendarReplacement(t *testing.T) {
 		t.Fatalf("staff switch: %d", r.code)
 	}
 	partial, _ := calendarModule(t, false)
-	e.rt.handlers["calendar-plus"] = partial
-	e.rt.Deploy(e.ctx, e.rt.last("calendar-plus"))
+	e.rt.Handle("calendar-plus", partial)
+	e.rt.Deploy(e.ctx, e.rt.Last("calendar-plus"))
 	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "calendar-plus"}, e.as("admin")...); r.code != http.StatusBadRequest || !strings.Contains(r.body, "missing") {
 		t.Fatalf("incomplete contract accepted: %d %s", r.code, r.body)
 	}
-	e.rt.handlers["calendar-plus"] = h
-	e.rt.Deploy(e.ctx, e.rt.last("calendar-plus"))
+	e.rt.Handle("calendar-plus", h)
+	e.rt.Deploy(e.ctx, e.rt.Last("calendar-plus"))
 	// The sample module doesn't declare replaces: calendar.
 	e.installSample()
 	if r := e.do("PUT", "/api/v1/domain-handlers/calendar", map[string]any{"module_id": "matter-clock"}, e.as("admin")...); r.code != http.StatusBadRequest {
@@ -263,10 +263,10 @@ func TestPGModuleAICallFallsBack(t *testing.T) {
 			t.Fatalf("%s: %v", k, err)
 		}
 	}
-	e.rt.handlers["summarizer"] = http.NotFoundHandler()
+	e.rt.Handle("summarizer", http.NotFoundHandler())
 	e.do("POST", "/api/v1/modules", e.build(moduleOnly(aiManifest)), e.as("admin")...)
 	e.approveAll("summarizer")
-	dep := e.rt.last("summarizer")
+	dep := e.rt.Last("summarizer")
 	token := dep.Secrets["togavsu_api_token"]
 	for _, v := range dep.Secrets {
 		if strings.Contains(v, "-ai-key") {
@@ -332,7 +332,7 @@ AND task = 'summarizer.summaries' AND user_id = $1 AND matter_id = $2`, string(e
 		t.Fatalf("undeclared task: %d %s", r.code, r.body)
 	}
 	e.installSample()
-	clock := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	clock := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	if r := e.do("POST", "/api/v1/ai/calls", map[string]any{"task": "summaries", "input": map[string]any{"prompt": "x"}}, "Authorization", "Bearer "+clock); r.code != http.StatusForbidden {
 		t.Fatalf("module without ai:use: %d %s", r.code, r.body)
 	}
@@ -355,11 +355,11 @@ func TestPGWebhookRetries(t *testing.T) {
 	}
 	e.installSample()
 	var fails int
-	e.rt.handlers["matter-clock"] = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	e.rt.Handle("matter-clock", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fails++
 		http.Error(w, "down", http.StatusServiceUnavailable)
-	})
-	e.rt.Deploy(e.ctx, e.rt.last("matter-clock"))
+	}))
+	e.rt.Deploy(e.ctx, e.rt.Last("matter-clock"))
 	id, _ := domain.NewID()
 	if n, err := e.svc.Publish(e.ctx, domain.Event{Meta: domain.Meta{ID: id}, Action: "matter.created", RecordType: "matter", RecordID: e.open.ID, MatterID: e.open.ID}); err != nil || n != 1 {
 		t.Fatalf("publish: %d %v", n, err)
