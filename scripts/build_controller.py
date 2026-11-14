@@ -786,8 +786,16 @@ class Controller:
         self.save()
 
     def admins_accepted(self, protection):
-        # Admin enforcement is required unless the integration lead adopted its removal by an audited step.
+        # Admin enforcement is required unless the integration lead adopted its removal by an audited step. An
+        # adoption lasts only while enforcement stays off: once it is seen on again, turning it off needs a new one.
         if protection.get("enforce_admins", {}).get("enabled"):
+            adopted = self.state.pop("adopted_protection", None)
+            if adopted:
+                adopted["superseded"] = now()
+                for entry in self.state.get("protection_adoptions", []):
+                    if entry.get("time") == adopted.get("time") and entry.get("operator") == adopted.get("operator"):
+                        entry["superseded"] = adopted["superseded"]
+                self.event("controller", "Admin enforcement is on again; the earlier protection adoption no longer applies")
             return True
         return (self.state.get("adopted_protection") or {}).get("enforce_admins") is False
 

@@ -270,6 +270,19 @@ class ControllerTests(unittest.TestCase):
                 self.remote.protection = saved
         self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
 
+    def test_adoption_ends_once_admin_enforcement_is_seen_on_again(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        self.remote.protection["enforce_admins"] = {"enabled": True}
+        self.record.update(head=None)
+        self.assertTrue(self.controller.admins_accepted(self.remote.protection))
+        self.assertNotIn("adopted_protection", self.controller.state)
+        self.assertIn("superseded", self.controller.state["protection_adoptions"][0])
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.assertFalse(self.process())
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
     def test_adoption_refuses_protection_without_checkpoints_and_needs_an_operator(self):
         self.record["halted"] = build_controller.PROTECTION_HALT
         self.remote.protection["required_pull_request_reviews"] = None
