@@ -24,6 +24,19 @@ func actionCount(t *testing.T, app *App, action string) int {
 	return n
 }
 
+// appendedFor counts the event.appended rows naming the appended event id, and returns
+// the matter one of them carries.
+func appendedFor(t *testing.T, app *App, id string) (int, string) {
+	t.Helper()
+	var n int
+	var matter string
+	if err := app.Pool.QueryRowContext(context.Background(), `SELECT count(*), COALESCE(max(matter_id), '') FROM events
+WHERE action = 'event.appended' AND record_type = 'event' AND record_id = $1 AND client_visible = 0`, id).Scan(&n, &matter); err != nil {
+		t.Fatal(err)
+	}
+	return n, matter
+}
+
 func feedIDs(t *testing.T, r resp) map[string]bool {
 	t.Helper()
 	out := map[string]bool{}
@@ -58,6 +71,10 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	if made.json["actor_kind"] != "staff" || made.json["actor_id"] != x.staffID || made.json["matter_id"] != open || made.json["client_visible"] != false {
 		t.Fatalf("created event: %s", made.body)
 	}
+	// The contract's x-togavsu-events: createEvent emits event.appended for the new row.
+	if n, matter := appendedFor(t, x.app, str(t, made.json, "id")); n != 1 || matter != open {
+		t.Fatalf("createEvent emitted %d event.appended rows (matter %q)", n, matter)
+	}
 	spoof := ev(open, "intake.answer_saved", "Spoofed")
 	spoof["actor_kind"] = "system"
 	if r := x.staff.do("POST", "/api/v1/events", spoof); r.code != http.StatusBadRequest {
@@ -88,6 +105,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 
 	// A batch with one walled matter is not_found and writes none of it.
 	before := actionCount(t, x.app, "intake.batch")
+	appendedBefore := actionCount(t, x.app, "event.appended")
 	if r := x.staff.do("POST", "/api/v1/events:bulk", map[string]any{"items": []any{ev(open, "intake.batch", "one"), ev(walled, "intake.batch", "two")}}); r.code != http.StatusNotFound {
 		t.Fatalf("batch with a walled matter: %d %s", r.code, r.body)
 	}
@@ -97,9 +115,19 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	if got := actionCount(t, x.app, "intake.batch"); got != before {
 		t.Fatalf("a rejected batch wrote %d events", got-before)
 	}
+	if got := actionCount(t, x.app, "event.appended"); got != appendedBefore {
+		t.Fatalf("a rejected batch emitted %d event.appended", got-appendedBefore)
+	}
 	batch := x.staff.must(http.StatusCreated, "POST", "/api/v1/events:bulk", map[string]any{"items": []any{ev(open, "intake.batch", "one"), ev("", "intake.batch", "firm")}})
 	if rows, _ := batch.json["data"].([]any); len(rows) != 2 || actionCount(t, x.app, "intake.batch") != before+2 {
 		t.Fatalf("batch: %s", batch.body)
+	}
+	// bulkEvent emits one event.appended per appended row, on that row's matter.
+	for i, want := range []string{open, ""} {
+		row := batch.json["data"].([]any)[i].(map[string]any)
+		if n, matter := appendedFor(t, x.app, str(t, row, "id")); n != 1 || matter != want {
+			t.Fatalf("bulk item %d emitted %d event.appended (matter %q)", i, n, matter)
+		}
 	}
 
 	// Idempotency-Key: the same body replays the same event and writes one row.
@@ -108,6 +136,9 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	again := x.staff.do("POST", "/api/v1/events", body, "Idempotency-Key", "evt-key-1")
 	if first.code != http.StatusCreated || again.code != http.StatusCreated || first.json["id"] != again.json["id"] || actionCount(t, x.app, "intake.replayed") != 1 {
 		t.Fatalf("replay: %d %s / %d %s", first.code, first.body, again.code, again.body)
+	}
+	if n, _ := appendedFor(t, x.app, str(t, first.json, "id")); n != 1 {
+		t.Fatalf("a replay emitted event.appended %d times", n)
 	}
 	if r := x.staff.do("POST", "/api/v1/events", ev(open, "intake.replayed", "Different"), "Idempotency-Key", "evt-key-1"); r.code != http.StatusConflict || !strings.Contains(r.body, "idempotency_conflict") {
 		t.Fatalf("same key, different body: %d %s", r.code, r.body)
@@ -195,6 +226,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	pkg := x.build(func(f map[string][]byte) {
 		f[modules.ManifestFile] = bytes.Replace(f[modules.ManifestFile], []byte("  - scope: events:read\n"),
 			[]byte("  - scope: events:write\n    reason: Add a timeline row when a target is met.\n  - scope: events:read\n"), 1)
+		f[modules.ManifestFile] = bytes.Replace(f[modules.ManifestFile], []byte("  - matter.created\n"), []byte("  - matter.created\n  - event.appended\n"), 1)
 	})
 	if _, problem := x.tabForm(x.admin, "install", nil, pkg); problem != "" {
 		t.Fatalf("install: %s", problem)
@@ -211,6 +243,19 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	}
 	if r := mod.do("GET", "/api/v1/events", nil); r.code != http.StatusForbidden {
 		t.Fatalf("module read the feed with no viewer: %d %s", r.code, r.body)
+	}
+	// A module subscribed to event.appended is queued a delivery naming the appended row.
+	later := x.staff.must(http.StatusCreated, "POST", "/api/v1/events", ev(open, "intake.subscribed", "Delivered to subscribers"))
+	if _, err := x.app.Modules.Pump(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var payload string
+	if err := x.app.Pool.QueryRowContext(ctx, `SELECT d.payload FROM core.module_deliveries d JOIN core.events e ON e.id = d.event_id
+WHERE d.module_id = 'matter-clock' AND d.action = 'event.appended' AND e.record_id = $1`, str(t, later.json, "id")).Scan(&payload); err != nil {
+		t.Fatalf("no event.appended delivery to the subscribed module: %v", err)
+	}
+	if !strings.Contains(payload, `"record_type":"event"`) || !strings.Contains(payload, str(t, later.json, "id")) {
+		t.Fatalf("event.appended delivery: %s", payload)
 	}
 }
 

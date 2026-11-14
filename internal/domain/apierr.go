@@ -18,6 +18,8 @@ const (
 	CodeIdempotencyConflict = "idempotency_conflict"
 	// CodeDuplicateEmail is an email address another user already has.
 	CodeDuplicateEmail = "duplicate_email"
+	// CodeFieldLocked is a field the caller's grant or capability does not let it set.
+	CodeFieldLocked = "field_locked"
 )
 
 // APIError is the JSON body the API wave should return.
@@ -45,7 +47,7 @@ func (e *APIError) HTTPStatus() int {
 	switch e.Code {
 	case CodeUnauthenticated:
 		return http.StatusUnauthorized
-	case CodeForbidden:
+	case CodeForbidden, CodeFieldLocked:
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound
@@ -78,6 +80,11 @@ func NotFound(entity string) *APIError {
 // Invalid constructs a 400 error for one field.
 func Invalid(field, message string) *APIError {
 	return &APIError{Code: CodeValidation, Message: message, Field: field}
+}
+
+// FieldLocked constructs a 403 error for a field outside the caller's grant.
+func FieldLocked(field, message string) *APIError {
+	return &APIError{Code: CodeFieldLocked, Message: message, Field: field}
 }
 
 // Conflict constructs a 409 error.

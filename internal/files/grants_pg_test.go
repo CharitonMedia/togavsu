@@ -308,8 +308,17 @@ func TestPGPublicationGrantGovernsBackgroundUploads(t *testing.T) {
 	}
 	rec2 := e.stage(other, UploadRequest{FileName: "recording-2.mp4", MatterID: open}, "more video")
 	closed := e.closed
-	if _, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: rec2, MatterID: &closed}}); !isCode(err, domain.CodeForbidden) {
+	// The contract's wrong_matter: publishing a matter grant's upload onto another matter
+	// is not_found, alone or in a batch, and publishes nothing.
+	if _, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: rec2, MatterID: &closed}}); !isCode(err, domain.CodeNotFound) {
 		t.Fatalf("publish onto another matter = %v", err)
+	}
+	side := e.stage(other, UploadRequest{FileName: "recording-side.mp4", MatterID: open}, "side video")
+	if _, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: side, MatterID: &open}, {UploadID: rec2, MatterID: &closed}}); !isCode(err, domain.CodeNotFound) {
+		t.Fatalf("batch with one item onto another matter = %v", err)
+	}
+	if rows, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: side}}); err != nil || len(rows) != 1 || *rows[0].MatterID != open {
+		t.Fatalf("the refused batch published its other item: %+v %v", rows, err)
 	}
 	if rows, err := e.svc.PublishBatch(ctx, other, []BulkItem{{UploadID: rec2}}); err != nil || *rows[0].MatterID != open || rows[0].Origin != "received" {
 		t.Fatalf("matter-grant publish = %+v %v", rows, err)

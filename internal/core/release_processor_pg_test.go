@@ -166,6 +166,17 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 	if r := bot.do("POST", "/api/v1/payments", pay, modules.TaskAuthorizationHeader, grant[:len(grant)-2]+"xx"); r.code != http.StatusForbidden {
 		t.Fatalf("a forged grant: %d %s", r.code, r.body)
 	}
+	// A field outside the grant's allowed_fields is field_locked: the processor cannot
+	// forge the payment's source, not even as its own id or another module's.
+	for _, src := range []string{"manual", "other-module", "pay-proc"} {
+		forged := map[string]any{"source": src}
+		for k, v := range pay {
+			forged[k] = v
+		}
+		if r := bot.do("POST", "/api/v1/payments", forged, modules.TaskAuthorizationHeader, grant); r.code != http.StatusForbidden || r.json["code"] != "field_locked" || r.json["field"] != "source" {
+			t.Fatalf("source %q outside the grant: %d %s", src, r.code, r.body)
+		}
+	}
 	if payments() != 0 {
 		t.Fatal("a refused processor call wrote a payment")
 	}

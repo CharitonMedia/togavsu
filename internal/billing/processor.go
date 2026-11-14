@@ -267,9 +267,16 @@ func (s *Service) CreateProcessorPayment(ctx context.Context, p domain.Principal
 	case in.Destination != grant.Destination || in.TrustAccountID != grant.TrustAccountID:
 		return Payment{}, domain.Forbidden("the destination is not the authorized destination")
 	}
-	if in.Source == "" {
-		in.Source = grant.ProcessorModuleID
+	// The grant lets a processor set status, method and reference_number (processorFields);
+	// the bound fields must match above. Any other field is field_locked, so the payment is
+	// always attributed to the processor the grant names.
+	switch {
+	case in.Source != "":
+		return Payment{}, domain.FieldLocked("source", "source is outside the processor authorization")
+	case in.ReceivedOn != "":
+		return Payment{}, domain.FieldLocked("received_on", "received_on is outside the processor authorization")
 	}
+	in.Source = grant.ProcessorModuleID
 	row, err := s.buildPayment(ctx, dp, in)
 	if err != nil {
 		return Payment{}, err

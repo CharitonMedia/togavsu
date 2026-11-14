@@ -271,13 +271,16 @@ func (s *Service) checkGrant(ctx context.Context, id domain.ID) (grantRow, error
 }
 
 // grantPlacement applies an upload's grant to its publication: the matter and
-// contact stay the grant's, and the module cannot supply another.
+// contact stay the grant's, and the module cannot supply another. A matter grant's
+// upload published onto another matter is not_found (the contract's
+// background_file_publication wrong_matter), so the refusal says nothing about that
+// matter; an unassigned upload given a matter stays forbidden.
 func grantPlacement(g grantRow, in *Publish) error {
 	if in.MatterID != nil && *in.MatterID != g.MatterID {
 		if g.Assignment == "unassigned" {
 			return domain.Forbidden("an unassigned upload cannot be given a matter; Doc Tender's review assigns it")
 		}
-		return &domain.APIError{Code: domain.CodeForbidden, Field: "matter_id", Message: "the grant names another matter"}
+		return domain.NotFound("matter")
 	}
 	if in.ContactID != nil && *in.ContactID != g.ContactID && g.Assignment == "unassigned" {
 		return &domain.APIError{Code: domain.CodeForbidden, Field: "contact_id", Message: "the grant names another contact"}

@@ -212,6 +212,22 @@ func (a *App) appendEvents(ctx context.Context, p domain.Principal, items []even
 		if err := db.PublishEvent(ctx, tx, ev); err != nil {
 			return nil, err
 		}
+		// The contract's event for createEvent and bulkEvent (x-togavsu-events): one
+		// event.appended per appended row, committed with it, naming it as the record, so
+		// a module or webhook subscribed to event.appended receives every append. It is
+		// never client-visible; the appended row itself carries client_visible.
+		nid, err := domain.NewID()
+		if err != nil {
+			return nil, err
+		}
+		notice := domain.Event{
+			Meta:      domain.Meta{ID: nid, CreatedAt: now, UpdatedAt: now, CreatedBy: actor},
+			ActorKind: kind, ActorID: actor, Action: "event.appended", RecordType: "event",
+			RecordID: id, MatterID: ev.MatterID, Summary: "Event appended: " + it.Action,
+		}
+		if err := db.PublishEvent(ctx, tx, notice); err != nil {
+			return nil, err
+		}
 		if _, err := a.Audit.Record(ctx, p, audit.Change{Entity: "event", EntityID: id, Field: "action", New: it.Action, Reason: "event.appended"}); err != nil {
 			return nil, err
 		}
