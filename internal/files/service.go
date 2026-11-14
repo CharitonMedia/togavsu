@@ -330,6 +330,9 @@ func (s *Service) decide(ctx context.Context, p domain.Principal, f fileRow, act
 		}
 		in.ClientMatter = own != "" && own == f.ContactID
 	}
+	if own, err := s.ownUnassigned(ctx, p, f, action); err != nil || own {
+		return domain.Decision{Allow: own}, err
+	}
 	if d, ok, err := s.moduleDecision(ctx, p, in); ok || err != nil {
 		return d, err
 	}

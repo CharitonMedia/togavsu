@@ -38,7 +38,7 @@ func migrations() ([]db.Migration, error) {
 	}
 	for _, more := range []func() ([]db.Migration, error){billing.Migrations, trust.Migrations,
 		calendar.Migrations, files.Migrations, editor.Migrations, doctender.Migrations,
-		dashboard.Migrations, help.Migrations, modules.Migrations, marketplace.Migrations} {
+		dashboard.Migrations, help.Migrations, modules.Migrations, marketplace.Migrations, coreMigrations} {
 		add, err := more()
 		if err != nil {
 			return nil, err

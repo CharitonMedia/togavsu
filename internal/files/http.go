@@ -162,6 +162,15 @@ func (h *Handler) Routes() *http.ServeMux {
 	m.HandleFunc("POST /api/v1/files/{file_id}/links", opBody(h, created, func(r *http.Request, p domain.Principal, in linkBody) (LinkView, error) {
 		return h.Svc.Link(r.Context(), p, id(r, "file_id"), in.ToFileID, in.Relationship)
 	}))
+	m.HandleFunc("POST /api/v1/files:bulk", opBody(h, created, func(r *http.Request, p domain.Principal, in struct {
+		Items []BulkItem `json:"items"`
+	}) (map[string]any, error) {
+		rows, err := h.Svc.PublishBatch(r.Context(), p, in.Items)
+		return map[string]any{"data": rows}, err
+	}))
+	m.HandleFunc("POST /api/v1/files/publication-grants", opBody(h, created, func(r *http.Request, p domain.Principal, in GrantRequest) (GrantView, error) {
+		return h.Svc.IssueGrant(r.Context(), p, in, r.Header.Get("Idempotency-Key"))
+	}))
 	m.HandleFunc("POST /api/v1/file-uploads", opBody(h, created, func(r *http.Request, p domain.Principal, in UploadRequest) (Upload, error) {
 		return h.Svc.CreateUpload(r.Context(), p, in)
 	}))
@@ -225,6 +234,18 @@ func (h *Handler) Routes() *http.ServeMux {
 	return m
 }
 
+// UnassignedRoutes serves reviewUnassignedFile. It is its own mux because its pattern
+// and GET /api/v1/files/{file_id}/history (and the other file sub-resources) would
+// both match /api/v1/files/unassigned/history, which one ServeMux refuses; the core
+// mounts it ahead of Routes.
+func (h *Handler) UnassignedRoutes() *http.ServeMux {
+	m := http.NewServeMux()
+	m.HandleFunc("GET /api/v1/files/unassigned/{upload_id}", op(h, http.StatusOK, func(r *http.Request, p domain.Principal) (FileView, error) {
+		return h.Svc.ReviewUnassigned(r.Context(), p, pathID(r, "upload_id"))
+	}))
+	return m
+}
+
 func (h *Handler) who(w http.ResponseWriter, r *http.Request) (domain.Principal, bool) {
 	if h.Principal == nil {
 		writeErr(w, domain.Unauthenticated("sign in is required"))
@@ -243,8 +264,11 @@ func writeErr(w http.ResponseWriter, err error) {
 	if errors.As(err, &api) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		status := api.HTTPStatus()
-		if api == ErrQuarantined {
+		switch {
+		case api == ErrQuarantined, api.Code == "idempotency_conflict":
 			status = http.StatusConflict
+		case api.Code == codeBatchRejected:
+			status = http.StatusUnprocessableEntity
 		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(api)

@@ -76,6 +76,7 @@ var definitions = []Definition{
 	{Key: "files.upload_chunk_bytes", Kind: KindInt, Default: "8388608", Min: 1, Max: 1 << 30, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Upload chunk size in bytes. Default 8 MiB.", PRD: true},
 	{Key: "files.default_folders", Kind: KindJSON, Default: jsonText(domain.DefaultFolders()), Tab: TabFiles, Help: "Default folders for a new matter.", PRD: true},
 	{Key: "files.drop_steady_seconds", Kind: KindInt, Default: "30", Min: 1, Max: 3600, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Seconds a drop-folder file must stay unchanged before intake. Default 30.", PRD: true},
+	{Key: "files.publication_grant_minutes", Kind: KindInt, Default: "60", Min: 1, Max: 1440, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Minutes a background file publication grant stays valid after the core issues it to a module. Default 60."},
 
 	{Key: "editor.lawcraft_commit", Kind: KindString, Default: domain.LawCraftCommit, Tab: TabEditor, Help: "LawCraft commit pinned in this build. Read only.", Locked: true, PRD: true},
 	{Key: "editor.lock_timeout", Kind: KindDuration, Default: "5m0s", Min: int64(time.Minute), Max: int64(time.Hour), HasMin: true, HasMax: true, Tab: TabEditor, Help: "Edit lock timeout without a renewal. Default 5 minutes.", PRD: true},
