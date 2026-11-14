@@ -135,36 +135,12 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 	q := strings.ToLower(query)
 	var rows []domain.Contact
 	// As for matters, the text test comes first and every match is checked for access.
-	// The lowercase text is built in one reused buffer: the same text as joining and
-	// lowering the fields, without new strings per contact.
-	var hay []byte
 	qb := []byte(q)
-	// Every contact's emails and phones in one read each, grouped by contact in id order,
-	// instead of two locked lookups per contact.
-	emails, phones := map[domain.ID][]idText{}, map[domain.ID][]idText{}
-	for _, e := range s.db.Emails("") {
-		emails[e.ContactID] = append(emails[e.ContactID], idText{e.ID, e.Email})
-	}
-	for _, ph := range s.db.Phones("") {
-		phones[ph.ContactID] = append(phones[ph.ContactID], idText{ph.ID, ph.PhoneE164})
-	}
-	for _, t := range s.contactText() {
-		hay = appendLower(hay[:0], t.Fields[0])
-		for _, f := range t.Fields[1:] {
-			hay = appendLower(append(hay, ' '), f)
-		}
-		for _, list := range [][]idText{emails[t.ID], phones[t.ID]} {
-			if len(list) > 1 {
-				sort.Slice(list, func(i, j int) bool { return list[i].id < list[j].id })
-			}
-			for _, v := range list {
-				hay = appendLower(append(hay, ' '), v.text)
-			}
-		}
-		if !bytes.Contains(hay, qb) || s.readableContact(ctx, p, t.ID) != nil {
+	for _, id := range s.contactsMatching(qb) {
+		if s.readableContact(ctx, p, id) != nil {
 			continue
 		}
-		if row, err := s.db.Contact(ctx, t.ID); err == nil {
+		if row, err := s.db.Contact(ctx, id); err == nil {
 			rows = append(rows, row)
 		}
 	}
@@ -222,14 +198,8 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 	return hits
 }
 
-// idText is one email or phone of a contact, with its id for a stable order.
-type idText struct {
-	id   domain.ID
-	text string
-}
-
-// matterText and contactText are the searched fields, through the memory store's light
-// lists when it has them.
+// matterText is the matters' searched fields, through the memory store's light list
+// when it has one.
 func (s *Service) matterText() []SearchText {
 	if m, ok := s.db.(interface{ MatterSearchText() []SearchText }); ok {
 		return m.MatterSearchText()
@@ -241,13 +211,31 @@ func (s *Service) matterText() []SearchText {
 	return out
 }
 
-func (s *Service) contactText() []SearchText {
-	if m, ok := s.db.(interface{ ContactSearchText() []SearchText }); ok {
-		return m.ContactSearchText()
+// contactsMatching is the contacts whose name, email and phone text holds q (lowercase):
+// in one pass of the memory store when it has one, else contact by contact.
+func (s *Service) contactsMatching(q []byte) []domain.ID {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		ContactsMatching(func([]byte) bool) []domain.ID
+	}); ok {
+		return m.ContactsMatching(match)
 	}
-	var out []SearchText
+	var out []domain.ID
+	var hay []byte
 	for _, row := range s.db.Contacts() {
-		out = append(out, SearchText{ID: row.ID, Fields: [5]string{row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs}})
+		hay = appendLower(hay[:0], row.FullName)
+		for _, f := range []string{row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs} {
+			hay = appendLower(append(hay, ' '), f)
+		}
+		for _, e := range s.db.Emails(row.ID) {
+			hay = appendLower(append(hay, ' '), e.Email)
+		}
+		for _, ph := range s.db.Phones(row.ID) {
+			hay = appendLower(append(hay, ' '), ph.PhoneE164)
+		}
+		if match(hay) {
+			out = append(out, row.ID)
+		}
 	}
 	return out
 }

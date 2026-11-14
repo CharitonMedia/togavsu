@@ -157,21 +157,27 @@ func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status s
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return 0, err
 	}
-	var keys []MatterKey
-	if k, ok := s.db.(interface{ MatterKeys() []MatterKey }); ok {
-		keys = k.MatterKeys()
-	} else {
-		for _, row := range s.db.Matters() {
-			keys = append(keys, MatterKey{ID: row.ID, PracticeAreaID: row.PracticeAreaID, Status: row.Status})
-		}
-	}
 	var n int
-	for _, row := range keys {
+	for _, row := range s.matterKeys() {
 		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && s.visibleMatter(ctx, p, row.ID) {
 			n++
 		}
 	}
 	return n, nil
+}
+
+// matterKeys is every matter's key, through the memory store's light list when it has
+// one.
+func (s *Service) matterKeys() []MatterKey {
+	if k, ok := s.db.(interface{ MatterKeys() []MatterKey }); ok {
+		return k.MatterKeys()
+	}
+	rows := s.db.Matters()
+	keys := make([]MatterKey, len(rows))
+	for i := range rows {
+		keys[i] = matterKeyOf(rows[i].ID, &rows[i])
+	}
+	return keys
 }
 
 // PreviewClose returns warnings and writes nothing. It is a staff close screen, not a shared client item.

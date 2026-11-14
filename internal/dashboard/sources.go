@@ -254,6 +254,28 @@ func filterQuery(f map[string]string) map[string]string {
 	return q
 }
 
+// largestTotals is the first n of totals in a stable sort by amount, largest first,
+// without sorting every matter.
+func largestTotals(totals []billing.UnbilledTotal, n int) []billing.UnbilledTotal {
+	var top []billing.UnbilledTotal
+	for _, t := range totals {
+		var at int // after every kept total at least as large: ties stay in order
+		for at < len(top) && top[at].Cents >= t.Cents {
+			at++
+		}
+		if at >= n {
+			continue
+		}
+		top = append(top, billing.UnbilledTotal{})
+		copy(top[at+1:], top[at:])
+		top[at] = t
+		if len(top) > n {
+			top = top[:n]
+		}
+	}
+	return top
+}
+
 func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
 	totals, err := c.Billing.UnbilledTotals(ctx, p, reportFilter(f))
 	if err != nil {
@@ -267,8 +289,8 @@ func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[st
 	if len(totals) > 0 {
 		w.Rows = append(w.Rows, WidgetRow{ID: "total", Title: "Total unbilled " + domain.Cents(total).String(), Subtitle: fmt.Sprintf("%d matters", len(totals)), TargetPath: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}.URL()})
 	}
-	sort.SliceStable(totals, func(i, j int) bool { return totals[i].Cents > totals[j].Cents })
-	for _, t := range totals {
+	top := largestTotals(totals, fixed.WidgetRows)
+	for _, t := range top {
 		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}

@@ -425,21 +425,47 @@ func (m *Memory) MatterSearchText() []SearchText {
 	return out
 }
 
-// ContactSearchText lists every contact's searched name fields.
-func (m *Memory) ContactSearchText() []SearchText {
+// ContactsMatching returns the contacts whose search text matches, building each text
+// in one locked pass: the name fields, then the contact's emails and phones in the child
+// index's order, lowercased and joined by spaces. match must not call the store.
+func (m *Memory) ContactsMatching(match func(hay []byte) bool) []domain.ID {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]SearchText, 0, len(m.contacts))
+	x := m.children()
+	var hay []byte
+	var out []domain.ID
 	for id, row := range m.contacts {
-		out = append(out, SearchText{ID: id, Fields: [5]string{row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs}})
+		hay = appendLower(hay[:0], row.FullName)
+		for _, f := range []string{row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs} {
+			hay = appendLower(append(hay, ' '), f)
+		}
+		for _, e := range x.emails[id] {
+			if r, ok := m.emails[e]; ok {
+				hay = appendLower(append(hay, ' '), r.Email)
+			}
+		}
+		for _, ph := range x.phones[id] {
+			if r, ok := m.phones[ph]; ok {
+				hay = appendLower(append(hay, ' '), r.PhoneE164)
+			}
+		}
+		if match(hay) {
+			out = append(out, id)
+		}
 	}
 	return out
 }
 
 // MatterKey is the part of a matter a count filters on.
 type MatterKey struct {
-	ID, PracticeAreaID domain.ID
-	Status             string
+	ID, PracticeAreaID                     domain.ID
+	ResponsibleAttorneyID, AssignedStaffID domain.ID
+	Status, OpenedOn, Number               string
+}
+
+func matterKeyOf(id domain.ID, row *domain.Matter) MatterKey {
+	return MatterKey{ID: id, PracticeAreaID: row.PracticeAreaID, ResponsibleAttorneyID: row.ResponsibleAttorneyID,
+		AssignedStaffID: row.AssignedStaffID, Status: row.Status, OpenedOn: row.OpenedOn, Number: row.Number}
 }
 
 // MatterKeys lists every matter's key: a count over 20,000 matters copies these, not
@@ -449,7 +475,7 @@ func (m *Memory) MatterKeys() []MatterKey {
 	defer m.mu.Unlock()
 	out := make([]MatterKey, 0, len(m.matters))
 	for id, row := range m.matters {
-		out = append(out, MatterKey{ID: id, PracticeAreaID: row.PracticeAreaID, Status: row.Status})
+		out = append(out, matterKeyOf(id, &row))
 	}
 	return out
 }

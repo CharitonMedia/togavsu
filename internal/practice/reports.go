@@ -25,8 +25,12 @@ func (s *Service) OpenMattersWidgetTop(ctx context.Context, p domain.Principal, 
 		ID: "my-open-matters", Title: "My open matters", PagePath: "/practice/matters",
 		Query: map[string]string{"status": StatusOpen}, Rows: []WidgetRow{},
 	}
-	s.eachMatterInOrder(func(row *domain.Matter) bool {
-		if row.Status != StatusOpen || row.ResponsibleAttorneyID != p.UserID && row.AssignedStaffID != p.UserID || !s.visibleMatter(ctx, p, row.ID) {
+	s.eachMatterInOrder(func(k *MatterKey) bool {
+		if k.Status != StatusOpen || k.ResponsibleAttorneyID != p.UserID && k.AssignedStaffID != p.UserID || !s.visibleMatter(ctx, p, k.ID) {
+			return true
+		}
+		row, err := s.db.Matter(ctx, k.ID)
+		if err != nil {
 			return true
 		}
 		widget.Rows = append(widget.Rows, WidgetRow{
@@ -38,34 +42,48 @@ func (s *Service) OpenMattersWidgetTop(ctx context.Context, p domain.Principal, 
 	return widget, nil
 }
 
-// eachMatterInOrder calls fn with every matter in list order (open first, newest opened,
-// number, id) until fn returns false, so a widget's rows are the same from one load to
-// the next. A heap yields the order lazily: a widget that stops after a few rows does not
-// sort every matter.
-func (s *Service) eachMatterInOrder(fn func(*domain.Matter) bool) {
-	rows := s.db.Matters()
-	h := &matterHeap{rows: rows, idx: make([]int, len(rows))}
+// eachMatterInOrder calls fn with every matter's key in list order (open first, newest
+// opened, number, id) until fn returns false, so a widget's rows are the same from one
+// load to the next. A heap yields the order lazily: a widget that stops after a few rows
+// does not sort every matter.
+func (s *Service) eachMatterInOrder(fn func(*MatterKey) bool) {
+	keys := s.matterKeys()
+	h := &matterHeap{keys: keys, idx: make([]int, len(keys))}
 	for i := range h.idx {
 		h.idx[i] = i
 	}
 	heap.Init(h)
 	for len(h.idx) > 0 {
-		if !fn(&rows[heap.Pop(h).(int)]) {
+		if !fn(&keys[heap.Pop(h).(int)]) {
 			return
 		}
 	}
 }
 
-// matterHeap orders matter indexes by matterOrder.
+// matterHeap orders matter key indexes as matterOrder orders matters.
 type matterHeap struct {
-	rows []domain.Matter
+	keys []MatterKey
 	idx  []int
 }
 
 func (h *matterHeap) Len() int           { return len(h.idx) }
-func (h *matterHeap) Less(i, j int) bool { return matterOrder(&h.rows[h.idx[i]], &h.rows[h.idx[j]]) }
-func (h *matterHeap) Swap(i, j int)      { h.idx[i], h.idx[j] = h.idx[j], h.idx[i] }
-func (h *matterHeap) Push(x any)         { h.idx = append(h.idx, x.(int)) }
+func (h *matterHeap) Less(i, j int) bool { return keyOrder(&h.keys[h.idx[i]], &h.keys[h.idx[j]]) }
+
+// keyOrder is matterOrder on keys.
+func keyOrder(a, b *MatterKey) bool {
+	if openRank(a.Status) != openRank(b.Status) {
+		return openRank(a.Status) < openRank(b.Status)
+	}
+	if a.OpenedOn != b.OpenedOn {
+		return a.OpenedOn > b.OpenedOn
+	}
+	if a.Number != b.Number {
+		return a.Number > b.Number
+	}
+	return a.ID < b.ID
+}
+func (h *matterHeap) Swap(i, j int) { h.idx[i], h.idx[j] = h.idx[j], h.idx[i] }
+func (h *matterHeap) Push(x any)    { h.idx = append(h.idx, x.(int)) }
 func (h *matterHeap) Pop() any {
 	last := h.idx[len(h.idx)-1]
 	h.idx = h.idx[:len(h.idx)-1]
@@ -87,8 +105,12 @@ func (s *Service) ConflictWidgetTop(ctx context.Context, p domain.Principal, max
 		ID: "pending-conflict-checks", Title: "Pending conflict checks", PagePath: "/practice/matters",
 		Query: map[string]string{"conflicts": "unchecked"}, Rows: []WidgetRow{},
 	}
-	s.eachMatterInOrder(func(row *domain.Matter) bool {
-		if !s.unchecked(row.ID) || !s.visibleMatter(ctx, p, row.ID) {
+	s.eachMatterInOrder(func(k *MatterKey) bool {
+		if !s.unchecked(k.ID) || !s.visibleMatter(ctx, p, k.ID) {
+			return true
+		}
+		row, err := s.db.Matter(ctx, k.ID)
+		if err != nil {
 			return true
 		}
 		widget.Rows = append(widget.Rows, WidgetRow{
