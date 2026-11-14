@@ -59,7 +59,9 @@ func (s *Service) PostBulk(ctx context.Context, who domain.Principal, items []Po
 	for i, in := range items {
 		p, err := s.prepare(ctx, who, in)
 		if err != nil {
-			return nil, itemErr(i, err)
+			// An invalid item rejects the batch (batch_rejected, as bulkTrustEntry's
+			// contract lists); access errors keep their own code.
+			return nil, domain.BatchRejected(itemErr(i, err))
 		}
 		ps[i] = p
 	}
@@ -74,7 +76,7 @@ func (s *Service) PostBulk(ctx context.Context, who domain.Principal, items []Po
 			for i, p := range ps {
 				r, err := s.post(ctx, who, p)
 				if err != nil {
-					return nil, itemErr(i, err)
+					return nil, domain.BatchRejected(itemErr(i, err))
 				}
 				res = append(res, r)
 			}

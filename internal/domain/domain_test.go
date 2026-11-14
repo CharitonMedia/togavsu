@@ -260,6 +260,9 @@ func TestRolesAndAPIErrors(t *testing.T) {
 	if Unauthenticated("no").HTTPStatus() != 401 || Forbidden("no").HTTPStatus() != 403 {
 		t.Fatal("status")
 	}
+	if f := FieldLocked("source", "no"); f.HTTPStatus() != 403 || f.Code != "field_locked" || f.Field != "source" {
+		t.Fatalf("field_locked: %v %d", f, f.HTTPStatus())
+	}
 	if NotFound("matter").HTTPStatus() != 404 || Conflict("x").HTTPStatus() != 409 {
 		t.Fatal("status")
 	}

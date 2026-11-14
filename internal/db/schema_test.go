@@ -181,6 +181,11 @@ func columnsOf(t *testing.T, typ reflect.Type) []string {
 		if tag == "" {
 			t.Fatalf("%s.%s missing db tag", typ.Name(), f.Name)
 		}
+		// A column a later core migration adds (Matter.Archived, core migration 1244)
+		// is tagged "-" here: it is not in this package's base schema.
+		if tag == "-" {
+			continue
+		}
 		out = append(out, tag)
 	}
 	return out

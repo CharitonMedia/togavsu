@@ -336,13 +336,41 @@ func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter doma
 	if !ok {
 		return MatterMarker{}, domain.Invalid("marker", "unknown marker")
 	}
-	if label == MarkerAlsoAsked {
+	return s.pinDef(ctx, p, matter, def, area)
+}
+
+// PinMarkerID pins a firm or module marker by its definition id.
+func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, markerID, area domain.ID) (_ MatterMarker, err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
+	if err := s.gateMatter(ctx, p, matter, domain.ActionWrite); err != nil {
+		return MatterMarker{}, err
+	}
+	if err := s.ensureMarkers(ctx); err != nil {
+		return MatterMarker{}, err
+	}
+	def, ok := s.db.Marker(markerID)
+	if !ok {
+		return MatterMarker{}, domain.Invalid("marker_id", "unknown marker")
+	}
+	return s.pinDef(ctx, p, matter, def, area)
+}
+
+// pinDef pins def on a matter the caller may write. An inactive marker is not pinned.
+func (s *Service) pinDef(ctx context.Context, p domain.Principal, matter domain.ID, def MarkerDef, area domain.ID) (MatterMarker, error) {
+	if def.Inactive {
+		return MatterMarker{}, domain.Invalid("marker", "this marker is inactive")
+	}
+	label := def.Label
+	if def.ModuleID == "" && label == MarkerAlsoAsked {
 		if area.IsZero() {
 			return MatterMarker{}, domain.Invalid("practice_area_id", "name the practice area")
 		}
 		if _, err := s.db.Area(ctx, area); err != nil {
 			return MatterMarker{}, domain.Invalid("practice_area_id", "unknown practice area")
 		}
+	} else {
+		area = domain.ID("")
 	}
 	meta, err := s.meta(p)
 	if err != nil {
@@ -362,20 +390,6 @@ func (s *Service) PinMarker(ctx context.Context, p domain.Principal, matter doma
 		return MatterMarker{}, err
 	}
 	return row, nil
-}
-
-// PinMarkerID pins a marker by its definition id.
-func (s *Service) PinMarkerID(ctx context.Context, p domain.Principal, matter, markerID, area domain.ID) (_ MatterMarker, err error) {
-	ctx, done := s.unit(ctx)
-	defer func() { err = done(err) }()
-	if err := s.ensureMarkers(ctx); err != nil {
-		return MatterMarker{}, err
-	}
-	def, ok := s.db.Marker(markerID)
-	if !ok {
-		return MatterMarker{}, domain.Invalid("marker_id", "unknown marker")
-	}
-	return s.PinMarker(ctx, p, matter, def.Label, area)
 }
 
 // RemoveMarker takes a pinned marker off a matter.
@@ -566,7 +580,7 @@ func (s *Service) prepareMatter(ctx context.Context, p domain.Principal, prev do
 		ClientPosition: in.ClientPosition, OpenedOn: opened, ClosedOn: prev.ClosedOn, CloseReason: prev.CloseReason,
 		StatuteOfLimitations: in.StatuteOfLimitations, BillingType: billing, FlatFeeCents: in.FlatFeeCents,
 		MatterRateCents: in.MatterRateCents, ResponsibleAttorneyID: in.ResponsibleAttorneyID,
-		AssignedStaffID: in.AssignedStaffID, ReferralSourceID: in.ReferralSourceID,
+		AssignedStaffID: in.AssignedStaffID, ReferralSourceID: in.ReferralSourceID, Archived: prev.Archived,
 	}, nil
 }
 

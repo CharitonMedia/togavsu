@@ -292,3 +292,10 @@ func (s *Service) DeleteEvent(ctx context.Context, id domain.ID) (err error) {
 	}
 	return nil
 }
+
+// FeedAllows reports whether p may see row in the Activities feed: not on a walled
+// matter p is not on, and not about a contact p cannot read. The core's event list
+// (listEvents) applies it to every row of core.events.
+func (s *Service) FeedAllows(ctx context.Context, p domain.Principal, row domain.Event) bool {
+	return s.feedAllows(ctx, p, row)
+}

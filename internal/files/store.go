@@ -649,16 +649,18 @@ type uploadRow struct {
 	ExpiresAt      int64
 	FileID         domain.ID
 	VersionID      domain.ID
+	// GrantID is the background publication grant the upload was created under.
+	GrantID domain.ID
 }
 
 const uploadCols = `id, created_at, updated_at, created_by, owner_user_id, owner_module_id, file_name, matter_id, contact_id,
-media_type, size_bytes, declared_sha256, chunk_bytes, received_bytes, sha256, status, expires_at, file_id, version_id`
+media_type, size_bytes, declared_sha256, chunk_bytes, received_bytes, sha256, status, expires_at, file_id, version_id, grant_id`
 
 func (s *store) insertUpload(ctx context.Context, u uploadRow) error {
-	return s.exec(ctx, `INSERT INTO file_uploads (`+uploadCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	return s.exec(ctx, `INSERT INTO file_uploads (`+uploadCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		u.ID, us(u.CreatedAt), us(u.UpdatedAt), u.CreatedBy, u.OwnerUserID, u.OwnerModuleID, u.FileName, nullID(u.MatterID),
 		nullID(u.ContactID), u.MediaType, u.SizeBytes, u.DeclaredSHA256, u.ChunkBytes, u.ReceivedBytes, u.SHA256,
-		u.Status, u.ExpiresAt, nullID(u.FileID), nullID(u.VersionID))
+		u.Status, u.ExpiresAt, nullID(u.FileID), nullID(u.VersionID), nullID(u.GrantID))
 }
 
 func (s *store) updateUpload(ctx context.Context, u uploadRow) error {
@@ -687,11 +689,11 @@ func (s *store) getUpload(ctx context.Context, id domain.ID, lock bool) (uploadR
 		query += " FOR UPDATE"
 	}
 	var u uploadRow
-	var matter, contact, file, version nullString
+	var matter, contact, file, version, grant nullString
 	err := s.row(ctx, query, id).Scan(&u.ID, ts(&u.CreatedAt), ts(&u.UpdatedAt), &u.CreatedBy, &u.OwnerUserID, &u.OwnerModuleID,
 		&u.FileName, &matter, &contact, &u.MediaType, &u.SizeBytes, &u.DeclaredSHA256, &u.ChunkBytes, &u.ReceivedBytes,
-		&u.SHA256, &u.Status, &u.ExpiresAt, &file, &version)
-	u.MatterID, u.ContactID, u.FileID, u.VersionID = matter.id(), contact.id(), file.id(), version.id()
+		&u.SHA256, &u.Status, &u.ExpiresAt, &file, &version, &grant)
+	u.MatterID, u.ContactID, u.FileID, u.VersionID, u.GrantID = matter.id(), contact.id(), file.id(), version.id(), grant.id()
 	return u, notFound(err)
 }
 

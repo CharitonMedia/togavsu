@@ -14,19 +14,16 @@ import (
 // pendingOperations are files-family contract operations this package does not serve.
 // Each belongs to another task or a later integration step; see the PR body.
 var pendingOperations = map[string]string{
-	"bulkFile":                  "bulk endpoints: api task",
-	"reviewUnassignedFile":      "Doc Tender matter match review: doc-tender task",
-	"issueFilePublicationGrant": "background publication grants: modules task",
-	"acquireEditLock":           "editor task",
-	"releaseEditLock":           "editor task",
-	"renewEditLock":             "editor task",
-	"getEditor":                 "editor task",
-	"listEditorCommands":        "editor task",
-	"runEditor":                 "editor task",
-	"convertFile":               "editor task",
-	"getDocTenderResult":        "doc-tender task",
-	"getDocTenderStatus":        "doc-tender task",
-	"reprocessDocTenderFile":    "doc-tender task",
+	"acquireEditLock":        "editor task",
+	"releaseEditLock":        "editor task",
+	"renewEditLock":          "editor task",
+	"getEditor":              "editor task",
+	"listEditorCommands":     "editor task",
+	"runEditor":              "editor task",
+	"convertFile":            "editor task",
+	"getDocTenderResult":     "doc-tender task",
+	"getDocTenderStatus":     "doc-tender task",
+	"reprocessDocTenderFile": "doc-tender task",
 }
 
 func filesFamily(path string) bool {
@@ -56,7 +53,7 @@ func TestRoutesServeTheFilesContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mux := h.Routes()
+	mux, unassigned := h.Routes(), h.UnassignedRoutes()
 	var served, pending []string
 	for _, tool := range doc.Tools {
 		if !filesFamily(tool.Path) {
@@ -69,7 +66,10 @@ func TestRoutesServeTheFilesContract(t *testing.T) {
 			path = path[:a] + "0190f0c2-7f3e-7c1a-8b2d-1f2e3d4c5b6a" + path[b+1:]
 		}
 		r, _ := http.NewRequest(tool.Method, path, nil)
-		_, pattern := mux.Handler(r)
+		_, pattern := unassigned.Handler(r)
+		if pattern == "" {
+			_, pattern = mux.Handler(r)
+		}
 		if why, ok := pendingOperations[tool.Name]; ok {
 			if pattern != "" {
 				t.Errorf("%s is served but listed pending (%s)", tool.Name, why)

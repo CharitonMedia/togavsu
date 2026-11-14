@@ -573,7 +573,7 @@ func TestPGIdempotencyAndBulk(t *testing.T) {
 	}
 	bad := e.in(TypeWithdrawal, 100)
 	bad.Method = "bitcoin"
-	if _, err := e.svc.PostBulk(e.ctx, e.attorney, []PostInput{e.in(TypeDeposit, 100), bad}, ""); code(err) != domain.CodeValidation {
+	if _, err := e.svc.PostBulk(e.ctx, e.attorney, []PostInput{e.in(TypeDeposit, 100), bad}, ""); code(err) != domain.CodeBatchRejected {
 		t.Fatalf("bad bulk: %v", err)
 	} else if api := err.(*domain.APIError); api.Field != "items[1].method" {
 		t.Fatalf("field %q", api.Field)

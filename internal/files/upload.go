@@ -85,7 +85,8 @@ func (s *Service) CreateUpload(ctx context.Context, p domain.Principal, in Uploa
 	if err != nil {
 		return Upload{}, err
 	}
-	if err := s.canWriteTo(ctx, p, in.MatterID, in.ContactID, false); err != nil {
+	grant, err := s.uploadGrant(ctx, p, &in)
+	if err != nil {
 		return Upload{}, err
 	}
 	m, err := s.meta(actor(p, domain.SystemUserID))
@@ -95,7 +96,7 @@ func (s *Service) CreateUpload(ctx context.Context, p domain.Principal, in Uploa
 	u := uploadRow{
 		Meta: m, OwnerUserID: p.UserID, OwnerModuleID: p.ModuleID, FileName: in.FileName, MatterID: in.MatterID,
 		ContactID: in.ContactID, MediaType: in.MediaType, SizeBytes: in.SizeBytes, DeclaredSHA256: in.SHA256,
-		ChunkBytes: chunk, Status: "receiving", ExpiresAt: us(noExpiry),
+		ChunkBytes: chunk, Status: "receiving", ExpiresAt: us(noExpiry), GrantID: grant,
 	}
 	if err := os.MkdirAll(s.staging, fs.ModePerm&0o700); err != nil {
 		return Upload{}, err
@@ -118,6 +119,44 @@ func (s *Service) CreateUpload(ctx context.Context, p domain.Principal, in Uploa
 		}
 	}
 	return uploadView(u, warnings), nil
+}
+
+// uploadGrant checks a new upload's placement. A module's own token needs its active
+// unassigned grant to upload with no matter (the grant's contact, if any, is the only
+// one it may name); onto a matter it follows the ordinary module rule, and its active
+// grant for that matter, if any, is recorded on the upload.
+func (s *Service) uploadGrant(ctx context.Context, p domain.Principal, in *UploadRequest) (domain.ID, error) {
+	if !moduleOnly(p) || in.MatterID != "" {
+		if err := s.canWriteTo(ctx, p, in.MatterID, in.ContactID, false); err != nil {
+			return "", err
+		}
+		if !moduleOnly(p) {
+			return "", nil
+		}
+	}
+	on, err := s.moduleEnabled(ctx, p.ModuleID)
+	if err != nil {
+		return "", err
+	}
+	if !on {
+		return "", domain.Forbidden("the module is not installed and enabled")
+	}
+	g, found, err := s.activeGrant(ctx, p.ModuleID, in.MatterID)
+	if err != nil || !found {
+		if err == nil && in.MatterID == "" {
+			err = domain.Forbidden("an upload with no matter needs an active background publication grant")
+		}
+		return "", err
+	}
+	if in.MatterID == "" {
+		switch {
+		case in.ContactID == "":
+			in.ContactID = g.ContactID
+		case in.ContactID != g.ContactID:
+			return "", &domain.APIError{Code: domain.CodeForbidden, Field: "contact_id", Message: "the grant names another contact"}
+		}
+	}
+	return g.ID, nil
 }
 
 // ownUpload loads an upload only for the principal that started it.
@@ -293,6 +332,15 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	if u.Status != "staged" {
 		return FileView{}, domain.Conflict("complete the upload before publishing it")
 	}
+	var grant grantRow
+	if u.GrantID != "" {
+		if grant, err = s.checkGrant(ctx, u.GrantID); err != nil {
+			return FileView{}, err
+		}
+		if err := grantPlacement(grant, &in); err != nil {
+			return FileView{}, err
+		}
+	}
 	matter, contact, name := u.MatterID, u.ContactID, u.FileName
 	if in.MatterID != nil {
 		matter = *in.MatterID
@@ -306,6 +354,10 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	nf := NewFile{
 		Name: name, MatterID: matter, ContactID: contact, FolderID: in.FolderID, AttorneyOnly: in.AttorneyOnly,
 		SharedWithClient: in.SharedWithClient, MediaType: u.MediaType, Source: sourceFor(p), How: "upload",
+		created: true, unassigned: grant.Assignment == "unassigned",
+	}
+	if grant.ID != "" && grant.Source != "importer" {
+		nf.Origin = "received"
 	}
 	staged, err := os.Open(s.stagingPath(u.ID))
 	if errors.Is(err, os.ErrNotExist) {
@@ -327,7 +379,7 @@ func (s *Service) PublishUpload(ctx context.Context, p domain.Principal, in Publ
 	if err != nil {
 		return FileView{}, err
 	}
-	_ = os.Remove(s.stagingPath(u.ID))
+	s.removeStaged(ctx, u.ID)
 	return view, nil
 }
 
@@ -362,7 +414,7 @@ func (s *Service) AddUploadedVersion(ctx context.Context, p domain.Principal, fi
 	if err != nil {
 		return VersionView{}, err
 	}
-	_ = os.Remove(s.stagingPath(u.ID))
+	s.removeStaged(ctx, u.ID)
 	return v, nil
 }
 

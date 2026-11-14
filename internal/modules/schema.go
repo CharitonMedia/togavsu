@@ -436,41 +436,60 @@ JOIN pg_namespace n ON n.oid = c.relnamespace WHERE con.conname = $1 AND n.nspna
 	return domain.Conflict("module " + s.moduleForSchema(ctx, schema) + " has rows linked to this record, so it can't be deleted"), true
 }
 
+// Relinked is how many rows of one module a Relink moved.
+type Relinked struct {
+	Module string
+	Rows   int
+}
+
 // Relink moves module rows from one core record to another in the caller's transaction,
-// as a core merge does (PRD 9.9). An extension row keyed by the record can't be moved
-// onto a record that already has one; the merge is refused naming the module.
-func (s *Schemas) Relink(ctx context.Context, tx *sql.Tx, coreTable string, from, to domain.ID) error {
+// as a core merge does (PRD 9.9), and reports the rows it moved per module, in module
+// order. An extension row keyed by the record can't be moved onto a record that already
+// has one; the merge is refused naming the module.
+func (s *Schemas) Relink(ctx context.Context, tx *sql.Tx, coreTable string, from, to domain.ID) ([]Relinked, error) {
 	links, err := s.links(ctx, tx, coreTable)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	var out []Relinked
 	for _, l := range links {
 		// The module's rows are changed as the module's role, so a trigger it added runs
 		// with its privileges; RESET ROLE returns the transaction to the core after.
 		role, err := s.roleForSchema(ctx, l.Schema)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx, `SET LOCAL ROLE `+quoteIdent(role)); err != nil {
-			return err
+			return nil, err
 		}
 		target := quoteIdent(l.Schema) + `.` + quoteIdent(l.Table)
 		if l.PrimaryKey {
 			var both bool
 			q := `SELECT EXISTS (SELECT 1 FROM ` + target + ` WHERE ` + quoteIdent(l.Column) + ` = $1) AND EXISTS (SELECT 1 FROM ` + target + ` WHERE ` + quoteIdent(l.Column) + ` = $2)`
 			if err := tx.QueryRowContext(ctx, q, string(from), string(to)).Scan(&both); err != nil {
-				return err
+				return nil, err
 			}
 			if both {
-				return domain.Conflict("module " + s.moduleForSchema(ctx, l.Schema) + " has an extension row on both records; resolve it in the module before merging")
+				return nil, domain.Conflict("module " + s.moduleForSchema(ctx, l.Schema) + " has an extension row on both records; resolve it in the module before merging")
 			}
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE `+target+` SET `+quoteIdent(l.Column)+` = $1 WHERE `+quoteIdent(l.Column)+` = $2`, string(to), string(from)); err != nil {
-			return err
+		res, err := tx.ExecContext(ctx, `UPDATE `+target+` SET `+quoteIdent(l.Column)+` = $1 WHERE `+quoteIdent(l.Column)+` = $2`, string(to), string(from))
+		if err != nil {
+			return nil, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, err
+		}
+		mod := s.moduleForSchema(ctx, l.Schema)
+		if len(out) > 0 && out[len(out)-1].Module == mod {
+			out[len(out)-1].Rows += int(n)
+		} else {
+			out = append(out, Relinked{Module: mod, Rows: int(n)})
 		}
 		if _, err := tx.ExecContext(ctx, `RESET ROLE`); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return out, nil
 }

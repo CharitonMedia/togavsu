@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 )
@@ -14,6 +15,15 @@ const (
 	CodeConflict        = "conflict"
 	CodeAppendOnly      = "append_only"
 	CodeRateLimited     = "rate_limited"
+	// CodeIdempotencyConflict is an Idempotency-Key reused with a different body.
+	CodeIdempotencyConflict = "idempotency_conflict"
+	// CodeDuplicateEmail is an email address another user already has.
+	CodeDuplicateEmail = "duplicate_email"
+	// CodeFieldLocked is a field the caller's grant or capability does not let it set.
+	CodeFieldLocked = "field_locked"
+	// CodeBatchRejected is a bulk item that rejected its all-or-nothing batch; the
+	// batch wrote nothing.
+	CodeBatchRejected = "batch_rejected"
 )
 
 // APIError is the JSON body the API wave should return.
@@ -41,19 +51,39 @@ func (e *APIError) HTTPStatus() int {
 	switch e.Code {
 	case CodeUnauthenticated:
 		return http.StatusUnauthorized
-	case CodeForbidden:
+	case CodeForbidden, CodeFieldLocked:
 		return http.StatusForbidden
 	case CodeNotFound:
 		return http.StatusNotFound
 	case CodeValidation:
 		return http.StatusBadRequest
-	case CodeConflict, CodeAppendOnly:
+	case CodeConflict, CodeAppendOnly, CodeIdempotencyConflict, CodeDuplicateEmail:
 		return http.StatusConflict
 	case CodeRateLimited:
 		return http.StatusTooManyRequests
+	case CodeBatchRejected:
+		return http.StatusUnprocessableEntity
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+// BatchRejected marks an item's error as rejecting its all-or-nothing batch
+// (batch_rejected, 422), as the contract's bulk routes list. Access errors stay as they
+// are, so an inaccessible record is still not_found and a missing scope still denied;
+// an error that is not an APIError is a fault and passes through.
+func BatchRejected(err error) error {
+	var api *APIError
+	if !errors.As(err, &api) {
+		return err
+	}
+	switch api.Code {
+	case CodeNotFound, CodeForbidden, CodeUnauthenticated, CodeFieldLocked, CodeIdempotencyConflict, CodeBatchRejected, "scope_denied":
+		return err
+	}
+	out := *api
+	out.Code = CodeBatchRejected
+	return &out
 }
 
 // Unauthenticated constructs a 401 error.
@@ -74,6 +104,11 @@ func NotFound(entity string) *APIError {
 // Invalid constructs a 400 error for one field.
 func Invalid(field, message string) *APIError {
 	return &APIError{Code: CodeValidation, Message: message, Field: field}
+}
+
+// FieldLocked constructs a 403 error for a field outside the caller's grant.
+func FieldLocked(field, message string) *APIError {
+	return &APIError{Code: CodeFieldLocked, Message: message, Field: field}
 }
 
 // Conflict constructs a 409 error.

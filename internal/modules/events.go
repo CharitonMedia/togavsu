@@ -33,6 +33,23 @@ type EventPayload struct {
 	MatterID   string `json:"matter_id,omitempty"`
 	OccurredAt string `json:"occurred_at"`
 	Module     string `json:"module"`
+	// BackgroundFileAuthorization is set on file.background_authorized, which goes only
+	// to the module the grant names.
+	BackgroundFileAuthorization json.RawMessage `json:"background_file_authorization,omitempty"`
+}
+
+// grantEvent is the action whose delivery carries a background file publication grant.
+const grantEvent = "file.background_authorized"
+
+// grantRecipient reads the grant behind a file.background_authorized event: the one
+// module it is delivered to, and the authorization it carries.
+func (s *Service) grantRecipient(ctx context.Context, grant domain.ID) (string, json.RawMessage, error) {
+	var module, body string
+	err := s.q(ctx).QueryRowContext(ctx, `SELECT module_id, authorization_body FROM core.file_publication_grants WHERE id = $1`, string(grant)).Scan(&module, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, nil
+	}
+	return module, json.RawMessage(body), err
 }
 
 // Subscribed reports whether a manifest subscription list matches action.
@@ -171,7 +188,7 @@ WHERE datname = current_database() AND pid <> pg_backend_pid() AND xact_start IS
 // A module's own lifecycle events are not sent to modules. A repeated event id is
 // queued once per module.
 func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Event) (int, error) {
-	if ev.RecordType == "module" || ev.ID.IsZero() {
+	if ev.RecordType == "module" || ev.ID.IsZero() || directEvents[ev.Action] {
 		return zero, nil
 	}
 	queued := zero
@@ -180,12 +197,26 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 	if at.IsZero() {
 		at = s.now()
 	}
+	var recipient string
+	var grant json.RawMessage
+	if ev.Action == grantEvent {
+		var err error
+		if recipient, grant, err = s.grantRecipient(ctx, ev.RecordID); err != nil || recipient == "" {
+			return zero, err
+		}
+	}
 	for _, m := range mods {
-		if !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action) {
+		switch {
+		case recipient != "":
+			// The grant goes to the module it names, and to no other.
+			if m.ID != recipient {
+				continue
+			}
+		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
 		body, err := json.Marshal(EventPayload{ID: string(ev.ID), Action: ev.Action, RecordType: ev.RecordType, RecordID: string(ev.RecordID),
-			MatterID: string(ev.MatterID), OccurredAt: at.UTC().Format(time.RFC3339Nano), Module: m.ID})
+			MatterID: string(ev.MatterID), OccurredAt: at.UTC().Format(time.RFC3339Nano), Module: m.ID, BackgroundFileAuthorization: grant})
 		if err != nil {
 			return queued, err
 		}
@@ -297,20 +328,20 @@ func (s *Service) Deliver(ctx context.Context) (sent int, err error) {
 		return 0, err
 	}
 	now := s.now()
-	rows, err := s.q(ctx).QueryContext(ctx, `SELECT d.id, d.module_id, d.payload, d.attempts, m.webhook_secret FROM core.module_deliveries d
+	rows, err := s.q(ctx).QueryContext(ctx, `SELECT d.id, d.module_id, d.payload, d.attempts, m.webhook_secret, d.task_authorization FROM core.module_deliveries d
 JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_attempt_at <= $1 AND m.enabled = 1 ORDER BY d.next_attempt_at, d.id LIMIT $2`,
 		now.UnixMicro(), limits().PumpBatch)
 	if err != nil {
 		return 0, err
 	}
 	type due struct {
-		id, module, payload, secret string
-		attempts                    int
+		id, module, payload, secret, grant string
+		attempts                           int
 	}
 	var list []due
 	for rows.Next() {
 		var d due
-		if err := rows.Scan(&d.id, &d.module, &d.payload, &d.attempts, &d.secret); err != nil {
+		if err := rows.Scan(&d.id, &d.module, &d.payload, &d.attempts, &d.secret, &d.grant); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -322,7 +353,11 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 		if err != nil {
 			return sent, err
 		}
-		derr := s.post(ctx, d.module, secret, []byte(d.payload))
+		grant, err := s.open(d.grant)
+		if err != nil {
+			return sent, err
+		}
+		derr := s.post(ctx, d.module, secret, grant, []byte(d.payload))
 		n := d.attempts + 1
 		at := s.now()
 		switch {
@@ -342,7 +377,7 @@ JOIN core.modules m ON m.id = d.module_id WHERE d.status = 'pending' AND d.next_
 	return sent, nil
 }
 
-func (s *Service) post(ctx context.Context, module, secret string, body []byte) error {
+func (s *Service) post(ctx context.Context, module, secret, grant string, body []byte) error {
 	in, err := s.Installed(ctx, module)
 	if err != nil {
 		return err
@@ -360,6 +395,9 @@ func (s *Service) post(ctx context.Context, module, secret string, body []byte) 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(SignatureHeader, SignWebhook(secret, s.now(), body))
+	if grant != "" {
+		req.Header.Set(TaskAuthorizationHeader, grant)
+	}
 	resp, err := s.d.HTTP.Do(req)
 	if err != nil {
 		return err

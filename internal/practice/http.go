@@ -26,6 +26,9 @@ type Handler struct {
 	// tabs as framed pages and their extension rows for this matter, read as the viewer.
 	// The core sets it when it wires the module runtime; nil shows none.
 	Panels func(r *http.Request, p domain.Principal, matter domain.ID) ([]ModulePanel, error)
+	// Relink moves module rows onto a merge's survivor inside the merge's transaction
+	// (PRD 9.9). The core sets it to the module runtime's Schemas.Relink; nil moves none.
+	Relink Relinker
 }
 
 // ModulePanel is one module's items on the matter screen.
@@ -206,12 +209,17 @@ func (h *Handler) mattersPage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	keep, err := archivedFilter(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	rows, err := h.Svc.ListMatters(r.Context(), p, r.URL.Query().Get("status"), domain.ID(""))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: rows})
+	h.render(w, r, "matters.html", page{Title: "Matters", CSRF: h.csrf(w, r), Matters: keepMatters(rows, keep)})
 }
 
 // newMatterPage is the create form the Matters list's New button and the shell's New menu
@@ -290,7 +298,7 @@ func (h *Handler) matterPage(w http.ResponseWriter, r *http.Request) {
 		Title: view.Matter.Number + " " + view.Matter.Name, CSRF: h.csrf(w, r),
 		Matter: view, History: history, Timeline: timeline, MatterNotes: notes, Checks: checks,
 		CanReopen:     reopenErr == nil && view.Matter.Status == StatusClosed,
-		MarkerChoices: h.Svc.listSetting(r.Context(), "practice.markers", domain.DefaultMarkers()),
+		MarkerChoices: h.Svc.markerChoices(r.Context()),
 		PartyRoles:    h.Svc.listSetting(r.Context(), "practice.party_roles", domain.DefaultPartyRoles()),
 		AttorneyName:  attorney,
 		Panels:        panels,
@@ -559,8 +567,13 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	keep, err := archivedFilter(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	if r.URL.Query().Get("format") == "csv" {
-		csv, err := h.Svc.ExportMattersCSV(r.Context(), p)
+		csv, err := h.Svc.exportMattersCSV(r.Context(), p, keep)
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -574,6 +587,7 @@ func (h *Handler) mattersJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	rows = keepMatters(rows, keep)
 	if custom := customQuery(r); len(custom) > 0 {
 		kept := rows[:0]
 		for _, row := range rows {
@@ -907,7 +921,7 @@ func matterItem(view MatterView) map[string]any {
 		"billing_type": row.BillingType, "flat_fee_cents": row.FlatFeeCents, "matter_rate_cents": row.MatterRateCents,
 		"responsible_attorney_user_id": idOrNil(row.ResponsibleAttorneyID), "assigned_staff_user_ids": staff,
 		"referral_source_id": idOrNil(row.ReferralSourceID), "pro_bono": proBono, "zero_fee": zeroFee,
-		"unchecked_conflicts": view.Unchecked, "custom_fields": fields, "markers": markers,
+		"unchecked_conflicts": view.Unchecked, "custom_fields": fields, "markers": markers, "archived": row.Archived,
 	}
 }
 
@@ -918,8 +932,14 @@ func decodeCustom(r *http.Request) ([]CustomInput, error) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return nil, domain.Invalid("body", "body is invalid")
 	}
+	return CustomInputs(body.Values)
+}
+
+// CustomInputs reads the contract's CustomFieldValue list (values of
+// putMatterCustomFields and its siblings, and each custom-field-values:bulk item).
+func CustomInputs(values []map[string]any) ([]CustomInput, error) {
 	var out []CustomInput
-	for _, raw := range body.Values {
+	for _, raw := range values {
 		id, _ := raw["definition_id"].(string)
 		key, _ := raw["key"].(string)
 		value, err := oneCustomValue(raw)
@@ -932,7 +952,8 @@ func decodeCustom(r *http.Request) ([]CustomInput, error) {
 }
 
 func oneCustomValue(raw map[string]any) (string, error) {
-	keys := []string{"text", "long_text", "number", "money_cents", "date", "boolean", "pick", "contact_id"}
+	// value is the contract's CustomFieldValue.value; the typed keys are the older form.
+	keys := []string{"value", "text", "long_text", "number", "money_cents", "date", "boolean", "pick", "contact_id"}
 	found := ""
 	count := 0
 	for _, key := range keys {
@@ -942,6 +963,8 @@ func oneCustomValue(raw map[string]any) (string, error) {
 		}
 		count++
 		switch v := val.(type) {
+		case nil:
+			found = ""
 		case string:
 			found = v
 		case float64:

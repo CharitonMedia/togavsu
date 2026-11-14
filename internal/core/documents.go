@@ -308,7 +308,7 @@ func openDocuments(ctx context.Context, d *documents, pool *sql.DB, aud *audit.S
 	}
 	// The editor's routes go before files': /files/{id}/edit and the Files tab's
 	// /files/static/{name} cannot share one ServeMux (editor.Handler.Owns).
-	d.handlers = []http.Handler{ch.Routes(), d.editorH.Routes(), fh.Routes(), dh.Routes()}
+	d.handlers = []http.Handler{ch.Routes(), d.editorH.Routes(), fh.UnassignedRoutes(), fh.Routes(), dh.Routes()}
 	return nil
 }
 

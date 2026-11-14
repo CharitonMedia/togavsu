@@ -130,11 +130,31 @@ type ShownField struct {
 	SortOrder    int
 }
 
-// MarkerDef is a marker label the firm can pin to a matter.
+// MarkerDef is a marker the firm or a module can pin to a matter. A firm marker has no
+// ModuleID; a module marker lives in that module's namespace. Inactive hides it from new
+// pins (a revoked module marker); pins that already use it stay.
 type MarkerDef struct {
-	ID    domain.ID
-	Label string
-	Color string
+	ID        domain.ID
+	Label     string
+	Color     string
+	Inactive  bool      `json:",omitempty"`
+	ModuleID  string    `json:",omitempty"`
+	Target    string    `json:",omitempty"`
+	CreatedAt time.Time `json:",omitempty"`
+	CreatedBy domain.ID `json:",omitempty"`
+	UpdatedAt time.Time `json:",omitempty"`
+}
+
+// PartyRoleDef is one matter-party role record (PRD 8.7 Practice tab). The setting
+// practice.party_roles stays the list of active keys that parties are checked against;
+// this record gives each key its id and display label.
+type PartyRoleDef struct {
+	ID        domain.ID
+	Key       string
+	Label     string
+	CreatedAt time.Time
+	CreatedBy domain.ID
+	UpdatedAt time.Time
 }
 
 // MatterMarker is a marker pinned to one matter.
@@ -146,6 +166,7 @@ type MatterMarker struct {
 	PracticeAreaID domain.ID
 	CreatedAt      time.Time
 	CreatedBy      domain.ID
+	UpdatedAt      time.Time `json:",omitempty"`
 }
 
 // ContactInput creates or edits a contact. Phones are E.164.

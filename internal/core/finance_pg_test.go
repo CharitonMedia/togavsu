@@ -1093,7 +1093,7 @@ func TestFinanceCrossDomainTransfers(t *testing.T) {
 		t.Fatalf("bulk over the cap: %d %s", r.code, r.body)
 	}
 	bad := map[string]any{"trust_account_id": f.account, "client_id": clientID, "matter_id": matter, "entry_type": "deposit", "amount_cents": -5, "method": "check", "description": "bad"}
-	if r := f.admin.do("POST", "/api/v1/trust-ledger:bulk", map[string]any{"items": []any{item, bad}}); r.code != http.StatusBadRequest || ledger() != rows {
+	if r := f.admin.do("POST", "/api/v1/trust-ledger:bulk", map[string]any{"items": []any{item, bad}}); r.code != http.StatusUnprocessableEntity || !strings.Contains(r.body, "batch_rejected") || ledger() != rows {
 		t.Fatalf("bulk with an invalid item: %d %s", r.code, r.body)
 	}
 	if r := f.admin.do("POST", "/api/v1/trust-ledger:bulk", map[string]any{"items": []any{item, item}}); r.code >= 300 || ledger() != rows+2 {

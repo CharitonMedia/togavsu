@@ -110,6 +110,9 @@ type App struct {
 	Modules *modules.Service
 	Market  *marketplace.Service
 
+	// providerURLs is Config.ProviderURLs, for the AI tab's Provider check.
+	providerURLs map[string]string
+
 	ext      *extensions
 	backups  *backups
 	handler  http.Handler
@@ -258,7 +261,18 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
-	reg, err := settings.NewWithClock(db.SettingsStore{DB: pool, Dialect: "postgres"}, aud, now)
+	// Secret settings (provider keys, the SMTP password, the backup passphrase) are
+	// sealed with AES-256-GCM under the installer key (PRD 6 security). A value stored
+	// before sealing reads as it was and is sealed on its next change.
+	secret := map[string]bool{}
+	for _, d := range settings.Definitions() {
+		secret[d.Key] = d.Secret
+	}
+	sealed, err := settings.NewSealingStore(db.SettingsStore{DB: pool, Dialect: "postgres"}, cfg.Key, func(k string) bool { return secret[k] })
+	if err != nil {
+		return fail(err)
+	}
+	reg, err := settings.NewWithClock(sealed, aud, now)
 	if err != nil {
 		return fail(err)
 	}
@@ -298,7 +312,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.docs = docs
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.principal, app.scopes, now)
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now)
 	if err != nil {
 		return fail(err)
 	}
@@ -339,23 +353,12 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// A module's own token writes files only while the module is installed and enabled
 	// (PRD 8.19, 9.3); the files service asks the module runtime, which is opened after
 	// the ui, so until then every module principal is refused.
-	docs.Files.SetModuleCheck(func(ctx context.Context, module string) (bool, error) {
-		if ext.Modules == nil {
-			return false, nil
-		}
-		in, err := ext.Modules.Installed(ctx, module)
-		var api *domain.APIError
-		if errors.As(err, &api) && api.Code == domain.CodeNotFound {
-			return false, nil
-		}
-		if err != nil {
-			return false, err
-		}
-		return in.Enabled, nil
-	})
+	docs.Files.SetModuleCheck(app.moduleEnabled)
+	app.Practice.SetModuleCheck(app.moduleEnabled)
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
+	app.providerURLs = cfg.ProviderURLs
 	app.backups = newBackups(app, cfg, dataDir, now)
 	app.routes()
 	files := cfg.HelpFiles
@@ -372,7 +375,12 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	// Payment processor grants go out through the module runtime (initiateProcessorPayment).
+	if ext.Modules != nil {
+		app.Billing.SetProcessors(ext.Modules)
+	}
 	ph.Panels = app.matterPanels
+	ph.Relink = ModuleRelinker(ext.Modules.Schemas(), pool)
 	modMux, ok := ext.modH.Routes().(*http.ServeMux)
 	if !ok {
 		return fail(errors.New("core: the module handler is not a ServeMux"))

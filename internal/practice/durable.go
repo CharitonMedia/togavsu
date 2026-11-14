@@ -104,7 +104,7 @@ func (m *Memory) adopt(f *Memory) {
 	m.referrals, m.notes, m.noteTags, m.conflicts, m.reviews = f.referrals, f.notes, f.noteTags, f.conflicts, f.reviews
 	m.invoices, m.trust, m.times, m.users = f.invoices, f.trust, f.times, f.users
 	m.audits, m.events = f.audits, f.events
-	m.fields, m.values, m.markers, m.pinned = f.fields, f.values, f.markers, f.pinned
+	m.fields, m.values, m.markers, m.pinned, m.roles = f.fields, f.values, f.markers, f.pinned, f.roles
 	m.closes, m.runs, m.checked = f.closes, f.runs, f.checked
 	m.idx, m.gidx = nil, nil
 	// Pending idempotency reservations belong to requests still running in this process.
@@ -185,6 +185,8 @@ func (m *Memory) restore(kind, id string, raw []byte) error {
 		return into(raw, m.markers)
 	case "matter_marker":
 		return into(raw, m.pinned)
+	case "party_role":
+		return into(raw, m.roles)
 	case "value":
 		var v FieldValue
 		if err := json.Unmarshal(raw, &v); err != nil {
@@ -225,6 +227,8 @@ type unit struct {
 	d      *Durable
 	recs   []record
 	audits []domain.AuditEntry
+	// pre runs inside the unit's commit transaction before its rows are written (InTx).
+	pre []func(context.Context) error
 }
 
 type unitKey struct{}
@@ -255,8 +259,20 @@ func (d *Durable) Begin(ctx context.Context) (context.Context, func(error) error
 			}
 			return err
 		}
-		return d.commit(ctx, u.recs, u.audits)
+		return d.commitWith(ctx, u.recs, u.audits, u.pre)
 	}
+}
+
+// InTx runs fn in the transaction that stores the current unit, before its rows, so a
+// write outside practice_records (a merge relinking module rows) commits or rolls back
+// with the unit. fn finds the transaction with audit.Tx(ctx, pool). Outside a unit fn runs
+// in a transaction of its own.
+func (d *Durable) InTx(ctx context.Context, fn func(context.Context) error) error {
+	if u := d.unitOf(ctx); u != nil {
+		u.pre = append(u.pre, fn)
+		return nil
+	}
+	return audit.WithTx(ctx, d.db, fn)
 }
 
 // reload discards a failed unit's Memory changes by loading Memory from Postgres again.
@@ -297,10 +313,20 @@ func (d *Durable) write(ctx context.Context, op func() error, recs func() []reco
 
 // commit stores list and appends audits to audit_log in one transaction. The caller holds wmu.
 func (d *Durable) commit(ctx context.Context, list []record, audits []domain.AuditEntry) error {
-	if len(list) == 0 && len(audits) == 0 {
+	return d.commitWith(ctx, list, audits, nil)
+}
+
+// commitWith is commit that first runs pre in the same transaction (InTx).
+func (d *Durable) commitWith(ctx context.Context, list []record, audits []domain.AuditEntry, pre []func(context.Context) error) error {
+	if len(list) == 0 && len(audits) == 0 && len(pre) == 0 {
 		return nil
 	}
 	err := audit.WithTx(ctx, d.db, func(ctx context.Context) error {
+		for _, fn := range pre {
+			if err := fn(ctx); err != nil {
+				return err
+			}
+		}
 		tx := audit.Tx(ctx, d.db)
 		for _, r := range list {
 			if r.del {
@@ -554,6 +580,15 @@ func (d *Durable) EnsureMarkers(ctx context.Context, labels []string, at time.Ti
 
 func (d *Durable) PutMatterMarker(ctx context.Context, row MatterMarker) error {
 	return simple(ctx, d, func() error { return d.Memory.PutMatterMarker(ctx, row) }, put("matter_marker", row.ID, row))
+}
+func (d *Durable) UpdateMatterMarker(ctx context.Context, row MatterMarker) error {
+	return simple(ctx, d, func() error { return d.Memory.UpdateMatterMarker(ctx, row) }, put("matter_marker", row.ID, row))
+}
+func (d *Durable) PutMarker(ctx context.Context, row MarkerDef) error {
+	return simple(ctx, d, func() error { return d.Memory.PutMarker(ctx, row) }, put("marker", row.ID, row))
+}
+func (d *Durable) PutPartyRole(ctx context.Context, row PartyRoleDef) error {
+	return simple(ctx, d, func() error { return d.Memory.PutPartyRole(ctx, row) }, put("party_role", row.ID, row))
 }
 func (d *Durable) AppendClose(ctx context.Context, row CloseRecord) error {
 	return simple(ctx, d, func() error { return d.Memory.AppendClose(ctx, row) }, put("close", row.ID, row))

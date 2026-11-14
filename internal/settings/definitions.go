@@ -47,6 +47,7 @@ var definitions = []Definition{
 	{Key: "billing.default_hourly_rate_cents", Kind: KindCents, Default: "0.00", Min: 0, HasMin: true, Tab: TabBilling, Help: "Default hourly rate for new users."},
 	{Key: "billing.expense_markup_percent", Kind: KindInt, Default: "0", Min: 0, Max: 1000, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Default expense markup percent. Default 0.", PRD: true},
 	{Key: "billing.payment_terms_days", Kind: KindInt, Default: "30", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Invoice payment terms in days. Default 30.", PRD: true},
+	{Key: "billing.processor_authorization_lifetime", Kind: KindDuration, Default: "30m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabBilling, Help: "How long a payment processor module may use the authorization a staff member gave it for one payment. Default 30 minutes."},
 	{Key: "billing.grace_period_days", Kind: KindInt, Default: "15", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Grace period before late interest, in days. Default 15.", PRD: true},
 	{Key: "billing.late_interest_enabled", Kind: KindBool, Default: "false", Tab: TabBilling, Help: "Late interest is off unless this is turned on.", PRD: true},
 	{Key: "billing.late_interest_annual_percent", Kind: KindInt, Default: "0", Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Annual late-interest percent used when late interest is on."},
@@ -76,6 +77,7 @@ var definitions = []Definition{
 	{Key: "files.upload_chunk_bytes", Kind: KindInt, Default: "8388608", Min: 1, Max: 1 << 30, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Upload chunk size in bytes. Default 8 MiB.", PRD: true},
 	{Key: "files.default_folders", Kind: KindJSON, Default: jsonText(domain.DefaultFolders()), Tab: TabFiles, Help: "Default folders for a new matter.", PRD: true},
 	{Key: "files.drop_steady_seconds", Kind: KindInt, Default: "30", Min: 1, Max: 3600, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Seconds a drop-folder file must stay unchanged before intake. Default 30.", PRD: true},
+	{Key: "files.publication_grant_minutes", Kind: KindInt, Default: "60", Min: 1, Max: 1440, HasMin: true, HasMax: true, Tab: TabFiles, Help: "Minutes a background file publication grant stays valid after the core issues it to a module. Default 60."},
 
 	{Key: "editor.lawcraft_commit", Kind: KindString, Default: domain.LawCraftCommit, Tab: TabEditor, Help: "LawCraft commit pinned in this build. Read only.", Locked: true, PRD: true},
 	{Key: "editor.lock_timeout", Kind: KindDuration, Default: "5m0s", Min: int64(time.Minute), Max: int64(time.Hour), HasMin: true, HasMax: true, Tab: TabEditor, Help: "Edit lock timeout without a renewal. Default 5 minutes.", PRD: true},
@@ -141,6 +143,7 @@ var definitions = []Definition{
 	{Key: "ai.openai_api_key", Kind: KindString, Secret: true, Optional: true, Tab: TabAI, Help: "OpenAI API key. Stored encrypted and omitted from the audit log."},
 	{Key: "ai.anthropic_api_key", Kind: KindString, Secret: true, Optional: true, Tab: TabAI, Help: "Anthropic API key. Stored encrypted and omitted from the audit log."},
 	{Key: "ai.compatible_api_key", Kind: KindString, Secret: true, Optional: true, Tab: TabAI, Help: "API key for an OpenAI-compatible endpoint. Stored encrypted and omitted from the audit log."},
+	{Key: "ai.local_api_key", Kind: KindString, Secret: true, Optional: true, Tab: TabAI, Help: "API key for the local endpoint, when it asks for one. Stored encrypted and omitted from the audit log."},
 	{Key: "ai.compatible_base_url", Kind: KindString, Tab: TabAI, Help: "Base URL of an OpenAI-compatible endpoint."},
 	{Key: "ai.local_base_url", Kind: KindString, Tab: TabAI, Help: "Base URL of a local model endpoint."},
 	{Key: "ai.speech_to_text_model", Kind: KindString, Tab: TabAI, Help: "Speech-to-text model used for transcription."},
@@ -169,6 +172,7 @@ var definitions = []Definition{
 
 	{Key: "api.page_size", Kind: KindInt, Default: "50", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Default rows per API page unless the list has its own page-size setting. The effective size is limited by api.max_page_size. Default 50."},
 	{Key: "api.max_page_size", Kind: KindInt, Default: "200", Min: 1, Max: 10000, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Maximum rows per API page for lists using general pagination. Default 200."},
+	{Key: "api.idempotency_retention_hours", Kind: KindInt, Default: "24", Min: 1, HasMin: true, Tab: TabAPI, Help: "How long a stored Idempotency-Key result is replayed, in hours. Default 24."},
 	{Key: "api.bulk_batch_max", Kind: KindInt, Default: "500", Min: 1, HasMin: true, Tab: TabAPI, Help: "Maximum items in one bulk request; the whole batch is one transaction. Default 500."},
 	{Key: "api.webhook_attempts", Kind: KindInt, Default: "8", Min: 1, Max: 100, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Webhook delivery attempts. Default 8.", PRD: true},
 	{Key: "api.webhook_window_hours", Kind: KindInt, Default: "24", Min: 1, Max: 168, HasMin: true, HasMax: true, Tab: TabAPI, Help: "Hours over which webhook retries are spread. Default 24.", PRD: true},

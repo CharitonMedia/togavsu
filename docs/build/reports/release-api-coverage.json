@@ -1,0 +1,202 @@
+{
+ "task_id": "release-api-coverage",
+ "status": "pass",
+ "tested_revision": "0b09fd8fafcf2551ecb8ba90a25759cf14631088",
+ "exit_code": 0,
+ "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
+ "tests": [
+  {
+   "id": "codex-findings-regressions",
+   "command": "go test -count=1 -run '^(TestEventsFeedAndAppend|TestReleaseProcessorInitialization)$' ./internal/core/; go test -count=1 -run '^TestPGPublicationGrantGovernsBackgroundUploads$' ./internal/files/; go test -count=1 ./internal/domain/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "each new assertion fails on de7adeb's code (0 event.appended rows; source manual accepted 201; wrong matter forbidden) and passes at the tested revision"
+  },
+  {
+   "id": "codex-findings-regressions-pr55-review",
+   "command": "go test -count=1 -run '^(TestPGPublicationGrantGovernsBackgroundUploads|TestPGBulkFilePublishesAllOrNothing)$' ./internal/files/; go test -count=1 -run '^(TestReleaseArchiveAndMergeMatters|TestReleaseBulkInvoices)$' ./internal/core/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "each new assertion fails on 0bf522b's code (walled contact granted; version callbacks on the committed transaction; archived matter in the default CSV and Matters screen) and passes at the tested revision; invoice item failures are batch_rejected 422"
+  },
+  {
+   "id": "all-operations-mounted",
+   "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "0 of 430 contract operations are not mounted (was 31 of 430 at c8bc2e9)"
+  },
+  {
+   "id": "full-acceptance-AC-002",
+   "command": "python3 scripts/release/full_acceptance.py --ids AC-002",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "api-contract, go-release-api and all-operations-mounted pass at the tested revision; passed 1, pending 0"
+  },
+  {
+   "id": "go-all-packages",
+   "command": "go test -count=1 ./internal/files/ ./internal/billing/ ./internal/practice/ ./internal/domain/ ./internal/doctender/ ./internal/editor/ ./internal/settings/; go test -count=1 -timeout 25m ./internal/core/; gofmt -l (empty); go vet ./...",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "the packages this revision changes, and the packages that call them, pass at the tested revision; the other packages passed at 36039566 and are unchanged; CI runs every package"
+  },
+  {
+   "id": "go-race",
+   "command": "go test -count=1 -race -short ./internal/files/ ./internal/billing/ ./internal/practice/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "run at the tested revision; ./internal/core/ ran under -race at 36039566"
+  },
+  {
+   "id": "api-contract",
+   "command": "sh scripts/ci/test-api.sh",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "passes at the tested revision"
+  },
+  {
+   "id": "new-operation-tests",
+   "command": "go test -count=1 -run '^(TestEventsFeedAndAppend|TestAIProviderKeys|TestEmailChange|TestPartyRolesAPI|TestMarkerDefinitionsAPI|TestModuleMarkersAPI|TestReleaseArchiveAndMergeMatters|TestReleaseRecordCustomFields|TestPGMergeMatterRelinksModuleRows|TestReleaseProcessorInitialization)$' ./internal/core/ ./internal/modules/ ; plus the files grant, invoice import and processor tests in internal/core/file_grants_pg_test.go, release_invoice_import_pg_test.go, release_processor_pg_test.go and internal/files/grants_pg_test.go",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "run inside the full package runs above"
+  },
+  {
+   "id": "supervisor",
+   "command": "sh scripts/ci/test-supervisor.sh; sh scripts/ci/test-bootstrap.sh; sh scripts/ci/pending-gate.sh; python3 scripts/ci/check-compose.py",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
+  },
+  {
+   "id": "backup-integration",
+   "command": "sh scripts/ci/test-backup-integration.sh (TOGAVSU_TEST_DATABASE_URL and TOGAVSU_TEST_DATABASE_URL_B on two Postgres 17 servers; local pg_dump/psql were v18, CI uses v17)",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "17 integration tests pass; run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
+  },
+  {
+   "id": "qa-harness",
+   "command": "docker run --rm -v $PWD:/src -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
+  },
+  {
+   "id": "supervisor-image",
+   "command": "docker compose -f compose.yaml config; docker build -f Dockerfile -t togavsu-supervisor:local .; sftp present",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "core image build and smoke (build-core-image.sh, test-core-smoke.sh) not run locally (the build exceeded the local 10-minute limit at the previous revision); pending CI; run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
+  },
+  {
+   "id": "debt-audit",
+   "command": "python3 scripts/release/check_debt.py",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "107 markers, 66 ledger entries at the tested revision"
+  },
+  {
+   "id": "codex-findings-regressions-pr55-second-review",
+   "command": "go test -count=1 -run '^(TestReleaseBulkCustomFieldsReplacedTime|TestReleaseRecordCustomFields|TestEventsFeedAndAppend|TestFinanceTrustInvariants)$' ./internal/core/; go test -count=1 ./internal/trust/ ./internal/billing/ ./internal/domain/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "the replaced-time test fails on d775cb0's code (a module write before the missing record's not_found) and passes at the tested revision; invalid bulkEvent, bulkCustomFieldValue and bulkTrustEntry items answer 422 batch_rejected"
+  }
+ ],
+ "phase_cases": [
+  {
+   "id": "all-operations-mounted",
+   "acceptance_ids": [
+    "AC-002"
+   ],
+   "status": "pass",
+   "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
+   "exit_code": 0,
+   "revision": "0b09fd8fafcf2551ecb8ba90a25759cf14631088"
+  }
+ ],
+ "passed_acceptance_ids": [
+  "AC-002"
+ ],
+ "pending_acceptance_ids": [],
+ "environment": "TOGAVSU_TEST_DATABASE_URL=postgres://togavsu:***@127.0.0.1:5432/togavsu?sslmode=disable (Postgres 17 in Docker, synthetic data)",
+ "operations_added": [
+  "listAiProviders",
+  "putAiProviderKey",
+  "checkAiProvider",
+  "listEvents",
+  "createEvent",
+  "bulkEvent",
+  "listPartyRole",
+  "createPartyRole",
+  "getPartyRole",
+  "updatePartyRole",
+  "listMarkerDefinition",
+  "createMarkerDefinition",
+  "getMarkerDefinition",
+  "updateMarkerDefinition",
+  "updateMatterMarker",
+  "createModuleMarker",
+  "updateModuleMarker",
+  "revokeModuleMarker",
+  "mergeContact",
+  "mergeMatter",
+  "archiveMatter",
+  "bulkCustomFieldValue",
+  "putTimeEntryCustomFields",
+  "putExpenseCustomFields",
+  "bulkInvoice",
+  "bulkFile",
+  "reviewUnassignedFile",
+  "issueFilePublicationGrant",
+  "initiateProcessorPayment",
+  "requestEmailChange",
+  "confirmEmailChange"
+ ],
+ "migrations": [
+  "internal/core/migrations/1244_matter_archived.sql",
+  "internal/modules/migrations/1248_module_delivery_grant.sql",
+  "internal/core/migrations/1252_file_publication_grants.sql",
+  "internal/core/migrations/1256_core_idempotency.sql"
+ ],
+ "known_limits": [
+  "bulkCustomFieldValue with time replaced by a module: every forwarded record is resolved on the module before any write (missing is not_found, unavailable is batch_rejected), but forwarded items are written one PUT at a time, so a module refusing a later item, or a core commit fault, leaves values the module already accepted (ponytail in internal/core/customfields.go)",
+  "custom_fields in time entry and expense create/patch bodies is still refused; values are set through the custom-fields routes",
+  "bulk routes the contract lists with batch_rejected (custom-field values, events, invoices, trust ledger, files) answer an invalid item with batch_rejected (422); access failures stay not_found, forbidden or scope_denied; an empty or oversized batch stays validation (400)",
+  "staff role scope set does not include events:write, so a staff-owned token cannot append events; a staff session can",
+  "event.appended rows also appear in listEvents as their own feed rows ('Event appended: <action>'); the feed has no rule to hide them"
+ ],
+ "fixes_found_on_the_way": [
+  "secret settings were stored in the clear; the core registry now uses settings.SealingStore (AES-256-GCM, existing plaintext rows still read)",
+  "duplicate_email and idempotency_conflict map to 409 instead of 500",
+  "domain.APIError gains CodeFieldLocked (403), the contract's field_locked problem code, which had no Go constant"
+ ],
+ "simplification": {
+  "net_lines": "+7192 (7340 insertions, 148 deletions across 70 files vs c8bc2e9; this correction +101: 107 insertions, 6 deletions across 8 files vs de7adeb)",
+  "debt_count": 66,
+  "note": "no new ponytail markers in this correction; two markers from the earlier commits remain proposed for PONYTAIL-DEBT.md in the PR body (outside owned paths)"
+ },
+ "codex_findings_resolved": [
+  {
+   "finding": "internal/core/events_api.go: createEvent and bulkEvent never emit event.appended",
+   "resolution": "appendEvents publishes one event.appended per appended row in the same transaction (record_type event, record_id the appended id, same matter, never client-visible); TestEventsFeedAndAppend checks create, each bulk item, a rejected batch (none), an idempotent replay (once) and a queued delivery to a module subscribed to event.appended"
+  },
+  {
+   "finding": "internal/billing/processor.go: a processor can set a payment field outside the grant",
+   "resolution": "CreateProcessorPayment refuses source and received_on with field_locked (new domain.CodeFieldLocked, 403) and always sets source to the processor module id; TestReleaseProcessorInitialization checks source manual, another module and its own id are field_locked and write no payment"
+  },
+  {
+   "finding": "internal/files/grants.go: matter-grant upload published onto another matter returns forbidden",
+   "resolution": "grantPlacement returns not_found for a matter grant's wrong matter (unassigned refusal unchanged); grants_pg_test.go asserts not_found alone and in a mixed batch that publishes nothing"
+  },
+  {
+   "finding": "bulkCustomFieldValue and bulkEvent return validation 400 for a rejected item where the contract lists batch_rejected",
+   "resolution": "domain.BatchRejected maps an item error to batch_rejected (422) keeping access codes; used by custom fields, events, invoices and bulkTrustEntry; tests expect 422 batch_rejected"
+  },
+  {
+   "finding": "with time replaced, forwarded custom-field items are written one by one after only an authorization check, so a later failure leaves earlier module writes",
+   "resolution": "every forwarded record is resolved on the module (GET, no write) before the first write, so a missing record is not_found and an unavailable replacement is batch_rejected with nothing written, core items included; a module refusing a later item's values is the widened ponytail ceiling; TestReleaseBulkCustomFieldsReplacedTime covers it with a fake time module"
+  }
+ ]
+}

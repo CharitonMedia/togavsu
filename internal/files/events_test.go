@@ -14,18 +14,20 @@ import (
 // emittedEvents is what each served files operation writes to core.events today,
 // limited to the names the contract gives it.
 var emittedEvents = map[string][]string{
-	"publishFile":           {"file.version_created"},
-	"updateFileMetadata":    {"file.updated"},
-	"renameFile":            {"file.updated"},
-	"moveFile":              {"file.updated"},
-	"markFileStatus":        {"file.updated"},
-	"restoreFile":           {"file.updated"},
-	"purgeFile":             {"file.purged"},
-	"addFileVersion":        {"file.version_created"},
-	"restoreFileVersion":    {"file.version_created"},
-	"downloadFileVersion":   {"file.downloaded"},
-	"downloadFileRendition": {"file.downloaded"},
-	"createFileArchive":     {"file.downloaded"},
+	"publishFile":               {"file.created", "file.version_created"},
+	"bulkFile":                  {"file.created", "file.version_created"},
+	"issueFilePublicationGrant": {"file.background_authorized"},
+	"updateFileMetadata":        {"file.updated"},
+	"renameFile":                {"file.updated"},
+	"moveFile":                  {"file.updated"},
+	"markFileStatus":            {"file.updated"},
+	"restoreFile":               {"file.updated"},
+	"purgeFile":                 {"file.purged"},
+	"addFileVersion":            {"file.version_created"},
+	"restoreFileVersion":        {"file.version_created"},
+	"downloadFileVersion":       {"file.downloaded"},
+	"downloadFileRendition":     {"file.downloaded"},
+	"createFileArchive":         {"file.downloaded"},
 }
 
 // offContractEvents is what a served operation writes that the contract does not name
@@ -39,7 +41,6 @@ var offContractEvents = map[string][]string{
 // "Proposed shared changes" asks whether to write these names here or narrow the
 // contract. Until then they are disclosed, not silently missing.
 var pendingEvents = map[string][]string{
-	"publishFile":           {"file.created"},
 	"trashFile":             {"file.trashed"},
 	"createFileLink":        {"file.linked"},
 	"quarantineFileVersion": {"file.quarantine_changed"},

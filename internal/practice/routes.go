@@ -9,6 +9,8 @@ import (
 
 func (h *Handler) practiceRoutes(mux *http.ServeMux) {
 	h.bulkRoutes(mux)
+	h.definitionRoutes(mux)
+	h.mergeRoutes(mux)
 	mux.HandleFunc("GET /api/v1/contacts", h.contactsJSON)
 	mux.HandleFunc("POST /api/v1/contacts", h.createContactJSON)
 	mux.HandleFunc("GET /api/v1/contacts/{contact_id}", h.contactJSON)

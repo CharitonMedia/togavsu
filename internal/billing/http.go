@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // Handler serves the billing JSON API under /api/v1 and the billing screens under /billing.
@@ -27,6 +28,10 @@ import (
 type Handler struct {
 	Svc       *Service
 	Principal func(*http.Request) (domain.Principal, error)
+	// Scopes checks bearer token scopes the route table cannot: bulkInvoice's per-item
+	// privileges and a processor's trust destination. The core wires the caller's
+	// RequireScopes (a session passes). Nil checks nothing beyond the route's scopes.
+	Scopes    func(r *http.Request, need ...string) error
 	Templates *template.Template
 	FS        fs.FS
 }
@@ -88,6 +93,7 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/time-entries/{time_entry_id}", h.getTime)
 	api("PATCH /api/v1/time-entries/{time_entry_id}", h.patchTime)
 	api("GET /api/v1/time-entries/{time_entry_id}/history", h.history("time_entry", "time_entry_id"))
+	api("PUT /api/v1/time-entries/{time_entry_id}/custom-fields", h.putCustom(practice.RecordTimeEntry, "time_entry_id"))
 	api("GET /api/v1/timers", h.listTimers)
 	api("POST /api/v1/timers", h.startTimer)
 	api("GET /api/v1/timers/{timer_id}", h.getTimer)
@@ -101,8 +107,10 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/expenses/{expense_id}", h.getExpense)
 	api("PATCH /api/v1/expenses/{expense_id}", h.patchExpense)
 	api("GET /api/v1/expenses/{expense_id}/history", h.history("expense", "expense_id"))
+	api("PUT /api/v1/expenses/{expense_id}/custom-fields", h.putCustom(practice.RecordExpense, "expense_id"))
 	api("GET /api/v1/invoices", h.listInvoices)
 	api("POST /api/v1/invoice-drafts", h.draftInvoices)
+	api("POST /api/v1/invoices:bulk", h.bulkInvoices)
 	api("GET /api/v1/invoices/{invoice_id}", h.getInvoice)
 	api("PATCH /api/v1/invoices/{invoice_id}", h.patchInvoice)
 	api("GET /api/v1/invoices/{invoice_id}/history", h.history("invoice", "invoice_id"))
@@ -117,6 +125,7 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/payments", h.listPayments)
 	api("POST /api/v1/payments", h.createPayment)
 	api("POST /api/v1/payments:bulk", h.bulkPayments)
+	api("POST /api/v1/payments/processor-initializations", h.initiateProcessor)
 	api("GET /api/v1/payments/{payment_id}", h.getPayment)
 	api("POST /api/v1/payments/{payment_id}/status", h.paymentStatus)
 	api("POST /api/v1/payments/{payment_id}/reverse", h.reversePayment)
@@ -472,7 +481,7 @@ func (h *Handler) listTime(w http.ResponseWriter, r *http.Request, p domain.Prin
 		f.Max = from + limit + 1
 	}
 	rows, err := h.Svc.TimeEntries(r.Context(), p, f)
-	h.list(w, r, "time-entries", anys(rows, timeView), err)
+	h.list(w, r, "time-entries", anys(rows, h.timeView), err)
 }
 
 func (h *Handler) createTime(w http.ResponseWriter, r *http.Request, p domain.Principal) {
@@ -483,7 +492,7 @@ func (h *Handler) createTime(w http.ResponseWriter, r *http.Request, p domain.Pr
 			return 0, nil, err
 		}
 		row, err := h.Svc.CreateTime(r.Context(), p, in)
-		return http.StatusCreated, timeView(row), err
+		return http.StatusCreated, h.timeView(row), err
 	})
 }
 
@@ -501,13 +510,13 @@ func (h *Handler) bulkTime(w http.ResponseWriter, r *http.Request, p domain.Prin
 			items = append(items, in)
 		}
 		rows, err := h.Svc.BulkTime(r.Context(), p, items)
-		return http.StatusCreated, map[string]any{"data": anys(rows, timeView)}, err
+		return http.StatusCreated, map[string]any{"data": anys(rows, h.timeView)}, err
 	})
 }
 
 func (h *Handler) getTime(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	row, err := h.Svc.TimeEntry(r.Context(), p, domain.ID(r.PathValue("time_entry_id")))
-	respond(w, http.StatusOK, timeView(row), err)
+	respond(w, http.StatusOK, h.timeView(row), err)
 }
 
 func (h *Handler) patchTime(w http.ResponseWriter, r *http.Request, p domain.Principal) {
@@ -518,7 +527,7 @@ func (h *Handler) patchTime(w http.ResponseWriter, r *http.Request, p domain.Pri
 			return 0, nil, err
 		}
 		row, err := h.Svc.UpdateTime(r.Context(), p, domain.ID(r.PathValue("time_entry_id")), in)
-		return http.StatusOK, timeView(row), err
+		return http.StatusOK, h.timeView(row), err
 	})
 }
 
@@ -574,7 +583,7 @@ func (h *Handler) stopTimer(w http.ResponseWriter, r *http.Request, p domain.Pri
 			return 0, nil, err
 		}
 		stopped := stoppedJSON{tm.ID, tm.MatterID, tm.UserID, ts(tm.StartedAt), ts(*tm.StoppedAt), tm.AccumulatedSeconds, "stopped", tm.TimeEntryID}
-		return http.StatusOK, map[string]any{"timer": stopped, "time_entry": timeView(entry)}, nil
+		return http.StatusOK, map[string]any{"timer": stopped, "time_entry": h.timeView(entry)}, nil
 	})
 }
 
@@ -636,7 +645,7 @@ func (h *Handler) listExpenses(w http.ResponseWriter, r *http.Request, p domain.
 	}
 	rows, err := h.Svc.Expenses(r.Context(), p, ExpenseFilter{MatterID: domain.ID(q(r, "matter_id")), FromDate: q(r, "from_date"),
 		ToDate: q(r, "to_date"), Billable: billable, InvoiceID: domain.ID(q(r, "invoice_id"))})
-	h.list(w, r, "expenses", anys(rows, expenseView), err)
+	h.list(w, r, "expenses", anys(rows, h.expenseView), err)
 }
 
 func (h *Handler) createExpense(w http.ResponseWriter, r *http.Request, p domain.Principal) {
@@ -647,7 +656,7 @@ func (h *Handler) createExpense(w http.ResponseWriter, r *http.Request, p domain
 			return 0, nil, err
 		}
 		row, err := h.Svc.CreateExpense(r.Context(), p, in)
-		return http.StatusCreated, expenseView(row), err
+		return http.StatusCreated, h.expenseView(row), err
 	})
 }
 
@@ -665,13 +674,13 @@ func (h *Handler) bulkExpenses(w http.ResponseWriter, r *http.Request, p domain.
 			items = append(items, in)
 		}
 		rows, err := h.Svc.BulkExpenses(r.Context(), p, items)
-		return http.StatusCreated, map[string]any{"data": anys(rows, expenseView)}, err
+		return http.StatusCreated, map[string]any{"data": anys(rows, h.expenseView)}, err
 	})
 }
 
 func (h *Handler) getExpense(w http.ResponseWriter, r *http.Request, p domain.Principal) {
 	row, err := h.Svc.Expense(r.Context(), p, domain.ID(r.PathValue("expense_id")))
-	respond(w, http.StatusOK, expenseView(row), err)
+	respond(w, http.StatusOK, h.expenseView(row), err)
 }
 
 func (h *Handler) patchExpense(w http.ResponseWriter, r *http.Request, p domain.Principal) {
@@ -682,7 +691,7 @@ func (h *Handler) patchExpense(w http.ResponseWriter, r *http.Request, p domain.
 			return 0, nil, err
 		}
 		row, err := h.Svc.UpdateExpense(r.Context(), p, domain.ID(r.PathValue("expense_id")), in)
-		return http.StatusOK, expenseView(row), err
+		return http.StatusOK, h.expenseView(row), err
 	})
 }
 
@@ -926,7 +935,15 @@ func (h *Handler) createPayment(w http.ResponseWriter, r *http.Request, p domain
 		if err != nil {
 			return 0, nil, err
 		}
-		row, err := h.Svc.CreatePayment(r.Context(), p, in)
+		var row Payment
+		if grant := r.Header.Get(ProcessorHeader); grant != "" {
+			if err := h.processorScopes(r, p, grant, in.Status != PayPending && in.Status != PayFailed); err != nil {
+				return 0, nil, err
+			}
+			row, err = h.Svc.CreateProcessorPayment(r.Context(), p, grant, in)
+		} else {
+			row, err = h.Svc.CreatePayment(r.Context(), p, in)
+		}
 		return http.StatusCreated, paymentView(row), err
 	})
 }
@@ -959,7 +976,15 @@ func (h *Handler) paymentStatus(w http.ResponseWriter, r *http.Request, p domain
 		Status string `json:"status"`
 	}
 	h.write(w, r, p, &body, func() (int, any, error) {
-		row, err := h.Svc.UpdatePaymentStatus(r.Context(), p, domain.ID(r.PathValue("payment_id")), body.Status)
+		id := domain.ID(r.PathValue("payment_id"))
+		if grant := r.Header.Get(ProcessorHeader); grant != "" {
+			if err := h.processorScopes(r, p, grant, body.Status == PayCompleted); err != nil {
+				return 0, nil, err
+			}
+			row, err := h.Svc.UpdateProcessorPaymentStatus(r.Context(), p, grant, id, body.Status)
+			return http.StatusOK, paymentView(row), err
+		}
+		row, err := h.Svc.UpdatePaymentStatus(r.Context(), p, id, body.Status)
 		return http.StatusOK, paymentView(row), err
 	})
 }
