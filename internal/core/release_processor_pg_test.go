@@ -161,7 +161,16 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 	if r := bot.do("POST", "/api/v1/payments", wrongMatter, modules.TaskAuthorizationHeader, grant); r.code != http.StatusNotFound {
 		t.Fatalf("matter outside the grant: %d %s", r.code, r.body)
 	}
-	if r := bot.do("POST", "/api/v1/payments", pay, modules.TaskAuthorizationHeader, grant[:len(grant)-2]+"xx"); r.code != http.StatusForbidden {
+	// Change a character well inside the grant's secret: the last base64 character
+	// carries unused bits, so a swap there can decode to the same secret and pass.
+	bad := []byte(grant)
+	at := len(bad) - 10
+	if bad[at] == 'A' {
+		bad[at] = 'B'
+	} else {
+		bad[at] = 'A'
+	}
+	if r := bot.do("POST", "/api/v1/payments", pay, modules.TaskAuthorizationHeader, string(bad)); r.code != http.StatusForbidden {
 		t.Fatalf("a forged grant: %d %s", r.code, r.body)
 	}
 	// A field outside the grant's allowed_fields is field_locked: the processor cannot
