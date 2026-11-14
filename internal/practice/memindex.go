@@ -102,3 +102,69 @@ func (m *Memory) MatterGlance(matter domain.ID) (invoices int, trust []domain.Ce
 
 // timeTotal is one matter's time entry count and increments.
 type timeTotal struct{ entries, increments int }
+
+// searchIndex holds each matter's, contact's and invoice's searched text, lowercased
+// once, so a search over 20,000 matters and contacts (AC-017) compares bytes instead of
+// lowercasing every name, email and phone on every request. It holds text only: every
+// hit is still checked for walls and role by the caller on every request. Memory builds
+// it on first search and drops it on any contact, email, phone, matter or invoice write.
+type searchIndex struct {
+	matters, contacts, invoices []searchRow
+}
+
+type searchRow struct {
+	id  domain.ID
+	hay []byte
+}
+
+// search returns the index, building it if a write dropped it. The caller holds m.mu.
+func (m *Memory) search() *searchIndex {
+	if m.sidx != nil {
+		return m.sidx
+	}
+	x := &searchIndex{
+		matters:  make([]searchRow, 0, len(m.matters)),
+		contacts: make([]searchRow, 0, len(m.contacts)),
+		invoices: make([]searchRow, 0, len(m.invoices)),
+	}
+	for id, row := range m.matters {
+		hay := appendLower(nil, row.Name)
+		hay = appendLower(append(hay, ' '), row.Number)
+		hay = appendLower(append(hay, ' '), row.CaseNumber)
+		x.matters = append(x.matters, searchRow{id: id, hay: hay})
+	}
+	c := m.children()
+	for id, row := range m.contacts {
+		hay := appendLower(nil, row.FullName)
+		for _, f := range []string{row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs} {
+			hay = appendLower(append(hay, ' '), f)
+		}
+		for _, e := range c.emails[id] {
+			if r, ok := m.emails[e]; ok {
+				hay = appendLower(append(hay, ' '), r.Email)
+			}
+		}
+		for _, ph := range c.phones[id] {
+			if r, ok := m.phones[ph]; ok {
+				hay = appendLower(append(hay, ' '), r.PhoneE164)
+			}
+		}
+		x.contacts = append(x.contacts, searchRow{id: id, hay: hay})
+	}
+	for id, row := range m.invoices {
+		x.invoices = append(x.invoices, searchRow{id: id, hay: appendLower(nil, row.Number)})
+	}
+	m.sidx = x
+	return x
+}
+
+// matching is the ids of rows whose text match accepts.
+func matching(rows []searchRow, match func([]byte) bool) []domain.ID {
+	var out []domain.ID
+	for _, r := range rows {
+		if match(r.hay) {
+			out = append(out, r.id)
+		}
+	}
+	return out
+}

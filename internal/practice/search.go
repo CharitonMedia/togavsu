@@ -103,17 +103,11 @@ func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query s
 	var rows []domain.Matter
 	// The text test comes first: it is cheap, and every matching matter is still checked
 	// for walls and role before it is a hit. Only matching matters are read whole.
-	var hay []byte
-	qb := []byte(q)
-	for _, t := range s.matterText() {
-		hay = appendLower(hay[:0], t.Fields[0])
-		for _, f := range t.Fields[1:3] {
-			hay = appendLower(append(hay, ' '), f)
-		}
-		if !bytes.Contains(hay, qb) || !s.visibleMatter(ctx, p, t.ID) {
+	for _, id := range s.mattersMatching([]byte(q)) {
+		if !s.visibleMatter(ctx, p, id) {
 			continue
 		}
-		if row, err := s.db.Matter(ctx, t.ID); err == nil {
+		if row, err := s.db.Matter(ctx, id); err == nil {
 			rows = append(rows, row)
 		}
 	}
@@ -171,10 +165,9 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Invoice
-	for _, row := range s.db.Invoices() {
-		if !strings.Contains(strings.ToLower(row.Number), q) {
-			continue
-		}
+	// The number test comes first; every matching invoice is still checked for its
+	// matter's wall.
+	for _, row := range s.invoicesMatching([]byte(q)) {
 		if s.hiddenByWall(ctx, p, row.MatterID) {
 			continue
 		}
@@ -198,15 +191,42 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 	return hits
 }
 
-// matterText is the matters' searched fields, through the memory store's light list
-// when it has one.
-func (s *Service) matterText() []SearchText {
-	if m, ok := s.db.(interface{ MatterSearchText() []SearchText }); ok {
-		return m.MatterSearchText()
+// mattersMatching is the matters whose name, number and case number text holds q
+// (lowercase): through the memory store's search index when it has one.
+func (s *Service) mattersMatching(q []byte) []domain.ID {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		MattersMatching(func([]byte) bool) []domain.ID
+	}); ok {
+		return m.MattersMatching(match)
 	}
-	var out []SearchText
+	var out []domain.ID
+	var hay []byte
 	for _, row := range s.db.Matters() {
-		out = append(out, SearchText{ID: row.ID, Fields: [5]string{row.Name, row.Number, row.CaseNumber}})
+		hay = appendLower(hay[:0], row.Name)
+		hay = appendLower(append(hay, ' '), row.Number)
+		hay = appendLower(append(hay, ' '), row.CaseNumber)
+		if match(hay) {
+			out = append(out, row.ID)
+		}
+	}
+	return out
+}
+
+// invoicesMatching is the invoices whose number holds q (lowercase).
+func (s *Service) invoicesMatching(q []byte) []domain.Invoice {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		InvoicesMatching(func([]byte) bool) []domain.Invoice
+	}); ok {
+		return m.InvoicesMatching(match)
+	}
+	var out []domain.Invoice
+	var hay []byte
+	for _, row := range s.db.Invoices() {
+		if hay = appendLower(hay[:0], row.Number); match(hay) {
+			out = append(out, row)
+		}
 	}
 	return out
 }

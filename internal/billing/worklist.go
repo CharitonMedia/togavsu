@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // FlatRow is one flat-fee matter on the Billing / Generate worklist.
@@ -253,6 +254,26 @@ func (s *Service) mattersByNumber() []domain.Matter {
 		out[i] = rows[k]
 	}
 	return out
+}
+
+// picksByNumber returns every matter's pick-list fields in matter-number order, through the
+// practice store's light list when it has one. The id breaks number ties.
+func (s *Service) picksByNumber() []practice.MatterPick {
+	var rows []practice.MatterPick
+	if src, ok := s.d.Practice.(interface{ MatterPicks() []practice.MatterPick }); ok {
+		rows = src.MatterPicks()
+	} else {
+		for _, m := range s.d.Practice.Matters() {
+			rows = append(rows, practice.MatterPick{ID: m.ID, Number: m.Number, Name: m.Name, Status: m.Status})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Number != rows[j].Number {
+			return rows[i].Number < rows[j].Number
+		}
+		return rows[i].ID < rows[j].ID
+	})
+	return rows
 }
 
 // ApplyFlatFee moves the confirmed flat fee from the client's trust funds to operating at the

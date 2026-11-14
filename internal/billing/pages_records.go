@@ -90,10 +90,12 @@ func (h *Handler) typeNames(ctx context.Context, p domain.Principal, expense boo
 
 // writableMatters lists the open matters the caller may write res on, for the pick lists.
 func (h *Handler) writableMatters(ctx context.Context, p domain.Principal, res domain.Resource) []domain.Matter {
+	// The picker shows a matter's number and name only, so it reads the light pick list
+	// (AC-017: 20,000 matters); write access is still checked for every matter shown.
 	var out []domain.Matter
-	for _, m := range h.Svc.mattersByNumber() {
+	for _, m := range h.Svc.picksByNumber() {
 		if m.Status != matterClosed && h.Svc.allow(ctx, p, res, domain.ActionWrite, m.ID) == nil {
-			out = append(out, m)
+			out = append(out, domain.Matter{Meta: domain.Meta{ID: m.ID}, Number: m.Number, Name: m.Name, Status: m.Status})
 		}
 	}
 	return out
