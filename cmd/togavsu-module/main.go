@@ -1,8 +1,8 @@
 // Command togavsu-module checks, packages and verifies Togavsu module packages with the
 // core's own code (pkg/modulekit).
 //
-//	togavsu-module check [-installable] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
-//	togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
+//	togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
+//	togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
 //	togavsu-module accepts
 //
@@ -15,10 +15,15 @@
 // file and writes the signed package file; it refuses to sign a package check refuses.
 // With -installable, check and package first hold back each part the directory's
 // pending.yaml lists that the core refuses, and print one line per held-back part with
-// the core item it waits on. verify checks a signed package file against one trusted
-// public key, as the core does before it installs. accepts prints, as JSON, what this
-// core accepts: its manifest fields and their digest, its scopes, and the core records a
-// module may use. The command never makes or stores a key.
+// the core item it waits on; -strict also refuses a pending entry that holds nothing
+// back. package -unsigned writes the checked package files (Installable's with
+// -installable) to a new directory instead of signing, to inspect what would ship. Only
+// the package directory's own files are read (togavsu-module.yaml, pending.yaml and
+// migrations/); anything else there is never shipped. verify checks a signed package
+// file against one trusted public key, as the core does before it installs. accepts
+// prints, as JSON, what this core accepts: its manifest fields and their digest, its
+// scopes, and the core records a module may use. The command never makes or stores a
+// key.
 package main
 
 import (
@@ -29,6 +34,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 )
@@ -45,8 +51,8 @@ func main() {
 }
 
 const usage = `usage:
-  togavsu-module check [-installable] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
-  togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
+  togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
+  togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
   togavsu-module verify -file <signed file> -pub <public key PEM file>
   togavsu-module accepts
 `
@@ -101,29 +107,29 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // installable reads a package directory; with hold it returns modulekit.Installable's
-// files and prints each held-back part, and each pending entry that holds nothing back.
-func installable(dir string, hold bool, stderr io.Writer) (map[string][]byte, error) {
+// result and prints each held-back part, and each pending entry that holds nothing back.
+// With strict, an entry that holds nothing back is a refusal.
+func installable(dir string, hold, strict bool, stderr io.Writer) (modulekit.InstallablePackage, error) {
 	files, err := modulekit.ReadDir(dir)
 	if err != nil || !hold {
-		return files, err
+		return modulekit.InstallablePackage{Files: files}, err
 	}
-	out, held, err := modulekit.Installable(files)
+	ip, err := modulekit.Installable(files)
 	if err != nil {
-		return nil, err
+		return modulekit.InstallablePackage{}, err
 	}
-	for _, h := range held {
+	for _, h := range ip.Held {
 		fmt.Fprintln(stderr, h.String())
 	}
-	if src, ok := files[modulekit.PendingFile]; ok {
-		entries, err := modulekit.ParsePending(src)
-		if err != nil {
-			return nil, err
-		}
-		for _, e := range modulekit.Unused(entries, held) {
-			fmt.Fprintf(stderr, "pending %s (%s) holds nothing back: the core accepts it or the package no longer has it\n", e.Part(), e.Core)
+	if strict {
+		if refs := ip.UnusedRefusals(); len(refs) > zero {
+			return ip, refs
 		}
 	}
-	return out, nil
+	for _, r := range ip.UnusedRefusals() {
+		fmt.Fprintln(stderr, r.Message)
+	}
+	return ip, nil
 }
 
 func flags(name string, code *int) *flag.FlagSet {
@@ -139,12 +145,16 @@ func check(args []string, stdout, stderr io.Writer, code *int) error {
 	previousFile := fs.String("previous-file", "", "signed package file of the version this one updates")
 	previousPub := fs.String("previous-pub", "", "public key PEM the previous signed package file was signed with")
 	hold := fs.Bool("installable", false, "hold back the pending parts the core refuses (pending.yaml)")
+	strict := fs.Bool("strict", false, "with -installable, refuse a pending entry that holds nothing back")
 	asJSON := fs.Bool("json", false, "print the result as JSON on stdout")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != one {
 		return fmt.Errorf("name one package directory")
+	}
+	if *strict && !*hold {
+		return fmt.Errorf("-strict goes with -installable")
 	}
 	if *previous != "" && *previousFile != "" {
 		return fmt.Errorf("name -previous or -previous-file, not both")
@@ -153,9 +163,9 @@ func check(args []string, stdout, stderr io.Writer, code *int) error {
 		return fmt.Errorf("-previous-file and -previous-pub go together")
 	}
 	*code = exitRefused
-	pkg, ms, err := checkDir(fs.Arg(zero), *previous, *previousFile, *previousPub, *hold, stderr)
+	pkg, ms, ip, err := checkDir(fs.Arg(zero), *previous, *previousFile, *previousPub, *hold, *strict, stderr)
 	if *asJSON {
-		res := checkResult{OK: err == nil, Refusals: structured(err)}
+		res := checkResult{OK: err == nil, Refusals: structured(err), Held: ip.Held, Unused: ip.Unused}
 		if err == nil {
 			res.ID, res.Version, res.Migrations, res.Digest = pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest
 		}
@@ -174,47 +184,47 @@ func check(args []string, stdout, stderr io.Writer, code *int) error {
 
 // checkDir is check's work: the package (its installable form with hold), then the
 // update rule against the previous release when one is named.
-func checkDir(dir, previous, previousFile, previousPub string, hold bool, stderr io.Writer) (*modulekit.Package, []modulekit.Migration, error) {
-	files, err := installable(dir, hold, stderr)
+func checkDir(dir, previous, previousFile, previousPub string, hold, strict bool, stderr io.Writer) (*modulekit.Package, []modulekit.Migration, modulekit.InstallablePackage, error) {
+	ip, err := installable(dir, hold, strict, stderr)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, ip, err
 	}
-	pkg, ms, err := modulekit.Check(files)
+	pkg, ms, err := modulekit.Check(ip.Files)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, ip, err
 	}
-	next, err := modulekit.Archive(files)
+	next, err := modulekit.Archive(ip.Files)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, ip, err
 	}
 	switch {
 	case previousFile != "":
 		shipped, err := shippedPackage(previousFile, previousPub)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, ip, err
 		}
 		err = modulekit.CheckUpdate(shipped, next)
-		return pkg, ms, err
+		return pkg, ms, ip, err
 	case previous != "":
 		// A source directory is the previous release only when its build held nothing
 		// back; re-running Installable on it would apply today's core, not what shipped.
 		old, err := modulekit.ReadDir(previous)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, ip, err
 		}
 		if _, ok := old[modulekit.PendingFile]; ok {
-			return nil, nil, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgradeBaseline, File: modulekit.PendingFile,
+			return nil, nil, ip, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgradeBaseline, File: modulekit.PendingFile,
 				Message: "the previous version lists pending parts, so its source is not what it shipped; pass its signed package with -previous-file and -previous-pub"}}
 		}
 		prev, err := modulekit.Archive(old)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, ip, err
 		}
 		if err := modulekit.CheckUpgrade(prev, next); err != nil {
-			return nil, nil, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgrade, Message: err.Error(), APICode: modulekit.Code(err), Err: err}}
+			return nil, nil, ip, modulekit.Refusals{{Kind: modulekit.KindMigration, Code: modulekit.RefuseUpgrade, Message: err.Error(), APICode: modulekit.Code(err), Err: err}}
 		}
 	}
-	return pkg, ms, nil
+	return pkg, ms, ip, nil
 }
 
 // shippedPackage reads a signed package file, verifies its signature with the key in
@@ -262,6 +272,10 @@ type checkResult struct {
 	Migrations int                `json:"migrations,omitempty"`
 	Digest     string             `json:"digest,omitempty"`
 	Refusals   modulekit.Refusals `json:"refusals"`
+	// Held and Unused are, with -installable, the parts held back and the pending
+	// entries that held nothing back.
+	Held   []modulekit.Held    `json:"held,omitempty"`
+	Unused []modulekit.Pending `json:"unused,omitempty"`
 }
 
 func accepts(args []string, stdout io.Writer, code *int) error {
@@ -281,30 +295,51 @@ func accepts(args []string, stdout io.Writer, code *int) error {
 func pack(args []string, stdout, stderr io.Writer, code *int) error {
 	fs := flags("package", code)
 	hold := fs.Bool("installable", false, "hold back the pending parts the core refuses (pending.yaml)")
+	strict := fs.Bool("strict", false, "with -installable, refuse a pending entry that holds nothing back")
+	unsigned := fs.Bool("unsigned", false, "write the checked package files to the -out directory instead of signing")
 	dir := fs.String("dir", "", "package directory (togavsu-module.yaml and migrations/)")
 	keyFile := fs.String("key", "", "file holding a base64 ed25519 seed")
-	out := fs.String("out", "", "signed package file to write")
+	out := fs.String("out", "", "signed package file to write (with -unsigned, a new directory)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *dir == "" || *keyFile == "" || *out == "" || fs.NArg() != zero {
-		return fmt.Errorf("-dir, -key and -out are required")
+	switch {
+	case *dir == "" || *out == "" || fs.NArg() != zero:
+		return fmt.Errorf("-dir and -out are required")
+	case *unsigned && *keyFile != "":
+		return fmt.Errorf("-unsigned writes files, not a signed package; drop -key")
+	case !*unsigned && *keyFile == "":
+		return fmt.Errorf("-key is required (or -unsigned)")
+	case *strict && !*hold:
+		return fmt.Errorf("-strict goes with -installable")
 	}
 	*code = exitRefused
-	seed, err := os.ReadFile(*keyFile)
+	var priv ed25519.PrivateKey
+	if !*unsigned {
+		seed, err := os.ReadFile(*keyFile)
+		if err != nil {
+			return err
+		}
+		if priv, err = modulekit.ParseSeed(string(seed)); err != nil {
+			return err
+		}
+	}
+	ip, err := installable(*dir, *hold, *strict, stderr)
 	if err != nil {
 		return err
 	}
-	priv, err := modulekit.ParseSeed(string(seed))
-	if err != nil {
-		return err
-	}
-	files, err := installable(*dir, *hold, stderr)
-	if err != nil {
-		return err
+	if *unsigned {
+		if _, _, err := modulekit.Check(ip.Files); err != nil {
+			return err
+		}
+		if err := writeFiles(*out, ip.Files); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "wrote %d file(s) to %s, unsigned\n", len(ip.Files), *out)
+		return nil
 	}
 	// Build refuses to sign what the core would refuse to install.
-	signed, err := modulekit.Build(priv, files)
+	signed, err := modulekit.Build(priv, ip.Files)
 	if err != nil {
 		return err
 	}
@@ -313,6 +348,24 @@ func pack(args []string, stdout, stderr io.Writer, code *int) error {
 	}
 	pub := priv.Public().(ed25519.PublicKey)
 	fmt.Fprintf(stdout, "wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, modulekit.KeyID(pub), modulekit.PublicKeyPEM(pub))
+	return nil
+}
+
+// writeFiles writes package files under dir, which must not exist or be empty, so a
+// stale file never sits beside the package.
+func writeFiles(dir string, files map[string][]byte) error {
+	if entries, err := os.ReadDir(dir); err == nil && len(entries) > zero {
+		return fmt.Errorf("%s is not empty; name a new directory", dir)
+	}
+	for name, body := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), os.FileMode(zero)|0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, body, os.FileMode(zero)|0o644); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

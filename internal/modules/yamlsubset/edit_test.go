@@ -186,3 +186,108 @@ func TestDelete(t *testing.T) {
 		t.Fatal("deleted a missing key")
 	}
 }
+
+func TestSelectors(t *testing.T) {
+	for _, p := range []string{"tabs[id=home].title", `tabs[id="a b"]`, "permissions[scope=b:read]", "a[*].b[k=v]"} {
+		segs, err := ParsePath(p)
+		if err != nil {
+			t.Fatalf("%s: %v", p, err)
+		}
+		if got := FormatPath(segs); got != p {
+			t.Fatalf("%s formats as %s", p, got)
+		}
+	}
+	for _, bad := range []string{"tabs[id=a b]", `tabs[id="a]`, "tabs[id=]"} {
+		if _, err := ParsePath(bad); !errors.Is(err, ErrPath) {
+			t.Fatalf("%s: %v", bad, err)
+		}
+	}
+	d, err := Parse([]byte(doc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expand := func(p string) string {
+		segs, err := ParsePath(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, e := range Expand(d, segs) {
+			out = append(out, FormatPath(e))
+		}
+		return strings.Join(out, " ")
+	}
+	for p, want := range map[string]string{
+		"sidebar[id=other]":          "sidebar[1]",
+		"permissions[scope=b:read]":  "permissions[1]",
+		"permissions[*].reason":      "permissions[0].reason permissions[1].reason permissions[2].reason",
+		"permissions[scope=x:read]":  "",
+		"container.port":             "container.port",
+		"notifications[kind=a].note": "notifications[0].note",
+		"missing[*].x":               "missing[*].x",
+	} {
+		if got := expand(p); got != want {
+			t.Fatalf("%s expands to %q, want %q", p, got, want)
+		}
+	}
+	segs, _ := ParsePath("tabs[id=x]")
+	if HasPrefix(segs, segs) {
+		t.Fatal("a selector is not a concrete path")
+	}
+	if _, err := Remove([]byte(doc), "sidebar[id=other]"); !errors.Is(err, ErrPath) {
+		t.Fatalf("Remove takes concrete paths: %v", err)
+	}
+}
+
+func TestOriginal(t *testing.T) {
+	removed := func(paths ...string) [][]Segment {
+		var out [][]Segment
+		for _, p := range paths {
+			s, err := ParsePath(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, s)
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		path    string
+		removed []string
+		want    string
+	}{
+		{"tabs[2].title", []string{"tabs[2]"}, "tabs[3].title"},
+		{"tabs[2]", []string{"tabs[2]", "tabs[3]"}, "tabs[4]"},
+		{"tabs[1]", []string{"tabs[2]", "tabs[3]"}, "tabs[1]"},
+		{"tabs[1]", []string{"tabs[0]", "tabs[2]"}, "tabs[3]"},
+		{"tabs[0].params[1]", []string{"tabs[0].params[0]", "tabs[1]"}, "tabs[0].params[2]"},
+		{"widgets[1].path", []string{"tabs[0]", "widgets[0].size"}, "widgets[1].path"},
+	} {
+		segs, err := ParsePath(tc.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := FormatPath(Original(segs, removed(tc.removed...))); got != tc.want {
+			t.Fatalf("%s after removing %v is %s, want %s", tc.path, tc.removed, got, tc.want)
+		}
+	}
+}
+
+func TestRemoveTakesAPartsOwnComments(t *testing.T) {
+	src := "# Header comment.\nid: x\n# The books scope waits on CORE-02.\nbooks: true\n\n# Kept: a blank line parts it from what follows.\n\nlist:\n  # CORE-08\n  - id: a\n    # the icon\n    icon: i\n    title: A\n  - id: b\n"
+	out, err := Remove([]byte(src), "books", "list[0].icon", "list[1]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Header comment.\nid: x\n\n# Kept: a blank line parts it from what follows.\n\nlist:\n  # CORE-08\n  - id: a\n    title: A"
+	if strings.TrimRight(string(out), "\n") != want {
+		t.Fatalf("got:\n%s", out)
+	}
+	out, err = Remove([]byte(src), "id", "list[0]")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(out), "# Header comment.\n# The books") || strings.Contains(string(out), "CORE-08") {
+		t.Fatalf("got:\n%s", out)
+	}
+}

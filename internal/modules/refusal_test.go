@@ -219,3 +219,25 @@ func TestAccepts(t *testing.T) {
 		t.Fatalf("records: %+v", a)
 	}
 }
+
+// The install check refuses a file the core doesn't read; reading a stored package
+// doesn't.
+func TestInstallCheckRefusesFilesTheCoreDoesNotRead(t *testing.T) {
+	raw := samplePackage(t, func(f map[string][]byte) {
+		f["files.go"] = []byte("package pkgfiles\n")
+		f["pending.yaml"] = []byte("pending: []\n")
+	})
+	if _, _, err := modules.CheckPackage(raw); err == nil || !strings.Contains(err.Error(), "files.go") {
+		t.Fatalf("CheckPackage: %v", err)
+	}
+	_, _, refs := modules.CheckAll(raw)
+	if len(refs) != 2 || refs[0].Code != modules.RefuseUnknownFile || refs[0].File != "files.go" || refs[1].File != "pending.yaml" {
+		t.Fatalf("CheckAll: %v", refs)
+	}
+	if _, err := modules.ReadPackage(raw); err != nil {
+		t.Fatalf("ReadPackage: %v", err)
+	}
+	if !modules.PackageFile("migrations/0001_x.sql") || modules.PackageFile("README.md") {
+		t.Fatal("PackageFile")
+	}
+}

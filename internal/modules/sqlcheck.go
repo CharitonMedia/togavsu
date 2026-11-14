@@ -209,6 +209,9 @@ type migrationCheck struct {
 	views  map[string]bool
 	// refused names the tables and views whose CREATE was refused (MigrationRefusals).
 	refused map[string]bool
+	// assumeCore takes every core relation a migration references as one a module may
+	// link to and the core's schema has (MigrationRefusalsAssumingCore).
+	assumeCore bool
 }
 
 type tableInfo struct {
@@ -242,10 +245,27 @@ func MigrationRefusals(m Manifest, ms []db.Migration) Refusals {
 	return out
 }
 
+// MigrationRefusalsAssumingCore is MigrationRefusals with every core relation the
+// migrations reference taken as one a module may link to and the core's schema has: the
+// refusals that would remain once the core records they link to are added. It is for
+// checking a migration held back for a core change; the install check never uses it.
+func MigrationRefusalsAssumingCore(m Manifest, ms []db.Migration) Refusals {
+	var out Refusals
+	walk(&migrationCheck{assumeCore: true}, m, ms, func(r Refusal) bool {
+		out = append(out, r)
+		return true
+	})
+	return out
+}
+
 // walkMigrations checks each statement in order and then the manifest cross-checks,
 // handing each refusal to report; it stops when report returns false.
 func walkMigrations(m Manifest, ms []db.Migration, report func(Refusal) bool) {
-	c := &migrationCheck{schema: m.Schema(), tables: map[string]*tableInfo{}, views: map[string]bool{}}
+	walk(&migrationCheck{}, m, ms, report)
+}
+
+func walk(c *migrationCheck, m Manifest, ms []db.Migration, report func(Refusal) bool) {
+	c.schema, c.tables, c.views = m.Schema(), map[string]*tableInfo{}, map[string]bool{}
 	for _, mig := range ms {
 		file := "migrations/" + mig.Name + ".sql"
 		toks, err := tokenize(mig.SQL)
@@ -532,8 +552,12 @@ func (c *migrationCheck) references(toks []tok, i int) (string, int, error) {
 		p.i++
 		switch first.text {
 		case "core":
-			if !coreTableAllowed(second.text) {
+			switch {
+			case c.assumeCore:
+			case !coreTableAllowed(second.text):
 				return "", 0, &CoreReferenceError{Relation: "core." + second.text}
+			case !coreTables[second.text]:
+				return "", 0, &CoreReferenceError{Relation: "core." + second.text, Missing: true}
 			}
 			core = second.text
 		case c.schema:

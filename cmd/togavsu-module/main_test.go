@@ -200,10 +200,11 @@ func TestCheckReportsEveryRefusal(t *testing.T) {
 	dir := copyPackage(t, waiting)
 	code, _, errs := cli("check", dir)
 	lines := strings.Split(strings.TrimSpace(errs), "\n")
-	if code != exitRefused || len(lines) != 3 {
+	if code != exitRefused || len(lines) != 4 {
 		t.Fatalf("check: %d\n%s", code, errs)
 	}
 	for i, want := range []string{
+		"togavsu-module check: pending.yaml: unknown_file: ",
 		"togavsu-module check: togavsu-module.yaml notifications: unknown_field: ",
 		"togavsu-module check: togavsu-module.yaml permissions[0]: unknown_scope: ",
 		"togavsu-module check: migrations/0002_trust_link.sql statement 1: core_reference: ",
@@ -214,7 +215,7 @@ func TestCheckReportsEveryRefusal(t *testing.T) {
 	}
 	code, out, _ := cli("check", "-json", dir)
 	var res checkResult
-	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitRefused || res.OK || len(res.Refusals) != 3 || res.Refusals[2].Value != "core.trust_accounts" {
+	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitRefused || res.OK || len(res.Refusals) != 4 || res.Refusals[3].Value != "core.trust_accounts" {
 		t.Fatalf("check -json: %d %s %v", code, out, err)
 	}
 	code, out, errs = cli("check", "-installable", "-json", dir)
@@ -247,7 +248,7 @@ func TestPackageInstallable(t *testing.T) {
 		"held back togavsu-module.yaml notifications: waits on CORE-03: Tell the attorney when a matter falls behind.",
 		"held back togavsu-module.yaml permissions[0] (scope books:read): waits on CORE-02: Read the books without a viewer.",
 		"held back migrations/0002_trust_link.sql: waits on CORE-22: Link a target to its trust account.",
-		"pending scope time:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it",
+		"pending scope time:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
 	}
 	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("stderr:\n%s", errs)
@@ -370,5 +371,124 @@ func TestCheckUpdateAgainstTheShippedPackage(t *testing.T) {
 	}
 	if code, _, _ := cli("check", "-previous-file", shipped, v2); code != exitUsage {
 		t.Fatalf("-previous-file without its key: %d", code)
+	}
+}
+
+// -strict turns a pending entry that holds nothing back into a refusal, in the text and
+// the -json result.
+func TestStrictRefusesUnusedEntries(t *testing.T) {
+	dir := copyPackage(t, waiting)
+	code, _, errs := cli("check", "-installable", "-strict", dir)
+	if code != exitRefused || !strings.Contains(errs, "pending.yaml: pending_unused: pending scope time:read (CORE-00) holds nothing back") {
+		t.Fatalf("check -strict: %d %s", code, errs)
+	}
+	code, res := checkJSON(t, "-installable", "-strict", dir)
+	if code != exitRefused || res.OK || len(res.Refusals) != 1 || res.Refusals[0].Code != modulekit.RefusePendingUnused ||
+		len(res.Unused) != 1 || res.Unused[0].Scope != "time:read" || len(res.Held) != 3 {
+		t.Fatalf("check -strict -json: %d %+v", code, res)
+	}
+	// Without -strict the entry is reported but the check passes, and -json lists it.
+	code, res = checkJSON(t, "-installable", dir)
+	if code != exitOK || !res.OK || len(res.Unused) != 1 || len(res.Held) != 3 {
+		t.Fatalf("check -json: %d %+v", code, res)
+	}
+	used := copyPackage(t, func(f map[string][]byte) {
+		waiting(f)
+		replaceIn(f, modulekit.PendingFile, "  - scope: time:read\n    core: CORE-00\n    reason: Accepted already.\n", "")
+	})
+	if code, _, errs := cli("check", "-installable", "-strict", used); code != exitOK {
+		t.Fatalf("check -strict with every entry used: %d %s", code, errs)
+	}
+	_, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	out := filepath.Join(t.TempDir(), "strict.json")
+	if code, _, errs := cli("package", "-installable", "-strict", "-dir", dir, "-key", seed, "-out", out); code != exitRefused || !strings.Contains(errs, "pending_unused") {
+		t.Fatalf("package -strict: %d %s", code, errs)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("a strict refusal was written")
+	}
+	if code, _, _ := cli("check", "-strict", dir); code != exitUsage {
+		t.Fatalf("-strict without -installable: %d", code)
+	}
+}
+
+// package -unsigned writes the files that would ship, for inspection, and signs nothing.
+func TestPackageUnsigned(t *testing.T) {
+	dir := copyPackage(t, waiting)
+	out := filepath.Join(t.TempDir(), "installable")
+	code, stdout, errs := cli("package", "-installable", "-unsigned", "-dir", dir, "-out", out)
+	if code != exitOK || !strings.Contains(stdout, "wrote 2 file(s)") {
+		t.Fatalf("package -unsigned: %d %s %s", code, stdout, errs)
+	}
+	got, err := modulekit.ReadDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := modulekit.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip, err := modulekit.Installable(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(ip.Files) || string(got[modulekit.ManifestFile]) != string(ip.Files[modulekit.ManifestFile]) {
+		t.Fatalf("written files: %v", got)
+	}
+	if _, ok := got[modulekit.PendingFile]; ok {
+		t.Fatal("the pending list was written")
+	}
+	if code, _, errs := cli("package", "-installable", "-unsigned", "-dir", dir, "-out", out); code != exitRefused || !strings.Contains(errs, "not empty") {
+		t.Fatalf("into a full directory: %d %s", code, errs)
+	}
+	if code, _, _ := cli("package", "-unsigned", "-dir", dir, "-key", "k", "-out", out); code != exitUsage {
+		t.Fatalf("-unsigned with -key: %d", code)
+	}
+	// Without -installable the package with its pending list is refused, not written.
+	plain := filepath.Join(t.TempDir(), "plain")
+	if code, _, errs := cli("package", "-unsigned", "-dir", dir, "-out", plain); code != exitRefused || !strings.Contains(errs, "unknown_file") {
+		t.Fatalf("plain -unsigned: %d %s", code, errs)
+	}
+}
+
+// A package directory's other files, such as the files.go that embeds it, never ship.
+func TestPackageShipsOnlyThePackageFiles(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	dir := copyPackage(t, func(f map[string][]byte) {
+		f["files.go"] = []byte("package pkgfiles\n\nimport \"embed\"\n\n//go:embed togavsu-module.yaml migrations\nvar FS embed.FS\n")
+		f["README.md"] = []byte("# notes\n")
+	})
+	out := filepath.Join(t.TempDir(), "signed.json")
+	if code, stdout, errs := cli("package", "-dir", dir, "-key", seed, "-out", out); code != exitOK {
+		t.Fatalf("package: %d %s %s", code, stdout, errs)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _, err := modulekit.VerifyFile(raw, []modulekit.TrustedKey{modulekit.Trust(pub)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, shipped, err := modulekit.ReadSignedFile(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := modulekit.ReadPackage(shipped)
+	if err != nil || v.ModuleID != "matter-clock" {
+		t.Fatal(err)
+	}
+	for name := range pkg.Files {
+		if name != modulekit.ManifestFile && !strings.HasPrefix(name, "migrations/") {
+			t.Fatalf("%s shipped", name)
+		}
 	}
 }

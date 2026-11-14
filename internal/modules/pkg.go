@@ -157,6 +157,38 @@ func unpack(raw []byte) (map[string][]byte, error) {
 	return files, nil
 }
 
+// PackageFile reports whether the core reads name from a package: the manifest, or a
+// file under migrations/ (where only migrations/NNNN_name.sql is accepted).
+func PackageFile(name string) bool {
+	return name == ManifestFile || strings.HasPrefix(name, "migrations/")
+}
+
+// unknownFiles lists, sorted, the package files the core doesn't read.
+func unknownFiles(files map[string][]byte) []string {
+	var out []string
+	for name := range files {
+		if !PackageFile(name) {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func unknownFileError(name string) error {
+	return invalid("package", "the core doesn't read "+name+"; a package holds only "+ManifestFile+" and migrations/NNNN_name.sql")
+}
+
+// CheckFiles refuses a file the core doesn't read, so nothing ships in a package
+// unchecked. The install checks run it; a package stored before it was added is only
+// re-read, never checked again.
+func (p *Package) CheckFiles() error {
+	if names := unknownFiles(p.Files); len(names) > zero {
+		return unknownFileError(names[zero])
+	}
+	return nil
+}
+
 // PackageDigest is the digest recorded for audit.
 func (p *Package) PackageDigest() string { return p.Digest }
 

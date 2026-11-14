@@ -89,21 +89,29 @@ const (
 
 // Stable refusal codes (Refusal.Code). Match on these, never on message text.
 const (
-	RefusePackage       = modules.RefusePackage
+	RefusePackage = modules.RefusePackage
+	// RefuseUnknownFile: a package file the core doesn't read; a package holds only the
+	// manifest and migrations/NNNN_name.sql.
+	RefuseUnknownFile   = modules.RefuseUnknownFile
 	RefuseYAML          = modules.RefuseYAML
 	RefuseUnknownField  = modules.RefuseUnknownField
 	RefuseManifest      = modules.RefuseManifest
 	RefuseUnknownScope  = modules.RefuseUnknownScope
 	RefuseCoreReference = modules.RefuseCoreReference
-	RefuseMigrationFile = modules.RefuseMigrationFile
-	RefuseStatement     = modules.RefuseStatement
-	RefuseCrossCheck    = modules.RefuseCrossCheck
+	// RefuseCoreRelationMissing: a migration links to a core relation modules may link
+	// to, which this core's schema doesn't have yet.
+	RefuseCoreRelationMissing = modules.RefuseCoreRelationMissing
+	RefuseMigrationFile       = modules.RefuseMigrationFile
+	RefuseStatement           = modules.RefuseStatement
+	RefuseCrossCheck          = modules.RefuseCrossCheck
 	// RefusePendingInvalid: PendingFile is not in the pending format.
 	RefusePendingInvalid = "pending_invalid"
 	// RefusePendingEdit: a pending part can't be removed cleanly.
 	RefusePendingEdit = "pending_edit"
 	// RefusePendingOrder: a held-back migration comes before one that installs.
 	RefusePendingOrder = "pending_order"
+	// RefusePendingUnused: a pending entry holds nothing back (togavsu-module -strict).
+	RefusePendingUnused = "pending_unused"
 	// RefusePendingUnbuilt: Build was handed the full package with its pending list.
 	RefusePendingUnbuilt = "pending_unbuilt"
 	// RefuseUpgrade: the package is not a valid update of the previous release.
@@ -202,6 +210,11 @@ func Check(files map[string][]byte) (*Package, []Migration, error) {
 		return nil, nil, Refusals{{Kind: KindPackage, Code: RefusePackage, Message: err.Error(), Err: err}}
 	}
 	if _, _, refs := modules.CheckAll(raw); len(refs) > 0 {
+		for i, r := range refs {
+			if r.Code == RefuseUnknownFile && r.File == PendingFile {
+				refs[i].Message += "; " + PendingFile + " lists parts held back for core changes and never ships: check and build the package with Installable (togavsu-module -installable)"
+			}
+		}
 		return nil, nil, refs
 	}
 	// The install path decides; CheckAll reports nothing it would pass.
@@ -212,9 +225,11 @@ func Check(files map[string][]byte) (*Package, []Migration, error) {
 	return pkg, ms, nil
 }
 
-// CheckAll is Check's list of refusals: every unknown manifest field at any depth, every
-// unknown scope, every migration statement and cross-check the core refuses, and the
-// first refusal of the other manifest checks. It is empty when Check passes.
+// CheckAll is Check's list of refusals: every file the core doesn't read, every unknown
+// manifest field at any depth, every refused manifest value (the widget checks report
+// their first; a value of the wrong type stops the manifest checks), every unknown
+// scope, and every migration statement and cross-check the core refuses. It is empty
+// when Check passes.
 func CheckAll(files map[string][]byte) Refusals {
 	_, _, err := Check(files)
 	var refs Refusals
@@ -284,9 +299,13 @@ func ReadSignedFile(file []byte) (SignedPackage, []byte, error) {
 
 // --- Package build ---
 
-// Files reads a package directory into package files by slash path. As go:embed does
-// for a directory, names starting with "." or "_" are left out, so a module that embeds
-// its package directory and one built from disk ship the same bytes.
+// Files reads a package directory into package files by slash path. It reads only the
+// package's own files: ManifestFile, PendingFile and the files under migrations/. Any
+// other file there (a files.go that embeds the directory, a README) is left out, never
+// shipped; the core refuses a package holding one (RefuseUnknownFile), so Check and
+// Build do too. As go:embed does for a directory, names starting with "." or "_" are
+// left out, so a module that embeds its package directory and one built from disk ship
+// the same bytes.
 func Files(fsys fs.FS) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
@@ -300,6 +319,12 @@ func Files(fsys fs.FS) (map[string][]byte, error) {
 			return nil
 		}
 		if d.IsDir() {
+			if p != "." && p != "migrations" && !strings.HasPrefix(p, "migrations/") {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !packageFile(p) {
 			return nil
 		}
 		b, err := fs.ReadFile(fsys, p)
@@ -311,6 +336,9 @@ func Files(fsys fs.FS) (map[string][]byte, error) {
 	})
 	return out, err
 }
+
+// packageFile reports whether name is one of a package directory's own files.
+func packageFile(name string) bool { return name == PendingFile || modules.PackageFile(name) }
 
 // ReadDir is Files over a directory on disk.
 func ReadDir(dir string) (map[string][]byte, error) { return Files(os.DirFS(dir)) }
@@ -388,17 +416,17 @@ func Build(priv ed25519.PrivateKey, files map[string][]byte) ([]byte, error) {
 }
 
 // BuildInstallable builds and signs Installable's files: the package without the
-// pending parts the core refuses. It returns the parts it held back.
-func BuildInstallable(priv ed25519.PrivateKey, files map[string][]byte) ([]byte, []Held, error) {
-	out, held, err := Installable(files)
+// pending parts the core refuses. It returns Installable's result with the signed file.
+func BuildInstallable(priv ed25519.PrivateKey, files map[string][]byte) ([]byte, InstallablePackage, error) {
+	ip, err := Installable(files)
 	if err != nil {
-		return nil, nil, err
+		return nil, InstallablePackage{}, err
 	}
-	signed, err := Build(priv, out)
+	signed, err := Build(priv, ip.Files)
 	if err != nil {
-		return nil, nil, err
+		return nil, InstallablePackage{}, err
 	}
-	return signed, held, nil
+	return signed, ip, nil
 }
 
 // Trust is pub as a trusted local key, for Verify and VerifyFile.

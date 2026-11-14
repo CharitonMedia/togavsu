@@ -236,91 +236,137 @@ func SchemaFor(id string) string { return "mod_" + strings.ReplaceAll(id, "-", "
 
 // Validate applies every install-time manifest check except the migration checks.
 func (m Manifest) Validate() error {
-	if !moduleID.MatchString(m.ID) {
-		return invalid("id", "module id must be a lower-case slug")
+	var first error
+	m.validate(func(err error) bool {
+		first = err
+		return false
+	})
+	return first
+}
+
+// ValidateAll runs Validate's checks and returns every refusal, in Validate's order; the
+// first is Validate's error. Each check after a refusal still runs; the widget checks
+// report their first refusal only.
+func (m Manifest) ValidateAll() []error {
+	var out []error
+	m.validate(func(err error) bool {
+		out = append(out, err)
+		return true
+	})
+	return out
+}
+
+// validate hands each refusal to report and stops when report returns false.
+func (m Manifest) validate(report func(error) bool) {
+	ok := func(err error) bool { return err == nil || report(err) }
+	checks := []func() bool{
+		func() bool {
+			return moduleID.MatchString(m.ID) || ok(invalid("id", "module id must be a lower-case slug"))
+		},
+		func() bool {
+			return (strings.TrimSpace(m.Name) != "" && strings.TrimSpace(m.Author) != "") || ok(invalid("name", "name and author are required"))
+		},
+		func() bool {
+			return versionRe.MatchString(m.Version) || ok(invalid("version", "version is required; quote it in the manifest"))
+		},
+		func() bool {
+			return (m.Container.Image != "" && digestRe.MatchString(m.Container.Digest)) || ok(invalid("container", "container image and sha256 digest are required"))
+		},
+		func() bool {
+			return (m.Container.Port > zero && m.Container.Port <= limits().MaxPort) || ok(invalid("container.port", "container port is required"))
+		},
 	}
-	if strings.TrimSpace(m.Name) == "" || strings.TrimSpace(m.Author) == "" {
-		return invalid("name", "name and author are required")
-	}
-	if !versionRe.MatchString(m.Version) {
-		return invalid("version", "version is required; quote it in the manifest")
-	}
-	if m.Container.Image == "" || !digestRe.MatchString(m.Container.Digest) {
-		return invalid("container", "container image and sha256 digest are required")
-	}
-	if m.Container.Port <= zero || m.Container.Port > limits().MaxPort {
-		return invalid("container.port", "container port is required")
+	for _, c := range checks {
+		if !c() {
+			return
+		}
 	}
 	seen := map[string]bool{}
 	for i, p := range m.Permissions {
 		f := fmt.Sprintf("permissions[%d]", i)
-		if !scopeRe.MatchString(p.Scope) && !viewRe.MatchString(p.Scope) {
-			return invalid(f, "unknown scope format "+p.Scope)
+		switch {
+		case !scopeRe.MatchString(p.Scope) && !viewRe.MatchString(p.Scope):
+			if !ok(invalid(f, "unknown scope format "+p.Scope)) {
+				return
+			}
+		case forbiddenScopes[p.Scope]:
+			if !ok(invalid(f, "a module cannot request "+p.Scope)) {
+				return
+			}
+		case seen[p.Scope]:
+			if !ok(invalid(f, "duplicate scope "+p.Scope)) {
+				return
+			}
+		default:
+			seen[p.Scope] = true
 		}
-		if forbiddenScopes[p.Scope] {
-			return invalid(f, "a module cannot request "+p.Scope)
-		}
-		if seen[p.Scope] {
-			return invalid(f, "duplicate scope "+p.Scope)
-		}
-		seen[p.Scope] = true
 	}
-	if err := m.validatePages(); err != nil {
-		return err
+	if !m.validatePages(ok) {
+		return
 	}
-	if _, err := m.DashboardWidgets(); err != nil {
-		return err
+	if _, err := m.DashboardWidgets(); !ok(err) {
+		return
 	}
-	if err := m.validateHelp(); err != nil {
-		return err
+	if !m.validateHelp(ok) {
+		return
 	}
 	for i, e := range m.Events {
-		if !eventRe.MatchString(e) {
-			return invalid(fmt.Sprintf("events[%d]", i), "event subscriptions look like matter.created or matter.*")
+		if !eventRe.MatchString(e) && !ok(invalid(fmt.Sprintf("events[%d]", i), "event subscriptions look like matter.created or matter.*")) {
+			return
 		}
 	}
-	if len(m.Events) > 0 && !seen["events:read"] {
-		return invalid("events", "event subscriptions need the events:read permission")
+	if len(m.Events) > 0 && !seen["events:read"] && !ok(invalid("events", "event subscriptions need the events:read permission")) {
+		return
 	}
 	switch m.Replaces {
 	case "", DomainTime, DomainCalendar:
 	case DomainTrust:
 		// PRD 9.5: the below-zero flag is part of the trust contract.
-		if !contains(m.Emits, "trust.flag_raised") {
-			return invalid("emits", "a trust replacement must raise trust.flag_raised")
+		if !contains(m.Emits, "trust.flag_raised") && !ok(invalid("emits", "a trust replacement must raise trust.flag_raised")) {
+			return
 		}
 	default:
-		return invalid("replaces", "replaces is time, trust or calendar")
+		if !ok(invalid("replaces", "replaces is time, trust or calendar")) {
+			return
+		}
 	}
-	if err := m.validateData(); err != nil {
-		return err
+	if !m.validateData(ok) {
+		return
 	}
 	keys := map[string]bool{}
 	for i, s := range m.Settings {
 		if !ident.MatchString(s.Key) || keys[s.Key] {
-			return invalid(fmt.Sprintf("settings[%d]", i), "settings keys are unique lower-case names")
+			if !ok(invalid(fmt.Sprintf("settings[%d]", i), "settings keys are unique lower-case names")) {
+				return
+			}
+			continue
 		}
 		keys[s.Key] = true
 		switch s.Type {
 		case "string", "int", "bool", "enum":
 		default:
-			return invalid(fmt.Sprintf("settings[%d].type", i), "type is string, int, bool or enum")
+			if !ok(invalid(fmt.Sprintf("settings[%d].type", i), "type is string, int, bool or enum")) {
+				return
+			}
+			continue
 		}
-		if s.Type == "enum" && len(s.Options) == 0 {
-			return invalid(fmt.Sprintf("settings[%d].options", i), "an enum needs options")
+		if s.Type == "enum" && len(s.Options) == 0 && !ok(invalid(fmt.Sprintf("settings[%d].options", i), "an enum needs options")) {
+			return
 		}
 	}
 	tasks := map[string]bool{}
 	for i, t := range m.AITasks {
 		if !slug.MatchString(t.ID) || tasks[t.ID] {
-			return invalid(fmt.Sprintf("ai_tasks[%d]", i), "AI task ids are unique slugs")
+			if !ok(invalid(fmt.Sprintf("ai_tasks[%d]", i), "AI task ids are unique slugs")) {
+				return
+			}
+			continue
 		}
 		tasks[t.ID] = true
 	}
 	if len(m.AITasks) > 0 && !seen["ai:use"] {
-		return invalid("ai_tasks", "AI tasks need the ai:use permission")
+		ok(invalid("ai_tasks", "AI tasks need the ai:use permission"))
 	}
-	return nil
 }
 
 func contains(list []string, s string) bool {
@@ -341,42 +387,57 @@ func modulePath(field, p string) error {
 	return nil
 }
 
-func (m Manifest) validatePages() error {
+func (m Manifest) validatePages(ok func(error) bool) bool {
 	ids := map[string]bool{}
 	for i, t := range m.Tabs {
 		f := fmt.Sprintf("tabs[%d]", i)
 		if !slug.MatchString(t.ID) || ids[t.ID] || strings.TrimSpace(t.Title) == "" {
-			return invalid(f, "tabs need a unique id and a title")
+			if !ok(invalid(f, "tabs need a unique id and a title")) {
+				return false
+			}
+			continue
 		}
 		ids[t.ID] = true
 		if t.Placement != "home" && t.Placement != "matter" {
-			return invalid(f+".placement", "placement is home or matter")
+			if !ok(invalid(f+".placement", "placement is home or matter")) {
+				return false
+			}
+			continue
 		}
-		if err := modulePath(f+".path", t.Path); err != nil {
-			return err
+		if !ok(modulePath(f+".path", t.Path)) {
+			return false
 		}
 	}
 	for i, it := range m.MatterItems {
 		f := fmt.Sprintf("matter_items[%d]", i)
 		if !slug.MatchString(it.ID) || (it.Kind != "panel" && it.Kind != "action") || strings.TrimSpace(it.Title) == "" {
-			return invalid(f, "matter items need an id, a kind (panel or action) and a title")
+			if !ok(invalid(f, "matter items need an id, a kind (panel or action) and a title")) {
+				return false
+			}
+			continue
 		}
-		if err := modulePath(f+".path", it.Path); err != nil {
-			return err
+		if !ok(modulePath(f+".path", it.Path)) {
+			return false
 		}
 	}
-	for name, list := range map[string][]Link{"sidebar": m.Sidebar, "quick_create": m.QuickCreate, "search_scopes": m.Search} {
-		for i, l := range list {
-			f := fmt.Sprintf("%s[%d]", name, i)
+	for _, list := range []struct {
+		name  string
+		links []Link
+	}{{"sidebar", m.Sidebar}, {"quick_create", m.QuickCreate}, {"search_scopes", m.Search}} {
+		for i, l := range list.links {
+			f := fmt.Sprintf("%s[%d]", list.name, i)
 			if !slug.MatchString(l.ID) || strings.TrimSpace(l.Title) == "" {
-				return invalid(f, "entries need an id and a title")
+				if !ok(invalid(f, "entries need an id and a title")) {
+					return false
+				}
+				continue
 			}
-			if err := modulePath(f+".path", l.Path); err != nil {
-				return err
+			if !ok(modulePath(f+".path", l.Path)) {
+				return false
 			}
 		}
 	}
-	return nil
+	return true
 }
 
 // Tab returns the tab with id.
@@ -459,16 +520,19 @@ func (m Manifest) Widget(id string) (Widget, bool) {
 	return Widget{}, false
 }
 
-func (m Manifest) validateHelp() error {
+func (m Manifest) validateHelp(ok func(error) bool) bool {
 	ids := map[string]bool{}
 	for i, p := range m.Help.Pages {
 		f := fmt.Sprintf("help.pages[%d]", i)
 		if !slug.MatchString(p.ID) || ids[p.ID] || strings.TrimSpace(p.Title) == "" {
-			return invalid(f, "help pages need a unique id and a title")
+			if !ok(invalid(f, "help pages need a unique id and a title")) {
+				return false
+			}
+			continue
 		}
 		ids[p.ID] = true
 	}
-	return nil
+	return true
 }
 
 // HelpHeading is the heading the module's guide files under; default its name.
@@ -479,7 +543,7 @@ func (m Manifest) HelpHeading() string {
 	return m.Name
 }
 
-func (m Manifest) validateData() error {
+func (m Manifest) validateData(ok func(error) bool) bool {
 	names := map[string]bool{}
 	check := func(f, name, record, key string, cols []Column) error {
 		if !ident.MatchString(name) || names[name] {
@@ -507,24 +571,29 @@ func (m Manifest) validateData() error {
 	for i, e := range m.Data.Extends {
 		f := fmt.Sprintf("data.extends[%d]", i)
 		if !ident.MatchString(e.Table) {
-			return invalid(f+".table", "the extension table is required")
+			if !ok(invalid(f+".table", "the extension table is required")) {
+				return false
+			}
+			continue
 		}
-		if err := check(f, e.Name, e.Record, e.Key, e.Columns); err != nil {
-			return err
+		if !ok(check(f, e.Name, e.Record, e.Key, e.Columns)) {
+			return false
 		}
 	}
 	for i, v := range m.Data.Views {
-		if err := check(fmt.Sprintf("data.views[%d]", i), v.Name, v.Record, v.Key, v.Columns); err != nil {
-			return err
+		if !ok(check(fmt.Sprintf("data.views[%d]", i), v.Name, v.Record, v.Key, v.Columns)) {
+			return false
 		}
 	}
 	for i, c := range m.Data.CustomFields {
 		f := fmt.Sprintf("data.custom_fields[%d]", i)
-		if _, ok := coreRecords[c.Record]; !ok || !ident.MatchString(c.Key) || strings.TrimSpace(c.Label) == "" {
-			return invalid(f, "custom fields need a core record, a key and a label")
+		if _, known := coreRecords[c.Record]; !known || !ident.MatchString(c.Key) || strings.TrimSpace(c.Label) == "" {
+			if !ok(invalid(f, "custom fields need a core record, a key and a label")) {
+				return false
+			}
 		}
 	}
-	return nil
+	return true
 }
 
 // Scopes returns the requested scopes sorted.

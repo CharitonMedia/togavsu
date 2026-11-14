@@ -30,6 +30,9 @@ const (
 const (
 	// RefusePackage: the archive can't be read, or has no manifest.
 	RefusePackage = "package_unreadable"
+	// RefuseUnknownFile: a package file the core doesn't read (anything but the
+	// manifest and migrations/).
+	RefuseUnknownFile = "unknown_file"
 	// RefuseYAML: the manifest is not in the supported YAML subset.
 	RefuseYAML = "manifest_yaml"
 	// RefuseUnknownField: a manifest key, at any depth, that this core doesn't read.
@@ -40,6 +43,9 @@ const (
 	RefuseUnknownScope = "unknown_scope"
 	// RefuseCoreReference: a migration references a core relation a module can't link to.
 	RefuseCoreReference = "core_reference"
+	// RefuseCoreRelationMissing: a migration references a core relation a module may
+	// link to that this core's schema doesn't have yet.
+	RefuseCoreRelationMissing = "core_relation_missing"
 	// RefuseMigrationFile: a migration file name, place or version the core refuses.
 	RefuseMigrationFile = "migration_file"
 	// RefuseStatement: any other migration statement the core refuses.
@@ -110,10 +116,18 @@ func (rs Refusals) Unwrap() []error {
 	return out
 }
 
-// CoreReferenceError is a migration reference to a core relation a module can't link to.
-type CoreReferenceError struct{ Relation string }
+// CoreReferenceError is a migration reference to a core relation a module can't link
+// to: one not on the list of core records, or (Missing) one on it that this core's
+// schema doesn't have.
+type CoreReferenceError struct {
+	Relation string
+	Missing  bool
+}
 
 func (e *CoreReferenceError) Error() string {
+	if e.Missing {
+		return e.Relation + " is not in this core's schema"
+	}
 	return e.Relation + " is not a core record a module can link to"
 }
 
@@ -123,15 +137,19 @@ func migrationRefusal(file string, statement int, cause, apiErr error) Refusal {
 	var ref *CoreReferenceError
 	if errors.As(cause, &ref) {
 		r.Code, r.Value = RefuseCoreReference, ref.Relation
+		if ref.Missing {
+			r.Code = RefuseCoreRelationMissing
+		}
 	}
 	return r
 }
 
 // CheckAll runs the install checks over package bytes, as CheckPackage does, and also
 // the scope list the core applies at approval, and reports every refusal instead of the
-// first: each unknown manifest field at any depth, each unknown scope, each refused
-// migration statement and cross-check. Other manifest checks report their first
-// refusal, since one bad value can make the next check meaningless. A package with no
+// first: each file the core doesn't read, each unknown manifest field at any depth, each
+// refused manifest value (ValidateAll), each unknown scope, each refused migration
+// statement and cross-check. A manifest that doesn't decode (a value of the wrong type)
+// stops there. A package with no
 // refusals here passes CheckPackage, and its scopes are all in the core's list. The
 // package and migrations are returned when they could be read, refused or not.
 func CheckAll(raw []byte) (*Package, []db.Migration, Refusals) {
@@ -143,7 +161,14 @@ func CheckAll(raw []byte) (*Package, []db.Migration, Refusals) {
 	if !ok {
 		return nil, nil, Refusals{packageRefusal(invalid("package", "the package has no "+ManifestFile))}
 	}
-	m, refs, ok := checkManifest(src)
+	var refs Refusals
+	for _, name := range unknownFiles(files) {
+		err := unknownFileError(name)
+		refs = append(refs, Refusal{Kind: KindPackage, Code: RefuseUnknownFile, File: name,
+			Message: apiMessage(err), APICode: errCode(err), Err: err})
+	}
+	m, mrefs, ok := checkManifest(src)
+	refs = append(refs, mrefs...)
 	if !ok {
 		return nil, nil, refs
 	}
@@ -224,7 +249,7 @@ func checkManifest(src []byte) (Manifest, Refusals, bool) {
 	if err := strict.Decode(&m); err != nil {
 		return Manifest{}, append(refs, manifestRefusal(RefuseManifest, "", "", invalid("manifest", fmt.Errorf("%w: %v", ErrYAML, err).Error()))), false
 	}
-	if err := m.Validate(); err != nil {
+	for _, err := range m.ValidateAll() {
 		var api *domain.APIError
 		path := ""
 		if errors.As(err, &api) {
