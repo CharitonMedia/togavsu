@@ -109,7 +109,7 @@ A draft invoice's lines, fee-item selection, line description, line amount, and 
 
 ## Settings
 
-`GET /api/v1/settings` lists every registry row: key, type, tab, value, default, help. `PATCH` and `POST /reset` are admin, apply on the next request, and land in the audit log. `security.totp_required.admin` is locked. Secret values are write-only; the row returns `configured`. The key list and starting values are `x-togavsu-settings` on the OpenAPI document. Where the product scope names a default, that default is the starting value. Where it names the setting and not the picture, the help text says the starting value is a contract choice.
+`GET /api/v1/settings` lists every registry row: key, type, tab, value, default, help. `PATCH` and `POST /reset` are admin, apply on the next request, and land in the audit log. Two-factor is optional for every role by default; `security.totp_required.<role>` turns it on per role, admin included. Secret values are write-only; the row returns `configured`. The key list and starting values are `x-togavsu-settings` on the OpenAPI document. Where the product scope names a default, that default is the starting value. Where it names the setting and not the picture, the help text says the starting value is a contract choice.
 
 ## Events
 

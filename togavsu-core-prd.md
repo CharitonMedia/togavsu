@@ -85,7 +85,7 @@ The record set follows Nolan PMS Unified closely, cleaned up. All tables carry i
 
 - users: name, email, roles, active flag, default hourly rate, linked contact (for client users).
 - sessions, password credentials (Argon2id), TOTP secrets, recovery codes, API tokens.
-- TOTP two-factor is required for admin, attorney, staff and accountant; optional for client users.
+- TOTP two-factor is optional for every role by default; an admin can require it for any role, admin included. Any user can turn it on for their own account. (Changed 2026-11-13 at Patrick's direction; it was required for admin, attorney, staff and accountant.)
 
 **Firm settings**
 
@@ -268,7 +268,7 @@ Tabs:
 
 - **Firm profile:** firm name, short name, address, phone, email, website, logo, time zone, matter number format and prefix (default YYYY-NNNN).
 - **Users and roles:** add, edit and deactivate users; roles; default hourly rate; bar number and state for attorneys; linked contact for client users; matter walls.
-- **Security:** two-factor by role (default required for admin, attorney, staff and accountant, optional for client users; the admin role always requires it), longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes), API rate limit (default 600 requests a minute per token).
+- **Security:** two-factor by role (default optional for every role, admin included; the admin can require it for any role), longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes), API rate limit (default 600 requests a minute per token).
 - **Practice:** practice areas and their stages, matter markers, custom fields, party roles, case number patterns (default Missouri docket numbers), lowest conflict score shown (default 60 out of 100).
 - **Time and billing:** time increment (default 6 minutes; 1, 6, 10 or 15), default rates, activity types, expense types, default expense markup (default 0 percent), invoice numbering, payment terms (default due in 30 days), grace period (default 15 days), late interest (default off; the rate when on), fee items catalog, default client message on invoices.
 - **Trust:** trust accounts (bank, account name, IOLTA flag, last four digits), extra recipients for trust flag emails (the admins and the responsible attorney always get them and can't be removed), default evergreen minimum for new matters (default none), monthly reconciliation reminder day (default the 5th).
@@ -397,7 +397,7 @@ Every staff screen uses one shell, carried over from Nolan PMS Unified: a sideba
 
 - **Notification preferences (each user):** a grid of notification kinds against channels, in-app and email. Defaults: every kind in-app; email also for trust flags, deadline reminders, update failures and module alerts. The trust below-zero email to the admins and the responsible attorney can't be turned off. Modules' notification kinds join the grid. Records: notification\_preferences.
 - **Appearance (admin page, Appearance tab):** staff portal colors for each area (sidebar, header, page and accents) with presets (Navy and gold, Charcoal and copper, Forest and cream, Maximum contrast); client portal colors with a header preview; typography (a heading font and a body font from Lora, Merriweather, Libre Baskerville, Source Serif, Inter, IBM Plex Sans, Source Sans and Atkinson Hyperlegible) and a text size; names and labels (firm short name, staff portal label, client portal label); the firm's default mode: light, dark or follow the device (default follow the device). Each user can pick their own mode and text size in My settings; the colors stay the firm's. Changes show on the next page load with no restart. API: /api/v1/settings/appearance (read, update).
-- **Profile (each user):** name, initials, email, phone, profile picture, password change, two-factor reset and new recovery codes, and the API tokens the user owns.
+- **Profile (each user):** name, initials, email, phone, profile picture, password change, two-factor setup (turn it on with a QR code and a text key, or move it to a new app) and new recovery codes, and the API tokens the user owns.
 - **My settings (each user):** default reminder lead times for events and deadlines, a personal display time zone, light or dark mode and text size (default the firm's), and automatic sign-out after idle time. The admin sets the firm's longest idle time on the Security tab (default 12 hours); a user can choose shorter.
 - **AI settings:** on the admin page's AI and inference tab (section 8.7).
 
@@ -700,7 +700,7 @@ After the release tag, the initial modules build under the plan in togavsu-initi
 
 The build is done when a tagged release with signed images installs on a clean Docker Desktop and every item below passes in automated tests.
 
-- A fresh install reaches the first-run setup (firm name, first admin, two-factor) in one Compose up with no manual edits.
+- A fresh install reaches the first-run setup (firm name, first admin, optional two-factor) in one Compose up with no manual edits.
 - Every core feature is reachable through /api/v1 and through /mcp, and the OpenAPI spec validates.
 - A staff user can't see a walled matter anywhere: list, search, widget, report or API.
 - An accountant can read billing and trust and can't write anything.

@@ -286,16 +286,18 @@ func (s *Service) noteSignIn(ctx context.Context, user domain.User, roles []doma
 }
 
 func (s *Service) totpRequired(ctx context.Context, roles []domain.Role) (bool, error) {
-	// PRD section 5 requires TOTP for these roles. The writable settings do not turn that off.
+	// Two-factor is optional for every role. An admin turns it on per role on the
+	// Security tab. A user who holds any role that requires it must use it.
 	for _, role := range roles {
 		switch role {
-		case domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant:
-			return true, nil
-		}
-	}
-	for _, role := range roles {
-		if role == domain.RoleClient {
-			return s.flag(ctx, "security.totp_required.client")
+		case domain.RoleAdmin, domain.RoleAttorney, domain.RoleStaff, domain.RoleAccountant, domain.RoleClient:
+			on, err := s.flag(ctx, "security.totp_required."+string(role))
+			if err != nil {
+				return false, err
+			}
+			if on {
+				return true, nil
+			}
 		}
 	}
 	return false, nil

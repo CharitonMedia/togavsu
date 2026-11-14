@@ -93,6 +93,9 @@ def setup(base, state_file):
         "firm_name": "Compose Synthetic Firm", "time_zone": "America/Chicago", "admin_name": "Casey Compose",
         "admin_email": "casey@firm.example", "password": "compose-synthetic-password",
         "backup_passphrase": "compose-synthetic-backup"})
+    # Two-factor is optional: setup is complete before the enrollment is confirmed.
+    if c.must(200, "GET", "/api/v1/setup") != {"ready": True}:
+        raise SystemExit("install is not ready right after setup")
     done = c.must(200, "POST", "/api/v1/auth/totp/confirm",
                   {"enrollment_token": enroll["enrollment_token"], "code": totp(enroll["secret"])})
     if done.get("status") != "authenticated" or not done.get("recovery_codes"):

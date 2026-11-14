@@ -240,10 +240,10 @@ REQUIRED_FEATURES = {
 PRD_SETTING_DEFAULTS = {
     "firm.matter_number_format": "YYYY-NNNN",
     "firm.staff_portal_label": "Staff portal",
-    "security.totp_required.admin": True,
-    "security.totp_required.attorney": True,
-    "security.totp_required.staff": True,
-    "security.totp_required.accountant": True,
+    "security.totp_required.admin": False,
+    "security.totp_required.attorney": False,
+    "security.totp_required.staff": False,
+    "security.totp_required.accountant": False,
     "security.totp_required.client": False,
     "security.idle_timeout_seconds": 12 * 60 * 60,
     "security.failed_sign_in_limit": 5,
@@ -1113,7 +1113,7 @@ class ContractTest(unittest.TestCase):
         for key, expected in PRD_SETTING_DEFAULTS.items():
             self.assertIn(key, rows, key)
             self.assertEqual(rows[key]["default"], expected, key)
-        self.assertTrue(rows["security.totp_required.admin"]["locked"])
+        self.assertFalse(any(rows[f"security.totp_required.{r}"]["locked"] for r in ("admin", "attorney", "staff", "accountant", "client")))
         enum = self.spec["components"]["schemas"]["SettingKey"]["enum"]
         self.assertEqual(set(enum), set(rows))
 

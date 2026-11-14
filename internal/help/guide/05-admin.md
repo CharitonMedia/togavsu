@@ -8,7 +8,7 @@ Firm name, short name, address, phone, email, website, logo, time zone and the m
 
 ## Users and roles {#admin-users_roles}
 <!-- tab: users_roles | path: /admin?tab=users_roles | where: Administrative > Users and roles | keywords: add user, deactivate, roles, walls, hourly rate -->
-The firm's users with their phone, roles and active flag, and the seat count. Add a user with a name, email, roles and a starting password; they set up two-factor at their first sign-in. Open Edit on a user to change them.
+The firm's users with their phone, roles and active flag, and the seat count. Add a user with a name, email, roles and a starting password; they set up two-factor at first sign-in only when Security requires it for one of their roles. Open Edit on a user to change them.
 
 ## Edit a user {#admin-user}
 <!-- template: admin/admin_user.html | path: /admin/users/{user_id} | where: Administrative > Users and roles > Edit | keywords: roles, hourly rate, bar number, bar state, linked contact, matter wall, deactivate -->
@@ -16,7 +16,7 @@ Change a user's name, email, phone and roles, their default hourly rate, the bar
 
 ## Security {#admin-security}
 <!-- tab: security | path: /admin?tab=security | where: Administrative > Security | keywords: two-factor, idle, lockout, rate limit -->
-Two-factor by role (always required for admins), the longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes) and the API rate limit (default 600 a minute per token).
+Two-factor by role (off for every role by default; turn it on for any role, admin included), the longest idle time before sign-out (default 12 hours), failed sign-ins before lockout (default 5), lockout length (default 15 minutes) and the API rate limit (default 600 a minute per token).
 
 ## Practice {#admin-practice}
 <!-- tab: practice | path: /admin?tab=practice | where: Administrative > Practice | keywords: practice areas, stages, case number patterns, conflict score -->
@@ -106,4 +106,4 @@ The admin page itself: pick a tab across the top. Each tab's topic above says wh
 
 ## Sign in {#sign-in}
 <!-- path: /login, /setup, /logout | where: Before sign-in | keywords: password, two-factor, first-run setup -->
-Sign in with your email and password, then the six-digit two-factor code. A new install opens first-run setup at /setup.
+Sign in with your email and password, then the six-digit two-factor code if two-factor is on for you. A new install opens first-run setup at /setup.

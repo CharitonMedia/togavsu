@@ -17,6 +17,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/frame"
 	"github.com/CharitonMedia/togavsu/internal/help"
+	"github.com/CharitonMedia/togavsu/internal/qrcode"
 	"github.com/CharitonMedia/togavsu/internal/settings"
 )
 
@@ -67,6 +68,7 @@ var funcs = template.FuncMap{
 	},
 	"md":       func(s string) template.HTML { return template.HTML(help.RenderMarkdown(s)) },
 	"tabLabel": tabLabel,
+	"qr":       qrcode.HTML,
 	"inc":      func(i int) int { return i + 1 },
 	"has": func(list []string, v string) bool {
 		for _, x := range list {

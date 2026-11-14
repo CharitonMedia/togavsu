@@ -223,6 +223,11 @@ func (r *Registry) Set(ctx context.Context, key, value string, who domain.Princi
 	if err := validate(def, value); err != nil {
 		return Change{}, err
 	}
+	// A required setting is setup's completion mark (identity Ready); clearing it, by a
+	// PATCH or a reset to its empty default, would send a finished install back to setup.
+	if def.Special == "required" && strings.TrimSpace(value) == "" {
+		return Change{}, fmt.Errorf("%w: %s is required", ErrInvalid, key)
+	}
 	return r.persist(ctx, def, value, who)
 }
 
@@ -390,6 +395,8 @@ func validateSpecial(def Definition, value string) error {
 	switch def.Special {
 	case "":
 		return nil
+	case "required":
+		// Empty until first-run setup stores it; Set refuses to clear it afterwards.
 	case "naming_pattern":
 		if err := domain.ValidateNamingPattern(value); err != nil {
 			return fmt.Errorf("%w: %s", ErrInvalid, err.Error())

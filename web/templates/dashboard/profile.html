@@ -5,10 +5,10 @@
 {{if .Codes}}<section class="card issued" role="status" id="recovery-codes"><h2>Your new recovery codes</h2>
 <p>Save these somewhere safe now; they are shown only once. Each code signs you in once if you lose your authenticator. Your old codes no longer work.</p>
 <ul class="codes">{{range .Codes}}<li><code>{{.}}</code></li>{{end}}</ul></section>{{end}}
-{{with .Enrollment}}<section class="card issued" role="status" id="totp-reset"><h2>Finish the two-factor reset</h2>
-<p>Add this key to your authenticator app, then enter the 6-digit code it shows. Until you do, your current authenticator keeps working.</p>
-<p>Key: <code class="secret" id="totp-secret">{{.Secret}}</code></p>
-<p class="muted">Setup link for apps that take one: <code>{{.OTPAuthURI}}</code></p>
+{{with .Enrollment}}<section class="card issued" role="status" id="totp-reset"><h2>Finish setting up two-factor</h2>
+<p>Scan this code with your authenticator app, then enter the 6-digit code it shows. If two-factor was already on, your current authenticator keeps working until you do.</p>
+<div class="qr">{{qr .OTPAuthURI}}</div>
+<p>Can't scan it? Enter this key instead: <code class="secret" id="totp-secret">{{.Secret}}</code></p>
 <form method="post" action="/me/totp/reset/confirm" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="enrollment_token" value="{{.EnrollmentToken}}">
   <label for="tr-code">Code from the new entry</label><input id="tr-code" name="code" inputmode="numeric" autocomplete="one-time-code" required maxlength="6">
   <div><button type="submit">Confirm</button></div></form></section>{{end}}
@@ -41,9 +41,9 @@
 
 <section class="card" id="two-factor"><h2>Two-factor</h2>
 <form method="post" action="/me/totp/reset" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
-  <h3>Reset two-factor</h3><p class="muted">Use this when you move to a new phone or authenticator app.</p>
+  <h3>Set up two-factor</h3><p class="muted">Two-factor is optional unless your firm requires it for your role. Use this to turn it on, or to move it to a new phone or authenticator app.</p>
   <label for="tf-pw">Password</label><input id="tf-pw" name="password" type="password" required autocomplete="current-password">
-  <div><button type="submit">Start reset</button></div></form>
+  <div><button type="submit">Set up two-factor</button></div></form>
 <form method="post" action="/me/recovery-codes" class="form-grid"><input type="hidden" name="csrf" value="{{$.CSRF}}">
   <h3>New recovery codes</h3><p class="muted">Replaces your unused recovery codes.</p>
   <label for="rc-pw">Password</label><input id="rc-pw" name="password" type="password" required autocomplete="current-password">
