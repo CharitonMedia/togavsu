@@ -53,9 +53,14 @@ func (c CoreServices) zone(ctx context.Context) *time.Location {
 	return time.UTC
 }
 
+// practiceWidget and trustWidget convert a widget, keeping its first widget_rows rows as
+// the other sources do; the title opens the full list.
 func practiceWidget(w practice.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.PagePath, Query: w.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
@@ -64,14 +69,22 @@ func practiceWidget(w practice.Widget) Widget {
 func trustWidget(w trust.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.Target.Path, Query: w.Target.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
 }
 
+// calendarWidget converts a calendar widget, keeping the first widget_rows rows as every
+// other source does; its title opens the full list.
 func calendarWidget(w calendar.Widget) Widget {
 	out := Widget{ID: w.ID, Title: w.Title, Target: Target{Path: w.Target.Path, Query: w.Target.Query}, PagePath: w.PagePath}
 	for _, r := range w.Rows {
+		if len(out.Rows) >= fixed.WidgetRows {
+			break
+		}
 		out.Rows = append(out.Rows, WidgetRow{ID: r.ID, Title: r.Title, Subtitle: r.Subtitle, TargetPath: r.TargetPath})
 	}
 	return out
@@ -242,40 +255,24 @@ func filterQuery(f map[string]string) map[string]string {
 }
 
 func (c CoreServices) unbilled(ctx context.Context, p domain.Principal, f map[string]string) (Widget, error) {
-	rep, err := c.Billing.UnbilledReport(ctx, p, reportFilter(f))
+	totals, err := c.Billing.UnbilledSummary(ctx, p, reportFilter(f))
 	if err != nil {
 		return Widget{}, err
 	}
-	type agg struct {
-		label string
-		cents int64
-		n     int
-	}
-	by := map[string]*agg{}
-	var order []string
 	var total int64
-	for _, r := range rep.Rows {
-		m := fmt.Sprint(r["matter_id"])
-		if by[m] == nil {
-			by[m] = &agg{label: fmt.Sprint(r["matter_number"])}
-			order = append(order, m)
-		}
-		cents := toInt(r["amount_cents"])
-		by[m].cents += cents
-		by[m].n++
-		total += cents
+	for _, t := range totals {
+		total += int64(t.Cents)
 	}
 	w := Widget{Title: "Unbilled time", Target: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}}
-	if len(order) > 0 {
-		w.Rows = append(w.Rows, WidgetRow{ID: "total", Title: "Total unbilled " + domain.Cents(total).String(), Subtitle: fmt.Sprintf("%d matters", len(order)), TargetPath: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}.URL()})
+	if len(totals) > 0 {
+		w.Rows = append(w.Rows, WidgetRow{ID: "total", Title: "Total unbilled " + domain.Cents(total).String(), Subtitle: fmt.Sprintf("%d matters", len(totals)), TargetPath: Target{Path: "/billing/reports/unbilled-time", Query: filterQuery(f)}.URL()})
 	}
-	sort.SliceStable(order, func(i, j int) bool { return by[order[i]].cents > by[order[j]].cents })
-	for _, m := range order {
+	sort.SliceStable(totals, func(i, j int) bool { return totals[i].Cents > totals[j].Cents })
+	for _, t := range totals {
 		if len(w.Rows) >= fixed.WidgetRows {
 			break
 		}
-		a := by[m]
-		w.Rows = append(w.Rows, WidgetRow{ID: m, Title: a.label + " · " + domain.Cents(a.cents).String(), Subtitle: fmt.Sprintf("%d unbilled items", a.n), TargetPath: "/practice/matters/" + m})
+		w.Rows = append(w.Rows, WidgetRow{ID: string(t.MatterID), Title: t.MatterNumber + " · " + t.Cents.String(), Subtitle: fmt.Sprintf("%d unbilled items", t.Items), TargetPath: "/practice/matters/" + string(t.MatterID)})
 	}
 	return w, nil
 }

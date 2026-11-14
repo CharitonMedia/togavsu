@@ -208,11 +208,11 @@ func (s *Service) ListDeadlines(ctx context.Context, p domain.Principal, f Deadl
 	if !f.MatterID.IsZero() && !s.visible(ctx, p, f.MatterID) {
 		return nil, domain.NotFound("matter")
 	}
-	rows, err := s.d.Store.Deadlines(ctx)
+	today := s.Today(ctx).Format(dateLayout)
+	rows, err := s.d.Store.DeadlinesFor(ctx, f, today)
 	if err != nil {
 		return nil, err
 	}
-	today := s.Today(ctx).Format(dateLayout)
 	var out []Deadline
 	for _, row := range rows {
 		if !matchDeadline(row, f, today) {
@@ -239,6 +239,9 @@ func matchDeadline(row Deadline, f DeadlineFilter, today string) bool {
 	if f.To != "" && row.DueOn > f.To {
 		return false
 	}
+	if f.Before != "" && row.DueOn >= f.Before {
+		return false
+	}
 	if f.From != "" && row.DueOn < f.From {
 		return f.IncludeOverdue && row.Status == StatusOpen && row.DueOn < today
 	}
@@ -248,18 +251,7 @@ func matchDeadline(row Deadline, f DeadlineFilter, today string) bool {
 // Overdue lists open deadlines due before today in the firm zone that the caller
 // can see. They stay until done or waived.
 func (s *Service) Overdue(ctx context.Context, p domain.Principal) ([]Deadline, error) {
-	today := s.Today(ctx).Format(dateLayout)
-	rows, err := s.ListDeadlines(ctx, p, DeadlineFilter{Status: StatusOpen})
-	if err != nil {
-		return nil, err
-	}
-	var out []Deadline
-	for _, row := range rows {
-		if row.DueOn < today {
-			out = append(out, row)
-		}
-	}
-	return out, nil
+	return s.ListDeadlines(ctx, p, DeadlineFilter{Status: StatusOpen, Before: s.Today(ctx).Format(dateLayout)})
 }
 
 // IsOverdue reports whether row is open and past due on the firm-local today.

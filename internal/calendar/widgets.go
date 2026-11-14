@@ -84,9 +84,11 @@ func (s *Service) UpcomingDeadlinesWidget(ctx context.Context, p domain.Principa
 	}
 	w := Widget{ID: "upcoming-deadlines", Title: "Upcoming deadlines", PagePath: DeadlinesPath,
 		Target: WidgetTarget{Path: DeadlinesPath, Query: query}, Rows: []WidgetRow{}}
+	// Today once for the widget: IsOverdue reads the firm zone setting on every call.
+	today := s.Today(ctx).Format(dateLayout)
 	for _, d := range rows {
 		sub := "Due " + d.DueOn
-		if s.IsOverdue(ctx, d) {
+		if d.Status == StatusOpen && d.DueOn < today {
 			sub = "Overdue since " + d.DueOn
 		}
 		w.Rows = append(w.Rows, WidgetRow{ID: string(d.ID), Title: d.Title, Subtitle: sub, TargetPath: DeadlinesPath + "/" + string(d.ID)})

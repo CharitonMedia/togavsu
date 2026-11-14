@@ -92,29 +92,63 @@ func (s *Service) GetMatter(ctx context.Context, p domain.Principal, id domain.I
 
 // ListMatters returns matters the caller can see. Walled matters are absent.
 func (s *Service) ListMatters(ctx context.Context, p domain.Principal, status string, area domain.ID) ([]MatterView, error) {
+	rows, _, err := s.ListMattersPage(ctx, p, MatterQuery{Status: status, Area: area})
+	return rows, err
+}
+
+// MatterQuery narrows and pages ListMattersPage.
+type MatterQuery struct {
+	Status string
+	Area   domain.ID
+	// Keep, when set, drops matters before the wall check.
+	Keep func(domain.Matter) bool
+	// Offset skips that many readable matters; Max returns at most that many (zero is
+	// every one).
+	Offset, Max int
+	// Bare views carry only the matter, for lists that show no parties, fields or glance.
+	Bare bool
+}
+
+// ListMattersPage lists the matters p can read in list order (open first, newest opened,
+// then number), checking the wall of each matter it reaches and building views only for
+// the page it returns. more reports whether readable matters follow the page.
+func (s *Service) ListMattersPage(ctx context.Context, p domain.Principal, q MatterQuery) (out []MatterView, more bool, err error) {
 	ctx = withSettingsMemo(ctx)
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	var out []MatterView
-	for _, row := range s.db.Matters() {
-		if status != "" && row.Status != status {
+	all := s.db.Matters()
+	idx := make([]int, 0, len(all))
+	for i := range all {
+		row := &all[i]
+		if q.Status != "" && row.Status != q.Status || !q.Area.IsZero() && row.PracticeAreaID != q.Area || q.Keep != nil && !q.Keep(*row) {
 			continue
 		}
-		if !area.IsZero() && row.PracticeAreaID != area {
-			continue
-		}
+		idx = append(idx, i)
+	}
+	sort.Slice(idx, func(i, j int) bool { return matterOrder(&all[idx[i]], &all[idx[j]]) })
+	skip := q.Offset
+	for _, i := range idx {
+		row := all[i]
 		if !s.visibleMatter(ctx, p, row.ID) {
 			continue
 		}
-		view, err := s.matterView(ctx, p, row)
-		if err != nil {
-			return nil, err
+		if skip > 0 {
+			skip--
+			continue
+		}
+		if q.Max > 0 && len(out) == q.Max {
+			return out, true, nil
+		}
+		view := MatterView{Matter: row}
+		if !q.Bare {
+			if view, err = s.matterView(ctx, p, row); err != nil {
+				return nil, false, err
+			}
 		}
 		out = append(out, view)
 	}
-	sortMatters(out)
-	return out, nil
+	return out, false, nil
 }
 
 // CountMatters counts the matters ListMatters would return, without building their views.
@@ -813,14 +847,20 @@ func sortMatters(rows []MatterView) {
 	sort.SliceStable(rows, func(i, j int) bool { return matterLess(rows[i], rows[j]) })
 }
 
-func matterLess(a, b MatterView) bool {
-	if openRank(a.Matter.Status) != openRank(b.Matter.Status) {
-		return openRank(a.Matter.Status) < openRank(b.Matter.Status)
+func matterLess(a, b MatterView) bool { return matterOrder(&a.Matter, &b.Matter) }
+
+// matterOrder is matterRowLess on pointers, with the id last so ties are stable.
+func matterOrder(a, b *domain.Matter) bool {
+	if openRank(a.Status) != openRank(b.Status) {
+		return openRank(a.Status) < openRank(b.Status)
 	}
-	if a.Matter.OpenedOn != b.Matter.OpenedOn {
-		return a.Matter.OpenedOn > b.Matter.OpenedOn
+	if a.OpenedOn != b.OpenedOn {
+		return a.OpenedOn > b.OpenedOn
 	}
-	return a.Matter.Number > b.Matter.Number
+	if a.Number != b.Number {
+		return a.Number > b.Number
+	}
+	return a.ID < b.ID
 }
 
 func openRank(status string) int {

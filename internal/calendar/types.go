@@ -129,6 +129,8 @@ type DeadlineFilter struct {
 	ResponsibleUserID domain.ID
 	Status            string
 	IncludeOverdue    bool
+	// Before keeps deadlines due before this date.
+	Before string
 }
 
 // Feed is one revocable iCal feed. OwnerUserID zero is the firm feed.

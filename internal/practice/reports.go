@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"time"
 
@@ -17,7 +18,7 @@ func (s *Service) OpenMattersWidget(ctx context.Context, p domain.Principal) (Wi
 		ID: "my-open-matters", Title: "My open matters", PagePath: "/practice/matters",
 		Query: map[string]string{"status": StatusOpen},
 	}
-	for _, row := range s.db.Matters() {
+	for _, row := range s.mattersInOrder() {
 		if row.Status != StatusOpen {
 			continue
 		}
@@ -38,6 +39,15 @@ func (s *Service) OpenMattersWidget(ctx context.Context, p domain.Principal) (Wi
 	return widget, nil
 }
 
+// mattersInOrder is every matter in list order (open first, newest opened, number, id), so
+// a widget's rows, and the first ones a screen shows, are the same from one load to the
+// next.
+func (s *Service) mattersInOrder() []domain.Matter {
+	rows := s.db.Matters()
+	sort.Slice(rows, func(i, j int) bool { return matterOrder(&rows[i], &rows[j]) })
+	return rows
+}
+
 // ConflictWidget lists matters with an unchecked party.
 func (s *Service) ConflictWidget(ctx context.Context, p domain.Principal) (Widget, error) {
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
@@ -47,7 +57,7 @@ func (s *Service) ConflictWidget(ctx context.Context, p domain.Principal) (Widge
 		ID: "pending-conflict-checks", Title: "Pending conflict checks", PagePath: "/practice/matters",
 		Query: map[string]string{"conflicts": "unchecked"},
 	}
-	for _, row := range s.db.Matters() {
+	for _, row := range s.mattersInOrder() {
 		if !s.unchecked(row.ID) || !s.visibleMatter(ctx, p, row.ID) {
 			continue
 		}

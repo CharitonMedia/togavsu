@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 	"github.com/CharitonMedia/togavsu/internal/repository"
@@ -16,12 +17,18 @@ type Store interface {
 	DeleteEvent(ctx context.Context, id domain.ID) error
 	Event(ctx context.Context, id domain.ID) (Event, error)
 	Events(ctx context.Context) ([]Event, error)
+	// EventsBetween lists, in start order, at least every event overlapping [from, to):
+	// callers still apply the exact window test.
+	EventsBetween(ctx context.Context, from, to time.Time) ([]Event, error)
 
 	PutDeadline(ctx context.Context, row Deadline) error
 	// DeleteDeadline removes a deadline. It only undoes a create whose audit failed.
 	DeleteDeadline(ctx context.Context, id domain.ID) error
 	Deadline(ctx context.Context, id domain.ID) (Deadline, error)
 	Deadlines(ctx context.Context) ([]Deadline, error)
+	// DeadlinesFor lists, by due date, at least every deadline matchDeadline(row, f,
+	// today) keeps: callers still apply it.
+	DeadlinesFor(ctx context.Context, f DeadlineFilter, today string) ([]Deadline, error)
 
 	PutFeed(ctx context.Context, row Feed) error
 	// DeleteFeed removes a feed. It only undoes a create whose audit failed.
@@ -102,6 +109,11 @@ func (m *Memory) Event(_ context.Context, id domain.ID) (Event, error) {
 	return row, nil
 }
 
+// EventsBetween is Events; the caller's window test does the narrowing.
+func (m *Memory) EventsBetween(ctx context.Context, _, _ time.Time) ([]Event, error) {
+	return m.Events(ctx)
+}
+
 func (m *Memory) Events(context.Context) ([]Event, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -146,6 +158,11 @@ func (m *Memory) Deadline(_ context.Context, id domain.ID) (Deadline, error) {
 	}
 	row.Offsets = append([]int(nil), row.Offsets...)
 	return row, nil
+}
+
+// DeadlinesFor is Deadlines; the caller's filter does the narrowing.
+func (m *Memory) DeadlinesFor(ctx context.Context, _ DeadlineFilter, _ string) ([]Deadline, error) {
+	return m.Deadlines(ctx)
 }
 
 func (m *Memory) Deadlines(context.Context) ([]Deadline, error) {

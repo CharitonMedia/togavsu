@@ -4,7 +4,7 @@
 <summary class="button primary">New time entry</summary>
 <form method="post" action="/billing/time" class="grid card" aria-label="Log time">
   {{template "csrf" .CSRF}}
-  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Matter <select name="matter_id" required>{{.MatterOptions}}</select></label>
   <label>Date <input type="date" name="worked_on" value="{{.Today}}" required></label>
   <label>Minutes <input type="number" name="minutes" min="1" value="6" required></label>
   <label>Activity <select name="activity_type_id" required>{{range .Activities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
@@ -23,7 +23,7 @@
 {{else}}<p class="muted">No timer running.</p>{{end}}
 <form method="post" action="/billing/timers">
   {{template "csrf" .CSRF}}
-  <label>Matter <select name="matter_id">{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Matter <select name="matter_id">{{.MatterOptions}}</select></label>
   <button type="submit">Start timer</button>
 </form>
 </section>
@@ -35,7 +35,7 @@
   <div class="scroll"><table>
   <thead><tr><th>Matter</th><th>Date</th><th>Minutes</th><th>Activity</th><th>Description</th><th>Billable</th></tr></thead>
   <tbody>{{range $i := rows 5}}{{$p := printf "items.%d." $i}}<tr>
-  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{range $.Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></td>
+  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{$.MatterOptions}}</select></td>
   <td><input type="date" name="{{$p}}worked_on" value="{{$.Today}}" aria-label="Row {{$i}} date"></td>
   <td><input type="number" name="{{$p}}minutes" min="1" size="5" aria-label="Row {{$i}} minutes"></td>
   <td><select name="{{$p}}activity_type_id" aria-label="Row {{$i}} activity">{{range $.Activities}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></td>

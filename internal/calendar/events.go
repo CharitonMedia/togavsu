@@ -272,7 +272,7 @@ func (s *Service) ListEvents(ctx context.Context, p domain.Principal, f EventFil
 	if !f.MatterID.IsZero() && !s.visible(ctx, p, f.MatterID) {
 		return nil, domain.NotFound("matter")
 	}
-	rows, err := s.d.Store.Events(ctx)
+	rows, err := s.d.Store.EventsBetween(ctx, f.From, f.To)
 	if err != nil {
 		return nil, err
 	}

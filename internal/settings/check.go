@@ -596,12 +596,39 @@ func fixedSite(path, fn string) bool {
 		// One custom value, and a CSRF token of 32 bytes.
 		return fn == "csrf" || fn == "oneCustomValue"
 	case strings.HasSuffix(slash, "internal/practice/matters.go"):
-		// Close-warning sentinels, glance zeros, YYYY-NNNN width, and matter sort indexes.
+		// Close-warning sentinels, glance zeros, YYYY-NNNN width, matter sort indexes, and
+		// a matter page's offset and size checks.
 		// The billing increment is billing.time_increment_minutes.
 		switch fn {
-		case "closeWarnings", "glance", "nextNumber", "openRank", "sortMatters":
+		case "closeWarnings", "glance", "nextNumber", "openRank", "sortMatters", "ListMattersPage":
 			return true
 		}
+	case strings.HasSuffix(slash, "internal/billing/unbilled.go"):
+		// Unbilled report reader (AC-017): its column count, keyset batch and decode chunk
+		// sizes, wire column indexes, and the 8-byte binary BIGINT. Buffer and round-trip
+		// sizes, not firm limits.
+		switch fn {
+		case "unbilledSizes", "streamUnbilled", "wireInt":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/billing/projection.go"):
+		// billing_aging column indexes in its reader.
+		return fn == "Aging"
+	case strings.HasSuffix(slash, "internal/billing/reportjson.go"):
+		// Report JSON writer (AC-017): decimal base, write-buffer sizes and separators.
+		switch fn {
+		case "WriteJSON", "appendJSONValue":
+			return true
+		}
+	case strings.HasSuffix(slash, "internal/billing/reports.go"):
+		// The unbilled row writer's decimal base.
+		return fn == "appendJSON"
+	case strings.HasSuffix(slash, "internal/billing/invoices.go"):
+		// Hours text: decimal base and two fraction digits, as "%d.%02d" writes them.
+		return fn == "appendHours"
+	case strings.HasSuffix(slash, "internal/billing/money.go"):
+		// Exact multiplication: a zero factor and the int64 overflow check.
+		return fn == "product"
 	case strings.HasSuffix(slash, "internal/practice/notes.go"):
 		// Empty-page sentinel and note sort indexes. Page size is notes.page_size.
 		return fn == "ListNotes" || fn == "sortNotes"

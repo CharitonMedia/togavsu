@@ -99,12 +99,14 @@ func (s *Service) allowScope(ctx context.Context, p domain.Principal, scope stri
 func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Matter
+	// The text test comes first: it is cheap, and every matching matter is still checked
+	// for walls and role before it is a hit.
 	for _, row := range s.db.Matters() {
-		if !s.visibleMatter(ctx, p, row.ID) {
-			continue
-		}
 		hay := strings.ToLower(row.Name + " " + row.Number + " " + row.CaseNumber)
 		if !strings.Contains(hay, q) {
+			continue
+		}
+		if !s.visibleMatter(ctx, p, row.ID) {
 			continue
 		}
 		rows = append(rows, row)
@@ -126,10 +128,8 @@ func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query s
 func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Contact
+	// As for matters, the text test comes first and every match is checked for access.
 	for _, row := range s.db.Contacts() {
-		if s.readableContact(ctx, p, row.ID) != nil {
-			continue
-		}
 		hay := strings.ToLower(strings.Join([]string{
 			row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs,
 		}, " "))
@@ -140,6 +140,9 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 			hay += " " + strings.ToLower(phone.PhoneE164)
 		}
 		if !strings.Contains(hay, q) {
+			continue
+		}
+		if s.readableContact(ctx, p, row.ID) != nil {
 			continue
 		}
 		rows = append(rows, row)

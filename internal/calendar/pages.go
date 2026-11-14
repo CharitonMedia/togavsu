@@ -2,6 +2,7 @@ package calendar
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -46,8 +47,11 @@ type view struct {
 	Error   string
 	Notice  string
 	Overdue []deadlineRow
-	Remind  []Notice
-	Data    any
+	// OverdueMore counts overdue deadlines past the panel's first page; the deadlines
+	// page lists them all.
+	OverdueMore int
+	Remind      []Notice
+	Data        any
 }
 
 type eventRow struct {
@@ -164,8 +168,13 @@ func (h *Handler) pageErr(w http.ResponseWriter, r *http.Request, err error) {
 func (h *Handler) chrome(r *http.Request, p domain.Principal, v *view) {
 	ctx := r.Context()
 	if rows, err := h.Svc.Overdue(ctx, p); err == nil {
+		// The panel shows a page of them, oldest first, and links to the rest.
+		if n, err := h.Svc.settingInt(ctx, "api.page_size"); err == nil && len(rows) > n {
+			v.OverdueMore, rows = len(rows)-n, rows[:n]
+		}
+		names := h.rows(r)
 		for _, d := range rows {
-			v.Overdue = append(v.Overdue, h.deadlineRow(r, d))
+			v.Overdue = append(v.Overdue, names.deadline(d))
 		}
 	}
 	if n, err := h.Svc.Notices(ctx, p); err == nil {
@@ -174,8 +183,40 @@ func (h *Handler) chrome(r *http.Request, p domain.Principal, v *view) {
 	v.Me = p.UserID
 }
 
-func (h *Handler) eventRow(r *http.Request, e Event) eventRow {
-	loc := h.Svc.Zone(r.Context())
+func (h *Handler) eventRow(r *http.Request, e Event) eventRow { return h.rows(r).event(e) }
+
+// rowNames builds a page's event and deadline rows, reading the firm zone, today and each
+// user's display name once per page rather than once per row (AC-017: thousands of
+// overdue deadlines). Names are labels only; access is decided before a row is built.
+type rowNames struct {
+	h     *Handler
+	ctx   context.Context
+	loc   *time.Location
+	today string
+	users map[domain.ID]string
+}
+
+func (h *Handler) rows(r *http.Request) *rowNames {
+	ctx := r.Context()
+	loc := h.Svc.Zone(ctx)
+	return &rowNames{h: h, ctx: ctx, loc: loc, today: localDate(h.Svc.now(), loc).Format(dateLayout), users: map[domain.ID]string{}}
+}
+
+// user is the user's name, or the id when there is none.
+func (n *rowNames) user(id domain.ID) string {
+	name, ok := n.users[id]
+	if !ok {
+		name = string(id)
+		if u, err := n.h.Svc.d.Users.Get(n.ctx, id); err == nil {
+			name = u.Name
+		}
+		n.users[id] = name
+	}
+	return name
+}
+
+func (n *rowNames) event(e Event) eventRow {
+	loc := n.loc
 	when := e.Start().In(loc).Format("Mon Jan 2, 3:04 PM") + " – " + e.End().In(loc).Format("3:04 PM")
 	if e.AllDay {
 		days := eventDaysAllDay(e, loc)
@@ -188,11 +229,17 @@ func (h *Handler) eventRow(r *http.Request, e Event) eventRow {
 	row := eventRow{ID: string(e.ID), Title: e.Title, Kind: e.Kind, When: when, Location: e.Location,
 		MatterID: string(e.MatterID), Notes: e.Notes, AllDay: e.AllDay}
 	for _, id := range e.Attendees {
-		name := string(id)
-		if u, err := h.Svc.d.Users.Get(r.Context(), id); err == nil {
-			name = u.Name
-		}
-		row.Attendees = append(row.Attendees, name)
+		row.Attendees = append(row.Attendees, n.user(id))
+	}
+	return row
+}
+
+func (n *rowNames) deadline(d Deadline) deadlineRow {
+	row := deadlineRow{ID: string(d.ID), Title: d.Title, DueOn: d.DueOn, Status: d.Status, MatterID: string(d.MatterID),
+		Responsible: n.user(d.ResponsibleUserID), Offsets: joinInts(d.Offsets), Overdue: d.Status == StatusOpen && d.DueOn < n.today}
+	if isSet(d.DoneAt) {
+		row.DoneAt = domain.FromUnixMicro(d.DoneAt).In(n.loc).Format("Jan 2, 2006 3:04 PM")
+		row.DoneBy = n.user(d.DoneBy)
 	}
 	return row
 }
@@ -209,21 +256,7 @@ func eventDaysAllDay(e Event, loc *time.Location) []time.Time {
 	return out
 }
 
-func (h *Handler) deadlineRow(r *http.Request, d Deadline) deadlineRow {
-	row := deadlineRow{ID: string(d.ID), Title: d.Title, DueOn: d.DueOn, Status: d.Status, MatterID: string(d.MatterID),
-		Responsible: string(d.ResponsibleUserID), Offsets: joinInts(d.Offsets), Overdue: h.Svc.IsOverdue(r.Context(), d)}
-	if u, err := h.Svc.d.Users.Get(r.Context(), d.ResponsibleUserID); err == nil {
-		row.Responsible = u.Name
-	}
-	if isSet(d.DoneAt) {
-		row.DoneAt = domain.FromUnixMicro(d.DoneAt).In(h.Svc.Zone(r.Context())).Format("Jan 2, 2006 3:04 PM")
-		row.DoneBy = string(d.DoneBy)
-		if u, err := h.Svc.d.Users.Get(r.Context(), d.DoneBy); err == nil {
-			row.DoneBy = u.Name
-		}
-	}
-	return row
-}
+func (h *Handler) deadlineRow(r *http.Request, d Deadline) deadlineRow { return h.rows(r).deadline(d) }
 
 func calLink(view, date, user, matter, kind string) string {
 	q := url.Values{}
@@ -288,18 +321,19 @@ func (h *Handler) calendarPage(w http.ResponseWriter, r *http.Request) {
 		gridLast = time.Date(ws.Year(), ws.Month(), ws.Day()+6, 0, 0, 0, 0, time.UTC)
 	}
 	var cells []dayCell
+	names := h.rows(r)
 	for d := gridFirst; !d.After(gridLast); d = nextDay(d) {
 		cell := dayCell{Date: d.Format(dateLayout), Label: d.Format("Mon Jan 2"), Today: d.Equal(today),
 			InPeriod: !d.Before(firstDay) && !d.After(lastDay)}
 		ds, de := dayStart(d, loc), dayStart(nextDay(d), loc)
 		for _, e := range events {
 			if overlaps(e.Start(), e.End(), ds, de) {
-				cell.Events = append(cell.Events, h.eventRow(r, e))
+				cell.Events = append(cell.Events, names.event(e))
 			}
 		}
 		for _, dl := range deadlines {
 			if dl.DueOn == cell.Date {
-				cell.Deadlines = append(cell.Deadlines, h.deadlineRow(r, dl))
+				cell.Deadlines = append(cell.Deadlines, names.deadline(dl))
 			}
 		}
 		cells = append(cells, cell)
@@ -460,8 +494,9 @@ func (h *Handler) deadlinesPage(w http.ResponseWriter, r *http.Request) {
 	}
 	data := deadlinesData{From: f.From, To: f.To, Status: f.Status, MatterID: string(f.MatterID),
 		ResponsibleUserID: string(f.ResponsibleUserID), IncludeOverdue: f.IncludeOverdue}
+	names := h.rows(r)
 	for _, d := range rows {
-		data.Rows = append(data.Rows, h.deadlineRow(r, d))
+		data.Rows = append(data.Rows, names.deadline(d))
 	}
 	v := view{Title: "Deadlines", Data: data}
 	h.chrome(r, p, &v)

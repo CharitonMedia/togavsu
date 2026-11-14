@@ -5,7 +5,7 @@
 <div class="card">
 <form method="post" action="/billing/expenses" class="grid" aria-label="Record expense">
   {{template "csrf" .CSRF}}
-  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Matter <select name="matter_id" required>{{.MatterOptions}}</select></label>
   <label>Date <input type="date" name="incurred_on" value="{{.Today}}" required></label>
   <label>Amount <input name="amount" inputmode="decimal" size="9" required></label>
   <label>Type <select name="expense_type_id" required>{{range .ExpenseTypes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
@@ -25,7 +25,7 @@
   <div class="scroll"><table>
   <thead><tr><th>Matter</th><th>Date</th><th>Amount</th><th>Type</th><th>Markup %</th><th>Description</th><th>Billable</th></tr></thead>
   <tbody>{{range $i := rows 5}}{{$p := printf "items.%d." $i}}<tr>
-  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{range $.Matters}}<option value="{{.ID}}">{{.Number}} {{.Name}}</option>{{end}}</select></td>
+  <td><select name="{{$p}}matter_id" aria-label="Row {{$i}} matter">{{$.MatterOptions}}</select></td>
   <td><input type="date" name="{{$p}}incurred_on" value="{{$.Today}}" aria-label="Row {{$i}} date"></td>
   <td><input name="{{$p}}amount" inputmode="decimal" size="9" aria-label="Row {{$i}} amount"></td>
   <td><select name="{{$p}}expense_type_id" aria-label="Row {{$i}} type">{{range $.ExpenseTypes}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></td>

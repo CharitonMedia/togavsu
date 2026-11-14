@@ -6,6 +6,9 @@ import (
 	"embed"
 	"encoding/json"
 	"errors"
+	"math"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -145,7 +148,12 @@ func (p *Postgres) events(ctx context.Context, where string, args ...any) ([]Eve
 	if len(out) == 0 {
 		return out, nil
 	}
-	att, err := p.q(ctx).QueryContext(ctx, `SELECT event_id, user_id FROM calendar_event_attendees ORDER BY created_at, id`)
+	attQ, attArgs := `SELECT event_id, user_id FROM calendar_event_attendees ORDER BY created_at, id`, []any(nil)
+	if where != "" {
+		// Only the listed events' attendees (migration 1263 indexes event_id).
+		attQ, attArgs = `SELECT event_id, user_id FROM calendar_event_attendees WHERE event_id IN (SELECT id FROM calendar_events `+where+`) ORDER BY created_at, id`, args
+	}
+	att, err := p.q(ctx).QueryContext(ctx, attQ, attArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +187,23 @@ func (p *Postgres) Event(ctx context.Context, id domain.ID) (Event, error) {
 // (the service's existing contract). Upgrade path: push the window and matter filter
 // into the query. Trigger: 50k calendar rows or a calendar page slower than 200 ms.
 func (p *Postgres) Events(ctx context.Context) ([]Event, error) { return p.events(ctx, "") }
+
+// EventsBetween reads the events that can overlap [from, to) through the start index of
+// migration 1263: those starting before to that end after from, or start at or after it
+// (a zero-length event overlaps where it starts). A zero bound is open.
+func (p *Postgres) EventsBetween(ctx context.Context, from, to time.Time) ([]Event, error) {
+	if from.IsZero() && to.IsZero() {
+		return p.Events(ctx)
+	}
+	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)
+	if !from.IsZero() {
+		lo = from.UnixMicro()
+	}
+	if !to.IsZero() {
+		hi = to.UnixMicro()
+	}
+	return p.events(ctx, `WHERE starts_at < $1 AND (ends_at > $2 OR starts_at >= $2)`, hi, lo)
+}
 
 // PutDeadline upserts a deadline.
 func (p *Postgres) PutDeadline(ctx context.Context, row Deadline) error {
@@ -252,6 +277,44 @@ func (p *Postgres) Deadline(ctx context.Context, id domain.ID) (Deadline, error)
 
 // Deadlines lists every deadline by due date; the service filters them by access.
 func (p *Postgres) Deadlines(ctx context.Context) ([]Deadline, error) { return p.deadlines(ctx, "") }
+
+// DeadlinesFor narrows by status, matter, responsible user and due dates in SQL (the
+// indexes of migration 1264). With IncludeOverdue an open deadline due before today is
+// kept whatever From says, as matchDeadline keeps it.
+func (p *Postgres) DeadlinesFor(ctx context.Context, f DeadlineFilter, today string) ([]Deadline, error) {
+	var conds []string
+	var args []any
+	arg := func(v any) string {
+		args = append(args, v)
+		return "$" + strconv.Itoa(len(args))
+	}
+	if f.Status != "" {
+		conds = append(conds, "status = "+arg(f.Status))
+	}
+	if !f.MatterID.IsZero() {
+		conds = append(conds, "matter_id = "+arg(string(f.MatterID)))
+	}
+	if !f.ResponsibleUserID.IsZero() {
+		conds = append(conds, "responsible_user_id = "+arg(string(f.ResponsibleUserID)))
+	}
+	if f.To != "" {
+		conds = append(conds, "due_on <= "+arg(f.To))
+	}
+	if f.Before != "" {
+		conds = append(conds, "due_on < "+arg(f.Before))
+	}
+	if f.From != "" {
+		c := "due_on >= " + arg(f.From)
+		if f.IncludeOverdue {
+			c = "(" + c + " OR (status = '" + StatusOpen + "' AND due_on < " + arg(today) + "))"
+		}
+		conds = append(conds, c)
+	}
+	if len(conds) == 0 {
+		return p.Deadlines(ctx)
+	}
+	return p.deadlines(ctx, "WHERE "+strings.Join(conds, " AND "), args...)
+}
 
 // PutFeed upserts a feed.
 func (p *Postgres) PutFeed(ctx context.Context, row Feed) error {

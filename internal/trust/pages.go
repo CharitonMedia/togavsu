@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"html"
 	"html/template"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -57,8 +59,9 @@ type Matters interface {
 }
 
 type matterOption struct {
-	ID     domain.ID
-	Label  string
+	ID    domain.ID
+	Label string
+	// Client is the matter's primary client, set where a page shows it (not in pickers).
 	Client domain.ID
 }
 
@@ -69,19 +72,23 @@ type view struct {
 	CanWithdraw, CanDeposit    bool
 	Accounts                   []Account
 	Matters                    []matterOption
-	Matter                     matterOption
-	Entries                    []Entry
-	Balances                   []map[string]string
-	Flags                      []Flag
-	Flag                       Flag
-	Repls                      []Replenishment
-	Recons                     []Reconciliation
-	Notes                      []Notification
-	Fee                        FlatFee
-	Evergreen                  string
-	MatterBalance              int64
-	Today, Status              string
-	Labels                     map[string]string
+	// MatterOptions is Matters as <option> elements, built once (AC-017: 20,000 matters).
+	MatterOptions template.HTML
+	Matter        matterOption
+	Entries       []Entry
+	// OlderEntries links the ledger screen's next page.
+	OlderEntries  string
+	Balances      []map[string]string
+	Flags         []Flag
+	Flag          Flag
+	Repls         []Replenishment
+	Recons        []Reconciliation
+	Notes         []Notification
+	Fee           FlatFee
+	Evergreen     string
+	MatterBalance int64
+	Today, Status string
+	Labels        map[string]string
 }
 
 func (h *Handler) pageRoutes(mux *http.ServeMux) {
@@ -167,7 +174,7 @@ func back(w http.ResponseWriter, r *http.Request, to string, err error, notice s
 	http.Redirect(w, r, u.String(), http.StatusSeeOther)
 }
 
-// matterOptions lists matters the caller may see, with each one's primary client.
+// matterOptions lists matters the caller may see, by label, for the posting picker.
 func (h *Handler) matterOptions(ctx context.Context, p domain.Principal) []matterOption {
 	src, ok := h.Svc.practice.(Matters)
 	if !ok {
@@ -179,10 +186,24 @@ func (h *Handler) matterOptions(ctx context.Context, p domain.Principal) []matte
 		if ok, _ := rd.ok(ctx, m.ID); !ok {
 			continue
 		}
-		out = append(out, matterOption{ID: m.ID, Label: m.Number + " " + m.Name, Client: h.Svc.primaryClient(m.ID)})
+		out = append(out, matterOption{ID: m.ID, Label: m.Number + " " + m.Name})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+// optionsHTML writes one <option> per matter.
+func optionsHTML(list []matterOption) template.HTML {
+	var b strings.Builder
+	b.Grow(len(list) * 96)
+	for _, m := range list {
+		b.WriteString(`<option value="`)
+		b.WriteString(html.EscapeString(string(m.ID)))
+		b.WriteString(`">`)
+		b.WriteString(html.EscapeString(m.Label))
+		b.WriteString(`</option>`)
+	}
+	return template.HTML(b.String())
 }
 
 func (h *Handler) labels(ctx context.Context, v *view, ids ...domain.ID) {
@@ -210,12 +231,29 @@ func (h *Handler) ledgerPage(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
+	// The screen shows a page of entries, newest first, with a link to older ones; the
+	// API and the ledger exports carry every entry.
 	v.Entries = newestFirst(entries)
+	if n, err := h.Svc.intSetting(ctx, "api.page_size"); err == nil && positive(int64(n)) {
+		var from int
+		if c, err := strconv.Atoi(r.URL.Query().Get("from")); err == nil && positive(int64(c)) && c < len(v.Entries) {
+			from = c
+		}
+		v.Entries = v.Entries[from:]
+		if len(v.Entries) > n {
+			older := url.Values{"from": {strconv.Itoa(from + n)}}
+			if !matter.IsZero() {
+				older.Set("matter_id", string(matter))
+			}
+			v.Entries, v.OlderEntries = v.Entries[:n], "/trust/ledger?"+older.Encode()
+		}
+	}
 	for _, e := range v.Entries {
 		h.labels(ctx, v, e.MatterID, e.ClientID)
 	}
 	v.Accounts = h.activeAccounts(ctx)
 	v.Matters = h.matterOptions(ctx, p)
+	v.MatterOptions = optionsHTML(v.Matters)
 	h.render(w, r, "ledger.html", v)
 }
 
