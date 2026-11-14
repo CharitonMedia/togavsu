@@ -1,0 +1,875 @@
+{
+  "task_id": "release-perf",
+  "status": "pass",
+  "tested_revision": "2e81f1c7d81f4a50b20430d737c1b1b8d4feb560",
+  "command": "TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
+  "exit_code": 0,
+  "tests": [
+    {
+      "name": "perf",
+      "command": "TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
+      "exit_code": 0,
+      "seconds": 48
+    },
+    {
+      "name": "core",
+      "command": "sh scripts/ci/test-core.sh",
+      "exit_code": 0,
+      "seconds": 617
+    },
+    {
+      "name": "compose-first-run",
+      "command": "sh scripts/ci/test-compose-first-run.sh",
+      "exit_code": 0,
+      "seconds": 29
+    },
+    {
+      "name": "api",
+      "command": "sh scripts/ci/test-api.sh",
+      "exit_code": 0,
+      "seconds": 22
+    },
+    {
+      "name": "supervisor",
+      "command": "sh scripts/ci/test-supervisor.sh",
+      "exit_code": 0,
+      "seconds": 23
+    },
+    {
+      "name": "supervisor-go",
+      "command": "go test ./internal/settings/ ./internal/bootstrap/ ./internal/domain/ ./internal/repository/ ./cmd/core/",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "bootstrap",
+      "command": "sh scripts/ci/test-bootstrap.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "name": "core-image-gate",
+      "command": "sh scripts/ci/test-core-image-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "pending-gate",
+      "command": "sh scripts/ci/pending-gate.sh",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "check-compose",
+      "command": "python3 scripts/ci/check-compose.py",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "ui-qc",
+      "command": "sh scripts/ci/ui-qc.sh",
+      "exit_code": 0,
+      "seconds": 125
+    },
+    {
+      "name": "update-load",
+      "command": "sh scripts/ci/update-load.sh",
+      "exit_code": 0,
+      "seconds": 83
+    },
+    {
+      "name": "backup",
+      "command": "sh scripts/ci/test-backup-integration.sh",
+      "exit_code": 0,
+      "seconds": 37
+    },
+    {
+      "name": "compose-config",
+      "command": "docker compose -f compose.yaml config",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "supervisor-image",
+      "command": "docker build -f Dockerfile -t togavsu-supervisor:local . && docker run --rm --entrypoint /bin/sh togavsu-supervisor:local -c 'command -v sftp'",
+      "exit_code": 0,
+      "seconds": 0
+    },
+    {
+      "name": "core-smoke",
+      "command": "sh scripts/ci/test-core-smoke.sh",
+      "exit_code": 0,
+      "seconds": 1
+    },
+    {
+      "name": "qa-image",
+      "command": "docker build -t togavsu-qa:local scripts/ci/qa-image && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
+      "exit_code": 0,
+      "seconds": 8
+    }
+  ],
+  "phase_cases": [
+    {
+      "id": "perf-p95",
+      "acceptance_ids": [
+        "AC-017"
+      ],
+      "status": "pass",
+      "command": "TOGAVSU_PERF_N=20 sh scripts/ci/test-perf.sh",
+      "exit_code": 0,
+      "revision": "2e81f1c7d81f4a50b20430d737c1b1b8d4feb560"
+    }
+  ],
+  "passed_acceptance_ids": [
+    "AC-017"
+  ],
+  "pending_acceptance_ids": [],
+  "environment": "TOGAVSU_TEST_DATABASE_URL=postgres://togavsu:***@127.0.0.1:5432/togavsu?sslmode=disable (Postgres 17 in Docker, synthetic data); backup suite used a second Postgres 17 on 5433 with the host's Postgres 18 pg_dump/psql clients; 4 vCPU, 15 GB GitHub-hosted runner; TOGAVSU_PERF_N=20, TOGAVSU_PERF_CONCURRENCY=4 (default)",
+  "seed": {
+    "volume": "50 users, 20001 matters, 1000000 time entries, 20000 invoices, 7857 trust entries, 20001 calendar events",
+    "seed_version": "ac017-v3",
+    "note": "50 users, 20,000 matters, 1,000,000 time entries; not shrunk"
+  },
+  "target_ms": 300,
+  "overall": {
+    "requests": 1420,
+    "p50_ms": 37.5,
+    "p95_ms": 150.3,
+    "max_ms": 218.9
+  },
+  "baseline": {
+    "overall_p95_ms": 5490.8,
+    "revision": "release candidate (docs/build/reports/release.json)",
+    "note": "every listed admin API read exceeded 300 ms there"
+  },
+  "reads": [
+    {
+      "as": "staff",
+      "endpoint": "page home",
+      "n": 20,
+      "p50_ms": 142.4,
+      "p95_ms": 164.3,
+      "max_ms": 166.7,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page matters",
+      "n": 20,
+      "p50_ms": 55.0,
+      "p95_ms": 94.1,
+      "max_ms": 102.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page matter",
+      "n": 20,
+      "p50_ms": 48.6,
+      "p95_ms": 93.7,
+      "max_ms": 94.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page activity",
+      "n": 20,
+      "p50_ms": 65.6,
+      "p95_ms": 100.9,
+      "max_ms": 103.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page notes",
+      "n": 20,
+      "p50_ms": 39.1,
+      "p95_ms": 89.4,
+      "max_ms": 97.5,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page search",
+      "n": 20,
+      "p50_ms": 28.8,
+      "p95_ms": 35.3,
+      "max_ms": 37.3,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page time",
+      "n": 20,
+      "p50_ms": 136.8,
+      "p95_ms": 168.2,
+      "max_ms": 190.5,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page time matter",
+      "n": 20,
+      "p50_ms": 130.5,
+      "p95_ms": 181.3,
+      "max_ms": 203.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page invoices",
+      "n": 20,
+      "p50_ms": 49.0,
+      "p95_ms": 68.7,
+      "max_ms": 71.1,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page invoice",
+      "n": 20,
+      "p50_ms": 36.0,
+      "p95_ms": 63.0,
+      "max_ms": 80.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page unbilled",
+      "n": 20,
+      "p50_ms": 85.0,
+      "p95_ms": 112.5,
+      "max_ms": 117.1,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page ar aging",
+      "n": 20,
+      "p50_ms": 138.5,
+      "p95_ms": 156.5,
+      "max_ms": 157.5,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page trust ledger",
+      "n": 20,
+      "p50_ms": 100.1,
+      "p95_ms": 139.0,
+      "max_ms": 141.4,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page trust balances",
+      "n": 20,
+      "p50_ms": 131.3,
+      "p95_ms": 163.8,
+      "max_ms": 178.8,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page trust matter",
+      "n": 20,
+      "p50_ms": 29.4,
+      "p95_ms": 38.5,
+      "max_ms": 41.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "page calendar",
+      "n": 20,
+      "p50_ms": 81.8,
+      "p95_ms": 134.6,
+      "max_ms": 136.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api matters",
+      "n": 20,
+      "p50_ms": 26.1,
+      "p95_ms": 67.9,
+      "max_ms": 68.5,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api matter",
+      "n": 20,
+      "p50_ms": 1.8,
+      "p95_ms": 7.5,
+      "max_ms": 7.9,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api matter timeline",
+      "n": 20,
+      "p50_ms": 5.5,
+      "p95_ms": 13.6,
+      "max_ms": 17.5,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api time",
+      "n": 20,
+      "p50_ms": 4.2,
+      "p95_ms": 21.6,
+      "max_ms": 22.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api time matter",
+      "n": 20,
+      "p50_ms": 4.1,
+      "p95_ms": 11.0,
+      "max_ms": 15.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api time user+dates",
+      "n": 20,
+      "p50_ms": 6.1,
+      "p95_ms": 37.6,
+      "max_ms": 39.6,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api search number",
+      "n": 20,
+      "p50_ms": 4.4,
+      "p95_ms": 8.6,
+      "max_ms": 11.4,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api search phone",
+      "n": 20,
+      "p50_ms": 5.7,
+      "p95_ms": 12.5,
+      "max_ms": 13.9,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api search invoice",
+      "n": 20,
+      "p50_ms": 4.4,
+      "p95_ms": 9.3,
+      "max_ms": 12.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api unbilled",
+      "n": 20,
+      "p50_ms": 108.5,
+      "p95_ms": 151.0,
+      "max_ms": 160.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api ar aging",
+      "n": 20,
+      "p50_ms": 120.6,
+      "p95_ms": 130.9,
+      "max_ms": 131.2,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api trust balances",
+      "n": 20,
+      "p50_ms": 89.9,
+      "p95_ms": 117.7,
+      "max_ms": 122.6,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api trust ledger",
+      "n": 20,
+      "p50_ms": 2.0,
+      "p95_ms": 7.9,
+      "max_ms": 7.9,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api nav context",
+      "n": 20,
+      "p50_ms": 21.9,
+      "p95_ms": 30.6,
+      "max_ms": 31.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api invoices",
+      "n": 20,
+      "p50_ms": 39.9,
+      "p95_ms": 50.1,
+      "max_ms": 52.7,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api expenses matter",
+      "n": 20,
+      "p50_ms": 2.3,
+      "p95_ms": 6.4,
+      "max_ms": 7.6,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api notes matter",
+      "n": 20,
+      "p50_ms": 6.3,
+      "p95_ms": 14.6,
+      "max_ms": 16.4,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api calendar",
+      "n": 20,
+      "p50_ms": 5.1,
+      "p95_ms": 11.3,
+      "max_ms": 19.0,
+      "result": "ok"
+    },
+    {
+      "as": "staff",
+      "endpoint": "api widget open matters",
+      "n": 20,
+      "p50_ms": 37.0,
+      "p95_ms": 70.7,
+      "max_ms": 87.4,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page home",
+      "n": 20,
+      "p50_ms": 182.3,
+      "p95_ms": 193.5,
+      "max_ms": 195.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page matters",
+      "n": 20,
+      "p50_ms": 49.9,
+      "p95_ms": 93.9,
+      "max_ms": 94.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page matter",
+      "n": 20,
+      "p50_ms": 46.0,
+      "p95_ms": 78.2,
+      "max_ms": 88.7,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page activity",
+      "n": 20,
+      "p50_ms": 69.8,
+      "p95_ms": 105.6,
+      "max_ms": 105.7,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page notes",
+      "n": 20,
+      "p50_ms": 41.5,
+      "p95_ms": 98.1,
+      "max_ms": 99.9,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page search",
+      "n": 20,
+      "p50_ms": 32.1,
+      "p95_ms": 44.2,
+      "max_ms": 45.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page time",
+      "n": 20,
+      "p50_ms": 135.3,
+      "p95_ms": 173.4,
+      "max_ms": 173.9,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page time matter",
+      "n": 20,
+      "p50_ms": 152.6,
+      "p95_ms": 209.0,
+      "max_ms": 218.9,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page invoices",
+      "n": 20,
+      "p50_ms": 48.4,
+      "p95_ms": 92.9,
+      "max_ms": 95.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page invoice",
+      "n": 20,
+      "p50_ms": 37.2,
+      "p95_ms": 45.6,
+      "max_ms": 48.6,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page unbilled",
+      "n": 20,
+      "p50_ms": 86.2,
+      "p95_ms": 123.9,
+      "max_ms": 128.3,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page ar aging",
+      "n": 20,
+      "p50_ms": 134.6,
+      "p95_ms": 152.6,
+      "max_ms": 180.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page trust ledger",
+      "n": 20,
+      "p50_ms": 109.0,
+      "p95_ms": 127.3,
+      "max_ms": 127.3,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page trust balances",
+      "n": 20,
+      "p50_ms": 134.2,
+      "p95_ms": 154.3,
+      "max_ms": 160.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page trust matter",
+      "n": 20,
+      "p50_ms": 27.1,
+      "p95_ms": 36.5,
+      "max_ms": 37.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page calendar",
+      "n": 20,
+      "p50_ms": 75.2,
+      "p95_ms": 121.2,
+      "max_ms": 123.5,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "page admin",
+      "n": 20,
+      "p50_ms": 62.4,
+      "p95_ms": 69.0,
+      "max_ms": 70.9,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api matters",
+      "n": 20,
+      "p50_ms": 21.6,
+      "p95_ms": 73.6,
+      "max_ms": 87.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api matter",
+      "n": 20,
+      "p50_ms": 1.6,
+      "p95_ms": 6.4,
+      "max_ms": 7.4,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api matter timeline",
+      "n": 20,
+      "p50_ms": 4.6,
+      "p95_ms": 10.8,
+      "max_ms": 12.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api time",
+      "n": 20,
+      "p50_ms": 4.6,
+      "p95_ms": 10.5,
+      "max_ms": 14.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api time matter",
+      "n": 20,
+      "p50_ms": 4.0,
+      "p95_ms": 12.1,
+      "max_ms": 14.3,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api time user+dates",
+      "n": 20,
+      "p50_ms": 7.0,
+      "p95_ms": 30.5,
+      "max_ms": 32.3,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api search number",
+      "n": 20,
+      "p50_ms": 4.7,
+      "p95_ms": 13.0,
+      "max_ms": 14.0,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api search phone",
+      "n": 20,
+      "p50_ms": 4.7,
+      "p95_ms": 10.3,
+      "max_ms": 11.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api search invoice",
+      "n": 20,
+      "p50_ms": 6.9,
+      "p95_ms": 10.1,
+      "max_ms": 16.7,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api unbilled",
+      "n": 20,
+      "p50_ms": 107.7,
+      "p95_ms": 153.0,
+      "max_ms": 157.3,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api ar aging",
+      "n": 20,
+      "p50_ms": 117.5,
+      "p95_ms": 133.5,
+      "max_ms": 134.8,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api trust balances",
+      "n": 20,
+      "p50_ms": 84.8,
+      "p95_ms": 107.0,
+      "max_ms": 113.9,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api trust ledger",
+      "n": 20,
+      "p50_ms": 1.9,
+      "p95_ms": 9.1,
+      "max_ms": 12.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api nav context",
+      "n": 20,
+      "p50_ms": 21.9,
+      "p95_ms": 29.9,
+      "max_ms": 30.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api invoices",
+      "n": 20,
+      "p50_ms": 37.8,
+      "p95_ms": 51.2,
+      "max_ms": 62.2,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api expenses matter",
+      "n": 20,
+      "p50_ms": 2.1,
+      "p95_ms": 7.1,
+      "max_ms": 13.4,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api notes matter",
+      "n": 20,
+      "p50_ms": 8.6,
+      "p95_ms": 42.0,
+      "max_ms": 42.4,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api calendar",
+      "n": 20,
+      "p50_ms": 5.0,
+      "p95_ms": 13.2,
+      "max_ms": 14.1,
+      "result": "ok"
+    },
+    {
+      "as": "admin",
+      "endpoint": "api widget open matters",
+      "n": 20,
+      "p50_ms": 29.7,
+      "p95_ms": 58.8,
+      "max_ms": 71.3,
+      "result": "ok"
+    }
+  ],
+  "profiling": {
+    "method": "TOGAVSU_PERF_CPUPROFILE CPU profiles of the perf run plus EXPLAIN (ANALYZE, BUFFERS) on the seeded togavsu_perf database",
+    "causes": [
+      {
+        "reads": [
+          "every staff page (sidebar draft badge)"
+        ],
+        "cause": "draft-invoice count decoded every invoice header",
+        "fix": "status/due_on columns and billing_records_status_idx (1260); index-only scan, 4 buffers, 0.08 ms"
+      },
+      {
+        "reads": [
+          "page/api unbilled",
+          "page/api ar aging",
+          "home widgets"
+        ],
+        "cause": "sequential scan and decode of all 1,000,000 time-entry bodies (133k buffers, 464 ms in SQL alone)",
+        "fix": "billing_unbilled and billing_aging projections (1261, 1262) with a version-token snapshot (1265); access checked per matter per request"
+      },
+      {
+        "reads": [
+          "page matters",
+          "page time",
+          "page time matter",
+          "page trust balances",
+          "page calendar"
+        ],
+        "cause": "unbounded lists and pickers rendering or copying all 20,000 matters",
+        "fix": "paged screens, options rendered once per page, light MatterPicks list; write access checked per shown matter"
+      },
+      {
+        "reads": [
+          "page search",
+          "api search number",
+          "api search phone",
+          "api search invoice"
+        ],
+        "cause": "wall checks before cheap filters; every request lowercased all contact, matter and invoice text (~75% of search CPU)",
+        "fix": "text test first against a search-text index lowercased once and dropped on writes; every hit still wall- and role-checked"
+      },
+      {
+        "reads": [
+          "page calendar",
+          "api calendar"
+        ],
+        "cause": "read every event and deadline; settings and user lookups per row (N+1)",
+        "fix": "window and deadline indexes (1263, 1264), pushed-down queries, batched lookups, paged overdue panel"
+      },
+      {
+        "reads": [
+          "several lists"
+        ],
+        "cause": "Postgres sorts of text ids under the database collation",
+        "fix": "ordered in Go after indexed reads"
+      },
+      {
+        "reads": [
+          "page home",
+          "api widget open matters"
+        ],
+        "cause": "unbounded widget reads",
+        "fix": "stop after shown rows; heap of light keys, top-k unbilled"
+      },
+      {
+        "reads": [
+          "page trust ledger"
+        ],
+        "cause": "read every ledger entry to show one page",
+        "fix": "newest-first keyset batches; each entry wall-checked"
+      }
+    ]
+  },
+  "migrations": [
+    "internal/billing/migrations/1260_billing_record_status.sql",
+    "internal/billing/migrations/1261_billing_unbilled.sql",
+    "internal/billing/migrations/1262_billing_aging.sql",
+    "internal/calendar/migrations/1263_calendar_event_window.sql",
+    "internal/calendar/migrations/1264_calendar_deadline_due.sql",
+    "internal/billing/migrations/1265_billing_projection_versions.sql"
+  ],
+  "notes": [
+    "a rerun at 91fe3f8 (test-only change over 30f5762) measured admin page search p95 301.7 ms; fixed by the search-text index in the tested revision rather than rerun",
+    "internal/supervisor tests in scripts/ci/test-supervisor.sh came from the Go test cache (package unchanged); scripts/ci/test-core.sh ran it with -count=1",
+    "Full acceptance CI is not applicable on this branch; AC-017 evidence is this local run"
+  ],
+  "simplification": {
+    "net_lines": "+3611 (4064 insertions, 453 deletions across 66 files vs dca4b09); this correction +322 (386 insertions, 64 deletions across 10 files vs 30f5762)",
+    "debt_count": 67
+  }
+}
