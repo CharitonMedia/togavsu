@@ -207,6 +207,8 @@ type migrationCheck struct {
 	schema string
 	tables map[string]*tableInfo
 	views  map[string]bool
+	// refused names the tables and views whose CREATE was refused (MigrationRefusals).
+	refused map[string]bool
 }
 
 type tableInfo struct {
@@ -220,43 +222,109 @@ type tableInfo struct {
 // manifest's data declarations. It returns migration_refused naming the file and the
 // statement.
 func CheckMigrations(m Manifest, ms []db.Migration) error {
+	var first error
+	walkMigrations(m, ms, func(r Refusal) bool {
+		first = r.Err
+		return false
+	})
+	return first
+}
+
+// MigrationRefusals runs CheckMigrations' check over every statement and declaration
+// and reports each refusal, not only the first. The first is the error CheckMigrations
+// returns.
+func MigrationRefusals(m Manifest, ms []db.Migration) Refusals {
+	var out Refusals
+	walkMigrations(m, ms, func(r Refusal) bool {
+		out = append(out, r)
+		return true
+	})
+	return out
+}
+
+// walkMigrations checks each statement in order and then the manifest cross-checks,
+// handing each refusal to report; it stops when report returns false.
+func walkMigrations(m Manifest, ms []db.Migration, report func(Refusal) bool) {
 	c := &migrationCheck{schema: m.Schema(), tables: map[string]*tableInfo{}, views: map[string]bool{}}
 	for _, mig := range ms {
+		file := "migrations/" + mig.Name + ".sql"
 		toks, err := tokenize(mig.SQL)
 		if err != nil {
-			return refuse(CodeMigration, fmt.Sprintf("%s: %v", mig.Name, err))
+			if !report(migrationRefusal(file, zero, err, refuse(CodeMigration, fmt.Sprintf("%s: %v", mig.Name, err)))) {
+				return
+			}
+			continue
 		}
 		for i, st := range splitStatements(toks) {
 			if err := c.statement(st); err != nil {
-				return refuse(CodeMigration, fmt.Sprintf("%s statement %d: %v", mig.Name, i+1, err))
+				c.refusedObject(st)
+				if !report(migrationRefusal(file, i+one, err, refuse(CodeMigration, fmt.Sprintf("%s statement %d: %v", mig.Name, i+1, err)))) {
+					return
+				}
 			}
 		}
 	}
-	return c.crossCheck(m)
+	c.crossCheck(m, report)
 }
 
-func (c *migrationCheck) crossCheck(m Manifest) error {
-	for _, e := range m.Data.Extends {
+// refusedObject notes the table or view a refused CREATE statement names, so the
+// cross-checks don't also report it as missing.
+func (c *migrationCheck) refusedObject(st []tok) {
+	p := &stmt{toks: st, schema: c.schema}
+	if !p.accept("create") {
+		return
+	}
+	p.accept("or", "replace")
+	if !p.accept("unlogged", "table") && !p.accept("table") && !p.accept("materialized", "view") && !p.accept("view") {
+		return
+	}
+	p.accept("if", "not", "exists")
+	if name, err := p.objectName(); err == nil {
+		if c.refused == nil {
+			c.refused = map[string]bool{}
+		}
+		c.refused[name] = true
+	}
+}
+
+func (c *migrationCheck) crossCheck(m Manifest, report func(Refusal) bool) {
+	cross := func(path, msg string) bool {
+		return report(Refusal{Kind: KindMigration, Code: RefuseCrossCheck, File: ManifestFile, Path: path,
+			Message: msg, APICode: CodeMigration, Err: refuse(CodeMigration, msg)})
+	}
+	for i, e := range m.Data.Extends {
+		f := fmt.Sprintf("data.extends[%d]", i)
 		t, ok := c.tables[e.Table]
+		if !ok && c.refused[e.Table] {
+			continue
+		}
 		if !ok {
-			return refuse(CodeMigration, "extension table "+e.Table+" isn't created by the migrations")
+			if !cross(f, "extension table "+e.Table+" isn't created by the migrations") {
+				return
+			}
+			continue
 		}
 		want, _ := CoreTable(e.Record)
 		if len(t.pk) != one || t.pk[zero] != e.Key || t.coreFK[e.Key] != want {
-			return refuse(CodeMigration, fmt.Sprintf("extension table %s needs primary key %s referencing core.%s(id)", e.Table, e.Key, want))
+			if !cross(f, fmt.Sprintf("extension table %s needs primary key %s referencing core.%s(id)", e.Table, e.Key, want)) {
+				return
+			}
 		}
 		for _, col := range e.Columns {
 			if !containsStr(t.columns, col.Name) {
-				return refuse(CodeMigration, "extension "+e.Name+" lists column "+col.Name+", which "+e.Table+" doesn't have")
+				if !cross(f, "extension "+e.Name+" lists column "+col.Name+", which "+e.Table+" doesn't have") {
+					return
+				}
 			}
 		}
 	}
-	for _, v := range m.Data.Views {
-		if !c.views[v.Name] {
-			return refuse(CodeMigration, "published view "+v.Name+" isn't created by the migrations")
+	for i, v := range m.Data.Views {
+		if !c.views[v.Name] && !c.refused[v.Name] {
+			if !cross(fmt.Sprintf("data.views[%d]", i), "published view "+v.Name+" isn't created by the migrations") {
+				return
+			}
 		}
 	}
-	return nil
 }
 
 func containsStr(list []string, s string) bool {
@@ -465,7 +533,7 @@ func (c *migrationCheck) references(toks []tok, i int) (string, int, error) {
 		switch first.text {
 		case "core":
 			if !coreTableAllowed(second.text) {
-				return "", 0, fmt.Errorf("core.%s is not a core record a module can link to", second.text)
+				return "", 0, &CoreReferenceError{Relation: "core." + second.text}
 			}
 			core = second.text
 		case c.schema:

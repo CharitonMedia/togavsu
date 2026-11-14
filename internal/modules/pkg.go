@@ -87,6 +87,24 @@ func refuse(code, msg string) error {
 // bounds the files; it does not verify the signature, so the runtime passes it only
 // bytes the marketplace component has verified (or bytes it stored after that check).
 func ReadPackage(raw []byte) (*Package, error) {
+	files, err := unpack(raw)
+	if err != nil {
+		return nil, err
+	}
+	src, ok := files[ManifestFile]
+	if !ok {
+		return nil, invalid("package", "the package has no "+ManifestFile)
+	}
+	m, err := ParseManifest(src)
+	if err != nil {
+		return nil, err
+	}
+	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
+}
+
+// unpack reads the files of a gzip tar package with the package format's bounds and
+// file-name rules.
+func unpack(raw []byte) (map[string][]byte, error) {
 	if int64(len(raw)) > limits().MaxPackageBytes {
 		return nil, invalid("package", "the package is too large")
 	}
@@ -132,15 +150,7 @@ func ReadPackage(raw []byte) (*Package, error) {
 		}
 		files[name] = body
 	}
-	src, ok := files[ManifestFile]
-	if !ok {
-		return nil, invalid("package", "the package has no "+ManifestFile)
-	}
-	m, err := ParseManifest(src)
-	if err != nil {
-		return nil, err
-	}
-	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
+	return files, nil
 }
 
 // PackageDigest is the digest recorded for audit.

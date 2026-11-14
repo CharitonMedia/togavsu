@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,5 +174,109 @@ func TestPackageAndVerify(t *testing.T) {
 	}
 	if _, err := os.Stat(skipped); !os.IsNotExist(err) {
 		t.Fatalf("a refused package was written: %v", err)
+	}
+}
+
+func replaceIn(f map[string][]byte, name, old, new string) {
+	if !strings.Contains(string(f[name]), old) {
+		panic("fixture text not found: " + old)
+	}
+	f[name] = []byte(strings.Replace(string(f[name]), old, new, 1))
+}
+
+// waiting adds parts the core doesn't accept yet, and a pending list naming them.
+func waiting(f map[string][]byte) {
+	replaceIn(f, modulekit.ManifestFile, "tabs:\n", "notifications:\n  - kind: hours_low\n    label: Hours below target\ntabs:\n")
+	replaceIn(f, modulekit.ManifestFile, "permissions:\n", "permissions:\n  - scope: books:read\n    reason: Read the books.\n")
+	f["migrations/0002_trust_link.sql"] = []byte("ALTER TABLE matter_targets ADD COLUMN trust_account_id TEXT REFERENCES core.trust_accounts (id) ON DELETE RESTRICT;\n")
+	f[modulekit.PendingFile] = []byte("pending:\n" +
+		"  - field: notifications\n    core: CORE-03\n    reason: Tell the attorney when a matter falls behind.\n" +
+		"  - scope: books:read\n    core: CORE-02\n    reason: Read the books without a viewer.\n" +
+		"  - scope: time:read\n    core: CORE-00\n    reason: Accepted already.\n" +
+		"  - migration: migrations/0002_trust_link.sql\n    core: CORE-22\n    reason: Link a target to its trust account.\n")
+}
+
+func TestCheckReportsEveryRefusal(t *testing.T) {
+	dir := copyPackage(t, waiting)
+	code, _, errs := cli("check", dir)
+	lines := strings.Split(strings.TrimSpace(errs), "\n")
+	if code != exitRefused || len(lines) != 3 {
+		t.Fatalf("check: %d\n%s", code, errs)
+	}
+	for i, want := range []string{
+		"togavsu-module check: togavsu-module.yaml notifications: unknown_field: ",
+		"togavsu-module check: togavsu-module.yaml permissions[0]: unknown_scope: ",
+		"togavsu-module check: migrations/0002_trust_link.sql statement 1: core_reference: ",
+	} {
+		if !strings.HasPrefix(lines[i], want) {
+			t.Fatalf("line %d: %s", i, lines[i])
+		}
+	}
+	code, out, _ := cli("check", "-json", dir)
+	var res checkResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitRefused || res.OK || len(res.Refusals) != 3 || res.Refusals[2].Value != "core.trust_accounts" {
+		t.Fatalf("check -json: %d %s %v", code, out, err)
+	}
+	code, out, errs = cli("check", "-installable", "-json", dir)
+	if err := json.Unmarshal([]byte(out), &res); err != nil || code != exitOK || !res.OK || res.ID != "matter-clock" || res.Migrations != 1 {
+		t.Fatalf("check -installable -json: %d %s %s", code, out, errs)
+	}
+}
+
+func TestPackageInstallable(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	dir := copyPackage(t, waiting)
+	out := filepath.Join(t.TempDir(), "matter-clock.signed.json")
+	// The full package is refused, every refusal on its own line, and nothing is written.
+	if code, _, errs := cli("package", "-dir", dir, "-key", seed, "-out", out); code != exitRefused || !strings.Contains(errs, "pending_unbuilt") {
+		t.Fatalf("full package: %d %s", code, errs)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("a refused package was written")
+	}
+	code, stdout, errs := cli("package", "-installable", "-dir", dir, "-key", seed, "-out", out)
+	if code != exitOK || !strings.Contains(stdout, modulekit.KeyID(pub)) {
+		t.Fatalf("package -installable: %d %s %s", code, stdout, errs)
+	}
+	lines := strings.Split(strings.TrimSpace(errs), "\n")
+	want := []string{
+		"held back togavsu-module.yaml notifications: waits on CORE-03: Tell the attorney when a matter falls behind.",
+		"held back togavsu-module.yaml permissions[0] (scope books:read): waits on CORE-02: Read the books without a viewer.",
+		"held back migrations/0002_trust_link.sql: waits on CORE-22: Link a target to its trust account.",
+		"pending scope time:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("stderr:\n%s", errs)
+	}
+	pemFile := write(t, "signing.pub", modulekit.PublicKeyPEM(pub))
+	if code, stdout, errs := cli("verify", "-file", out, "-pub", pemFile); code != exitOK || !strings.Contains(stdout, "1 migration(s)") {
+		t.Fatalf("verify: %d %s %s", code, stdout, errs)
+	}
+	// A refusal the pending list doesn't cover stops the build.
+	uncovered := copyPackage(t, func(f map[string][]byte) {
+		waiting(f)
+		replaceIn(f, modulekit.ManifestFile, "  events: /events\n", "  events: /events\n  system_mail: true\n")
+	})
+	skipped := filepath.Join(t.TempDir(), "skipped.json")
+	if code, _, errs := cli("package", "-installable", "-dir", uncovered, "-key", seed, "-out", skipped); code != exitRefused || !strings.Contains(errs, "container.system_mail: unknown_field") {
+		t.Fatalf("uncovered: %d %s", code, errs)
+	}
+	if _, err := os.Stat(skipped); !os.IsNotExist(err) {
+		t.Fatal("an uncovered package was written")
+	}
+}
+
+func TestAccepts(t *testing.T) {
+	code, out, _ := cli("accepts")
+	var a modulekit.Accepted
+	if err := json.Unmarshal([]byte(out), &a); err != nil || code != exitOK || len(a.Scopes) == 0 || a.ManifestSchema != modulekit.Accepts().ManifestSchema {
+		t.Fatalf("accepts: %d %s %v", code, out, err)
+	}
+	if code, _, _ := cli("accepts", "extra"); code != exitUsage {
+		t.Fatalf("accepts with an argument: %d", code)
 	}
 }

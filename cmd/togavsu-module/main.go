@@ -1,20 +1,28 @@
 // Command togavsu-module checks, packages and verifies Togavsu module packages with the
 // core's own code (pkg/modulekit).
 //
-//	togavsu-module check [-previous <package dir>] <package dir>
-//	togavsu-module package -dir <package dir> -key <seed file> -out <signed file>
+//	togavsu-module check [-installable] [-json] [-previous <package dir>] <package dir>
+//	togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
+//	togavsu-module accepts
 //
-// check runs the manifest and migration checks the core runs at install; with
-// -previous it also checks the package as an update of that version (no migration that
-// ran may change or go missing). package archives the directory, signs it with the
-// base64 Ed25519 seed in the key file and writes the signed package file. verify checks
-// a signed package file against one trusted public key, as the core does before it
-// installs. The command never makes or stores a key.
+// check runs the manifest, scope and migration checks the core runs at install and
+// prints every refusal, one per line; with -previous it also checks the package as an
+// update of that version (no migration that ran may change or go missing). package
+// checks the directory, archives it, signs it with the base64 Ed25519 seed in the key
+// file and writes the signed package file; it refuses to sign a package check refuses.
+// With -installable, check and package first hold back each part the directory's
+// pending.yaml lists that the core refuses, and print one line per held-back part with
+// the core item it waits on. verify checks a signed package file against one trusted
+// public key, as the core does before it installs. accepts prints, as JSON, what this
+// core accepts: its manifest fields and their digest, its scopes, and the core records a
+// module may use. The command never makes or stores a key.
 package main
 
 import (
 	"crypto/ed25519"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -35,9 +43,10 @@ func main() {
 }
 
 const usage = `usage:
-  togavsu-module check [-previous <package dir>] <package dir>
-  togavsu-module package -dir <package dir> -key <seed file> -out <signed file>
+  togavsu-module check [-installable] [-json] [-previous <package dir>] <package dir>
+  togavsu-module package [-installable] -dir <package dir> -key <seed file> -out <signed file>
   togavsu-module verify -file <signed file> -pub <public key PEM file>
+  togavsu-module accepts
 `
 
 // Exit codes: ok, a refused package or key, bad usage.
@@ -57,11 +66,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	code := exitRefused
 	switch args[0] {
 	case "check":
-		err = check(args[one:], stdout, &code)
+		err = check(args[one:], stdout, stderr, &code)
 	case "package":
-		err = pack(args[one:], stdout, &code)
+		err = pack(args[one:], stdout, stderr, &code)
 	case "verify":
 		err = verify(args[one:], stdout, &code)
+	case "accepts":
+		err = accepts(args[one:], stdout, &code)
 	case "help", "-h", "-help", "--help":
 		fmt.Fprint(stdout, usage)
 		return exitOK
@@ -70,10 +81,43 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if err != nil {
+		var refs modulekit.Refusals
+		if errors.As(err, &refs) {
+			for _, r := range refs {
+				fmt.Fprintf(stderr, "togavsu-module %s: %s: %s: %s\n", args[0], r.Where(), r.Code, r.Message)
+			}
+			return code
+		}
 		fmt.Fprintf(stderr, "togavsu-module %s: %v\n", args[0], err)
 		return code
 	}
 	return exitOK
+}
+
+// installable reads a package directory; with hold it returns modulekit.Installable's
+// files and prints each held-back part, and each pending entry that holds nothing back.
+func installable(dir string, hold bool, stderr io.Writer) (map[string][]byte, error) {
+	files, err := modulekit.ReadDir(dir)
+	if err != nil || !hold {
+		return files, err
+	}
+	out, held, err := modulekit.Installable(files)
+	if err != nil {
+		return nil, err
+	}
+	for _, h := range held {
+		fmt.Fprintln(stderr, h.String())
+	}
+	if src, ok := files[modulekit.PendingFile]; ok {
+		entries, err := modulekit.ParsePending(src)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range modulekit.Unused(entries, held) {
+			fmt.Fprintf(stderr, "pending %s (%s) holds nothing back: the core accepts it or the package no longer has it\n", e.Part(), e.Core)
+		}
+	}
+	return out, nil
 }
 
 func flags(name string, code *int) *flag.FlagSet {
@@ -83,9 +127,11 @@ func flags(name string, code *int) *flag.FlagSet {
 	return fs
 }
 
-func check(args []string, stdout io.Writer, code *int) error {
+func check(args []string, stdout, stderr io.Writer, code *int) error {
 	fs := flags("check", code)
 	previous := fs.String("previous", "", "package directory of the version this one updates")
+	hold := fs.Bool("installable", false, "hold back the pending parts the core refuses (pending.yaml)")
+	asJSON := fs.Bool("json", false, "print the result as JSON on stdout")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -93,37 +139,77 @@ func check(args []string, stdout io.Writer, code *int) error {
 		return fmt.Errorf("name one package directory")
 	}
 	*code = exitRefused
-	files, err := modulekit.ReadDir(fs.Arg(zero))
+	files, err := installable(fs.Arg(zero), *hold, stderr)
 	if err != nil {
 		return err
 	}
-	raw, err := modulekit.Archive(files)
+	pkg, ms, err := modulekit.Check(files)
+	if err == nil && *previous != "" {
+		old, err2 := installable(*previous, *hold, io.Discard)
+		if err2 != nil {
+			return err2
+		}
+		prev, err2 := modulekit.Archive(old)
+		if err2 != nil {
+			return err2
+		}
+		next, err2 := modulekit.Archive(files)
+		if err2 != nil {
+			return err2
+		}
+		err = modulekit.CheckUpgrade(prev, next)
+	}
+	if *asJSON {
+		res := checkResult{OK: err == nil, Refusals: modulekit.Refusals{}}
+		var refs modulekit.Refusals
+		switch {
+		case errors.As(err, &refs):
+			res.Refusals = refs
+		case err != nil:
+			res.Refusals = modulekit.Refusals{{Kind: modulekit.KindPackage, Code: modulekit.Code(err), Message: err.Error()}}
+		default:
+			res.ID, res.Version, res.Migrations, res.Digest = pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest
+		}
+		if werr := json.NewEncoder(stdout).Encode(res); werr != nil {
+			return werr
+		}
+	}
 	if err != nil {
 		return err
 	}
-	pkg, ms, err := modulekit.CheckPackage(raw)
-	if err != nil {
-		return err
+	if !*asJSON {
+		fmt.Fprintf(stdout, "ok: %s %s, %d migration(s), digest %s\n", pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest)
 	}
-	if *previous != "" {
-		old, err := modulekit.ReadDir(*previous)
-		if err != nil {
-			return err
-		}
-		prev, err := modulekit.Archive(old)
-		if err != nil {
-			return err
-		}
-		if err := modulekit.CheckUpgrade(prev, raw); err != nil {
-			return err
-		}
-	}
-	fmt.Fprintf(stdout, "ok: %s %s, %d migration(s), digest %s\n", pkg.Manifest.ID, pkg.Manifest.Version, len(ms), pkg.Digest)
 	return nil
 }
 
-func pack(args []string, stdout io.Writer, code *int) error {
+// checkResult is check -json's output.
+type checkResult struct {
+	OK         bool               `json:"ok"`
+	ID         string             `json:"id,omitempty"`
+	Version    string             `json:"version,omitempty"`
+	Migrations int                `json:"migrations,omitempty"`
+	Digest     string             `json:"digest,omitempty"`
+	Refusals   modulekit.Refusals `json:"refusals"`
+}
+
+func accepts(args []string, stdout io.Writer, code *int) error {
+	fs := flags("accepts", code)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != zero {
+		return fmt.Errorf("accepts takes no arguments")
+	}
+	*code = exitRefused
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(modulekit.Accepts())
+}
+
+func pack(args []string, stdout, stderr io.Writer, code *int) error {
 	fs := flags("package", code)
+	hold := fs.Bool("installable", false, "hold back the pending parts the core refuses (pending.yaml)")
 	dir := fs.String("dir", "", "package directory (togavsu-module.yaml and migrations/)")
 	keyFile := fs.String("key", "", "file holding a base64 ed25519 seed")
 	out := fs.String("out", "", "signed package file to write")
@@ -142,14 +228,11 @@ func pack(args []string, stdout io.Writer, code *int) error {
 	if err != nil {
 		return err
 	}
-	files, err := modulekit.ReadDir(*dir)
+	files, err := installable(*dir, *hold, stderr)
 	if err != nil {
 		return err
 	}
-	// Refuse to sign what the core would refuse to install.
-	if _, _, err := modulekit.Check(files); err != nil {
-		return err
-	}
+	// Build refuses to sign what the core would refuse to install.
 	signed, err := modulekit.Build(priv, files)
 	if err != nil {
 		return err

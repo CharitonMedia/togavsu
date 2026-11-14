@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
@@ -118,5 +119,20 @@ func scopeSet(scopes ...string) map[string]struct{} {
 	for _, scope := range scopes {
 		out[scope] = struct{}{}
 	}
+	return out
+}
+
+// KnownScope reports whether scope is in the bearer scope list, or is a published view
+// scope (views:<module>.<view>:read). A token request, a module's approval included, is
+// refused for any other scope.
+func KnownScope(scope string) bool { return knownScope(scope) }
+
+// Scopes is the bearer scope list, sorted.
+func Scopes() []string {
+	out := make([]string, 0, len(catalog))
+	for scope := range catalog {
+		out = append(out, scope)
+	}
+	sort.Strings(out)
 	return out
 }
