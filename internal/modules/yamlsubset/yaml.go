@@ -52,11 +52,17 @@ type yline struct {
 type yparser struct {
 	lines []yline
 	pos   int
+	// spans, when not nil, records the lines each key and list item spans, by path, for
+	// Remove; dash records the "- key: value" lines that start a mapping item.
+	spans  map[string]span
+	dash   map[int]dashLine
+	prefix string
 }
 
-func parseYAML(src string) (any, error) {
+func parseYAML(src string) (any, error) { return (&yparser{}).parse(src) }
+
+func (p *yparser) parse(src string) (any, error) {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
-	p := &yparser{}
 	for i, raw := range strings.Split(src, "\n") {
 		trimmed := strings.TrimLeft(raw, " ")
 		if strings.HasPrefix(trimmed, "\t") {
@@ -140,13 +146,27 @@ func (p *yparser) mapping(indent int) (any, error) {
 		if _, dup := out[key]; dup {
 			return nil, fmt.Errorf("%w: line %d: duplicate key %q", ErrYAML, l.num, key)
 		}
+		start := p.pos
 		p.pos++
-		v, err := p.value(indent, rest, l.num)
+		v, err := p.within(start, keyPath(p.prefix, key), func() (any, error) { return p.value(indent, rest, l.num) })
 		if err != nil {
 			return nil, err
 		}
 		out[key] = v
 	}
+}
+
+// within parses one key's value or one list item under path and records its lines.
+func (p *yparser) within(start int, path string, parse func() (any, error)) (any, error) {
+	if p.spans == nil {
+		return parse()
+	}
+	saved := p.prefix
+	p.prefix = path
+	v, err := parse()
+	p.prefix = saved
+	p.spans[path] = span{start: start, end: p.pos}
+	return v, err
 }
 
 // value parses what follows "key:" or "- " on a line at indent.
@@ -238,16 +258,20 @@ func (p *yparser) seq(indent int) (any, error) {
 		if _, _, ok := splitKey(content); ok && !strings.HasPrefix(content, "[") && !strings.HasPrefix(content, "{") {
 			// "- key: value" starts a mapping whose keys sit at the content's column.
 			col := l.indent + len(l.text) - len(content)
+			if p.dash != nil {
+				p.dash[p.pos] = dashLine{dash: l.indent, content: col}
+			}
 			p.lines[p.pos] = yline{num: l.num, indent: col, text: content, raw: strings.Repeat(" ", col) + content}
-			v, err := p.mapping(col)
+			v, err := p.within(p.pos, indexPath(p.prefix, len(out)), func() (any, error) { return p.mapping(col) })
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, v)
 			continue
 		}
+		start := p.pos
 		p.pos++
-		v, err := p.value(indent, content, l.num)
+		v, err := p.within(start, indexPath(p.prefix, len(out)), func() (any, error) { return p.value(indent, content, l.num) })
 		if err != nil {
 			return nil, err
 		}

@@ -499,6 +499,9 @@ func CheckSigned(v marketplace.Verified) (*Package, []db.Migration, error) {
 	if pkg.Manifest.ID != v.ModuleID || pkg.Manifest.Version != v.Version {
 		return nil, nil, refuse(CodeTampered, "the package manifest doesn't match the signed manifest")
 	}
+	if err := pkg.CheckFiles(); err != nil {
+		return nil, nil, err
+	}
 	ms, err := pkg.CheckedMigrations()
 	if err != nil {
 		return nil, nil, err
@@ -511,6 +514,9 @@ func CheckSigned(v marketplace.Verified) (*Package, []db.Migration, error) {
 func CheckPackage(raw []byte) (*Package, []db.Migration, error) {
 	pkg, err := ReadPackage(raw)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := pkg.CheckFiles(); err != nil {
 		return nil, nil, err
 	}
 	ms, err := pkg.CheckedMigrations()

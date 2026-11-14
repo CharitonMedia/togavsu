@@ -87,6 +87,28 @@ func refuse(code, msg string) error {
 // bounds the files; it does not verify the signature, so the runtime passes it only
 // bytes the marketplace component has verified (or bytes it stored after that check).
 func ReadPackage(raw []byte) (*Package, error) {
+	files, err := unpack(raw)
+	if err != nil {
+		return nil, err
+	}
+	src, ok := files[ManifestFile]
+	if !ok {
+		return nil, invalid("package", "the package has no "+ManifestFile)
+	}
+	m, err := ParseManifest(src)
+	if err != nil {
+		return nil, err
+	}
+	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
+}
+
+// Unpack reads the files of a gzip tar package with the package format's bounds and
+// file-name rules, and checks nothing else.
+func Unpack(raw []byte) (map[string][]byte, error) { return unpack(raw) }
+
+// unpack reads the files of a gzip tar package with the package format's bounds and
+// file-name rules.
+func unpack(raw []byte) (map[string][]byte, error) {
 	if int64(len(raw)) > limits().MaxPackageBytes {
 		return nil, invalid("package", "the package is too large")
 	}
@@ -132,15 +154,39 @@ func ReadPackage(raw []byte) (*Package, error) {
 		}
 		files[name] = body
 	}
-	src, ok := files[ManifestFile]
-	if !ok {
-		return nil, invalid("package", "the package has no "+ManifestFile)
+	return files, nil
+}
+
+// PackageFile reports whether the core reads name from a package: the manifest, or a
+// file under migrations/ (where only migrations/NNNN_name.sql is accepted).
+func PackageFile(name string) bool {
+	return name == ManifestFile || strings.HasPrefix(name, "migrations/")
+}
+
+// unknownFiles lists, sorted, the package files the core doesn't read.
+func unknownFiles(files map[string][]byte) []string {
+	var out []string
+	for name := range files {
+		if !PackageFile(name) {
+			out = append(out, name)
+		}
 	}
-	m, err := ParseManifest(src)
-	if err != nil {
-		return nil, err
+	sort.Strings(out)
+	return out
+}
+
+func unknownFileError(name string) error {
+	return invalid("package", "the core doesn't read "+name+"; a package holds only "+ManifestFile+" and migrations/NNNN_name.sql")
+}
+
+// CheckFiles refuses a file the core doesn't read, so nothing ships in a package
+// unchecked. The install checks run it; a package stored before it was added is only
+// re-read, never checked again.
+func (p *Package) CheckFiles() error {
+	if names := unknownFiles(p.Files); len(names) > zero {
+		return unknownFileError(names[zero])
 	}
-	return &Package{Files: files, Manifest: m, Digest: marketplace.Digest(raw)}, nil
+	return nil
 }
 
 // PackageDigest is the digest recorded for audit.
