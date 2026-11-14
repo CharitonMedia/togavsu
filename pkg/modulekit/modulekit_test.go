@@ -274,10 +274,14 @@ func TestCheckSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Ordinary numbers in module code are not settings findings.
-	write("package m\n\nimport \"strconv\"\n\nfunc f(n []int) string { if len(n) == 0 { return \"\" }; return strconv.FormatInt(int64(n[1]), 10) + string(rune(404)) }\n")
+	write("package m\n\nfunc f() int { return 1 + 1 }\n")
 	if err := modulekit.CheckSource(dir); err != nil {
 		t.Fatalf("clean source refused: %v", err)
+	}
+	// A numeric configuration literal is refused, as in the core.
+	write("package m\n\nvar pageSize = 50\n")
+	if err := modulekit.CheckSource(dir); err == nil {
+		t.Fatal("a numeric configuration literal passed")
 	}
 	write("package m\n\nimport \"os\"\n\nfunc f() string { return os.Getenv(\"X\") }\n")
 	if err := modulekit.CheckSource(dir); err == nil {

@@ -27,37 +27,7 @@ var durationNames = map[string]bool{
 // It is a conservative source heuristic, not acceptance of AC-030. Arithmetic and the
 // enumerated fixed-site functions are allowed. A number that is not today's default is
 // still reported.
-func CheckModule(root string) error { return checkTree(root, ScanSource) }
-
-// CheckEnvironment fails when a marketplace module's Go source reads the environment
-// outside a directory named internal/bootstrap, directly or through a dot-import of os
-// or syscall. It is the part of AC-030 that applies to a module: a module's tunables are
-// settings in its manifest, and the numeric-literal heuristic above knows only the
-// core's own fixed sites, so it is not applied to module code.
-func CheckEnvironment(root string) error { return checkTree(root, ScanEnvironment) }
-
-// ScanEnvironment applies only the environment rules of ScanSource to one Go file.
-func ScanEnvironment(path, src string) []string {
-	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, path, src, 0)
-	if err != nil {
-		return []string{path + ": " + err.Error()}
-	}
-	if envAllowed(path) {
-		return nil
-	}
-	out := dotImports(path, fset, file)
-	aliases := importAliases(file)
-	ast.Inspect(file, func(n ast.Node) bool {
-		if f := envRead(path, fset, n, aliases); f != "" {
-			out = append(out, f)
-		}
-		return true
-	})
-	return out
-}
-
-func checkTree(root string, scan func(path, src string) []string) error {
+func CheckModule(root string) error {
 	var msgs []string
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -87,7 +57,7 @@ func checkTree(root string, scan func(path, src string) []string) error {
 		if err != nil {
 			return err
 		}
-		msgs = append(msgs, scan(path, string(src))...)
+		msgs = append(msgs, ScanSource(path, string(src))...)
 		return nil
 	})
 	if err != nil {
@@ -106,8 +76,18 @@ func ScanSource(path, src string) []string {
 	if err != nil {
 		return []string{path + ": " + err.Error()}
 	}
-	out := dotImports(path, fset, file)
+	var out []string
 	aliases := importAliases(file)
+	for _, imp := range file.Imports {
+		if imp.Name == nil || imp.Name.Name != "." {
+			continue
+		}
+		pkg, err := strconv.Unquote(imp.Path.Value)
+		if err == nil && (pkg == "os" || pkg == "syscall") && !envAllowed(path) {
+			pos := fset.Position(imp.Pos())
+			out = append(out, fmt.Sprintf("%s:%d: dot-import of %s can hide an environment read", pos.Filename, pos.Line, pkg))
+		}
+	}
 	var stack []ast.Node
 	ast.Inspect(file, func(n ast.Node) bool {
 		if n == nil {
@@ -123,41 +103,14 @@ func ScanSource(path, src string) []string {
 	return out
 }
 
-func dotImports(path string, fset *token.FileSet, file *ast.File) []string {
-	var out []string
-	for _, imp := range file.Imports {
-		if imp.Name == nil || imp.Name.Name != "." {
-			continue
-		}
-		pkg, err := strconv.Unquote(imp.Path.Value)
-		if err == nil && (pkg == "os" || pkg == "syscall") && !envAllowed(path) {
-			pos := fset.Position(imp.Pos())
-			out = append(out, fmt.Sprintf("%s:%d: dot-import of %s can hide an environment read", pos.Filename, pos.Line, pkg))
-		}
-	}
-	return out
-}
-
-func envRead(path string, fset *token.FileSet, n ast.Node, aliases map[string]string) string {
-	sel, ok := n.(*ast.SelectorExpr)
-	if !ok {
-		return ""
-	}
-	ident, ok := sel.X.(*ast.Ident)
-	if ok && envSelectors[sel.Sel.Name] && isEnvPackage(ident.Name, aliases) && !envAllowed(path) {
-		pos := fset.Position(sel.Pos())
-		return fmt.Sprintf("%s:%d: environment read %s.%s", pos.Filename, pos.Line, ident.Name, sel.Sel.Name)
-	}
-	return ""
-}
-
 func violations(path string, fset *token.FileSet, n ast.Node, ancestors []ast.Node, aliases map[string]string) []string {
 	var out []string
-	if f := envRead(path, fset, n, aliases); f != "" {
-		out = append(out, f)
-	}
 	if sel, ok := n.(*ast.SelectorExpr); ok {
 		ident, ok := sel.X.(*ast.Ident)
+		if ok && envSelectors[sel.Sel.Name] && isEnvPackage(ident.Name, aliases) && !envAllowed(path) {
+			pos := fset.Position(sel.Pos())
+			out = append(out, fmt.Sprintf("%s:%d: environment read %s.%s", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
+		}
 		if ok && durationNames[sel.Sel.Name] && isTimePackage(ident.Name, aliases) && !defaultFile(path) && !fixedSite(path, enclosingFunc(ancestors)) {
 			pos := fset.Position(sel.Pos())
 			out = append(out, fmt.Sprintf("%s:%d: tunable duration %s.%s is not in the settings registry", pos.Filename, pos.Line, ident.Name, sel.Sel.Name))
