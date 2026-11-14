@@ -825,20 +825,32 @@ class Controller:
             return True
         return (self.state.get("adopted_protection") or {}).get("enforce_admins") is False
 
-    def bypass_gaps(self, protection, number):
+    def bypass_gaps(self, protection, number, head):
         # With admin enforcement off GitHub lets an administrator merge past branch rules, so the controller checks
-        # the rules it would otherwise leave to GitHub. Returns what is still unmet; empty means the merge may go.
+        # them itself and fails closed: any review rule it does not evaluate is a gap. Returns what is unmet.
         gaps = []
         reviews_rule = protection.get("required_pull_request_reviews") or {}
+        for flag in ("require_code_owner_reviews", "require_last_push_approval"):
+            if reviews_rule.get(flag):
+                gaps.append("the " + flag.replace("_", " ") + " rule")
         needed = int(reviews_rule.get("required_approving_review_count") or 0)
-        latest = {}
-        for review in self.remote.gh("pulls/" + str(number) + "/reviews?per_page=100") or []:
-            user = (review.get("user") or {}).get("login")
-            if user and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
-                latest[user] = review["state"]
-        if sum(1 for state in latest.values() if state == "APPROVED") < needed:
-            gaps.append(str(needed) + " required approvals")
-        if any(state == "CHANGES_REQUESTED" for state in latest.values()):
+        latest, page = {}, 1
+        while True:
+            batch = self.remote.gh("pulls/" + str(number) + "/reviews?per_page=100&page=" + str(page)) or []
+            for review in batch:
+                user = (review.get("user") or {}).get("login")
+                if user and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                    latest[user] = review
+            if len(batch) < 100:
+                break
+            page += 1
+        # Only an approval of the exact head by someone with write access counts, which is never looser than GitHub.
+        approvals = sum(1 for review in latest.values() if review["state"] == "APPROVED"
+                        and review.get("commit_id") == head
+                        and review.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"})
+        if approvals < needed:
+            gaps.append(str(needed) + " required approvals of the current head")
+        if any(review["state"] == "CHANGES_REQUESTED" for review in latest.values()):
             gaps.append("a review requesting changes")
         if (protection.get("required_conversation_resolution") or {}).get("enabled"):
             open_threads = self.remote.unresolved_threads(number)
@@ -1450,7 +1462,7 @@ class Controller:
                 record.pop("stalled")
             self.event(task, "Pull request state changed to " + str(fresh.get("mergeable_state")) + "; retrying held merge once")
         if not protection.get("enforce_admins", {}).get("enabled"):
-            gaps = self.bypass_gaps(protection, number)
+            gaps = self.bypass_gaps(protection, number, head)
             if gaps:
                 record["waiting"] = "Admin enforcement is off; the controller will not merge past " + ", ".join(gaps)
                 return False

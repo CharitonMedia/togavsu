@@ -74,7 +74,8 @@ class FakeRemote:
         if path == "issues/1/comments":
             return {"id": 99}
         if path.startswith("pulls/7/reviews"):
-            return copy.deepcopy(self.reviews)
+            page = int(path.rsplit("page=", 1)[1])
+            return copy.deepcopy(self.reviews[(page - 1) * 100:page * 100])
         return {}
 
     def unresolved_threads(self, number):
@@ -291,6 +292,9 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
         self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
 
+    def approval(self, login, state="APPROVED", commit=HEAD, association="COLLABORATOR"):
+        return {"user": {"login": login}, "state": state, "commit_id": commit, "author_association": association}
+
     def test_admin_bypass_merges_only_when_every_protected_rule_is_met(self):
         self.remote.protection.update(enforce_admins={"enabled": False},
             required_conversation_resolution={"enabled": True},
@@ -300,15 +304,45 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(self.process())
         self.assertIn("1 required approvals", self.record["waiting"])
         self.assertIn("2 unresolved review threads", self.record["waiting"])
-        self.remote.reviews = [{"user": {"login": "a"}, "state": "APPROVED"},
-                               {"user": {"login": "b"}, "state": "CHANGES_REQUESTED"}]
+        self.remote.reviews = [self.approval("a"), self.approval("b", "CHANGES_REQUESTED")]
         self.remote.open_threads = 0
         self.assertFalse(self.process())
         self.assertIn("a review requesting changes", self.record["waiting"])
         self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
-        self.remote.reviews.append({"user": {"login": "b"}, "state": "APPROVED"})
+        self.remote.reviews.append(self.approval("b"))
         self.assertTrue(self.process())
         self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_admin_bypass_counts_only_write_access_approvals_of_the_head(self):
+        self.remote.protection.update(enforce_admins={"enabled": False},
+            required_pull_request_reviews={"required_approving_review_count": 1})
+        self.controller.adopt_protection("Integration lead")
+        for review in (self.approval("a", commit=BASE), self.approval("a", association="CONTRIBUTOR"),
+                       self.approval("a", association="NONE")):
+            with self.subTest(review=review):
+                self.remote.reviews = [review]
+                self.assertFalse(self.process())
+                self.assertIn("required approvals", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_admin_bypass_refuses_review_rules_it_does_not_evaluate(self):
+        for flag in ("require_code_owner_reviews", "require_last_push_approval"):
+            with self.subTest(flag=flag):
+                self.setUp()
+                self.remote.protection.update(enforce_admins={"enabled": False},
+                    required_pull_request_reviews={flag: True})
+                self.controller.adopt_protection("Integration lead")
+                self.assertFalse(self.process())
+                self.assertIn(flag.replace("_", " "), self.record["waiting"])
+                self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_admin_bypass_reads_every_page_of_reviews(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        self.remote.reviews = [self.approval("u" + str(i)) for i in range(100)] + [self.approval("late", "CHANGES_REQUESTED")]
+        self.assertFalse(self.process())
+        self.assertIn("a review requesting changes", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
 
     def test_enforced_admins_leave_review_rules_to_github(self):
         self.remote.protection["required_conversation_resolution"] = {"enabled": True}
