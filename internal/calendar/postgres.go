@@ -189,9 +189,10 @@ func (p *Postgres) Event(ctx context.Context, id domain.ID) (Event, error) {
 }
 
 // Events lists every event in start order. The service filters them by access.
-// ponytail: ceiling: every list reads all events and filters walls and windows in Go
-// (the service's existing contract). Upgrade path: push the window and matter filter
-// into the query. Trigger: 50k calendar rows or a calendar page slower than 200 ms.
+// ponytail: ceiling: lists use EventsBetween and EventsAfter, but reminders, iCal feeds
+// and available dates still read every event and filter in Go. Upgrade path: the same
+// window filter for them. Trigger: 50k calendar rows or a reminder run or feed request
+// slower than 200 ms.
 func (p *Postgres) Events(ctx context.Context) ([]Event, error) { return p.events(ctx, "") }
 
 // EventsBetween reads the events that can overlap [from, to) through the start index of
