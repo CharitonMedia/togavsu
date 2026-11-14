@@ -71,9 +71,24 @@ func activeFilter(r *http.Request) (*bool, error) {
 // page slices items by cursor and limit: the default is api.page_size, the cap
 // api.max_page_size, both read on every request.
 func (h *Handler) page(w http.ResponseWriter, r *http.Request, items []map[string]any) {
+	from, limit, err := h.pageArgs(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if from > len(items) {
+		from = len(items)
+	}
+	to := min(from+limit, len(items))
+	writeJSON(w, http.StatusOK, map[string]any{"data": items[from:to], "page": pageInfo(limit, to, to < len(items))})
+}
+
+// pageArgs reads cursor and limit: the default is api.page_size, the cap
+// api.max_page_size, both read on every request. from is the offset the cursor names.
+func (h *Handler) pageArgs(r *http.Request) (from, limit int, err error) {
 	ctx := r.Context()
 	most, _ := strconv.Atoi(h.Svc.setting(ctx, "api.max_page_size", ""))
-	limit, _ := strconv.Atoi(h.Svc.setting(ctx, "api.page_size", ""))
+	limit, _ = strconv.Atoi(h.Svc.setting(ctx, "api.page_size", ""))
 	if limit > most {
 		limit = most
 	}
@@ -81,36 +96,31 @@ func (h *Handler) page(w http.ResponseWriter, r *http.Request, items []map[strin
 	if v := q.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n <= int(0) {
-			writeErr(w, domain.Invalid("limit", "limit is a positive integer"))
-			return
+			return 0, 0, domain.Invalid("limit", "limit is a positive integer")
 		}
 		if n > most {
-			writeErr(w, domain.Invalid("limit", "limit must not exceed api.max_page_size ("+strconv.Itoa(most)+")"))
-			return
+			return 0, 0, domain.Invalid("limit", "limit must not exceed api.max_page_size ("+strconv.Itoa(most)+")")
 		}
 		limit = n
 	}
-	var from int
 	if c := q.Get("cursor"); c != "" {
 		raw, err := base64.RawURLEncoding.DecodeString(c)
 		off, convErr := strconv.Atoi(strings.TrimPrefix(string(raw), "o:"))
 		if err != nil || convErr != nil || off < int(0) || !strings.HasPrefix(string(raw), "o:") {
-			writeErr(w, domain.Invalid("cursor", "cursor is not from this list"))
-			return
+			return 0, 0, domain.Invalid("cursor", "cursor is not from this list")
 		}
 		from = off
 	}
-	if from > len(items) {
-		from = len(items)
-	}
-	to := from + limit
+	return from, limit, nil
+}
+
+// pageInfo is the page object: the next cursor continues at offset to when more follow.
+func pageInfo(limit, to int, more bool) map[string]any {
 	var next any
-	if to < len(items) {
+	if more {
 		next = base64.RawURLEncoding.EncodeToString([]byte("o:" + strconv.Itoa(to)))
-	} else {
-		to = len(items)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"data": items[from:to], "page": map[string]any{"limit": limit, "next_cursor": next}})
+	return map[string]any{"limit": limit, "next_cursor": next}
 }
 
 // idemWrite runs one write under its Idempotency-Key: the same caller, operation, target

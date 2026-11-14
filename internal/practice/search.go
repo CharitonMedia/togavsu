@@ -1,10 +1,12 @@
 package practice
 
 import (
+	"bytes"
 	"context"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
 )
@@ -99,15 +101,15 @@ func (s *Service) allowScope(ctx context.Context, p domain.Principal, scope stri
 func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Matter
-	for _, row := range s.db.Matters() {
-		if !s.visibleMatter(ctx, p, row.ID) {
+	// The text test comes first: it is cheap, and every matching matter is still checked
+	// for walls and role before it is a hit. Only matching matters are read whole.
+	for _, id := range s.mattersMatching([]byte(q)) {
+		if !s.visibleMatter(ctx, p, id) {
 			continue
 		}
-		hay := strings.ToLower(row.Name + " " + row.Number + " " + row.CaseNumber)
-		if !strings.Contains(hay, q) {
-			continue
+		if row, err := s.db.Matter(ctx, id); err == nil {
+			rows = append(rows, row)
 		}
-		rows = append(rows, row)
 	}
 	sortMatterRows(rows)
 	if len(rows) > limit {
@@ -126,23 +128,15 @@ func (s *Service) searchMatters(ctx context.Context, p domain.Principal, query s
 func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Contact
-	for _, row := range s.db.Contacts() {
-		if s.readableContact(ctx, p, row.ID) != nil {
+	// As for matters, the text test comes first and every match is checked for access.
+	qb := []byte(q)
+	for _, id := range s.contactsMatching(qb) {
+		if s.readableContact(ctx, p, id) != nil {
 			continue
 		}
-		hay := strings.ToLower(strings.Join([]string{
-			row.FullName, row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs,
-		}, " "))
-		for _, email := range s.db.Emails(row.ID) {
-			hay += " " + strings.ToLower(email.Email)
+		if row, err := s.db.Contact(ctx, id); err == nil {
+			rows = append(rows, row)
 		}
-		for _, phone := range s.db.Phones(row.ID) {
-			hay += " " + strings.ToLower(phone.PhoneE164)
-		}
-		if !strings.Contains(hay, q) {
-			continue
-		}
-		rows = append(rows, row)
 	}
 	sortContacts(rows)
 	if len(rows) > limit {
@@ -171,10 +165,9 @@ func (s *Service) searchPeople(ctx context.Context, p domain.Principal, query st
 func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query string, limit int) []SearchHit {
 	q := strings.ToLower(query)
 	var rows []domain.Invoice
-	for _, row := range s.db.Invoices() {
-		if !strings.Contains(strings.ToLower(row.Number), q) {
-			continue
-		}
+	// The number test comes first; every matching invoice is still checked for its
+	// matter's wall.
+	for _, row := range s.invoicesMatching([]byte(q)) {
 		if s.hiddenByWall(ctx, p, row.MatterID) {
 			continue
 		}
@@ -196,6 +189,93 @@ func (s *Service) searchInvoices(ctx context.Context, p domain.Principal, query 
 		})
 	}
 	return hits
+}
+
+// mattersMatching is the matters whose name, number and case number text holds q
+// (lowercase): through the memory store's search index when it has one.
+func (s *Service) mattersMatching(q []byte) []domain.ID {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		MattersMatching(func([]byte) bool) []domain.ID
+	}); ok {
+		return m.MattersMatching(match)
+	}
+	var out []domain.ID
+	var hay []byte
+	for _, row := range s.db.Matters() {
+		hay = appendLower(hay[:0], row.Name)
+		hay = appendLower(append(hay, ' '), row.Number)
+		hay = appendLower(append(hay, ' '), row.CaseNumber)
+		if match(hay) {
+			out = append(out, row.ID)
+		}
+	}
+	return out
+}
+
+// invoicesMatching is the invoices whose number holds q (lowercase).
+func (s *Service) invoicesMatching(q []byte) []domain.Invoice {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		InvoicesMatching(func([]byte) bool) []domain.Invoice
+	}); ok {
+		return m.InvoicesMatching(match)
+	}
+	var out []domain.Invoice
+	var hay []byte
+	for _, row := range s.db.Invoices() {
+		if hay = appendLower(hay[:0], row.Number); match(hay) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// contactsMatching is the contacts whose name, email and phone text holds q (lowercase):
+// in one pass of the memory store when it has one, else contact by contact.
+func (s *Service) contactsMatching(q []byte) []domain.ID {
+	match := func(hay []byte) bool { return bytes.Contains(hay, q) }
+	if m, ok := s.db.(interface {
+		ContactsMatching(func([]byte) bool) []domain.ID
+	}); ok {
+		return m.ContactsMatching(match)
+	}
+	var out []domain.ID
+	var hay []byte
+	for _, row := range s.db.Contacts() {
+		hay = appendLower(hay[:0], row.FullName)
+		for _, f := range []string{row.GivenName, row.FamilyName, row.PreferredName, row.AlsoKnownAs} {
+			hay = appendLower(append(hay, ' '), f)
+		}
+		for _, e := range s.db.Emails(row.ID) {
+			hay = appendLower(append(hay, ' '), e.Email)
+		}
+		for _, ph := range s.db.Phones(row.ID) {
+			hay = appendLower(append(hay, ' '), ph.PhoneE164)
+		}
+		if match(hay) {
+			out = append(out, row.ID)
+		}
+	}
+	return out
+}
+
+// appendLower appends strings.ToLower(v): ASCII byte by byte, anything else through
+// strings.ToLower.
+func appendLower(b []byte, v string) []byte {
+	for i := 0; i < len(v); i++ {
+		if v[i] >= utf8.RuneSelf {
+			return append(b, strings.ToLower(v)...)
+		}
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b = append(b, c)
+	}
+	return b
 }
 
 // sortMatterRows is a stable sort, like the quadratic insertion sort it replaced.

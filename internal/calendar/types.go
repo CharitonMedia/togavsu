@@ -90,6 +90,8 @@ type EventFilter struct {
 	MatterID domain.ID
 	UserID   domain.ID
 	Kind     string
+	// Max stops the list after that many readable events; zero lists every one.
+	Max int
 }
 
 // Deadline is a deadline with its reminder offsets parsed.
@@ -129,6 +131,12 @@ type DeadlineFilter struct {
 	ResponsibleUserID domain.ID
 	Status            string
 	IncludeOverdue    bool
+	// Before keeps deadlines due before this date.
+	Before string
+	// Max stops the list after that many readable deadlines; zero lists every one.
+	Max int
+	// limit caps one store read (ListDeadlines' first read under Max).
+	limit int
 }
 
 // Feed is one revocable iCal feed. OwnerUserID zero is the firm feed.

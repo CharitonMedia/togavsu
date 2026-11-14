@@ -12,7 +12,7 @@
 <h2 id="edit-h">Edit time entry</h2>
 <form method="post" action="/billing/time/{{$e.ID}}" class="grid">
   {{template "csrf" .CSRF}}
-  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}" {{if eq .ID $e.MatterID}}selected{{end}}>{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Matter <select name="matter_id" required>{{.MatterOptions}}</select></label>
   <label>Date <input type="date" name="worked_on" value="{{$e.WorkedOn}}" required></label>
   <label>Minutes <input type="number" name="minutes" min="1" value="{{$e.Minutes}}" required></label>
   <label>Rate <input name="rate" value="{{money $e.RateCents}}" inputmode="decimal" size="9"></label>

@@ -135,8 +135,14 @@ func (h *Handler) Routes() http.Handler {
 		"unbilled-time": h.Svc.UnbilledReport, "time-by-user": h.Svc.TimeByUserReport, "ar-aging": h.Svc.ARAgingReport,
 		"payments-received": h.Svc.PaymentsReport, "write-offs": h.Svc.WriteOffsReport,
 	} {
-		fn := fn
-		api("GET /api/v1/reports/"+name, func(w http.ResponseWriter, r *http.Request, p domain.Principal) { h.report(w, r, p, fn) })
+		fn, name := fn, name
+		api("GET /api/v1/reports/"+name, func(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+			if name == "unbilled-time" && q(r, "format") != "csv" {
+				h.unbilledJSON(w, r, p)
+				return
+			}
+			h.report(w, r, p, fn)
+		})
 	}
 	h.pageRoutes(mux)
 	return mux
@@ -1017,8 +1023,7 @@ func (h *Handler) applyFlatFee(w http.ResponseWriter, r *http.Request, p domain.
 }
 
 func (h *Handler) report(w http.ResponseWriter, r *http.Request, p domain.Principal, fn func(context.Context, domain.Principal, ReportFilter) (Report, error)) {
-	rep, err := fn(r.Context(), p, ReportFilter{MatterID: domain.ID(q(r, "matter_id")), UserID: domain.ID(q(r, "user_id")),
-		FromDate: q(r, "from_date"), ToDate: q(r, "to_date"), AsOf: q(r, "as_of")})
+	rep, err := fn(r.Context(), p, reportFilterOf(r))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -1029,7 +1034,31 @@ func (h *Handler) report(w http.ResponseWriter, r *http.Request, p domain.Princi
 		_ = rep.WriteCSV(w)
 		return
 	}
-	writeJSON(w, http.StatusOK, rep)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = rep.WriteJSON(w)
+}
+
+// unbilledJSON streams the unbilled report's JSON (Service.UnbilledJSON); the bytes are
+// UnbilledReport's. An error before the first byte is an error response; one after it
+// aborts the response, so a client never takes a cut-off body for a whole report.
+func (h *Handler) unbilledJSON(w http.ResponseWriter, r *http.Request, p domain.Principal) {
+	started, err := h.Svc.UnbilledJSON(r.Context(), p, reportFilterOf(r), func() io.Writer {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		return w
+	})
+	if err != nil {
+		if started {
+			panic(http.ErrAbortHandler)
+		}
+		writeErr(w, err)
+	}
+}
+
+func reportFilterOf(r *http.Request) ReportFilter {
+	return ReportFilter{MatterID: domain.ID(q(r, "matter_id")), UserID: domain.ID(q(r, "user_id")),
+		FromDate: q(r, "from_date"), ToDate: q(r, "to_date"), AsOf: q(r, "as_of")}
 }
 
 // Fee agreements.

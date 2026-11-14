@@ -75,11 +75,20 @@ func (s *Service) entries(ctx context.Context, f EntryFilter) ([]Entry, error) {
 	if f.ToDate != "" {
 		add("created_at <", dayEnd(f.ToDate))
 	}
+	order := ` ORDER BY id`
+	if positive(int64(f.newest)) {
+		// Newest first, one batch (ledgerPage): the posting order reversed.
+		if f.before != "" {
+			add("id <", f.before)
+		}
+		args = append(args, f.newest)
+		order = ` ORDER BY id DESC LIMIT $` + strconv.Itoa(len(args))
+	}
 	q := `SELECT ` + entryCols + ` FROM trust_ledger`
 	if len(where) > 0 {
 		q += ` WHERE ` + strings.Join(where, " AND ")
 	}
-	rows, err := s.q(ctx).QueryContext(ctx, q+` ORDER BY id`, args...)
+	rows, err := s.q(ctx).QueryContext(ctx, q+order, args...)
 	if err != nil {
 		return nil, err
 	}

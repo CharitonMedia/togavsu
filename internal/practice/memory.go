@@ -64,6 +64,9 @@ type Memory struct {
 	// gidx is the per-matter glance index (memindex.go), dropped on invoice, trust and
 	// time writes.
 	gidx *glanceIndex
+	// sidx is the search-text index (memindex.go), dropped on contact, email, phone,
+	// matter and invoice writes.
+	sidx *searchIndex
 }
 
 // NewMemory returns an empty store.
@@ -129,6 +132,7 @@ func (m *Memory) InsertContact(ctx context.Context, row domain.Contact) error {
 		return repository.ErrConflict
 	}
 	m.contacts[row.ID] = row
+	m.sidx = nil
 	return nil
 }
 
@@ -142,6 +146,7 @@ func (m *Memory) UpdateContact(ctx context.Context, row domain.Contact) error {
 		return repository.ErrNotFound
 	}
 	m.contacts[row.ID] = row
+	m.sidx = nil
 	return nil
 }
 
@@ -212,7 +217,7 @@ func (m *Memory) InsertEmail(ctx context.Context, row domain.ContactEmail) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.emails[row.ID] = row
-	m.idx = nil
+	m.idx, m.sidx = nil, nil
 	return nil
 }
 
@@ -226,7 +231,7 @@ func (m *Memory) UpdateEmail(ctx context.Context, row domain.ContactEmail) error
 		return repository.ErrNotFound
 	}
 	m.emails[row.ID] = row
-	m.idx = nil
+	m.idx, m.sidx = nil, nil
 	return nil
 }
 
@@ -252,7 +257,7 @@ func (m *Memory) InsertPhone(ctx context.Context, row domain.ContactPhone) error
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.phones[row.ID] = row
-	m.idx = nil
+	m.idx, m.sidx = nil, nil
 	return nil
 }
 
@@ -266,7 +271,7 @@ func (m *Memory) UpdatePhone(ctx context.Context, row domain.ContactPhone) error
 		return repository.ErrNotFound
 	}
 	m.phones[row.ID] = row
-	m.idx = nil
+	m.idx, m.sidx = nil, nil
 	return nil
 }
 
@@ -375,6 +380,7 @@ func (m *Memory) InsertMatter(ctx context.Context, row domain.Matter, assign fun
 		}
 	}
 	m.matters[row.ID] = row
+	m.sidx = nil
 	return row, nil
 }
 
@@ -393,6 +399,7 @@ func (m *Memory) UpdateMatter(ctx context.Context, row domain.Matter) error {
 		}
 	}
 	m.matters[row.ID] = row
+	m.sidx = nil
 	return nil
 }
 
@@ -404,6 +411,80 @@ func (m *Memory) Matter(_ context.Context, id domain.ID) (domain.Matter, error) 
 		return domain.Matter{}, repository.ErrNotFound
 	}
 	return row, nil
+}
+
+// MattersMatching returns the matters whose lowercased name, number and case number,
+// joined by spaces, match. match runs under the store's lock and must not call the store.
+func (m *Memory) MattersMatching(match func(hay []byte) bool) []domain.ID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return matching(m.search().matters, match)
+}
+
+// ContactsMatching returns the contacts whose search text matches: the lowercased name
+// fields, then the contact's emails and phones in the child index's order, joined by
+// spaces. match runs under the store's lock and must not call the store.
+func (m *Memory) ContactsMatching(match func(hay []byte) bool) []domain.ID {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return matching(m.search().contacts, match)
+}
+
+// InvoicesMatching returns the invoices whose lowercased number matches. match runs
+// under the store's lock and must not call the store.
+func (m *Memory) InvoicesMatching(match func(hay []byte) bool) []domain.Invoice {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var out []domain.Invoice
+	for _, id := range matching(m.search().invoices, match) {
+		if row, ok := m.invoices[id]; ok {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// MatterPick is the part of a matter a pick list shows and filters on.
+type MatterPick struct {
+	ID                   domain.ID
+	Number, Name, Status string
+}
+
+// MatterPicks lists every matter's pick-list fields: a form's matter picker over 20,000
+// matters copies these instead of whole matters (AC-017). Callers still check access to
+// each matter they show.
+func (m *Memory) MatterPicks() []MatterPick {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]MatterPick, 0, len(m.matters))
+	for id, row := range m.matters {
+		out = append(out, MatterPick{ID: id, Number: row.Number, Name: row.Name, Status: row.Status})
+	}
+	return out
+}
+
+// MatterKey is the part of a matter a count filters on.
+type MatterKey struct {
+	ID, PracticeAreaID                     domain.ID
+	ResponsibleAttorneyID, AssignedStaffID domain.ID
+	Status, OpenedOn, Number               string
+}
+
+func matterKeyOf(id domain.ID, row *domain.Matter) MatterKey {
+	return MatterKey{ID: id, PracticeAreaID: row.PracticeAreaID, ResponsibleAttorneyID: row.ResponsibleAttorneyID,
+		AssignedStaffID: row.AssignedStaffID, Status: row.Status, OpenedOn: row.OpenedOn, Number: row.Number}
+}
+
+// MatterKeys lists every matter's key: a count over 20,000 matters copies these, not
+// whole matters.
+func (m *Memory) MatterKeys() []MatterKey {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]MatterKey, 0, len(m.matters))
+	for id, row := range m.matters {
+		out = append(out, matterKeyOf(id, &row))
+	}
+	return out
 }
 
 func (m *Memory) Matters() []domain.Matter {
@@ -783,7 +864,7 @@ func (m *Memory) PutInvoice(ctx context.Context, row domain.Invoice) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.invoices[row.ID] = row
-	m.gidx = nil
+	m.gidx, m.sidx = nil, nil
 	return nil
 }
 

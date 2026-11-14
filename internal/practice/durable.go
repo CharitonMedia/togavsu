@@ -106,7 +106,7 @@ func (m *Memory) adopt(f *Memory) {
 	m.audits, m.events = f.audits, f.events
 	m.fields, m.values, m.markers, m.pinned, m.roles = f.fields, f.values, f.markers, f.pinned, f.roles
 	m.closes, m.runs, m.checked = f.closes, f.runs, f.checked
-	m.idx, m.gidx = nil, nil
+	m.idx, m.gidx, m.sidx = nil, nil, nil
 	// Pending idempotency reservations belong to requests still running in this process.
 	for k, rec := range m.idem {
 		if rec.Pending {

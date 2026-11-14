@@ -8,6 +8,7 @@
 <section class="overdue" aria-labelledby="overdue-h">
   <h2 id="overdue-h">Overdue deadlines</h2>
   <ul>{{range .Overdue}}<li><a href="/calendar/deadlines/{{.ID}}">{{.Title}}</a> — due {{.DueOn}}</li>{{end}}</ul>
+  {{if .OverdueMore}}<p><a href="/calendar/deadlines?status=open&amp;include_overdue=true">{{.OverdueMore}} more overdue</a></p>{{end}}
 </section>
 {{end}}
 {{if .Remind}}

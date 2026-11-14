@@ -12,7 +12,7 @@
 <h2 id="edit-h">Edit expense</h2>
 <form method="post" action="/billing/expenses/{{$e.ID}}" class="grid">
   {{template "csrf" .CSRF}}
-  <label>Matter <select name="matter_id" required>{{range .Matters}}<option value="{{.ID}}" {{if eq .ID $e.MatterID}}selected{{end}}>{{.Number}} {{.Name}}</option>{{end}}</select></label>
+  <label>Matter <select name="matter_id" required>{{.MatterOptions}}</select></label>
   <label>Date <input type="date" name="incurred_on" value="{{$e.IncurredOn}}" required></label>
   <label>Amount <input name="amount" value="{{money $e.AmountCents}}" inputmode="decimal" size="9" required></label>
   <label>Type <select name="expense_type_id" required>{{range .ExpenseTypes}}<option value="{{.ID}}" {{if eq (print .ID) $e.ExpenseType}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>

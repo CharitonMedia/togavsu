@@ -390,6 +390,10 @@ func perfSignIn(t *testing.T, app *App, base, who string) *client {
 	c := newClient(t, base)
 	for step := 0; step < 3; step++ {
 		login := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": password})
+		if str(t, login.json, "status") == "authenticated" { // two-factor is optional for the role
+			c.csrf = str(t, login.json, "csrf_token")
+			return c
+		}
 		r := c.do("POST", "/api/v1/auth/totp", map[string]string{"totp_token": str(t, login.json, "totp_token"), "code": totp(t, secret, time.Now().Add(time.Duration(step)*30*time.Second))})
 		if r.code == http.StatusOK {
 			c.csrf, _ = r.json["csrf_token"].(string)
@@ -400,7 +404,8 @@ func perfSignIn(t *testing.T, app *App, base, who string) *client {
 	return nil
 }
 
-// enrollUserSecret is enrollUser that also returns the TOTP secret.
+// enrollUserSecret is enrollUser that also returns the TOTP secret, empty when the
+// role signs in without two-factor.
 func enrollUserSecret(t *testing.T, app *App, base string, admin *client, name, email string, secret *string, roles ...domain.Role) (*client, domain.ID) {
 	t.Helper()
 	ctx := context.Background()
@@ -421,6 +426,10 @@ func enrollUserSecret(t *testing.T, app *App, base string, admin *client, name, 
 	}
 	c := newClient(t, base)
 	login := c.must(http.StatusOK, "POST", "/api/v1/auth/login", map[string]string{"email": email, "password": "synthetic-password-" + name})
+	if str(t, login.json, "status") == "authenticated" { // two-factor is optional for the role
+		c.csrf = str(t, login.json, "csrf_token")
+		return c, user.ID
+	}
 	en := c.must(http.StatusOK, "POST", "/api/v1/auth/totp/enroll", map[string]string{"enrollment_token": str(t, login.json, "enrollment_token")})
 	*secret = str(t, en.json, "secret")
 	c.must(http.StatusOK, "POST", "/api/v1/auth/totp/confirm", map[string]string{

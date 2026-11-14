@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // FlatRow is one flat-fee matter on the Billing / Generate worklist.
@@ -235,7 +236,43 @@ func (s *Service) Worklist(ctx context.Context, p domain.Principal) (Worklist, e
 // mattersByNumber returns practice matters in matter-number order.
 func (s *Service) mattersByNumber() []domain.Matter {
 	rows := s.d.Practice.Matters()
-	sort.SliceStable(rows, func(i, j int) bool { return rows[i].Number < rows[j].Number })
+	// Sort indexes, then copy each matter once: sorting the matters themselves moved
+	// 20,000 large structs around per request (AC-017). The id breaks number ties.
+	idx := make([]int, len(rows))
+	for i := range idx {
+		idx[i] = i
+	}
+	sort.Slice(idx, func(i, j int) bool {
+		a, b := &rows[idx[i]], &rows[idx[j]]
+		if a.Number != b.Number {
+			return a.Number < b.Number
+		}
+		return a.ID < b.ID
+	})
+	out := make([]domain.Matter, len(rows))
+	for i, k := range idx {
+		out[i] = rows[k]
+	}
+	return out
+}
+
+// picksByNumber returns every matter's pick-list fields in matter-number order, through the
+// practice store's light list when it has one. The id breaks number ties.
+func (s *Service) picksByNumber() []practice.MatterPick {
+	var rows []practice.MatterPick
+	if src, ok := s.d.Practice.(interface{ MatterPicks() []practice.MatterPick }); ok {
+		rows = src.MatterPicks()
+	} else {
+		for _, m := range s.d.Practice.Matters() {
+			rows = append(rows, practice.MatterPick{ID: m.ID, Number: m.Number, Name: m.Name, Status: m.Status})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].Number != rows[j].Number {
+			return rows[i].Number < rows[j].Number
+		}
+		return rows[i].ID < rows[j].ID
+	})
 	return rows
 }
 
@@ -408,19 +445,15 @@ func (s *Service) flatInvoice(t *txn, m domain.Matter) (Invoice, error) {
 
 // Overdue lists open invoices past their due date, oldest first. Zero-fee matters are omitted.
 func (s *Service) Overdue(ctx context.Context, p domain.Principal) ([]Invoice, error) {
-	rows, err := s.Invoices(ctx, p, InvoiceFilter{Heads: true})
-	if err != nil {
-		return nil, err
-	}
-	today := s.today(ctx)
-	var out []Invoice
-	for _, r := range rows {
-		if r.Open() && r.DueOn < today && !s.zeroFee(r.MatterID) {
-			out = append(out, r)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].DueOn < out[j].DueOn })
-	return out, nil
+	var every int
+	return s.overdue(ctx, p, every)
+}
+
+// overdue lists open invoices past due, oldest due date first, stopping after max
+// (zero lists every one). Only sent or viewed invoices due before today are read.
+func (s *Service) overdue(ctx context.Context, p domain.Principal, max int) ([]Invoice, error) {
+	return s.Invoices(ctx, p, InvoiceFilter{Heads: true, Statuses: []string{StatusSent, StatusViewed}, DueBefore: s.today(ctx), ByDue: true, Max: max,
+		Keep: func(r Invoice) bool { return r.Open() && !s.zeroFee(r.MatterID) }})
 }
 
 // Collections is the panel on a sent invoice with a balance: funded clients for Apply trust,

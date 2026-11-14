@@ -67,6 +67,51 @@ func (s *Service) visibleEntries(ctx context.Context, who domain.Principal, f En
 	return out, nil
 }
 
+// ledgerPage is the ledger screen's page: the entries p may read, newest first, after
+// skipping from of them, at most n, and whether more follow. It reads newest-first
+// batches until it has them rather than the whole ledger.
+func (s *Service) ledgerPage(ctx context.Context, who domain.Principal, f EntryFilter, from, n int) ([]Entry, bool, error) {
+	rd, err := s.reader(ctx, who)
+	if err != nil {
+		return nil, false, err
+	}
+	f.newest = from + n + 1
+	skip := from
+	var out []Entry
+	for {
+		batch, err := s.entries(ctx, f)
+		if err != nil {
+			return nil, false, err
+		}
+		for _, e := range batch {
+			ok, err := rd.ok(ctx, e.MatterID)
+			if err != nil {
+				return nil, false, err
+			}
+			if !ok {
+				continue
+			}
+			if positive(int64(skip)) {
+				skip--
+				continue
+			}
+			out = append(out, e)
+			if len(out) > n {
+				return out[:n], true, nil
+			}
+		}
+		if len(batch) < f.newest {
+			if len(out) == 0 && positive(int64(from)) {
+				// Past the end: the first page, as an out-of-range offset always gave.
+				var first int
+				return s.ledgerPage(ctx, who, EntryFilter{MatterID: f.MatterID, ClientID: f.ClientID, TrustAccountID: f.TrustAccountID}, first, n)
+			}
+			return out, false, nil
+		}
+		f.before = string(batch[len(batch)-1].ID)
+	}
+}
+
 // Balances returns identified balance rows computed from the ledger: one per client per
 // matter per account, one per client, one per account. Rows for a walled matter are
 // absent and do not count toward the client and account rows the caller sees.
