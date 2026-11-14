@@ -210,10 +210,19 @@ func TestSignAndVerifyFile(t *testing.T) {
 	if _, _, err := modulekit.VerifyFile(pkg, trusted); err == nil {
 		t.Fatal("an unsigned archive verified")
 	}
-	// A signed package whose migrations the core refuses fails verification too.
-	refused, err := modulekit.Build(priv, edit(sample(t), func(f map[string][]byte) {
+	// A signed package whose migrations the core refuses fails verification too. Build
+	// refuses to sign it, so sign the archive directly.
+	bad := edit(sample(t), func(f map[string][]byte) {
 		f["migrations/0002_bad.sql"] = []byte("CREATE TABLE contacts (id TEXT PRIMARY KEY);")
-	}))
+	})
+	if _, err := modulekit.Build(priv, bad); modulekit.Code(err) != modulekit.CodeMigration {
+		t.Fatalf("Build signed a refused package: %v", err)
+	}
+	badPkg, err := modulekit.Archive(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused, err := modulekit.SignFile(priv, badPkg)
 	if err != nil {
 		t.Fatal(err)
 	}
