@@ -200,14 +200,15 @@ func WritePending(entries []Pending) ([]byte, error) {
 }
 
 // AddPending appends entry to the pending list src (empty for a new list) in place,
-// keeping src's comments and layout, and checks that the result reads back as src's
-// entries followed by entry.
+// keeping src's comments, layout and line endings (a CRLF file stays CRLF), and checks
+// that the result reads back as src's entries followed by entry.
 func AddPending(src []byte, entry Pending) ([]byte, error) {
 	entries, err := ParsePending(src)
 	if err != nil {
 		return nil, err
 	}
-	text := string(src)
+	crlf := strings.Contains(string(src), "\r\n")
+	text := strings.ReplaceAll(string(src), "\r\n", "\n")
 	indent := "  "
 	if m := itemIndent.FindStringSubmatch(text); m != nil {
 		indent = m[one]
@@ -217,7 +218,11 @@ func AddPending(src []byte, entry Pending) ([]byte, error) {
 	} else if text != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	return pendingReadsBack([]byte(text+pendingItem(entry, indent)), append(entries, entry))
+	text += pendingItem(entry, indent)
+	if crlf {
+		text = strings.ReplaceAll(text, "\n", "\r\n")
+	}
+	return pendingReadsBack([]byte(text), append(entries, entry))
 }
 
 var (
@@ -288,6 +293,9 @@ func pendingReadsBack(src []byte, want []Pending) ([]byte, error) {
 	got, err := ParsePending(src)
 	if err != nil {
 		return nil, err
+	}
+	if len(got) == zero && len(want) == zero {
+		return src, nil // nil and an empty list are the same list
 	}
 	a, _ := json.Marshal(got)
 	b, _ := json.Marshal(want)

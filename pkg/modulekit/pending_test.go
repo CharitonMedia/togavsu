@@ -695,3 +695,27 @@ func TestAddPendingKeepsTheFile(t *testing.T) {
 		t.Fatal("appended to a flow list")
 	}
 }
+
+func TestWritePendingTakesAnEmptyList(t *testing.T) {
+	for name, entries := range map[string][]modulekit.Pending{"nil": nil, "empty": {}} {
+		src, err := modulekit.WritePending(entries)
+		if err != nil || string(src) != "pending:\n" {
+			t.Fatalf("%s: %q %v", name, src, err)
+		}
+		if got, err := modulekit.ParsePending(src); err != nil || len(got) != 0 {
+			t.Fatalf("%s: read back %v %v", name, got, err)
+		}
+	}
+}
+
+func TestAddPendingKeepsCRLF(t *testing.T) {
+	src := []byte("# Parts that wait on a core change.\r\npending:\r\n\r\n    # The sidebar.\r\n    - field: sidebar[*].section\r\n      core: CORE-08\r\n      reason: File the entry under Time.\r\n")
+	out, err := modulekit.AddPending(src, modulekit.Pending{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "Read the books."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := string(src) + "    - scope: books:read\r\n      core: CORE-02\r\n      reason: Read the books.\r\n"
+	if string(out) != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", out, want)
+	}
+}
