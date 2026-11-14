@@ -2094,6 +2094,8 @@ type keptFiles struct {
 	safety string
 }
 
+// ponytail: ceiling: the bytes are written by the restarted core, so a rollback loses
+// writes made after it started; upgrade path and trigger are PONYTAIL-DEBT.md Platform 18.
 // rollBackFiles handles a restored database whose file bytes the core could not write.
 // The record is failed with files_not_restored first, so a crash during the rollback
 // leaves it terminal. Then the safety backup taken before the swap is restored as its

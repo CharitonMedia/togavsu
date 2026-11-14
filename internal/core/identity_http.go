@@ -283,7 +283,7 @@ func (a *App) updateMeJSON(w http.ResponseWriter, r *http.Request) {
 
 // pictureFromFile reads the current version of a file the caller may see, through the
 // files service's wall, role and quarantine checks, for use as their profile picture. The
-// profile keeps a copy of the bytes (see the Accounts ponytail: no profile_file_id column).
+// profile keeps a copy of the bytes (the users table has no profile_file_id column yet; see dashboard.Accounts).
 func (a *App) pictureFromFile(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, error) {
 	if a.Files == nil {
 		return nil, domain.NotFound("file")
@@ -399,8 +399,9 @@ func (a *App) totpResetConfirmJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	// The contract's response is User, so recovery codes from a first enrollment are not
-	// returned here; regenerateRecoveryCodes issues a fresh set for an API client.
+	// ponytail: ceiling: the contract's response is User, so recovery codes from a first
+	// enrollment are not returned here; regenerateRecoveryCodes issues a fresh set.
+	// Upgrade trigger: the next identity contract revision (PONYTAIL-DEBT.md Identity 8).
 	if _, err := a.Identity.ConfirmReset(r.Context(), c, body.Token, strings.TrimSpace(body.Code)); err != nil {
 		writeErr(w, err)
 		return
