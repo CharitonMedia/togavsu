@@ -48,6 +48,8 @@ class FakeRemote:
         self.check_rows = {name: check(name) for name in ["Setup checks", "Codex checkpoint"]}
         self.protection = {"required_status_checks": {"strict": True, "contexts": ["Setup checks", "Codex checkpoint"]},
                            "enforce_admins": {"enabled": True}, "required_pull_request_reviews": {}}
+        self.reviews = []
+        self.open_threads = 0
 
     def gh(self, path, method="GET", payload=None, binary=False):
         self.calls.append((method, path, payload))
@@ -71,7 +73,13 @@ class FakeRemote:
             return {"merged": True, "sha": NEW}
         if path == "issues/1/comments":
             return {"id": 99}
+        if path.startswith("pulls/7/reviews"):
+            return copy.deepcopy(self.reviews)
         return {}
+
+    def unresolved_threads(self, number):
+        self.calls.append(("GRAPHQL", "reviewThreads", number))
+        return self.open_threads
 
     def agent(self, record):
         return {"status": self.run_status, "run_id": self.run_id, "git": {}}
@@ -282,6 +290,31 @@ class ControllerTests(unittest.TestCase):
         self.assertFalse(self.process())
         self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
         self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_admin_bypass_merges_only_when_every_protected_rule_is_met(self):
+        self.remote.protection.update(enforce_admins={"enabled": False},
+            required_conversation_resolution={"enabled": True},
+            required_pull_request_reviews={"required_approving_review_count": 1})
+        self.controller.adopt_protection("Integration lead")
+        self.remote.open_threads = 2
+        self.assertFalse(self.process())
+        self.assertIn("1 required approvals", self.record["waiting"])
+        self.assertIn("2 unresolved review threads", self.record["waiting"])
+        self.remote.reviews = [{"user": {"login": "a"}, "state": "APPROVED"},
+                               {"user": {"login": "b"}, "state": "CHANGES_REQUESTED"}]
+        self.remote.open_threads = 0
+        self.assertFalse(self.process())
+        self.assertIn("a review requesting changes", self.record["waiting"])
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.remote.reviews.append({"user": {"login": "b"}, "state": "APPROVED"})
+        self.assertTrue(self.process())
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_enforced_admins_leave_review_rules_to_github(self):
+        self.remote.protection["required_conversation_resolution"] = {"enabled": True}
+        self.remote.open_threads = 3
+        self.assertTrue(self.process())
+        self.assertFalse(any(c[0] == "GRAPHQL" for c in self.remote.calls))
 
     def test_adoption_refuses_protection_without_checkpoints_and_needs_an_operator(self):
         self.record["halted"] = build_controller.PROTECTION_HALT

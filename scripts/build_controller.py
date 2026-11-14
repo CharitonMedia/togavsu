@@ -317,6 +317,32 @@ class Remote:
             raise RuntimeError(proc.stderr.decode(errors="replace")[-1800:])
         return proc.stdout if binary else json.loads(proc.stdout or b"{}")
 
+    def graphql(self, query, variables):
+        args = ["gh", "api", "graphql", "-f", "query=" + query]
+        for name, value in variables.items():
+            args += ["-F", name + "=" + str(value)]
+        proc = subprocess.run(args, capture_output=True, timeout=55)
+        if proc.returncode:
+            raise RuntimeError(proc.stderr.decode(errors="replace")[-1800:])
+        return json.loads(proc.stdout or b"{}")
+
+    def unresolved_threads(self, number):
+        # Review threads still open on the pull request, across every page.
+        owner, name = REPO.split("/")
+        query = ("query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name)"
+                 "{pullRequest(number:$number){reviewThreads(first:100,after:$after){nodes{isResolved}"
+                 "pageInfo{hasNextPage endCursor}}}}}")
+        count, after = 0, None
+        while True:
+            variables = {"owner": owner, "name": name, "number": number}
+            if after:
+                variables["after"] = after
+            threads = self.graphql(query, variables)["data"]["repository"]["pullRequest"]["reviewThreads"]
+            count += sum(1 for node in threads["nodes"] if not node["isResolved"])
+            if not threads["pageInfo"]["hasNextPage"]:
+                return count
+            after = threads["pageInfo"]["endCursor"]
+
     def cursor(self, method, path, body=None):
         key = os.environ["CURSOR_API_KEY"]
         request = urllib.request.Request("https://api.cursor.com/v1" + path,
@@ -798,6 +824,30 @@ class Controller:
                 self.event("controller", "Admin enforcement is on again; the earlier protection adoption no longer applies")
             return True
         return (self.state.get("adopted_protection") or {}).get("enforce_admins") is False
+
+    def bypass_gaps(self, protection, number):
+        # With admin enforcement off GitHub lets an administrator merge past branch rules, so the controller checks
+        # the rules it would otherwise leave to GitHub. Returns what is still unmet; empty means the merge may go.
+        gaps = []
+        reviews_rule = protection.get("required_pull_request_reviews") or {}
+        needed = int(reviews_rule.get("required_approving_review_count") or 0)
+        latest = {}
+        for review in self.remote.gh("pulls/" + str(number) + "/reviews?per_page=100") or []:
+            user = (review.get("user") or {}).get("login")
+            if user and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                latest[user] = review["state"]
+        if sum(1 for state in latest.values() if state == "APPROVED") < needed:
+            gaps.append(str(needed) + " required approvals")
+        if any(state == "CHANGES_REQUESTED" for state in latest.values()):
+            gaps.append("a review requesting changes")
+        if (protection.get("required_conversation_resolution") or {}).get("enabled"):
+            open_threads = self.remote.unresolved_threads(number)
+            if open_threads:
+                gaps.append(str(open_threads) + " unresolved review threads")
+        for rule in ("required_signatures", "lock_branch"):
+            if (protection.get(rule) or {}).get("enabled"):
+                gaps.append("the " + rule.replace("_", " ") + " rule")
+        return gaps
 
     def adopt_protection(self, operator):
         # Operator path: accept the repository owner's current main branch protection. Only admin enforcement may
@@ -1399,6 +1449,11 @@ class Controller:
             if record.get("stalled", {}).get("kind") == "merge_blocked":
                 record.pop("stalled")
             self.event(task, "Pull request state changed to " + str(fresh.get("mergeable_state")) + "; retrying held merge once")
+        if not protection.get("enforce_admins", {}).get("enabled"):
+            gaps = self.bypass_gaps(protection, number)
+            if gaps:
+                record["waiting"] = "Admin enforcement is off; the controller will not merge past " + ", ".join(gaps)
+                return False
         if self.dry:
             self.effect("protected merge PR " + str(number), lambda: None)
             return True
