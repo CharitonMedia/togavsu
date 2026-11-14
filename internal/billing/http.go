@@ -27,6 +27,10 @@ import (
 type Handler struct {
 	Svc       *Service
 	Principal func(*http.Request) (domain.Principal, error)
+	// Scopes checks bearer token scopes the route table cannot: bulkInvoice's per-item
+	// privileges and a processor's trust destination. The core wires the caller's
+	// RequireScopes (a session passes). Nil checks nothing beyond the route's scopes.
+	Scopes    func(r *http.Request, need ...string) error
 	Templates *template.Template
 	FS        fs.FS
 }
@@ -103,6 +107,7 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/expenses/{expense_id}/history", h.history("expense", "expense_id"))
 	api("GET /api/v1/invoices", h.listInvoices)
 	api("POST /api/v1/invoice-drafts", h.draftInvoices)
+	api("POST /api/v1/invoices:bulk", h.bulkInvoices)
 	api("GET /api/v1/invoices/{invoice_id}", h.getInvoice)
 	api("PATCH /api/v1/invoices/{invoice_id}", h.patchInvoice)
 	api("GET /api/v1/invoices/{invoice_id}/history", h.history("invoice", "invoice_id"))
@@ -117,6 +122,7 @@ func (h *Handler) Routes() http.Handler {
 	api("GET /api/v1/payments", h.listPayments)
 	api("POST /api/v1/payments", h.createPayment)
 	api("POST /api/v1/payments:bulk", h.bulkPayments)
+	api("POST /api/v1/payments/processor-initializations", h.initiateProcessor)
 	api("GET /api/v1/payments/{payment_id}", h.getPayment)
 	api("POST /api/v1/payments/{payment_id}/status", h.paymentStatus)
 	api("POST /api/v1/payments/{payment_id}/reverse", h.reversePayment)
@@ -926,7 +932,15 @@ func (h *Handler) createPayment(w http.ResponseWriter, r *http.Request, p domain
 		if err != nil {
 			return 0, nil, err
 		}
-		row, err := h.Svc.CreatePayment(r.Context(), p, in)
+		var row Payment
+		if grant := r.Header.Get(ProcessorHeader); grant != "" {
+			if err := h.processorScopes(r, p, grant, in.Status != PayPending && in.Status != PayFailed); err != nil {
+				return 0, nil, err
+			}
+			row, err = h.Svc.CreateProcessorPayment(r.Context(), p, grant, in)
+		} else {
+			row, err = h.Svc.CreatePayment(r.Context(), p, in)
+		}
 		return http.StatusCreated, paymentView(row), err
 	})
 }
@@ -959,7 +973,15 @@ func (h *Handler) paymentStatus(w http.ResponseWriter, r *http.Request, p domain
 		Status string `json:"status"`
 	}
 	h.write(w, r, p, &body, func() (int, any, error) {
-		row, err := h.Svc.UpdatePaymentStatus(r.Context(), p, domain.ID(r.PathValue("payment_id")), body.Status)
+		id := domain.ID(r.PathValue("payment_id"))
+		if grant := r.Header.Get(ProcessorHeader); grant != "" {
+			if err := h.processorScopes(r, p, grant, body.Status == PayCompleted); err != nil {
+				return 0, nil, err
+			}
+			row, err := h.Svc.UpdateProcessorPaymentStatus(r.Context(), p, grant, id, body.Status)
+			return http.StatusOK, paymentView(row), err
+		}
+		row, err := h.Svc.UpdatePaymentStatus(r.Context(), p, id, body.Status)
 		return http.StatusOK, paymentView(row), err
 	})
 }

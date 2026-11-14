@@ -23,7 +23,6 @@ package billing
 var Pending = []string{
 	"system mail: sent through the core SMTP mailer after the commit, with no outbox; a failed send is undone and recorded",
 	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",
-	"invoices:bulk and payment processor initializations are not implemented",
 	"invoice PDFs: FileLink stores each sent invoice's PDF as an invoice_pdf file record on the matter and is tested against the merged files service on Postgres; the core does not wire the files service yet (integrate-documents), so Deps.InvoiceFiles is nil and PDFs are rendered on demand only. The logo is drawn only when it is a JPEG",
 	"files wiring: Deps.Receipts and Deps.InvoiceFiles (NewFileLink over the files service) wait for the files service in core (integrate-documents)",
 	"billing events are stored in billing_records; merging them into the practice timeline is not done",

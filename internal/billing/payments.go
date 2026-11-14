@@ -85,6 +85,9 @@ func (s *Service) Payments(ctx context.Context, p domain.Principal, f PaymentFil
 }
 
 func (s *Service) buildPayment(ctx context.Context, p domain.Principal, in PaymentInput) (Payment, error) {
+	if err := viewerless(p); err != nil {
+		return Payment{}, err
+	}
 	if err := amountField("amount_cents", in.AmountCents); err != nil {
 		return Payment{}, err
 	}
@@ -308,6 +311,9 @@ func (s *Service) applyToInvoice(t *txn, id domain.ID, amount domain.Cents) erro
 func (s *Service) UpdatePaymentStatus(ctx context.Context, p domain.Principal, id domain.ID, status string) (Payment, error) {
 	if status != PayPending && status != PayCompleted && status != PayFailed {
 		return Payment{}, domain.Invalid("status", "must be pending, completed or failed")
+	}
+	if err := viewerless(p); err != nil {
+		return Payment{}, err
 	}
 	var out Payment
 	err := s.write(ctx, p, func(t *txn) error {
@@ -568,4 +574,14 @@ func (s *Service) RequestReplenishment(ctx context.Context, p domain.Principal, 
 		return nil
 	})
 	return out, err
+}
+
+// viewerless refuses a module token with no viewer: payments:write alone records nothing.
+// A processor presents its grant (CreateProcessorPayment); any other module call carries
+// a viewer's context token.
+func viewerless(p domain.Principal) error {
+	if p.Source == domain.SourceModule && p.UserID.IsZero() {
+		return domain.Forbidden("a module writes a payment with a processor authorization or a viewer")
+	}
+	return nil
 }

@@ -182,6 +182,8 @@ type Service struct {
 	d    Deps
 	gate access.Gate
 	mu   sync.Mutex
+	// processors is the module runtime's payment processor seam (processor.go).
+	processors Processors
 	// pdfMu serializes storing invoice PDFs, so two downloads of one invoice add one file.
 	pdfMu sync.Mutex
 }

@@ -372,6 +372,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.Modules = ext.Modules
+	// Payment processor grants go out through the module runtime (initiateProcessorPayment).
+	if ext.Modules != nil {
+		app.Billing.SetProcessors(ext.Modules)
+	}
 	ph.Panels = app.matterPanels
 	modMux, ok := ext.modH.Routes().(*http.ServeMux)
 	if !ok {

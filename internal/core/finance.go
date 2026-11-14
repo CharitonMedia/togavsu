@@ -124,6 +124,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	if err != nil {
 		return nil, err
 	}
+	bh.Scopes = scopes
 	f.billH = bh.Routes()
 	return f, nil
 }

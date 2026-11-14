@@ -47,6 +47,7 @@ var definitions = []Definition{
 	{Key: "billing.default_hourly_rate_cents", Kind: KindCents, Default: "0.00", Min: 0, HasMin: true, Tab: TabBilling, Help: "Default hourly rate for new users."},
 	{Key: "billing.expense_markup_percent", Kind: KindInt, Default: "0", Min: 0, Max: 1000, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Default expense markup percent. Default 0.", PRD: true},
 	{Key: "billing.payment_terms_days", Kind: KindInt, Default: "30", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Invoice payment terms in days. Default 30.", PRD: true},
+	{Key: "billing.processor_authorization_lifetime", Kind: KindDuration, Default: "30m0s", Min: int64(time.Minute), Max: int64(24 * time.Hour), HasMin: true, HasMax: true, Tab: TabBilling, Help: "How long a payment processor module may use the authorization a staff member gave it for one payment. Default 30 minutes."},
 	{Key: "billing.grace_period_days", Kind: KindInt, Default: "15", Min: 0, Max: 3650, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Grace period before late interest, in days. Default 15.", PRD: true},
 	{Key: "billing.late_interest_enabled", Kind: KindBool, Default: "false", Tab: TabBilling, Help: "Late interest is off unless this is turned on.", PRD: true},
 	{Key: "billing.late_interest_annual_percent", Kind: KindInt, Default: "0", Min: 0, Max: 100, HasMin: true, HasMax: true, Tab: TabBilling, Help: "Annual late-interest percent used when late interest is on."},
