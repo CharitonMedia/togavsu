@@ -2,8 +2,11 @@ package core
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,23 +66,53 @@ func userRowJSON(row dashboard.UserRow) map[string]any {
 	return out
 }
 
+// nullable is a JSON field that is omitted (Set false), null (Set and Null) or a value.
+type nullable[T any] struct {
+	Set, Null bool
+	V         T
+}
+
+func (n *nullable[T]) UnmarshalJSON(b []byte) error {
+	n.Set = true
+	if string(b) == "null" {
+		n.Null = true
+		return nil
+	}
+	return json.Unmarshal(b, &n.V)
+}
+
+// ptr is the service's form of the field: nil leaves it, a pointer to the zero value
+// clears it, and a pointer to the value sets it.
+func (n nullable[T]) ptr() *T {
+	if !n.Set {
+		return nil
+	}
+	v := n.V
+	if n.Null {
+		var zero T
+		v = zero
+	}
+	return &v
+}
+
 // userBody is UserCreate and UserWritePatch.
 type userBody struct {
-	Name      *string    `json:"name"`
-	Email     *string    `json:"email"`
-	Phone     *string    `json:"phone"`
-	Roles     *[]string  `json:"roles"`
-	Password  string     `json:"password"`
-	RateCents *int64     `json:"default_hourly_rate_cents"`
-	BarNumber *string    `json:"bar_number"`
-	BarState  *string    `json:"bar_state"`
-	ContactID *domain.ID `json:"linked_contact_id"`
-	Initials  *string    `json:"initials"`
+	Name      *string             `json:"name"`
+	Email     *string             `json:"email"`
+	Phone     *string             `json:"phone"`
+	Roles     *[]string           `json:"roles"`
+	Password  string              `json:"password"`
+	RateCents nullable[int64]     `json:"default_hourly_rate_cents"`
+	BarNumber *string             `json:"bar_number"`
+	BarState  *string             `json:"bar_state"`
+	ContactID nullable[domain.ID] `json:"linked_contact_id"`
+	Initials  *string             `json:"initials"`
 }
 
 func (b userBody) input() (dashboard.UserInput, error) {
 	in := dashboard.UserInput{Name: b.Name, Email: b.Email, Phone: b.Phone, Password: b.Password,
-		RateCents: b.RateCents, BarNumber: b.BarNumber, BarState: b.BarState, ContactID: b.ContactID}
+		RateCents: b.RateCents.ptr(), BarNumber: b.BarNumber, BarState: b.BarState, ContactID: b.ContactID.ptr(),
+		Initials: b.Initials}
 	if b.Roles != nil {
 		roles, err := dashboard.ParseRoleList(*b.Roles)
 		if err != nil {
@@ -218,15 +251,27 @@ func (a *App) updateMeJSON(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Name     *string `json:"name"`
-		Phone    *string `json:"phone"`
-		Initials *string `json:"initials"`
+		Name     *string             `json:"name"`
+		Phone    *string             `json:"phone"`
+		Initials *string             `json:"initials"`
+		Picture  nullable[domain.ID] `json:"profile_file_id"`
 	}
 	if err := decode(r, &body); err != nil {
 		writeErr(w, err)
 		return
 	}
-	me, err := acc.UpdateMe(r.Context(), p, body.Name, body.Phone, body.Initials)
+	in := dashboard.MeInput{Name: body.Name, Phone: body.Phone, Initials: body.Initials}
+	if body.Picture.Set {
+		var data []byte
+		if !body.Picture.Null {
+			if data, err = a.pictureFromFile(r.Context(), p, body.Picture.V); err != nil {
+				writeErr(w, err)
+				return
+			}
+		}
+		in.Picture = &data
+	}
+	me, err := acc.UpdateMeProfile(r.Context(), p, in)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -234,6 +279,36 @@ func (a *App) updateMeJSON(w http.ResponseWriter, r *http.Request) {
 	out := userJSON(me.User)
 	out["phone"], out["initials"] = me.Phone, me.Initials
 	writeJSON(w, http.StatusOK, out)
+}
+
+// pictureFromFile reads the current version of a file the caller may see, through the
+// files service's wall, role and quarantine checks, for use as their profile picture. The
+// profile keeps a copy of the bytes (see the Accounts ponytail: no profile_file_id column).
+func (a *App) pictureFromFile(ctx context.Context, p domain.Principal, id domain.ID) ([]byte, error) {
+	if a.Files == nil {
+		return nil, domain.NotFound("file")
+	}
+	f, err := a.Files.Get(ctx, p, id)
+	if err != nil {
+		return nil, err
+	}
+	if f.CurrentVersionID == nil {
+		return nil, domain.Invalid("profile_file_id", "the file has no content")
+	}
+	limit := dashboard.PictureMaxBytes()
+	d, err := a.Files.OpenVersion(ctx, p, id, *f.CurrentVersionID, false)
+	if err != nil {
+		return nil, err
+	}
+	defer d.Close()
+	if d.Size > int64(limit) {
+		return nil, domain.Invalid("profile_file_id", "the picture is larger than "+strconv.Itoa(limit/1024)+" KB")
+	}
+	data, err := io.ReadAll(io.LimitReader(d.Body, int64(limit)+1))
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func (a *App) changePasswordJSON(w http.ResponseWriter, r *http.Request) {
