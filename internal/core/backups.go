@@ -257,6 +257,39 @@ func (b *backups) record(ctx context.Context, p domain.Principal, entity, id, fi
 
 // syncPassphrase writes the backups.passphrase setting to the file the
 // supervisor reads, when it differs. No file configured is a no-op.
+// audited makes one supervisor write behind an intent row, as create does for a backup:
+// the request is audited under its own id (entity backup_operation) before do runs, so a
+// write the audit log cannot record is never made. A refused write appends failed with
+// the cause. After a write succeeds, completed and outcome's rows go in one transaction;
+// if those cannot be written the change is already made, so it is logged, not returned.
+func (b *backups) audited(ctx context.Context, p domain.Principal, what string, do func() error, outcome func(context.Context) error) error {
+	req, err := domain.NewID()
+	if err != nil {
+		return err
+	}
+	if err := b.record(ctx, p, "backup_operation", string(req), "requested", what); err != nil {
+		return err
+	}
+	if err := do(); err != nil {
+		if aerr := b.record(ctx, p, "backup_operation", string(req), "failed", err.Error()); aerr != nil {
+			log.Printf("backups: %s (request %s) failed (%v) and its outcome was not audited: %v", what, req, err, aerr)
+		}
+		return err
+	}
+	if err := b.app.Audit.Atomic(ctx, func(ctx context.Context) error {
+		if err := b.record(ctx, p, "backup_operation", string(req), "completed", what); err != nil {
+			return err
+		}
+		if outcome != nil {
+			return outcome(ctx)
+		}
+		return nil
+	}); err != nil {
+		log.Printf("backups: %s (request %s) was made but its outcome was not audited: %v", what, req, err)
+	}
+	return nil
+}
+
 func (b *backups) syncPassphrase(ctx context.Context) error {
 	if b == nil || b.passFile == "" {
 		return nil
@@ -415,11 +448,12 @@ func (b *backups) remove(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := b.call(r.Context(), http.MethodDelete, "/v1/backups/"+id, "", nil, nil); err != nil {
-		fail(w, err)
-		return
-	}
-	if err := b.record(r.Context(), p, "backup", id, "deleted", "true"); err != nil {
+	// Deleting removes the remote copies and the local archive, so it is audited first.
+	if err := b.audited(r.Context(), p, "delete backup "+id, func() error {
+		return b.call(r.Context(), http.MethodDelete, "/v1/backups/"+id, "", nil, nil)
+	}, func(ctx context.Context) error {
+		return b.record(ctx, p, "backup", id, "deleted", "true")
+	}); err != nil {
 		fail(w, err)
 		return
 	}
@@ -647,11 +681,11 @@ func (b *backups) createDestination(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var saved supDestination
-	if err := b.call(r.Context(), http.MethodPost, "/v1/backup-destinations", "application/json", jsonBody(d), &saved); err != nil {
-		fail(w, err)
-		return
-	}
-	if err := b.record(r.Context(), p, "backup_destination", saved.ID, "created", d.Label+" "+d.Name); err != nil {
+	if err := b.audited(r.Context(), p, "create backup destination "+d.ID, func() error {
+		return b.call(r.Context(), http.MethodPost, "/v1/backup-destinations", "application/json", jsonBody(d), &saved)
+	}, func(ctx context.Context) error {
+		return b.record(ctx, p, "backup_destination", saved.ID, "created", d.Label+" "+d.Name)
+	}); err != nil {
 		fail(w, err)
 		return
 	}
@@ -680,28 +714,28 @@ func (b *backups) updateDestination(w http.ResponseWriter, r *http.Request) {
 	}
 	d.UpdatedAt = b.now().UTC().Format(time.RFC3339Nano)
 	var saved supDestination
-	if err := b.call(r.Context(), http.MethodPost, "/v1/backup-destinations", "application/json", jsonBody(d), &saved); err != nil {
+	if err := b.audited(r.Context(), p, "update backup destination "+d.ID, func() error {
+		return b.call(r.Context(), http.MethodPost, "/v1/backup-destinations", "application/json", jsonBody(d), &saved)
+	}, func(ctx context.Context) error {
+		after := destinationJSON(saved)
+		for _, f := range []string{"name", "retention_days"} {
+			if fmt.Sprint(before[f]) != fmt.Sprint(after[f]) {
+				if _, err := b.app.Audit.Record(ctx, p, audit.Change{Entity: "backup_destination", EntityID: domain.ID(saved.ID),
+					Field: f, Old: fmt.Sprint(before[f]), New: fmt.Sprint(after[f])}); err != nil {
+					return err
+				}
+			}
+		}
+		if len(in.Settings) > 0 {
+			// Settings can hold credentials; the row names the change, not the values.
+			return b.record(ctx, p, "backup_destination", saved.ID, "settings", "changed")
+		}
+		return nil
+	}); err != nil {
 		fail(w, err)
 		return
 	}
-	after := destinationJSON(saved)
-	for _, f := range []string{"name", "retention_days"} {
-		if fmt.Sprint(before[f]) != fmt.Sprint(after[f]) {
-			if _, err := b.app.Audit.Record(r.Context(), p, audit.Change{Entity: "backup_destination", EntityID: domain.ID(saved.ID),
-				Field: f, Old: fmt.Sprint(before[f]), New: fmt.Sprint(after[f])}); err != nil {
-				fail(w, err)
-				return
-			}
-		}
-	}
-	if len(in.Settings) > 0 {
-		// Settings can hold credentials; the row names the change, not the values.
-		if err := b.record(r.Context(), p, "backup_destination", saved.ID, "settings", "changed"); err != nil {
-			fail(w, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusOK, after)
+	writeJSON(w, http.StatusOK, destinationJSON(saved))
 }
 
 func (b *backups) removeDestination(w http.ResponseWriter, r *http.Request) {
@@ -714,11 +748,11 @@ func (b *backups) removeDestination(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, domain.NotFound("backup destination"))
 		return
 	}
-	if err := b.call(r.Context(), http.MethodDelete, "/v1/backup-destinations/"+id, "", nil, nil); err != nil {
-		fail(w, err)
-		return
-	}
-	if err := b.record(r.Context(), p, "backup_destination", id, "deleted", "true"); err != nil {
+	if err := b.audited(r.Context(), p, "delete backup destination "+id, func() error {
+		return b.call(r.Context(), http.MethodDelete, "/v1/backup-destinations/"+id, "", nil, nil)
+	}, func(ctx context.Context) error {
+		return b.record(ctx, p, "backup_destination", id, "deleted", "true")
+	}); err != nil {
 		fail(w, err)
 		return
 	}
@@ -737,12 +771,19 @@ func (b *backups) testDestination(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	terr := b.call(r.Context(), http.MethodPost, "/v1/backup-destinations/"+d.ID+"/test", "", nil, nil)
-	result := "ok"
-	if terr != nil {
-		result = "failed"
-	}
-	if err := b.record(r.Context(), p, "backup_destination", d.ID, "tested", result); err != nil {
+	// The test writes and removes a probe on the destination. A failed probe is the
+	// test's result, recorded as such, not a refused request.
+	var terr error
+	if err := b.audited(r.Context(), p, "test backup destination "+d.ID, func() error {
+		terr = b.call(r.Context(), http.MethodPost, "/v1/backup-destinations/"+d.ID+"/test", "", nil, nil)
+		return nil
+	}, func(ctx context.Context) error {
+		result := "ok"
+		if terr != nil {
+			result = "failed"
+		}
+		return b.record(ctx, p, "backup_destination", d.ID, "tested", result)
+	}); err != nil {
 		fail(w, err)
 		return
 	}
