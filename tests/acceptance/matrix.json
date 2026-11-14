@@ -126,8 +126,7 @@
       "integrate-extensions",
       "release-api-coverage",
       "release-final",
-      "module-core",
-      "integrate-modules"
+      "module-core"
     ],
     "implementing_domains": [
       "api",
@@ -136,8 +135,7 @@
       "integrate-documents",
       "integrate-extensions",
       "release-api-coverage",
-      "module-core",
-      "integrate-modules"
+      "module-core"
     ],
     "pending_dependencies": [
       "api",
@@ -147,7 +145,6 @@
       "integrate-extensions",
       "release-api-coverage",
       "module-core",
-      "integrate-modules",
       "contracts",
       "platform",
       "identity",
@@ -292,8 +289,7 @@
       "integrate-extensions",
       "release",
       "release-final",
-      "module-core",
-      "integrate-modules"
+      "module-core"
     ],
     "implementing_domains": [
       "identity",
@@ -302,8 +298,7 @@
       "integrate-finance",
       "integrate-documents",
       "integrate-extensions",
-      "module-core",
-      "integrate-modules"
+      "module-core"
     ],
     "pending_dependencies": [
       "identity",
@@ -313,7 +308,6 @@
       "integrate-documents",
       "integrate-extensions",
       "module-core",
-      "integrate-modules",
       "billing",
       "trust",
       "ui",
@@ -1820,14 +1814,7 @@
       "integrate-extensions",
       "release",
       "release-final",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1835,14 +1822,7 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -1850,14 +1830,7 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "note": "Matter Clock installs from a local file, shows its permission prompt, widget, and tab, receives an event, and uninstalls. The core process does not restart.",
     "legacy_failures": [],
@@ -1968,14 +1941,7 @@
       "integrate-extensions",
       "release",
       "release-final",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "implementing_domains": [
       "integrate-practice",
@@ -1983,14 +1949,7 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "pending_dependencies": [
       "integrate-practice",
@@ -1998,14 +1957,7 @@
       "integrate-documents",
       "modules",
       "integrate-extensions",
-      "module-core",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules",
-      "release-modules"
+      "module-core"
     ],
     "note": "Unsigned and tampered packages are refused before a container starts. A trusted local signature is the control.",
     "legacy_failures": [],
@@ -12196,39 +12148,21 @@
       "modules",
       "integrate-extensions",
       "release",
-      "release-final",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "note": "matter_targets lives in the sample module schema and points at matters. include= shows it. The module login cannot read core contacts. A second module reads the published view only after the admin approves the scope. Walls still apply.",
     "legacy_failures": [],
@@ -12373,39 +12307,21 @@
       "modules",
       "integrate-extensions",
       "release",
-      "release-final",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "note": "A migration that creates a contacts table, writes outside its schema, or adds a trigger is refused. A changed migration that already ran is refused. A failing migration rolls back and the old version keeps running.",
     "legacy_failures": [],
@@ -12553,39 +12469,21 @@
       "modules",
       "integrate-extensions",
       "release",
-      "release-final",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "release-final"
     ],
     "implementing_domains": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "pending_dependencies": [
       "integrate-practice",
       "integrate-finance",
       "integrate-documents",
       "modules",
-      "integrate-extensions",
-      "module-documents",
-      "module-email",
-      "module-client-portal",
-      "module-lawpay-docuseal",
-      "module-quickbooks",
-      "integrate-modules"
+      "integrate-extensions"
     ],
     "note": "Delete data drops the schema only after a backup and the typed confirmation. A core row that module rows point at cannot be hard-deleted.",
     "legacy_failures": [],
