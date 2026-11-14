@@ -118,7 +118,7 @@ func TestReleaseBulkCustomFieldsReplacedTime(t *testing.T) {
 	}
 	one, two, refused, missing := newID(), newID(), newID(), newID()
 	mod := &extTimeModule{known: map[string]bool{one: true, two: true, refused: true}, refuse: refused}
-	x.rt.handlers["time-plus"] = mod.handler(t)
+	x.rt.Handle("time-plus", mod.handler(t))
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extTimeManifest))); problem != "" {
 		t.Fatalf("install time-plus: %s", problem)
 	}

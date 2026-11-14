@@ -12,7 +12,6 @@ package main
 import (
 	"crypto/ed25519"
 	"database/sql"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -24,7 +23,7 @@ import (
 	"time"
 
 	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
-	"github.com/CharitonMedia/togavsu/internal/marketplace"
+	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -96,11 +95,10 @@ func pack(args []string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	seed, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
-	if err != nil || len(seed) != ed25519.SeedSize {
-		log.Fatal("the key file must hold a base64 ed25519 seed")
+	priv, err := modulekit.ParseSeed(string(raw))
+	if err != nil {
+		log.Fatal(err)
 	}
-	priv := ed25519.NewKeyFromSeed(seed)
 	pkg, err := matterclock.Build(priv, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -109,5 +107,5 @@ func pack(args []string) {
 		log.Fatal(err)
 	}
 	pub := priv.Public().(ed25519.PublicKey)
-	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, marketplace.KeyID(pub), marketplace.PublicKeyPEM(pub))
+	fmt.Printf("wrote %s, signed by key %s\npublic key (add it as a trusted signing key, public_key_pem):\n%s", *out, modulekit.KeyID(pub), modulekit.PublicKeyPEM(pub))
 }

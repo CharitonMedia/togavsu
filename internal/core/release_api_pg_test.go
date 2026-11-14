@@ -238,7 +238,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	}
 	x.approveOnTab("matter-clock")
 	mod := newClient(t, x.srv.URL)
-	mod.bearer = x.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	mod.bearer = x.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 	byModule := mod.must(http.StatusCreated, "POST", "/api/v1/events", ev(open, "matter-clock.target_met", "Target met"))
 	if byModule.json["actor_kind"] != "module" || byModule.json["actor_id"] != nil {
 		t.Fatalf("module event: %s", byModule.body)

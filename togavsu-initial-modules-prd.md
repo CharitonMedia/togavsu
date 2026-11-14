@@ -22,9 +22,9 @@ The modules need core additions the released core doesn't have. Those ship first
 
 ## 2. Fixed decisions
 
-- **Core first.** The core release (core PRD section 11, phase 7) finishes and tags with no module. Then the module API update (section 4) ships as a signed core update. Then the five modules build in parallel.
+- **Core first.** The core release (core PRD section 11, phase 7) finishes and tags with no module. Then the module API update (section 4) ships as a signed core update. The five modules build in parallel from Nov 14, 2026, beside the core release, against the module API as section 4 and CORE-CHANGES.md name it; each module's acceptance against the real core runs once the module API update is released (Patrick's decision, Nov 14, 2026).
 - **Marketplace modules, not core.** Each module is its own signed package and container image, under every rule in core PRD sections 9 and 9.9. The core still installs and runs with none of them.
-- **One repo.** Module source lives in CharitonMedia/togavsu under modules/<id>/, beside examples/matter-clock. Images publish to ghcr.io/charitonmedia/togavsu-<id>.
+- **A repository per module.** Each module's source lives in its own repository, CharitonMedia/togavsu-<id> (togavsu-documents, togavsu-email, togavsu-client-portal, togavsu-lawpay-docuseal, togavsu-quickbooks), so each module builds independently and is accepted into the marketplace from its repository (Patrick's decision, Nov 14, 2026; it replaces the earlier single-repository plan). Images publish to ghcr.io/charitonmedia/togavsu-<id>.
 - **Listing:** author Chariton Media, price free, for all five (section 11.3). Every manifest says `author: Chariton Media` and `price: Free`; the specs' other values ("Togavsu", "Togavsu build", "Included") are replaced.
 - **License:** "Same as Togavsu", the core's source-available license (core PRD section 3).
 - **Version:** each module starts at 1.0.0.
@@ -33,7 +33,7 @@ The modules need core additions the released core doesn't have. Those ship first
 - **Money stays in the core.** Payments, refunds and trust entries are core records written through the core API. The trust ledger stays append-only; a correction is a reversal. A below-zero trust entry posts, flags and emails, through a module exactly as through the core.
 - **No restarts.** Installing, configuring, updating, disabling and removing a module never restarts the core. The core update applies itself overnight in the firm's update window.
 - **Endpoints for agents.** Every action on a module screen is also a JSON endpoint under /m/<id>/api/, authenticated by a context token an agent gets with its bearer token from POST /api/v1/modules/<id>/context-tokens. Each module serves its own OpenAPI document at /m/<id>/api/openapi.json and lists its endpoints in its help guide.
-- **Every tunable is a setting.** A value a firm might change is a module setting on the module's settings form (admin page, Modules and marketplace tab), never a literal in code, so the core's settings.CheckModule passes. Limits an outside service fixes (Intuit's request ceiling, Microsoft Graph's 3 MB upload threshold) stay constants.
+- **Every tunable is a setting.** A value a firm might change is a module setting on the module's settings form (admin page, Modules and marketplace tab), never a literal in code, so the core's settings check passes (`modulekit.CheckSource` in each module repository). Limits an outside service fixes (Intuit's request ceiling, Microsoft Graph's 3 MB upload threshold) stay constants.
 - **Credentials at runtime only.** LawPay, DocuSeal, Intuit, Google and Microsoft keys and mailbox sign-ins are entered by the firm admin (or, for a personal mailbox, its owner) at runtime. Module secrets sit in the core's sealed secret store or as secret settings, never in a module table, log or response. The build creates no service credential and never uses client data.
 - **Outside services are faked in every test.** No test, CI job or default setting reaches LawPay, DocuSeal, Intuit, Google, Microsoft or a real mail server.
 
@@ -122,7 +122,8 @@ Each item carries its own core tests beside the code it changes. The update is d
 - **Events:** each module verifies the core's webhook signature (HMAC of the raw body, timestamp within five minutes) and handles each event id once.
 - **Help:** each module registers its guide pages under its own heading, in real Markdown that gives the menu path and how to use each screen; client users get no help pages.
 - **Agent endpoints:** section 2. Each module's acceptance suite calls at least one endpoint per screen action with an agent's context token.
-- **Code:** Go standard library and existing go.mod dependencies only; server-rendered HTMX pages; a Dockerfile on a distroless runtime; `serve` and `package` subcommands as matter-clock has. Each lane writes only modules/<id>/, docs/modules/<id>/ and its one acceptance suite internal/modules/module_<id with underscores>_pg_test.go.
+- **Module kit:** a module repository can't import the core's `internal/` packages, so the core exports a public module kit that every module uses and none copies. `pkg/modulekit` parses and checks manifests and migrations, builds the package, signs and verifies it with Ed25519, and gives the key id, the public key PEM and the signed package file. The `cmd/togavsu-module` tool runs `check`, `package -dir -key -out` and `verify -file -pub` over it; it never generates or stores a key. `pkg/modulekit/coretest` is the composed core that a module's acceptance suite installs its signed package on, against real Postgres. matter-clock is built on the kit as the reference module. A module keeps no packaging, signing or manifest code of its own.
+- **Code:** Go standard library, the dependencies already pinned in the core's go.mod, and the core module itself (github.com/CharitonMedia/togavsu), which each module repository requires at a pinned core revision for the module kit only; server-rendered HTMX pages; a Dockerfile on a distroless runtime; `serve` and `package` subcommands as matter-clock has. Each module's build writes only its own repository, CharitonMedia/togavsu-<id>; the spec stays at docs/modules/<id>/ in the core repository.
 
 ## 6. Documents and templates (`documents`)
 
@@ -615,8 +616,8 @@ Any write from QuickBooks back into Togavsu or any Intuit webhook (a later versi
 ### 11.1 Signing
 
 - Each module image is built by the release workflow, pushed to ghcr.io/charitonmedia/togavsu-<id> and signed with Cosign using the same release signing path as the core images; its digest goes into the manifest before the package is signed.
-- Each package (manifest, migrations and help, with the image digest) is signed through the marketplace signing path matter-clock uses (marketplace.Sign, SignedPackage, KeyID) by `<id> package -key <key file> -out <id>.signed.json`, with the Chariton Media author key.
-- The Chariton Media author key is an Ed25519 key kept as a GitHub repository secret beside the Togavsu release key. It is added beside the release key before the sign, publish and list stage (12.1 step 5), and its public key is registered on the Chariton Media author account on the marketplace. No module lane sees the private key; only the release workflow signs.
+- Each package (manifest, migrations and help, with the image digest) is signed through the module kit (section 5), the same signing path the core uses, by `<id> package -key <key file> -out <id>.signed.json` or `togavsu-module package`, with the Chariton Media author key.
+- The Chariton Media author key is an Ed25519 key kept as a GitHub Actions secret in each module repository (CharitonMedia/togavsu-<id>), separate from the Togavsu release key, which stays in the core repository. It is added before the sign, publish and list stage (12.1 step 5), and its public key is registered on the Chariton Media author account on the marketplace. No build unit sees the private key; only each module repository's release workflow signs.
 - A tampered or unsigned package is refused by the core at install.
 
 ### 11.2 Submission
@@ -643,22 +644,24 @@ Each listing shows the author, the author's verified signing key, every permissi
 
 ### 12.1 Order
 
-1. **Control change** (integration lead), in two parts. The first puts the five specs and CORE-CHANGES.md on main under docs/modules/, this PRD at the repo root beside the core PRD, and the core PRD 9.10 pointer. The second, once the first has merged, pins the email libraries in go.mod, gives docs/build/tasks.json and the controller plan the assignments below, and has the controller and review gate read this PRD for module tasks. The Chariton Media author key is added before step 5 (11.1).
+1. **Control change** (integration lead), in three parts. The first put the five specs and CORE-CHANGES.md on main under docs/modules/, this PRD at the repo root beside the core PRD, and the core PRD 9.10 pointer. The second pinned the email libraries in go.mod, gave docs/build/tasks.json and the controller plan the module assignments, and had the controller and review gate read this PRD for module tasks. The third (Nov 14, 2026) removes the in-repo module lanes, since the modules build in their own repositories, leaves module-core and release-module-api in the plan, and adds the module kit (section 5). The Chariton Media author key is added before step 5 (11.1).
 2. **Module API update** (one module-core lane): CORE-01 to CORE-29 in the order of 4.4, merged to main, released as a signed core image, and applied through the overnight updater. Done when CU-01 to CU-05 pass.
-3. **Five module lanes in parallel**, each starting from the released core: documents, email, client-portal, lawpay-docuseal and quickbooks. None depends on another; client-portal tests the lawpay-docuseal views against a signed test fixture module that never ships.
-4. **Integrate modules** (integration lead): all five on one core, the cross-module checks in section 13, the guide pages, and the fresh-install checks.
-5. **Sign, publish and list** (release workflow): images, packages, module tags, marketplace upload (section 11).
+3. **Five module builds in parallel**, one per module repository, started Nov 14, 2026 beside the core release lanes: documents, email, client-portal, lawpay-docuseal and quickbooks. Each builds and tests against a fake core that serves the contract plus the CORE items it uses, packages and signs with the module kit, then runs its acceptance on `pkg/modulekit/coretest` at the released core revision once step 2 lands. None depends on another; client-portal tests the lawpay-docuseal views against a signed test fixture module that never ships.
+4. **Integrate modules** (integration lead): all five signed packages, built from their repositories, on one released core, the cross-module checks in section 13, the guide pages, and the fresh-install checks.
+5. **Sign, publish and list** (each module repository's release workflow): images, packages, module tags, marketplace upload (section 11).
+
+The build controller in this repository runs steps 1 and 2. Steps 3 to 5 run outside it, from the Togavsu modules task, where the integration lead runs one build unit per module repository under the same rules. After a repository's first commit, every change to its main lands by pull request, with its CI passing and a Codex review of the head commit, and the lead fixes and resolves every finding before merging. A unit that fails three fix passes on the same issue stops work on that issue, and the lead raises it with Patrick in the Togavsu modules task, which notifies him; work that doesn't depend on it keeps going. GitHub emails Patrick each failed workflow run in the module repositories, release workflows included.
 
 ### 12.2 How it runs
 
-- The build runs the way the core build runs: the build controller (scripts/build_controller.py), lane agents on GitHub-hosted runners or Cursor-hosted VMs, GitHub as the canonical source, docs/build/WORKFLOW.md as the procedure. Lane agents use sub-agents wherever their work splits, so each lane's context stays clear. No phase waits for approval once this PRD is approved.
+- Steps 1 and 2 run the way the core build runs: the build controller (scripts/build_controller.py), lane agents on GitHub-hosted runners or Cursor-hosted VMs, GitHub as the canonical source, docs/build/WORKFLOW.md as the procedure. Lane agents use sub-agents wherever their work splits, so each lane's context stays clear. No phase waits for approval once this PRD is approved.
 - Nothing builds, tests or installs on Patrick's machines. Render-1 holds only the control checkout and launches cloud jobs.
-- Each lane writes only its owned paths (section 5). The module-core lane never edits a module suite file, and module lanes never edit core packages, .github/, go.mod or protected control files. A lane that needs another dependency proposes it in its PR for the integration lead.
+- Each module build unit writes only its own repository (section 5), and the module-core lane writes only the core repository, where it keeps the module kit working. A module that needs a dependency the core's go.mod doesn't pin proposes it to the integration lead, who pins it in the core by a control change before the module uses it.
 
 ### 12.3 Tests
 
-- Every test is Go and runs in the "Core tests" CI job against real Postgres, with generated synthetic data only. No client data is used anywhere.
-- Each module has unit tests under modules/<id>/ and one Postgres acceptance suite in internal/modules/, which builds and signs the package with a generated test key, trusts it, installs it on the composed core, approves its scopes and drives every MOD criterion with users of every role, a walled matter, and context, device and agent tokens. Failure paths are part of each criterion.
+- Every test is Go and runs in the module repository's CI against real Postgres, with generated synthetic data only. No client data is used anywhere.
+- Each module has unit tests and one Postgres acceptance suite in its repository. Until the module API update is released the suite runs against a fake core serving the contract plus the CORE items the module uses; after it, on `pkg/modulekit/coretest` at the released core revision. The suite builds and signs the package with the module kit and a generated test key, trusts it, installs it on the composed core, approves its scopes and drives every MOD criterion with users of every role, a walled matter, and context, device and agent tokens. Failure paths are part of each criterion.
 - Outside services: fake adapters and local test servers only. LawPay and DocuSeal use in-memory fakes; QuickBooks uses its fake and an httptest server; Gmail and Graph use httptest stand-ins of their wire formats; IMAP and SMTP use the go-imap v2 in-memory server and a local SMTP listener on 127.0.0.1. Test helpers refuse any other host, live adapters are built only from settings at runtime, and no test or CI job reaches a real service.
 - Keys and sign-ins are entered by the firm admin at runtime. The build creates no service credential; tests use generated keys and placeholder tokens that work only against the fakes.
 
@@ -667,7 +670,7 @@ Each listing shows the author, the author's verified signing key, every permissi
 - Every PR gets the Codex checkpoint at its exact base and head SHAs. A missing, failed, stale or incomplete review blocks the merge, and every new commit needs another review. The reviewer doesn't author the code it approves.
 - The integration lead merges only after every required check passes and every finding is resolved, under strict branch protection.
 - Each stage ends at an automated checkpoint: executable tests pass, the integrated revision is reviewed, the simplification review runs (core PRD section 11, with PONYTAIL-DEBT.md updated), and the reporter files its report.
-- **Fix passes:** limit passes to fix the same issue to 3, then raise it with Patrick. The build controller emails Patrick at the stall-alert address, naming the issue, the three attempts and what's blocking, and the reporter posts the same on the tracking issue. Work that doesn't depend on that issue keeps going.
+- **Fix passes:** limit passes to fix the same issue to 3, then raise it with Patrick. The build controller emails Patrick at the stall-alert address, naming the issue, the three attempts and what's blocking, and the reporter posts the same on the tracking issue. Work that doesn't depend on that issue keeps going. Steps 3 to 5 report and stop as 12.1 says.
 
 ### 12.5 Reporter
 

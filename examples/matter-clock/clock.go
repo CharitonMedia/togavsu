@@ -14,7 +14,6 @@ import (
 	"crypto/ed25519"
 	"database/sql"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 )
 
 // Small fixed numbers spelled as arithmetic so the AC-030 source check, which also
@@ -47,19 +46,11 @@ var packageFS embed.FS
 
 // Files returns the package files (manifest and migrations) by package path.
 func Files() (map[string][]byte, error) {
-	out := map[string][]byte{}
-	err := fs.WalkDir(packageFS, "package", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		b, err := packageFS.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		out[strings.TrimPrefix(p, "package/")] = b
-		return nil
-	})
-	return out, err
+	dir, err := fs.Sub(packageFS, "package")
+	if err != nil {
+		return nil, err
+	}
+	return modulekit.Files(dir)
 }
 
 // Archive writes the unsigned package. edit, when set, changes the files first (tests
@@ -72,7 +63,7 @@ func Archive(edit func(map[string][]byte)) ([]byte, error) {
 	if edit != nil {
 		edit(files)
 	}
-	return modules.Archive(files)
+	return modulekit.Archive(files)
 }
 
 // Build writes the package signed with priv as the marketplace's signed package file
@@ -87,15 +78,9 @@ func Build(priv ed25519.PrivateKey, edit func(map[string][]byte)) ([]byte, error
 	return SignFile(priv, pkg)
 }
 
-// SignFile wraps package bytes in a signed package file.
+// SignFile wraps package bytes in a signed package file (modulekit.SignFile).
 func SignFile(priv ed25519.PrivateKey, pkg []byte) ([]byte, error) {
-	m, err := marketplace.ReadManifest(pkg)
-	if err != nil {
-		return nil, err
-	}
-	return json.Marshal(marketplace.SignedPackage{ListingID: m.ID, Version: m.Version, Digest: marketplace.Digest(pkg),
-		Signature: marketplace.Sign(priv, pkg), KeyID: marketplace.KeyID(priv.Public().(ed25519.PublicKey)),
-		PackageBase64: base64.StdEncoding.EncodeToString(pkg)})
+	return modulekit.SignFile(priv, pkg)
 }
 
 // Config is what the container gets: the core's address, its secrets and its own DB.

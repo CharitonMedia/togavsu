@@ -4,18 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"html"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -23,11 +19,10 @@ import (
 
 	"github.com/CharitonMedia/togavsu/api"
 	matterclock "github.com/CharitonMedia/togavsu/examples/matter-clock"
-	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
-	"github.com/CharitonMedia/togavsu/internal/identity"
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
 	service "github.com/CharitonMedia/togavsu/marketplace"
 )
 
@@ -36,134 +31,28 @@ import (
 // the running core core.Open builds (no second composition), over HTTP with real
 // sessions, CSRF and bearer tokens, on Postgres as the non-superuser core role.
 
-// extRuntime stands in for the supervisor: Deploy starts the module's server in this
-// process with the secrets the core handed over, so the module really calls the core with
-// its token, verifies its webhooks with its secret and uses its own database login.
-type extRuntime struct {
-	x           *ext
-	mu          sync.Mutex
-	servers     map[string]*httptest.Server
-	handlers    map[string]http.Handler
-	deployments []modules.Deployment
-	requests    map[string][]*http.Request
-}
-
-func (f *extRuntime) Deploy(_ context.Context, d modules.Deployment) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deployments = append(f.deployments, d)
-	if old := f.servers[d.Module]; old != nil {
-		old.Close()
-	}
-	h, ok := f.handlers[d.Module]
-	if !ok {
-		mdb := f.x.moduleDB(d.Secrets["togavsu_db_role"], d.Secrets["togavsu_db_password"])
-		h = matterclock.New(matterclock.Config{Core: f.x.srv.URL, Token: d.Secrets["togavsu_api_token"],
-			WebhookSecret: d.Secrets["togavsu_webhook_secret"], DB: mdb, SkewSeconds: 300}).Handler()
-	}
-	module := d.Module
-	f.servers[d.Module] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.requests[module] = append(f.requests[module], r.Clone(context.Background()))
-		f.mu.Unlock()
-		h.ServeHTTP(w, r)
-	}))
-	return nil
-}
-
-func (f *extRuntime) Stop(_ context.Context, module string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if s := f.servers[module]; s != nil {
-		s.Close()
-		delete(f.servers, module)
-	}
-	return nil
-}
-
-func (f *extRuntime) Remove(ctx context.Context, module string) error { return f.Stop(ctx, module) }
-
-func (f *extRuntime) BaseURL(module string) string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if s := f.servers[module]; s != nil {
-		return s.URL
-	}
-	return "http://127.0.0.1:1"
-}
-
-func (f *extRuntime) last(module string) modules.Deployment {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i := len(f.deployments) - 1; i >= 0; i-- {
-		if f.deployments[i].Module == module {
-			return f.deployments[i]
-		}
-	}
-	return modules.Deployment{}
-}
-
-func (f *extRuntime) paths(module string) []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	var out []string
-	for _, r := range f.requests[module] {
-		out = append(out, r.URL.Path)
-	}
-	return out
-}
-
-type extBackups struct {
-	mu   sync.Mutex
-	made []modules.Backup
-}
-
-func (b *extBackups) Create(_ context.Context, _ string) (modules.Backup, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	id, _ := domain.NewID()
-	bk := modules.Backup{ID: string(id), CreatedAt: time.Now().UTC(), SHA256: "synthetic-sha", Bytes: 1}
-	b.made = append(b.made, bk)
-	return bk, nil
-}
-
-func (b *extBackups) Get(_ context.Context, id string) (modules.Backup, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, bk := range b.made {
-		if bk.ID == id {
-			return bk, nil
-		}
-	}
-	return modules.Backup{}, domain.NotFound("backup")
-}
-
-// ext is a running core with the module runtime on fakes for the supervisor only.
+// ext is a running core with the module runtime on fakes for the supervisor only:
+// testkit.Runtime starts each deployed module's server in this process with the secrets
+// the core handed over (matter-clock unless a test routes the module elsewhere), and
+// testkit.Backups records synthetic archives.
 type ext struct {
 	*docs
-	rt      *extRuntime
-	backups *extBackups
+	rt      *testkit.Runtime
+	backups *testkit.Backups
 	priv    ed25519.PrivateKey
-	dbs     []*sql.DB
 }
 
 func newExt(t *testing.T, cfg ...func(*Config)) *ext {
 	t.Helper()
-	x := &ext{backups: &extBackups{}}
-	x.rt = &extRuntime{x: x, servers: map[string]*httptest.Server{}, handlers: map[string]http.Handler{}, requests: map[string][]*http.Request{}}
-	t.Cleanup(func() {
-		x.rt.mu.Lock()
-		for _, s := range x.rt.servers {
-			s.Close()
-		}
-		x.rt.mu.Unlock()
-		for _, d := range x.dbs {
-			_ = d.Close()
-		}
-	})
+	x := &ext{backups: &testkit.Backups{}}
 	all := append([]func(*Config){func(c *Config) {
+		x.rt = testkit.NewRuntime(func() string { return x.srv.URL }, c.DatabaseURL)
+		x.rt.Default = func(m testkit.Module) http.Handler {
+			return matterclock.New(matterclock.Config{Core: m.CoreURL, Token: m.Token, WebhookSecret: m.WebhookSecret, DB: m.DB, SkewSeconds: 300}).Handler()
+		}
+		t.Cleanup(x.rt.Close)
 		c.ModuleRuntime, c.ModuleBackups, c.NoBackground = x.rt, x.backups, true
-		dropModuleRoles(t, c.DatabaseURL)
+		testkit.DropModuleRoles(t, c.DatabaseURL)
 	}}, cfg...)
 	x.docs = newDocs(t, all...)
 	_, priv, err := ed25519.GenerateKey(nil)
@@ -174,92 +63,25 @@ func newExt(t *testing.T, cfg ...func(*Config)) *ext {
 	return x
 }
 
-// dropModuleRoles removes the module logins the core made for dsn's database, now (a
-// previous run's, whose database testDSN already dropped) and at cleanup: roles are
-// cluster-wide, and appRoleDSN's cleanup drops only the database and the core role.
-func dropModuleRoles(t *testing.T, dsn string) {
-	u, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	name := strings.TrimPrefix(u.Path, "/")
-	sum := sha256.Sum256([]byte(name))
-	tag := hex.EncodeToString(sum[:4])
-	drop := func() {
-		raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
-		admin, err := db.OpenPostgres(raw, "")
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		rows, err := admin.QueryContext(context.Background(), `SELECT rolname FROM pg_roles WHERE rolname LIKE 'mod\_%' AND rolname LIKE $1`, "%_"+tag)
-		if err != nil {
-			return
-		}
-		var roles []string
-		for rows.Next() {
-			var r string
-			if rows.Scan(&r) == nil {
-				roles = append(roles, r)
-			}
-		}
-		rows.Close()
-		if len(roles) == 0 {
-			return
-		}
-		// The roles own the module schemas in this test's database: drop those first.
-		tu, _ := url.Parse(raw)
-		tu.Path = "/" + name
-		if own, err := db.OpenPostgres(tu.String(), ""); err == nil {
-			for _, r := range roles {
-				_, _ = own.ExecContext(context.Background(), `DROP OWNED BY "`+r+`" CASCADE`)
-			}
-			_ = own.Close()
-		}
-		for _, r := range roles {
-			_, _ = admin.ExecContext(context.Background(), `DROP ROLE IF EXISTS "`+r+`"`)
-		}
-	}
-	drop()
-	t.Cleanup(drop)
-}
-
 func (x *ext) moduleDB(role, password string) *sql.DB {
 	x.t.Helper()
-	u, err := url.Parse(x.cfg.DatabaseURL)
+	d, err := x.rt.OpenDB(role, password)
 	if err != nil {
 		x.t.Fatal(err)
 	}
-	u.User = url.UserPassword(role, password)
-	d, err := db.OpenPostgres(u.String(), "")
-	if err != nil {
-		x.t.Fatal(err)
-	}
-	x.dbs = append(x.dbs, d)
 	return d
 }
 
 // principal is c's signed-in principal, for direct service calls in setup.
 func (x *ext) principal(c *client) domain.Principal {
 	x.t.Helper()
-	u, _ := url.Parse(x.srv.URL)
-	var session string
-	for _, ck := range c.http.Jar.Cookies(u) {
-		if ck.Name == sessionCookie {
-			session = ck.Value
-		}
-	}
-	caller, err := x.app.Identity.Authenticate(context.Background(), identity.Presented{SessionToken: session})
-	if err != nil {
-		x.t.Fatal(err)
-	}
-	return caller.Principal
+	return testkit.Caller(x.t, x.app.Identity, c.kit()).Principal
 }
 
 // trustKey adds pub as a trusted local key over the API.
 func (x *ext) trustKey(name string, pub ed25519.PublicKey) {
 	x.t.Helper()
-	x.admin.must(http.StatusCreated, "POST", "/api/v1/trusted-signing-keys", map[string]any{"name": name, "public_key_pem": marketplace.PublicKeyPEM(pub)})
+	testkit.TrustKey(x.admin.kit(), name, pub)
 }
 
 func (x *ext) build(edit func(map[string][]byte)) []byte {
@@ -274,80 +96,20 @@ func (x *ext) build(edit func(map[string][]byte)) []byte {
 // upload posts a multipart form with one package file, as the browser does.
 func (c *client) upload(path string, fields url.Values, pkg []byte) resp {
 	c.t.Helper()
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	for k, vs := range fields {
-		for _, v := range vs {
-			_ = mw.WriteField(k, v)
-		}
-	}
-	if pkg != nil {
-		fw, _ := mw.CreateFormFile("package", "module.json")
-		_, _ = fw.Write(pkg)
-	}
-	_ = mw.Close()
-	req, err := http.NewRequest("POST", c.base+path, &buf)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	if c.csrf != "" && fields.Get("csrf") == "" {
-		req.Header.Set("X-CSRF-Token", c.csrf)
-	}
-	if c.bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearer)
-	}
-	res, err := c.http.Do(req)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	out := resp{code: res.StatusCode, body: string(raw), loc: res.Header.Get("Location")}
-	_ = json.Unmarshal(raw, &out.json)
-	return out
+	return fromKit(c.kit().Upload(path, fields, pkg))
 }
 
 // tabForm posts an admin Modules tab form with the session's CSRF field and returns the
 // redirect's notice or error.
 func (x *ext) tabForm(c *client, action string, v url.Values, pkg []byte) (notice, problem string) {
 	x.t.Helper()
-	if v == nil {
-		v = url.Values{}
-	}
-	v.Set("csrf", c.csrf)
-	var r resp
-	if pkg != nil || action == "install" || action == "update" {
-		r = c.upload("/admin/modules/"+action, v, pkg)
-	} else {
-		r = c.do("POST", "/admin/modules/"+action, v, "X-CSRF-Token", "")
-	}
-	if r.code != http.StatusSeeOther {
-		x.t.Fatalf("tab %s: %d %s", action, r.code, r.body)
-	}
-	u, err := url.Parse(r.loc)
-	if err != nil || !strings.HasPrefix(u.Path, "/admin") {
-		x.t.Fatalf("tab %s redirect %q", action, r.loc)
-	}
-	return u.Query().Get("notice"), u.Query().Get("error")
+	return testkit.TabForm(c.kit(), action, v, pkg)
 }
 
 // approveOnTab approves every undecided permission of module through the tab.
 func (x *ext) approveOnTab(module string) {
 	x.t.Helper()
-	v, err := x.app.Modules.Get(context.Background(), x.adminP(), module)
-	if err != nil {
-		x.t.Fatal(err)
-	}
-	form := url.Values{"module_id": {module}}
-	for _, p := range v.Permissions {
-		if p.Decision == "pending" {
-			form.Set("scope:"+p.Scope, "approve")
-		}
-	}
-	if _, problem := x.tabForm(x.admin, "permissions", form, nil); problem != "" {
-		x.t.Fatalf("approve %s: %s", module, problem)
-	}
+	testkit.ApproveOnTab(x.admin.kit(), x.app.Modules, x.adminP(), module)
 }
 
 func (x *ext) installSample() {
@@ -409,7 +171,7 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if _, problem := x.tabForm(x.admin, "install", nil, tampered); problem == "" {
 		t.Fatal("tampered package accepted on the admin tab")
 	}
-	if x.count(`SELECT COUNT(*) FROM core.modules`) != 0 || len(x.rt.deployments) != 0 {
+	if x.count(`SELECT COUNT(*) FROM core.modules`) != 0 || len(x.rt.Deployments()) != 0 {
 		t.Fatal("a refused package left a module behind")
 	}
 
@@ -441,11 +203,11 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 			t.Fatalf("modules tab lacks %q", want)
 		}
 	}
-	if len(x.rt.deployments) != 0 || widgetOffered(t, x.staff, "matter-clock.hours") {
+	if len(x.rt.Deployments()) != 0 || widgetOffered(t, x.staff, "matter-clock.hours") {
 		t.Fatal("the module ran before approval")
 	}
 	x.approveOnTab("matter-clock")
-	dep := x.rt.last("matter-clock")
+	dep := x.rt.Last("matter-clock")
 	if dep.Secrets["togavsu_api_token"] == "" || dep.Secrets["togavsu_db_role"] == "" {
 		t.Fatalf("deployment: %+v", dep)
 	}
@@ -535,11 +297,11 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 		t.Fatalf("webhook delivery: %d %v", sent, err)
 	}
 	gotEvent := false
-	for _, p := range x.rt.paths("matter-clock") {
+	for _, p := range x.rt.Paths("matter-clock") {
 		gotEvent = gotEvent || p == "/events"
 	}
 	if !gotEvent {
-		t.Fatalf("the module got no event: %v", x.rt.paths("matter-clock"))
+		t.Fatalf("the module got no event: %v", x.rt.Paths("matter-clock"))
 	}
 	if r := x.admin.must(http.StatusOK, "GET", "/api/v1/webhook-deliveries?module_id=matter-clock", nil); !strings.Contains(r.body, "time_entry.") {
 		t.Fatalf("delivery log: %s", r.body)
@@ -573,7 +335,7 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	// AC-014: a module switched in for calendar takes the calendar API and screens on the
 	// next request; switching back restores the core's.
 	calendar, _ := extCalendarModule(t)
-	x.rt.handlers["calendar-plus"] = calendar
+	x.rt.Handle("calendar-plus", calendar)
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extCalendarManifest))); problem != "" {
 		t.Fatalf("install calendar-plus: %s", problem)
 	}
@@ -593,7 +355,7 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	// A replaced domain keeps the core's gates: signed out, a browser screen goes to
 	// sign-in and an API call gets 401; a cookie write without CSRF gets 403; a token
 	// without the route's scope gets 403. None of them reaches the module.
-	seen := len(x.rt.paths("calendar-plus"))
+	seen := len(x.rt.Paths("calendar-plus"))
 	anon := newClient(t, x.srv.URL)
 	if r := anon.do("GET", "/api/v1/calendar-events", nil); r.code != http.StatusUnauthorized {
 		t.Fatalf("signed-out API call to the replaced calendar: %d %s", r.code, r.body)
@@ -613,7 +375,7 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if r := reader.do("GET", "/api/v1/calendar-events", nil); r.code != http.StatusForbidden {
 		t.Fatalf("token without the calendar scope: %d %s", r.code, r.body)
 	}
-	if got := x.rt.paths("calendar-plus"); len(got) != seen {
+	if got := x.rt.Paths("calendar-plus"); len(got) != seen {
 		t.Fatalf("a refused request reached the replacement module: %v", got[seen:])
 	}
 	if _, problem := x.tabForm(x.admin, "domain", url.Values{"domain": {"calendar"}, "module_id": {""}}, nil); problem != "" {
@@ -645,11 +407,11 @@ func TestExtensionsModuleLifecycle(t *testing.T) {
 	if x.count(`SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'mod_matter_clock'`) != 1 {
 		t.Fatal("the schema went without confirmation")
 	}
-	backups := len(x.backups.made)
+	backups := len(x.backups.Made())
 	if _, problem := x.tabForm(x.admin, "uninstall", url.Values{"module_id": {"matter-clock"}, "data": {"delete"}, "confirmation": {"matter-clock"}}, nil); problem != "" {
 		t.Fatalf("uninstall: %s", problem)
 	}
-	if len(x.backups.made) != backups+1 || x.count(`SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'mod_matter_clock'`) != 0 {
+	if len(x.backups.Made()) != backups+1 || x.count(`SELECT COUNT(*) FROM pg_namespace WHERE nspname = 'mod_matter_clock'`) != 0 {
 		t.Fatal("delete data without a fresh backup, or the schema stayed")
 	}
 	if widgetOffered(t, x.staff, "matter-clock.hours") || navHas(t, x.staff, "matter-clock.hours") {
@@ -671,10 +433,10 @@ func TestExtensionsMatterItems(t *testing.T) {
 	x := newExt(t)
 	open, _ := x.matter("Estate of Pell", "", nil)
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
-	x.rt.handlers["matter-notes"] = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	x.rt.Handle("matter-notes", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte("<p>notes</p>"))
-	})
+	}))
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extNotesManifest))); problem != "" {
 		t.Fatalf("install matter-notes: %s", problem)
 	}

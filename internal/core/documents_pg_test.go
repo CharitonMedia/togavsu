@@ -28,6 +28,7 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/storage/storagetest"
 	"github.com/CharitonMedia/togavsu/internal/supervisor"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
 )
 
 // filepathWalk calls f for every entry under root; a missing root has none.
@@ -79,28 +80,7 @@ func newDocs(t *testing.T, cfg ...func(*Config)) *docs {
 // raw sends body as is (an upload chunk) with headers; JSON is decoded when it parses.
 func (c *client) raw(method, path string, body []byte, hdr ...string) resp {
 	c.t.Helper()
-	req, err := http.NewRequest(method, c.base+path, bytes.NewReader(body))
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	if c.csrf != "" {
-		req.Header.Set("X-CSRF-Token", c.csrf)
-	}
-	if c.bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+c.bearer)
-	}
-	for i := 0; i+1 < len(hdr); i += 2 {
-		req.Header.Set(hdr[i], hdr[i+1])
-	}
-	res, err := c.http.Do(req)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	defer res.Body.Close()
-	b, _ := io.ReadAll(res.Body)
-	out := resp{code: res.StatusCode, body: string(b), loc: res.Header.Get("Location")}
-	_ = json.Unmarshal(b, &out.json)
-	return out
+	return fromKit(c.kit().Raw(method, path, body, hdr...))
 }
 
 // upload stores data as a new file on matter through the resumable upload API, one
@@ -1138,12 +1118,12 @@ func testDocTenderArrival(t *testing.T) {
 
 	// The portal module, installed, signed and approved for files:read and files:write.
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
-	x.rt.handlers["client-portal"] = http.NotFoundHandler()
+	x.rt.Handle("client-portal", http.NotFoundHandler())
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extPortalManifest))); problem != "" {
 		t.Fatalf("install: %s", problem)
 	}
 	x.approveOnTab("client-portal")
-	moduleToken := x.rt.last("client-portal").Secrets["togavsu_api_token"]
+	moduleToken := x.rt.Last("client-portal").Secrets["togavsu_api_token"]
 	asModule := newClient(t, d.srv.URL)
 	asModule.bearer = moduleToken
 	ct, err := x.app.Modules.IssueContext(ctx, x.principal(asClient), "client-portal", domain.ID(matter))
@@ -1265,18 +1245,7 @@ func (h withHeader) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func (d *docs) adminCaller() identity.Caller {
 	d.t.Helper()
-	u, _ := url.Parse(d.srv.URL)
-	var session string
-	for _, c := range d.admin.http.Jar.Cookies(u) {
-		if c.Name == sessionCookie {
-			session = c.Value
-		}
-	}
-	caller, err := d.app.Identity.Authenticate(context.Background(), identity.Presented{SessionToken: session})
-	if err != nil {
-		d.t.Fatal(err)
-	}
-	return caller
+	return testkit.Caller(d.t, d.app.Identity, d.admin.kit())
 }
 
 // unitRows are a job's units (name, status, attempts) in order, read from Postgres.

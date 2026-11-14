@@ -19,6 +19,7 @@ import (
 
 	"github.com/CharitonMedia/togavsu/internal/db"
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
 )
 
 // fakeSMTP is a minimal SMTP server on loopback that records every message. With reject
@@ -176,48 +177,7 @@ const (
 // append-only privileges on audit_log and trust_ledger hold as they do in Compose.
 func appRoleDSN(t *testing.T) string {
 	t.Helper()
-	dsn := testDSN(t)
-	u, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	name := strings.TrimPrefix(u.Path, "/")
-	role, password := name+"_app", "synthetic-core-app-password"
-	admin, err := db.OpenPostgres(dsn, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Close()
-	ctx := context.Background()
-	for _, stmt := range []string{
-		`DROP ROLE IF EXISTS ` + role,
-		`CREATE ROLE ` + role + ` LOGIN NOSUPERUSER NOCREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '` + password + `'`,
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'togavsu_audit_writer') THEN
-		   CREATE ROLE togavsu_audit_writer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$`,
-		`GRANT togavsu_audit_writer TO ` + role + ` WITH ADMIN OPTION`,
-		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'togavsu_ai_log_writer') THEN
-		   CREATE ROLE togavsu_ai_log_writer NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE; END IF; END $$`,
-		`GRANT togavsu_ai_log_writer TO ` + role + ` WITH ADMIN OPTION`,
-		`ALTER DATABASE ` + name + ` OWNER TO ` + role,
-		`CREATE SCHEMA core AUTHORIZATION ` + role,
-	} {
-		if _, err := admin.ExecContext(ctx, stmt); err != nil {
-			t.Fatalf("%s: %v", stmt, err)
-		}
-	}
-	t.Cleanup(func() {
-		raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
-		admin, err := db.OpenPostgres(raw, "")
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.ExecContext(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
-		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name)
-		_, _ = admin.ExecContext(context.Background(), "DROP ROLE IF EXISTS "+role)
-	})
-	u.User = url.UserPassword(role, password)
-	return u.String()
+	return testkit.AppRole(t, testDSN(t))
 }
 
 func newFin(t *testing.T, cfg ...func(*Config)) *fin {
@@ -263,19 +223,7 @@ func newFin(t *testing.T, cfg ...func(*Config)) *fin {
 // matter and client ids. extra fields go on the matter body.
 func (f *fin) matter(name, clientEmail string, extra map[string]any) (matter, clientID string) {
 	f.t.Helper()
-	body := map[string]any{"name": name, "practice_area_id": f.area, "billing_type": "hourly", "responsible_attorney_user_id": f.attyID}
-	for k, v := range extra {
-		body[k] = v
-	}
-	matter = str(f.t, f.admin.must(http.StatusCreated, "POST", "/api/v1/matters", body).json, "id")
-	parts := strings.Fields(name)
-	clientID = str(f.t, f.admin.must(http.StatusCreated, "POST", "/api/v1/contacts", map[string]any{
-		"kind": "person", "given_name": "Client", "family_name": parts[len(parts)-1]}).json, "id")
-	if clientEmail != "" {
-		f.admin.must(http.StatusCreated, "POST", "/api/v1/contact-emails", map[string]any{"contact_id": clientID, "label": "home", "email": clientEmail, "primary": true})
-	}
-	f.admin.must(http.StatusCreated, "POST", "/api/v1/matter-parties", map[string]any{"matter_id": matter, "contact_id": clientID, "role": "client", "primary": true})
-	return matter, clientID
+	return testkit.Matter(f.t, f.admin.kit(), f.area, f.attyID, name, clientEmail, extra)
 }
 
 // restart closes the core and opens a new one on the same database behind the same URL,

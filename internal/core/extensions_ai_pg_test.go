@@ -78,12 +78,12 @@ func TestExtensionsAIMediation(t *testing.T) {
 		x.admin.must(http.StatusOK, "PATCH", "/api/v1/settings/"+k, map[string]any{"value": v})
 	}
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
-	x.rt.handlers["summarizer"] = http.NotFoundHandler()
+	x.rt.Handle("summarizer", http.NotFoundHandler())
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extAIManifest))); problem != "" {
 		t.Fatalf("install: %s", problem)
 	}
 	x.approveOnTab("summarizer")
-	dep := x.rt.last("summarizer")
+	dep := x.rt.Last("summarizer")
 	token := dep.Secrets["togavsu_api_token"]
 	for k, v := range dep.Secrets {
 		if strings.Contains(v, "-ai-key") || strings.Contains(strings.ToLower(k), "openai") {
@@ -226,7 +226,7 @@ func TestExtensionsScreens(t *testing.T) {
 		t.Fatalf("marketplace install: %s", problem)
 	}
 	x.approveOnTab("matter-clock")
-	dep := x.rt.last("matter-clock")
+	dep := x.rt.Last("matter-clock")
 	mdb := x.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	if err := matterclock.SetTarget(ctx, mdb, open, 120, "partner note", time.Now()); err != nil {
 		t.Fatal(err)
