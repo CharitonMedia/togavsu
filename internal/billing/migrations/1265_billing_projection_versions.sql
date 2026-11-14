@@ -16,12 +16,14 @@ CREATE TABLE billing_projection_versions (
 INSERT INTO billing_projection_versions (name, version, token) VALUES
     ('billing_unbilled', 0, gen_random_uuid()::TEXT), ('billing_aging', 0, gen_random_uuid()::TEXT);
 -- +goose StatementBegin
-CREATE FUNCTION billing_projection_bump() RETURNS trigger LANGUAGE plpgsql AS $$
+-- The body is a plain quoted string, not dollar-quoted: the module install check's
+-- tokenizer reads every core migration to learn the core schema and refuses '$'.
+CREATE FUNCTION billing_projection_bump() RETURNS trigger LANGUAGE plpgsql AS '
 BEGIN
     UPDATE billing_projection_versions SET version = version + 1, token = gen_random_uuid()::TEXT WHERE name = TG_TABLE_NAME;
     RETURN NULL;
 END
-$$;
+';
 -- +goose StatementEnd
 CREATE TRIGGER billing_unbilled_version AFTER INSERT OR UPDATE OR DELETE ON billing_unbilled
     FOR EACH STATEMENT EXECUTE FUNCTION billing_projection_bump();
