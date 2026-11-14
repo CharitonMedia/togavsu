@@ -64,7 +64,7 @@ type finance struct {
 // flow to the practice store through the balance sink, invoices through the mirror, and
 // committed trust entries sync flat-fee invoices through billing.TrustEvents.
 func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *settings.Registry, store *practice.Durable,
-	users trust.Users, walls domain.WallReader, fsvc *files.Service, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
+	users trust.Users, walls domain.WallReader, fsvc *files.Service, custom billing.CustomFields, p func(*http.Request) (domain.Principal, error), scopes func(*http.Request, ...string) error, now func() time.Time) (*finance, error) {
 	if err := trust.InstallPrivileges(ctx, pool); err != nil {
 		return nil, fmt.Errorf("core: trust privileges: %w", err)
 	}
@@ -91,7 +91,7 @@ func openFinance(ctx context.Context, pool *sql.DB, aud *audit.Service, reg *set
 	}
 	bs, err := billing.New(billing.Deps{
 		Store: bstore, Practice: store, Walls: walls, Audit: aud, Settings: reg,
-		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Now: now,
+		Trust: link, Mail: smtpMailer{Settings: reg}, Mirror: store, Receipts: fileLink, InvoiceFiles: fileLink, Custom: custom, Now: now,
 	})
 	if err != nil {
 		return nil, err
@@ -157,9 +157,10 @@ func (a *App) DeliverMail(ctx context.Context) (int, error) {
 }
 
 // entryTypeScoped are the contract operations whose scopes depend on the body's
-// entry_type (entry_type_scopes): the trust handler checks them per entry through
+// entry_type (entry_type_scopes), or on each item's record_type for
+// bulkCustomFieldValue (record_type_scopes): their handlers check them per item through
 // App.scopes, so the route check only authenticates the token.
-var entryTypeScoped = map[string]bool{"postTrustEntry": true, "bulkTrustEntry": true}
+var entryTypeScoped = map[string]bool{"postTrustEntry": true, "bulkTrustEntry": true, "bulkCustomFieldValue": true}
 
 // scopes is the trust handler's per-entry scope check: a session passes, a token must
 // hold every scope named.

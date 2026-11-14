@@ -22,7 +22,6 @@ package billing
 // Pending lists what this package does not yet deliver. Reports and the PR body repeat it.
 var Pending = []string{
 	"system mail: sent through the core SMTP mailer after the commit, with no outbox; a failed send is undone and recorded",
-	"custom fields on time entries and expenses (PUT .../custom-fields) are not implemented",
 	"invoices:bulk and payment processor initializations are not implemented",
 	"invoice PDFs: FileLink stores each sent invoice's PDF as an invoice_pdf file record on the matter and is tested against the merged files service on Postgres; the core does not wire the files service yet (integrate-documents), so Deps.InvoiceFiles is nil and PDFs are rendered on demand only. The logo is drawn only when it is a JPEG",
 	"files wiring: Deps.Receipts and Deps.InvoiceFiles (NewFileLink over the files service) wait for the files service in core (integrate-documents)",
@@ -30,5 +29,5 @@ var Pending = []string{
 	"late interest is applied from the invoice screen (attorney or admin, only when enabled); there is no API route or nightly job",
 	"expense receipts: FileLink checks receipt_file_id against the files service; until core wires Deps.Receipts, receipt_file_id is refused",
 	"expense receipts over the API alone: the files contract lets no caller set financial_classification, so a file uploaded through /api/v1/files cannot become a receipt; proposed shared change for the files owner: classify a general file as receipt when an expense names it, or accept a receipt classification on upload",
-	"custom-field cards on time entries and expenses wait on custom fields",
+	"custom fields on time entries and expenses are set through PUT .../custom-fields and custom-field-values:bulk; custom_fields in the create and patch bodies is still refused, and the screens show no custom-field card",
 }

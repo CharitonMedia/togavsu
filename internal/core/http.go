@@ -49,6 +49,7 @@ func (a *App) routes() {
 	a.eventRoutes(m)
 	a.aiProviderRoutes(m)
 	a.emailChangeRoutes(m)
+	m.HandleFunc("POST /api/v1/custom-field-values:bulk", a.bulkCustomFields)
 	m.HandleFunc("POST /mcp", a.mcp)
 	a.backups.mount(m)
 	a.backups.mountUpdates(m)

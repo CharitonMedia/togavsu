@@ -15,7 +15,7 @@ import (
 )
 
 // eventCount counts core.events rows with action.
-func eventCount(t *testing.T, app *App, action string) int {
+func actionCount(t *testing.T, app *App, action string) int {
 	t.Helper()
 	var n int
 	if err := app.Pool.QueryRowContext(context.Background(), `SELECT count(*) FROM events WHERE action = $1`, action).Scan(&n); err != nil {
@@ -87,18 +87,18 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	}
 
 	// A batch with one walled matter is not_found and writes none of it.
-	before := eventCount(t, x.app, "intake.batch")
+	before := actionCount(t, x.app, "intake.batch")
 	if r := x.staff.do("POST", "/api/v1/events:bulk", map[string]any{"items": []any{ev(open, "intake.batch", "one"), ev(walled, "intake.batch", "two")}}); r.code != http.StatusNotFound {
 		t.Fatalf("batch with a walled matter: %d %s", r.code, r.body)
 	}
 	if r := x.staff.do("POST", "/api/v1/events:bulk", map[string]any{"items": []any{}}); r.code != http.StatusBadRequest {
 		t.Fatalf("empty batch: %d %s", r.code, r.body)
 	}
-	if got := eventCount(t, x.app, "intake.batch"); got != before {
+	if got := actionCount(t, x.app, "intake.batch"); got != before {
 		t.Fatalf("a rejected batch wrote %d events", got-before)
 	}
 	batch := x.staff.must(http.StatusCreated, "POST", "/api/v1/events:bulk", map[string]any{"items": []any{ev(open, "intake.batch", "one"), ev("", "intake.batch", "firm")}})
-	if rows, _ := batch.json["data"].([]any); len(rows) != 2 || eventCount(t, x.app, "intake.batch") != before+2 {
+	if rows, _ := batch.json["data"].([]any); len(rows) != 2 || actionCount(t, x.app, "intake.batch") != before+2 {
 		t.Fatalf("batch: %s", batch.body)
 	}
 
@@ -106,7 +106,7 @@ func TestEventsFeedAndAppend(t *testing.T) {
 	body := ev(open, "intake.replayed", "Replayed once")
 	first := x.staff.do("POST", "/api/v1/events", body, "Idempotency-Key", "evt-key-1")
 	again := x.staff.do("POST", "/api/v1/events", body, "Idempotency-Key", "evt-key-1")
-	if first.code != http.StatusCreated || again.code != http.StatusCreated || first.json["id"] != again.json["id"] || eventCount(t, x.app, "intake.replayed") != 1 {
+	if first.code != http.StatusCreated || again.code != http.StatusCreated || first.json["id"] != again.json["id"] || actionCount(t, x.app, "intake.replayed") != 1 {
 		t.Fatalf("replay: %d %s / %d %s", first.code, first.body, again.code, again.body)
 	}
 	if r := x.staff.do("POST", "/api/v1/events", ev(open, "intake.replayed", "Different"), "Idempotency-Key", "evt-key-1"); r.code != http.StatusConflict || !strings.Contains(r.body, "idempotency_conflict") {
@@ -247,7 +247,7 @@ func TestAIProviderKeys(t *testing.T) {
 	if set.json["configured"] != true || set.json["last4"] != "WXYZ" || strings.Contains(set.body, key) {
 		t.Fatalf("set key: %s", set.body)
 	}
-	if eventCount(t, x.app, "setting.updated") == 0 {
+	if actionCount(t, x.app, "setting.updated") == 0 {
 		t.Fatal("no setting.updated event")
 	}
 	for _, path := range []string{"/api/v1/ai/providers", "/api/v1/settings", "/api/v1/audit-log?limit=200", "/api/v1/events?limit=200"} {
@@ -285,7 +285,7 @@ func TestAIProviderKeys(t *testing.T) {
 	if r := x.admin.must(http.StatusOK, "POST", "/api/v1/ai/providers/openai_compatible/check", nil); r.json["ok"] != true {
 		t.Fatalf("passing check: %s", r.body)
 	}
-	if n := eventCount(t, x.app, "ai.provider_checked"); n != 2 {
+	if n := actionCount(t, x.app, "ai.provider_checked"); n != 2 {
 		t.Fatalf("ai.provider_checked events: %d", n)
 	}
 	if r := x.staff.do("POST", "/api/v1/ai/providers/openai_compatible/check", nil); r.code != http.StatusForbidden {
@@ -352,7 +352,7 @@ func TestEmailChange(t *testing.T) {
 	if r := x.staff.do("POST", "/api/v1/me/email-change/confirm", map[string]any{"token": token}); r.code != http.StatusUnauthorized {
 		t.Fatalf("token reused: %d %s", r.code, r.body)
 	}
-	if eventCount(t, x.app, "user.email_change_requested") != 1 || eventCount(t, x.app, "user.updated") == 0 {
+	if actionCount(t, x.app, "user.email_change_requested") != 1 || actionCount(t, x.app, "user.updated") == 0 {
 		t.Fatal("email change events missing")
 	}
 	if r := x.admin.must(http.StatusOK, "GET", "/api/v1/audit-log?limit=200", nil); !strings.Contains(r.body, next) {

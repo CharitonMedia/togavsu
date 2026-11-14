@@ -170,6 +170,9 @@ type Deps struct {
 	// InvoiceFiles stores sent invoices' PDFs as invoice_pdf file records (FileLink). While
 	// it is nil, PDFs are rendered on demand only.
 	InvoiceFiles InvoiceFiles
+	// Custom holds time entry and expense custom field values (practice's custom
+	// fields). While it is nil, records show no custom fields and the PUT routes refuse.
+	Custom CustomFields
 	// Logo returns the bytes of the firm logo file. A JPEG is drawn on the invoice PDF.
 	Logo  func(ctx context.Context, fileID domain.ID) ([]byte, error)
 	Now   func() time.Time
