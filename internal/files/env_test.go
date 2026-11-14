@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/CharitonMedia/togavsu/internal/audit"
@@ -75,6 +76,20 @@ func filesDB(t *testing.T) *sql.DB {
 	}
 	if err := Migrate(ctx, plain); err != nil {
 		t.Fatalf("files migrations: %v", err)
+	}
+	// The publication grant table and file_uploads.grant_id are a core release
+	// migration (the core applies every package's migrations as one ordered set); the
+	// upload paths here read them, so this test database applies that one file too.
+	grants, err := os.ReadFile("../core/migrations/1252_file_publication_grants.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := db.LoadFS(fstest.MapFS{"1252_file_publication_grants.sql": {Data: grants}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Apply(ctx, plain, db.ApplySpec{Owner: db.CoreOwner, Schema: "core", Dialect: "postgres", Migrations: rel}); err != nil {
+		t.Fatalf("grant migration: %v", err)
 	}
 	_ = plain.Close()
 	pool, err := db.OpenPostgres(u.String(), "core")

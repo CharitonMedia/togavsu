@@ -34,6 +34,11 @@ type NewFile struct {
 	// FinancialClass is general, receipt or invoice_pdf. Accountants read only the last two.
 	FinancialClass string
 	Note           string
+	// created adds file.created beside file.version_created (publishFile, bulkFile).
+	created bool
+	// unassigned is a module's publish with no matter under its unassigned grant,
+	// which uploadGrant and checkGrant already allowed.
+	unassigned bool
 }
 
 // FileView is the File contract shape after access checks.
@@ -238,7 +243,11 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	default:
 		return FileView{}, domain.Invalid("financial_classification", "unknown class")
 	}
-	if err := s.canWriteTo(ctx, p, nf.MatterID, nf.ContactID, nf.AttorneyOnly); err != nil {
+	if nf.unassigned {
+		if nf.MatterID != "" || nf.AttorneyOnly {
+			return FileView{}, domain.Forbidden("an unassigned module file has no matter and is not attorney-only")
+		}
+	} else if err := s.canWriteTo(ctx, p, nf.MatterID, nf.ContactID, nf.AttorneyOnly); err != nil {
 		return FileView{}, err
 	}
 	if err := s.checkFolder(ctx, nf.FolderID, nf.MatterID); err != nil {
@@ -294,6 +303,11 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 		if err := s.record(ctx, p, "file", f.ID, "version", "", versionNote(v)); err != nil {
 			return err
 		}
+		if nf.created {
+			if err := s.event(ctx, p, f, "file.created", "Created "+f.Name); err != nil {
+				return err
+			}
+		}
 		if err := s.event(ctx, p, f, "file.version_created", "Added "+f.Name); err != nil {
 			return err
 		}
@@ -305,6 +319,12 @@ func (s *Service) create(ctx context.Context, p domain.Principal, nf NewFile, r 
 	if err != nil {
 		s.dropObject(ctx, loc)
 		return FileView{}, err
+	}
+	if b := batchOf(ctx); b != nil {
+		// The bulk transaction has not committed yet.
+		b.rollback = append(b.rollback, func() { s.dropObject(context.WithoutCancel(ctx), loc) })
+		b.commit = append(b.commit, func() { s.versionCreated(ctx, f, v) })
+		return view(f, warnings), nil
 	}
 	s.versionCreated(ctx, f, v)
 	return view(f, warnings), nil

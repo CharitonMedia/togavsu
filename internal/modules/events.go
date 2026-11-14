@@ -33,6 +33,23 @@ type EventPayload struct {
 	MatterID   string `json:"matter_id,omitempty"`
 	OccurredAt string `json:"occurred_at"`
 	Module     string `json:"module"`
+	// BackgroundFileAuthorization is set on file.background_authorized, which goes only
+	// to the module the grant names.
+	BackgroundFileAuthorization json.RawMessage `json:"background_file_authorization,omitempty"`
+}
+
+// grantEvent is the action whose delivery carries a background file publication grant.
+const grantEvent = "file.background_authorized"
+
+// grantRecipient reads the grant behind a file.background_authorized event: the one
+// module it is delivered to, and the authorization it carries.
+func (s *Service) grantRecipient(ctx context.Context, grant domain.ID) (string, json.RawMessage, error) {
+	var module, body string
+	err := s.q(ctx).QueryRowContext(ctx, `SELECT module_id, authorization_body FROM core.file_publication_grants WHERE id = $1`, string(grant)).Scan(&module, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, nil
+	}
+	return module, json.RawMessage(body), err
 }
 
 // Subscribed reports whether a manifest subscription list matches action.
@@ -180,12 +197,26 @@ func (s *Service) enqueue(ctx context.Context, mods []*Installed, ev domain.Even
 	if at.IsZero() {
 		at = s.now()
 	}
+	var recipient string
+	var grant json.RawMessage
+	if ev.Action == grantEvent {
+		var err error
+		if recipient, grant, err = s.grantRecipient(ctx, ev.RecordID); err != nil || recipient == "" {
+			return zero, err
+		}
+	}
 	for _, m := range mods {
-		if !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action) {
+		switch {
+		case recipient != "":
+			// The grant goes to the module it names, and to no other.
+			if m.ID != recipient {
+				continue
+			}
+		case !m.Approved["events:read"] || !Subscribed(m.Manifest.Events, ev.Action):
 			continue
 		}
 		body, err := json.Marshal(EventPayload{ID: string(ev.ID), Action: ev.Action, RecordType: ev.RecordType, RecordID: string(ev.RecordID),
-			MatterID: string(ev.MatterID), OccurredAt: at.UTC().Format(time.RFC3339Nano), Module: m.ID})
+			MatterID: string(ev.MatterID), OccurredAt: at.UTC().Format(time.RFC3339Nano), Module: m.ID, BackgroundFileAuthorization: grant})
 		if err != nil {
 			return queued, err
 		}

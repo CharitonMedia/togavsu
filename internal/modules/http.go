@@ -758,6 +758,10 @@ func (h *Handler) Include(next http.Handler) http.Handler {
 			return
 		}
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")
+		if upload, ok := strings.CutPrefix(r.URL.Path, "/api/v1/files/unassigned/"); ok && !strings.Contains(upload, "/") {
+			// reviewUnassignedFile returns one file record.
+			parts = []string{"files", upload}
+		}
 		record, ok := pluralRecords[parts[0]]
 		if !ok || len(parts) > two {
 			next.ServeHTTP(w, r)
