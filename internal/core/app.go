@@ -298,7 +298,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 		return fail(err)
 	}
 	app.docs = docs
-	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.principal, app.scopes, now)
+	fin, err := openFinance(ctx, pool, aud, reg, store, users, app.Practice.Policy.Walls, docs.Files, app.Practice, app.principal, app.scopes, now)
 	if err != nil {
 		return fail(err)
 	}
@@ -373,6 +373,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	}
 	app.Modules = ext.Modules
 	ph.Panels = app.matterPanels
+	ph.Relink = ModuleRelinker(ext.Modules.Schemas(), pool)
 	modMux, ok := ext.modH.Routes().(*http.ServeMux)
 	if !ok {
 		return fail(errors.New("core: the module handler is not a ServeMux"))

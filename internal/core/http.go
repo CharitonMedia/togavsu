@@ -46,6 +46,7 @@ func (a *App) routes() {
 	m.HandleFunc("DELETE /api/v1/api-tokens/{token_id}", a.revokeTokenJSON)
 	a.identityRoutes(m)
 	a.systemRoutes(m)
+	m.HandleFunc("POST /api/v1/custom-field-values:bulk", a.bulkCustomFields)
 	m.HandleFunc("POST /mcp", a.mcp)
 	a.backups.mount(m)
 	a.backups.mountUpdates(m)

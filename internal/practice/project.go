@@ -166,6 +166,12 @@ referral_source_id = EXCLUDED.referral_source_id`,
 				r.ClientPosition, r.OpenedOn, r.ClosedOn, r.CloseReason, r.StatuteOfLimitations, r.BillingType, int64(r.FlatFeeCents),
 				int64(r.MatterRateCents), optional(r.ResponsibleAttorneyID), string(domain.SystemUserID), optional(r.AssignedStaffID),
 				optional(r.ReferralSourceID))...)
+		if err != nil || !r.Archived {
+			return err
+		}
+		// archived is the core's migration 1244 column. Archiving is one-way, so only an
+		// archived matter writes it; an unarchived matter keeps the column's default.
+		_, err = tx.ExecContext(ctx, `UPDATE matters SET archived = $2 WHERE id = $1`, string(r.ID), bit(r.Archived))
 		return err
 	}
 	return nil

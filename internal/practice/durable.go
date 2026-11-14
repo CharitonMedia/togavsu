@@ -225,6 +225,8 @@ type unit struct {
 	d      *Durable
 	recs   []record
 	audits []domain.AuditEntry
+	// pre runs inside the unit's commit transaction before its rows are written (InTx).
+	pre []func(context.Context) error
 }
 
 type unitKey struct{}
@@ -255,8 +257,20 @@ func (d *Durable) Begin(ctx context.Context) (context.Context, func(error) error
 			}
 			return err
 		}
-		return d.commit(ctx, u.recs, u.audits)
+		return d.commitWith(ctx, u.recs, u.audits, u.pre)
 	}
+}
+
+// InTx runs fn in the transaction that stores the current unit, before its rows, so a
+// write outside practice_records (a merge relinking module rows) commits or rolls back
+// with the unit. fn finds the transaction with audit.Tx(ctx, pool). Outside a unit fn runs
+// in a transaction of its own.
+func (d *Durable) InTx(ctx context.Context, fn func(context.Context) error) error {
+	if u := d.unitOf(ctx); u != nil {
+		u.pre = append(u.pre, fn)
+		return nil
+	}
+	return audit.WithTx(ctx, d.db, fn)
 }
 
 // reload discards a failed unit's Memory changes by loading Memory from Postgres again.
@@ -297,10 +311,20 @@ func (d *Durable) write(ctx context.Context, op func() error, recs func() []reco
 
 // commit stores list and appends audits to audit_log in one transaction. The caller holds wmu.
 func (d *Durable) commit(ctx context.Context, list []record, audits []domain.AuditEntry) error {
-	if len(list) == 0 && len(audits) == 0 {
+	return d.commitWith(ctx, list, audits, nil)
+}
+
+// commitWith is commit that first runs pre in the same transaction (InTx).
+func (d *Durable) commitWith(ctx context.Context, list []record, audits []domain.AuditEntry, pre []func(context.Context) error) error {
+	if len(list) == 0 && len(audits) == 0 && len(pre) == 0 {
 		return nil
 	}
 	err := audit.WithTx(ctx, d.db, func(ctx context.Context) error {
+		for _, fn := range pre {
+			if err := fn(ctx); err != nil {
+				return err
+			}
+		}
 		tx := audit.Tx(ctx, d.db)
 		for _, r := range list {
 			if r.del {

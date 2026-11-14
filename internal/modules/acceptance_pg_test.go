@@ -445,8 +445,12 @@ func TestPGHardDeleteBlockedAndRelink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.Schemas().Relink(e.ctx, tx, "matters", e.open.ID, e.walled.ID); err != nil {
+	moved, err := e.svc.Schemas().Relink(e.ctx, tx, "matters", e.open.ID, e.walled.ID)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if len(moved) != 1 || moved[0].Module != "matter-clock" || moved[0].Rows != 1 {
+		t.Fatalf("relink counts: %+v", moved)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
@@ -459,7 +463,7 @@ func TestPGHardDeleteBlockedAndRelink(t *testing.T) {
 	}
 	tx, _ = e.app.Pool.BeginTx(e.ctx, nil)
 	defer func() { _ = tx.Rollback() }()
-	if err := e.svc.Schemas().Relink(e.ctx, tx, "matters", e.open.ID, e.walled.ID); err == nil || !strings.Contains(err.Error(), "matter-clock") {
+	if _, err := e.svc.Schemas().Relink(e.ctx, tx, "matters", e.open.ID, e.walled.ID); err == nil || !strings.Contains(err.Error(), "matter-clock") {
 		t.Fatalf("relink onto an existing extension row: %v", err)
 	}
 }

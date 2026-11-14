@@ -566,7 +566,7 @@ func (s *Service) prepareMatter(ctx context.Context, p domain.Principal, prev do
 		ClientPosition: in.ClientPosition, OpenedOn: opened, ClosedOn: prev.ClosedOn, CloseReason: prev.CloseReason,
 		StatuteOfLimitations: in.StatuteOfLimitations, BillingType: billing, FlatFeeCents: in.FlatFeeCents,
 		MatterRateCents: in.MatterRateCents, ResponsibleAttorneyID: in.ResponsibleAttorneyID,
-		AssignedStaffID: in.AssignedStaffID, ReferralSourceID: in.ReferralSourceID,
+		AssignedStaffID: in.AssignedStaffID, ReferralSourceID: in.ReferralSourceID, Archived: prev.Archived,
 	}, nil
 }
 

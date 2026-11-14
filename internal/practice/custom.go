@@ -2,6 +2,7 @@ package practice
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -135,7 +136,124 @@ func (s *Service) mattersCSV(views []MatterView) string {
 	return b.String()
 }
 
+// CustomTarget is a record whose custom field values another domain writes through
+// practice: billing's time entries and expenses, and each item of
+// custom-field-values:bulk. The caller has already authorized the write on the record.
+type CustomTarget struct {
+	RecordType string
+	RecordID   domain.ID
+	// MatterID is the matter the record belongs to (its walls guard the event); for a
+	// matter it is the matter itself. Area is that matter's practice area.
+	MatterID  domain.ID
+	ContactID domain.ID
+	Area      domain.ID
+	// Action is the event each changed value emits: custom_field.updated by default,
+	// time_entry.updated or expense.updated from those records' own routes.
+	Action string
+}
+
+// SetRecordCustom validates and saves values for t in one practice unit, with an audit row
+// and an event per changed value. It does not authorize the record: billing checks a time
+// entry or expense, and CustomTargetFor checks a matter or contact, before calling it.
+func (s *Service) SetRecordCustom(ctx context.Context, p domain.Principal, t CustomTarget, values []CustomInput) error {
+	return s.SetRecordsCustom(ctx, p, []CustomWrite{{Target: t, Values: values}})
+}
+
+// CustomWrite is one record's values in SetRecordsCustom.
+type CustomWrite struct {
+	Target CustomTarget
+	Values []CustomInput
+}
+
+// SetRecordsCustom is SetRecordCustom for several records in one practice unit: every
+// value of every record commits, or none does (custom-field-values:bulk).
+func (s *Service) SetRecordsCustom(ctx context.Context, p domain.Principal, items []CustomWrite) (err error) {
+	ctx, done := s.unit(ctx)
+	defer func() { err = done(err) }()
+	for _, it := range items {
+		if err := s.saveCustomAs(ctx, p, it.Target, it.Values); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Idempotent runs fn once for an Idempotency-Key: the same caller, operation and request
+// replay fn's first result; the same key with another request is a conflict. An empty key
+// runs fn. Core routes outside the practice handler use it.
+func (s *Service) Idempotent(ctx context.Context, p domain.Principal, key, op string, request any, fn func() (any, error)) (json.RawMessage, error) {
+	var replay json.RawMessage
+	hit, hold, err := s.idemBegin(ctx, p, key, op, "", request, &replay)
+	if err != nil {
+		return nil, err
+	}
+	if hit {
+		return replay, nil
+	}
+	defer hold.abort()
+	out, err := fn()
+	if err != nil {
+		return nil, err
+	}
+	if err := hold.finish(ctx, out); err != nil {
+		return nil, err
+	}
+	return json.Marshal(out)
+}
+
+// CustomTargetFor authorizes a custom field write on a matter or contact and returns its
+// target, without writing (custom-field-values:bulk resolves every item first).
+func (s *Service) CustomTargetFor(ctx context.Context, p domain.Principal, recordType string, id domain.ID) (CustomTarget, error) {
+	switch recordType {
+	case RecordMatter, RecordContact:
+	default:
+		return CustomTarget{}, domain.Invalid("record_type", "practice holds matter and contact values")
+	}
+	if err := s.gateRecord(ctx, p, recordType, id, domain.ActionWrite); err != nil {
+		return CustomTarget{}, err
+	}
+	t := CustomTarget{RecordType: recordType, RecordID: id}
+	if recordType == RecordMatter {
+		row, err := s.db.Matter(ctx, id)
+		if err != nil {
+			return CustomTarget{}, missing(err, "matter")
+		}
+		t.MatterID, t.Area = id, row.PracticeAreaID
+	} else {
+		t.ContactID = id
+	}
+	return t, nil
+}
+
+// CheckCustom validates values for t as SetRecordCustom would, without writing.
+func (s *Service) CheckCustom(ctx context.Context, p domain.Principal, t CustomTarget, values []CustomInput) error {
+	return s.requireCustom(ctx, p, t.RecordType, t.Area, t.RecordID, values)
+}
+
+// ShownCustom is the custom fields on a record that apply to its practice area, as the
+// contract's CustomFieldValue list. The caller has already authorized the read.
+func (s *Service) ShownCustom(ctx context.Context, recordType string, recordID, area domain.ID) []map[string]any {
+	fields, _ := s.shownFields(ctx, domain.Principal{}, recordType, recordID, area)
+	out := make([]map[string]any, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, map[string]any{"definition_id": f.DefinitionID, "key": f.Key, "value": f.Value})
+	}
+	return out
+}
+
 func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType string, recordID, area domain.ID, values []CustomInput) error {
+	t := CustomTarget{RecordType: recordType, RecordID: recordID, Area: area}
+	if recordType == RecordMatter {
+		t.MatterID = recordID
+	}
+	if recordType == RecordContact {
+		t.ContactID = recordID
+	}
+	return s.saveCustomAs(ctx, p, t, values)
+}
+
+func (s *Service) saveCustomAs(ctx context.Context, p domain.Principal, t CustomTarget, values []CustomInput) error {
+	recordType, recordID, area := t.RecordType, t.RecordID, t.Area
 	if len(values) == 0 {
 		return s.requireCustom(ctx, p, recordType, area, recordID, nil)
 	}
@@ -173,17 +291,13 @@ func (s *Service) saveCustom(ctx context.Context, p domain.Principal, recordType
 		}); err != nil {
 			return err
 		}
-		matterID := domain.ID("")
-		contactID := domain.ID("")
-		if recordType == RecordMatter {
-			matterID = recordID
-		}
-		if recordType == RecordContact {
-			contactID = recordID
+		action := t.Action
+		if action == "" {
+			action = "custom_field.updated"
 		}
 		if err := s.record(ctx, p, []change{{
-			MatterID: matterID, ContactID: contactID, Entity: recordType, EntityID: recordID, Field: "custom:" + def.Key,
-			Old: prev, New: canonical, Kind: kindOf(prev, canonical), Action: "custom_field.updated",
+			MatterID: t.MatterID, ContactID: t.ContactID, Entity: recordType, EntityID: recordID, Field: "custom:" + def.Key,
+			Old: prev, New: canonical, Kind: kindOf(prev, canonical), Action: action,
 			Summary: "Saved " + def.Label, SkipEvent: prev == canonical,
 		}}); err != nil {
 			return err

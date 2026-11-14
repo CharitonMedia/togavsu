@@ -109,6 +109,9 @@ type Matter struct {
 	ResponsibleAttorneyID ID     `db:"responsible_attorney_id"`
 	AssignedStaffID       ID     `db:"assigned_staff_id"`
 	ReferralSourceID      ID     `db:"referral_source_id"`
+	// Archived is set by archiveMatter (core migration 1244, internal/core/migrations). It is not closed: an archived
+	// matter stays readable and drops out of default lists.
+	Archived bool `db:"-"`
 }
 
 func (Matter) TableName() string { return "matters" }
