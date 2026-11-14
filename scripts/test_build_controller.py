@@ -237,6 +237,69 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(merge[0][2]["sha"], HEAD)
         self.assertEqual(self.record["completed"]["merge_sha"], NEW)
 
+    def test_admin_enforcement_off_halts_until_an_operator_adopts_it(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.assertFalse(self.process())
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+        self.controller.adopt_protection("Integration lead")
+        self.assertNotIn("halted", self.record)
+        entry = self.controller.state["adopted_protection"]
+        self.assertEqual(entry["operator"], "Integration lead")
+        self.assertIs(entry["enforce_admins"], False)
+        self.assertEqual(entry["cleared_halts"], ["one"])
+        self.assertEqual(self.controller.state["protection_adoptions"], [entry])
+        backup = json.loads((Path(self.temp.name) / entry["backup"]).read_text())
+        self.assertEqual(backup["tasks"]["one"]["halted"], build_controller.PROTECTION_HALT)
+        self.assertEqual(self.record["recovered_halts"][-1]["operator"], "Integration lead")
+        self.assertTrue(self.process())
+        self.assertEqual(self.record["completed"]["merge_sha"], NEW)
+
+    def test_adopted_protection_still_requires_checks_and_reviews(self):
+        self.remote.protection["enforce_admins"] = {"enabled": False}
+        self.controller.adopt_protection("Integration lead")
+        for change in ({"required_pull_request_reviews": None},
+                       {"required_status_checks": {"strict": False, "contexts": ["Setup checks", "Codex checkpoint"]}},
+                       {"required_status_checks": {"strict": True, "contexts": ["Setup checks"]}}):
+            with self.subTest(change=change):
+                saved = copy.deepcopy(self.remote.protection)
+                self.remote.protection.update(change)
+                self.record.pop("halted", None)
+                self.assertFalse(self.process())
+                self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+                self.remote.protection = saved
+        self.assertFalse(any(c[1].endswith("/merge") for c in self.remote.calls))
+
+    def test_adoption_refuses_protection_without_checkpoints_and_needs_an_operator(self):
+        self.record["halted"] = build_controller.PROTECTION_HALT
+        self.remote.protection["required_pull_request_reviews"] = None
+        with self.assertRaises(ValueError):
+            self.controller.adopt_protection("Integration lead")
+        self.remote.protection["required_pull_request_reviews"] = {}
+        for operator in ("", "  ", None):
+            with self.assertRaises(ValueError):
+                self.controller.adopt_protection(operator)
+        self.assertEqual(self.record["halted"], build_controller.PROTECTION_HALT)
+        self.assertNotIn("adopted_protection", self.controller.state)
+
+    def test_adoption_clears_only_protection_halts(self):
+        self.record["halted"] = "Delivery outcome uncertain; no automatic replay"
+        self.controller.adopt_protection("Integration lead")
+        self.assertEqual(self.record["halted"], "Delivery outcome uncertain; no automatic replay")
+        self.assertEqual(self.controller.state["adopted_protection"]["cleared_halts"], [])
+
+    def test_adopt_protection_cli_requires_an_operator(self):
+        plan_path = Path(self.temp.name) / "plan.json"
+        plan_path.write_text(json.dumps({"tasks": [SPEC]}))
+        argv = ["build_controller.py", "--plan", str(plan_path), "--state", str(Path(self.temp.name) / "state"),
+                "--adopt-protection"]
+        with patch.object(sys, "argv", argv), self.assertRaises(SystemExit):
+            build_controller.main()
+        with patch.object(sys, "argv", argv + ["--operator", "Integration lead"]), \
+                patch.object(build_controller.Controller, "adopt_protection") as adopt:
+            build_controller.main()
+        adopt.assert_called_once_with("Integration lead")
+
     def test_github_rejection_never_records_completion(self):
         self.remote.fail_merge = True
         with self.assertRaises(RuntimeError):

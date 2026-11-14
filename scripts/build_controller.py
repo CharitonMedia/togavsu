@@ -32,6 +32,7 @@ TERMINAL = {"FINISHED", "ERROR", "CANCELLED", "EXPIRED"}  # Cursor v1 Get A Run 
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
 LEGACY_REPAIR_HALT = "Three correction cycles exhausted; independent work may continue"
+PROTECTION_HALT = "Branch protection changed or no longer enforces required checkpoints"
 CI_OWNERSHIP = (
     "The controller and integration lead own GitHub CI monitoring, review feedback, and future dispatch. "
     "Do not create background CI subscriptions (including github:ci:branch) or CI-wait continuation events, "
@@ -753,6 +754,12 @@ class ActionsRemote(Remote):
         return published
 
 
+def protection_enforces_checkpoints(protection):
+    required_config = protection.get("required_status_checks") or {}
+    return bool(required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
+                and protection.get("required_pull_request_reviews") is not None)
+
+
 class Controller:
     def __init__(self, remote, plan, state_dir, dry=False, mailer=None):
         self.remote, self.plan, self.dir, self.dry, self.mailer = remote, plan, Path(state_dir), dry, mailer
@@ -776,6 +783,43 @@ class Controller:
         if record.get("halted") != reason:
             record["halted"] = reason
             self.event(task, "STOPPED: " + reason)
+        self.save()
+
+    def admins_accepted(self, protection):
+        # Admin enforcement is required unless the integration lead adopted its removal by an audited step.
+        if protection.get("enforce_admins", {}).get("enabled"):
+            return True
+        return (self.state.get("adopted_protection") or {}).get("enforce_admins") is False
+
+    def adopt_protection(self, operator):
+        # Operator path: accept the repository owner's current main branch protection. Only admin enforcement may
+        # differ; strict required checks, both checkpoints and pull request reviews stay mandatory.
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited protection adoption")
+        protection = self.remote.gh("branches/main/protection")
+        if not protection_enforces_checkpoints(protection):
+            raise ValueError("Main protection no longer requires strict checks, both checkpoints and reviews; "
+                             "nothing is adopted")
+        enforced = bool(protection.get("enforce_admins", {}).get("enabled"))
+        cleared = sorted(task for task, record in self.tasks.items() if record.get("halted") == PROTECTION_HALT)
+        if self.dry:
+            print("WOULD adopt main protection with admin enforcement " + ("on" if enforced else "off")
+                  + " and clear protection halts on " + (", ".join(cleared) or "no task"), flush=True)
+            return
+        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = self.dir / ("controller-before-adopt-protection-" + stamp + ".json")
+        backup.write_text(json.dumps(self.state, indent=2, sort_keys=True))
+        entry = {"time": now(), "operator": operator, "enforce_admins": enforced,
+                 "contexts": sorted(protection["required_status_checks"].get("contexts", [])),
+                 "backup": backup.name, "cleared_halts": cleared}
+        self.state["adopted_protection"] = entry
+        self.state.setdefault("protection_adoptions", []).append(entry)
+        for task in cleared:
+            record = self.tasks[task]
+            record.setdefault("recovered_halts", []).append(
+                {"reason": record.pop("halted"), "time": now(), "operator": operator})
+            self.event(task, "Operator " + operator + " adopted main protection (admin enforcement "
+                       + ("on" if enforced else "off") + "); protection halt cleared")
         self.save()
 
     def adopt(self):
@@ -1291,10 +1335,8 @@ class Controller:
                 return False
         protection = self.remote.gh("branches/main/protection")
         required_config = protection.get("required_status_checks") or {}
-        if not (required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
-                and protection.get("enforce_admins", {}).get("enabled")
-                and protection.get("required_pull_request_reviews") is not None):
-            self.halt(task, record, "Branch protection changed or no longer enforces required checkpoints")
+        if not (protection_enforces_checkpoints(protection) and self.admins_accepted(protection)):
+            self.halt(task, record, PROTECTION_HALT)
             return False
         # Required product jobs must be enforced by GitHub, not just a stale local snapshot.
         enforced = set(required_config.get("contexts", []))
@@ -1929,11 +1971,15 @@ def main():
     parser.add_argument("--note", nargs=2, metavar=("TASK", "TEXT"),
         help="add instructions to every later fix pass for TASK; runs no tick")
     parser.add_argument("--clear-notes", metavar="TASK", help="remove TASK's operator notes; runs no tick")
+    parser.add_argument("--adopt-protection", action="store_true",
+        help="accept main's current protection, including admin enforcement turned off, and clear protection halts; runs no tick")
     parser.add_argument("--test-alert", action="store_true", help="email a test alert to the plan's alert_email; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome, --resume, --note or --clear-notes")
+    parser.add_argument("--operator",
+        help="name recorded with --reconcile-intent, --rehome, --resume, --note, --clear-notes or --adopt-protection")
     args = parser.parse_args()
-    if (args.reconcile_intent or args.rehome or args.resume or args.note or args.clear_notes) and not args.operator:
-        parser.error("--reconcile-intent, --rehome, --resume, --note and --clear-notes require --operator")
+    if (args.reconcile_intent or args.rehome or args.resume or args.note or args.clear_notes
+            or args.adopt_protection) and not args.operator:
+        parser.error("--reconcile-intent, --rehome, --resume, --note, --clear-notes and --adopt-protection require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1966,6 +2012,8 @@ def main():
             controller.note(task, args.operator, text)
         elif args.clear_notes:
             controller.clear_notes(args.clear_notes, args.operator)
+        elif args.adopt_protection:
+            controller.adopt_protection(args.operator)
         else:
             controller.tick()
 
