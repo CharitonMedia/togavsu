@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -346,15 +347,34 @@ func (b *backups) create(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	var meta supBackup
-	body := jsonBody(map[string]string{"reason": "manual", "created_by": string(p.UserID)})
-	if err := b.call(r.Context(), http.MethodPost, "/v1/backups", "application/json", body, &meta); err != nil {
+	// The request is audited before the supervisor makes anything: when that row cannot
+	// be written no backup is made. The outcome is appended after, under the same
+	// request id, and a failed outcome write does not hide a backup that now exists.
+	req, err := domain.NewID()
+	if err != nil {
 		fail(w, err)
 		return
 	}
-	if err := b.record(r.Context(), p, "backup", meta.ID, "created", meta.SHA256); err != nil {
+	if err := b.record(r.Context(), p, "backup_request", string(req), "requested", "manual"); err != nil {
 		fail(w, err)
 		return
+	}
+	var meta supBackup
+	body := jsonBody(map[string]string{"reason": "manual", "created_by": string(p.UserID)})
+	if err := b.call(r.Context(), http.MethodPost, "/v1/backups", "application/json", body, &meta); err != nil {
+		if aerr := b.record(r.Context(), p, "backup_request", string(req), "failed", err.Error()); aerr != nil {
+			log.Printf("backups: request %s failed (%v) and its outcome was not audited: %v", req, err, aerr)
+		}
+		fail(w, err)
+		return
+	}
+	if err := b.app.Audit.Atomic(r.Context(), func(ctx context.Context) error {
+		if err := b.record(ctx, p, "backup_request", string(req), "created", meta.ID); err != nil {
+			return err
+		}
+		return b.record(ctx, p, "backup", meta.ID, "created", meta.SHA256)
+	}); err != nil {
+		log.Printf("backups: backup %s (sha256 %s) was created but its outcome was not audited: %v", meta.ID, meta.SHA256, err)
 	}
 	writeJSON(w, http.StatusAccepted, backupJSON(meta))
 }
