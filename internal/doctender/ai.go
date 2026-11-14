@@ -204,7 +204,7 @@ func (r *Router) key(ctx context.Context, provider string) (string, error) {
 	case ProviderCompatible:
 		return r.get(ctx, "ai.compatible_api_key")
 	case ProviderLocal:
-		return "", nil
+		return r.get(ctx, "ai.local_api_key")
 	}
 	return "", fmt.Errorf("doctender: unknown provider %q", provider)
 }

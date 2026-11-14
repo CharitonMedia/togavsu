@@ -27,6 +27,13 @@ const (
 	NotesPageSize               = 25
 )
 
+// Fixed API bounds, not firm settings: the contract's Idempotency-Key maxLength, and the
+// shortest provider key whose last four characters the AI tab shows.
+const (
+	IdempotencyKeyMaxChars = 200
+	KeyHintMinChars        = 8
+)
+
 // DocCategory is one default filing category.
 type DocCategory struct {
 	Meta

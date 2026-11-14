@@ -110,6 +110,9 @@ type App struct {
 	Modules *modules.Service
 	Market  *marketplace.Service
 
+	// providerURLs is Config.ProviderURLs, for the AI tab's Provider check.
+	providerURLs map[string]string
+
 	ext      *extensions
 	backups  *backups
 	handler  http.Handler
@@ -258,7 +261,18 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if err != nil {
 		return fail(err)
 	}
-	reg, err := settings.NewWithClock(db.SettingsStore{DB: pool, Dialect: "postgres"}, aud, now)
+	// Secret settings (provider keys, the SMTP password, the backup passphrase) are
+	// sealed with AES-256-GCM under the installer key (PRD 6 security). A value stored
+	// before sealing reads as it was and is sealed on its next change.
+	secret := map[string]bool{}
+	for _, d := range settings.Definitions() {
+		secret[d.Key] = d.Secret
+	}
+	sealed, err := settings.NewSealingStore(db.SettingsStore{DB: pool, Dialect: "postgres"}, cfg.Key, func(k string) bool { return secret[k] })
+	if err != nil {
+		return fail(err)
+	}
+	reg, err := settings.NewWithClock(sealed, aud, now)
 	if err != nil {
 		return fail(err)
 	}
@@ -356,6 +370,7 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	if app.tools, err = loadTools(api.MCPTools); err != nil {
 		return fail(err)
 	}
+	app.providerURLs = cfg.ProviderURLs
 	app.backups = newBackups(app, cfg, dataDir, now)
 	app.routes()
 	files := cfg.HelpFiles

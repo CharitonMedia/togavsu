@@ -217,7 +217,7 @@ func (s *Service) CallAI(ctx context.Context, p domain.Principal, scopes []strin
 
 // scrub removes provider keys from an error message so they never reach a module.
 func scrub(msg string, st Settings, ctx context.Context) string {
-	for _, k := range []string{"ai.openai_api_key", "ai.anthropic_api_key", "ai.compatible_api_key"} {
+	for _, k := range []string{"ai.openai_api_key", "ai.anthropic_api_key", "ai.compatible_api_key", "ai.local_api_key"} {
 		if v, err := st.Get(ctx, k); err == nil && v != "" {
 			msg = strings.ReplaceAll(msg, v, "[redacted]")
 		}

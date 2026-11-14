@@ -14,6 +14,10 @@ const (
 	CodeConflict        = "conflict"
 	CodeAppendOnly      = "append_only"
 	CodeRateLimited     = "rate_limited"
+	// CodeIdempotencyConflict is an Idempotency-Key reused with a different body.
+	CodeIdempotencyConflict = "idempotency_conflict"
+	// CodeDuplicateEmail is an email address another user already has.
+	CodeDuplicateEmail = "duplicate_email"
 )
 
 // APIError is the JSON body the API wave should return.
@@ -47,7 +51,7 @@ func (e *APIError) HTTPStatus() int {
 		return http.StatusNotFound
 	case CodeValidation:
 		return http.StatusBadRequest
-	case CodeConflict, CodeAppendOnly:
+	case CodeConflict, CodeAppendOnly, CodeIdempotencyConflict, CodeDuplicateEmail:
 		return http.StatusConflict
 	case CodeRateLimited:
 		return http.StatusTooManyRequests
