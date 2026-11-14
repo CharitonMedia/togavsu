@@ -129,6 +129,11 @@ type App struct {
 	docs     *documents
 	stopDocs context.CancelFunc
 	docsDone chan struct{}
+	hold     *restoreHold
+	// bgMu orders starting the background workers against Close; bgClosed is set
+	// by Close so a hold released during shutdown starts nothing.
+	bgMu     sync.Mutex
+	bgClosed bool
 }
 
 // Migrate applies every embedded core migration to dsn in schema core.
@@ -382,33 +387,43 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 	// Each request reads a setting or an identity user once however many rows ask
 	// (AC-017); the memo ends with the request, so changes apply from the next one.
 	inner := ui.Handler()
-	app.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	app.handler = app.holdGate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		inner.ServeHTTP(w, r.WithContext(practice.WithRequestMemo(r.Context())))
-	})
-	// Module events are pumped and their webhooks sent every five seconds.
-	if err := ext.start(ctx, !cfg.NoBackground, 5*time.Second); err != nil {
+	}))
+	if err := ext.start(ctx); err != nil {
 		return fail(err)
 	}
-	if !cfg.NoBackground {
-		docCtx, stop := context.WithCancel(context.Background())
-		app.stopDocs, app.docsDone = stop, make(chan struct{})
-		go func() {
-			defer close(app.docsDone)
-			app.runDocuments(docCtx, 10*time.Second, time.Minute)
-		}()
-	}
-	if cfg.MailEvery >= 0 {
-		every := cfg.MailEvery
-		if every == 0 {
-			every = 30 * time.Second
-		}
-		mailCtx, stop := context.WithCancel(context.Background())
-		app.stopMail, app.mailDone = stop, make(chan struct{})
-		go func() {
-			defer close(app.mailDone)
-			app.deliverTrustMail(mailCtx, every)
-		}()
-	}
+	// Background work writes to the database, so it starts only once no restore
+	// hold keeps users out (restorehold.go): a write made before the restore's
+	// file bytes are back would be lost if those bytes then failed and the
+	// database were rolled back.
+	app.hold = newRestoreHold(app.backups)
+	app.hold.watch(time.Second, func() {
+		app.startBackground(func() {
+			// Module events are pumped and their webhooks sent every five seconds.
+			if !cfg.NoBackground {
+				ext.run(5 * time.Second)
+				docCtx, stop := context.WithCancel(context.Background())
+				app.stopDocs, app.docsDone = stop, make(chan struct{})
+				go func() {
+					defer close(app.docsDone)
+					app.runDocuments(docCtx, 10*time.Second, time.Minute)
+				}()
+			}
+			if cfg.MailEvery >= 0 {
+				every := cfg.MailEvery
+				if every == 0 {
+					every = 30 * time.Second
+				}
+				mailCtx, stop := context.WithCancel(context.Background())
+				app.stopMail, app.mailDone = stop, make(chan struct{})
+				go func() {
+					defer close(app.mailDone)
+					app.deliverTrustMail(mailCtx, every)
+				}()
+			}
+		})
+	})
 	return app, nil
 }
 
@@ -416,6 +431,10 @@ func Open(ctx context.Context, cfg Config) (*App, error) {
 // closes any SMTP connection it has open (internal/smtpsend), so a stalled server cannot
 // hold shutdown or an update.
 func (a *App) Close() error {
+	a.hold.close()
+	a.bgMu.Lock()
+	a.bgClosed = true
+	a.bgMu.Unlock()
 	if a.stopDocs != nil {
 		a.stopDocs()
 		<-a.docsDone
@@ -429,6 +448,16 @@ func (a *App) Close() error {
 		<-a.mailDone
 	}
 	return a.Pool.Close()
+}
+
+// startBackground runs start, which starts the background workers, unless Close
+// has begun; Close waits for it, so every worker start sees the stop that follows.
+func (a *App) startBackground(start func()) {
+	a.bgMu.Lock()
+	defer a.bgMu.Unlock()
+	if !a.bgClosed {
+		start()
+	}
 }
 
 // Handler is the whole HTTP surface: the module runtime's domain router and include=

@@ -460,3 +460,111 @@ func TestRecoveryCompletesACommittedRestoreWhoseFilesWereWritten(t *testing.T) {
 		t.Fatalf("written file export still pending in the journal: %+v", item)
 	}
 }
+
+// holdOf reads the hold the core polls, through the authenticated local API.
+func holdOf(t *testing.T, ops *Operations) bool {
+	t.Helper()
+	srv := httptest.NewServer(NewMux("hold-token", ops, nil))
+	defer srv.Close()
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/v1/restores/hold", nil)
+	req.Header.Set("Authorization", "Bearer hold-token")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body struct {
+		Hold *bool `json:"hold"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil || res.StatusCode != http.StatusOK || body.Hold == nil {
+		t.Fatalf("hold answer %d %v", res.StatusCode, err)
+	}
+	direct, _ := ops.FileHold()
+	if direct != *body.Hold {
+		t.Fatalf("hold endpoint %v, FileHold %v", *body.Hold, direct)
+	}
+	return *body.Hold
+}
+
+// Codex PR #41 (restore file bytes): the restored core is started before its file
+// bytes are written, so the supervisor holds users out of it until they are. The
+// hold stands while the core takes the bytes and lifts only once the journal no
+// longer says they are pending.
+func TestRestoreHoldsUsersOutUntilTheFilesAreWritten(t *testing.T) {
+	var ops *Operations
+	heldDuringImport := false
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error {
+		heldDuringImport = holdOf(t, ops)
+		return nil
+	})
+	ops.Journal = OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	if holdOf(t, ops) {
+		t.Fatal("held before any restore")
+	}
+	rec, err := ops.Restore(context.Background(), id)
+	if err != nil || rec.Status != "completed" {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	if !heldDuringImport {
+		t.Fatal("users were let in while the core was writing the restored files")
+	}
+	if holdOf(t, ops) {
+		t.Fatal("still held after the files were written")
+	}
+}
+
+// A failed file write keeps users out through the rollback: the failed record no
+// longer says pending, but the safety backup is still being put back.
+func TestRestoreHoldStandsThroughTheFileRollback(t *testing.T) {
+	var ops *Operations
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return errors.New("backend write failed") })
+	ops.Journal = OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	dumps := 0
+	heldDuringRollback := false
+	ops.ApplyDump = func(context.Context, io.Reader) error {
+		dumps++
+		*order = append(*order, "dump")
+		if dumps == 2 {
+			heldDuringRollback = holdOf(t, ops)
+		}
+		return nil
+	}
+	rec, err := ops.Restore(context.Background(), id)
+	if err == nil || rec.Error != "files_rolled_back" {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	if !heldDuringRollback {
+		t.Fatal("users were let in while the safety backup was being put back")
+	}
+	if holdOf(t, ops) {
+		t.Fatal("still held after the rollback finished")
+	}
+}
+
+// A restore left pending with its files unwritten holds users out across a
+// supervisor restart, until recovery rolls it back.
+func TestRestoreHoldSurvivesASupervisorRestart(t *testing.T) {
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return nil })
+	rt := ops.Runtime.(*scriptRuntime)
+	ops.Journal = OpenJournal(filepath.Join(t.TempDir(), "restore-journal.jsonl"))
+	rt.health = errors.New("core not healthy")
+	rec, err := ops.Restore(context.Background(), id)
+	if err == nil || rec.Status != "running" {
+		t.Fatalf("restore %+v %v (order %v)", rec, err, *order)
+	}
+	rt.health = nil
+	next := &Operations{
+		Store: ops.Store, Gate: &Gate{}, Now: ops.Now, Passphrase: ops.Passphrase,
+		ApplyDump: ops.ApplyDump, RestoreFiles: ops.RestoreFiles,
+		Runtime: rt, Journal: ops.Journal, Ledger: ops.Ledger, Outbox: ops.Outbox,
+	}
+	if !holdOf(t, next) {
+		t.Fatal("a restarted supervisor let users in before recovering the pending file export")
+	}
+	if err := next.Recover(context.Background()); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+	if holdOf(t, next) {
+		t.Fatal("still held after recovery rolled the restore back")
+	}
+}

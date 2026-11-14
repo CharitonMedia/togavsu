@@ -153,9 +153,13 @@ type Operations struct {
 	held map[string]*RestoreRecord
 	// files holds each running restore's kept file export until the core is
 	// back to take it.
-	files    map[string]keptFiles
-	active   sync.WaitGroup
-	shutting atomic.Bool
+	files map[string]keptFiles
+	// rollingBack counts file rollbacks in progress. Their record is already
+	// failed, so the journal alone would let users back into the restored core
+	// while the safety backup is still being put back.
+	rollingBack int
+	active      sync.WaitGroup
+	shutting    atomic.Bool
 }
 
 func (o *Operations) now() time.Time {
@@ -2163,15 +2167,24 @@ type keptFiles struct {
 	safety string
 }
 
-// ponytail: ceiling: the bytes are written by the restarted core, so a rollback loses
-// writes made after it started; upgrade path and trigger are PONYTAIL-DEBT.md Platform 18.
+// ponytail: ceiling: a rollback that also fails lifts the restore hold over the restored
+// database without its files; upgrade path and trigger are PONYTAIL-DEBT.md Platform 18.
 // rollBackFiles handles a restored database whose file bytes the core could not write.
-// The record is failed with files_not_restored first, so a crash during the rollback
-// leaves it terminal. Then the safety backup taken before the swap is restored as its
+// Users have been held out of the restored core since it started (FileHold), and stay
+// out until this returns, so the rollback drops nothing they did. The record is failed
+// with files_not_restored first, so a crash during the rollback leaves it terminal. Then the safety backup taken before the swap is restored as its
 // own journaled restore (source "rollback:<id>"), through the same stop, swap and
 // restart path, so the previous database is live again over the files it names. When
 // that completes the record's error becomes files_rolled_back.
 func (o *Operations) rollBackFiles(rec RestoreRecord, safetyID string, ferr error) (RestoreRecord, error) {
+	o.jobsMu.Lock()
+	o.rollingBack++
+	o.jobsMu.Unlock()
+	defer func() {
+		o.jobsMu.Lock()
+		o.rollingBack--
+		o.jobsMu.Unlock()
+	}()
 	rec.Error = "files_not_restored"
 	saved, perr := o.markFailed(rec, ferr)
 	if perr != nil {
@@ -2232,6 +2245,30 @@ func (o *Operations) keepFiles(id, path, safety string) error {
 	o.files[id] = keptFiles{path: kept, cleanup: cleanup, safety: safety}
 	o.jobsMu.Unlock()
 	return nil
+}
+
+// FileHold reports whether users must stay out of the core: a restore has put
+// its database in place and its file bytes are not written yet, or a failed
+// file write is being rolled back. The core serves only its health check and
+// the supervisor's file import until this is false, so nothing a user does in
+// that window can be lost to a rollback. An unreadable journal holds.
+func (o *Operations) FileHold() (bool, error) {
+	o.jobsMu.Lock()
+	busy := len(o.files) > 0 || o.rollingBack > 0
+	o.jobsMu.Unlock()
+	if busy || o.Journal == nil {
+		return busy, nil
+	}
+	open, err := o.Journal.Incomplete()
+	if err != nil {
+		return true, err
+	}
+	for _, rec := range open {
+		if rec.Files == filesPending {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (o *Operations) takeFiles(id string) (keptFiles, bool) {

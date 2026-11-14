@@ -62,7 +62,7 @@ Restore is the one operation that interrupts users. Tell them before you start: 
 
 1. Pick the backup: `GET /api/v1/backups` lists the ones this installation holds. For a downloaded file, send its bytes to `POST /api/v1/backup-uploads?backup_id=<the file name without .tgbk>`; the answer carries an `upload_token`.
 2. `POST /api/v1/restores` with either `backup_id` or `upload_token`, and `passphrase`, the backup passphrase.
-3. The supervisor checks the file, takes a safety backup of the current state, restores the database and the file bytes, and brings the core back with no manual step. `GET /api/v1/restores/{restore_id}` shows its progress.
+3. The supervisor checks the file, takes a safety backup of the current state, restores the database and the file bytes, and brings the core back with no manual step. Until the restored files are back in place, Togavsu shows a page saying it is finishing a restore and takes no work, so nothing done in that time can be lost. `GET /api/v1/restores/{restore_id}` shows its progress.
 
 Module data volumes are not restored yet (pending).
 

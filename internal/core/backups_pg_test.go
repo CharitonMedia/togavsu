@@ -36,6 +36,9 @@ type fakeSupervisor struct {
 
 func (f *fakeSupervisor) handler(t *testing.T) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/restores/hold", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]bool{"hold": false})
+	})
 	meta := map[string]any{"id": "20261112T090000Z-0123456789abcdef", "created_at": "2026-11-12T09:00:00Z", "reason": "manual",
 		"sha256": heldSum, "bytes": 4, "files": true}
 	mux.HandleFunc("POST /v1/backups", func(w http.ResponseWriter, r *http.Request) {

@@ -19,6 +19,9 @@ func TestReleaseUpdatesRoutes(t *testing.T) {
 	var mu sync.Mutex
 	forced := make(chan bool, 1)
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/restores/hold", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]bool{"hold": false})
+	})
 	mux.HandleFunc("GET /v1/updates", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"updates": []any{
 			map[string]any{"time": "2026-11-10T08:00:00Z", "kind": "update", "actor": "supervisor", "fields": map[string]string{"status": "applied", "from": "core@sha256:aa", "to": "core@sha256:bb", "migrated": "true"}},

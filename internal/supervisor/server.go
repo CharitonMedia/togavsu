@@ -40,6 +40,7 @@ func NewMux(token string, ops *Operations, log *slog.Logger) http.Handler {
 	mux.HandleFunc("POST /v1/restores", h.postRestore)
 	mux.HandleFunc("POST /v1/restores/upload", h.postRestoreUpload)
 	mux.HandleFunc("GET /v1/restores", h.listRestores)
+	mux.HandleFunc("GET /v1/restores/hold", h.restoreHold)
 	mux.HandleFunc("GET /v1/restores/{id}", h.getRestore)
 	mux.HandleFunc("POST /v1/test-restores", h.postTestRestore)
 	return logging(log, authenticate(token, mux))
@@ -353,6 +354,17 @@ func (h *handlers) listDestinationBackups(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"backups": list})
+}
+
+// restoreHold tells the core whether to keep users out while a restore's file
+// bytes are written back (Operations.FileHold). An unreadable journal answers
+// hold: true with the error logged, so the core stays closed.
+func (h *handlers) restoreHold(w http.ResponseWriter, _ *http.Request) {
+	hold, err := h.ops.FileHold()
+	if err != nil {
+		h.log.Warn("restore hold: journal unreadable", "error", Scrub(err.Error()))
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"hold": hold})
 }
 
 func (h *handlers) getRestore(w http.ResponseWriter, r *http.Request) {
