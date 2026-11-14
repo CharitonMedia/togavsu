@@ -1,7 +1,7 @@
 {
   "task_id": "release",
   "status": "pass",
-  "tested_revision": "126643e9c180f6f5eb84ee37b5465335c0c327b7",
+  "tested_revision": "eefd85fe19cb75a524f3550c6a8580637c3a0aef",
   "exit_code": 0,
   "command": "TOGAVSU_ACCEPTANCE_IDS=AC-003,AC-004,AC-005,AC-006,AC-007,AC-008,AC-009,AC-010,AC-011,AC-012,AC-013,AC-014,AC-015,AC-016,AC-018,AC-019,AC-020,AC-021,AC-022,AC-023,AC-024,AC-025,AC-026,AC-027,AC-028,AC-029,AC-030,AC-031,AC-032,AC-033,AC-034,AC-035,AC-036,AC-037,AC-038,AC-039,AC-040,AC-042,AC-043,AC-044,AC-045,AC-046,AC-047,AC-048,AC-049,AC-050,AC-051,AC-052 sh scripts/ci/full-acceptance.sh",
   "tests": [
@@ -10,126 +10,126 @@
       "command": "go test -count=1 -run '^(TestWallsRolesAuditAndRestart|TestFirstRunGate|TestBrowserSetupAndSignIn|TestAC003WallHidesMatter|TestAC024HistoryRedactsAttorneyOnly|TestAC024AppendOnlyRefusesMutation|TestAuditLogKeepsWallAndRedaction|TestApplicationRoleCannotChangeAuditRows|TestAC004AccountantReadOnly|TestLedgersSealedForApplicationRole)$' ./internal/core/ ./internal/practice/ ./internal/audit/ ./internal/billing/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 4.6
+      "seconds": 5.7
     },
     {
       "id": "go-practice-records",
       "command": "go test -count=1 -run '^(TestPracticeRecordsOnCore|TestDurableSurvivesRestart|TestDurableFailedCommitLeavesNoTrace|TestAC009CloseWarnsAndStillCloses|TestAC020SearchScopesAndWall|TestAC023ReopenAndZeroFee|TestAC025CustomFieldAreaCSVAndUI|TestEveryMatterFieldIsAuditedBeforeWrite)$' ./internal/core/ ./internal/practice/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 2.0
+      "seconds": 2.8
     },
     {
       "id": "go-finance",
       "command": "go test -count=1 -run '^(TestFinanceInvoiceWorkflows|TestFinanceTrustInvariants|TestFinancePermissions|TestFinanceTrustNotices|TestFinanceCrossDomainTransfers|TestAC008InvoiceLifecycle|TestAC009UnpaidInvoiceWarnsOnClose|TestAC026FlatFeeReadyToApply|TestReleaseZeroFeeStaysOutOfARAging)$' ./internal/core/ ./internal/billing/ ./internal/trust/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 6.4
+      "seconds": 9.0
     },
     {
       "id": "go-documents",
       "command": "go test -count=1 -run '^(TestDocumentsCalendarDeadlines|TestDocumentsStorageVersionsMoves|TestDocumentsDocTenderCorpus|TestDocumentsDocTenderTokensAndMCP|TestAC027AvailableDates|TestAC011UpcomingDeadlinesClickThrough)$' ./internal/core/ ./internal/calendar/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 58.2
+      "seconds": 57.9
     },
     {
       "id": "go-ui",
       "command": "go test -count=1 -run '^(TestUIHomeLayouts|TestUIWidgetClickThrough|TestUISidebar|TestUISearch|TestUINotifications|TestUIHelp|TestUIAppearanceAndLLMs|TestUIAdminSettings)$' ./internal/dashboard/compose/ && go test -count=1 -run '^(TestEveryScreenAndAdminTabHasAGuideTopic|TestHelpIconTopicForEachScreenPath)$' ./internal/dashboard/ && go test -count=1 -run '^TestExtensionsUIModules$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 13.5
+      "seconds": 24.6
     },
     {
       "id": "go-modules",
       "command": "go test -count=1 -run '^(TestExtensionsModuleLifecycle|TestReleaseModuleUpdatesViewsAndRollback)$' ./internal/core/ && go test -count=1 -run '^TestSupervisorClientMatchesSupervisorAPI$' ./internal/modules/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 3.0
+      "seconds": 4.2
     },
     {
       "id": "go-release-api",
-      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestReleaseEveryDomainWriteIsAudited|TestReleaseUpdatesRoutes)$' ./internal/core/",
+      "command": "go test -count=1 -run '^(TestReleaseIdentityRoutes|TestReleaseSystemNotificationsAndMail|TestReleasePracticeBulk|TestContractRoutesFailClosed|TestReleaseAccountantWritesNothing|TestReleaseWallHidesMatterEverywhere|TestReleaseFeeAgreements|TestBackupsAreAdminOnlyAuditedAndOnMCP|TestBackupCreateAuditsIntentBeforeTheSupervisor|TestAdminUserPatchInitialsAndNullClears|TestMeProfileFileID|TestReleaseEveryDomainWriteIsAudited|TestReleaseUpdatesRoutes)$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 10.8
+      "seconds": 17.4
     },
     {
       "id": "compose-first-run",
       "command": "sh scripts/ci/test-compose-first-run.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 48.4
+      "seconds": 61.7
     },
     {
       "id": "module-container",
       "command": "sh scripts/ci/test-module-container.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 20.5
+      "seconds": 27.2
     },
     {
       "id": "module-stack",
       "command": "sh scripts/ci/test-module-stack.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 21.4
+      "seconds": 22.1
     },
     {
       "id": "go-marketplace",
       "command": "go test -count=1 -run '^TestExtensionsMarketplaceAlerts$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.7
+      "seconds": 2.2
     },
     {
       "id": "update-load",
       "command": "sh scripts/ci/update-load.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 87.7
+      "seconds": 104.5
     },
     {
       "id": "supervisor-suite",
       "command": "sh scripts/ci/test-supervisor.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 7.8
+      "seconds": 13.5
     },
     {
       "id": "backup-e2e",
       "command": "sh scripts/ci/test-backup-e2e.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 56.4
+      "seconds": 60.2
     },
     {
       "id": "backup-integration",
       "command": "sh scripts/ci/test-backup-integration.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 226.1
+      "seconds": 28.4
     },
     {
       "id": "go-ai",
       "command": "go test -count=1 -run '^(TestExtensionsAIMediation|TestAC052LabelingModelAndNoLocalEndpoint)$' ./internal/core/ ./internal/doctender/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 2.0
+      "seconds": 2.7
     },
     {
       "id": "go-settings-seed",
       "command": "go test -count=1 -run '^(TestBearerScopesMCPAndSettings|TestFreshInstallSchemaAndSeed|TestPRDDefaults|TestModuleClean|TestAC030Fixtures|TestScanSource|TestRegistrySetResetAndReload|TestRegistryAtomicAudit|TestSeedAndSetup|TestSchemaContract)$' ./internal/core/ ./internal/settings/ ./internal/db/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.9
+      "seconds": 2.3
     },
     {
       "id": "ui-qc",
       "command": "sh scripts/ci/ui-qc.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 131.4
+      "seconds": 137.4
     },
     {
       "id": "debt-audit",
@@ -143,21 +143,21 @@
       "command": "go test -count=1 -run '^(TestDocumentsLawCraftEditor)$' ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 1.9
+      "seconds": 2.6
     },
     {
       "id": "core-image-cases",
       "command": "sh scripts/ci/test-core-image-cases.sh",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 195.3
+      "seconds": 267.8
     },
     {
       "id": "go-doctender",
       "command": "go test -count=1 -run '^TestAC0(4[3-9]|5[0-2])' ./internal/doctender/ ./internal/core/",
       "exit_code": 0,
       "status": "pass",
-      "seconds": 9.3
+      "seconds": 13.0
     }
   ],
   "phase_cases": [
@@ -216,7 +216,7 @@
       "status": "pass",
       "command": "TOGAVSU_ACCEPTANCE_IDS=AC-003,AC-004,AC-005,AC-006,AC-007,AC-008,AC-009,AC-010,AC-011,AC-012,AC-013,AC-014,AC-015,AC-016,AC-018,AC-019,AC-020,AC-021,AC-022,AC-023,AC-024,AC-025,AC-026,AC-027,AC-028,AC-029,AC-030,AC-031,AC-032,AC-033,AC-034,AC-035,AC-036,AC-037,AC-038,AC-039,AC-040,AC-042,AC-043,AC-044,AC-045,AC-046,AC-047,AC-048,AC-049,AC-050,AC-051,AC-052 sh scripts/ci/full-acceptance.sh",
       "exit_code": 0,
-      "revision": "126643e9c180f6f5eb84ee37b5465335c0c327b7",
+      "revision": "eefd85fe19cb75a524f3550c6a8580637c3a0aef",
       "passed_acceptance_ids": [
         "AC-003",
         "AC-004",
@@ -278,7 +278,7 @@
       "status": "pass",
       "command": "TOGAVSU_ACCEPTANCE_IDS=AC-013,AC-016 sh scripts/ci/full-acceptance.sh",
       "exit_code": 0,
-      "revision": "126643e9c180f6f5eb84ee37b5465335c0c327b7",
+      "revision": "eefd85fe19cb75a524f3550c6a8580637c3a0aef",
       "passed_acceptance_ids": [
         "AC-013",
         "AC-016"
@@ -294,7 +294,7 @@
       "status": "pass",
       "command": "TOGAVSU_ACCEPTANCE_IDS=AC-018,AC-040 sh scripts/ci/full-acceptance.sh",
       "exit_code": 0,
-      "revision": "126643e9c180f6f5eb84ee37b5465335c0c327b7",
+      "revision": "eefd85fe19cb75a524f3550c6a8580637c3a0aef",
       "passed_acceptance_ids": [
         "AC-018",
         "AC-040"
@@ -355,7 +355,7 @@
   "pending_acceptance_ids": [],
   "pending_reasons": {},
   "scope": "Release candidate (phase 7), after the 2026-11-13 split Patrick approved (control PR #50): the integrated core with its 48 assigned criteria, every PRD 12 criterion except AC-001, AC-002, AC-017 and AC-041. AC-002 moved to release-api-coverage, AC-017 to release-perf, and AC-001, AC-041, the release gates and the signed release to release-final. This report does not decide those criteria or any release gate. status is pass because each phase case's subset run (TOGAVSU_ACCEPTANCE_IDS=<its ids> sh scripts/ci/full-acceptance.sh) exited 0 at tested_revision on a clean tree. Nothing was tagged, signed or published.",
-  "environment": "GitHub-hosted Linux lane runner, Docker Engine, Go 1.22.12, two postgres:17 containers, and pg_dump and psql 17.12 from the postgres:17 image (run through small docker wrappers, since no Postgres 17 client package was installable) as TOGAVSU_PG_DUMP and TOGAVSU_PSQL. Synthetic data and throwaway keys only. Each subset run and product suite was on the committed tree at tested_revision (working_tree_dirty false).",
+  "environment": "GitHub-hosted Linux lane runner, Docker Engine, Go 1.22.12, two postgres:17 containers, and the native Postgres 17 client (pg_dump and psql from /usr/lib/postgresql/17/bin, installed from the PGDG apt repository) as TOGAVSU_PG_DUMP and TOGAVSU_PSQL. Synthetic data and throwaway keys only. Each subset run and product suite was on the committed tree at tested_revision (working_tree_dirty false).",
   "product_suites_at_tested_revision": [
     {
       "name": "API contract tests",
@@ -366,24 +366,19 @@
       "name": "QA harness tests",
       "command": "docker build -q -t togavsu-qa:local scripts/ci/qa-image && docker run --rm -v \"$PWD:/src\" -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
       "exit_code": 0,
-      "note": "79 unittests, then the harness integrity run (0 integrity errors)"
+      "note": "unittests, then the harness integrity run (0 integrity errors)"
     },
     {
       "name": "Core tests",
       "command": "sh scripts/ci/test-core.sh",
       "exit_code": 0,
-      "note": "43 packages and the core image cases"
-    },
-    {
-      "name": "Row gutter test from main #53",
-      "command": "go test -count=1 ./web/static/",
-      "exit_code": 0
+      "note": "gofmt, go vet, every module package against Postgres (strict and -race -short), then the core image cases"
     },
     {
       "name": "Debt audit",
       "command": "python3 scripts/release/check_debt.py",
       "exit_code": 0,
-      "note": "103 markers, 64 ledger entries"
+      "note": "105 markers, 66 ledger entries"
     }
   ],
   "product_suites_note": "These suites back the product-suites release gate and AC-002, which are not assigned here, so the subset run doesn't include them. They ran separately at tested_revision as the test evidence for the required checks. Supervisor tests and Backup integration are covered by the subset run's supervisor-suite, update-load and backup-integration checks.",
@@ -399,8 +394,13 @@
     "AC-016": "update-load signs with a throwaway cosign key and skips the transparency log. Signing with the Togavsu release key is the signed-release gate, which is pending. Not covered by the criterion text and still open in PRD 6: automatic restore after a failed migration, and a swap whose new image applies a migration under load."
   },
   "fixes_in_this_run": {
-    "P1 docs/build/reports/release.json tested revision older than reviewed head f4f9222": "The controller's update-branch merge of main (e8c2044, #53: web/static/app.css widget row gutter, web/static/grid_gutter_test.go, the row-gutter check in internal/dashboard/compose/qc/ui-qc.mjs behind AC-029) landed after the old tested revision 4697f27. All three phase cases (candidate-acceptance, signed-images-updater-load, backup-restore) were rerun in subset mode at 126643e, which contains that merge and one test fix (below), on a clean tree, each exit 0. ui-qc (the AC-029 check with the new gutter assertions) passed inside candidate-acceptance. The API contract, QA harness and Core suites, go test ./web/static/ and check_debt.py were rerun at the same revision. This report was regenerated by scripts/release/write_report.py from those runs, and the only commit after the tested revision changes docs/build/reports/release.json alone. origin/main is still e8c2044.",
-    "Core tests failure on f4f9222 (product CI run 43511287158, found while rechecking)": "TestDocumentsDocTenderTokensAndMCP failed in the -race -short run with '1 calls were priced before ai.model_prices was set'. The test set the price once the open file published, while the walled file's first Doc Tender run could still be calling the model, so a late call on it was priced. That was a test race, not a product bug: the logged cost is the price at call time, as PRD intends. internal/core/dtcontract_pg_test.go now also waits for the walled file's first run to settle (it ends in exception, since no matter matches its text) before setting the price. Verified 10 of 10 passes under -race -short, plus the strict and race runs inside test-core.sh, and inside candidate-acceptance (go-doctender, go-documents) at 126643e."
+    "Merge of origin/main (126a4d7: #51 optional two-factor with QR enrollment, #54 control)": "Merged into the branch. One conflict: docs/api/stage1-inventory.json's openapi.json digest, recomputed from the regenerated contract (api/check.sh passes). One integration break: identity.ConfirmReset now also returns recovery codes; the core JSON handler for POST /api/v1/me/totp/reset/confirm follows the new signature. The contract's response is User, so those codes are not returned over the API (PONYTAIL-DEBT.md Identity 8; an API client calls regenerateRecoveryCodes).",
+    "Codex 1 identity_http.go userBody.input drops initials": "PATCH /api/v1/users/{id} forwards initials to the profile with PATCH /me's rule (letters only, at most the fixed length, stored upper case) and an audited initials change in the same transaction. Test: TestAdminUserPatchInitialsAndNullClears (stored, audited, invalid refused and unchanged).",
+    "Codex 2 explicit null for linked_contact_id and default_hourly_rate_cents": "userBody decodes both as presence-aware nullable fields (omitted, null, value). Null maps to a clearing value Accounts.UpdateUser applies and audits (contact unlinked, rate 0, the users column is NOT NULL); omission leaves the value. Test: TestAdminUserPatchInitialsAndNullClears covers omitted, set and null for both fields, each null clearing only its own field.",
+    "Codex 3 PATCH /api/v1/me ignores profile_file_id": "Decoded presence-aware. A value reads the file's current version through files.Service Get and OpenVersion (wall, role and quarantine checks), and dashboard.Accounts.UpdateMeProfile applies it with the picture rules (size, sniffed PNG/JPEG/WebP) in one audited transaction with name, phone and initials; null removes the picture. Test: TestMeProfileFileID (set, a walled file is 404, a text file is 400, neither changes anything in the same request, omitted keeps, null clears).",
+    "Codex 4 backups.go create audits only after the archive exists": "POST /api/v1/backups writes a backup_request intent row before calling the supervisor; when that write fails no backup is made. Afterwards it appends the outcome under the same request id: created (backup id) plus the backup row with its SHA-256, or failed with the supervisor's error. An outcome-write failure is logged and the created backup is still reported (202). Test: TestBackupCreateAuditsIntentBeforeTheSupervisor (intent refused: supervisor never called; outcome refused: 202 with the backup; normal and supervisor-refused outcomes), plus test-backup-e2e.sh now asserts the archive holds exactly the intent row and no outcome row.",
+    "Codex 5 supervisor operations.go restores file bytes after the swap": "With writers stopped and before the swap, checkFileExport (internal/supervisor/filestage.go) reads the whole export: manifest first, every object listed once with its size and SHA-256, none missing. A bad set fails with invalid_backup while the existing database is live, and the core is never handed it; a good set is spooled. Only the restarted core can write the bytes (it holds the backends' credentials and reads locations from the restored database), so the write still follows the restart. If it fails, the record is marked failed (files_not_restored), then the safety backup taken just before the swap is restored as its own journaled restore (source rollback:<id>) through the existing stop, swap and restart path, and the record's error becomes files_rolled_back. If the rollback fails, the error stays files_not_restored and the admin is mailed. Ceiling (PONYTAIL-DEBT.md Platform 18): writes made after the restored core started are lost on rollback. Tests: TestRestoreRefusesADamagedFileExportBeforeTheSwap (bytes differ, object missing, size differs, no manifest: no dump, core not handed, writers restarted), TestRestoreFileWriteFailureRollsBackTheSwap, TestRestoreFileWriteFailureWithAFailedRollbackIsReported, and TestRestoreHandsTheFilesToTheRestartedCore on a real export.",
+    "Codex 6 app.go live app role owning sealed ledgers": "Already fixed by db.ApplySealed; unchanged as instructed."
   },
   "earlier_work_kept_on_this_branch": [
     "Previous pass (tested 4697f27, reviewed head f4f9222 found its code sound): P1 internal/core/app.go MigrateSealed unseal window: core migrate no longer hands the append-only tables to togavsu_app for the run. db.ApplySealed (internal/db/ledgers.go) runs the migrations on one superuser session switched to the application role with SET ROLE, so every object a migration creates still belongs to togavsu_app. A migration whose SQL names an append-only table gets only those tables handed to togavsu_app at the start of its own transaction, and ledgerseal.Script seals them again before that transaction commits. Postgres DDL is transactional, so no other session, including the old core serving during an update, ever sees a ledger it could change, and a failed, cancelled or killed migration rolls the handoff back. Migrations that name no ledger run with no handoff and take no lock on the ledgers. With nothing pending, core migrate only re-runs the seal, which also repairs a database an older core migrate left unsealed. db.UnsealLedgers is removed. Regression tests: TestLedgersSealedForApplicationRole fails a ledger migration (1/0 after an ALTER), then kills the migrating backend with pg_terminate_backend mid-migration, checks with db.VerifySealed on the application role's connection that the ledgers are sealed while it runs and after it dies, and that neither column exists; an expand migration still applies through db.ApplySealed and the admin pool session returns as the superuser. TestWrapLedgerMigration checks where the handoff and seal go in the Up section, that only named tables are handed over, and that unrelated migrations are unchanged. The remaining lock window is recorded as a second ceiling on PONYTAIL-DEBT.md Contracts item 4.",
@@ -418,16 +418,17 @@
     "Previous fix pass (reviewed at 5a940ec): P0 scripts/ci/full-acceptance.sh subset mode: With TOGAVSU_ACCEPTANCE_IDS set, the script passes it as --ids to scripts/release/full_acceptance.py. The runner then runs the checks of exactly the listed criteria, decides no release gate, and exits 0 only when every listed criterion passes on a clean tree. An empty list or an unknown id exits 2 before any check runs. Unset, the script runs all 52 criteria and every gate as before. The old --phase selector, built on the 52-criterion phase map, is removed. Regression tests in tests/test_full_acceptance.py run the real script and runner in a throwaway git repo with synthetic checks. They cover: exact subset and pass, a failing criterion, a check printing PENDING, a criterion with a gap, empty and unknown ids, unset running every criterion and gate, and a dirty tree.; P0 docs/build/reports/release.json: Rewritten by scripts/release/write_report.py from one subset run per phase case in the assignment's phase_acceptance map: candidate-acceptance (48), signed-images-updater-load (AC-013, AC-016) and backup-restore (AC-018, AC-040). Each exited 0 with status pass at tested_revision. The passed and pending ids partition only the 48 assigned. The writer refuses non-subset runs, runs that don't match the mapped ids, dirty-tree runs and mixed revisions (tested).; P1 docs/platform/README.md: The bootstrap volumes are now documented. /appsecrets holds database_url, field_key, supervisor_token and domain, and every core mounts it read-only. /adminsecrets/admin_database_url is the superuser URL, mounted only by migrate, the supervisor and its update migrator. The backup passphrase is at /backupkey/backup_passphrase. Also corrected the stale claim that cmd/core does not serve HTTP.; P1 docs/platform/interfaces.md: The entrypoint section now gives the mounts: /appsecrets read-only in every core, /backupkey, and /adminsecrets only for migrate, the supervisor and its update migrator (CoreBinds/MigrateBinds). It also gives the entrypoint's refusal to serve with a visible superuser URL. The migrate section gives TOGAVSU_ADMIN_DATABASE_URL from /adminsecrets/admin_database_url, sealing and seal verification. The stale 'image only accepts bootstrap values and exits' line is replaced.; P2 proposed CI and PR framing: Removed docs/release/proposed-ci/product-ci-full-acceptance.patch: its Full acceptance job has been in product-ci.yml since control PR #46, and control PR #50 limits it to release-final and main. docs/release/README.md now states the split scope and the subset mode. It also says the release gates, the cutting steps and proposed-ci/release.yml belong to release-final. The PR body is rewritten for the candidate scope."
   ],
   "simplification": {
-    "this_pass": "One test file changed: internal/core/dtcontract_pg_test.go +9 -1, net +8 (test only). No product code, docs or debt changes; net 0 product lines.",
-    "ponytail_debt_entries": 64,
-    "ponytail_markers": 103,
-    "debt_added": "None this pass. check_debt.py passes.",
-    "review": "Done by hand, since Claude Code hooks do not run here. The fix reuses goose's per-migration transaction and the existing ledgerseal.Script instead of adding a second migration runner; the earlier unseal function is deleted rather than kept beside the new path."
+    "this_pass": "Versus the merge commit 13382d2: 15 files, +776 -70, net +706, of which tests are +395 -5. Product code reuses the files service's access checks, the profile-picture rules (factored into pictureType), the audit service's Atomic and the existing restore path for the rollback rather than adding a second one.",
+    "ponytail_debt_entries": 66,
+    "ponytail_markers": 105,
+    "debt_added": "Platform 18 (restore rollback ceiling) and Identity 8 (confirmTotpReset drops first-enrollment recovery codes on the API). check_debt.py passes.",
+    "review": "Done by hand, since Claude Code hooks do not run here."
   },
   "proposed_shared_changes": [
     "Place docs/release/license/LICENSE and LICENSE-SUMMARY.md at the repository root (PRD 3); not done on this branch.",
     "README.md still says the repository contains build setup, not an application; not changed on this branch.",
-    "Collapse the twelve per-package writeJSON/writeErr helpers (docs/release/simplification-audit.md); not done on this branch."
+    "Collapse the twelve per-package writeJSON/writeErr helpers (docs/release/simplification-audit.md); not done on this branch.",
+    "Identity contract: give confirmTotpReset a response with user and recovery_codes (PONYTAIL-DEBT.md Identity 8)."
   ],
   "ci": {
     "required_checks": [
@@ -443,6 +444,8 @@
     "note": "Product CI for the published head runs after the controller publishes this branch. This lane cannot watch it, so CI results are pending."
   },
   "earlier_runs": [
+    "6e8461f (this pass, before the e2e expectation fix): signed-images-updater-load exit 0; candidate-acceptance 45 of 48 and backup-restore 0 of 2, both because backup-e2e's counts-after saw the new backup_request intent row in the archive (audit_log 89 to 90). That is the intended finding-4 ordering; test-backup-e2e.sh now asserts it. API, Core, QA and debt suites exit 0 there. Superseded by eefd85f.",
+    "126643e (previous report): all three phases exit 0 before the main merge and the Codex fixes.",
     "f4f9222 (this pass, before the test fix): all three subset runs exit 0 (48 passed, 0 pending) and API, QA and Core suites exit 0 locally; product CI Core tests on the same head failed TestDocumentsDocTenderTokensAndMCP under -race (the test race fixed in 126643e), so that evidence was replaced. The first local attempt there also stopped after candidate-acceptance because the acceptance script consumed the lane runner loop's stdin (a lane harness bug); the other two phases were rerun with stdin detached.",
     "4697f27 (previous report, before main's #53 merge): candidate-acceptance, signed-images-updater-load and backup-restore subset runs all exit 0; 48 passed, 0 pending; API, QA and Core suites exit 0.",
     "5f34540 (this pass, first fix commit): signed-images-updater-load exit 0; candidate-acceptance and backup-restore exit 1. go-settings-seed failed TestModuleClean (AC-030) on numeric literals the new code put outside the settings audit's allowed sites, fixed in 4697f27. backup-integration failed because this lane pointed TOGAVSU_TEST_DATABASE_URL at the postgres database, which the supervisor test renames; rerun on a togavsu database as CI does. Core tests failed on the same TestModuleClean.",
@@ -462,11 +465,11 @@
     "note": "Files this branch changes (git diff 2880a66...HEAD) outside the release owned_paths. Each is for the integration lead to accept here or move to a control PR.",
     "files": {
       "Dockerfile": "Supervisor image: installs cosign v2.4.1 pinned by SHA-256 per architecture, copies deploy/release/cosign.pub to /usr/share/togavsu/cosign.pub, copies internal/ledgerseal for the restore seal, and retries apt-get update against a mid-sync mirror.",
-      "PONYTAIL-DEBT.md": "Contracts item 4 rewritten for the ledger seal (now including db.ApplySealed and its lock ceiling); Platform item 17 added.",
+      "PONYTAIL-DEBT.md": "Contracts item 4 rewritten for the ledger seal (now including db.ApplySealed and its lock ceiling); Platform item 17 added. This pass adds Platform 18 and Identity 8 (debt count 66).",
       "cmd/supervisor/main.go": "Wiring only: supervisor.CoreVolumes (appsecrets, adminsecrets, backupkey, data) for replacement cores and the update migrator, the core file-bytes export into backups and import on restore (CoreFiles), the cosign verify flags, and scheduled work yielding the operation gate to admin requests.",
-      "docs/api/stage1-inventory.json": "Edited: the regenerated openapi.json digest that api/check.sh requires, and an 'ai-call-log-filters' change entry for the merged contract change.",
+      "docs/api/stage1-inventory.json": "Edited: the regenerated openapi.json digest that api/check.sh requires, and an 'ai-call-log-filters' change entry for the merged contract change. Recomputed again for the merged main contract and this pass's Restore.error description.",
       "docs/platform/README.md": "Lead-instructed fix: the three bootstrap volumes (/appsecrets read-only in every core, /adminsecrets/admin_database_url only for migrate, the supervisor and its update migrator, /backupkey/backup_passphrase) and the stale claim that cmd/core does not serve HTTP.",
-      "docs/platform/backup-format.md": "Documents files/bytes.tar (the file export) and the completion trailer in the backup archive.",
+      "docs/platform/backup-format.md": "Documents files/bytes.tar and its completion trailer; this pass adds the pre-swap file-set check and the files_rolled_back rollback.",
       "docs/platform/interfaces.md": "Lead-instructed fix: entrypoint mounts, the refusal to serve with a visible superuser URL, and core migrate reading TOGAVSU_ADMIN_DATABASE_URL from /adminsecrets/admin_database_url with sealing and seal verification.",
       "docs/platform/pending.md": "Rewritten to the behavior this branch actually has and what is still pending for AC-001, AC-016 and AC-018."
     }
