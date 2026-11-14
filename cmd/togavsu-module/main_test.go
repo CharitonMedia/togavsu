@@ -245,8 +245,8 @@ func TestPackageInstallable(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(errs), "\n")
 	want := []string{
-		"held back togavsu-module.yaml notifications: waits on CORE-03: Tell the attorney when a matter falls behind.",
 		"held back togavsu-module.yaml permissions[0] (scope books:read): waits on CORE-02: Read the books without a viewer.",
+		"held back togavsu-module.yaml notifications: waits on CORE-03: Tell the attorney when a matter falls behind.",
 		"held back migrations/0002_trust_link.sql: waits on CORE-22: Link a target to its trust account.",
 		"pending scope time:read (CORE-00) holds nothing back: the core accepts it or the package no longer has it; remove the entry",
 	}
@@ -490,5 +490,60 @@ func TestPackageShipsOnlyThePackageFiles(t *testing.T) {
 		if name != modulekit.ManifestFile && !strings.HasPrefix(name, "migrations/") {
 			t.Fatalf("%s shipped", name)
 		}
+	}
+}
+
+func TestPendingAddsAnEntry(t *testing.T) {
+	dir := copyPackage(t, nil)
+	if code, _, _ := cli("pending", "-dir", dir, "-field", "notifications"); code != exitUsage {
+		t.Fatalf("no core: %d", code)
+	}
+	code, out, errs := cli("pending", "-dir", dir, "-field", "notifications", "-core", "CORE-03", "-reason", "Tell the attorney when a matter falls behind.")
+	if code != exitOK || !strings.Contains(out, "added field notifications (waits on CORE-03)") {
+		t.Fatalf("pending: %d %s %s", code, out, errs)
+	}
+	if code, _, errs := cli("pending", "-dir", dir, "-migration", "migrations/0002_trust_link.sql", "-core", "CORE-22, CORE-24", "-reason", "Link a target to its trust account."); code != exitOK {
+		t.Fatalf("pending: %d %s", code, errs)
+	}
+	src, err := os.ReadFile(filepath.Join(dir, modulekit.PendingFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "pending:\n  - field: notifications\n    core: CORE-03\n    reason: Tell the attorney when a matter falls behind.\n" +
+		"  - migration: migrations/0002_trust_link.sql\n    core: [CORE-22, CORE-24]\n    reason: Link a target to its trust account.\n"
+	if string(src) != want {
+		t.Fatalf("pending.yaml:\n%s", src)
+	}
+	if code, _, errs := cli("pending", "-dir", dir, "-field", "notifications", "-core", "CORE-03", "-reason", "Again."); code != exitRefused || !strings.Contains(errs, "pending_invalid") {
+		t.Fatalf("duplicate: %d %s", code, errs)
+	}
+}
+
+func TestKeyPrintsThePublicKeyAndProves(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := write(t, "signing.key", base64.StdEncoding.EncodeToString(priv.Seed())+"\n")
+	if code, _, _ := cli("key"); code != exitUsage {
+		t.Fatalf("no key: %d", code)
+	}
+	if code, out, errs := cli("key", "-key", seed); code != exitOK || out != modulekit.PublicKeyPEM(pub) {
+		t.Fatalf("key: %d %q %s", code, out, errs)
+	}
+	proof := "togavsu-marketplace-key-proof\n" + modulekit.KeyID(pub) + "\nchallenge-text"
+	code, out, errs := cli("key", "-key", seed, "-prove", proof)
+	if code != exitOK {
+		t.Fatalf("prove: %d %s", code, errs)
+	}
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(out))
+	if err != nil || !ed25519.Verify(pub, []byte(proof), sig) {
+		t.Fatalf("prove printed %q", out)
+	}
+	if code, _, errs := cli("key", "-key", seed, "-prove", "anything else"); code != exitRefused || !strings.Contains(errs, "proof_message") {
+		t.Fatalf("other text: %d %s", code, errs)
+	}
+	if code, _, _ := cli("key", "-key", write(t, "bad.key", "not a seed")); code != exitRefused {
+		t.Fatalf("bad seed: %d", code)
 	}
 }

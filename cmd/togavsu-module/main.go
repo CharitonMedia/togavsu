@@ -4,6 +4,8 @@
 //	togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
 //	togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
 //	togavsu-module verify -file <signed file> -pub <public key PEM file>
+//	togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
+//	togavsu-module key -key <seed file> [-prove <proof_message>]
 //	togavsu-module accepts
 //
 // check runs the manifest, scope and migration checks the core runs at install and
@@ -20,7 +22,11 @@
 // -installable) to a new directory instead of signing, to inspect what would ship. Only
 // the package directory's own files are read (togavsu-module.yaml, pending.yaml and
 // migrations/); anything else there is never shipped. verify checks a signed package
-// file against one trusted public key, as the core does before it installs. accepts
+// file against one trusted public key, as the core does before it installs. pending
+// adds one entry to the directory's pending.yaml in place (AddPending), creating the
+// file if it is missing. key prints the seed file's PEM public key, the key a firm
+// trusts and the marketplace registers; with -prove it prints instead the signature of
+// the marketplace's key proof_message (ProveKey), and signs nothing else. accepts
 // prints, as JSON, what this core accepts: its manifest fields and their digest, its
 // scopes, and the core records a module may use. The command never makes or stores a
 // key.
@@ -35,6 +41,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/CharitonMedia/togavsu/pkg/modulekit"
 )
@@ -54,6 +61,8 @@ const usage = `usage:
   togavsu-module check [-installable [-strict]] [-json] [-previous <package dir> | -previous-file <signed file> -previous-pub <PEM file>] <package dir>
   togavsu-module package [-installable [-strict]] -dir <package dir> (-key <seed file> -out <signed file> | -unsigned -out <new dir>)
   togavsu-module verify -file <signed file> -pub <public key PEM file>
+  togavsu-module pending -dir <package dir> (-field <path> | -scope <scope> | -migration <file>) -core <CORE-NN[,CORE-NN]> -reason <text>
+  togavsu-module key -key <seed file> [-prove <proof_message>]
   togavsu-module accepts
 `
 
@@ -79,6 +88,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = pack(args[one:], stdout, stderr, &code)
 	case "verify":
 		err = verify(args[one:], stdout, &code)
+	case "pending":
+		err = addPending(args[one:], stdout, &code)
+	case "key":
+		err = keyCmd(args[one:], stdout, &code)
 	case "accepts":
 		err = accepts(args[one:], stdout, &code)
 	case "help", "-h", "-help", "--help":
@@ -278,6 +291,81 @@ type checkResult struct {
 	Unused []modulekit.Pending `json:"unused,omitempty"`
 }
 
+// addPending adds one entry to a package directory's pending.yaml, keeping the file's
+// comments and layout.
+func addPending(args []string, stdout io.Writer, code *int) error {
+	fs := flags("pending", code)
+	dir := fs.String("dir", "", "package directory (pending.yaml beside togavsu-module.yaml)")
+	var e modulekit.Pending
+	fs.StringVar(&e.Field, "field", "", "manifest field path the entry holds back")
+	fs.StringVar(&e.Scope, "scope", "", "permission scope the entry holds back")
+	fs.StringVar(&e.Migration, "migration", "", "migration file the entry holds back (migrations/NNNN_name.sql)")
+	core := fs.String("core", "", "the core item the part waits on, or several separated by commas")
+	fs.StringVar(&e.Reason, "reason", "", "one line on what the part does")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *dir == "" || *core == "" || fs.NArg() != zero {
+		return fmt.Errorf("-dir, -core and one of -field, -scope or -migration are required")
+	}
+	for _, c := range strings.Split(*core, ",") {
+		e.Core = append(e.Core, strings.TrimSpace(c))
+	}
+	*code = exitRefused
+	path := filepath.Join(*dir, modulekit.PendingFile)
+	src, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	out, err := modulekit.AddPending(src, e)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, out, os.FileMode(zero)|0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "added %s (waits on %s) to %s\n", e.Part(), e.Core.String(), path)
+	return nil
+}
+
+// keyCmd prints the public key of a seed file, or with -prove the signature of the
+// marketplace's key proof message.
+func keyCmd(args []string, stdout io.Writer, code *int) error {
+	fs := flags("key", code)
+	keyFile := fs.String("key", "", "file holding a base64 ed25519 seed")
+	prove := fs.String("prove", "", "the proof_message the marketplace answered when the key was registered")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *keyFile == "" || fs.NArg() != zero {
+		return fmt.Errorf("-key is required")
+	}
+	*code = exitRefused
+	priv, err := readSeed(*keyFile)
+	if err != nil {
+		return err
+	}
+	if *prove == "" {
+		fmt.Fprint(stdout, modulekit.PublicKeyPEM(priv.Public().(ed25519.PublicKey)))
+		return nil
+	}
+	sig, err := modulekit.ProveKey(priv, *prove)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintln(stdout, sig)
+	return nil
+}
+
+// readSeed reads a signing key file.
+func readSeed(file string) (ed25519.PrivateKey, error) {
+	seed, err := os.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+	return modulekit.ParseSeed(string(seed))
+}
+
 func accepts(args []string, stdout io.Writer, code *int) error {
 	fs := flags("accepts", code)
 	if err := fs.Parse(args); err != nil {
@@ -316,11 +404,8 @@ func pack(args []string, stdout, stderr io.Writer, code *int) error {
 	*code = exitRefused
 	var priv ed25519.PrivateKey
 	if !*unsigned {
-		seed, err := os.ReadFile(*keyFile)
-		if err != nil {
-			return err
-		}
-		if priv, err = modulekit.ParseSeed(string(seed)); err != nil {
+		var err error
+		if priv, err = readSeed(*keyFile); err != nil {
 			return err
 		}
 	}

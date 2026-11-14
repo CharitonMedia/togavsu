@@ -291,3 +291,19 @@ func TestRemoveTakesAPartsOwnComments(t *testing.T) {
 		t.Fatalf("got:\n%s", out)
 	}
 }
+
+func TestLinesNamesWhereEachPartStarts(t *testing.T) {
+	src := []byte("# head\nid: x\ntabs:\n  # first\n  - id: a\n    path: /a\n  - id: b\npermissions:\n  - scope: s\n")
+	lines, err := Lines(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]int{"id": 1, "tabs": 2, "tabs[0]": 4, "tabs[0].path": 5, "tabs[1]": 6, "tabs[1].id": 6, "permissions[0].scope": 8} {
+		if got, ok := lines[path]; !ok || got != want {
+			t.Fatalf("%s: line %d (%v), want %d", path, got, ok, want)
+		}
+	}
+	if _, err := Lines([]byte("a: [1\n")); err == nil {
+		t.Fatal("bad YAML was read")
+	}
+}
