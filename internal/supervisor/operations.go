@@ -659,10 +659,20 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 	if err != nil {
 		return o.closeStopped(rec, stopped, err, "")
 	}
-	_ = safety
 	apply := func(ctx context.Context, payload RestorePayload) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		// The file set is checked whole (manifest complete, every object's size and
+		// SHA-256) and spooled before the database is touched, so a damaged or partial
+		// export fails here with the existing data in place.
+		if payload.FileBytes != "" {
+			if err := checkFileExport(payload.FileBytes); err != nil {
+				return err
+			}
+			if err := o.keepFiles(rec.ID, payload.FileBytes, safety.ID); err != nil {
+				return err
+			}
 		}
 		ctx = WithRestoreOpID(ctx, rec.ID)
 		ctx = WithAllocHook(ctx, func(a RestoreAlloc) error {
@@ -725,16 +735,10 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		if _, perr := o.persist(o.current(rec.ID, rec), phaseApplying, nil); perr != nil {
 			return perr
 		}
-		var aerr error
 		if o.ApplyRestore != nil {
-			aerr = o.ApplyRestore(ctx, payload)
-		} else {
-			aerr = o.ApplyDump(ctx, payload.Dump)
+			return o.ApplyRestore(ctx, payload)
 		}
-		if aerr == nil && payload.FileBytes != "" {
-			aerr = o.keepFiles(rec.ID, payload.FileBytes)
-		}
-		return aerr
+		return o.ApplyDump(ctx, payload.Dump)
 	}
 	err = o.Store.Restore(opCtx, rec.BackupID, "", apply)
 	rec = o.current(rec.ID, rec)
@@ -751,6 +755,9 @@ func (o *Operations) executeRestore(rec RestoreRecord) (done RestoreRecord, err 
 		return o.finishCleanup(rec, stopped, err)
 	}
 	if err != nil {
+		if kept, ok := o.takeFiles(rec.ID); ok {
+			kept.cleanup()
+		}
 		if o.Outbox != nil {
 			_ = o.Outbox.Notify(context.Background(), "Restore failed", "The archive was not applied. Existing data was left in place. "+Scrub(err.Error()))
 		}
@@ -771,20 +778,16 @@ func (o *Operations) finishApplied(rec RestoreRecord, stopped []ContainerInfo, p
 		return o.keepPending(rec, phaseApplied, writerRecoveryReason(startErr), errors.Join(persistErr, startErr))
 	}
 	if kept, ok := o.takeFiles(rec.ID); ok {
+		// Only the running core can write the bytes: it holds the storage backends'
+		// credentials and reads where each object lives from the restored database.
+		// The set was checked and spooled before the swap, so what is left to fail is
+		// the backend write itself.
 		ctx, cancel := context.WithTimeout(context.Background(), o.restoreTimeout())
 		ferr := o.RestoreFiles(ctx, kept.path)
 		cancel()
 		kept.cleanup()
 		if ferr != nil {
-			if o.Outbox != nil {
-				_ = o.Outbox.Notify(context.Background(), "Restore needs attention", "The database was restored and the core is running. The file bytes were not restored. "+Scrub(ferr.Error()))
-			}
-			rec.Error = "files_not_restored"
-			saved, perr := o.markFailed(rec, ferr)
-			if perr != nil {
-				return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(ferr, perr))
-			}
-			return saved, ferr
+			return o.rollBackFiles(rec, kept.safety, ferr)
 		}
 	}
 	rec.Status = "completed"
@@ -2087,12 +2090,58 @@ func (o *Operations) recordRestore(rec RestoreRecord) {
 type keptFiles struct {
 	path    string
 	cleanup func()
+	// safety is the backup this restore took before the swap, for rollBackFiles.
+	safety string
+}
+
+// rollBackFiles handles a restored database whose file bytes the core could not write.
+// The record is failed with files_not_restored first, so a crash during the rollback
+// leaves it terminal. Then the safety backup taken before the swap is restored as its
+// own journaled restore (source "rollback:<id>"), through the same stop, swap and
+// restart path, so the previous database is live again over the files it names. When
+// that completes the record's error becomes files_rolled_back.
+func (o *Operations) rollBackFiles(rec RestoreRecord, safetyID string, ferr error) (RestoreRecord, error) {
+	rec.Error = "files_not_restored"
+	saved, perr := o.markFailed(rec, ferr)
+	if perr != nil {
+		return o.keepPending(rec, phaseApplied, "journal_unpersisted", errors.Join(ferr, perr))
+	}
+	notify := func(subject, body string) {
+		if o.Outbox != nil {
+			_ = o.Outbox.Notify(context.Background(), subject, body+Scrub(ferr.Error()))
+		}
+	}
+	if safetyID == "" {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and there is no safety backup to roll back to. ")
+		return saved, ferr
+	}
+	opID, err := newRestoreOpID(o.now())
+	if err != nil {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and the rollback did not start. ")
+		return saved, errors.Join(ferr, err)
+	}
+	rb := RestoreRecord{ID: opID, BackupID: safetyID, Source: "rollback:" + rec.ID, Status: "accepted", Started: o.now().UTC()}
+	if _, err := o.persist(rb, phaseAccepted, nil); err != nil {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and the rollback did not start. ")
+		return saved, errors.Join(ferr, err)
+	}
+	done, rerr := o.executeRestore(rb)
+	if rerr != nil || done.Status != "completed" {
+		notify("Restore needs attention", "The database was restored and the core is running. The file bytes were not restored, and putting the previous database back failed (restore "+opID+"). ")
+		return saved, errors.Join(ferr, rerr)
+	}
+	saved.Error = "files_rolled_back"
+	if again, err := o.persist(saved, phaseFailed, nil); err == nil {
+		saved = again
+	}
+	notify("Restore rolled back", "The file bytes could not be restored, so the database was put back from the safety backup taken just before the restore. Existing data is in place; changes made after the restored core started are not kept. ")
+	return saved, ferr
 }
 
 // keepFiles moves a restore's file export out of the decrypted workspace,
 // which is removed when apply returns, into a scratch workspace of its own.
 // Startup recovery removes it if this process dies before the core takes it.
-func (o *Operations) keepFiles(id, path string) error {
+func (o *Operations) keepFiles(id, path, safety string) error {
 	if o.RestoreFiles == nil {
 		return ErrFileRestoreUnsupported
 	}
@@ -2109,7 +2158,7 @@ func (o *Operations) keepFiles(id, path string) error {
 	if o.files == nil {
 		o.files = map[string]keptFiles{}
 	}
-	o.files[id] = keptFiles{path: kept, cleanup: cleanup}
+	o.files[id] = keptFiles{path: kept, cleanup: cleanup, safety: safety}
 	o.jobsMu.Unlock()
 	return nil
 }

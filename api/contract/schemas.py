@@ -2373,7 +2373,7 @@ SCHEMAS = _register(
             {
                 "id": {"type": "string", "pattern": "^restore-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{16}$", "description": "Supervisor restore id."},
                 "backup_id": _null(_BACKUP_ID),
-                "error": {"type": "string", "description": "Why a failed restore stopped. files_not_restored means the database was restored and the file bytes were not."},
+                "error": {"type": "string", "description": "Why a failed restore stopped. invalid_backup includes a damaged or partial file set, refused before the database swap. files_rolled_back means the file bytes could not be written, so the safety backup taken before the swap was restored as a separate restore of that backup and the previous data is live. files_not_restored means the database was restored, the file bytes were not, and the rollback did not complete."},
                 "status": _enum(["running", "completed", "failed"]),
                 "interrupts_users": {"type": "boolean", "const": True},
             },

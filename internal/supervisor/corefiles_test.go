@@ -1,13 +1,19 @@
 package supervisor
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -150,11 +156,62 @@ func TestBackupCarriesTheCoreFileExport(t *testing.T) {
 	}
 }
 
+// fileExport builds a core file export (files.ExportBytes): the manifest, then each
+// object. damage, when set, changes the tar after the manifest is written.
+func fileExport(t *testing.T, objects map[string]string, damage func(id string, body string) (string, bool)) []byte {
+	t.Helper()
+	ids := make([]string, 0, len(objects))
+	for id := range objects {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var list []exportObject
+	for _, id := range ids {
+		sum := sha256.Sum256([]byte(objects[id]))
+		list = append(list, exportObject{ObjectID: id, Size: int64(len(objects[id])), SHA256: hex.EncodeToString(sum[:])})
+	}
+	raw, err := json.Marshal(list)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	put := func(name, body string) {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(body)), Mode: 0o600, Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(tw, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(fileManifestName, string(raw))
+	for _, id := range ids {
+		body, keep := objects[id], true
+		if damage != nil {
+			body, keep = damage(id, body)
+		}
+		if keep {
+			put("objects/"+id, body)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+var syntheticObjects = map[string]string{"obj-1": "version one bytes", "obj-2": "rendition markdown"}
+
 func fileRestoreOps(t *testing.T, restoreFiles func(context.Context, string) error) (*Operations, string, *[]string) {
+	t.Helper()
+	return fileRestoreOpsWith(t, fileExport(t, syntheticObjects, nil), restoreFiles)
+}
+
+func fileRestoreOpsWith(t *testing.T, export []byte, restoreFiles func(context.Context, string) error) (*Operations, string, *[]string) {
 	t.Helper()
 	store := testStore(t)
 	store.FileBytes = func(_ context.Context, w io.Writer) error {
-		_, err := io.WriteString(w, "export")
+		_, err := w.Write(export)
 		return err
 	}
 	meta, err := store.Create(context.Background(), reasonManual)
@@ -180,10 +237,11 @@ func fileRestoreOps(t *testing.T, restoreFiles func(context.Context, string) err
 func TestRestoreHandsTheFilesToTheRestartedCore(t *testing.T) {
 	var ops *Operations
 	var sawStart bool
+	want := fileExport(t, syntheticObjects, nil)
 	ops, id, order := fileRestoreOps(t, func(_ context.Context, path string) error {
 		raw, err := os.ReadFile(path)
-		if err != nil || string(raw) != "export" {
-			t.Errorf("file export %q %v", raw, err)
+		if err != nil || !bytes.Equal(raw, want) {
+			t.Errorf("file export %d bytes %v", len(raw), err)
 		}
 		sawStart = strings.Contains(strings.Join(*ops.Runtime.(*scriptRuntime).order, ","), "start")
 		return nil
@@ -197,11 +255,99 @@ func TestRestoreHandsTheFilesToTheRestartedCore(t *testing.T) {
 	}
 }
 
-func TestRestoreFileFailureIsReported(t *testing.T) {
-	ops, id, _ := fileRestoreOps(t, func(context.Context, string) error { return errors.New("sha mismatch") })
+// Codex PR #41 finding 5: a damaged or partial file set fails before the database
+// swap, leaving the existing database in place, and the core is never handed it.
+func TestRestoreRefusesADamagedFileExportBeforeTheSwap(t *testing.T) {
+	for name, export := range map[string][]byte{
+		"object bytes differ from the manifest": fileExport(t, syntheticObjects, func(id, body string) (string, bool) {
+			if id == "obj-2" {
+				return "rendition markdowN", true
+			}
+			return body, true
+		}),
+		"object missing": fileExport(t, syntheticObjects, func(id, body string) (string, bool) { return body, id != "obj-2" }),
+		"object size differs": fileExport(t, syntheticObjects, func(id, body string) (string, bool) {
+			return body + "+", true
+		}),
+		"no manifest": []byte("not a tar export"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			handed := false
+			ops, id, order := fileRestoreOpsWith(t, export, func(context.Context, string) error { handed = true; return nil })
+			rec, err := ops.Restore(context.Background(), id)
+			if err == nil || rec.Status != "failed" || rec.Error != "invalid_backup" {
+				t.Fatalf("restore %+v %v", rec, err)
+			}
+			got := strings.Join(*order, ",")
+			if strings.Contains(got, "dump") || handed {
+				t.Fatalf("a damaged file set reached the database swap or the core: %s handed=%v", got, handed)
+			}
+			if !strings.Contains(got, "restart:core-1") {
+				t.Fatalf("writers not restarted on the existing data: %s", got)
+			}
+			if notes, _ := ops.Outbox.List(); len(notes) == 0 || !strings.Contains(notes[len(notes)-1].Body, "Existing data was left in place") {
+				t.Fatalf("notices %+v", notes)
+			}
+		})
+	}
+}
+
+// Codex PR #41 finding 5: when the restarted core cannot write the checked bytes (a
+// backend write failure), the safety backup taken before the swap is restored through
+// the ordinary restore path, so the previous database is live again.
+func TestRestoreFileWriteFailureRollsBackTheSwap(t *testing.T) {
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return errors.New("backend write failed") })
+	rec, err := ops.Restore(context.Background(), id)
+	if err == nil || rec.Status != "failed" || rec.Error != "files_rolled_back" {
+		t.Fatalf("restore %+v %v", rec, err)
+	}
+	got := strings.Join(*order, ",")
+	if strings.Count(got, "dump") != 2 || strings.Count(got, "stop:core-1") != 2 {
+		t.Fatalf("the rollback did not stop writers and swap the database back: %s", got)
+	}
+	if !strings.HasSuffix(got, "health") {
+		t.Fatalf("writers not back after the rollback: %s", got)
+	}
+	var rollback RestoreRecord
+	ops.jobsMu.Lock()
+	for _, j := range ops.jobs {
+		if j.Source == "rollback:"+rec.ID {
+			rollback = j
+		}
+	}
+	ops.jobsMu.Unlock()
+	if rollback.Status != "completed" || !strings.HasPrefix(rollback.BackupID, "2026") || rollback.BackupID == id {
+		t.Fatalf("rollback record %+v", rollback)
+	}
+	rc, meta, err := ops.Store.Open(rollback.BackupID)
+	if err != nil || meta.Reason != reasonSafety {
+		t.Fatalf("rollback restored %+v %v, not the safety backup", meta, err)
+	}
+	_ = rc.Close()
+	if notes, _ := ops.Outbox.List(); len(notes) == 0 || notes[len(notes)-1].Subject != "Restore rolled back" {
+		t.Fatalf("notices %+v", notes)
+	}
+}
+
+// When the rollback itself fails, the record says files_not_restored and the admin is
+// told the restored database is still live.
+func TestRestoreFileWriteFailureWithAFailedRollbackIsReported(t *testing.T) {
+	ops, id, order := fileRestoreOps(t, func(context.Context, string) error { return errors.New("backend write failed") })
+	dumps := 0
+	ops.ApplyDump = func(context.Context, io.Reader) error {
+		dumps++
+		*order = append(*order, "dump")
+		if dumps > 1 {
+			return errors.New("rollback swap failed")
+		}
+		return nil
+	}
 	rec, err := ops.Restore(context.Background(), id)
 	if err == nil || rec.Status != "failed" || rec.Error != "files_not_restored" {
 		t.Fatalf("restore %+v %v", rec, err)
+	}
+	if notes, _ := ops.Outbox.List(); len(notes) == 0 || !strings.Contains(notes[len(notes)-1].Body, "putting the previous database back failed") {
+		t.Fatalf("notices %+v", notes)
 	}
 }
 
