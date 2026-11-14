@@ -1,10 +1,17 @@
 {
  "task_id": "release-api-coverage",
  "status": "pass",
- "tested_revision": "c556e24f496bca98e9c8a169e7952614ee9edfb4",
+ "tested_revision": "36039566d39409b1eeaa418f459e8b7a7126260e",
  "exit_code": 0,
  "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
  "tests": [
+  {
+   "id": "codex-findings-regressions",
+   "command": "go test -count=1 -run '^(TestEventsFeedAndAppend|TestReleaseProcessorInitialization)$' ./internal/core/; go test -count=1 -run '^TestPGPublicationGrantGovernsBackgroundUploads$' ./internal/files/; go test -count=1 ./internal/domain/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "each new assertion fails on de7adeb's code (0 event.appended rows; source manual accepted 201; wrong matter forbidden) and passes at the tested revision"
+  },
   {
    "id": "all-operations-mounted",
    "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
@@ -28,7 +35,7 @@
   },
   {
    "id": "go-race",
-   "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/",
+   "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/ ./internal/files/ ./internal/billing/",
    "exit_code": 0,
    "status": "pass"
   },
@@ -40,7 +47,7 @@
   },
   {
    "id": "new-operation-tests",
-   "command": "go test -count=1 -run '^(TestEventsFeedAndAppend|TestAIProviderKeys|TestEmailChange|TestPartyRolesAPI|TestMarkerDefinitionsAPI|TestModuleMarkersAPI|TestReleaseArchiveAndMergeMatters|TestReleaseRecordCustomFields|TestPGMergeMatterRelinksModuleRows)$' ./internal/core/ ./internal/modules/ ; plus the files grant, invoice import and processor tests in internal/core/file_grants_pg_test.go, release_invoice_import_pg_test.go, release_processor_pg_test.go and internal/files/grants_pg_test.go",
+   "command": "go test -count=1 -run '^(TestEventsFeedAndAppend|TestAIProviderKeys|TestEmailChange|TestPartyRolesAPI|TestMarkerDefinitionsAPI|TestModuleMarkersAPI|TestReleaseArchiveAndMergeMatters|TestReleaseRecordCustomFields|TestPGMergeMatterRelinksModuleRows|TestReleaseProcessorInitialization)$' ./internal/core/ ./internal/modules/ ; plus the files grant, invoice import and processor tests in internal/core/file_grants_pg_test.go, release_invoice_import_pg_test.go, release_processor_pg_test.go and internal/files/grants_pg_test.go",
    "exit_code": 0,
    "status": "pass",
    "result": "run inside the full package runs above"
@@ -53,9 +60,10 @@
   },
   {
    "id": "backup-integration",
-   "command": "sh scripts/ci/test-backup-integration.sh (two Postgres 17 servers; local pg_dump/psql were v18, CI uses v17)",
+   "command": "sh scripts/ci/test-backup-integration.sh (TOGAVSU_TEST_DATABASE_URL and TOGAVSU_TEST_DATABASE_URL_B on two Postgres 17 servers; local pg_dump/psql were v18, CI uses v17)",
    "exit_code": 0,
-   "status": "pass"
+   "status": "pass",
+   "result": "17 integration tests pass"
   },
   {
    "id": "qa-harness",
@@ -68,7 +76,7 @@
    "command": "docker compose -f compose.yaml config; docker build -f Dockerfile -t togavsu-supervisor:local .; sftp present",
    "exit_code": 0,
    "status": "pass",
-   "result": "core image build and smoke (build-core-image.sh, test-core-smoke.sh) were not completed locally: the build exceeded the local 10-minute limit; pending CI"
+   "result": "core image build and smoke (build-core-image.sh, test-core-smoke.sh) not run locally (the build exceeded the local 10-minute limit at the previous revision); pending CI"
   },
   {
    "id": "debt-audit",
@@ -87,7 +95,7 @@
    "status": "pass",
    "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
    "exit_code": 0,
-   "revision": "c556e24f496bca98e9c8a169e7952614ee9edfb4"
+   "revision": "36039566d39409b1eeaa418f459e8b7a7126260e"
   }
  ],
  "passed_acceptance_ids": [
@@ -138,15 +146,31 @@
   "bulkCustomFieldValue with time replaced by a module: routed to the module, untested (no harness), and not atomic with the core commit (ponytail in internal/core/customfields.go)",
   "custom_fields in time entry and expense create/patch bodies is still refused; values are set through the custom-fields routes",
   "rejected batches answer validation (400) or not_found, following the existing bulk pattern; the domain error table has no batch_rejected/422 code",
-  "staff role scope set does not include events:write, so a staff-owned token cannot append events; a staff session can"
+  "staff role scope set does not include events:write, so a staff-owned token cannot append events; a staff session can",
+  "event.appended rows also appear in listEvents as their own feed rows ('Event appended: <action>'); the feed has no rule to hide them"
  ],
  "fixes_found_on_the_way": [
   "secret settings were stored in the clear; the core registry now uses settings.SealingStore (AES-256-GCM, existing plaintext rows still read)",
-  "duplicate_email and idempotency_conflict map to 409 instead of 500"
+  "duplicate_email and idempotency_conflict map to 409 instead of 500",
+  "domain.APIError gains CodeFieldLocked (403), the contract's field_locked problem code, which had no Go constant"
  ],
  "simplification": {
-  "net_lines": "+6939 (7086 insertions, 147 deletions across 68 files vs c8bc2e9)",
+  "net_lines": "+7192 (7340 insertions, 148 deletions across 70 files vs c8bc2e9; this correction +101: 107 insertions, 6 deletions across 8 files vs de7adeb)",
   "debt_count": 66,
-  "note": "one shared module-enabled check replaces a duplicate closure; two new ponytail markers proposed for PONYTAIL-DEBT.md in the PR body (outside owned paths)"
- }
+  "note": "no new ponytail markers in this correction; two markers from the earlier commits remain proposed for PONYTAIL-DEBT.md in the PR body (outside owned paths)"
+ },
+ "codex_findings_resolved": [
+  {
+   "finding": "internal/core/events_api.go: createEvent and bulkEvent never emit event.appended",
+   "resolution": "appendEvents publishes one event.appended per appended row in the same transaction (record_type event, record_id the appended id, same matter, never client-visible); TestEventsFeedAndAppend checks create, each bulk item, a rejected batch (none), an idempotent replay (once) and a queued delivery to a module subscribed to event.appended"
+  },
+  {
+   "finding": "internal/billing/processor.go: a processor can set a payment field outside the grant",
+   "resolution": "CreateProcessorPayment refuses source and received_on with field_locked (new domain.CodeFieldLocked, 403) and always sets source to the processor module id; TestReleaseProcessorInitialization checks source manual, another module and its own id are field_locked and write no payment"
+  },
+  {
+   "finding": "internal/files/grants.go: matter-grant upload published onto another matter returns forbidden",
+   "resolution": "grantPlacement returns not_found for a matter grant's wrong matter (unassigned refusal unchanged); grants_pg_test.go asserts not_found alone and in a mixed batch that publishes nothing"
+  }
+ ]
 }
