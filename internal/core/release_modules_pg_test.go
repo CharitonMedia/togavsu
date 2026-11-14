@@ -31,7 +31,7 @@ func TestReleaseModuleUpdatesViewsAndRollback(t *testing.T) {
 	}
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
 	x.installSample()
-	dep := x.rt.last("matter-clock")
+	dep := x.rt.Last("matter-clock")
 	mdb := x.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	for id, v := range map[string]int{open: 30, walled: 40} {
 		if err := matterclock.SetTarget(ctx, mdb, id, v, "", time.Now()); err != nil {
@@ -113,9 +113,7 @@ permissions:
 `)
 		})
 	}
-	x.rt.mu.Lock()
-	x.rt.handlers["target-reader"] = http.NotFoundHandler()
-	x.rt.mu.Unlock()
+	x.rt.Handle("target-reader", http.NotFoundHandler())
 	if _, problem := x.tabForm(x.admin, "install", nil, reader("1.0.0")); problem != "" {
 		t.Fatalf("install target-reader: %s", problem)
 	}
@@ -124,7 +122,7 @@ permissions:
 	path := "/api/v1/modules/matter-clock/views/monthly_targets?record_id=" + open + "&record_id=" + walled
 	asReader := func(viewer *client) resp {
 		bot := newClient(t, x.srv.URL)
-		bot.bearer = x.rt.last("target-reader").Secrets["togavsu_api_token"]
+		bot.bearer = x.rt.Last("target-reader").Secrets["togavsu_api_token"]
 		tok := str(t, viewer.must(http.StatusCreated, "POST", "/api/v1/modules/target-reader/context-tokens", map[string]any{}).json, "token")
 		return bot.do("GET", path, nil, modules.ContextHeader, tok)
 	}
@@ -143,7 +141,7 @@ permissions:
 		t.Fatalf("attorney inside the wall reading the view: %s", r.body)
 	}
 	bot := newClient(t, x.srv.URL)
-	bot.bearer = x.rt.last("target-reader").Secrets["togavsu_api_token"]
+	bot.bearer = x.rt.Last("target-reader").Secrets["togavsu_api_token"]
 	if r := bot.do("GET", path, nil); r.code != http.StatusOK || strings.Contains(r.body, "monthly_target_tenths") {
 		t.Fatalf("a viewerless view read returned rows: %d %s", r.code, r.body)
 	}

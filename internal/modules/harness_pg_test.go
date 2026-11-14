@@ -4,23 +4,13 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
-	"crypto/hmac"
-	"crypto/sha1"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base32"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -36,204 +26,26 @@ import (
 	"github.com/CharitonMedia/togavsu/internal/marketplace"
 	"github.com/CharitonMedia/togavsu/internal/modules"
 	"github.com/CharitonMedia/togavsu/internal/practice"
+	"github.com/CharitonMedia/togavsu/internal/testkit"
 	"github.com/CharitonMedia/togavsu/web"
 	"io/fs"
 )
 
 // testDSN creates an empty database for t, or skips when no test database is set (CI
-// requires one).
+// requires one). The module logins the core makes for it are dropped at cleanup.
 func testDSN(t *testing.T) string {
 	t.Helper()
-	raw := os.Getenv("TOGAVSU_TEST_DATABASE_URL")
-	if raw == "" {
-		if os.Getenv("CI") != "" {
-			t.Fatal("TOGAVSU_TEST_DATABASE_URL is required in CI")
-		}
-		t.Skip("TOGAVSU_TEST_DATABASE_URL is not set")
-	}
-	admin, err := db.OpenPostgres(raw, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer admin.Close()
-	sum := sha256.Sum256([]byte("modules/" + t.Name()))
-	name := "m" + hex.EncodeToString(sum[:8])
-	ctx := context.Background()
-	if _, err := admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+name); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.ExecContext(ctx, "CREATE DATABASE "+name); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		admin, err := db.OpenPostgres(raw, "")
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.ExecContext(context.Background(), `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`, name)
-		_, _ = admin.ExecContext(context.Background(), "DROP DATABASE IF EXISTS "+name)
-		// Module logins are cluster-wide; drop the ones this database made.
-		rows, err := admin.QueryContext(context.Background(), `SELECT rolname FROM pg_roles WHERE rolname LIKE 'mod\_%'`)
-		if err == nil {
-			var roles []string
-			for rows.Next() {
-				var r string
-				if rows.Scan(&r) == nil {
-					roles = append(roles, r)
-				}
-			}
-			rows.Close()
-			tag := tagFor(name)
-			for _, r := range roles {
-				if strings.HasSuffix(r, "_"+tag) {
-					_, _ = admin.ExecContext(context.Background(), `DROP ROLE IF EXISTS "`+r+`"`)
-				}
-			}
-		}
-	})
-	u, err := url.Parse(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	u.Path = "/" + name
-	return u.String()
-}
-
-func tagFor(dbName string) string {
-	sum := sha256.Sum256([]byte(dbName))
-	return hex.EncodeToString(sum[:4])
+	dsn := testkit.NewDatabase(t, "m", "modules/"+t.Name())
+	testkit.DropModuleRoles(t, dsn)
+	return dsn
 }
 
 func totp(t *testing.T, secret string, at time.Time) string {
 	t.Helper()
-	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(strings.TrimRight(secret, "=")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], uint64(at.Unix()/30))
-	mac := hmac.New(sha1.New, key)
-	mac.Write(buf[:])
-	sum := mac.Sum(nil)
-	off := sum[len(sum)-1] & 0x0f
-	bin := binary.BigEndian.Uint32(sum[off:off+4]) & 0x7fffffff
-	return fmt.Sprintf("%06d", bin%1000000)
+	return testkit.TOTP(t, secret, at)
 }
 
 var testKey = bytes.Repeat([]byte{9}, 32)
-
-// fakeRuntime stands in for the supervisor: Deploy starts the module's server in this
-// process with the secrets the core handed over, so the module really uses its token,
-// its webhook secret and its own database login.
-type fakeRuntime struct {
-	e           *env
-	mu          sync.Mutex
-	servers     map[string]*httptest.Server
-	handlers    map[string]http.Handler
-	deployments []modules.Deployment
-	headers     map[string][]http.Header
-	stopped     []string
-}
-
-func (f *fakeRuntime) Deploy(_ context.Context, d modules.Deployment) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deployments = append(f.deployments, d)
-	if old := f.servers[d.Module]; old != nil {
-		old.Close()
-	}
-	var h http.Handler
-	if custom, ok := f.handlers[d.Module]; ok {
-		h = custom
-	} else {
-		mdb := f.e.moduleDB(d.Secrets["togavsu_db_role"], d.Secrets["togavsu_db_password"])
-		h = matterclock.New(matterclock.Config{Core: f.e.srv.URL, Token: d.Secrets["togavsu_api_token"],
-			WebhookSecret: d.Secrets["togavsu_webhook_secret"], DB: mdb, SkewSeconds: 300}).Handler()
-	}
-	module := d.Module
-	f.servers[d.Module] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.mu.Lock()
-		f.headers[module] = append(f.headers[module], r.Header.Clone())
-		f.mu.Unlock()
-		h.ServeHTTP(w, r)
-	}))
-	return nil
-}
-
-func (f *fakeRuntime) Stop(_ context.Context, module string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.stopped = append(f.stopped, module)
-	if s := f.servers[module]; s != nil {
-		s.Close()
-		delete(f.servers, module)
-	}
-	return nil
-}
-
-func (f *fakeRuntime) Remove(ctx context.Context, module string) error { return f.Stop(ctx, module) }
-
-func (f *fakeRuntime) BaseURL(module string) string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if s := f.servers[module]; s != nil {
-		return s.URL
-	}
-	return "http://127.0.0.1:1"
-}
-
-func (f *fakeRuntime) last(module string) modules.Deployment {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for i := len(f.deployments) - 1; i >= 0; i-- {
-		if f.deployments[i].Module == module {
-			return f.deployments[i]
-		}
-	}
-	return modules.Deployment{}
-}
-
-type fakeBackups struct {
-	mu   sync.Mutex
-	made []modules.Backup
-	fail error
-	// during runs inside Create, before the archive is "written".
-	during func()
-}
-
-// add records an archive as if the supervisor held it (an upload, say).
-func (b *fakeBackups) add(bk modules.Backup) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.made = append(b.made, bk)
-}
-
-func (b *fakeBackups) Create(_ context.Context, reason string) (modules.Backup, error) {
-	if b.during != nil {
-		b.during()
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.fail != nil {
-		return modules.Backup{}, b.fail
-	}
-	id, _ := domain.NewID()
-	bk := modules.Backup{ID: string(id), CreatedAt: time.Now().UTC(), SHA256: "synthetic-sha", Bytes: 1}
-	b.made = append(b.made, bk)
-	return bk, nil
-}
-
-func (b *fakeBackups) Get(_ context.Context, id string) (modules.Backup, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, bk := range b.made {
-		if bk.ID == id {
-			return bk, nil
-		}
-	}
-	return modules.Backup{}, domain.NotFound("backup")
-}
 
 type env struct {
 	t        *testing.T
@@ -244,8 +56,8 @@ type env struct {
 	h        *modules.Handler
 	help     *help.Service
 	cat      *dashboard.Catalog
-	rt       *fakeRuntime
-	backups  *fakeBackups
+	rt       *testkit.Runtime
+	backups  *testkit.Backups
 	srv      *httptest.Server
 	priv     ed25519.PrivateKey
 	keyID    domain.ID
@@ -332,13 +144,14 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.cat = dashboard.NewCatalog(nil)
-	e.rt = &fakeRuntime{e: e, servers: map[string]*httptest.Server{}, handlers: map[string]http.Handler{}, headers: map[string][]http.Header{}}
-	t.Cleanup(func() {
-		for _, s := range e.rt.servers {
-			s.Close()
-		}
-	})
-	e.backups = &fakeBackups{}
+	// The supervisor's stand-in starts each deployed module in this process with the
+	// secrets the core handed over: matter-clock unless a test routes the module elsewhere.
+	e.rt = testkit.NewRuntime(func() string { return e.srv.URL }, e.dsn)
+	e.rt.Default = func(m testkit.Module) http.Handler {
+		return matterclock.New(matterclock.Config{Core: m.CoreURL, Token: m.Token, WebhookSecret: m.WebhookSecret, DB: m.DB, SkewSeconds: 300}).Handler()
+	}
+	t.Cleanup(e.rt.Close)
+	e.backups = &testkit.Backups{}
 	// The marketplace component owns the trust root: trusted local keys, published keys
 	// and the package signature check (PRD 9.3).
 	users, ok := app.Users.(marketplace.Users)
@@ -489,12 +302,7 @@ func (e *env) compose() http.Handler {
 
 func (e *env) moduleDB(role, password string) *sql.DB {
 	e.t.Helper()
-	u, err := url.Parse(e.dsn)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	u.User = url.UserPassword(role, password)
-	d, err := db.OpenPostgres(u.String(), "")
+	d, err := testkit.OpenAs(e.dsn, role, password)
 	if err != nil {
 		e.t.Fatal(err)
 	}

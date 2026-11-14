@@ -169,6 +169,13 @@ func (s *Schemas) CheckHistory(ctx context.Context, module string, ms []db.Migra
 	if err != nil {
 		return err
 	}
+	return CheckChecksums(applied, ms)
+}
+
+// CheckChecksums is the checksum rule of CheckHistory with the applied history in hand
+// (version to checksum): every applied version must still be in ms with the same
+// checksum. New versions are fine.
+func CheckChecksums(applied map[int]string, ms []db.Migration) error {
 	byVersion := map[int]db.Migration{}
 	for _, m := range ms {
 		byVersion[m.Version] = m

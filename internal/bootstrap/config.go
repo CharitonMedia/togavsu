@@ -74,6 +74,22 @@ func AdminDatabaseURL() string {
 	return strings.TrimSpace(os.Getenv(AdminDatabaseURLName))
 }
 
+// TestDatabaseURLName names the Postgres superuser URL the test harnesses
+// (internal/testkit and pkg/modulekit/coretest) create their throwaway databases on.
+// Nothing that serves the core reads it.
+const TestDatabaseURLName = "TOGAVSU_TEST_DATABASE_URL"
+
+// TestDatabaseURL returns TestDatabaseURLName, or "" when it is unset.
+func TestDatabaseURL() string {
+	return strings.TrimSpace(os.Getenv(TestDatabaseURLName))
+}
+
+// InCI reports whether CI is set, where a test harness without a database must fail
+// rather than skip.
+func InCI() bool {
+	return os.Getenv("CI") != ""
+}
+
 // Run is "core check": it loads configuration and reports that the HTTP service is not started.
 // It returns 0 when the four bootstrap values are valid and 2 when they are not.
 func Run(args []string, stdout, stderr io.Writer) int {

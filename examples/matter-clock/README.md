@@ -36,6 +36,12 @@ its digest and an Ed25519 signature over its exact bytes) from a local file on t
 with the file as `package`) and approves its permissions. The manifest's image digest is
 a placeholder; set it to the digest of the image you built before signing.
 
+The module's `package` subcommand signs with the public module kit (`pkg/modulekit`);
+`go run ./cmd/togavsu-module package -dir examples/matter-clock/package -key signing.key -out matter-clock.signed.json`
+writes the same bytes. `pkg/modulekit/coretest/coretest_pg_test.go` installs, runs and
+uninstalls this module through the kit's harness, as a module repository's suite does
+(docs/modules/MODULE-KIT.md).
+
 The automated acceptance tests in `internal/modules/*_pg_test.go` build and sign this
 package with a generated key, install it on a running core against Postgres, and drive
 its widget, tabs, include reads, events, updates and uninstall.

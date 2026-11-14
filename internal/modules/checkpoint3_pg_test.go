@@ -29,7 +29,7 @@ func TestPGUpdateDeclinesApprovedScope(t *testing.T) {
 	decide := func(ds ...map[string]string) resp {
 		return e.do("POST", "/api/v1/modules/matter-clock/permissions", map[string]any{"decisions": ds}, e.as("admin")...)
 	}
-	running := e.rt.last("matter-clock").Secrets["togavsu_api_token"]
+	running := e.rt.Last("matter-clock").Secrets["togavsu_api_token"]
 
 	// A required scope, already approved, declined during the update: the update is
 	// dropped, the admin is told, and the running version keeps its approvals.
@@ -44,7 +44,7 @@ func TestPGUpdateDeclinesApprovedScope(t *testing.T) {
 	if r := e.do("GET", "/api/v1/modules/matter-clock", nil, e.as("admin")...); r.json["version"] != "1.0.0" || strings.Contains(r.body, "notes:read") {
 		t.Fatalf("after dropping the update: %s", r.body)
 	}
-	if e.rt.last("matter-clock").Secrets["togavsu_api_token"] != running || !strings.Contains(strings.Join(e.tokenScopes(t), ","), "time:read") {
+	if e.rt.Last("matter-clock").Secrets["togavsu_api_token"] != running || !strings.Contains(strings.Join(e.tokenScopes(t), ","), "time:read") {
 		t.Fatal("the running version lost its token or approvals when the update was dropped")
 	}
 	if e.count(`SELECT COUNT(*) FROM core.audit_log WHERE entity = 'module:matter-clock' AND field = 'status' AND reason LIKE '%time:read declined: update dropped%'`) != 1 {

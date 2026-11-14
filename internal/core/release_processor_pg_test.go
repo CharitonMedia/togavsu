@@ -73,9 +73,7 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 	ctx := context.Background()
 	inbox := &processorInbox{}
 	x.trustKey("Sample module key", x.priv.Public().(ed25519.PublicKey))
-	x.rt.mu.Lock()
-	x.rt.handlers["pay-proc"] = inbox
-	x.rt.mu.Unlock()
+	x.rt.Handle("pay-proc", inbox)
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(extProcessorManifest))); problem != "" {
 		t.Fatalf("install pay-proc: %s", problem)
 	}
@@ -142,7 +140,7 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 	}
 
 	bot := newClient(t, x.srv.URL)
-	bot.bearer = x.rt.last("pay-proc").Secrets["togavsu_api_token"]
+	bot.bearer = x.rt.Last("pay-proc").Secrets["togavsu_api_token"]
 	pay := map[string]any{"contact_id": clientID, "matter_id": matter, "amount_cents": 120_00, "destination": "operating", "method": "card", "reference_number": "ch_1"}
 	if r := bot.do("POST", "/api/v1/payments", pay); r.code != http.StatusForbidden {
 		t.Fatalf("processor payment with no grant: %d %s", r.code, r.body)
@@ -236,9 +234,7 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 	skew.Store(0)
 
 	// Without trust:write approved for the module, a trust authorization is refused.
-	x.rt.mu.Lock()
-	x.rt.handlers["pay-lite"] = &processorInbox{}
-	x.rt.mu.Unlock()
+	x.rt.Handle("pay-lite", &processorInbox{})
 	lite := strings.NewReplacer("id: pay-proc", "id: pay-lite", "  - scope: trust:write\n", "").Replace(extProcessorManifest)
 	if _, problem := x.tabForm(x.admin, "install", nil, x.build(onlyManifest(lite))); problem != "" {
 		t.Fatalf("install pay-lite: %s", problem)
@@ -261,7 +257,7 @@ func TestReleaseProcessorInitialization(t *testing.T) {
 		t.Fatal("a refused trust authorization queued a grant")
 	}
 	liteBot := newClient(t, x.srv.URL)
-	liteBot.bearer = x.rt.last("pay-lite").Secrets["togavsu_api_token"]
+	liteBot.bearer = x.rt.Last("pay-lite").Secrets["togavsu_api_token"]
 	if r := liteBot.do("POST", "/api/v1/payments", map[string]any{"contact_id": clientID, "matter_id": matter, "amount_cents": 10_00, "destination": "operating", "method": "card"},
 		modules.TaskAuthorizationHeader, late); r.code != http.StatusForbidden {
 		t.Fatalf("another module presenting the grant: %d %s", r.code, r.body)

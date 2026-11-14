@@ -115,6 +115,10 @@ func admin(p domain.Principal) error {
 }
 
 // apiError maps a client or verification error onto the shared error table.
+// APIError is err as the API reports it: a failed verification becomes the contract's
+// tampered_module or unsigned_module, a missing manifest a validation error.
+func APIError(err error) error { return apiError(err) }
+
 func apiError(err error) error {
 	switch {
 	case err == nil:
@@ -342,7 +346,14 @@ func (s *Service) verify(ctx context.Context, pkg []byte, digest, signature, key
 	if err != nil {
 		return Verified{}, err
 	}
-	signer, err := Verify(pkg, digest, signature, keyID, keys)
+	return VerifyPackage(pkg, digest, signature, keyID, keys)
+}
+
+// VerifyPackage is the core's package check with the trust root in hand: Verify (digest,
+// then signature, then trust), then the manifest read. Source and Warning are left for
+// the caller. Author tooling (pkg/modulekit) runs the same check with keys it names.
+func VerifyPackage(pkg []byte, digest, signature, keyID string, trusted []TrustedKey) (Verified, error) {
+	signer, err := Verify(pkg, digest, signature, keyID, trusted)
 	if err != nil {
 		return Verified{}, err
 	}
@@ -381,18 +392,29 @@ func (s *Service) VerifyLocalFile(ctx context.Context, p domain.Principal, file 
 	if err := admin(p); err != nil {
 		return Verified{}, err
 	}
+	sp, pkg, err := ReadSignedFile(file)
+	if err != nil {
+		return Verified{}, err
+	}
+	return s.VerifyLocal(ctx, p, pkg, sp.Signature, sp.KeyID)
+}
+
+// ReadSignedFile opens a signed package file: the JSON, the package bytes it carries
+// (bounded like a download) and, when the file names one, their digest. It checks no
+// signature; VerifyPackage does.
+func ReadSignedFile(file []byte) (SignedPackage, []byte, error) {
 	var sp SignedPackage
 	if err := json.Unmarshal(file, &sp); err != nil {
-		return Verified{}, domain.Invalid("package", "a signed package file is JSON with package_base64, digest, signature and key_id")
+		return SignedPackage{}, nil, domain.Invalid("package", "a signed package file is JSON with package_base64, digest, signature and key_id")
 	}
 	pkg, err := decodePackage(sp.PackageBase64)
 	if err != nil {
-		return Verified{}, apiError(err)
+		return SignedPackage{}, nil, apiError(err)
 	}
 	if sp.Digest != "" && sp.Digest != Digest(pkg) {
-		return Verified{}, apiError(ErrDigestMismatch)
+		return SignedPackage{}, nil, apiError(ErrDigestMismatch)
 	}
-	return s.VerifyLocal(ctx, p, pkg, sp.Signature, sp.KeyID)
+	return sp, pkg, nil
 }
 
 // --- Trusted local signing keys (PRD 8.7) ---

@@ -76,7 +76,7 @@ func TestPGSampleModuleLifecycle(t *testing.T) {
 			t.Fatalf("permission before decision: %v", m)
 		}
 	}
-	if e.schemaExists("matter-clock") || catalogHas(e, e.staff, "matter-clock.hours") || len(e.rt.deployments) != 0 {
+	if e.schemaExists("matter-clock") || catalogHas(e, e.staff, "matter-clock.hours") || len(e.rt.Deployments()) != 0 {
 		t.Fatal("something ran before approval")
 	}
 	if r := e.do("POST", "/api/v1/modules", e.build(nil), e.as("staff")...); r.code != http.StatusForbidden {
@@ -103,7 +103,7 @@ WHERE c.contype = 'f' AND c.confdeltype = 'r' AND n.nspname = 'core' AND t.relna
 	if fk != 1 {
 		t.Fatal("matter_targets is not linked to core.matters ON DELETE RESTRICT")
 	}
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	if dep.Digest == "" || dep.Secrets["togavsu_api_token"] == "" || dep.Secrets["togavsu_db_role"] == "" || dep.Secrets["togavsu_webhook_secret"] == "" {
 		t.Fatalf("deployment: %+v", dep)
 	}
@@ -161,7 +161,7 @@ WHERE c.contype = 'f' AND c.confdeltype = 'r' AND n.nspname = 'core' AND t.relna
 	if strings.Contains(r.body, e.walled.Number) {
 		t.Fatal("staff widget shows the walled matter")
 	}
-	for _, h := range e.rt.headers["matter-clock"] {
+	for _, h := range e.rt.Headers("matter-clock") {
 		if h.Get("Cookie") != "" || strings.Contains(h.Get("Authorization"), "core-token") {
 			t.Fatalf("the module saw core credentials: %v", h)
 		}
@@ -352,7 +352,7 @@ func TestPGDeclinedPermissionCancels(t *testing.T) {
 	if r.code != http.StatusUnprocessableEntity || r.json["code"] != modules.CodeDeclined {
 		t.Fatalf("decline: %d %s", r.code, r.body)
 	}
-	if e.schemaExists("matter-clock") || len(e.rt.deployments) != 0 || catalogHas(e, e.staff, "matter-clock.hours") {
+	if e.schemaExists("matter-clock") || len(e.rt.Deployments()) != 0 || catalogHas(e, e.staff, "matter-clock.hours") {
 		t.Fatal("a cancelled install left something running")
 	}
 	if e.count(`SELECT COUNT(*) FROM core.api_tokens WHERE module_id = 'matter-clock'`) != 0 {
@@ -416,7 +416,7 @@ func TestPGUnsignedTamperedRefused(t *testing.T) {
 func TestPGHardDeleteBlockedAndRelink(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	if err := matterclock.SetTarget(e.ctx, mdb, string(e.open.ID), 50, "", time.Now()); err != nil {
 		t.Fatal(err)
@@ -472,11 +472,11 @@ func TestPGHardDeleteBlockedAndRelink(t *testing.T) {
 func TestPGUninstallDeleteData(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	role := e.rt.last("matter-clock").Secrets["togavsu_db_role"]
+	role := e.rt.Last("matter-clock").Secrets["togavsu_db_role"]
 	if r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter clock"}, e.as("admin")...); r.code != http.StatusBadRequest {
 		t.Fatalf("mistyped confirmation: %d", r.code)
 	}
-	e.backups.fail = errors.New("backup volume full")
+	e.backups.Fail = errors.New("backup volume full")
 	if r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, e.as("admin")...); r.code != http.StatusConflict {
 		t.Fatalf("failed backup: %d %s", r.code, r.body)
 	}
@@ -487,7 +487,7 @@ func TestPGUninstallDeleteData(t *testing.T) {
 	if r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock", "backup_id": old}, e.as("admin")...); r.code != http.StatusConflict {
 		t.Fatalf("unknown backup id: %d", r.code)
 	}
-	e.backups.fail = nil
+	e.backups.Fail = nil
 	if r := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, e.as("staff")...); r.code != http.StatusForbidden {
 		t.Fatalf("staff uninstall: %d", r.code)
 	}
@@ -508,8 +508,8 @@ func TestPGUninstallDeleteData(t *testing.T) {
 	if rp := e.do("POST", "/api/v1/modules/matter-clock/uninstall", map[string]any{"data": "delete", "confirmation": "matter-clock"}, idem...); rp.code != http.StatusOK || rp.body != r.body {
 		t.Fatalf("same key and body: %d %s", rp.code, rp.body)
 	}
-	if len(e.backups.made) != 1 {
-		t.Fatalf("backups taken: %d", len(e.backups.made))
+	if len(e.backups.Made()) != 1 {
+		t.Fatalf("backups taken: %d", len(e.backups.Made()))
 	}
 	if e.schemaExists("matter-clock") || e.count(`SELECT COUNT(*) FROM pg_roles WHERE rolname = $1`, role) != 0 ||
 		e.count(`SELECT COUNT(*) FROM core.schema_migrations WHERE owner = 'mod_matter_clock'`) != 0 {
@@ -520,7 +520,7 @@ func TestPGUninstallDeleteData(t *testing.T) {
 		t.Fatalf("holders after delete: %v", h)
 	}
 	// The audit log names the backup.
-	if e.count(`SELECT COUNT(*) FROM core.audit_log WHERE entity = 'module:matter-clock' AND reason LIKE '%backup ' || $1 || '%'`, e.backups.made[0].ID) != 1 {
+	if e.count(`SELECT COUNT(*) FROM core.audit_log WHERE entity = 'module:matter-clock' AND reason LIKE '%backup ' || $1 || '%'`, e.backups.Made()[0].ID) != 1 {
 		t.Fatal("audit log doesn't record the backup before the delete")
 	}
 }
@@ -530,7 +530,7 @@ func TestPGUninstallDeleteData(t *testing.T) {
 func TestPGPublishedViewNeedsApproval(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	for id, v := range map[domain.ID]int{e.open.ID: 30, e.walled.ID: 40} {
 		if err := matterclock.SetTarget(e.ctx, mdb, string(id), v, "", time.Now()); err != nil {
@@ -560,14 +560,14 @@ permissions:
 `)
 		})
 	}
-	e.rt.handlers["target-reader"] = http.NotFoundHandler()
+	e.rt.Handle("target-reader", http.NotFoundHandler())
 	e.do("POST", "/api/v1/modules", reader("1.0.0"), e.as("admin")...)
 	r := e.do("POST", "/api/v1/modules/target-reader/permissions", map[string]any{"decisions": []map[string]string{
 		{"scope": "matters:read", "decision": "approve"}, {"scope": "views:matter-clock.monthly_targets:read", "decision": "decline"}}}, e.as("admin")...)
 	if r.code != http.StatusOK || r.json["status"] != modules.StatusInstalled {
 		t.Fatalf("install with an optional scope declined: %d %s", r.code, r.body)
 	}
-	token := e.rt.last("target-reader").Secrets["togavsu_api_token"]
+	token := e.rt.Last("target-reader").Secrets["togavsu_api_token"]
 	path := "/api/v1/modules/matter-clock/views/monthly_targets?record_id=" + string(e.open.ID) + "&record_id=" + string(e.walled.ID)
 	ctxTok := e.contextFor("staff", "target-reader", "")
 	if r := e.do("GET", path, nil, "Authorization", "Bearer "+token, modules.ContextHeader, ctxTok); r.code != http.StatusForbidden {
@@ -582,7 +582,7 @@ permissions:
 		t.Fatalf("update asking for the view: %+v %v", res, err)
 	}
 	e.approveAll("target-reader")
-	token = e.rt.last("target-reader").Secrets["togavsu_api_token"]
+	token = e.rt.Last("target-reader").Secrets["togavsu_api_token"]
 	ctxTok = e.contextFor("staff", "target-reader", "")
 	r = e.do("GET", path, nil, "Authorization", "Bearer "+token, modules.ContextHeader, ctxTok)
 	if r.code != http.StatusOK || !strings.Contains(r.body, `"monthly_target_tenths":30`) || strings.Contains(r.body, `"monthly_target_tenths":40`) {
@@ -652,7 +652,7 @@ var _ = context.Background
 func TestPGModuleObjectsRunAsModuleRole(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	role := dep.Secrets["togavsu_db_role"]
 	mdb := e.moduleDB(role, dep.Secrets["togavsu_db_password"])
 	if err := matterclock.SetTarget(e.ctx, mdb, string(e.open.ID), 10, "", time.Now()); err != nil {

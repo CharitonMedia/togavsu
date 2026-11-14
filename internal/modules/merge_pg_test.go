@@ -15,7 +15,7 @@ import (
 func TestPGMergeMatterRelinksModuleRows(t *testing.T) {
 	e := newEnv(t)
 	e.installSample()
-	dep := e.rt.last("matter-clock")
+	dep := e.rt.Last("matter-clock")
 	mdb := e.moduleDB(dep.Secrets["togavsu_db_role"], dep.Secrets["togavsu_db_password"])
 	if err := matterclock.SetTarget(e.ctx, mdb, string(e.open.ID), 50, "", time.Now()); err != nil {
 		t.Fatal(err)
