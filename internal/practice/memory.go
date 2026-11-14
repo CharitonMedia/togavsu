@@ -67,6 +67,12 @@ type Memory struct {
 	// sidx is the search-text index (memindex.go), dropped on contact, email, phone,
 	// matter and invoice writes.
 	sidx *searchIndex
+	// keys is every matter's MatterKey (MatterKeys), built on first use and dropped on any
+	// matter write and on reload. It holds matter data only, never an access decision.
+	keys []MatterKey
+	// picks is every matter's MatterPick ordered by number then id (MatterPicksByNumber),
+	// kept and dropped with keys. Matter data only, never an access decision.
+	picks []MatterPick
 }
 
 // NewMemory returns an empty store.
@@ -380,7 +386,7 @@ func (m *Memory) InsertMatter(ctx context.Context, row domain.Matter, assign fun
 		}
 	}
 	m.matters[row.ID] = row
-	m.sidx = nil
+	m.sidx, m.keys, m.picks = nil, nil, nil
 	return row, nil
 }
 
@@ -399,7 +405,7 @@ func (m *Memory) UpdateMatter(ctx context.Context, row domain.Matter) error {
 		}
 	}
 	m.matters[row.ID] = row
-	m.sidx = nil
+	m.sidx, m.keys, m.picks = nil, nil, nil
 	return nil
 }
 
@@ -463,6 +469,28 @@ func (m *Memory) MatterPicks() []MatterPick {
 	return out
 }
 
+// MatterPicksByNumber is MatterPicks ordered by number, then id, for pick lists. The slice
+// is shared by every caller until the next matter write and must not be modified.
+func (m *Memory) MatterPicksByNumber() []MatterPick {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.picks == nil {
+		out := make([]MatterPick, 0, len(m.matters))
+		for id := range m.matters {
+			row := m.matters[id]
+			out = append(out, MatterPick{ID: id, Number: row.Number, Name: row.Name, Status: row.Status})
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Number != out[j].Number {
+				return out[i].Number < out[j].Number
+			}
+			return out[i].ID < out[j].ID
+		})
+		m.picks = out
+	}
+	return m.picks
+}
+
 // MatterKey is the part of a matter a count filters on.
 type MatterKey struct {
 	ID, PracticeAreaID                     domain.ID
@@ -475,16 +503,36 @@ func matterKeyOf(id domain.ID, row *domain.Matter) MatterKey {
 		AssignedStaffID: row.AssignedStaffID, Status: row.Status, OpenedOn: row.OpenedOn, Number: row.Number}
 }
 
-// MatterKeys lists every matter's key: a count over 20,000 matters copies these, not
-// whole matters.
+// MatterKeys lists every matter's key: a count over 20,000 matters reads these, not
+// whole matters. The slice is shared by every caller until the next matter write and
+// must not be modified.
 func (m *Memory) MatterKeys() []MatterKey {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]MatterKey, 0, len(m.matters))
-	for id, row := range m.matters {
-		out = append(out, matterKeyOf(id, &row))
+	if m.keys == nil {
+		out := make([]MatterKey, 0, len(m.matters))
+		for id := range m.matters {
+			row := m.matters[id]
+			out = append(out, matterKeyOf(id, &row))
+		}
+		m.keys = out
 	}
-	return out
+	return m.keys
+}
+
+// WallMembers reads every wall once: walled holds each walled matter, allows each walled
+// matter user is a member of. It is what Walls(matter) answers for user, for all matters.
+func (m *Memory) WallMembers(user domain.ID) (walled, allows map[domain.ID]bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	walled, allows = map[domain.ID]bool{}, map[domain.ID]bool{}
+	for _, row := range m.walls {
+		walled[row.MatterID] = true
+		if row.UserID == user {
+			allows[row.MatterID] = true
+		}
+	}
+	return walled, allows
 }
 
 func (m *Memory) Matters() []domain.Matter {

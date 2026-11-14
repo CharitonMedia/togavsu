@@ -259,6 +259,10 @@ func (s *Service) mattersByNumber() []domain.Matter {
 // picksByNumber returns every matter's pick-list fields in matter-number order, through the
 // practice store's light list when it has one. The id breaks number ties.
 func (s *Service) picksByNumber() []practice.MatterPick {
+	// The memory store keeps this list sorted between matter writes; it is read-only.
+	if src, ok := s.d.Practice.(interface{ MatterPicksByNumber() []practice.MatterPick }); ok {
+		return src.MatterPicksByNumber()
+	}
 	var rows []practice.MatterPick
 	if src, ok := s.d.Practice.(interface{ MatterPicks() []practice.MatterPick }); ok {
 		rows = src.MatterPicks()

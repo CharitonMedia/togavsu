@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/CharitonMedia/togavsu/internal/domain"
+	"github.com/CharitonMedia/togavsu/internal/practice"
 )
 
 // Report is a ReportTable: named columns and one map per row. CSV writes the same rows.
@@ -428,6 +429,15 @@ func (s *Service) lookups(ctx context.Context) *lookups {
 // allMatters reads every matter's number in one pass, for a report that names most of
 // them: one copy of the matter list instead of a lookup per matter.
 func (l *lookups) allMatters() *lookups {
+	// The memory store's shared key list carries every number without copying matters.
+	if src, ok := l.s.d.Practice.(interface{ MatterKeys() []practice.MatterKey }); ok {
+		keys := src.MatterKeys()
+		l.matters = make(map[domain.ID]string, len(keys))
+		for i := range keys {
+			l.matters[keys[i].ID] = keys[i].Number
+		}
+		return l
+	}
 	ms := l.s.d.Practice.Matters()
 	l.matters = make(map[domain.ID]string, len(ms))
 	for i := range ms {

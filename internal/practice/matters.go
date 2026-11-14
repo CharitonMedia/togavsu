@@ -157,9 +157,15 @@ func (s *Service) CountMatters(ctx context.Context, p domain.Principal, status s
 	if _, err := s.gate(ctx, p, domain.ResourceRef{Resource: domain.ResMatter, Action: domain.ActionRead}); err != nil {
 		return 0, err
 	}
+	visible := func(id domain.ID) bool { return s.visibleMatter(ctx, p, id) }
+	if b, ok := s.batchWallsFor(ctx, p); ok {
+		visible = func(id domain.ID) bool { return s.visibleIn(ctx, b, p, id) }
+	}
 	var n int
-	for _, row := range s.matterKeys() {
-		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && s.visibleMatter(ctx, p, row.ID) {
+	keys := s.matterKeys()
+	for i := range keys {
+		row := &keys[i]
+		if (status == "" || row.Status == status) && (area.IsZero() || row.PracticeAreaID == area) && visible(row.ID) {
 			n++
 		}
 	}
