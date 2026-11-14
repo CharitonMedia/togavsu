@@ -131,12 +131,14 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	for _, h := range held {
 		got = append(got, h.Pending.Core.String()+" "+h.File+" "+h.Part)
 	}
+	// In the order the parts are written: permissions come before the notifications and
+	// sidebar blocks in the fixture, and an item's section before its icon.
 	want := []string{
-		"CORE-03 togavsu-module.yaml notifications",
-		"CORE-08 togavsu-module.yaml sidebar[0].icon",
-		"CORE-08 togavsu-module.yaml sidebar[0].section",
 		"CORE-02 togavsu-module.yaml permissions[0]",
 		"CORE-18 togavsu-module.yaml permissions[3]",
+		"CORE-03 togavsu-module.yaml notifications",
+		"CORE-08 togavsu-module.yaml sidebar[0].section",
+		"CORE-08 togavsu-module.yaml sidebar[0].icon",
 		"CORE-22 migrations/0002_trust_link.sql migrations/0002_trust_link.sql",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -160,8 +162,8 @@ func TestInstallableHoldsBackExactlyTheRefusedPendingParts(t *testing.T) {
 	if !strings.HasPrefix(string(out[modulekit.ManifestFile]), "# Matter Clock: the sample module") {
 		t.Fatal("comments lost")
 	}
-	if !strings.Contains(held[1].String(), "waits on CORE-08: Show a clock in the sidebar.") || !strings.Contains(held[3].String(), "(scope books:read)") {
-		t.Fatalf("held lines: %s / %s", held[1], held[3])
+	if !strings.Contains(held[4].String(), "waits on CORE-08: Show a clock in the sidebar.") || !strings.Contains(held[0].String(), "(scope books:read)") {
+		t.Fatalf("held lines: %s / %s", held[4], held[0])
 	}
 	entries, err := modulekit.ParsePending(files[modulekit.PendingFile])
 	if err != nil {
@@ -501,7 +503,7 @@ func TestPendingCoreIsOneItemOrAList(t *testing.T) {
 	if strings.Join(last.Pending.Core, ",") != "CORE-22,CORE-24" || !strings.Contains(last.String(), "waits on CORE-22 and CORE-24: ") {
 		t.Fatalf("core list: %v %s", last.Pending.Core, last)
 	}
-	if ip.Held[0].Pending.Core.String() != "CORE-03" {
+	if ip.Held[0].Pending.Core.String() != "CORE-02" {
 		t.Fatalf("one item: %v", ip.Held[0].Pending.Core)
 	}
 	for _, bad := range []string{"core: []", "core: {a: b}"} {
@@ -578,5 +580,142 @@ func TestHoldingBackARequiredValueFailsClosed(t *testing.T) {
 	})
 	if ip, err := modulekit.Installable(files); err != nil || len(ip.Held) != 1 || ip.Held[0].Part != "tabs[1]" {
 		t.Fatalf("whole tab: %v", err)
+	}
+}
+
+// Installable finds held parts pass by pass (the tab checks report their first refusal),
+// but lists them in the order they are written: client-portal's tabs came out as
+// tabs[3], tabs[4], tabs[5], tabs[2], tabs[6].
+func TestHeldPartsComeInManifestOrder(t *testing.T) {
+	files := edit(waiting(t), func(f map[string][]byte) {
+		replaceIn(f, modulekit.ManifestFile, "help:\n", "  - id: pay\n    title: Pay\n    placement: client\n    path: /pay\n"+
+			"  - id: sign\n    title: Sign\n    placement: matter\n    path: /sign\n    nav: client\n"+
+			"  - id: account\n    title: Account\n    placement: client\n    path: /account\nhelp:\n")
+		replaceIn(f, modulekit.PendingFile, "pending:\n", "pending:\n  - field: tabs[2]\n    core: CORE-10\n    reason: Pay.\n"+
+			"  - field: tabs[3]\n    core: CORE-10\n    reason: Sign.\n  - field: tabs[4]\n    core: CORE-10\n    reason: Account.\n")
+	})
+	passes := 0
+	defer modulekit.SetPassHook(func(int) { passes++ })()
+	ip, err := modulekit.Installable(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if passes < 2 {
+		t.Fatalf("the fixture should need several passes, took %d", passes)
+	}
+	var got []string
+	for _, h := range ip.Held {
+		got = append(got, h.Part)
+	}
+	want := "permissions[0] permissions[3] notifications sidebar[0].section sidebar[0].icon tabs[2] tabs[3] tabs[4] migrations/0002_trust_link.sql"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("held in order:\n%s\nwant:\n%s", strings.Join(got, " "), want)
+	}
+}
+
+func TestCoreItemsHas(t *testing.T) {
+	c := modulekit.CoreItems{"CORE-22", " CORE-24"}
+	for item, want := range map[string]bool{"CORE-22": true, "core-24": true, " CORE-22 ": true, "CORE-2": false, "": false, "CORE-10": false} {
+		if c.Has(item) != want {
+			t.Fatalf("Has(%q) = %v", item, !want)
+		}
+	}
+	if (modulekit.CoreItems{}).Has("CORE-22") {
+		t.Fatal("an empty list has an item")
+	}
+	entries, err := modulekit.ParsePending([]byte("pending:\n  - field: a\n    core: [CORE-22, CORE-24]\n    reason: r\n  - field: b\n    core: CORE-03\n    reason: r\n"))
+	if err != nil || !entries[0].Core.Has("CORE-24") || entries[1].Core.Has("CORE-24") || !entries[1].Core.Has("CORE-03") {
+		t.Fatalf("parsed: %v %v", entries, err)
+	}
+}
+
+func TestWritePendingReadsBack(t *testing.T) {
+	entries := []modulekit.Pending{
+		{Field: "tabs[placement=client]", Core: modulekit.CoreItems{"CORE-10"}, Reason: "The client tabs (Dashboard, Documents), framed in the portal."},
+		{Field: `tabs[title="Pay now"]`, Core: modulekit.CoreItems{"CORE-10", "CORE-12"}, Reason: "Pay: the client's invoice # and amount."},
+		{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "true"},
+		{Migration: "migrations/0004_trust_bank_map.sql", Core: modulekit.CoreItems{"CORE-22"}, Reason: "Map each trust account to its bank account: "},
+		{Field: "sidebar[*].section", Core: modulekit.CoreItems{"CORE-08"}, Reason: "- [x] 12"},
+	}
+	src, err := modulekit.WritePending(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := modulekit.ParsePending(src)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, src)
+	}
+	if len(got) != len(entries) {
+		t.Fatalf("read back %d entries:\n%s", len(got), src)
+	}
+	for i := range entries {
+		if got[i].Part() != entries[i].Part() || got[i].Reason != entries[i].Reason || strings.Join(got[i].Core, ",") != strings.Join(entries[i].Core, ",") {
+			t.Fatalf("entry %d: %+v, want %+v\n%s", i, got[i], entries[i], src)
+		}
+	}
+	// Plain where that reads back, so the file stays readable.
+	if !strings.Contains(string(src), "  - field: tabs[placement=client]\n    core: CORE-10\n") || !strings.Contains(string(src), "core: [CORE-10, CORE-12]") {
+		t.Fatalf("not plain:\n%s", src)
+	}
+	// What ParsePending refuses, WritePending refuses.
+	for _, bad := range [][]modulekit.Pending{
+		{{Field: "a", Scope: "b", Core: modulekit.CoreItems{"CORE-01"}, Reason: "r"}},
+		{{Field: "a", Reason: "r"}},
+		{{Field: "a", Core: modulekit.CoreItems{"CORE-01"}}},
+		{{Field: "a", Core: modulekit.CoreItems{"CORE-01"}, Reason: "r"}, {Field: "a", Core: modulekit.CoreItems{"CORE-02"}, Reason: "s"}},
+	} {
+		if _, err := modulekit.WritePending(bad); err == nil {
+			t.Fatalf("written: %+v", bad)
+		} else if refs := (modulekit.Refusals{}); !errors.As(err, &refs) || refs[0].Code != modulekit.RefusePendingInvalid {
+			t.Fatalf("%+v: %v", bad, err)
+		}
+	}
+}
+
+func TestAddPendingKeepsTheFile(t *testing.T) {
+	src := []byte("# Parts that wait on a core change.\npending:\n    # The sidebar.\n    - field: sidebar[*].section\n      core: CORE-08\n      reason: File the entry under Time.")
+	out, err := modulekit.AddPending(src, modulekit.Pending{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "Read the books."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := string(src) + "\n    - scope: books:read\n      core: CORE-02\n      reason: Read the books.\n"
+	if string(out) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", out, want)
+	}
+	// A new list starts the file.
+	fresh, err := modulekit.AddPending(nil, modulekit.Pending{Field: "notifications", Core: modulekit.CoreItems{"CORE-03"}, Reason: "Tell admins."})
+	if err != nil || string(fresh) != "pending:\n  - field: notifications\n    core: CORE-03\n    reason: Tell admins.\n" {
+		t.Fatalf("new list: %v\n%s", err, fresh)
+	}
+	// A duplicate is refused, and so is a list it can't append to in place.
+	if _, err := modulekit.AddPending(out, modulekit.Pending{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "Again."}); err == nil {
+		t.Fatal("a duplicate was added")
+	}
+	if _, err := modulekit.AddPending([]byte("pending: []\n"), modulekit.Pending{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "r"}); err == nil {
+		t.Fatal("appended to a flow list")
+	}
+}
+
+func TestWritePendingTakesAnEmptyList(t *testing.T) {
+	for name, entries := range map[string][]modulekit.Pending{"nil": nil, "empty": {}} {
+		src, err := modulekit.WritePending(entries)
+		if err != nil || string(src) != "pending:\n" {
+			t.Fatalf("%s: %q %v", name, src, err)
+		}
+		if got, err := modulekit.ParsePending(src); err != nil || len(got) != 0 {
+			t.Fatalf("%s: read back %v %v", name, got, err)
+		}
+	}
+}
+
+func TestAddPendingKeepsCRLF(t *testing.T) {
+	src := []byte("# Parts that wait on a core change.\r\npending:\r\n\r\n    # The sidebar.\r\n    - field: sidebar[*].section\r\n      core: CORE-08\r\n      reason: File the entry under Time.\r\n")
+	out, err := modulekit.AddPending(src, modulekit.Pending{Scope: "books:read", Core: modulekit.CoreItems{"CORE-02"}, Reason: "Read the books."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := string(src) + "    - scope: books:read\r\n      core: CORE-02\r\n      reason: Read the books.\r\n"
+	if string(out) != want {
+		t.Fatalf("got:\n%q\nwant:\n%q", out, want)
 	}
 }

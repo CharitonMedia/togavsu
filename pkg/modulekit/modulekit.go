@@ -68,6 +68,9 @@ var (
 	ErrBadKey           = marketplace.ErrBadKey
 	// ErrBadSeed means a signing key file does not hold a base64 Ed25519 seed.
 	ErrBadSeed = errors.New("modulekit: the key file must hold a base64 ed25519 seed")
+	// ErrNotKeyProof means ProveKey was given text that is not the marketplace's key
+	// proof message for this key.
+	ErrNotKeyProof = errors.New("modulekit: not the marketplace's proof_message for this key")
 )
 
 // Refusal is one problem a check found: its kind, code, file, field path or statement,
@@ -385,6 +388,20 @@ func Digest(pkg []byte) string { return marketplace.Digest(pkg) }
 
 // Sign returns the base64 Ed25519 signature of pkg.
 func Sign(priv ed25519.PrivateKey, pkg []byte) string { return marketplace.Sign(priv, pkg) }
+
+// ProveKey signs the marketplace's key proof: the proof_message the marketplace answers
+// when an author registers a public key (POST /v1/authors/me/keys), which the author
+// sends back as the signature to verify the key. It signs only that message for priv's
+// own key id, never other bytes, so it can't be used to sign a package.
+func ProveKey(priv ed25519.PrivateKey, proofMessage string) (string, error) {
+	keyID := KeyID(priv.Public().(ed25519.PublicKey))
+	head := string(marketplace.KeyProofMessage(keyID, ""))
+	challenge, ok := strings.CutPrefix(proofMessage, head)
+	if !ok || challenge == "" || strings.ContainsAny(challenge, "\r\n") {
+		return "", ErrNotKeyProof
+	}
+	return Sign(priv, marketplace.KeyProofMessage(keyID, challenge)), nil
+}
 
 // SignFile wraps package bytes in a signed package file, the file the admin installs.
 func SignFile(priv ed25519.PrivateKey, pkg []byte) ([]byte, error) {
