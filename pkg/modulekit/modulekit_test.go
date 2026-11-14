@@ -283,3 +283,34 @@ func TestCheckSource(t *testing.T) {
 		t.Fatal("an environment read passed")
 	}
 }
+
+// TestCoreModuleZipKeepsEmbeds guards the kit for module repositories: Go module zips
+// leave out every directory named vendor and every nested module, so a go:embed that
+// reaches into one compiles here but not for a repository that requires the core.
+func TestCoreModuleZipKeepsEmbeds(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() || path == root {
+			return nil
+		}
+		if d.Name() == ".git" || d.Name() == "node_modules" {
+			return filepath.SkipDir
+		}
+		if d.Name() == "vendor" {
+			t.Errorf("%s: a directory named vendor is left out of the core's module zip", path)
+		}
+		if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+			t.Errorf("%s: a nested module is left out of the core's module zip", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
