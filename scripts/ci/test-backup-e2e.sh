@@ -178,8 +178,17 @@ step=resetup; py resetup "$base" "$state"
 
 step=restore; py restore "$base" "$state" "$archive"
 step=counts-after; counts > "$work/counts-after.txt"
-if ! diff -u "$work/counts-before.txt" "$work/counts-after.txt" >"$work/counts.diff"; then
-  echo "core row counts differ after the restore (before, after):" >&2
+# The core audits a backup's request before the supervisor dumps (Codex PR #41 finding 4),
+# so the archive holds that one intent row; its outcome row is written after the dump.
+intent=$(sql "SELECT count(*) FROM core.audit_log WHERE entity = 'backup_request' AND field = 'requested'")
+outcome=$(sql "SELECT count(*) FROM core.audit_log WHERE entity = 'backup_request' AND field <> 'requested'")
+if [ "$intent" != "1" ] || [ "$outcome" != "0" ]; then
+  echo "the archive holds $intent backup intent rows and $outcome outcome rows, want 1 and 0" >&2
+  exit 1
+fi
+awk '$1 == "audit_log" { $2 += 1 } { print }' "$work/counts-before.txt" > "$work/counts-expected.txt"
+if ! diff -u "$work/counts-expected.txt" "$work/counts-after.txt" >"$work/counts.diff"; then
+  echo "core row counts differ after the restore (before plus the backup's intent row, after):" >&2
   cat "$work/counts.diff" >&2
   exit 1
 fi
