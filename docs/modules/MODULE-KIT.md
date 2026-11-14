@@ -21,8 +21,9 @@ go get github.com/CharitonMedia/togavsu@<core commit or tag>
 
 Pin the core release the module targets and move the pin when the module adopts a newer
 core API. Use only the dependencies the core's `go.mod` already pins (initial modules PRD,
-Code). Import `pkg/modulekit` from the module's `package` subcommand and
-`pkg/modulekit/coretest` from its `_test.go` files only.
+Code). Import `pkg/modulekit` wherever the module packages or checks itself (its library
+and its `package` subcommand, as Matter Clock does), and `pkg/modulekit/coretest` from its
+`_test.go` files only.
 
 ## pkg/modulekit
 
@@ -37,8 +38,12 @@ Code). Import `pkg/modulekit` from the module's `package` subcommand and
 | Signed package file | `SignFile(priv, pkg)`, `Build(priv, files)` |
 | Keys | `ParseSeed(text)`, `KeyID(pub)`, `PublicKeyPEM(pub)`, `ParsePublicKeyPEM(text)`, `Trust(pub)` |
 | Verification | `Digest(pkg)`, `Verify(pkg, digest, sig, keyID, trusted)`, `VerifyFile(file, trusted)` |
-| Settings source check (no environment reads, no numeric configuration literals outside settings) | `CheckSource(root)` |
+| Settings source check for a module: no environment read, directly or through a dot-import of `os` or `syscall`, outside a directory named `internal/bootstrap` (the core's numeric-literal rule names only the core's own fixed sites, so it is not applied to module code; a module's tunables are manifest settings, checked by review against its spec) | `CheckSource(root)` |
 | The code the install API would answer with | `Code(err)`: `migration_refused`, `tampered_module`, `unsigned_module`, `validation` |
+
+`Check` does not compare permission scopes with the core's scope list; the core refuses an
+unknown scope at approval, so a module whose scopes wait on a CORE item lists them with its
+pending manifest fields.
 
 `VerifyFile` is the whole local-install check: the file's form and digest, signature and
 signer, the signed manifest, then the install checks. Only `Archive` output installs;

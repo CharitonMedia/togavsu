@@ -286,8 +286,10 @@ func VerifyFile(file []byte, trusted []TrustedKey) (Verified, []Migration, error
 	return v, ms, nil
 }
 
-// CheckSource is the core's settings source check (AC-030) over a module's Go source
-// tree at root: it fails on an environment read or an unproven numeric configuration
-// literal outside a setting, as the core's own check does. Test files, vendor and
-// testdata are skipped.
-func CheckSource(root string) error { return settings.CheckModule(root) }
+// CheckSource is the core's settings source check (AC-030) as it applies to a module:
+// no Go file reads the environment (os.Getenv, os.LookupEnv, os.Environ and the like, or
+// a dot-import of os or syscall) outside a directory named internal/bootstrap. Test
+// files, vendor and testdata are skipped. A module's tunables are settings in its
+// manifest; the core's numeric-literal rule knows only the core's own fixed sites, so
+// it is not applied here.
+func CheckSource(root string) error { return settings.CheckEnvironment(root) }

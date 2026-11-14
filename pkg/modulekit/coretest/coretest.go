@@ -199,7 +199,8 @@ func (c *Core) Matter(name, clientEmail string, extra map[string]any) (matter, c
 	return testkit.Matter(c.T, c.Admin.Client, c.PracticeArea, c.Attorney.ID, name, clientEmail, extra)
 }
 
-// Wall limits matter to the users named (the admin keeps access as the firm's admin).
+// Wall limits matter to the users named. The admin is not added: a walled matter answers
+// 404 to anyone outside the wall, the admin included.
 func (c *Core) Wall(matter string, allowed ...*User) {
 	c.T.Helper()
 	ids := make([]domain.ID, len(allowed))

@@ -274,13 +274,32 @@ func TestCheckSource(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("package m\n\nfunc f() int { return 1 + 1 }\n")
+	// Ordinary numbers in module code are not settings findings.
+	write("package m\n\nimport \"strconv\"\n\nfunc f(n []int) string { if len(n) == 0 { return \"\" }; return strconv.FormatInt(int64(n[1]), 10) + string(rune(404)) }\n")
 	if err := modulekit.CheckSource(dir); err != nil {
 		t.Fatalf("clean source refused: %v", err)
 	}
 	write("package m\n\nimport \"os\"\n\nfunc f() string { return os.Getenv(\"X\") }\n")
 	if err := modulekit.CheckSource(dir); err == nil {
 		t.Fatal("an environment read passed")
+	}
+	write("package m\n\nimport . \"os\"\n\nfunc f() string { return Getenv(\"X\") }\n")
+	if err := modulekit.CheckSource(dir); err == nil {
+		t.Fatal("a dot-import of os passed")
+	}
+	// internal/bootstrap is where a module may read its environment.
+	if err := os.Remove(filepath.Join(dir, "m.go")); err != nil {
+		t.Fatal(err)
+	}
+	boot := filepath.Join(dir, "internal", "bootstrap")
+	if err := os.MkdirAll(boot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(boot, "env.go"), []byte("package bootstrap\n\nimport \"os\"\n\nfunc F() string { return os.Getenv(\"X\") }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := modulekit.CheckSource(dir); err != nil {
+		t.Fatalf("environment read in internal/bootstrap refused: %v", err)
 	}
 }
 

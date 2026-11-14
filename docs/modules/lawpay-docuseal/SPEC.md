@@ -597,7 +597,7 @@ modules/lawpay-docuseal/
 internal/modules/module_lawpay_docuseal_pg_test.go   section 9 acceptance suite
 ```
 
-Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, so `modulekit.CheckSource` (the core's `settings.CheckModule`) passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build writes only the CharitonMedia/togavsu-lawpay-docuseal repository and nothing in the core repository; a change to this spec goes to the integration lead. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
+Secrets come from the Docker secrets the core hands the supervisor (`togavsu_api_token`, `togavsu_webhook_secret`, `togavsu_db_role`, `togavsu_db_password`, `togavsu_db_schema`), read as matter-clock reads them. Tunables come from module settings, never from integer literals, and environment reads sit only in `internal/bootstrap`, so `modulekit.CheckSource` passes. The sweep runs inside the module process every `reconcile_interval_minutes`. The build writes only the CharitonMedia/togavsu-lawpay-docuseal repository and nothing in the core repository; a change to this spec goes to the integration lead. C1 to C15 go to the module-core lane through docs/modules/CORE-CHANGES.md and land before this module merges.
 
 ## 11. Out of scope
 
