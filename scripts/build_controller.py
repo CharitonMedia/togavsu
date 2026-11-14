@@ -32,6 +32,7 @@ TERMINAL = {"FINISHED", "ERROR", "CANCELLED", "EXPIRED"}  # Cursor v1 Get A Run 
 REQUIRED = {"Setup checks", "Codex checkpoint"}
 APP_ID = 15368  # GitHub Actions, verified against this repository's check runs.
 LEGACY_REPAIR_HALT = "Three correction cycles exhausted; independent work may continue"
+PROTECTION_HALT = "Branch protection changed or no longer enforces required checkpoints"
 CI_OWNERSHIP = (
     "The controller and integration lead own GitHub CI monitoring, review feedback, and future dispatch. "
     "Do not create background CI subscriptions (including github:ci:branch) or CI-wait continuation events, "
@@ -315,6 +316,32 @@ class Remote:
             # gh's diagnostic contains status/path, not the authentication token.
             raise RuntimeError(proc.stderr.decode(errors="replace")[-1800:])
         return proc.stdout if binary else json.loads(proc.stdout or b"{}")
+
+    def graphql(self, query, variables):
+        args = ["gh", "api", "graphql", "-f", "query=" + query]
+        for name, value in variables.items():
+            args += ["-F", name + "=" + str(value)]
+        proc = subprocess.run(args, capture_output=True, timeout=55)
+        if proc.returncode:
+            raise RuntimeError(proc.stderr.decode(errors="replace")[-1800:])
+        return json.loads(proc.stdout or b"{}")
+
+    def unresolved_threads(self, number):
+        # Review threads still open on the pull request, across every page.
+        owner, name = REPO.split("/")
+        query = ("query($owner:String!,$name:String!,$number:Int!,$after:String){repository(owner:$owner,name:$name)"
+                 "{pullRequest(number:$number){reviewThreads(first:100,after:$after){nodes{isResolved}"
+                 "pageInfo{hasNextPage endCursor}}}}}")
+        count, after = 0, None
+        while True:
+            variables = {"owner": owner, "name": name, "number": number}
+            if after:
+                variables["after"] = after
+            threads = self.graphql(query, variables)["data"]["repository"]["pullRequest"]["reviewThreads"]
+            count += sum(1 for node in threads["nodes"] if not node["isResolved"])
+            if not threads["pageInfo"]["hasNextPage"]:
+                return count
+            after = threads["pageInfo"]["endCursor"]
 
     def cursor(self, method, path, body=None):
         key = os.environ["CURSOR_API_KEY"]
@@ -753,6 +780,12 @@ class ActionsRemote(Remote):
         return published
 
 
+def protection_enforces_checkpoints(protection):
+    required_config = protection.get("required_status_checks") or {}
+    return bool(required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
+                and protection.get("required_pull_request_reviews") is not None)
+
+
 class Controller:
     def __init__(self, remote, plan, state_dir, dry=False, mailer=None):
         self.remote, self.plan, self.dir, self.dry, self.mailer = remote, plan, Path(state_dir), dry, mailer
@@ -776,6 +809,87 @@ class Controller:
         if record.get("halted") != reason:
             record["halted"] = reason
             self.event(task, "STOPPED: " + reason)
+        self.save()
+
+    def admins_accepted(self, protection):
+        # Admin enforcement is required unless the integration lead adopted its removal by an audited step. An
+        # adoption lasts only while enforcement stays off: once it is seen on again, turning it off needs a new one.
+        if protection.get("enforce_admins", {}).get("enabled"):
+            adopted = self.state.pop("adopted_protection", None)
+            if adopted:
+                adopted["superseded"] = now()
+                for entry in self.state.get("protection_adoptions", []):
+                    if entry.get("time") == adopted.get("time") and entry.get("operator") == adopted.get("operator"):
+                        entry["superseded"] = adopted["superseded"]
+                self.event("controller", "Admin enforcement is on again; the earlier protection adoption no longer applies")
+            return True
+        return (self.state.get("adopted_protection") or {}).get("enforce_admins") is False
+
+    def bypass_gaps(self, protection, number, head):
+        # With admin enforcement off GitHub lets an administrator merge past branch rules, so the controller checks
+        # them itself and fails closed: any review rule it does not evaluate is a gap. Returns what is unmet.
+        gaps = []
+        reviews_rule = protection.get("required_pull_request_reviews") or {}
+        for flag in ("require_code_owner_reviews", "require_last_push_approval"):
+            if reviews_rule.get(flag):
+                gaps.append("the " + flag.replace("_", " ") + " rule")
+        needed = int(reviews_rule.get("required_approving_review_count") or 0)
+        latest, page = {}, 1
+        while True:
+            batch = self.remote.gh("pulls/" + str(number) + "/reviews?per_page=100&page=" + str(page)) or []
+            for review in batch:
+                user = (review.get("user") or {}).get("login")
+                if user and review.get("state") in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                    latest[user] = review
+            if len(batch) < 100:
+                break
+            page += 1
+        # Only an approval of the exact head by someone with write access counts, which is never looser than GitHub.
+        approvals = sum(1 for review in latest.values() if review["state"] == "APPROVED"
+                        and review.get("commit_id") == head
+                        and review.get("author_association") in {"OWNER", "MEMBER", "COLLABORATOR"})
+        if approvals < needed:
+            gaps.append(str(needed) + " required approvals of the current head")
+        if any(review["state"] == "CHANGES_REQUESTED" for review in latest.values()):
+            gaps.append("a review requesting changes")
+        if (protection.get("required_conversation_resolution") or {}).get("enabled"):
+            open_threads = self.remote.unresolved_threads(number)
+            if open_threads:
+                gaps.append(str(open_threads) + " unresolved review threads")
+        for rule in ("required_signatures", "lock_branch"):
+            if (protection.get(rule) or {}).get("enabled"):
+                gaps.append("the " + rule.replace("_", " ") + " rule")
+        return gaps
+
+    def adopt_protection(self, operator):
+        # Operator path: accept the repository owner's current main branch protection. Only admin enforcement may
+        # differ; strict required checks, both checkpoints and pull request reviews stay mandatory.
+        if not isinstance(operator, str) or not operator.strip():
+            raise ValueError("Operator name is required for an audited protection adoption")
+        protection = self.remote.gh("branches/main/protection")
+        if not protection_enforces_checkpoints(protection):
+            raise ValueError("Main protection no longer requires strict checks, both checkpoints and reviews; "
+                             "nothing is adopted")
+        enforced = bool(protection.get("enforce_admins", {}).get("enabled"))
+        cleared = sorted(task for task, record in self.tasks.items() if record.get("halted") == PROTECTION_HALT)
+        if self.dry:
+            print("WOULD adopt main protection with admin enforcement " + ("on" if enforced else "off")
+                  + " and clear protection halts on " + (", ".join(cleared) or "no task"), flush=True)
+            return
+        stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup = self.dir / ("controller-before-adopt-protection-" + stamp + ".json")
+        backup.write_text(json.dumps(self.state, indent=2, sort_keys=True))
+        entry = {"time": now(), "operator": operator, "enforce_admins": enforced,
+                 "contexts": sorted(protection["required_status_checks"].get("contexts", [])),
+                 "backup": backup.name, "cleared_halts": cleared}
+        self.state["adopted_protection"] = entry
+        self.state.setdefault("protection_adoptions", []).append(entry)
+        for task in cleared:
+            record = self.tasks[task]
+            record.setdefault("recovered_halts", []).append(
+                {"reason": record.pop("halted"), "time": now(), "operator": operator})
+            self.event(task, "Operator " + operator + " adopted main protection (admin enforcement "
+                       + ("on" if enforced else "off") + "); protection halt cleared")
         self.save()
 
     def adopt(self):
@@ -1291,10 +1405,8 @@ class Controller:
                 return False
         protection = self.remote.gh("branches/main/protection")
         required_config = protection.get("required_status_checks") or {}
-        if not (required_config.get("strict") and REQUIRED <= set(required_config.get("contexts", []))
-                and protection.get("enforce_admins", {}).get("enabled")
-                and protection.get("required_pull_request_reviews") is not None):
-            self.halt(task, record, "Branch protection changed or no longer enforces required checkpoints")
+        if not (protection_enforces_checkpoints(protection) and self.admins_accepted(protection)):
+            self.halt(task, record, PROTECTION_HALT)
             return False
         # Required product jobs must be enforced by GitHub, not just a stale local snapshot.
         enforced = set(required_config.get("contexts", []))
@@ -1349,6 +1461,11 @@ class Controller:
             if record.get("stalled", {}).get("kind") == "merge_blocked":
                 record.pop("stalled")
             self.event(task, "Pull request state changed to " + str(fresh.get("mergeable_state")) + "; retrying held merge once")
+        if not protection.get("enforce_admins", {}).get("enabled"):
+            gaps = self.bypass_gaps(protection, number, head)
+            if gaps:
+                record["waiting"] = "Admin enforcement is off; the controller will not merge past " + ", ".join(gaps)
+                return False
         if self.dry:
             self.effect("protected merge PR " + str(number), lambda: None)
             return True
@@ -1929,11 +2046,15 @@ def main():
     parser.add_argument("--note", nargs=2, metavar=("TASK", "TEXT"),
         help="add instructions to every later fix pass for TASK; runs no tick")
     parser.add_argument("--clear-notes", metavar="TASK", help="remove TASK's operator notes; runs no tick")
+    parser.add_argument("--adopt-protection", action="store_true",
+        help="accept main's current protection, including admin enforcement turned off, and clear protection halts; runs no tick")
     parser.add_argument("--test-alert", action="store_true", help="email a test alert to the plan's alert_email; runs no tick")
-    parser.add_argument("--operator", help="name recorded with --reconcile-intent, --rehome, --resume, --note or --clear-notes")
+    parser.add_argument("--operator",
+        help="name recorded with --reconcile-intent, --rehome, --resume, --note, --clear-notes or --adopt-protection")
     args = parser.parse_args()
-    if (args.reconcile_intent or args.rehome or args.resume or args.note or args.clear_notes) and not args.operator:
-        parser.error("--reconcile-intent, --rehome, --resume, --note and --clear-notes require --operator")
+    if (args.reconcile_intent or args.rehome or args.resume or args.note or args.clear_notes
+            or args.adopt_protection) and not args.operator:
+        parser.error("--reconcile-intent, --rehome, --resume, --note, --clear-notes and --adopt-protection require --operator")
     plan = json.loads(Path(args.plan).read_text())
     state = Path(args.state)
     state.mkdir(parents=True, exist_ok=True)
@@ -1966,6 +2087,8 @@ def main():
             controller.note(task, args.operator, text)
         elif args.clear_notes:
             controller.clear_notes(args.clear_notes, args.operator)
+        elif args.adopt_protection:
+            controller.adopt_protection(args.operator)
         else:
             controller.tick()
 
