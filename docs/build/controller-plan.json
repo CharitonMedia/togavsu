@@ -1,7 +1,13 @@
 {
   "max_implementation_agents": 4,
   "worker_backend": "claude-actions",
-  "held_tasks": [],
+  "held_tasks": [
+    "module-documents",
+    "module-email",
+    "module-client-portal",
+    "module-lawpay-docuseal",
+    "module-quickbooks"
+  ],
   "alert_email": "pnolan@nemolegal.com",
   "idle_alert_seconds": 3600,
   "active_run_timeout_seconds": 18900,
@@ -1330,7 +1336,7 @@
       "wave": "module-api",
       "phase": 8,
       "depends_on": [
-        "release-final"
+        "release-api-coverage"
       ],
       "owned_paths": [
         "cmd/core/",
@@ -1373,7 +1379,7 @@
         "Backup integration",
         "Supervisor image"
       ],
-      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from the released core (the release-final assignment is merged). Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five module lanes start from your merge, so keep every name exactly as the specs give it. Never edit modules/, internal/modules/module_*_pg_test.go, docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
+      "prompt": "Open your PR body with a \"## Stage report\" section in plain words: what merged, the criteria that passed and any still pending, failures and fixes, the simplification result and the PONYTAIL-DEBT.md item count. When the PR merges, the controller posts that section on the tracking issue and emails it to Patrick. togavsu-initial-modules-prd.md is the approved scope for this build; it outranks docs/modules/CORE-CHANGES.md, which outranks each docs/modules/*/SPEC.md. Build the module API update in togavsu-initial-modules-prd.md section 4: implement CORE-01 to CORE-29 in docs/modules/CORE-CHANGES.md in the order of section 4.4, exactly as named there (endpoints, operation ids, scopes, events, manifest fields, settings, delegation values, migrations, mail routing, frame bridge, public webhook routes, client portal routes), each with OpenAPI contract and API/MCP parity updates, role and wall checks, audit entries and Go tests against real Postgres beside the code it changes, failure cases included. You start from core main after the API coverage lane (430 of 430 operations); the performance and final release lanes run beside you, so rebase on main before you finish and keep their changes. Done when CU-01 to CU-05 in section 4.4 pass in automated tests, including matter-clock installing, running and uninstalling unchanged and the update applying through the supervisor with no failed requests under the update load test. The five modules are built in their own repositories against these specs, so keep every name exactly as the specs give it. Never edit modules/, internal/modules/module_*_pg_test.go, docs/modules/, the PRDs, .github/ other than product-ci.yml, controller files or review gates. Never edit go.mod or go.sum; the mail libraries are already pinned, and any other dependency is proposed in your PR for the integration lead. If the same problem survives three fix passes, stop and report it plainly instead of trying again.",
       "stage_report": true
     },
     {
