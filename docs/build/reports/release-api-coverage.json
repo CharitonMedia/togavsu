@@ -1,7 +1,7 @@
 {
  "task_id": "release-api-coverage",
  "status": "pass",
- "tested_revision": "36039566d39409b1eeaa418f459e8b7a7126260e",
+ "tested_revision": "a92fb70523bf58ec3043932e33f0822128c8c83e",
  "exit_code": 0,
  "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
  "tests": [
@@ -11,6 +11,13 @@
    "exit_code": 0,
    "status": "pass",
    "result": "each new assertion fails on de7adeb's code (0 event.appended rows; source manual accepted 201; wrong matter forbidden) and passes at the tested revision"
+  },
+  {
+   "id": "codex-findings-regressions-pr55-review",
+   "command": "go test -count=1 -run '^(TestPGPublicationGrantGovernsBackgroundUploads|TestPGBulkFilePublishesAllOrNothing)$' ./internal/files/; go test -count=1 -run '^(TestReleaseArchiveAndMergeMatters|TestReleaseBulkInvoices)$' ./internal/core/",
+   "exit_code": 0,
+   "status": "pass",
+   "result": "each new assertion fails on 0bf522b's code (walled contact granted; version callbacks on the committed transaction; archived matter in the default CSV and Matters screen) and passes at the tested revision; invoice item failures are batch_rejected 422"
   },
   {
    "id": "all-operations-mounted",
@@ -24,26 +31,28 @@
    "command": "python3 scripts/release/full_acceptance.py --ids AC-002",
    "exit_code": 0,
    "status": "pass",
-   "result": "api-contract, go-release-api and all-operations-mounted pass; passed 1, pending 0"
+   "result": "api-contract, go-release-api and all-operations-mounted pass at the tested revision; passed 1, pending 0"
   },
   {
    "id": "go-all-packages",
-   "command": "gofmt -l cmd internal api web (empty); go vet ./...; go test -count=1 -timeout 25m $(go list ./...)",
+   "command": "go test -count=1 ./internal/files/ ./internal/billing/ ./internal/practice/ ./internal/domain/ ./internal/doctender/ ./internal/editor/ ./internal/settings/; go test -count=1 -timeout 25m ./internal/core/; gofmt -l (empty); go vet ./...",
    "exit_code": 0,
    "status": "pass",
-   "result": "28 packages ok; LawCraft editor cases skip locally without the image's wordcraft-cli"
+   "result": "the packages this revision changes, and the packages that call them, pass at the tested revision; the other packages passed at 36039566 and are unchanged; CI runs every package"
   },
   {
    "id": "go-race",
-   "command": "go test -count=1 -race -short ./internal/core/ ./internal/practice/ ./internal/files/ ./internal/billing/",
+   "command": "go test -count=1 -race -short ./internal/files/ ./internal/billing/ ./internal/practice/",
    "exit_code": 0,
-   "status": "pass"
+   "status": "pass",
+   "result": "run at the tested revision; ./internal/core/ ran under -race at 36039566"
   },
   {
    "id": "api-contract",
    "command": "sh scripts/ci/test-api.sh",
    "exit_code": 0,
-   "status": "pass"
+   "status": "pass",
+   "result": "passes at the tested revision"
   },
   {
    "id": "new-operation-tests",
@@ -56,34 +65,36 @@
    "id": "supervisor",
    "command": "sh scripts/ci/test-supervisor.sh; sh scripts/ci/test-bootstrap.sh; sh scripts/ci/pending-gate.sh; python3 scripts/ci/check-compose.py",
    "exit_code": 0,
-   "status": "pass"
+   "status": "pass",
+   "result": "run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
   },
   {
    "id": "backup-integration",
    "command": "sh scripts/ci/test-backup-integration.sh (TOGAVSU_TEST_DATABASE_URL and TOGAVSU_TEST_DATABASE_URL_B on two Postgres 17 servers; local pg_dump/psql were v18, CI uses v17)",
    "exit_code": 0,
    "status": "pass",
-   "result": "17 integration tests pass"
+   "result": "17 integration tests pass; run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
   },
   {
    "id": "qa-harness",
    "command": "docker run --rm -v $PWD:/src -w /src togavsu-qa:local sh scripts/ci/test-qa.sh",
    "exit_code": 0,
-   "status": "pass"
+   "status": "pass",
+   "result": "run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
   },
   {
    "id": "supervisor-image",
    "command": "docker compose -f compose.yaml config; docker build -f Dockerfile -t togavsu-supervisor:local .; sftp present",
    "exit_code": 0,
    "status": "pass",
-   "result": "core image build and smoke (build-core-image.sh, test-core-smoke.sh) not run locally (the build exceeded the local 10-minute limit at the previous revision); pending CI"
+   "result": "core image build and smoke (build-core-image.sh, test-core-smoke.sh) not run locally (the build exceeded the local 10-minute limit at the previous revision); pending CI; run at 36039566; this revision does not touch the supervisor, backups, QA harness or images"
   },
   {
    "id": "debt-audit",
    "command": "python3 scripts/release/check_debt.py",
    "exit_code": 0,
    "status": "pass",
-   "result": "107 markers, 66 ledger entries"
+   "result": "107 markers, 66 ledger entries at the tested revision"
   }
  ],
  "phase_cases": [
@@ -95,7 +106,7 @@
    "status": "pass",
    "command": "go test -tags acceptance -count=1 -run '^TestReleaseAllOperationsMounted$' ./internal/core/",
    "exit_code": 0,
-   "revision": "36039566d39409b1eeaa418f459e8b7a7126260e"
+   "revision": "a92fb70523bf58ec3043932e33f0822128c8c83e"
   }
  ],
  "passed_acceptance_ids": [
